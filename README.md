@@ -50,6 +50,10 @@ N8N_OUTBOX_WEBHOOK_SECRET=
 
 El primer alta usa `POST /v1/onboarding/organizations` con `X-Bootstrap-Secret`. Después se emite una API key una sola vez mediante `POST /v1/api-keys`. La empresa permanece en `draft` hasta una publicación explícita.
 
+## Documento de traspaso
+
+Para continuar la configuracion de Convex, Chatwoot, Evolution y n8n desde otra computadora, consulta [docs/handoff-2026-07-31.md](docs/handoff-2026-07-31.md). El documento no guarda valores secretos; indica como recuperarlos o rotarlos de forma segura.
+
 ## API para agentes
 
 El documento se sirve en `GET /v1/openapi.json`. El flujo obligatorio de reserva es:
