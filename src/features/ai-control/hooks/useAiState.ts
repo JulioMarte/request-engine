@@ -8,10 +8,10 @@ export function useAiState(context: ChatwootDashboardContext | null) {
   const state = useMemo(
     () => ({
       mode: localMode,
-      lastEvent: context?.conversationId ? "Context loaded" : "Waiting for Chatwoot context",
+      lastEvent: context?.conversationId ? "Contexto cargado" : "Esperando contexto de Chatwoot",
       summary: context?.conversationId
-        ? `Conversation ${context.conversationId} is ready for AI control.`
-        : "Open this app inside Chatwoot or send a postMessage context payload.",
+        ? `La conversacion ${context.conversationId} esta lista para control de IA.`
+        : "Abre esta app dentro de Chatwoot o envia un payload postMessage de contexto.",
     }),
     [context?.conversationId, localMode],
   )

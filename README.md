@@ -1,63 +1,64 @@
 # Request Engine
 
-MVP base for a Chatwoot Dashboard App that turns conversations into actionable requests.
+Motor multiempresa de agenda, clases y orden de llegada diseñado para ser operado por agentes de IA y por un panel humano. Convex es la fuente de verdad transaccional; Chatwoot conserva las conversaciones y n8n funciona como adaptador temporal de automatización.
 
-## Delivered
+## Estado de la implementación
 
-- Vite + React + TypeScript app shell.
-- Tailwind CSS v4 styling and shadcn-compatible component setup.
-- Clerk and Convex providers wired through environment variables.
-- React Router routes for `/dashboard-app` and admin MVP pages.
-- Convex schema for tenants, channels, AI state, catalog, knowledge, requests, events, appointments, quotes, integrations, and webhook events.
-- Basic Convex queries/mutations for tenants, catalog, knowledge, and AI state.
-- Chatwoot Dashboard App context hook using `postMessage`.
-- Compact AI mode UI for `auto`, `manual`, `handoff`, and `paused`.
+- Dominio v1 estricto para organizaciones, sedes, personas, tutores, seguros, recursos, calendarios, excepciones, citas, clases, colas, prompts, credenciales y auditoría.
+- Disponibilidad calculada bajo demanda, con ofertas opacas de cinco minutos y máximo cinco opciones por llamada.
+- Reserva serializable con revalidación de capacidad/recursos, snapshot comercial e idempotencia.
+- Citas `fixed_time`, ventanas `arrival_window` y sesiones `class_session`.
+- Confirmaciones multicanal, outbox con reintentos y liberación segura de citas no confirmadas.
+- Check-in transaccional, ticket estable y estimación de espera explícitamente no garantizada.
+- REST `/v1` mediante Convex HTTP Actions y contrato OpenAPI 3.1.
+- API keys propias con hash, scopes, expiración, revocación y separación por organización.
+- PII sensible cifrada con AES-GCM, índice ciego HMAC y valor enmascarado.
+- Panel operativo React para agenda, cola y runtime de agentes.
 
-## Local Development
+Las tablas originales (`tenants`, `requests`, `appointments`, etc.) siguen presentes como legado de solo migración. No se borran hasta verificar equivalencia y conteos.
 
-Install dependencies:
+## Desarrollo
 
 ```bash
 npm install
-```
-
-Start the frontend:
-
-```bash
-npm run dev
-```
-
-Build:
-
-```bash
+npm run test
+npm run lint
 npm run build
 ```
 
-Lint:
+Para validar y desplegar las funciones en el deployment de desarrollo:
 
 ```bash
-npm run lint
+npm run typecheck:convex
 ```
 
-## Convex
+## Configuración
 
-Configure a Convex deployment before generating `_generated` files:
-
-```bash
-npx convex dev
-```
-
-Convex functions are under `convex/`. The frontend is intentionally able to build before a deployment is linked.
-
-For Clerk auth, the React tree uses `ConvexProviderWithClerk` inside `ClerkProvider`.
-The local `convex/auth.config.ts` points to the current Clerk issuer:
+Los valores `VITE_` son públicos. Todos los secretos pertenecen al entorno de Convex, nunca al frontend.
 
 ```txt
-https://factual-jackal-53.clerk.accounts.dev
+VITE_CONVEX_URL=
+VITE_CLERK_PUBLISHABLE_KEY=
+
+PLATFORM_BOOTSTRAP_SECRET=
+PII_ENCRYPTION_KEY=
+PII_BLIND_INDEX_KEY=
+INTEGRATION_WEBHOOK_SECRET=
+N8N_OUTBOX_WEBHOOK_URL=
+N8N_OUTBOX_WEBHOOK_SECRET=
 ```
 
-When moving to a shared cloud deployment, set the same issuer in the Convex dashboard as `CLERK_JWT_ISSUER_DOMAIN` and switch `auth.config.ts` back to reading that environment variable if desired.
+El primer alta usa `POST /v1/onboarding/organizations` con `X-Bootstrap-Secret`. Después se emite una API key una sola vez mediante `POST /v1/api-keys`. La empresa permanece en `draft` hasta una publicación explícita.
 
-## Environment
+## API para agentes
 
-Create `.env.local` from `.env.example`. Public frontend values use the `VITE_` prefix. Chatwoot and provider tokens must stay in Convex environment variables, not in frontend code.
+El documento se sirve en `GET /v1/openapi.json`. El flujo obligatorio de reserva es:
+
+1. `catalog.search`
+2. `availability.summarize`
+3. `availability.listOptions`
+4. `booking.create` con `offerId` e `Idempotency-Key`
+
+Los agentes no reciben calendarios ni catálogos completos en el prompt. `GET /v1/agent/runtime-bundle` entrega prompts publicados, manifest de tools y hasta cinco pistas de catálogo.
+
+Consulta [arquitectura v1](docs/scheduling-v1.md) para invariantes, seguridad, integraciones y migración.

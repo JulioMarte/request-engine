@@ -1,8 +1,8 @@
-import { Bot, Hand, Pause, Play, UserRound } from "lucide-react"
+import { Hand, Pause, Play, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { aiModeLabels, type AiMode } from "@/features/ai-control/lib/ai-mode"
 
-const modes: Array<{ mode: AiMode; icon: typeof Bot }> = [
+const modes: Array<{ mode: AiMode; icon: typeof Play }> = [
   { mode: "auto", icon: Play },
   { mode: "paused", icon: Pause },
   { mode: "manual", icon: Hand },

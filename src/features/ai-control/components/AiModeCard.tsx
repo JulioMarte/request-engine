@@ -16,14 +16,14 @@ export function AiModeCard({ mode, lastEvent, summary, onChange }: AiModeCardPro
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle>AI Control</CardTitle>
+            <CardTitle>Control de IA</CardTitle>
             <CardDescription>{lastEvent}</CardDescription>
           </div>
           <Badge variant={mode === "auto" ? "success" : "warning"}>{aiModeLabels[mode]}</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">{summary}</p>
+        <p className="text-xs leading-5 text-muted-foreground">{summary}</p>
         <AiModeSwitcher mode={mode} onChange={onChange} />
       </CardContent>
     </Card>

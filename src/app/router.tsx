@@ -7,12 +7,20 @@ import { KnowledgePage } from "@/pages/admin/KnowledgePage"
 import { TenantsPage } from "@/pages/admin/TenantsPage"
 import { ChatwootDashboardPage } from "@/pages/dashboard-app/ChatwootDashboardPage"
 import { NotFoundPage } from "@/pages/not-found/NotFoundPage"
+import { AgentRuntimePage } from "@/pages/operations/AgentRuntimePage"
+import { BookingsPage } from "@/pages/operations/BookingsPage"
+import { OperationsDashboardPage } from "@/pages/operations/OperationsDashboardPage"
+import { QueuePage } from "@/pages/operations/QueuePage"
 
 export const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/dashboard-app" replace /> },
+      { index: true, element: <Navigate to="/operations" replace /> },
+      { path: "operations", element: <OperationsDashboardPage /> },
+      { path: "operations/bookings", element: <BookingsPage /> },
+      { path: "operations/queue", element: <QueuePage /> },
+      { path: "operations/agents", element: <AgentRuntimePage /> },
       { path: "dashboard-app", element: <ChatwootDashboardPage /> },
       { path: "admin", element: <AdminHomePage /> },
       { path: "admin/tenants", element: <TenantsPage /> },

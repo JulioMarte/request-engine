@@ -1,17 +1,20 @@
 import { NavLink, Outlet } from "react-router-dom"
 import { ClerkLoaded, ClerkLoading, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react"
-import { Bot, Boxes, Brain, Home, Plug, Settings } from "lucide-react"
+import { Bot, Boxes, Brain, CalendarDays, Home, LayoutDashboard, Plug, Settings, UsersRound } from "lucide-react"
 import { config } from "@/app/config"
 import { AppSignInGate } from "@/features/auth/components/AdminAuthGate"
 import { APP_NAME } from "@/lib/constants"
 
 const links = [
-  { to: "/dashboard-app", label: "Dashboard App", icon: Bot },
-  { to: "/admin", label: "Admin", icon: Home },
-  { to: "/admin/tenants", label: "Tenants", icon: Settings },
-  { to: "/admin/catalog", label: "Catalog", icon: Boxes },
-  { to: "/admin/knowledge", label: "Knowledge", icon: Brain },
-  { to: "/admin/integrations", label: "Integrations", icon: Plug },
+  { to: "/operations", label: "Operación", icon: LayoutDashboard },
+  { to: "/operations/bookings", label: "Agenda", icon: CalendarDays },
+  { to: "/operations/queue", label: "Cola", icon: UsersRound },
+  { to: "/operations/agents", label: "Agentes", icon: Bot },
+  { to: "/admin/tenants", label: "Empresas", icon: Home },
+  { to: "/admin/catalog", label: "Servicios", icon: Boxes },
+  { to: "/admin/knowledge", label: "Prompts", icon: Brain },
+  { to: "/admin/integrations", label: "Conexiones", icon: Plug },
+  { to: "/admin", label: "Configuración", icon: Settings },
 ]
 
 export function AppShell() {
@@ -51,10 +54,10 @@ function AuthenticatedHeader() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
         <div>
           <p className="text-sm font-semibold">{APP_NAME}</p>
-          <p className="text-xs text-muted-foreground">Chatwoot conversational ops layer</p>
+          <p className="text-xs text-muted-foreground">Agenda autónoma y colas</p>
         </div>
         <div className="flex items-center gap-3">
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Navegacion principal">
             {links.map((link) => (
               <NavLink
                 className={({ isActive }) =>
@@ -73,6 +76,22 @@ function AuthenticatedHeader() {
           {config.clerkPublishableKey && <UserButton />}
         </div>
       </div>
+      <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-3 sm:px-6 md:hidden" aria-label="Navegacion movil">
+        {links.map((link) => (
+          <NavLink
+            className={({ isActive }) =>
+              `inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-medium ${
+                isActive ? "bg-muted text-foreground" : "text-muted-foreground"
+              }`
+            }
+            key={link.to}
+            to={link.to}
+          >
+            <link.icon className="h-4 w-4" aria-hidden="true" />
+            {link.label}
+          </NavLink>
+        ))}
+      </nav>
     </header>
   )
 }

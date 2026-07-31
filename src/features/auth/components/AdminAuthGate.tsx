@@ -10,8 +10,8 @@ export function AppSignInGate() {
       <main className="flex min-h-screen items-center justify-center px-4 py-10">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle>Authentication is not configured</CardTitle>
-            <CardDescription>Set VITE_CLERK_PUBLISHABLE_KEY before using this application.</CardDescription>
+            <CardTitle>Autenticacion no configurada</CardTitle>
+            <CardDescription>Define VITE_CLERK_PUBLISHABLE_KEY antes de usar esta aplicacion.</CardDescription>
           </CardHeader>
         </Card>
       </main>
@@ -32,33 +32,33 @@ function AppSignInPage() {
             </span>
             <div>
               <p className="text-sm font-semibold">{APP_NAME}</p>
-              <p className="text-xs text-muted-foreground">Secure access</p>
+            <p className="text-xs text-muted-foreground">Acceso seguro</p>
             </div>
           </div>
 
           <div className="max-w-2xl">
-            <p className="mb-3 text-sm font-medium text-primary">Operations access</p>
+            <p className="mb-3 text-sm font-medium text-primary">Acceso operativo</p>
             <h1 className="text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
-              Control conversational requests before they touch your operation.
+              Controla solicitudes conversacionales antes de que impacten la operacion.
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">
-              Only approved operators can access tenants, Chatwoot channels, catalog data, knowledge entries, and provider settings.
+              Solo operadores aprobados pueden acceder a tenants, canales de Chatwoot, catalogo, conocimiento y proveedores.
             </p>
           </div>
 
           <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-2">
-            <LoginSignal icon={MessageSquareText} title="Chatwoot context" description="Map accounts, inboxes, contacts, and conversations." />
-            <LoginSignal icon={CalendarCheck} title="Request workflows" description="Prepare appointments, quotes, handoffs, and AI states." />
-            <LoginSignal icon={FileText} title="Business knowledge" description="Keep reusable service and FAQ data organized by tenant." />
-            <LoginSignal icon={LockKeyhole} title="Protected application" description="Every internal route stays hidden until Clerk confirms the session." />
+            <LoginSignal icon={MessageSquareText} title="Contexto Chatwoot" description="Mapea cuentas, inboxes, contactos y conversaciones." />
+            <LoginSignal icon={CalendarCheck} title="Flujos de solicitud" description="Prepara citas, cotizaciones, derivaciones y estados de IA." />
+            <LoginSignal icon={FileText} title="Conocimiento" description="Organiza servicios y preguntas frecuentes por tenant." />
+            <LoginSignal icon={LockKeyhole} title="App protegida" description="Las rutas internas quedan ocultas hasta que Clerk confirme la sesion." />
           </div>
         </section>
 
         <section className="flex items-center justify-center lg:justify-end">
           <Card className="w-full max-w-[430px] border bg-card/95 shadow-xl">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg">Sign in</CardTitle>
-              <CardDescription>Use an approved operator account to continue.</CardDescription>
+              <CardTitle className="text-lg">Iniciar sesion</CardTitle>
+              <CardDescription>Usa una cuenta de operador aprobada para continuar.</CardDescription>
             </CardHeader>
             <CardContent>
               <ClerkLoading>

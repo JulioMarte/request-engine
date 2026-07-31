@@ -1,7 +1,10 @@
+import { CalendarCheck, ClipboardList, MessageSquareText } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/common/EmptyState"
 import { PageContainer } from "@/components/layout/PageContainer"
+import { PageHeader } from "@/components/layout/PageHeader"
+import { Button } from "@/components/ui/button"
 import { AiModeCard } from "@/features/ai-control/components/AiModeCard"
 import { useAiState } from "@/features/ai-control/hooks/useAiState"
 import { ChatwootContextDebug } from "@/features/chatwoot/components/ChatwootContextDebug"
@@ -14,21 +17,21 @@ export function ChatwootDashboardPage() {
 
   return (
     <PageContainer>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Chatwoot Dashboard App</h1>
-          <p className="text-sm text-muted-foreground">Contextual controls for the active conversation.</p>
-        </div>
+      <PageHeader
+        description="Controla la solicitud, el modo de IA y las proximas acciones de la conversacion actual."
+        title="Dashboard operativo"
+        actions={
         <Badge variant={chatwoot.isConnected ? "success" : "warning"}>
-          {chatwoot.isConnected ? "Connected" : chatwoot.isEmbedded ? "Waiting for context" : "Standalone"}
+          {chatwoot.isConnected ? "Conectado" : chatwoot.isEmbedded ? "Esperando contexto" : "Modo standalone"}
         </Badge>
-      </div>
+        }
+      />
 
       {!chatwoot.isEmbedded && (
         <div className="mb-4">
           <EmptyState
-            title="Not embedded in Chatwoot"
-            description="The page is still usable for development, but production context arrives through Chatwoot postMessage."
+            title="No esta embebido en Chatwoot"
+            description="La pagina sirve para desarrollo, pero en produccion el contexto llega por postMessage desde Chatwoot."
           />
         </div>
       )}
@@ -38,20 +41,23 @@ export function ChatwootDashboardPage() {
           <ConversationHeaderCard context={chatwoot.context} />
           <Card>
             <CardHeader>
-              <CardTitle>Current Request</CardTitle>
+              <CardTitle>Solicitud actual</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Intent</p>
-                <p className="font-medium">No request detected</p>
+              <div className="rounded-md bg-muted p-3">
+                <ClipboardList className="mb-2 h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-xs text-muted-foreground">Intencion</p>
+                <p className="font-medium">Sin solicitud detectada</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Status</p>
-                <p className="font-medium">new</p>
+              <div className="rounded-md bg-muted p-3">
+                <MessageSquareText className="mb-2 h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-xs text-muted-foreground">Estado</p>
+                <p className="font-medium">Nueva</p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Next action</p>
-                <p className="font-medium">Wait for incoming message</p>
+              <div className="rounded-md bg-muted p-3">
+                <CalendarCheck className="mb-2 h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-xs text-muted-foreground">Siguiente accion</p>
+                <p className="font-medium">Esperar mensaje</p>
               </div>
             </CardContent>
           </Card>
@@ -66,10 +72,21 @@ export function ChatwootDashboardPage() {
           />
           <Card>
             <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+              <CardTitle>Acciones rapidas</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              Suggested actions will unlock when a request is active.
+            <CardContent className="space-y-2">
+              <Button className="w-full justify-start" variant="outline" disabled>
+                Crear cita
+              </Button>
+              <Button className="w-full justify-start" variant="outline" disabled>
+                Preparar cotizacion
+              </Button>
+              <Button className="w-full justify-start" variant="outline" disabled>
+                Derivar a operador
+              </Button>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Las acciones se habilitan cuando exista una solicitud activa.
+              </p>
             </CardContent>
           </Card>
         </div>

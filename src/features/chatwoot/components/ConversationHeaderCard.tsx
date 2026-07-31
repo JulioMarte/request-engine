@@ -6,18 +6,18 @@ export function ConversationHeaderCard({ context }: { context: ChatwootDashboard
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Conversation Context</CardTitle>
+        <CardTitle>Conversacion activa</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div>
-          <p className="font-medium">{context?.contactName ?? "No contact selected"}</p>
-          <p className="text-xs text-muted-foreground">{context?.contactPhone ?? "Phone unavailable"}</p>
+          <p className="font-medium">{context?.contactName ?? "Sin contacto seleccionado"}</p>
+          <p className="text-xs text-muted-foreground">{context?.contactPhone ?? "Telefono no disponible"}</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <span>Account: {context?.accountId ?? "-"}</span>
+        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+          <span>Cuenta: {context?.accountId ?? "-"}</span>
           <span>Inbox: {context?.inboxId ?? "-"}</span>
-          <span>Conversation: {context?.conversationId ?? "-"}</span>
-          <span>Contact: {context?.contactId ?? "-"}</span>
+          <span>Conversacion: {context?.conversationId ?? "-"}</span>
+          <span>Contacto: {context?.contactId ?? "-"}</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">{context?.conversationStatus ?? "unknown"}</Badge>

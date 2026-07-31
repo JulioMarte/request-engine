@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server"
 
 export const list = query({
   args: {},
+  returns: v.array(v.object({ _id: v.id("tenants"), _creationTime: v.number(), name: v.string(), businessType: v.string(), chatwootAccountId: v.number(), modules: v.array(v.string()), providers: v.object({ appointment: v.optional(v.string()), quote: v.optional(v.string()), catalog: v.optional(v.string()) }), isActive: v.boolean(), createdAt: v.number(), updatedAt: v.number() })),
   handler: async (ctx) => {
     return ctx.db.query("tenants").collect()
   },
@@ -10,6 +11,7 @@ export const list = query({
 
 export const getByChatwootAccount = query({
   args: { chatwootAccountId: v.number() },
+  returns: v.union(v.null(), v.object({ _id: v.id("tenants"), _creationTime: v.number(), name: v.string(), businessType: v.string(), chatwootAccountId: v.number(), modules: v.array(v.string()), providers: v.object({ appointment: v.optional(v.string()), quote: v.optional(v.string()), catalog: v.optional(v.string()) }), isActive: v.boolean(), createdAt: v.number(), updatedAt: v.number() })),
   handler: async (ctx, args) => {
     return ctx.db
       .query("tenants")
@@ -24,6 +26,7 @@ export const create = mutation({
     businessType: v.string(),
     chatwootAccountId: v.number(),
   },
+  returns: v.id("tenants"),
   handler: async (ctx, args) => {
     const now = Date.now()
     return ctx.db.insert("tenants", {
@@ -48,6 +51,7 @@ export const update = mutation({
     businessType: v.optional(v.string()),
     isActive: v.optional(v.boolean()),
   },
+  returns: v.id("tenants"),
   handler: async (ctx, args) => {
     const { tenantId, ...patch } = args
     await ctx.db.patch(tenantId, { ...patch, updatedAt: Date.now() })

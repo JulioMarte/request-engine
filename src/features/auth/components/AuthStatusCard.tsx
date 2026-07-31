@@ -23,8 +23,8 @@ export function AuthStatusCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Auth Status</CardTitle>
-        <CardDescription>Clerk session and Convex token bridge.</CardDescription>
+        <CardTitle>Estado de autenticacion</CardTitle>
+        <CardDescription>Sesion Clerk y puente de token hacia Convex.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="flex items-center justify-between gap-3">
@@ -32,50 +32,50 @@ export function AuthStatusCard() {
             {hasClerk ? <ShieldCheck className="h-4 w-4" /> : <ShieldQuestion className="h-4 w-4" />}
             Clerk publishable key
           </span>
-          <span className="font-medium">{hasClerk ? "configured" : "missing"}</span>
+          <span className="font-medium">{hasClerk ? "configurado" : "faltante"}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             {hasConvex ? <ShieldCheck className="h-4 w-4" /> : <ShieldQuestion className="h-4 w-4" />}
             Convex URL
           </span>
-          <span className="font-medium">{hasConvex ? "configured" : "missing"}</span>
+          <span className="font-medium">{hasConvex ? "configurado" : "faltante"}</span>
         </div>
 
         {hasClerk ? (
           <>
             <SignedOut>
               <SignInButton mode="modal">
-                <Button size="sm">Sign in</Button>
+                <Button size="sm">Iniciar sesion</Button>
               </SignInButton>
             </SignedOut>
             <SignedIn>
               <div className="flex items-center justify-between rounded-md bg-muted p-3">
-                <span>Clerk session active</span>
+                <span>Sesion Clerk activa</span>
                 <UserButton />
               </div>
             </SignedIn>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Set VITE_CLERK_PUBLISHABLE_KEY to enable Clerk.</p>
+          <p className="text-xs text-muted-foreground">Define VITE_CLERK_PUBLISHABLE_KEY para habilitar Clerk.</p>
         )}
 
         {hasConvex && hasClerk ? (
           <>
             <AuthLoading>
-              <p className="text-xs text-muted-foreground">Convex is checking the Clerk token.</p>
+              <p className="text-xs text-muted-foreground">Convex esta revisando el token de Clerk.</p>
             </AuthLoading>
             <Authenticated>
-              <p className="text-xs font-medium text-primary">Convex accepted the Clerk session.</p>
+              <p className="text-xs font-medium text-primary">Convex acepto la sesion de Clerk.</p>
             </Authenticated>
             <Unauthenticated>
-              <p className="text-xs text-muted-foreground">Sign in to send a Clerk token to Convex.</p>
+              <p className="text-xs text-muted-foreground">Inicia sesion para enviar un token de Clerk a Convex.</p>
             </Unauthenticated>
             <ConvexAuthState />
           </>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Add VITE_CONVEX_URL to enable authenticated Convex calls from the browser.
+            Agrega VITE_CONVEX_URL para habilitar llamadas autenticadas a Convex desde el navegador.
           </p>
         )}
       </CardContent>

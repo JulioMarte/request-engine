@@ -14,6 +14,7 @@ export const getByConversation = query({
     chatwootAccountId: v.number(),
     chatwootConversationId: v.number(),
   },
+  returns: v.union(v.null(), v.object({ _id: v.id("aiStates"), _creationTime: v.number(), tenantId: v.id("tenants"), channelId: v.optional(v.id("channels")), chatwootAccountId: v.number(), chatwootConversationId: v.number(), mode: aiMode, lastSummary: v.optional(v.string()), lastEvent: v.optional(v.string()), pausedUntil: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number() })),
   handler: async (ctx, args) => {
     return ctx.db
       .query("aiStates")
@@ -35,6 +36,7 @@ export const setMode = mutation({
     mode: aiMode,
     lastSummary: v.optional(v.string()),
   },
+  returns: v.id("aiStates"),
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("aiStates")
