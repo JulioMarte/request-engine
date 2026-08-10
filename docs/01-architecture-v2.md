@@ -10,8 +10,6 @@
 
 ## 1. Punto de partida
 
-La arquitectura existe para servir esta idea:
-
 ```text
 Something requests something
            ↓
@@ -24,102 +22,54 @@ Request Engine es un **motor headless, multiempresa, API-first y transaccional d
 
 Su trabajo es:
 
-1. recibir o normalizar una intención;
-2. convertirla en un `Request` estructurado;
-3. resolver un `Offering` y políticas aplicables cuando corresponda;
-4. determinar un workflow válido y versionado;
+1. recibir/normalizar intención;
+2. convertirla en `Request`;
+3. resolver `Offering`, Location/Destination y policies cuando corresponda;
+4. determinar workflow versionado;
 5. ejecutar capabilities deterministas;
-6. persistir estado y decisiones importantes;
-7. coordinar capacity holds, reservations, payments, callbacks, confirmaciones o intervención humana;
-8. producir un `Fulfillment` verificable;
+6. calcular y comprometer capacidad válida;
+7. coordinar reservations, admission, dispatch, payments, callbacks o intervención humana;
+8. producir `Fulfillment` verificable;
 9. mantener trazabilidad completa.
 
-No es un chatbot, CRM, ERP, PBX, plataforma de WhatsApp, calendario tradicional ni framework universal de agentes. Es la capa de negocio que esos sistemas consumen.
+No es CRM, ERP, PBX, calendario tradicional, GPS telemetry store, shipping platform ni framework universal de agentes.
 
 ---
 
-## 2. Decisiones de arquitectura adoptadas
+## 2. Stack adoptado
 
-### Source of truth: PostgreSQL
+### PostgreSQL
 
-PostgreSQL será la fuente de verdad transaccional de Request Engine V2.
+Source of truth transaccional.
 
-El dominio es crecientemente relacional y transaccional:
+El dominio incluye relaciones e invariantes fuertes alrededor de:
 
-- organizations y tenancy;
+- organizations/tenancy;
 - contacts;
+- locations;
+- schedules/exceptions/holidays;
 - offerings;
-- request types;
-- requests y lifecycle;
-- workflow runs;
-- resources;
-- resource requirements;
-- availability;
-- capacity holds;
-- reservations;
-- check-ins;
-- queue entries;
-- service sessions;
-- idempotency;
-- audit;
-- domain events;
-- reporting operacional.
+- request types/requests/workflows;
+- resources/capabilities/requirements;
+- capacity holds/reservations/allocations;
+- check-ins/queues/service sessions;
+- destinations/service areas/dispatches;
+- payment coordination;
+- idempotency/audit/events/outbox.
 
-PostgreSQL permite expresar invariantes mediante constraints, índices, transacciones, locking explícito, queries temporales, range types, JSONB disciplinado y capacidades avanzadas de SQL.
+PostgreSQL aporta constraints, locking, range types, partial indexes, temporal queries y JSONB cuando realmente corresponde.
 
-No se adopta PostgreSQL porque Convex haya sido un error. Convex fue útil para descubrir el dominio. V2 optimiza ahora alrededor de integridad, relaciones, consultas y control transaccional.
+### Python + FastAPI
 
-### Lenguaje del backend: Python
+Python para domain/application/workers/integrations y FastAPI como transporte HTTP. La IA no recibe autoridad especial por compartir lenguaje con el backend.
 
-El backend de V2 se implementará en Python.
+### SQLAlchemy + Alembic
 
-Python se elige por el buen fit con:
-
-- API transaccional;
-- workflow orchestration;
-- background workers;
-- integrations;
-- AI-assisted classification/extraction;
-- agent tooling;
-- document/data processing.
-
-La elección no autoriza a mezclar IA con reglas críticas del dominio. Las mutaciones autoritativas permanecen tipadas, validadas y deterministas.
-
-### API framework: FastAPI
-
-FastAPI será la capa HTTP inicial.
-
-Motivos:
-
-- Pydantic para contratos y validación;
-- OpenAPI generado desde implementación real;
-- async I/O;
-- dependency injection suficiente;
-- buen fit para SDKs generados y adapters de agentes.
-
-FastAPI es **transporte**, no dominio.
-
-### Persistencia: SQLAlchemy + Alembic
-
-SQLAlchemy será la abstracción principal de persistencia y Alembic administrará migraciones.
-
-Se prefiere SQLAlchemy para conservar acceso a:
-
-- queries complejas;
-- PostgreSQL-specific types;
-- locking;
-- exclusion constraints;
-- índices parciales;
-- reporting;
-- tuning.
-
-Pydantic representa contratos/API. SQLAlchemy representa persistencia.
+SQLAlchemy para persistencia y Alembic para migraciones. Pydantic para contratos/API; SQLAlchemy para persistencia. No mezclar responsabilidades.
 
 ---
 
-## 3. Principio estructural: modular monolith
-
-V2 comienza como un **modular monolith**, no como microservicios.
+## 3. Modular monolith
 
 ```text
 request-engine
@@ -130,6 +80,7 @@ request-engine
 │   ├── organizations
 │   ├── principals
 │   ├── contacts
+│   ├── locations
 │   ├── offerings
 │   ├── requests
 │   ├── workflows
@@ -140,89 +91,66 @@ request-engine
 │
 ├── Modules
 │   ├── reservations
+│   ├── schedules
 │   ├── forms
+│   ├── dispatch
 │   └── payments
 │
 ├── Infrastructure
 │   ├── postgres
 │   ├── webhooks
 │   ├── integrations
+│   ├── media references
 │   └── observability
 │
 └── Workers
 ```
 
-Los boundaries son primero de dominio y código.
-
-Un módulo se convierte en servicio independiente sólo ante una razón concreta:
-
-- scaling diferente;
-- failure isolation;
-- ownership independiente;
-- deployment cadence diferente;
-- requirements de seguridad o infraestructura distintos.
-
-“Podría ser un microservicio” no es razón suficiente.
+Boundary de dominio antes que boundary de red. Separar servicio sólo por scaling, isolation, ownership, security o deployment requirements reales.
 
 ---
 
-## 4. Estructura propuesta del repositorio
+## 4. Estructura propuesta
 
 ```text
-request-engine/
-│
-├── src/
-│   └── request_engine/
-│       │
-│       ├── api/
-│       │   ├── routes/
-│       │   ├── dependencies/
-│       │   ├── middleware/
-│       │   └── errors.py
-│       │
-│       ├── domain/
-│       │   ├── organizations/
-│       │   ├── principals/
-│       │   ├── contacts/
-│       │   ├── offerings/
-│       │   ├── requests/
-│       │   ├── workflows/
-│       │   ├── fulfillments/
-│       │   ├── reservations/
-│       │   ├── forms/
-│       │   └── payments/
-│       │
-│       ├── application/
-│       │   ├── commands/
-│       │   ├── queries/
-│       │   └── services/
-│       │
-│       ├── infrastructure/
-│       │   ├── postgres/
-│       │   ├── webhooks/
-│       │   ├── integrations/
-│       │   └── observability/
-│       │
-│       └── workers/
-│
-├── migrations/
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── contract/
-│
-├── docs/
-├── pyproject.toml
-└── README.md
+src/request_engine/
+├── api/
+│   ├── routes/
+│   ├── dependencies/
+│   ├── middleware/
+│   └── errors.py
+├── domain/
+│   ├── organizations/
+│   ├── principals/
+│   ├── contacts/
+│   ├── locations/
+│   ├── offerings/
+│   ├── requests/
+│   ├── workflows/
+│   ├── fulfillments/
+│   ├── reservations/
+│   ├── schedules/
+│   ├── forms/
+│   ├── dispatch/
+│   └── payments/
+├── application/
+│   ├── commands/
+│   ├── queries/
+│   └── services/
+├── infrastructure/
+│   ├── postgres/
+│   ├── webhooks/
+│   ├── integrations/
+│   ├── media/
+│   └── observability/
+└── workers/
 ```
 
-Guía, no religión. No crear capas vacías sólo para satisfacer el diagrama.
+No crear capas vacías por ceremonia.
 
 ---
 
 ## 5. Regla de dependencia
-
-Dirección deseada:
 
 ```text
 API / Worker / Integrations / Agent adapters
@@ -234,129 +162,64 @@ API / Worker / Integrations / Agent adapters
         Infrastructure adapters
 ```
 
-- routes HTTP traducen requests externos a commands/queries;
-- agent adapters traducen tools/MCP a commands/queries;
-- application services coordinan casos de uso;
-- domain code expresa invariantes y state transitions;
-- repositories/adapters resuelven persistencia y sistemas externos;
-- workers consumen outbox/jobs y llaman application services.
-
-Evitar:
-
-1. fat routes;
-2. fat MCP tools;
-3. Clean Architecture ceremonial con interfaces sin valor.
+Routes y agent tools traducen hacia commands/queries; no contienen lógica de negocio autoritativa.
 
 ---
 
-## 6. Contratos: Pydantic → OpenAPI → SDK / Agent schemas
-
-V2 no mantiene OpenAPI manualmente separado.
+## 6. Contratos
 
 ```text
-Pydantic request/response schemas
-              ↓
-           FastAPI
-              ↓
-            OpenAPI
-              ↓
-      generated client SDKs
+Pydantic schemas
+      ↓
+FastAPI
+      ↓
+OpenAPI
+      ↓
+generated SDKs
 ```
 
-La superficie para agentes no necesita ser 1:1 con REST.
+La superficie de agentes no debe ser 1:1 con REST:
 
 ```text
 Application commands/queries
-        │
         ├── REST endpoints
         ├── public/widget endpoints
         └── MCP / agent tools
 ```
 
-Todos ejecutan las mismas invariantes autoritativas.
-
-REST favorece composición de software. Agent tools favorecen objetivos de negocio, schemas pequeños y scopes mínimos.
+REST favorece composición. Agent tools favorecen objetivos de negocio, inputs pequeños y scopes mínimos.
 
 ---
 
-## 7. PostgreSQL: relacional primero, JSONB con disciplina
+## 7. Persistencia relacional primero
 
 No convertir PostgreSQL en document store accidental.
 
-Campos usados en identidad, relaciones, lifecycle, búsqueda, constraints o reporting son columnas tipadas.
+Campos de identidad, relaciones, lifecycle, constraints, scheduling y reporting operacional deben ser columnas/tables tipadas.
 
-Ejemplo conceptual de `requests`:
+JSONB queda para metadata dinámica, snapshots o payloads cuyo schema varía de forma legítima.
 
-```text
-id
-public_id
-organization_id
-contact_id
-request_type_id
-offering_id nullable
-status
-workflow_key
-workflow_version
-current_step
-input_data JSONB
-output_data JSONB
-metadata JSONB
-created_at
-updated_at
-completed_at
-```
-
-Ejemplo conceptual de `reservations`:
+Public IDs separados de PKs internas:
 
 ```text
-id
-public_id
-organization_id
-request_id nullable
-status
-admission_policy_id
-planned_start nullable
-planned_end nullable
-window_start nullable
-window_end nullable
-commercial_snapshot JSONB
-metadata JSONB
-created_at
-updated_at
+org_...
+cnt_...
+loc_...
+off_...
+req_...
+res_...
+dsp_...
+ful_...
+evt_...
 ```
-
-La existencia exacta de columnas depende del modelo final. La regla es que JSONB no sustituye foreign keys, estados fundamentales ni campos regularmente consultados.
 
 ---
 
-## 8. `Offering`: fachada estable + especialización por composición
+## 8. Offering y RequestType
 
-`Offering` es identidad de lo que una organización ofrece.
+`Offering` es fachada estable; especialización por composición.
 
-No crear árboles de herencia o tablas paralelas incompatibles para `Product`, `Service`, `Package`, etc. como fachada pública principal.
-
-Conceptualmente:
-
-```text
-Offering
-├── common identity
-├── kind
-├── pricing configuration/reference
-├── intake configuration/reference
-├── reservation configuration/reference
-├── payment policy/reference
-└── module extensions
-```
-
-Los datos que requieren invariantes, joins o consultas frecuentes deben modelarse relacionalmente. La composición no implica guardar toda la semántica en un JSON arbitrario.
-
-`kind` sirve como clasificación útil, no como switch gigante en toda la aplicación.
-
----
-
-## 9. `RequestType` y resolución de workflow
-
-Los RequestTypes son relativamente genéricos:
+`RequestType` permanece relativamente genérico:
 
 ```text
 reserve_offering
@@ -369,85 +232,22 @@ cancel_reservation
 submit_intake
 ```
 
-La resolución conceptual es:
+Resolución:
 
 ```text
 RequestType
-    +
-Offering
-    +
-Organization policy
-    +
-Request context
-    ↓
+ + Offering
+ + Organization policy
+ + Request context
+ ↓
 workflow_key + workflow_version
 ```
 
-No crear `book_haircut`, `book_beard_trim`, `book_cleaning` como tipos universales sólo porque existen Offerings diferentes.
-
-Un Offering puede seleccionar/configurar un workflow especializado cuando su comportamiento realmente lo exige.
-
 ---
 
-## 10. Multi-tenancy
-
-Toda operación tenant-owned ejecuta dentro de organización resuelta desde credencial/principal.
-
-```text
-credential
-    ↓
-authenticate
-    ↓
-resolve principal + organization + scopes
-    ↓
-application command/query
-```
-
-Reglas:
-
-- `organization_id` en entidades tenant-owned relevantes;
-- FKs y unique constraints incluyen tenant scope cuando corresponde;
-- no aceptar ciegamente tenant enviado por browser;
-- public/browser credentials y secret/server credentials son clases distintas;
-- tests de cross-tenant leakage obligatorios.
-
-PostgreSQL RLS puede evaluarse como defensa adicional mediante ADR; no sustituye authorization correcto en application code.
-
----
-
-## 11. IDs
-
-Distinción:
-
-```text
-internal primary key → database concern
-public_id            → API/domain reference
-external_id          → integration mapping
-```
-
-Ejemplos:
-
-```text
-org_...
-cnt_...
-off_...
-req_...
-res_...
-ful_...
-evt_...
-```
-
-No usar IDs de Chatwoot, Twilio, LiveKit, Stripe, Evolution u otros providers como identidad primaria.
-
----
-
-## 12. Commands y Queries
-
-Separar reads de operaciones que cambian estado, sin CQRS distribuido.
+## 9. Commands y Queries
 
 ### Commands
-
-Ejemplos:
 
 ```text
 CreateRequest
@@ -459,18 +259,16 @@ RescheduleReservation
 CancelReservation
 CheckInReservation
 JoinReservationQueue
+AssignReservationResources
+CreateDispatch
+AssignDispatch
+MarkDispatchEnRoute
+UpdateDispatchEta
+MarkDispatchArrived
 StartServiceSession
 CompleteServiceSession
 CompleteRequest
 ```
-
-Commands:
-
-- validan authorization;
-- ejecutan invariantes;
-- participan en una transacción;
-- pueden producir domain events;
-- soportan idempotencia cuando retries son posibles.
 
 ### Queries
 
@@ -478,98 +276,52 @@ Commands:
 GetRequest
 ListOpenRequests
 ListOfferings
+GetLocation
+GetLocationCurrentHours
 SearchAvailability
 GetReservation
 ListReservations
 GetQueueState
+GetDispatch
+GetServiceStatus
 ```
 
-Queries no producen side effects de negocio.
-
-En particular, `SearchAvailability` no crea holds ni reservations.
+Queries no producen side effects. `SearchAvailability` no crea holds/reservations.
 
 ---
 
-## 13. Transacciones
-
-Transacciones cortas con trabajo autoritativo interno.
-
-Correcto:
+## 10. Transacciones
 
 ```text
 BEGIN
   validate current state
-  lock/revalidate capacity
-  mutate domain state
-  insert domain event/outbox record
+  resolve authoritative policy
+  lock/revalidate capacity where needed
+  mutate internal state
+  insert domain event/outbox
 COMMIT
 ```
 
-Incorrecto:
-
-```text
-BEGIN
-  mutate
-  call payment provider
-  call WhatsApp
-  call LiveKit
-  call n8n
-  wait for remote provider
-COMMIT
-```
-
-Ningún sistema remoto mantiene abierta una transacción de negocio.
+Nunca mantener transacción abierta mientras se llama payment provider, maps/routing provider, WhatsApp, LiveKit, n8n u otro sistema remoto.
 
 ---
 
-## 14. Outbox: PostgreSQL primero
+## 11. Outbox
 
-V2 usa transactional outbox.
+PostgreSQL transactional outbox inicialmente.
 
-Inicialmente no se requiere Kafka, RabbitMQ ni plataforma distribuida de eventos.
+Worker con claiming seguro (`FOR UPDATE SKIP LOCKED` u otra estrategia justificada), retry/backoff, dead-letter/failure state, idempotent delivery y event versioning.
 
-```text
-domain state
-+
-outbox event
-```
-
-mismo commit.
-
-Worker conceptual:
-
-```sql
-SELECT ...
-FROM outbox_events
-WHERE status = 'pending'
-  AND available_at <= now()
-ORDER BY available_at
-FOR UPDATE SKIP LOCKED
-LIMIT ...;
-```
-
-Debe soportar:
-
-- ownership/leases cuando sea necesario;
-- retries con backoff;
-- dead-letter/failure state;
-- idempotent delivery;
-- observabilidad;
-- event versioning.
-
-Queue externa sólo cuando requisitos medidos lo exijan.
+Queue externa sólo por necesidad medida.
 
 ---
 
-## 15. Domain events, audit y logs
+## 12. Domain events, audit y logs
 
-### Domain events
-
-Ejemplos:
+Eventos representativos:
 
 ```text
 request.created
-request.classified
 request.ready
 capacity_hold.created
 capacity_hold.expired
@@ -577,79 +329,54 @@ reservation.confirmed
 reservation.checked_in
 reservation.enqueued
 reservation.cancelled
+resource.assigned
+dispatch.created
+dispatch.assigned
+dispatch.en_route
+dispatch.eta_updated
+dispatch.arrived
 service_session.started
 service_session.completed
 request.fulfilled
 ```
 
-Alimentan webhooks, notifications, analytics, projections e integrations.
-
-### Audit
-
-Responde quién hizo qué y por qué:
-
-```text
-principal
-operation
-target
-before/after or change summary
-reason
-correlation_id
-occurred_at
-```
-
-### Logs
-
-Diagnóstico técnico.
-
-No mezclar los tres conceptos.
+Audit responde quién hizo qué y por qué. Logs son diagnóstico técnico. No confundirlos.
 
 ---
 
-## 16. Correlation y causality
+## 13. Correlation y causality
 
-Toda operación importante rastreable mediante valores conceptuales:
+Propagar cuando corresponda:
 
 ```text
 request_id
 reservation_id
+dispatch_id
 correlation_id
 causation_id
 principal_id
 trace_id
 ```
 
-Objetivo:
+Debe poder reconstruirse:
 
 ```text
-conversation/input
-      ↓
-request
-      ↓
-workflow decision
-      ↓
-capability/tool call
-      ↓
-transaction
-      ↓
-domain event
-      ↓
-outbox
-      ↓
-external callback
+input/conversation
+ → Request
+ → workflow decision
+ → reservation/resource decision
+ → dispatch/payment/tool action
+ → transaction
+ → event/outbox
+ → callback
+ → Fulfillment
 ```
-
-Debe reconstruirse sin memoria humana, especialmente cuando agentes de IA son clientes.
 
 ---
 
-## 17. Workflow engine: pequeño y explícito
+## 14. Workflow engine pequeño y explícito
 
-No construir Temporal, BPMN o workflow designer universal como parte del MVP.
-
-Workflows versionados como state machines/código tipado.
-
-Un request puede persistir:
+Persistencia conceptual:
 
 ```text
 workflow_key
@@ -660,7 +387,7 @@ status
 next_action_at
 ```
 
-Resultados:
+Resultados posibles:
 
 ```text
 need_input
@@ -675,54 +402,41 @@ fail_recoverable
 fail_terminal
 ```
 
-Plataforma durable especializada se evalúa por ADR sólo si aparecen timers extensos, sagas multi-servicio, fan-out o workflows de días/semanas que lo justifiquen.
+No construir Temporal/BPMN clone.
 
 ---
 
-## 18. Reservations: módulo de capacidad, no calendario tradicional
+## 15. Reservations como módulo de capacidad
 
-El módulo canónico es `reservations`.
-
-No usar `booking` como vocabulario de dominio o API.
-
-Boundary conceptual:
+Boundary:
 
 ```text
 Request workflow
       ↓
 reservations.search_availability
       ↓
-reservations.create_hold        [cuando corresponde]
+ReservationOption
       ↓
-payment/confirmation            [cuando corresponde]
+reservations.create_hold [optional]
+      ↓
+payment/confirmation [optional]
       ↓
 reservations.confirm
       ↓
 admission/check-in/queue
       ↓
-service session
+ServiceSession or Dispatch
       ↓
-Fulfillment references Reservation
+Fulfillment
 ```
 
-`Reservation` representa **compromiso de capacidad**, no necesariamente exact-time appointment.
+`Reservation` significa capacity commitment, no exact-time appointment.
 
 ---
 
-## 19. Availability
+## 16. Availability y `ReservationOption`
 
-Availability es lectura de capacidad potencial.
-
-Debe soportar diferentes modelos operacionales:
-
-- exact slots;
-- arrival windows;
-- queue capacity/estimated wait;
-- hybrid capacity.
-
-La respuesta de availability puede ser heterogénea según policy, pero debe exponerse mediante contratos tipados/discriminated unions, no JSON indefinido.
-
-Ejemplo conceptual:
+Availability puede producir contratos discriminados:
 
 ```text
 ScheduledOption
@@ -731,39 +445,32 @@ QueueOption
 HybridOption
 ```
 
-`SearchAvailability` nunca garantiza commit futuro.
+Una opción puede ser efímera/opaca. Nunca garantiza commit futuro.
+
+El consumidor no necesita conocer el grafo interno completo de Resources. El engine puede devolver una opción utilizable y revalidar al confirmar.
 
 ---
 
-## 20. `CapacityHold`
+## 17. `CapacityHold`
 
-`CapacityHold` es una reclamación temporal de capacidad durante una operación con intención real de continuar.
-
-Casos:
-
-- checkout;
-- depósito;
-- confirmación humana;
-- coordinación multi-step corta.
+Reclamación temporal únicamente cuando existe intención de continuar.
 
 Invariantes:
 
-- expiración explícita;
-- idempotencia;
-- scope organizacional;
-- referencia a capacidad/oferta relevante;
-- no tratarlo como Reservation confirmada;
-- proceso de expiración observable y seguro.
+- explicit expiry;
+- tenant scope;
+- idempotency;
+- referencia a la capacidad relevante;
+- observable expiration;
+- no tratar como Reservation confirmada.
 
-No crear holds por cada lectura de disponibilidad.
+No crear holds durante browsing normal.
 
 ---
 
-## 21. Admission policies
+## 18. Admission policies
 
-`AdmissionPolicy` describe cómo una reservation entra al servicio.
-
-Modos iniciales:
+Modos:
 
 ```text
 scheduled
@@ -772,150 +479,610 @@ window
 hybrid
 ```
 
-Preferir estrategia/configuración tipada sobre subclases totalmente independientes que dupliquen identidad, tenancy, audit y lifecycle.
+`scheduled`: check-in, grace/no-show policies.
 
-### scheduled
+`queue`: `priority + ordering`, remote join/presence rules, estimated wait.
 
-Puede configurar:
+`window`: rango sin instante prometido.
 
-```text
-check_in_required
-early_check_in_window
-grace_period
-no_show_after
-```
-
-### queue
-
-Puede configurar:
-
-```text
-ordering_strategy
-priority_rules
-remote_join_allowed
-presence_confirmation
-estimated_service_duration
-```
-
-No asumir FIFO absoluto. El motor debe poder implementar una política estable de `priority + ordering`.
-
-### window
-
-Puede representar:
-
-```text
-window_start
-window_end
-capacity
-```
-
-sin prometer un instante exacto.
-
-### hybrid
-
-Compone comportamiento scheduled + queue, por ejemplo:
-
-```text
-scheduled slot
-+ grace period
-+ late_behavior = enqueue
-```
-
-También soporta coexistencia controlada de scheduled reservations y walk-ins sobre recursos compartidos.
+`hybrid`: scheduled + queue semantics, incluyendo late-to-queue y coexistencia de walk-ins.
 
 ---
 
-## 22. Check-in, queue y ejecución
-
-Separar:
+## 19. Check-in, queue y ejecución
 
 ```text
-Reservation = committed/planned capacity
-CheckIn     = presence/readiness event/state
-QueueEntry  = dynamic operational queue position/priority
+Reservation    = planned/committed capacity
+CheckIn        = presence/readiness
+QueueEntry     = dynamic queue state
 ServiceSession = actual execution
 ```
 
-No sobrescribir datos planificados con tiempos reales.
+No sobrescribir tiempos planificados con ejecución real.
+
+---
+
+## 20. Resource model
+
+### `Resource`
+
+Algo cuya disponibilidad/capacidad limita autoritativamente una Reservation.
+
+Kinds conceptuales:
+
+```text
+person
+facility
+room
+chair
+equipment
+vehicle
+pool
+virtual
+```
+
+Kind ayuda a UX/metadata; la compatibilidad se basa principalmente en capabilities/requirements.
+
+### `ResourceCapability`
+
+Tenant-scoped:
+
+```text
+id
+organization_id
+key
+name
+status
+metadata
+```
+
+Association many-to-many entre Resources y capabilities.
+
+No enums verticales globales.
+
+---
+
+## 21. Capacity models
+
+V2 limita capacity a dos modelos iniciales:
+
+```text
+exclusive
+units
+```
+
+### exclusive
+
+El Resource sólo puede ser consumido por una Reservation conflictiva a la vez en el intervalo relevante.
+
+### units
+
+El Resource ofrece N unidades y reservations consumen unidades.
+
+Campos conceptuales:
+
+```text
+capacity_model
+capacity_units
+```
+
+No usarlo como inventario comercial general ni como multidimensional compute/workforce solver.
+
+---
+
+## 22. Resource requirements
+
+`ResourceRequirement` expresa demanda del Offering, no selección concreta.
+
+Conceptualmente:
+
+```text
+id
+offering_id
+capability_id
+units
+selection_policy
+resource_group_id nullable
+fixed_resource_id nullable
+constraints limited/typed
+```
+
+Selection policy inicial:
+
+```text
+any
+customer_selectable
+fixed
+```
+
+Constraints deben ser limitados y tipados. No arbitrary SQL/JavaScript/DSL.
+
+Ejemplos razonables:
+
+```text
+specific resource preference
+capability
+location compatibility
+resource group
+simple attribute equality
+service-area compatibility
+```
+
+---
+
+## 23. Allocation y assignment
+
+`ResourceAllocation` representa capacidad comprometida por una Reservation.
+
+Conceptualmente:
+
+```text
+reservation_id
+requirement_id
+resource_id or pool_resource_id
+units
+planned_from/planned_to when applicable
+status
+snapshot
+```
+
+Preservar conceptualmente:
+
+```text
+Allocation = committed capacity
+Assignment = concrete execution resource
+```
+
+En barbería ambos pueden ocurrir simultáneamente. En field service una Reservation puede reservar pool capacity y asignar persona/vehículo más tarde.
+
+La implementación inicial puede representar assignment mediante allocations especializadas/statuses sin introducir una entidad adicional hasta que el dominio lo exija.
+
+---
+
+## 24. ResourceGroup vs pool
+
+```text
+ResourceGroup
+= grouping/filtering/discovery
+
+Resource(kind=pool)
+= reservable aggregate capacity
+```
+
+No son equivalentes.
+
+Pool permite late binding seguro de capacidad agregada.
+
+---
+
+## 25. Availability matching
+
+El scheduler debe resolver:
+
+```text
+Offering
+    ↓
+ResourceRequirement[]
+    ↓
+Schedule constraints
+    ↓
+Location/ServiceArea compatibility
+    ↓
+compatible Resources/pools
+    ↓
+remaining capacity
+    ↓
+ReservationOption
+```
+
+Objetivo: garantizar capacidad válida, no optimización global.
+
+No implementar inicialmente route optimization, labor-cost optimizer, skill scoring complejo o workforce scheduling global.
+
+---
+
+## 26. Schedules: dos significados distintos
+
+### `BusinessHours`
+
+Cuándo una organization/Location está normalmente abierta/presentable al público.
+
+### `AvailabilitySchedule`
+
+Cuándo un Offering/Resource/pool puede ser reservado.
+
+Pueden diferir.
 
 Ejemplo:
 
 ```text
-Reservation:
-planned 10:00–10:30
-
-CheckIn:
-10:07
-
-ServiceSession:
-10:14–10:52
+Office BusinessHours: Mon–Fri 09:00–17:00
+Emergency Offering AvailabilitySchedule: 24/7
 ```
-
-`QueueEntry` referencia Reservation y mantiene datos operacionales dinámicos como queue, priority, join/check-in time y state.
-
-En queue-only/walk-in, se crea una Reservation de compromiso queue-based y su correspondiente QueueEntry. Esto mantiene una vista uniforme de toda demanda comprometida.
 
 ---
 
-## 23. Resources
+## 27. Schedule representation
 
-Separar `ResourceRequirement` y `ResourceAllocation`.
+Schedule recurrente con timezone IANA y múltiples intervals por weekday.
+
+Conceptualmente:
 
 ```text
+Schedule
+id
+organization_id
+timezone
+purpose
+status
+
+ScheduleRule
+schedule_id
+weekday
+local_start
+local_end
+```
+
+Un día cerrado simplemente no tiene intervalos efectivos.
+
+Soportar:
+
+```text
+Mon–Fri 09:00–18:00
+Saturday 09:00–12:00
+Sunday closed
+```
+
+así como split shifts.
+
+---
+
+## 28. Schedule hierarchy
+
+Scopes potenciales:
+
+```text
+Organization
+Location
 Offering
-      ↓
-ResourceRequirement[]
-      ↓
-availability/resource matching
-      ↓
-Reservation
-      ↓
-ResourceAllocation[]
+Resource / Pool
 ```
 
-Un resource puede representar, según el módulo:
+Effective availability se calcula por composición/intersección de restricciones aplicables, luego exceptions y capacidad ya comprometida.
+
+Regla de seguridad semántica:
+
+> Un child schedule puede restringir un parent scope, pero no abrir silenciosamente un parent cerrado.
+
+Apertura extraordinaria debe ser explícita en el scope apropiado.
+
+---
+
+## 29. `ScheduleException`
+
+Tipos iniciales:
 
 ```text
-person
-chair
-room
-vehicle
-equipment
-capacity pool
+closed
+replace_hours
+open_special
+capacity_override
 ```
 
-No introducir semántica vertical al core. Roles/capabilities determinan compatibilidad.
+Conceptualmente:
 
-PostgreSQL puede usar range types, exclusion constraints, row locks o advisory locks cuando simplifiquen garantías de exclusión/capacidad y exista razón documentada.
+```text
+id
+organization_id
+scope_type
+scope_id
+starts_on / ends_on
+exception_type
+replacement_intervals nullable
+capacity_units nullable
+reason
+metadata
+```
 
----
-
-## 24. Reservation concurrency e invariantes
-
-La confirmación debe revalidar capacidad dentro de la transacción.
-
-Invariantes mínimas:
-
-1. tenant correcto;
-2. hold válido si es requerido;
-3. Offering/policy activos;
-4. resources compatibles;
-5. capacidad disponible;
-6. no overlaps inválidos para recursos exclusivos;
-7. capacidad agregada respetada para pools/windows/queues cuando corresponda;
-8. idempotency key coherente;
-9. snapshots comerciales/políticas persistidos;
-10. event/outbox creado en el mismo commit.
-
-No duplicar en Python una garantía que PostgreSQL puede imponer mejor mediante constraints.
+No diseñar un rules engine universal para excepciones.
 
 ---
 
-## 25. Payment coordination
+## 30. `HolidayCalendar`
 
-Payments es módulo de coordinación, no accounting.
+```text
+HolidayCalendar
+HolidayDate
+HolidayPolicy/reference
+```
 
-Policies iniciales pueden representar:
+No hardcodear “feriado = cerrado”.
+
+Policies pueden resolver:
+
+```text
+closed_by_default
+normal_schedule
+special_hours
+```
+
+Permitir calendars oficiales importados/configurados y custom dates del negocio.
+
+La fuente/actualización de calendarios externos puede ser integración; el estado efectivo aplicado debe ser auditable.
+
+---
+
+## 31. Location model
+
+`Location` representa lugar operativo de la organización.
+
+Campos conceptuales:
+
+```text
+id
+public_id
+organization_id
+name
+description
+structured_address
+timezone
+business_hours_schedule_id nullable
+status
+map_url nullable
+latitude nullable
+longitude nullable
+arrival_instructions nullable
+parking_instructions nullable
+accessibility_instructions nullable
+metadata
+```
+
+`map_url` puede almacenar Google Maps share/place/pin URL u otra referencia compatible.
+
+No hacer `google_place_id` ni coordenadas la identidad primaria de Location.
+
+---
+
+## 32. Location information for humans
+
+La API debe exponer una vista útil para productos/agents:
+
+```text
+open_now
+today_hours
+next_open_at
+special/holiday state
+human-readable address
+map/share URL
+arrival instructions
+media
+```
+
+Raw lat/lon son opcionales para interoperabilidad. La representación humana compartible (por ejemplo Google Maps URL/pin) es first-class desde la perspectiva de producto.
+
+---
+
+## 33. `LocationMedia`
+
+PostgreSQL conserva metadata/references; blobs viven en object/media storage.
+
+Conceptualmente:
+
+```text
+id
+location_id
+media_type
+purpose
+asset_url / asset_reference
+title
+caption
+alt_text
+transcript nullable
+sort_order
+status
+```
+
+Purposes:
+
+```text
+hero
+gallery
+entrance
+parking
+arrival_instruction
+accessibility
+landmark
+```
+
+No servir video/blob pesado directamente desde la DB.
+
+---
+
+## 34. `Destination`
+
+Destination pertenece al trabajo concreto, no al catálogo de Locations.
+
+Conceptualmente snapshot-based:
+
+```text
+id / embedded snapshot according to aggregate decision
+reservation_id
+contact/location reference nullable
+label
+structured_address
+map_url nullable
+latitude/longitude nullable
+access_notes nullable
+snapshot_version
+```
+
+Cambios futuros del Contact no alteran historial.
+
+La decisión table vs owned value object debe tomarse según reutilización real; semánticamente es distinta de `Location`.
+
+---
+
+## 35. `ServiceArea`
+
+Validación inicial simple:
+
+```text
+named_zone
+city/province
+postal_code
+radius
+```
+
+Puede asociarse a organization, Location, Offering o Resource/pool cuando exista necesidad concreta.
+
+No empezar con polygons/routing-time solver. PostgreSQL/PostGIS puede evaluarse mediante ADR si los casos reales lo requieren.
+
+---
+
+## 36. Dispatch module
+
+`Dispatch` modela movimiento/coordinación de capacidad asignada hacia Destination para field service.
+
+Conceptualmente:
+
+```text
+id
+public_id
+organization_id
+request_id nullable
+reservation_id
+status
+destination_snapshot
+assigned_at nullable
+en_route_at nullable
+arrived_at nullable
+estimated_arrival_at nullable
+tracking_url nullable
+latest_latitude nullable
+latest_longitude nullable
+last_location_at nullable
+metadata
+```
+
+Estados iniciales:
+
+```text
+planned
+assigned
+en_route
+arrived
+cancelled
+failed
+```
+
+Resource assignments/allocations se relacionan al Dispatch o Reservation según responsibility final del modelo.
+
+---
+
+## 37. Dispatch tracking boundary
+
+Guardar **estado operacional útil**, no raw telemetry history.
+
+Permitido/útil:
+
+```text
+current status
+ETA
+tracking/share URL
+latest meaningful coordinates
+last update timestamp
+assigned resource display data
+```
+
+Fuera del source of truth principal:
+
+```text
+GPS ping every 5 seconds
+full movement polyline history
+high-frequency telemetry
+```
+
+Si existe tracking continuo:
+
+```text
+GPS/mobile provider
+    ↓
+telemetry/tracking system
+    ↓
+current operational projection/event
+    ↓
+Request Engine
+```
+
+No loggear coordenadas innecesarias ni exponerlas públicamente sin policy/scopes apropiados.
+
+---
+
+## 38. Dispatch events and customer updates
+
+Eventos:
+
+```text
+dispatch.assigned
+dispatch.en_route
+dispatch.eta_updated
+dispatch.arrived
+```
+
+Adapters pueden convertirlos en:
+
+```text
+WhatsApp/SMS update
+voice response
+client portal tracker
+push notification
+webhook
+```
+
+El domain event expresa el hecho; no decide el canal/presentación.
+
+---
+
+## 39. Delivery boundary
+
+No generalizar `Dispatch` inmediatamente a e-commerce logistics.
+
+V2:
+
+```text
+Dispatch = operational resource movement for service execution
+```
+
+Un futuro `Delivery` puede reutilizar Destination, windows, tracking refs y events, pero shipment/packages/courier/proof-of-delivery sólo entran cuando exista un caso real.
+
+---
+
+## 40. Reservation concurrency
+
+Confirmación revalida dentro de la transacción:
+
+1. tenant;
+2. Offering/policy activos;
+3. effective schedule válido;
+4. holiday/exception resolution;
+5. Location/Destination/service-area compatibility;
+6. ResourceRequirements satisfechos;
+7. hold válido cuando requerido;
+8. no overlaps para exclusive resources;
+9. remaining units para capacity resources/pools;
+10. idempotency key coherente;
+11. snapshots persistidos;
+12. outbox/event en mismo commit.
+
+Usar PostgreSQL constraints/ranges/locking donde simplifiquen garantías.
+
+---
+
+## 41. Payment coordination
+
+Payments sigue siendo módulo de coordinación, no accounting.
+
+Policies conceptuales:
 
 ```text
 none
@@ -926,340 +1093,256 @@ pay_on_arrival
 pay_after_service
 ```
 
-Providers externos se implementan como adapters.
+Nunca esperar PSP dentro de una DB transaction.
 
-Flujo típico:
-
-```text
-CreateCapacityHold
-      ↓
-create external payment session
-      ↓
-commit internal pending state/outbox
-      ↓
-external payment
-      ↓
-signed callback
-      ↓
-idempotent application command
-      ↓
-ConfirmReservation
-```
-
-Nunca mantener una DB transaction abierta mientras se espera un PSP.
+El modelo definitivo de `PaymentRequirement`, payment session/intent y payment record queda explícitamente pendiente de la siguiente sesión de dominio antes de cerrar foundation.
 
 ---
 
-## 26. Forms / public intake
+## 42. Forms / public intake
 
-Primitivas iniciales:
+`FormDefinition` + `FormSubmission` inicialmente.
 
-```text
-FormDefinition
-FormSubmission
-```
+Schemas reutilizables por website, agent, human UI y API.
 
-Schemas de intake deben poder reutilizarse por website, agent, human UI y API.
-
-El submit puede:
-
-```text
-upsert contact
-      ↓
-create/provide request data
-      ↓
-emit event
-      ↓
-resume workflow
-```
-
-No construir inicialmente drag-and-drop builder avanzado, cientos de field types, theme engine ni conditional logic universal.
+No construir form-builder universal inicialmente.
 
 ---
 
-## 27. Agent boundary
+## 43. Agent boundary
 
-Python facilita IA, pero incrementa riesgo de contaminación del core.
-
-```text
-AI interprets / proposes
-        ↓
-structured candidate
-        ↓
-Request Engine validates
-        ↓
-deterministic workflow/policy
-        ↓
-typed capability
-        ↓
-authoritative transaction
-```
-
-El modelo puede sugerir:
-
-```text
-intent = reserve_offering
-offering = off_...
-fields = {...}
-```
-
-No puede ejecutar writes arbitrarios.
-
-Agent tools deben ser goal-oriented, tipadas y scoped. Ejemplos:
+Tools goal-oriented:
 
 ```text
 search_offerings
+get_business_locations
+get_location_details
 find_reservation_options
 prepare_reservation
 confirm_reservation
+get_service_status
 cancel_reservation
 reschedule_reservation
 ```
 
-No exponer tablas o repositorios directamente a modelos.
+El modelo no recibe access a tables, resource graph internals, raw telemetry ni arbitrary writes.
 
 ---
 
-## 28. Integraciones son adapters
+## 44. Integraciones
 
-Chatwoot, WhatsApp, LiveKit, Twilio, n8n y similares viven alrededor de Request Engine.
+Chatwoot, LiveKit, WhatsApp, Twilio, n8n, maps providers, media storage, tracking providers y PSPs son adapters.
 
-```text
-Chatwoot event
-     ↓
-Chatwoot adapter
-     ↓
-Request Engine API
-     ↓
-Request/workflow
-```
-
-n8n puede orquestar integraciones externas y prototipos, pero no es workflow engine autoritativo.
-
-LiveKit puede exponer voice agents, pero no es owner de request/reservation state.
-
-Chatwoot puede guardar conversaciones, pero no es owner del trabajo estructurado.
+n8n puede experimentar con integrations pero no controla request/reservation state autoritativo.
 
 ---
 
-## 29. Security baseline
+## 45. Security baseline
 
-Desde el principio:
-
-- secret credentials nunca en frontend;
-- API keys secretas almacenadas hashed;
-- scopes explícitos;
-- expiración/revocación;
-- rate limits para superficies públicas;
-- webhook signatures + anti-replay;
-- encrypted secrets mediante secrets manager/environment seguro;
-- PII sensible cifrada adicionalmente cuando threat model/regulación lo justifique;
-- audit para operaciones privilegiadas;
-- cross-tenant tests.
-
-No diseñar seguridad alrededor de URLs difíciles de adivinar.
+- secret keys hashed/stored securely;
+- explicit scopes;
+- expiry/revocation;
+- public surface rate limits;
+- signed webhooks + anti-replay;
+- PII encryption when threat model requires;
+- audit privileged changes;
+- cross-tenant tests;
+- location/tracking data scoped appropriately;
+- public tracking tokens expose only minimum necessary data;
+- no raw secrets/PII/GPS trails in logs.
 
 ---
 
-## 30. Observabilidad
+## 46. Observability
 
 Mínimo:
 
 - structured logs;
 - correlation IDs;
-- metrics básicas;
-- traces OpenTelemetry cuando aporten valor;
-- health/readiness endpoints;
+- metrics;
+- health/readiness;
 - DB pool metrics;
 - outbox lag;
-- capacity-hold expiry metrics;
-- reservation conflict/error classification;
-- queue wait/lag metrics cuando aplique;
-- sanitized request context.
+- hold expiry;
+- reservation conflict classifications;
+- queue wait metrics;
+- dispatch state/ETA update failures;
+- external provider error classification;
+- sanitized context.
 
-Nunca loggear secrets o PII completa.
+Telemetry técnica no sustituye domain events/audit.
 
 ---
 
-## 31. Testing strategy
+## 47. Testing strategy
 
-### Unit tests
+### Unit
 
-- request transitions;
 - workflow decisions;
+- Request transitions;
 - Offering policy resolution;
+- schedule composition;
+- exception precedence;
+- holiday policies;
 - admission policies;
-- queue ordering/priority;
-- temporal calculations;
-- validation.
+- queue priority;
+- ResourceRequirement matching;
+- service-area validation;
+- Dispatch transitions.
 
-### Integration tests con PostgreSQL real
+### PostgreSQL integration
 
-- transactions;
 - constraints;
 - idempotency;
-- concurrency;
-- capacity conflicts;
-- exclusion constraints cuando se usen;
+- reservation races;
+- exclusive overlap prevention;
+- capacity-units oversell prevention;
 - hold expiry/confirmation races;
+- schedule/exception edge cases;
 - cross-tenant isolation;
-- queue/hybrid transitions;
+- pool allocations/late assignment;
 - outbox claiming/retry.
 
-SQLite no sustituye PostgreSQL para invariantes PostgreSQL-specific.
+### Contract
 
-### Contract tests
-
-- REST schemas;
-- generated OpenAPI;
-- agent tool schemas;
+- REST/OpenAPI;
+- agent schemas;
 - webhook signatures;
-- backwards compatibility relevante.
+- public location/tracking projections;
+- backwards compatibility where relevant.
 
-### End-to-end vertical slices
+### End-to-end
 
-No se considera V2 viable hasta demostrar los vertical slices de `00-product-definition.md`.
+Demo Barbershop + Demo Plumbing vertical slices are mandatory.
 
 ---
 
-## 32. Performance philosophy
+## 48. Performance philosophy
 
-Primero integridad y observabilidad; después optimización medida.
+Primero integridad/observabilidad, luego optimización medida.
 
 Evitar:
 
-- cargar historial completo para detectar overlaps;
-- N+1 por candidate slot;
-- scans sin límites;
-- JSONB para todo;
-- synchronous remote calls dentro de transactions;
-- generar registros persistentes por cada lectura de availability;
-- recalcular colas completas innecesariamente si una estrategia incremental segura es posible.
+- N+1 por slot/resource;
+- cargar historial completo para overlap;
+- writes por availability read;
+- recalcular colas completas innecesariamente;
+- almacenar raw GPS stream;
+- consultar remote routing/maps dentro de reservation transaction;
+- JSONB para relaciones centrales.
 
-Usar PostgreSQL para set-based queries y constraints cuando corresponda.
-
-Caches sólo tras medir necesidad real.
+Usar set-based SQL, indices y constraints.
 
 ---
 
-## 33. Deployment inicial
-
-Topología mínima:
+## 49. Deployment inicial
 
 ```text
-                  ┌─────────────┐
-Clients ─────────►│ FastAPI API │
-                  └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │ PostgreSQL  │
-                  └──────┬──────┘
-                         │
-                         ▼
-                  ┌─────────────┐
-                  │   Worker    │
-                  └──────┬──────┘
-                         │
-                 external systems
+Clients
+   ↓
+FastAPI API
+   ↓
+PostgreSQL
+   ↓
+Worker
+   ↓
+External systems
 ```
 
-API y Worker usan misma codebase/dominio, con procesos separados.
+API y Worker comparten codebase/dominio con procesos separados.
 
-No Redis obligatorio.
-No RabbitMQ obligatorio.
-No Kafka obligatorio.
-No workflow platform obligatoria.
+No Redis/RabbitMQ/Kafka/Temporal obligatorios.
 
-Se agregan cuando exista un requisito que PostgreSQL + worker no resuelva bien.
+Media blobs y tracking telemetry, cuando existan, usan sistemas especializados externos; Request Engine conserva references/projections relevantes.
 
 ---
 
-## 34. Definition of Done para la foundation
-
-Antes de construir features verticales adicionales:
+## 50. Definition of Done de foundation
 
 ```text
-[ ] Python/FastAPI service bootstrapped
+[ ] Python/FastAPI bootstrapped
 [ ] PostgreSQL migrations reproducibles
 [ ] organizations/principals tenancy
 [ ] contacts
+[ ] locations
+[ ] LocationMedia references
+[ ] BusinessHours schedules
+[ ] AvailabilitySchedules
+[ ] ScheduleExceptions
+[ ] HolidayCalendar/policy proof
 [ ] offerings
 [ ] request_types
 [ ] requests + lifecycle
-[ ] versioned workflow interface
-[ ] resource model
-[ ] resource requirements
-[ ] availability contracts for scheduled/window/queue/hybrid
-[ ] capacity holds + expiry
-[ ] reservations + concurrency protection
-[ ] admission policies
-[ ] check-in
-[ ] queue entries
-[ ] service sessions
+[ ] versioned workflows
+[ ] Resource model
+[ ] ResourceCapabilities
+[ ] exclusive + units capacity
+[ ] ResourceRequirements
+[ ] ResourceGroups/pool proof
+[ ] availability for scheduled/window/queue/hybrid
+[ ] ReservationOption contract
+[ ] CapacityHolds + expiry
+[ ] Reservations + concurrency protection
+[ ] ResourceAllocations + late assignment proof
+[ ] AdmissionPolicies
+[ ] CheckIn
+[ ] QueueEntries
+[ ] ServiceSessions
+[ ] Destination snapshot
+[ ] ServiceArea validation
+[ ] Dispatch lifecycle
+[ ] dispatch status/ETA/tracking-reference projection
 [ ] payment policy + provider adapter proof
-[ ] fulfillment linked to request/reservation
+[ ] Fulfillment linked to Request/Reservation
 [ ] domain events
 [ ] transactional outbox
 [ ] worker retry/idempotency
 [ ] audit trail
-[ ] secret + public credential model
-[ ] OpenAPI generated from real schemas
+[ ] public + secret credentials
+[ ] OpenAPI generated from schemas
 [ ] TypeScript SDK generation proof
-[ ] agent/MCP tool adapter proof
+[ ] agent/MCP adapter proof
 [ ] structured logs/correlation IDs
-[ ] integration tests using PostgreSQL
+[ ] PostgreSQL integration tests
 [ ] Demo Barbershop vertical slice
 [ ] Demo Plumbing vertical slice
 ```
 
-Hasta entonces, insurance, advanced CRM, omnichannel provisioning, generic workflow builder o AI runtime no compiten por prioridad.
+Payments domain remains the last major model to mature before freezing this foundation.
 
 ---
 
-## 35. Regla arquitectónica final
+## 51. Regla arquitectónica final
 
-Ante una nueva feature:
+Para intención:
 
 ```text
-Does it help represent what can be obtained (Offering)?
-          │
-          ├─ no ─┐
-          ▼ yes  │
-Does it help represent/process an intention (Request)?
-          │      │
-          ├─ no ─┤
-          ▼ yes  │
-Does it help determine/execute the workflow?
-          │      │
-          ├─ no ─┤
-          ▼ yes  │
-Does it require authoritative Request Engine state?
-          │      │
-          ├─ no ─┴─► likely edge/integration
-          ▼ yes
-Core, module, or integration?
+Offering      = what can be obtained
+Request       = what is wanted now
+Workflow      = what must happen
 ```
 
 Para capacidad:
 
 ```text
-Availability = what could be used
-CapacityHold = what is temporarily claimed
-Reservation  = what capacity is committed
-Admission    = how access to service occurs
-ServiceSession = what actually ran
-Fulfillment  = what outcome was produced
+Resource      = what can provide capacity
+Capacity      = how much it can provide
+Requirement   = what capacity an Offering needs
+Allocation    = what capacity a Reservation committed
+Assignment    = which concrete Resource executes
+Schedule      = when capacity may exist
+Reservation   = committed capacity
+Admission     = how access to service occurs
 ```
 
-La arquitectura permanece subordinada a la esencia:
+Para lugar/ejecución:
 
 ```text
-Something requests something
-           ↓
-Request Engine determines
-           ↓
-what workflow should happen
+Location      = where the organization operates/receives
+Destination   = where this specific work must occur
+Dispatch      = movement/coordination toward Destination
+ServiceSession = actual execution
+Fulfillment   = verified outcome
 ```
 
-Todo lo demás es implementación.
+Request Engine debe saber **qué necesita ocurrir, si puede ocurrir válidamente, qué capacidad fue comprometida y cuál fue el resultado**. No debe convertirse en todos los sistemas especializados que participan alrededor de ese proceso.
