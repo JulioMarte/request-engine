@@ -4,7 +4,7 @@
 >
 > **Documento padre:** `docs/00-product-definition.md`.
 >
-> Este documento traduce la esencia del producto a decisiones técnicas. Si una decisión técnica entra en conflicto con la definición del producto, **gana la definición del producto**.
+> Este documento traduce la definición de producto y el stress test de dominio a decisiones técnicas. Si una decisión técnica entra en conflicto con la definición del producto, **gana la definición del producto**.
 
 ---
 
@@ -23,16 +23,17 @@ Request Engine es un **motor headless, multiempresa, API-first y transaccional d
 Su trabajo es:
 
 1. recibir/normalizar intención;
-2. convertirla en `Request`;
-3. resolver `Offering`, Location/Destination y policies cuando corresponda;
-4. determinar workflow versionado;
+2. resolver Contacts/participant roles y convertirla en `Request`;
+3. resolver una o varias `OfferingSelection` y Location/Destination cuando corresponda;
+4. determinar workflow y policies versionadas;
 5. ejecutar capabilities deterministas;
-6. calcular y comprometer capacidad válida;
-7. coordinar reservations, admission, dispatch, payments, callbacks o intervención humana;
-8. producir `Fulfillment` verificable;
-9. mantener trazabilidad completa.
+6. calcular y comprometer capacity válida;
+7. mantener Reservations y recuperar disruptions sin borrar historia;
+8. coordinar admission, dispatch, payments, callbacks o intervención humana;
+9. producir uno o varios `Fulfillment` verificables;
+10. mantener trazabilidad completa.
 
-No es CRM, ERP, PBX, calendario tradicional, GPS telemetry store, shipping platform, PSP, banco, accounting ledger ni framework universal de agentes.
+No es CRM, ERP, PBX, calendario tradicional, GPS telemetry store, shipping platform, PSP, banco, accounting ledger, rules engine universal ni framework universal de agentes.
 
 ---
 
@@ -45,16 +46,18 @@ Source of truth transaccional.
 El dominio incluye relaciones e invariantes fuertes alrededor de:
 
 - organizations/tenancy;
-- contacts;
+- principals y contacts/participants;
 - locations;
 - schedules/exceptions/holidays;
-- offerings;
+- offerings y offering selections;
 - request types/requests/workflows;
 - resources/capabilities/requirements;
-- capacity holds/reservations/allocations;
-- check-ins/queues/service sessions;
+- capacity holds/reservations/reservation items/allocations;
+- admission/check-ins/queues/waitlist boundary/service sessions;
+- reservation policies/disruptions/recovery;
 - destinations/service areas/dispatches;
 - payment policies/requirements/attempts/transactions/allocations/reconciliation/refunds;
+- fulfillments;
 - idempotency/audit/events/outbox.
 
 PostgreSQL aporta constraints, locking, range types, partial indexes, temporal queries y JSONB cuando realmente corresponde.
@@ -105,6 +108,10 @@ request-engine
 │
 └── Workers
 ```
+
+`RequestParticipant`, `OfferingSelection` y sus associations pertenecen al dominio de requests/offerings; no justifican microservicios.
+
+`ReservationPolicy`, `ReservationDisruption`, `ReservationItem`, admission y capacity pertenecen al módulo reservations.
 
 Boundary de dominio antes que boundary de red. Separar servicio sólo por scaling, isolation, ownership, security o deployment requirements reales.
 
@@ -168,6 +175,8 @@ API / Worker / Integrations / Agent adapters
 
 Routes y agent tools traducen hacia commands/queries; no contienen lógica de negocio autoritativa.
 
+Domain policies no llaman providers remotos.
+
 ---
 
 ## 6. Contratos
@@ -193,15 +202,17 @@ Application commands/queries
 
 REST favorece composición. Agent tools favorecen objetivos de negocio, inputs pequeños y scopes mínimos.
 
+Schemas de participants, OfferingSelections, ReservationOptions y payment instructions deben ser tipados/discriminados, no blobs arbitrarios.
+
 ---
 
 ## 7. Persistencia relacional primero
 
 No convertir PostgreSQL en document store accidental.
 
-Campos de identidad, relaciones, lifecycle, constraints, scheduling, pagos y reporting operacional deben ser columnas/tables tipadas.
+Campos de identidad, participant roles, relationships, lifecycle, constraints, scheduling, pagos y reporting operacional deben ser columns/tables tipadas.
 
-JSONB queda para metadata dinámica, snapshots o payloads cuyo schema varía de forma legítima.
+JSONB queda para metadata dinámica, policy snapshots tipados/versionados, Offering snapshots o payloads cuyo schema varía legítimamente.
 
 Public IDs separados de PKs internas:
 
@@ -210,22 +221,146 @@ org_...
 cnt_...
 loc_...
 off_...
+sel_...   OfferingSelection
 req_...
 res_...
 dsp_...
-prq_...   payment requirement
-pat_...   payment attempt
-ptx_...   payment transaction
-rfd_...   refund
+prd_...   ReservationDisruption cuando se exponga públicamente
+prq_...   PaymentRequirement
+pat_...   PaymentAttempt
+ptx_...   PaymentTransaction
+rfd_...   Refund
 ful_...
 evt_...
 ```
+
+No todo join table necesita public ID.
 
 External provider IDs permanecen mappings/references.
 
 ---
 
-## 8. Offering y RequestType
+## 8. `Principal`, `Contact` y participant roles
+
+No usar un único `contact_id` para asumir requester = recipient = payer.
+
+Separar:
+
+```text
+Principal
+= authenticated/system actor that performed mutation
+
+Contact
+= business identity
+
+RequestParticipant / ReservationParticipant
+= role of Contact in specific work
+```
+
+Modelo relacional conceptual:
+
+```text
+request_participants
+  organization_id
+  request_id
+  contact_id
+  role
+  metadata/snapshot where justified
+
+reservation_participants
+  organization_id
+  reservation_id
+  contact_id
+  role
+  metadata/snapshot where justified
+```
+
+Roles iniciales:
+
+```text
+requester
+recipient
+payer
+guardian
+authorized_contact
+```
+
+Una estrategia simple es una row por `(request_id, contact_id, role)` para permitir múltiples roles sin array mutable.
+
+`initiated_by_principal_id`/audit permanece separado: un AI agent puede ser Principal mientras María es requester y José recipient.
+
+Todas las relaciones deben estar tenant-scoped y no permitir Contact de otra organization.
+
+---
+
+## 9. `OfferingSelection` y cardinalidad del Request
+
+Un Request puede tener 0..N OfferingSelections.
+
+Modelo conceptual:
+
+```text
+offering_selections
+  id / public_id
+  organization_id
+  request_id
+  offering_id
+  quantity
+  status
+  configuration / validated_input
+  offering_snapshot/reference
+  created_at
+```
+
+Recipients pueden resolverse mediante association tipada a RequestParticipants cuando haga falta:
+
+```text
+offering_selection_participants
+  offering_selection_id
+  request_participant_id
+  role = recipient/beneficiary where supported
+```
+
+No asumir que `requests.offering_id` singular es suficiente.
+
+Un RequestType como `request_callback` puede tener cero selections.
+
+Quantity debe ser positiva y validada según la unidad/semántica del Offering; no asumir que todos los Offerings usan el mismo tipo lógico de unidad.
+
+---
+
+## 10. `ReservationItem`: qué selections están bajo commitment
+
+No conectar Reservation a un único Offering o Request mediante una relación obligatoria 1:1.
+
+Modelo conceptual:
+
+```text
+reservation_items
+  id
+  organization_id
+  reservation_id
+  offering_id
+  offering_selection_id nullable
+  quantity
+  offering_snapshot
+  policy_snapshot/reference
+  metadata
+```
+
+`offering_selection_id` puede ser nullable para Reservation administrativa directa, pero `offering_id`/snapshot suficiente sigue siendo obligatorio para explicar qué fue reservado.
+
+Una Reservation puede cubrir varios ReservationItems.
+
+Un Request puede producir varias Reservations.
+
+Una Reservation puede cubrir varias selections; no crear combinatorial Offerings sólo para poder reservarlas juntas.
+
+Si una Reservation reúne selections originadas por más de un Request, la relación se deriva de ReservationItems; un `request_id` singular en Reservation no puede ser source of truth de ownership. Puede existir un `created_from_request_id` nullable exclusivamente para provenance/correlation, no como cardinalidad del dominio.
+
+---
+
+## 11. Offering y RequestType
 
 `Offering` es fachada estable; especialización por composición.
 
@@ -246,7 +381,8 @@ Resolución:
 
 ```text
 RequestType
- + Offering
+ + OfferingSelections
+ + Participants
  + Organization policy
  + Request context
  ↓
@@ -255,21 +391,36 @@ workflow_key + workflow_version
 
 ---
 
-## 9. Commands y Queries
+## 12. Commands y Queries
 
 ### Commands
 
 ```text
 CreateRequest
+AddRequestParticipant
+SelectOffering
+UpdateOfferingSelection
 ProvideRequestData
 AdvanceRequest
+
 CreateCapacityHold
 ConfirmReservation
+AddReservationParticipant
 RescheduleReservation
 CancelReservation
+MarkReservationNoShow
 CheckInReservation
 JoinReservationQueue
 AssignReservationResources
+ReleaseResourceAllocation
+ReplaceResourceAllocation
+OpenReservationDisruption
+RecoverReservationDisruption
+ResolveReservationDisruption
+
+CreateWaitlistEntry          [when waitlist implementation enters scope]
+OfferWaitlistCapacity        [when waitlist implementation enters scope]
+
 CreateDispatch
 AssignDispatch
 MarkDispatchEnRoute
@@ -277,6 +428,7 @@ UpdateDispatchEta
 MarkDispatchArrived
 StartServiceSession
 CompleteServiceSession
+ChangeDestination
 
 CreatePaymentRequirement
 CreatePaymentAttempt
@@ -292,22 +444,36 @@ RequestRefund
 RecordRefundProviderEvent
 
 CompleteRequest
+RecordFulfillment
 ```
 
-`VerifyBankTransferManually`, `RecordCashReceived`, refund commands y reconciliation overrides requieren scopes privilegiados y audit explícito.
+Privileged operations require explicit scopes/audit:
+
+```text
+reservations.override_policy
+reservations.force_recovery
+payments.verify
+payments.refund
+payments.reconcile
+```
 
 ### Queries
 
 ```text
 GetRequest
 ListOpenRequests
+GetRequestParticipants
+ListOfferingSelections
 ListOfferings
 GetLocation
 GetLocationCurrentHours
 SearchAvailability
 GetReservation
 ListReservations
+GetReservationOperationalStatus
 GetQueueState
+GetWaitlistStatus            [when implemented]
+GetReservationDisruption
 GetDispatch
 GetServiceStatus
 
@@ -320,16 +486,16 @@ ListUnallocatedTransactions
 GetReconciliationCase
 ```
 
-Queries no producen side effects. `SearchAvailability` no crea holds/reservations. `GetPaymentStatus` no verifica ni cambia dinero.
+Queries no producen side effects. `SearchAvailability` no crea holds/reservations. `GetPaymentStatus` no verifica/cambia dinero. `GetReservationOperationalStatus` es una projection/read model; no inventa domain transitions.
 
 ---
 
-## 10. Transacciones
+## 13. Transacciones
 
 ```text
 BEGIN
-  validate current state
-  resolve authoritative policy
+  validate tenant + current state
+  resolve authoritative/versioned policy
   lock/revalidate capacity or financial allocation where needed
   mutate internal state
   insert domain event/outbox
@@ -340,9 +506,11 @@ Nunca mantener transacción abierta mientras se llama payment provider, bank API
 
 Callbacks externos se validan primero y luego ejecutan commands transaccionales cortos.
 
+Recovery de disruption puede abarcar varios commands/events; no mantener una DB transaction abierta mientras se busca una solución externa.
+
 ---
 
-## 11. Outbox
+## 14. Outbox
 
 PostgreSQL transactional outbox inicialmente.
 
@@ -350,24 +518,41 @@ Worker con claiming seguro (`FOR UPDATE SKIP LOCKED` u otra estrategia justifica
 
 Queue externa sólo por necesidad medida.
 
-Payments usa el mismo principio: crear una payment session externa, enviar notifications o solicitar reconciliation bancaria no debe mantener una business transaction abierta.
+Usos importantes:
+
+- notifications;
+- provider callbacks/reconciliation;
+- disruption recovery jobs;
+- detection/re-evaluation de Reservations afectadas por cambios masivos de Resource/Schedule;
+- integrations externas.
 
 ---
 
-## 12. Domain events, audit y logs
+## 15. Domain events, audit y logs
 
 Eventos representativos:
 
 ```text
 request.created
+request.participant_added
+request.offering_selected
 request.ready
+
 capacity_hold.created
 capacity_hold.expired
 reservation.confirmed
+reservation.rescheduled
+reservation.cancelled
+reservation.no_show
 reservation.checked_in
 reservation.enqueued
-reservation.cancelled
+reservation.capacity_disrupted
+reservation.capacity_recovered
 resource.assigned
+resource_allocation.released
+resource_allocation.replaced
+waitlist.matched
+
 dispatch.created
 dispatch.assigned
 dispatch.en_route
@@ -402,17 +587,30 @@ request.fulfilled
 
 Audit responde quién hizo qué y por qué. Logs son diagnóstico técnico. No confundirlos.
 
-En payments, audit debe poder distinguir `provider_webhook`, `provider_api`, `bank_feed`, `bank_api`, `manual_bank_verification`, `cash_verification` y `external_system` como source de una mutación financiera.
+Policy decisions críticos deben registrar:
+
+```text
+policy key/version
+relevant inputs
+initiator/source
+reason code
+decision/consequence
+principal/override when applicable
+```
+
+En payments, audit distingue `provider_webhook`, `provider_api`, `bank_feed`, `bank_api`, `manual_bank_verification`, `cash_verification` y `external_system`.
 
 ---
 
-## 13. Correlation y causality
+## 16. Correlation y causality
 
 Propagar cuando corresponda:
 
 ```text
 request_id
+offering_selection_id
 reservation_id
+reservation_disruption_id
 dispatch_id
 payment_requirement_id
 payment_attempt_id
@@ -427,22 +625,21 @@ Debe poder reconstruirse:
 
 ```text
 input/conversation
- → Request
- → workflow decision
- → reservation/resource decision
+ → Contact roles / Request / OfferingSelections
+ → workflow + policy decisions
+ → reservation items / resource decisions
+ → disruption/recovery if any
  → PaymentRequirement / payment attempt
  → provider/bank/manual financial verification
  → PaymentAllocation
- → dispatch/tool action
- → transaction
- → event/outbox
- → callback
- → Fulfillment
+ → Dispatch / ServiceSession
+ → Fulfillment(s)
+ → event/outbox/callbacks
 ```
 
 ---
 
-## 14. Workflow engine pequeño y explícito
+## 17. Workflow engine pequeño y explícito
 
 Persistencia conceptual:
 
@@ -463,10 +660,12 @@ execute_capability
 create_capacity_hold
 create_payment_requirement
 wait_confirmation
+wait_capacity
 wait_payment
 wait_payment_verification
 wait_external
 wait_human
+recover_capacity
 complete
 fail_recoverable
 fail_terminal
@@ -474,14 +673,16 @@ fail_terminal
 
 No construir Temporal/BPMN clone.
 
+Waitlist puede mantener Request/workflow en `wait_capacity`; no falsificar una Reservation inexistente.
+
 ---
 
-## 15. Reservations como módulo de capacidad
+## 18. Reservations como módulo de capacity
 
 Boundary:
 
 ```text
-Request workflow
+Request + OfferingSelections + Participants
       ↓
 reservations.search_availability
       ↓
@@ -491,20 +692,80 @@ reservations.create_hold [optional]
       ↓
 payment/confirmation [optional]
       ↓
-reservations.confirm
+Reservation + ReservationItems
       ↓
-admission/check-in/queue
+admission/check-in/queue OR dispatch
       ↓
-ServiceSession or Dispatch
+ServiceSession(s)
       ↓
-Fulfillment
+Fulfillment(s)
 ```
 
 `Reservation` significa capacity commitment, no exact-time appointment.
 
 ---
 
-## 16. Availability y `ReservationOption`
+## 19. Reservation commitment lifecycle
+
+No usar un status gigante que duplique otros aggregates.
+
+Una Reservation nace cuando el commitment se confirma; la etapa temporal previa pertenece a `CapacityHold`.
+
+Commitment statuses iniciales:
+
+```text
+confirmed
+cancelled
+completed
+no_show
+expired   [cuando una policy válida lo requiera]
+```
+
+No persistir como Reservation statuses:
+
+```text
+held
+checked_in
+waiting_in_queue
+en_route
+in_service
+```
+
+porque esos estados pertenecen a CapacityHold, CheckIn/QueueEntry, Dispatch y ServiceSession.
+
+Reschedule debe preservar history. Puede mantener el mismo public Reservation identity o producir replacement según decisión de implementación/ADR, pero nunca debe borrar el commitment anterior sin event/audit/snapshot suficiente.
+
+---
+
+## 20. Operational health y read projection
+
+Una Reservation confirmada puede dejar de ser operacionalmente cumplible sin dejar automáticamente de ser commitment.
+
+Read projection:
+
+```text
+operational_health:
+  valid
+  at_risk
+  blocked
+
+current_operational_state:
+  scheduled
+  checked_in
+  waiting_in_queue
+  en_route
+  in_service
+  completed
+  etc.
+```
+
+`current_operational_state` se compone de Reservation + CheckIn + QueueEntry + Dispatch + ServiceSession. No es un segundo source of truth.
+
+`operational_health` deriva principalmente de active allocations + open ReservationDisruptions y puede persistirse como projection/cache si mejora queries, siempre reconciliable desde authoritative state.
+
+---
+
+## 21. Availability y `ReservationOption`
 
 Availability puede producir contratos discriminados:
 
@@ -517,30 +778,39 @@ HybridOption
 
 Una opción puede ser efímera/opaca. Nunca garantiza commit futuro.
 
-El consumidor no necesita conocer el grafo interno completo de Resources. El engine puede devolver una opción utilizable y revalidar al confirmar.
+El consumidor no necesita conocer el resource graph completo. El engine revalida al confirmar.
+
+Availability recibe/resuelve:
+
+- ReservationItems candidate;
+- participants/party size;
+- quantities;
+- resource preferences;
+- Location/Destination/ServiceArea;
+- schedules/policies.
 
 ---
 
-## 17. `CapacityHold`
+## 22. `CapacityHold`
 
-Reclamación temporal únicamente cuando existe intención de continuar.
+Reclamación temporal únicamente cuando existe intención real de continuar.
 
 Invariantes:
 
 - explicit expiry;
 - tenant scope;
 - idempotency;
-- referencia a la capacidad relevante;
+- referencia a candidate ReservationItems/capacity relevante;
 - observable expiration;
 - no tratar como Reservation confirmada.
 
 No crear holds durante browsing normal.
 
-Un pago que llega después de expiry **no revive** el hold. El dinero y la capacidad siguen lifecycles separados.
+Un pago que llega después de expiry **no revive** el hold. Dinero y capacity siguen lifecycles separados.
 
 ---
 
-## 18. Admission policies
+## 23. Admission policies
 
 Modos:
 
@@ -551,7 +821,7 @@ window
 hybrid
 ```
 
-`scheduled`: check-in, grace/no-show policies.
+`scheduled`: check-in, grace/no-show detection rules.
 
 `queue`: `priority + ordering`, remote join/presence rules, estimated wait.
 
@@ -559,9 +829,57 @@ hybrid
 
 `hybrid`: scheduled + queue semantics, incluyendo late-to-queue y coexistencia de walk-ins.
 
+AdmissionPolicy puede determinar `no_show_after` o cuándo un late arrival entra a queue; `NoShowPolicy` determina consecuencias de negocio/financieras.
+
 ---
 
-## 19. Check-in, queue y ejecución
+## 24. Queue y Waitlist
+
+```text
+QueueEntry
+= operational waiting associated with committed/admitted work
+
+WaitlistEntry
+= uncommitted interest in future capacity
+```
+
+`QueueEntry` referencia Reservation.
+
+`WaitlistEntry` no consume capacity y no requiere Reservation.
+
+Modelo conceptual futuro/opt-in:
+
+```text
+waitlist_entries
+  organization_id
+  request_id nullable
+  offering_selection_id / offering refs
+  participant/party-size refs
+  location/date/window/resource preferences
+  priority/order data
+  status
+  created_at
+```
+
+Cuando aparece capacity:
+
+```text
+WaitlistEntry
+   ↓
+matching policy
+   ↓
+short-lived CapacityHold/offer
+   ↓
+customer acceptance
+   ↓
+Reservation confirmation
+```
+
+No implementar un universal waitlist optimizer en foundation. La semántica queda fijada aunque implementation pueda esperar.
+
+---
+
+## 25. Check-in, QueueEntry y ServiceSession
 
 ```text
 Reservation    = planned/committed capacity
@@ -572,13 +890,30 @@ ServiceSession = actual execution
 
 No sobrescribir tiempos planificados con ejecución real.
 
+Una Reservation puede tener 0..N ServiceSessions.
+
+ServiceSession conceptual:
+
+```text
+id
+organization_id
+reservation_id nullable
+status
+actual_start
+actual_end
+resource references/snapshot when useful
+metadata
+```
+
+Multiple ServiceSessions permiten procesos multietapa antes de justificar `ReservationSegment`.
+
 ---
 
-## 20. Resource model
+## 26. Resource model
 
 ### `Resource`
 
-Algo cuya disponibilidad/capacidad limita autoritativamente una Reservation.
+Algo cuya disponibilidad/capacity limita autoritativamente una Reservation.
 
 Kinds conceptuales:
 
@@ -593,7 +928,9 @@ pool
 virtual
 ```
 
-Kind ayuda a UX/metadata; la compatibilidad se basa principalmente en capabilities/requirements.
+Kind ayuda UX/metadata; compatibilidad se basa principalmente en capabilities/requirements.
+
+Resources referenciados históricamente no deben hard-delete/cascade de forma que destruya allocations/audit. `status`/deactivation preserva historia.
 
 ### `ResourceCapability`
 
@@ -614,9 +951,9 @@ No enums verticales globales.
 
 ---
 
-## 21. Capacity models
+## 27. Capacity models
 
-V2 limita capacity a dos modelos iniciales:
+V2 limita capacity a:
 
 ```text
 exclusive
@@ -625,24 +962,22 @@ units
 
 ### exclusive
 
-El Resource sólo puede ser consumido por una Reservation conflictiva a la vez en el intervalo relevante.
+Resource sólo puede ser consumido por una Reservation conflictiva a la vez en el intervalo relevante.
 
 ### units
 
-El Resource ofrece N unidades y reservations consumen unidades.
-
-Campos conceptuales:
+Resource ofrece N unidades; Reservations consumen unidades.
 
 ```text
 capacity_model
 capacity_units
 ```
 
-No usarlo como inventario comercial general ni como multidimensional compute/workforce solver.
+No usar capacity como inventory general ni multidimensional compute/workforce solver.
 
 ---
 
-## 22. Resource requirements
+## 28. `ResourceRequirement` + quantity rules
 
 `ResourceRequirement` expresa demanda del Offering, no selección concreta.
 
@@ -652,14 +987,46 @@ Conceptualmente:
 id
 offering_id
 capability_id
-units
+quantity_rule
+base_units nullable
+validated_input_key nullable
 selection_policy
 resource_group_id nullable
 fixed_resource_id nullable
 constraints limited/typed
+version/status
 ```
 
-Selection policy inicial:
+Quantity rules iniciales:
+
+```text
+fixed
+per_selection_unit
+per_participant
+from_validated_input
+```
+
+Semántica:
+
+```text
+fixed
+  → base_units total
+
+per_selection_unit
+  → base_units × ReservationItem.quantity
+
+per_participant
+  → base_units × relevant participant count
+
+from_validated_input
+  → units read from a declared typed field in validated Request/selection input
+```
+
+`from_validated_input` sólo puede apuntar a un field permitido por schema/configuration; no arbitrary path/expression/SQL/JS.
+
+Al confirmar Reservation, guardar quantity efectiva/requirement snapshot suficiente para que cambios futuros no reinterpreten historia.
+
+Selection policies iniciales:
 
 ```text
 any
@@ -667,9 +1034,7 @@ customer_selectable
 fixed
 ```
 
-Constraints deben ser limitados y tipados. No arbitrary SQL/JavaScript/DSL.
-
-Ejemplos razonables:
+Constraints limitados/tipados:
 
 ```text
 specific resource preference
@@ -682,36 +1047,51 @@ service-area compatibility
 
 ---
 
-## 23. Allocation y assignment
+## 29. ResourceAllocation y Assignment
 
-`ResourceAllocation` representa capacidad comprometida por una Reservation.
-
-Conceptualmente:
+Modelo conceptual:
 
 ```text
-reservation_id
-requirement_id
-resource_id or pool_resource_id
-units
-planned_from/planned_to when applicable
-status
-snapshot
+resource_allocations
+  organization_id
+  reservation_id
+  reservation_item_id nullable
+  requirement_id/reference
+  resource_id or pool_resource_id
+  units
+  planned_from nullable
+  planned_to nullable
+  status
+  requirement/allocation snapshot
+  created_at
+  released_at nullable
+  replaced_by_allocation_id nullable
 ```
 
-Preservar conceptualmente:
+Statuses mínimos:
+
+```text
+active
+released
+replaced
+```
+
+Preservar:
 
 ```text
 Allocation = committed capacity
 Assignment = concrete execution resource
 ```
 
-En barbería ambos pueden ocurrir simultáneamente. En field service una Reservation puede reservar pool capacity y asignar persona/vehículo más tarde.
+En barbería ocurren juntos. En field service puede reservarse pool y asignar persona/vehículo después.
 
-La implementación inicial puede representar assignment mediante allocations especializadas/statuses sin introducir una entidad adicional hasta que el dominio lo exija.
+Allocations de una misma Reservation no necesitan compartir exactamente el mismo intervalo.
+
+No overwrite histórico al sustituir Resource.
 
 ---
 
-## 24. ResourceGroup vs pool
+## 30. ResourceGroup vs pool
 
 ```text
 ResourceGroup
@@ -721,20 +1101,20 @@ Resource(kind=pool)
 = reservable aggregate capacity
 ```
 
-No son equivalentes.
-
-Pool permite late binding seguro de capacidad agregada.
+Pool permite late binding seguro de capacity agregada.
 
 ---
 
-## 25. Availability matching
+## 31. Availability matching
 
-El scheduler debe resolver:
+Scheduler resuelve:
 
 ```text
-Offering
+OfferingSelections
     ↓
-ResourceRequirement[]
+ReservationItems candidate
+    ↓
+ResourceRequirement[] + quantity rules
     ↓
 Schedule constraints
     ↓
@@ -747,21 +1127,159 @@ remaining capacity
 ReservationOption
 ```
 
-Objetivo: garantizar capacidad válida, no optimización global.
+Objetivo: garantizar capacity válida, no optimización global.
 
 No implementar inicialmente route optimization, labor-cost optimizer, skill scoring complejo o workforce scheduling global.
 
 ---
 
-## 26. Schedules: dos significados distintos
+## 32. `ReservationPolicy`
+
+`ReservationPolicy` es distinto de `AdmissionPolicy` y `PaymentPolicy`.
+
+Composición versionada:
+
+```text
+ReservationPolicy
+├── CancellationPolicy
+├── ReschedulePolicy
+└── NoShowPolicy
+```
+
+Puede asociarse a Offering/organization/Location según reglas de precedence documentadas, con snapshot/version aplicado al confirmar Reservation.
+
+Evaluation inputs mínimos:
+
+```text
+initiator_source: customer | business | system
+reason_code/context
+current time vs planned service
+reservation commitment status
+admission/check-in context
+policy version
+```
+
+Output debe ser **typed policy decision**, no arbitrary executable rule:
+
+```text
+allowed / denied / requires_override
+capacity consequence
+rebooking/reschedule consequence
+financial consequence directive
+notification/handoff requirement when applicable
+reason code
+policy version
+```
+
+Financial consequence puede expresar una intención tipada como:
+
+```text
+no_financial_action
+refund_full
+refund_percentage
+refund_fixed
+forfeit_existing_amount
+create_fee_requirement
+```
+
+pero Payments ejecuta la consecuencia mediante PaymentRequirement/Refund/reconciliation. ReservationPolicy nunca edita PaymentTransaction.
+
+Overrides requieren scope `reservations.override_policy`, reason y audit.
+
+No construir generic rules DSL. Implementar evaluators tipados/versionados.
+
+---
+
+## 33. `ReservationDisruption` y recovery
+
+Cambios de Resource/Schedule/Location no cancelan silenciosamente commitments confirmados.
+
+Modelo conceptual:
+
+```text
+reservation_disruptions
+  id / public_id if exposed
+  organization_id
+  reservation_id
+  reason
+  source_entity_type
+  source_entity_id nullable
+  status
+  detected_at
+  recovery_started_at nullable
+  resolved_at nullable
+  resolution_type nullable
+  resolution_summary/metadata
+```
+
+Reasons iniciales:
+
+```text
+resource_unavailable
+location_unavailable
+capacity_reduced
+schedule_exception
+assignment_failed
+service_area_changed
+other_operational
+```
+
+Statuses:
+
+```text
+open
+recovering
+resolved
+escalated
+```
+
+Resolution types:
+
+```text
+reallocated
+reassigned
+rescheduled
+cancelled
+manual_override
+```
+
+Flow:
+
+```text
+Resource/Schedule/Location change
+      ↓
+find affected active allocations/reservations
+      ↓
+OpenReservationDisruption
+      ↓
+operational_health = at_risk
+      ↓
+try compatible reallocation within existing commitment
+      │
+      ├─ success → release/replace allocations + resolved
+      │
+      └─ no safe capacity → health = blocked
+                         ↓
+                policy-governed reschedule/cancel/handoff
+```
+
+Recovery dentro del mismo committed interval puede replace allocations sin cambiar commitment.
+
+Si cambia time/window/Destination de forma material, usar commands/policies apropiados y revalidar capacity.
+
+Bulk Resource/Schedule changes pueden emitir job/outbox para detectar affected Reservations; proceso idempotente.
+
+---
+
+## 34. Schedules: BusinessHours vs AvailabilitySchedule
 
 ### `BusinessHours`
 
-Cuándo una organization/Location está normalmente abierta/presentable al público.
+Cuándo organization/Location está normalmente abierta/presentable al público.
 
 ### `AvailabilitySchedule`
 
-Cuándo un Offering/Resource/pool puede ser reservado.
+Cuándo Offering/Resource/pool puede reservarse.
 
 Pueden diferir.
 
@@ -772,11 +1290,9 @@ Emergency Offering AvailabilitySchedule: 24/7
 
 ---
 
-## 27. Schedule representation
+## 35. Schedule representation
 
 Schedule recurrente con timezone IANA y múltiples intervals por weekday.
-
-Conceptualmente:
 
 ```text
 Schedule
@@ -793,7 +1309,7 @@ local_start
 local_end
 ```
 
-Un día cerrado simplemente no tiene intervalos efectivos.
+Un día cerrado no tiene intervals efectivos.
 
 Soportar:
 
@@ -807,9 +1323,9 @@ así como split shifts.
 
 ---
 
-## 28. Schedule hierarchy
+## 36. Schedule hierarchy
 
-Scopes potenciales:
+Scopes:
 
 ```text
 Organization
@@ -818,17 +1334,17 @@ Offering
 Resource / Pool
 ```
 
-Effective availability se calcula por composición/intersección de restricciones aplicables, luego exceptions y capacidad ya comprometida.
+Effective availability se calcula por composición/intersección, exceptions y capacity comprometida.
 
 > Un child schedule puede restringir un parent scope, pero no abrir silenciosamente un parent cerrado.
 
-Apertura extraordinaria debe ser explícita en el scope apropiado.
+Apertura extraordinaria debe ser explícita.
 
 ---
 
-## 29. `ScheduleException`
+## 37. `ScheduleException` y `HolidayCalendar`
 
-Tipos iniciales:
+Exception types iniciales:
 
 ```text
 closed
@@ -852,21 +1368,9 @@ reason
 metadata
 ```
 
-No diseñar un rules engine universal para excepciones.
+`HolidayCalendar` + `HolidayDate` + HolidayPolicy/reference.
 
----
-
-## 30. `HolidayCalendar`
-
-```text
-HolidayCalendar
-HolidayDate
-HolidayPolicy/reference
-```
-
-No hardcodear “feriado = cerrado”.
-
-Policies pueden resolver:
+No hardcodear “feriado = cerrado”. Policies:
 
 ```text
 closed_by_default
@@ -874,15 +1378,17 @@ normal_schedule
 special_hours
 ```
 
-Permitir calendars oficiales importados/configurados y custom dates del negocio.
+Permitir calendars oficiales importados/configurados y custom dates.
 
-La fuente/actualización de calendarios externos puede ser integración; el estado efectivo aplicado debe ser auditable.
+La fuente/actualización externa puede ser integration; estado efectivo aplicado debe ser auditable.
+
+Al crear una exception que afecta Reservations confirmadas, disparar disruption detection; no modificar/cancelar rows silenciosamente.
 
 ---
 
-## 31. Location model
+## 38. Location model
 
-`Location` representa lugar operativo de la organización.
+`Location` representa lugar operativo de la organization.
 
 Campos conceptuales:
 
@@ -907,13 +1413,13 @@ metadata
 
 `map_url` puede almacenar Google Maps share/place/pin URL u otra referencia compatible.
 
-No hacer `google_place_id` ni coordenadas la identidad primaria de Location.
+No hacer `google_place_id` ni coordinates identidad primaria.
 
 ---
 
-## 32. Location information for humans
+## 39. Location information + `LocationMedia`
 
-La API debe exponer una vista útil para productos/agents:
+API presenta:
 
 ```text
 open_now
@@ -926,22 +1432,16 @@ arrival instructions
 media
 ```
 
-Raw lat/lon son opcionales para interoperabilidad. La representación humana compartible (por ejemplo Google Maps URL/pin) es first-class desde la perspectiva de producto.
+Raw lat/lon son opcionales para interoperabilidad; map/share URL es first-class desde producto.
 
----
-
-## 33. `LocationMedia`
-
-PostgreSQL conserva metadata/references; blobs viven en object/media storage.
-
-Conceptualmente:
+`LocationMedia`:
 
 ```text
 id
 location_id
 media_type
 purpose
-asset_url / asset_reference
+asset_reference
 title
 caption
 alt_text
@@ -962,18 +1462,18 @@ accessibility
 landmark
 ```
 
-No servir video/blob pesado directamente desde la DB.
+Blobs viven en object/media storage.
 
 ---
 
-## 34. `Destination`
+## 40. `Destination` y cambios controlados
 
-Destination pertenece al trabajo concreto, no al catálogo de Locations.
+Destination pertenece al trabajo concreto, no catálogo de Locations.
 
 Conceptualmente snapshot-based:
 
 ```text
-id / embedded snapshot according to aggregate decision
+id / owned snapshot according to aggregate decision
 reservation_id
 contact/location reference nullable
 label
@@ -986,13 +1486,23 @@ snapshot_version
 
 Cambios futuros del Contact no alteran historial.
 
-La decisión table vs owned value object debe tomarse según reutilización real; semánticamente es distinta de `Location`.
+`ChangeDestination` debe:
+
+1. authorization/policy;
+2. validate ServiceArea;
+3. re-evaluate pricing/payment requirement when applicable;
+4. re-evaluate resource compatibility/capacity;
+5. recalculate Dispatch ETA through adapter when needed;
+6. persist new snapshot + audit old/new;
+7. emit events/outbox.
+
+No editar un Destination en-route como simple PATCH sin domain validation.
 
 ---
 
-## 35. `ServiceArea`
+## 41. `ServiceArea`
 
-Validación inicial simple:
+Validación inicial:
 
 ```text
 named_zone
@@ -1001,15 +1511,15 @@ postal_code
 radius
 ```
 
-Puede asociarse a organization, Location, Offering o Resource/pool cuando exista necesidad concreta.
+Puede asociarse a organization, Location, Offering o Resource/pool.
 
-No empezar con polygons/routing-time solver. PostgreSQL/PostGIS puede evaluarse mediante ADR si los casos reales lo requieren.
+No empezar con polygons/routing-time solver. PostgreSQL/PostGIS puede evaluarse mediante ADR si casos reales lo requieren.
 
 ---
 
-## 36. Dispatch module
+## 42. Dispatch module
 
-`Dispatch` modela movimiento/coordinación de capacidad asignada hacia Destination para field service.
+`Dispatch` modela movimiento/coordinación de capacity asignada hacia Destination para field service.
 
 Conceptualmente:
 
@@ -1017,10 +1527,9 @@ Conceptualmente:
 id
 public_id
 organization_id
-request_id nullable
 reservation_id
 status
-destination_snapshot
+destination_snapshot/reference
 assigned_at nullable
 en_route_at nullable
 arrived_at nullable
@@ -1032,7 +1541,7 @@ last_location_at nullable
 metadata
 ```
 
-Estados iniciales:
+Estados:
 
 ```text
 planned
@@ -1043,15 +1552,15 @@ cancelled
 failed
 ```
 
-Resource assignments/allocations se relacionan al Dispatch o Reservation según responsibility final del modelo.
+No exigir 1 Dispatch por Reservation. Recovery puede producir redispatch/second attempt si el dominio lo necesita.
 
 ---
 
-## 37. Dispatch tracking boundary
+## 43. Dispatch tracking y customer updates
 
-Guardar **estado operacional útil**, no raw telemetry history.
+Guardar estado útil, no raw telemetry history.
 
-Permitido/útil:
+Permitido:
 
 ```text
 current status
@@ -1070,7 +1579,7 @@ full movement polyline history
 high-frequency telemetry
 ```
 
-Si existe tracking continuo:
+Tracking continuo:
 
 ```text
 GPS/mobile provider
@@ -1082,13 +1591,7 @@ current operational projection/event
 Request Engine
 ```
 
-No loggear coordenadas innecesarias ni exponerlas públicamente sin policy/scopes apropiados.
-
----
-
-## 38. Dispatch events and customer updates
-
-Eventos:
+Events:
 
 ```text
 dispatch.assigned
@@ -1097,63 +1600,50 @@ dispatch.eta_updated
 dispatch.arrived
 ```
 
-Adapters pueden convertirlos en:
-
-```text
-WhatsApp/SMS update
-voice response
-client portal tracker
-push notification
-webhook
-```
-
-El domain event expresa el hecho; no decide el canal/presentación.
+Adapters convierten hechos en WhatsApp/SMS/voice/portal/push/webhook.
 
 ---
 
-## 39. Delivery boundary
+## 44. Delivery boundary
 
-No generalizar `Dispatch` inmediatamente a e-commerce logistics.
-
-V2:
+No generalizar Dispatch inmediatamente a e-commerce logistics.
 
 ```text
 Dispatch = operational resource movement for service execution
 ```
 
-Un futuro `Delivery` puede reutilizar Destination, windows, tracking refs y events, pero shipment/packages/courier/proof-of-delivery sólo entran cuando exista un caso real.
+Futuro Delivery puede reutilizar Destination/windows/tracking refs/events, pero shipment/packages/courier/proof-of-delivery sólo con caso real.
 
 ---
 
-## 40. Reservation concurrency
+## 45. Reservation concurrency e invariantes
 
-Confirmación revalida dentro de la transacción:
+Confirmation revalida en transaction:
 
 1. tenant;
-2. Offering/policy activos;
-3. effective schedule válido;
-4. holiday/exception resolution;
-5. Location/Destination/service-area compatibility;
-6. ResourceRequirements satisfechos;
+2. OfferingSelections/ReservationItems activos y consistentes;
+3. participant/recipient quantities válidas;
+4. effective schedules + holiday/exception resolution;
+5. Location/Destination/ServiceArea compatibility;
+6. ResourceRequirements + quantity rules resueltos;
 7. hold válido cuando requerido;
 8. no overlaps para exclusive resources;
-9. remaining units para capacity resources/pools;
-10. payment gate satisfecho cuando la policy lo exige;
-11. idempotency key coherente;
-12. snapshots persistidos;
-13. outbox/event en mismo commit.
+9. remaining units para resources/pools;
+10. ReservationPolicy/PaymentPolicy snapshot válido;
+11. payment gate satisfecho cuando policy lo exige;
+12. idempotency key coherente;
+13. snapshots persistidos;
+14. event/outbox en mismo commit.
 
 Usar PostgreSQL constraints/ranges/locking donde simplifiquen garantías.
 
-La comprobación de payment gate usa estado interno ya reconciliado; **no llama al PSP/banco dentro de esta transacción**.
+Payment gate consulta estado interno ya reconciliado; **no llama PSP/bank dentro de transaction**.
 
 ---
 
-## 41. Payments: arquitectura provider-agnostic y verificable
+## 46. Payments: arquitectura provider-agnostic y verificable
 
-Payments es un módulo de coordinación financiera para workflows, **no accounting, PSP ni card vault**.
-
-Separación:
+Payments es coordinación financiera para workflows, **no accounting, PSP ni card vault**.
 
 ```text
 Pricing
@@ -1183,13 +1673,12 @@ browser success ≠ authoritative confirmation
 PaymentAttempt ≠ PaymentTransaction
 PaymentTransaction ≠ PaymentAllocation
 PaymentRequirement ≠ Invoice
+Fulfillment ≠ financial settlement
 ```
 
-### 41.1 `PaymentPolicy`
+### 46.1 `PaymentPolicy`
 
-Configuration reusable asociada al Offering/workflow/organization según el caso.
-
-Conceptualmente:
+Configuration reusable asociada al Offering/workflow/organization.
 
 ```text
 id
@@ -1206,7 +1695,7 @@ version
 metadata
 ```
 
-Modes iniciales:
+Modes:
 
 ```text
 none
@@ -1217,7 +1706,7 @@ pay_on_arrival
 pay_after_service
 ```
 
-Capacity strategies iniciales:
+Capacity strategies:
 
 ```text
 hold_until_payment
@@ -1225,28 +1714,22 @@ revalidate_after_payment
 confirm_then_collect
 ```
 
-Policy version/snapshot relevante debe persistirse cuando una operación la consume.
+Policy version/snapshot relevante persiste al consumirla.
 
-### 41.2 `Money`
-
-Value object obligatorio para toda cantidad:
+### 46.2 `Money`
 
 ```text
 amount
 currency
 ```
 
-Nunca float binario.
+Nunca float binario. Persistencia exacta (`amount_minor BIGINT` + ISO currency o `NUMERIC` + currency) debe fijarse por ADR/convention.
 
-Persistencia debe ser exacta. La representación concreta (`amount_minor BIGINT` + currency ISO o `NUMERIC` + currency) debe fijarse una vez mediante ADR/implementation convention y ser uniforme en todo el módulo.
+No FX implícito.
 
-No FX implícito. Distinta currency requiere policy/conversion explícita.
-
-### 41.3 `PaymentRequirement`
+### 46.3 `PaymentRequirement`
 
 Obligación concreta.
-
-Campos conceptuales:
 
 ```text
 id
@@ -1254,6 +1737,7 @@ public_id
 organization_id
 request_id nullable
 reservation_id nullable
+payer_contact_id / participant reference nullable
 purpose
 amount
 currency
@@ -1263,7 +1747,7 @@ policy_snapshot
 created_at
 updated_at
 satisfied_at nullable
-metadata
+metadata/source refs
 ```
 
 Estados:
@@ -1276,13 +1760,15 @@ waived
 cancelled
 ```
 
-`overdue` derivado de `due_at`.
+`overdue` derivado.
 
-La cantidad satisfied debe derivarse de allocations válidas, no de un boolean mutable aislado.
+Satisfaction deriva de allocations válidas, no boolean aislado.
 
-### 41.4 `PaymentMethodConfiguration`
+No exigir un único Offering/ReservationItem target; un Requirement puede cubrir una obligación agregada de Request/Reservation. Si line-level allocation comercial se vuelve necesaria, añadir `PaymentRequirementLine` mediante caso real, no metadata opaca obligatoria desde día uno.
 
-Configuración tenant-scoped de métodos aceptados.
+### 46.4 `PaymentMethodConfiguration`
+
+Tenant-scoped:
 
 ```text
 id
@@ -1307,15 +1793,9 @@ external
 custom
 ```
 
-`method_family` no es provider. Stripe/Azul/PayPal/Bank API/manual son adapters/configurations.
+Provider no es method family. Sensitive config usa secret refs.
 
-Sensitive provider configuration no se almacena como JSON público; references a secrets/config segura.
-
-### 41.5 `PaymentProviderConnection`
-
-Representa conexión/configuración operacional hacia PSP/banco/external payment system.
-
-Conceptualmente:
+### 46.5 `PaymentProviderConnection`
 
 ```text
 id
@@ -1328,13 +1808,13 @@ capabilities
 metadata_safe
 ```
 
-No guardar secretos legibles en rows/API responses.
+No secretos legibles en rows/API responses.
 
-Providers implementan adapters; el dominio no hace switches por marca.
+Adapters traducen provider semantics; no deciden business policy.
 
-### 41.6 Adapter contract
+### 46.6 Adapter contract
 
-Contrato conceptual, no necesariamente una sola interfaz gigante:
+Conceptualmente:
 
 ```text
 create_attempt / create_session
@@ -1346,11 +1826,9 @@ refund
 fetch_or_receive_transactions [when supported]
 ```
 
-Un adapter sólo traduce provider semantics a commands/events internos. No decide business policy.
+No necesariamente una única mega-interface; separar capabilities si mejora diseño.
 
-### 41.7 `PaymentAttempt`
-
-Un intento de satisfacer un Requirement.
+### 46.7 `PaymentAttempt`
 
 ```text
 id
@@ -1358,6 +1836,7 @@ public_id
 organization_id
 payment_requirement_id
 payment_method_configuration_id
+payer_contact_id nullable
 status
 provider_connection_id nullable
 external_attempt_id nullable
@@ -1368,7 +1847,7 @@ completed_at nullable
 metadata
 ```
 
-Estados conceptuales:
+Estados:
 
 ```text
 created
@@ -1383,13 +1862,13 @@ cancelled
 expired
 ```
 
-`Attempt.succeeded` significa que el intento produjo/identificó un resultado financiero válido según el adapter/reconciliation; satisfaction final del Requirement sigue derivándose de Transactions + Allocations.
+Attempt success no sustituye Requirement satisfaction: Transactions + Allocations mandan.
 
-### 41.8 `PaymentInstruction`
+### 46.8 `PaymentInstruction`
 
-Puede modelarse como owned snapshot/versioned payload del Attempt o entidad separada si reutilización/lifecycle lo exige.
+Owned snapshot/versioned payload o entidad separada si lifecycle lo exige.
 
-Debe tener contratos discriminados, no JSON indefinido:
+Contratos discriminados:
 
 ```text
 BankTransferInstruction
@@ -1399,7 +1878,7 @@ CashInstruction
 ExternalInstruction
 ```
 
-Bank transfer snapshot puede contener:
+Bank transfer snapshot:
 
 ```text
 bank_name
@@ -1412,13 +1891,9 @@ expires_at
 customer_message
 ```
 
-Datos sensibles no necesarios para presentación no se exponen.
+Cambio de account config no altera instrucciones históricas.
 
-Cambio futuro de cuenta bancaria no altera instrucciones históricas.
-
-### 41.9 `PaymentEvidence`
-
-Evidencia customer-supplied.
+### 46.9 `PaymentEvidence`
 
 ```text
 id
@@ -1447,13 +1922,13 @@ accepted_as_evidence
 rejected
 ```
 
-Nunca puede, por sí sola, crear `PaymentTransaction.settled` ni satisfacer Requirement.
+Nunca puede crear por sí sola `PaymentTransaction.settled` ni satisfy Requirement.
 
-Blobs en private object storage, no DB/public bucket. File hash sirve como señal de duplicate/reuse, no sentencia automática de fraude.
+Blobs en private object storage. File hash es señal, no fraude automático.
 
-### 41.10 `PaymentTransaction`
+### 46.10 `PaymentTransaction`
 
-Representa movimiento financiero autoritativamente observado/confirmado.
+Movimiento financiero autoritativamente observado/confirmado.
 
 ```text
 id
@@ -1485,7 +1960,7 @@ cash_verification
 external_system
 ```
 
-Estados financieros conceptuales:
+Estados:
 
 ```text
 pending
@@ -1495,20 +1970,20 @@ failed
 reversed
 ```
 
-`authorized` y `settled` son distintos. Default: sólo `settled` puede satisfacer requirements salvo policy futura explícita que acepte authorization como gate.
+Default: sólo settled satisface Requirements salvo explicit future policy.
 
-No borrar transacciones tras reversal/refund/dispute. Registrar el hecho posterior.
+No borrar transactions tras reversal/refund/dispute.
 
-Unique/idempotency constraints deben impedir duplicar el mismo external transaction/webhook dentro del mismo provider/tenant.
+Unique/idempotency constraints impiden duplicar external transaction/webhook por provider/tenant.
 
-### 41.11 Bank transfer reconciliation
+### 46.11 Bank transfer reconciliation
 
-#### Con bank integration
+Con integration:
 
 ```text
 bank feed/webhook/API
       ↓
-validated external event
+validated event
       ↓
 RecordBankTransaction
       ↓
@@ -1519,7 +1994,7 @@ match/reconciliation
 PaymentAllocation
 ```
 
-#### Sin bank integration
+Sin integration:
 
 ```text
 PaymentEvidence? [optional]
@@ -1533,22 +2008,11 @@ VerifyBankTransferManually
 PaymentTransaction(source=manual_bank_verification)
 ```
 
-Manual verification debe capturar:
+Manual verification captura principal, timestamp, receiving-account/config ref, external ref when available, amount/currency y reason/note cuando aplique.
 
-```text
-principal
-verified_at
-receiving account/config reference
-bank/external reference when available
-amount/currency
-reason/note when needed
-```
+No command “accept screenshot as payment”.
 
-No existe command “accept screenshot as payment”.
-
-### 41.12 `PaymentAllocation`
-
-Join/ledger-like application table entre dinero observado y requirement, sin convertirse en accounting ledger general.
+### 46.12 `PaymentAllocation`
 
 ```text
 id
@@ -1559,24 +2023,22 @@ amount
 currency
 status
 created_at
-created_by / source
+created_by/source
 reversed_at nullable
 metadata
 ```
 
-Debe garantizar:
+Garantías:
 
-- currency compatible o conversion explícita;
-- suma de allocations activas no excede monto aplicable de Transaction salvo modelo documentado;
-- satisfaction del Requirement deriva de suma de allocations válidas;
-- allocation es idempotente/reconcilable;
-- reversal/refund puede requerir ajuste/reversal de allocation sin borrar historia.
+- compatible currency o conversion explícita;
+- active allocations no exceden applicable Transaction amount;
+- Requirement satisfaction deriva de active allocations;
+- idempotent/reconcilable;
+- reversal/refund ajusta/revierte allocations sin borrar historia.
 
 Soporta partial payments, multiple transactions, one transaction across requirements y overpayment/unallocated funds.
 
-### 41.13 `ReconciliationCase`
-
-Entidad/aggregate operacional cuando no existe matching seguro.
+### 46.13 `ReconciliationCase`
 
 ```text
 id
@@ -1594,7 +2056,7 @@ created_at
 metadata
 ```
 
-Reasons iniciales:
+Reasons:
 
 ```text
 missing_reference
@@ -1606,11 +2068,9 @@ provider_mismatch
 manual_review_required
 ```
 
-No auto-asignar si el matching es ambiguo.
+No auto-asignar matching ambiguo.
 
-### 41.14 Pago tardío versus Reservation
-
-Caso:
+### 46.14 Pago tardío versus Reservation
 
 ```text
 CapacityHold expired
@@ -1625,31 +2085,27 @@ Reservation remains unconfirmed
 workflow enters reconciliation/revalidation
 ```
 
-`revalidate_after_payment` puede volver a ejecutar availability/capacity selection.
+Nunca confirmar slot viejo sin revalidar.
 
-Nunca confirmar el slot viejo sin revalidar.
-
-### 41.15 Cash
-
-Cash usa el mismo modelo financiero:
+### 46.15 Cash
 
 ```text
-PaymentAttempt(method_family=cash)
+PaymentAttempt(cash)
       ↓
 authorized principal receives cash
       ↓
 RecordCashReceived
       ↓
-PaymentTransaction(source=cash_verification)
+PaymentTransaction(cash_verification)
       ↓
 PaymentAllocation
 ```
 
-No crear special boolean `cash_paid` fuera del modelo.
+No special boolean `cash_paid`.
 
-### 41.16 Provider redirects y webhooks
+### 46.16 Provider redirects/webhooks
 
-Una success/cancel URL de browser es UX, no autoridad.
+Browser success/cancel URL es UX, no authority.
 
 Authority:
 
@@ -1662,18 +2118,14 @@ manual independent verification
 
 Webhook handling:
 
-1. authenticate/signature validation;
-2. anti-replay/provider event dedupe;
+1. signature/auth validation;
+2. anti-replay/event dedupe;
 3. normalize to internal command;
 4. idempotent transaction;
 5. event/outbox;
 6. acknowledge provider.
 
-Nunca ejecutar business mutation autoritativa sólo porque el browser afirma `success=true`.
-
-### 41.17 Refund
-
-Refund lifecycle separado:
+### 46.17 Refund
 
 ```text
 id
@@ -1701,35 +2153,61 @@ failed
 cancelled
 ```
 
-Partial refund permitido.
+Partial refund permitido. Void authorization != Refund.
 
-Void/cancel de autorización no capturada no es Refund.
+Refund/reversal reconcilia allocations/requirements según policy sin borrar historia.
 
-Refund/reversal debe reconciliar impacto sobre PaymentAllocations/Requirements según policy, sin borrar historia.
+### 46.18 ReservationPolicy ↔ Payments boundary
 
-### 41.18 Provider-independent state mapping
+ReservationPolicy produce una **financial consequence directive**. Application layer traduce esa decisión a commands de Payments.
 
-Cada adapter mantiene mapping explícito desde provider states a estados canónicos.
-
-No permitir que provider-specific states aparezcan como condición de workflow en domain code:
+Ejemplo:
 
 ```text
-if stripe_status == ...  # no
+CancelReservation(customer, <2h)
+      ↓
+CancellationPolicy decision
+  allow
+  release capacity
+  forfeit deposit
+      ↓
+Payments keeps existing allocation / no refund
 ```
 
-Workflow consulta:
+Otro:
 
 ```text
-PaymentAttempt.status
-PaymentTransaction.status
-PaymentRequirement.status
+CancelReservation(business)
+      ↓
+CancellationPolicy decision
+  allow
+  release capacity
+  refund_full
+      ↓
+RequestRefund
 ```
 
-Raw provider payloads pueden conservarse sólo cuando sean necesarios para audit/debug y con retention/security apropiados; no deben ser la fuente primaria de queries de negocio.
+Nunca permitir que ReservationPolicy mutile PaymentTransaction directamente.
 
-### 41.19 Idempotency y duplicates
+### 46.19 Fulfillment vs financial settlement
 
-Idempotency es crítica para:
+Chargeback/reversal después de servicio:
+
+```text
+ServiceSession remains fact
+Fulfillment remains fact
+PaymentTransaction becomes reversed/new reversal fact
+PaymentAllocation reconciles
+PaymentRequirement may become open/partially satisfied again
+```
+
+Puede abrir ReconciliationCase o nuevo Request de balance; no reescribir historial operacional.
+
+### 46.20 Provider-independent states + idempotency
+
+Adapters mapean provider states a estados canónicos. Domain code nunca hace `if stripe_status`.
+
+Idempotency crítica para:
 
 ```text
 CreatePaymentRequirement
@@ -1741,36 +2219,41 @@ PaymentAllocation
 refund creation/callbacks
 ```
 
-Same idempotency key + materially different payload = explicit conflict.
+Same idempotency key + materially different payload = conflict.
 
-Provider event ID / external transaction ID debe deduplicarse bajo provider + tenant scope cuando sea estable.
-
-### 41.20 Payment evidence/storage security
+### 46.21 Payment security
 
 - PAN/CVV nunca en Request Engine;
 - provider token/reference en su lugar;
 - bank/PSP secrets en secret manager/config segura;
 - PaymentEvidence privado;
-- signed short-lived URLs para acceso cuando corresponda;
-- audit de acceso/verification sensible;
-- scopes separados `payments.read`, `payments.create`, `payments.verify`, `payments.refund`, `payments.reconcile` según surface;
-- no PII financiera completa en logs;
-- agent tools no exponen datos bancarios internos innecesarios;
-- instrucciones públicas exponen sólo lo necesario para ejecutar el método.
+- signed short-lived asset URLs;
+- audit de access/verification sensible;
+- scopes `payments.read/create/verify/refund/reconcile`;
+- no financial PII completa en logs;
+- agent tools no exponen internals innecesarios.
 
 ---
 
-## 42. Forms / public intake
+## 47. Forms / public intake
 
 `FormDefinition` + `FormSubmission` inicialmente.
 
 Schemas reutilizables por website, agent, human UI y API.
 
+Intake puede construir/actualizar:
+
+- Contacts;
+- participant roles;
+- OfferingSelections;
+- validated quantity inputs;
+- Request data.
+
 No construir form-builder universal inicialmente.
 
 ---
 
-## 43. Agent boundary
+## 48. Agent boundary
 
 Tools goal-oriented:
 
@@ -1778,6 +2261,7 @@ Tools goal-oriented:
 search_offerings
 get_business_locations
 get_location_details
+create_or_update_request
 find_reservation_options
 prepare_reservation
 confirm_reservation
@@ -1790,23 +2274,27 @@ cancel_reservation
 reschedule_reservation
 ```
 
-El modelo no recibe access a tables, resource graph internals, raw telemetry, PSP internals, bank feeds ni arbitrary writes.
+El modelo no recibe access a tables, relationship graph internals, resource graph internals, raw telemetry, PSP internals, bank feeds ni arbitrary writes.
 
-En particular, no se expone al modelo una tool genérica `mark_payment_paid`. Verification/refund/reconciliation requieren deterministic commands + scopes y, cuando corresponde, principal humano o trusted provider callback.
+Participant roles/OfferingSelections enviados por agent pasan validación de schemas y authorization.
+
+No tool genérica `mark_payment_paid`.
+
+Policy overrides, payment verification/refund/reconciliation y force recovery requieren deterministic commands + scopes y, cuando corresponde, Principal humano/trusted callback.
 
 ---
 
-## 44. Integraciones
+## 49. Integraciones
 
 Chatwoot, LiveKit, WhatsApp, Twilio, n8n, maps providers, media storage, tracking providers, banks y PSPs son adapters.
 
-n8n puede experimentar con integrations pero no controla request/reservation/payment state autoritativo.
+n8n puede experimentar con integrations pero no controla Request/Reservation/payment state autoritativo.
 
-Payment provider adapters traducen provider semantics; no contienen PaymentPolicy de negocio.
+Provider adapters traducen semantics; no contienen ReservationPolicy o PaymentPolicy de negocio.
 
 ---
 
-## 45. Security baseline
+## 50. Security baseline
 
 - secret keys hashed/stored securely;
 - explicit scopes;
@@ -1815,19 +2303,20 @@ Payment provider adapters traducen provider semantics; no contienen PaymentPolic
 - signed webhooks + anti-replay;
 - PII encryption when threat model requires;
 - audit privileged changes;
-- cross-tenant tests;
+- cross-tenant tests para participants/selections/reservations/payments;
 - location/tracking data scoped appropriately;
 - public tracking tokens expose only minimum necessary data;
 - no raw secrets/PII/GPS trails in logs;
 - PAN/CVV never stored;
 - PaymentEvidence private;
 - bank/PSP credentials never exposed to browser/agents;
-- manual payment verification requires privileged principal;
-- refunds/reconciliation have distinct scopes from normal payment initiation.
+- manual payment verification requires privileged Principal;
+- policy overrides/recovery overrides auditable;
+- refunds/reconciliation distinct scopes from payment initiation.
 
 ---
 
-## 46. Observabilidad
+## 51. Observabilidad
 
 Mínimo:
 
@@ -1839,13 +2328,15 @@ Mínimo:
 - outbox lag;
 - hold expiry;
 - reservation conflict classifications;
+- operational-health counts (`valid/at_risk/blocked`);
+- open disruption count/age/recovery failures;
 - queue wait metrics;
 - dispatch state/ETA update failures;
-- external provider error classification;
+- external provider errors;
 - payment webhook validation/dedupe failures;
-- payment reconciliation queue depth/age;
+- reconciliation queue depth/age;
 - payment verification latency;
-- unallocated funds count/amount metrics without leaking PII;
+- unallocated funds aggregate metrics without PII;
 - refund failures;
 - sanitized context.
 
@@ -1853,53 +2344,70 @@ Telemetry técnica no sustituye domain events/audit.
 
 ---
 
-## 47. Testing strategy
+## 52. Testing strategy
 
 ### Unit
 
-- workflow decisions;
 - Request transitions;
-- Offering policy resolution;
-- schedule composition;
-- exception precedence;
-- holiday policies;
+- participant-role validation;
+- OfferingSelection validation;
+- multi-offering workflow resolution;
+- ReservationPolicy decisions by initiator/time/reason;
+- ResourceRequirement quantity rules;
+- schedule composition/exception precedence/holiday policies;
 - admission policies;
 - queue priority;
+- Waitlist vs Queue semantics;
 - ResourceRequirement matching;
+- operational-health derivation;
+- disruption/recovery decisions;
+- allocation release/replacement;
 - service-area validation;
+- controlled Destination changes;
 - Dispatch transitions;
 - PaymentPolicy resolution;
-- PaymentRequirement state derivation;
+- PaymentRequirement derivation;
 - PaymentAttempt transitions;
 - PaymentAllocation math;
-- partial/overpayment behavior;
+- partial/overpayment;
 - late-payment capacity strategy;
-- refund lifecycle.
+- refund lifecycle;
+- Fulfillment cardinality/partial selection behavior.
 
 ### PostgreSQL integration
 
-- constraints;
+- tenant constraints across participants/selections/items;
 - idempotency;
 - reservation races;
 - exclusive overlap prevention;
 - capacity-units oversell prevention;
+- dynamic quantity oversell prevention;
 - hold expiry/confirmation races;
 - schedule/exception edge cases;
+- schedule/resource change opens disruption instead of silently altering Reservation;
+- concurrent disruption recovery/reallocation;
+- historical allocation preservation;
 - cross-tenant isolation;
 - pool allocations/late assignment;
+- one Request → multiple Reservations;
+- one Reservation → multiple ReservationItems;
+- one Reservation → multiple ServiceSessions;
 - outbox claiming/retry;
 - duplicate provider webhook ingestion;
 - duplicate bank transaction ingestion;
-- concurrent PaymentAllocations cannot overspend transaction;
-- concurrent allocations cannot incorrectly oversatisfy requirement;
+- concurrent PaymentAllocations cannot overspend Transaction;
+- concurrent allocations cannot incorrectly oversatisfy Requirement;
 - manual verification audit/scopes;
-- payment arrives after CapacityHold expiry;
+- payment after CapacityHold expiry;
 - refund/allocation reconciliation.
 
 ### Contract
 
 - REST/OpenAPI;
 - agent schemas;
+- participant/selection payloads;
+- ReservationOption discriminated schemas;
+- policy-decision/error contracts where public;
 - webhook signatures;
 - provider adapter normalization contracts;
 - public location/tracking projections;
@@ -1908,44 +2416,64 @@ Telemetry técnica no sustituye domain events/audit.
 
 ### End-to-end
 
-Demo Barbershop + Demo Plumbing vertical slices are mandatory.
+Demo Barbershop + Demo Plumbing mandatory.
 
-Payments E2E must include at least:
+Cross-scenario E2E:
 
 ```text
-card/provider success path
-cash/manual verification path
+mother/requester reserves for child/recipient; different payer
+multiple OfferingSelections in one Request
+one Request creates multiple Reservations
+one Reservation contains multiple ReservationItems
+party-size changes capacity through per_participant rule
+resource becomes unavailable after confirmation → disruption → reallocation
+resource disruption cannot recover → policy-governed reschedule/cancel
+customer vs business cancellation produce different consequences
+no-show consequence triggers correct payment/refund behavior
+one Reservation produces multiple ServiceSessions
+one ServiceSession supports multiple Fulfillment records
+Waitlist does not consume capacity
+payment reversal after Fulfillment does not rewrite service history
+```
+
+Payments E2E:
+
+```text
+card/provider success
+cash/manual verification
 bank-transfer instructions + evidence + independent verification
 bank transfer not found / verification_failed
-partial payment or allocation proof
+partial payment/allocation
+overpayment/unallocated funds
 late payment after hold expiry
-refund proof
+refund
 ```
 
 ---
 
-## 48. Performance philosophy
+## 53. Performance philosophy
 
 Primero integridad/observabilidad, luego optimización medida.
 
 Evitar:
 
-- N+1 por slot/resource;
-- cargar historial completo para overlap;
+- N+1 por slot/resource/participant;
+- cargar historial completo para overlaps;
 - writes por availability read;
 - recalcular colas completas innecesariamente;
+- scan global síncrono de todas Reservations cuando cambia un Resource;
 - almacenar raw GPS stream;
-- consultar remote routing/maps dentro de reservation transaction;
-- consultar PSP/bank synchronously dentro de reservation/payment allocation transaction cuando un callback/projection es suficiente;
-- full scans para matching de bank transactions;
+- consultar routing/maps dentro de reservation transaction;
+- consultar PSP/bank synchronously dentro de authoritative transaction cuando callback/projection basta;
+- full scans para bank matching;
 - JSONB para relaciones centrales;
-- guardar full provider payloads indefinidamente sin necesidad.
+- guardar full provider payloads indefinidamente.
 
-Usar set-based SQL, indices y constraints.
+Usar set-based SQL, índices, constraints y bounded/background recovery jobs.
 
 ---
 
-## 49. Deployment inicial
+## 54. Deployment inicial
 
 ```text
 Clients
@@ -1963,19 +2491,24 @@ API y Worker comparten codebase/dominio con procesos separados.
 
 No Redis/RabbitMQ/Kafka/Temporal obligatorios.
 
-Media blobs, PaymentEvidence y tracking telemetry usan storage/sistemas especializados; Request Engine conserva references/projections relevantes.
+Media blobs, PaymentEvidence y tracking telemetry usan systems/storage especializados; Request Engine conserva references/projections relevantes.
 
-PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan application commands idempotentes.
+PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan commands idempotentes.
+
+Disruption detection/recovery que no deba ser síncrono puede ejecutarse por Worker desde events/outbox.
 
 ---
 
-## 50. Definition of Done de foundation
+## 55. Definition of Done de foundation
 
 ```text
 [ ] Python/FastAPI bootstrapped
 [ ] PostgreSQL migrations reproducibles
 [ ] organizations/principals tenancy
 [ ] contacts
+[ ] RequestParticipant roles + Principal distinction
+[ ] OfferingSelection + multi-selection Request proof
+[ ] OfferingSelection recipient/participant association proof
 [ ] locations
 [ ] LocationMedia references
 [ ] BusinessHours schedules
@@ -1986,21 +2519,31 @@ PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan applicatio
 [ ] request_types
 [ ] requests + lifecycle
 [ ] versioned workflows
+
 [ ] Resource model
 [ ] ResourceCapabilities
 [ ] exclusive + units capacity
 [ ] ResourceRequirements
+[ ] quantity rules: fixed/per_selection_unit/per_participant/from_validated_input
 [ ] ResourceGroups/pool proof
 [ ] availability for scheduled/window/queue/hybrid
 [ ] ReservationOption contract
 [ ] CapacityHolds + expiry
+[ ] ReservationItems
 [ ] Reservations + concurrency protection
-[ ] ResourceAllocations + late assignment proof
+[ ] commitment status separated from operational projection
+[ ] ResourceAllocations + release/replacement history
+[ ] late assignment proof
+[ ] ReservationParticipants
+[ ] ReservationPolicy: cancel/reschedule/no-show
+[ ] customer/business/system initiator policy proof
+[ ] ReservationDisruption + operational health + recovery proof
 [ ] AdmissionPolicies
 [ ] CheckIn
 [ ] QueueEntries
-[ ] ServiceSessions
-[ ] Destination snapshot
+[ ] Waitlist boundary contract/proof (full implementation optional for first slice)
+[ ] multiple ServiceSessions per Reservation proof
+[ ] Destination snapshot + controlled change proof
 [ ] ServiceArea validation
 [ ] Dispatch lifecycle
 [ ] dispatch status/ETA/tracking-reference projection
@@ -2009,7 +2552,7 @@ PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan applicatio
 [ ] exact Money representation convention
 [ ] PaymentMethodConfiguration
 [ ] PaymentProviderConnection/adapter boundary
-[ ] PaymentRequirement
+[ ] PaymentRequirement + payer reference
 [ ] PaymentAttempt lifecycle
 [ ] typed PaymentInstruction snapshots
 [ ] private PaymentEvidence references
@@ -2021,11 +2564,15 @@ PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan applicatio
 [ ] cash verification flow
 [ ] ReconciliationCase
 [ ] late-payment after hold-expiry handling
+[ ] ReservationPolicy → Refund/payment consequence boundary proof
 [ ] Refund lifecycle
 [ ] provider webhook signature + dedupe + idempotency proof
 [ ] payment privileged scopes
 
-[ ] Fulfillment linked to Request/Reservation
+[ ] Fulfillment 0..N per Request
+[ ] OfferingSelection-specific/partial Fulfillment proof
+[ ] one ServiceSession supporting multiple Fulfillments proof
+[ ] Fulfillment/financial lifecycle independence proof
 [ ] domain events
 [ ] transactional outbox
 [ ] worker retry/idempotency
@@ -2040,50 +2587,91 @@ PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan applicatio
 [ ] Demo Plumbing vertical slice
 ```
 
-La foundation se considera conceptualmente madura cuando estos elementos demuestran que capacity y money pueden coordinarse sin convertir Request Engine en scheduler universal, PSP o ERP.
+Foundation se considera conceptualmente madura cuando capacity, participants, selections, operational recovery y money pueden coordinarse sin convertir Request Engine en scheduler universal, CRM, PSP o ERP.
 
 ---
 
-## 51. Regla arquitectónica final
+## 56. Deliberadamente fuera de foundation inmediata
 
-Para intención:
+No implementar todavía sin caso real:
 
 ```text
-Offering      = what can be obtained
-Request       = what is wanted now
-Workflow      = what must happen
+ReservationSegment
+ReservationSeries
+Subscription
+Agreement
+Delivery logistics platform
+WorkforceOptimizer
+generic rules DSL
 ```
 
-Para capacidad:
+### Multi-stage
+
+Multiple ResourceAllocations con intervals distintos + multiple ServiceSessions cubren el caso inicial. Sólo introducir `ReservationSegment` si necesitamos lifecycle/state independiente por etapa.
+
+### Recurrence/subscription
+
+Reservations individuales pueden existir hoy. Si después necesitamos una regla generadora recurrente, un futuro `Agreement`/`ReservationSeries` puede generar Requests, Reservations y PaymentRequirements.
+
+No agregar recurrence flags ambiguos a Reservation.
+
+---
+
+## 57. Regla arquitectónica final
+
+Para identidad/intención:
 
 ```text
-Resource      = what can provide capacity
-Capacity      = how much it can provide
-Requirement   = what capacity an Offering needs
-Allocation    = what capacity a Reservation committed
-Assignment    = which concrete Resource executes
-Schedule      = when capacity may exist
-Reservation   = committed capacity
-Admission     = how access to service occurs
+Principal          = actor that performed mutation
+Contact            = business identity
+Participant        = Contact role in this work
+Offering           = what can be obtained
+OfferingSelection  = selected Offering/quantity/recipient
+Request            = what is wanted now
+Workflow           = what must happen
+```
+
+Para capacity:
+
+```text
+ReservationItem      = selected Offering quantity under commitment
+Resource             = what can provide capacity
+Capacity             = how much it can provide
+ResourceRequirement  = what capacity ReservationItem needs
+ResourceAllocation   = what capacity Reservation committed
+Assignment           = which concrete Resource executes
+Schedule             = when capacity may exist
+Reservation          = committed capacity
+OperationalHealth    = whether commitment is currently fulfillable
+ReservationDisruption = durable recovery case
+Admission             = how access to service occurs
+QueueEntry            = committed operational waiting
+WaitlistEntry         = uncommitted interest in future capacity
 ```
 
 Para lugar/ejecución:
 
 ```text
-Location       = where the organization operates/receives
+Location       = where organization operates/receives
 Destination    = where this specific work must occur
 Dispatch       = movement/coordination toward Destination
 ServiceSession = actual execution
 Fulfillment    = verified outcome
 ```
 
-Para pagos:
+Para policy:
 
 ```text
-PaymentPolicy      = how/when payment is required
+ReservationPolicy = cancellation/reschedule/no-show consequences
+PaymentPolicy     = how/when money is required
+```
+
+Para payments:
+
+```text
 PaymentRequirement = concrete money obligation
 PaymentAttempt     = one method-specific attempt
-PaymentInstruction = what the payer was told to do
+PaymentInstruction = what payer was told to do
 PaymentEvidence    = supporting evidence, never money by itself
 PaymentTransaction = authoritative observed financial movement
 PaymentAllocation  = how verified money satisfies requirements
@@ -2091,4 +2679,6 @@ ReconciliationCase = ambiguity requiring explicit resolution
 Refund             = explicit return-of-funds lifecycle
 ```
 
-Request Engine debe saber **qué necesita ocurrir, si puede ocurrir válidamente, qué capacidad fue comprometida, qué obligación financiera existe, qué dinero fue realmente verificado/aplicado y cuál fue el resultado**. No debe convertirse en todos los sistemas especializados que participan alrededor de ese proceso.
+Request Engine debe saber **qué necesita ocurrir, para quién, qué Offering(s) están involucrados, si puede ocurrir válidamente, qué capacity fue comprometida, si ese commitment sigue operacionalmente cumplible, qué obligación financiera existe, qué dinero fue realmente verificado/aplicado y qué outcome ocurrió**.
+
+No debe convertirse en todos los sistemas especializados que participan alrededor de ese proceso.
