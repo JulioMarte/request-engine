@@ -10,7 +10,7 @@
 
 ## 1. Punto de partida
 
-La arquitectura existe para servir esta idea, no para sustituirla:
+La arquitectura existe para servir esta idea:
 
 ```text
 Something requests something
@@ -20,20 +20,21 @@ Request Engine determines
 what workflow should happen
 ```
 
-Request Engine es un **motor headless, multiempresa y API-first de orquestación de solicitudes**.
+Request Engine es un **motor headless, multiempresa, API-first y transaccional de orquestación de solicitudes**.
 
 Su trabajo es:
 
 1. recibir o normalizar una intención;
 2. convertirla en un `Request` estructurado;
-3. determinar un workflow válido y versionado;
-4. ejecutar capabilities deterministas;
-5. persistir el estado y las decisiones importantes;
-6. esperar callbacks, confirmaciones o intervención humana cuando corresponda;
-7. producir un `Fulfillment` verificable;
-8. mantener trazabilidad completa.
+3. resolver un `Offering` y políticas aplicables cuando corresponda;
+4. determinar un workflow válido y versionado;
+5. ejecutar capabilities deterministas;
+6. persistir estado y decisiones importantes;
+7. coordinar capacity holds, reservations, payments, callbacks, confirmaciones o intervención humana;
+8. producir un `Fulfillment` verificable;
+9. mantener trazabilidad completa.
 
-No es un chatbot, CRM, agenda, PBX, plataforma de WhatsApp ni framework de agentes. Es la capa de negocio que esos sistemas consumen.
+No es un chatbot, CRM, ERP, PBX, plataforma de WhatsApp, calendario tradicional ni framework universal de agentes. Es la capa de negocio que esos sistemas consumen.
 
 ---
 
@@ -43,30 +44,36 @@ No es un chatbot, CRM, agenda, PBX, plataforma de WhatsApp ni framework de agent
 
 PostgreSQL será la fuente de verdad transaccional de Request Engine V2.
 
-La decisión se toma porque el dominio es crecientemente relacional y transaccional:
+El dominio es crecientemente relacional y transaccional:
 
-- organizaciones y tenancy;
+- organizations y tenancy;
 - contacts;
+- offerings;
 - request types;
 - requests y lifecycle;
 - workflow runs;
 - resources;
-- scheduling;
-- bookings;
+- resource requirements;
+- availability;
+- capacity holds;
+- reservations;
+- check-ins;
+- queue entries;
+- service sessions;
 - idempotency;
 - audit;
 - domain events;
-- reporting y attribution.
+- reporting operacional.
 
-PostgreSQL permite expresar mejor las invariantes que Request Engine necesita mediante constraints, índices, transacciones, locking explícito, queries temporales, JSONB cuando aporta valor y capacidades avanzadas de SQL.
+PostgreSQL permite expresar invariantes mediante constraints, índices, transacciones, locking explícito, queries temporales, range types, JSONB disciplinado y capacidades avanzadas de SQL.
 
-No se adopta PostgreSQL porque Convex haya sido un error. Convex fue útil para descubrir el dominio. V2 cambia de tecnología porque **el dominio ya está suficientemente claro como para optimizar alrededor de integridad, relaciones, consultas y control transaccional**.
+No se adopta PostgreSQL porque Convex haya sido un error. Convex fue útil para descubrir el dominio. V2 optimiza ahora alrededor de integridad, relaciones, consultas y control transaccional.
 
 ### Lenguaje del backend: Python
 
 El backend de V2 se implementará en Python.
 
-Python se elige porque Request Engine probablemente combinará durante su evolución:
+Python se elige por el buen fit con:
 
 - API transaccional;
 - workflow orchestration;
@@ -76,39 +83,37 @@ Python se elige porque Request Engine probablemente combinará durante su evoluc
 - agent tooling;
 - document/data processing.
 
-Python tiene un ecosistema especialmente fuerte para esos casos y permite mantener el núcleo de negocio y las extensiones AI dentro de un mismo lenguaje cuando eso reduzca complejidad.
-
-**Esta elección no autoriza a mezclar AI con las reglas críticas del dominio.** La IA continúa siendo un consumidor/asistente; las mutaciones autoritativas permanecen tipadas, validadas y deterministas.
+La elección no autoriza a mezclar IA con reglas críticas del dominio. Las mutaciones autoritativas permanecen tipadas, validadas y deterministas.
 
 ### API framework: FastAPI
 
 FastAPI será la capa HTTP inicial.
 
-Motivos principales:
+Motivos:
 
-- Pydantic como contratos y validación;
-- OpenAPI generado desde la implementación;
-- soporte natural para async I/O;
-- dependency injection suficiente sin introducir un framework pesado;
-- buen fit para SDKs generados y herramientas de agentes.
+- Pydantic para contratos y validación;
+- OpenAPI generado desde implementación real;
+- async I/O;
+- dependency injection suficiente;
+- buen fit para SDKs generados y adapters de agentes.
 
-FastAPI debe ser una **capa de transporte**, no el lugar donde viva el dominio.
+FastAPI es **transporte**, no dominio.
 
 ### Persistencia: SQLAlchemy + Alembic
 
-SQLAlchemy será la abstracción de persistencia principal y Alembic administrará migraciones.
+SQLAlchemy será la abstracción principal de persistencia y Alembic administrará migraciones.
 
-Se prefiere SQLAlchemy directamente antes que una abstracción más pequeña para evitar quedar limitados cuando aparezcan:
+Se prefiere SQLAlchemy para conservar acceso a:
 
 - queries complejas;
-- locking;
 - PostgreSQL-specific types;
+- locking;
+- exclusion constraints;
 - índices parciales;
-- constraints;
 - reporting;
-- tuning de performance.
+- tuning.
 
-Pydantic representa contratos/API. SQLAlchemy representa persistencia. No deben confundirse las responsabilidades.
+Pydantic representa contratos/API. SQLAlchemy representa persistencia.
 
 ---
 
@@ -125,6 +130,7 @@ request-engine
 │   ├── organizations
 │   ├── principals
 │   ├── contacts
+│   ├── offerings
 │   ├── requests
 │   ├── workflows
 │   ├── fulfillments
@@ -133,8 +139,9 @@ request-engine
 │   └── audit
 │
 ├── Modules
-│   ├── scheduling
-│   └── forms
+│   ├── reservations
+│   ├── forms
+│   └── payments
 │
 ├── Infrastructure
 │   ├── postgres
@@ -145,9 +152,9 @@ request-engine
 └── Workers
 ```
 
-Los boundaries son primero boundaries de dominio y código.
+Los boundaries son primero de dominio y código.
 
-Un módulo se convierte en servicio independiente solamente cuando exista una razón concreta:
+Un módulo se convierte en servicio independiente sólo ante una razón concreta:
 
 - scaling diferente;
 - failure isolation;
@@ -155,7 +162,7 @@ Un módulo se convierte en servicio independiente solamente cuando exista una ra
 - deployment cadence diferente;
 - requirements de seguridad o infraestructura distintos.
 
-“Podría ser un microservicio” no es una razón suficiente.
+“Podría ser un microservicio” no es razón suficiente.
 
 ---
 
@@ -177,11 +184,13 @@ request-engine/
 │       │   ├── organizations/
 │       │   ├── principals/
 │       │   ├── contacts/
+│       │   ├── offerings/
 │       │   ├── requests/
 │       │   ├── workflows/
 │       │   ├── fulfillments/
-│       │   ├── scheduling/
-│       │   └── forms/
+│       │   ├── reservations/
+│       │   ├── forms/
+│       │   └── payments/
 │       │
 │       ├── application/
 │       │   ├── commands/
@@ -207,46 +216,42 @@ request-engine/
 └── README.md
 ```
 
-Esto es una guía, no una religión. No crear capas vacías solamente para satisfacer el diagrama.
+Guía, no religión. No crear capas vacías sólo para satisfacer el diagrama.
 
 ---
 
 ## 5. Regla de dependencia
 
-La dirección deseada es:
+Dirección deseada:
 
 ```text
-API / Worker / Integrations
-            ↓
-      Application layer
-            ↓
-        Domain rules
-            ↓
-  Infrastructure adapters
+API / Worker / Integrations / Agent adapters
+                  ↓
+           Application layer
+                  ↓
+              Domain rules
+                  ↓
+        Infrastructure adapters
 ```
 
-Más precisamente:
-
 - routes HTTP traducen requests externos a commands/queries;
+- agent adapters traducen tools/MCP a commands/queries;
 - application services coordinan casos de uso;
 - domain code expresa invariantes y state transitions;
-- repositories/adapters resuelven persistencia o sistemas externos;
-- workers consumen outbox/jobs y llaman application services cuando corresponde.
+- repositories/adapters resuelven persistencia y sistemas externos;
+- workers consumen outbox/jobs y llaman application services.
 
-Evitar dos extremos:
+Evitar:
 
-1. **fat routes** con toda la lógica dentro de `@app.post(...)`;
-2. una Clean Architecture ceremonial con cinco interfaces para insertar una fila.
-
-El objetivo es separación útil, no cantidad de abstracciones.
+1. fat routes;
+2. fat MCP tools;
+3. Clean Architecture ceremonial con interfaces sin valor.
 
 ---
 
-## 6. Contratos: Pydantic → OpenAPI → SDK
+## 6. Contratos: Pydantic → OpenAPI → SDK / Agent schemas
 
-V1 mantenía OpenAPI manualmente separado de implementación. V2 no debe repetir ese patrón.
-
-La dirección será:
+V2 no mantiene OpenAPI manualmente separado.
 
 ```text
 Pydantic request/response schemas
@@ -258,19 +263,27 @@ Pydantic request/response schemas
       generated client SDKs
 ```
 
-El frontend TypeScript, widgets y agentes Node pueden consumir un SDK generado a partir del contrato OpenAPI.
+La superficie para agentes no necesita ser 1:1 con REST.
 
-La API es un verdadero boundary. No es un problema que Python y TypeScript no compartan tipos por imports internos.
+```text
+Application commands/queries
+        │
+        ├── REST endpoints
+        ├── public/widget endpoints
+        └── MCP / agent tools
+```
 
-De hecho, esa separación obliga a mantener contratos explícitos y reduce acoplamiento accidental entre backend y UI.
+Todos ejecutan las mismas invariantes autoritativas.
+
+REST favorece composición de software. Agent tools favorecen objetivos de negocio, schemas pequeños y scopes mínimos.
 
 ---
 
-## 7. PostgreSQL: modelo relacional primero, JSONB con disciplina
+## 7. PostgreSQL: relacional primero, JSONB con disciplina
 
-No convertir PostgreSQL en un document store accidental.
+No convertir PostgreSQL en document store accidental.
 
-Campos que participan en identidad, relaciones, lifecycle, búsqueda, constraints o reporting deben ser columnas tipadas.
+Campos usados en identidad, relaciones, lifecycle, búsqueda, constraints o reporting son columnas tipadas.
 
 Ejemplo conceptual de `requests`:
 
@@ -280,6 +293,7 @@ public_id
 organization_id
 contact_id
 request_type_id
+offering_id nullable
 status
 workflow_key
 workflow_version
@@ -292,15 +306,92 @@ updated_at
 completed_at
 ```
 
-JSONB es apropiado para datos dinámicos cuyo schema depende del `RequestType`, metadata o snapshots.
+Ejemplo conceptual de `reservations`:
 
-JSONB no debe sustituir foreign keys, estados fundamentales ni campos usados regularmente para filtros y joins.
+```text
+id
+public_id
+organization_id
+request_id nullable
+status
+admission_policy_id
+planned_start nullable
+planned_end nullable
+window_start nullable
+window_end nullable
+commercial_snapshot JSONB
+metadata JSONB
+created_at
+updated_at
+```
+
+La existencia exacta de columnas depende del modelo final. La regla es que JSONB no sustituye foreign keys, estados fundamentales ni campos regularmente consultados.
 
 ---
 
-## 8. Multi-tenancy
+## 8. `Offering`: fachada estable + especialización por composición
 
-Toda operación tenant-owned debe ejecutarse dentro de un contexto de organización resuelto desde la credencial/principal.
+`Offering` es identidad de lo que una organización ofrece.
+
+No crear árboles de herencia o tablas paralelas incompatibles para `Product`, `Service`, `Package`, etc. como fachada pública principal.
+
+Conceptualmente:
+
+```text
+Offering
+├── common identity
+├── kind
+├── pricing configuration/reference
+├── intake configuration/reference
+├── reservation configuration/reference
+├── payment policy/reference
+└── module extensions
+```
+
+Los datos que requieren invariantes, joins o consultas frecuentes deben modelarse relacionalmente. La composición no implica guardar toda la semántica en un JSON arbitrario.
+
+`kind` sirve como clasificación útil, no como switch gigante en toda la aplicación.
+
+---
+
+## 9. `RequestType` y resolución de workflow
+
+Los RequestTypes son relativamente genéricos:
+
+```text
+reserve_offering
+purchase_offering
+request_quote
+request_information
+request_callback
+reschedule_reservation
+cancel_reservation
+submit_intake
+```
+
+La resolución conceptual es:
+
+```text
+RequestType
+    +
+Offering
+    +
+Organization policy
+    +
+Request context
+    ↓
+workflow_key + workflow_version
+```
+
+No crear `book_haircut`, `book_beard_trim`, `book_cleaning` como tipos universales sólo porque existen Offerings diferentes.
+
+Un Offering puede seleccionar/configurar un workflow especializado cuando su comportamiento realmente lo exige.
+
+---
+
+## 10. Multi-tenancy
+
+Toda operación tenant-owned ejecuta dentro de organización resuelta desde credencial/principal.
 
 ```text
 credential
@@ -315,20 +406,18 @@ application command/query
 Reglas:
 
 - `organization_id` en entidades tenant-owned relevantes;
-- foreign keys y unique constraints deben incluir tenant scope cuando corresponda;
-- no aceptar ciegamente un tenant enviado por browser;
+- FKs y unique constraints incluyen tenant scope cuando corresponde;
+- no aceptar ciegamente tenant enviado por browser;
 - public/browser credentials y secret/server credentials son clases distintas;
-- tests de cross-tenant leakage son obligatorios.
+- tests de cross-tenant leakage obligatorios.
 
-PostgreSQL Row Level Security puede evaluarse como defensa adicional, pero **no debe introducirse automáticamente como sustituto de authorization correcto en application code**. Si se adopta, debe documentarse en un ADR con su threat model y estrategia de conexión/pooling.
+PostgreSQL RLS puede evaluarse como defensa adicional mediante ADR; no sustituye authorization correcto en application code.
 
 ---
 
-## 9. IDs
+## 11. IDs
 
-Conservar la distinción de V1 entre identidad interna y pública.
-
-Conceptualmente:
+Distinción:
 
 ```text
 internal primary key → database concern
@@ -336,24 +425,25 @@ public_id            → API/domain reference
 external_id          → integration mapping
 ```
 
-Ejemplos públicos:
+Ejemplos:
 
 ```text
 org_...
 cnt_...
+off_...
 req_...
-bkg_...
+res_...
 ful_...
 evt_...
 ```
 
-No usar IDs de Chatwoot, Twilio, LiveKit, Evolution o cualquier provider como identidad primaria del dominio.
+No usar IDs de Chatwoot, Twilio, LiveKit, Stripe, Evolution u otros providers como identidad primaria.
 
 ---
 
-## 10. Commands y Queries
+## 12. Commands y Queries
 
-Separar conceptualmente reads de state-changing operations sin implementar CQRS distribuido.
+Separar reads de operaciones que cambian estado, sin CQRS distribuido.
 
 ### Commands
 
@@ -363,8 +453,14 @@ Ejemplos:
 CreateRequest
 ProvideRequestData
 AdvanceRequest
-CreateBooking
-CancelBooking
+CreateCapacityHold
+ConfirmReservation
+RescheduleReservation
+CancelReservation
+CheckInReservation
+JoinReservationQueue
+StartServiceSession
+CompleteServiceSession
 CompleteRequest
 ```
 
@@ -374,35 +470,36 @@ Commands:
 - ejecutan invariantes;
 - participan en una transacción;
 - pueden producir domain events;
-- son idempotentes cuando el riesgo de retry lo exige.
+- soportan idempotencia cuando retries son posibles.
 
 ### Queries
-
-Ejemplos:
 
 ```text
 GetRequest
 ListOpenRequests
+ListOfferings
 SearchAvailability
-GetBooking
+GetReservation
+ListReservations
+GetQueueState
 ```
 
-Queries no deben producir side effects de negocio.
+Queries no producen side effects de negocio.
 
-En particular, **consultar disponibilidad no debe crear persistent offers por defecto**.
+En particular, `SearchAvailability` no crea holds ni reservations.
 
 ---
 
-## 11. Transacciones
+## 13. Transacciones
 
-Las transacciones deben ser cortas y contener solamente trabajo autoritativo interno.
+Transacciones cortas con trabajo autoritativo interno.
 
 Correcto:
 
 ```text
 BEGIN
   validate current state
-  lock/revalidate required rows
+  lock/revalidate capacity
   mutate domain state
   insert domain event/outbox record
 COMMIT
@@ -413,6 +510,7 @@ Incorrecto:
 ```text
 BEGIN
   mutate
+  call payment provider
   call WhatsApp
   call LiveKit
   call n8n
@@ -420,17 +518,15 @@ BEGIN
 COMMIT
 ```
 
-Ningún sistema remoto debe mantener abierta una transacción de negocio.
+Ningún sistema remoto mantiene abierta una transacción de negocio.
 
 ---
 
-## 12. Outbox: PostgreSQL primero
+## 14. Outbox: PostgreSQL primero
 
-V2 conservará el transactional outbox de V1.
+V2 usa transactional outbox.
 
-Inicialmente no necesitamos Kafka, RabbitMQ ni una plataforma de eventos distribuida.
-
-El mismo commit de negocio puede persistir:
+Inicialmente no se requiere Kafka, RabbitMQ ni plataforma distribuida de eventos.
 
 ```text
 domain state
@@ -438,7 +534,9 @@ domain state
 outbox event
 ```
 
-Un worker procesa eventos disponibles usando locking apropiado, conceptualmente:
+mismo commit.
+
+Worker conceptual:
 
 ```sql
 SELECT ...
@@ -450,43 +548,41 @@ FOR UPDATE SKIP LOCKED
 LIMIT ...;
 ```
 
-Esto permite múltiples workers sin procesar la misma fila simultáneamente.
+Debe soportar:
 
-El worker debe soportar:
-
-- leases o ownership explícito cuando sea necesario;
+- ownership/leases cuando sea necesario;
 - retries con backoff;
 - dead-letter/failure state;
 - idempotent delivery;
 - observabilidad;
 - event versioning.
 
-Una queue externa se incorpora cuando Postgres deje de ser suficiente por requisitos medidos, no por anticipación.
+Queue externa sólo cuando requisitos medidos lo exijan.
 
 ---
 
-## 13. Domain events y audit no son lo mismo
+## 15. Domain events, audit y logs
 
 ### Domain events
 
-Expresan algo que ocurrió en el negocio:
+Ejemplos:
 
 ```text
 request.created
 request.classified
 request.ready
-booking.created
-booking.cancelled
+capacity_hold.created
+capacity_hold.expired
+reservation.confirmed
+reservation.checked_in
+reservation.enqueued
+reservation.cancelled
+service_session.started
+service_session.completed
 request.fulfilled
 ```
 
-Pueden alimentar:
-
-- webhooks;
-- notifications;
-- analytics;
-- projections;
-- integrations.
+Alimentan webhooks, notifications, analytics, projections e integrations.
 
 ### Audit
 
@@ -504,20 +600,19 @@ occurred_at
 
 ### Logs
 
-Sirven para diagnóstico técnico.
+Diagnóstico técnico.
 
-No confundir las tres cosas.
+No mezclar los tres conceptos.
 
 ---
 
-## 14. Correlation y causality
+## 16. Correlation y causality
 
-Desde el primer día, cada operación importante debe ser rastreable.
-
-Valores conceptuales:
+Toda operación importante rastreable mediante valores conceptuales:
 
 ```text
 request_id
+reservation_id
 correlation_id
 causation_id
 principal_id
@@ -533,7 +628,7 @@ request
       ↓
 workflow decision
       ↓
-tool/capability call
+capability/tool call
       ↓
 transaction
       ↓
@@ -544,19 +639,17 @@ outbox
 external callback
 ```
 
-Debe ser posible reconstruir esa cadena sin depender de memoria humana.
-
-Esto es especialmente importante cuando agentes de IA son clientes del API.
+Debe reconstruirse sin memoria humana, especialmente cuando agentes de IA son clientes.
 
 ---
 
-## 15. Workflow engine: pequeño y explícito
+## 17. Workflow engine: pequeño y explícito
 
-No construir Temporal, BPMN o un workflow designer universal como parte del MVP.
+No construir Temporal, BPMN o workflow designer universal como parte del MVP.
 
-V2 comienza con workflows versionados representados como state machines/código tipado.
+Workflows versionados como state machines/código tipado.
 
-Un request puede persistir como mínimo:
+Un request puede persistir:
 
 ```text
 workflow_key
@@ -567,12 +660,14 @@ status
 next_action_at
 ```
 
-Un workflow debe poder producir resultados como:
+Resultados:
 
 ```text
 need_input
 execute_capability
+create_capacity_hold
 wait_confirmation
+wait_payment
 wait_external
 wait_human
 complete
@@ -580,77 +675,311 @@ fail_recoverable
 fail_terminal
 ```
 
-Cuando aparezcan requisitos reales de durable execution mucho más complejos —timers extensos, sagas multi-servicio, fan-out, workflows de días/semanas— se evaluará una plataforma especializada mediante ADR.
-
-No construir una versión casera de Temporal por accidente.
+Plataforma durable especializada se evalúa por ADR sólo si aparecen timers extensos, sagas multi-servicio, fan-out o workflows de días/semanas que lo justifiquen.
 
 ---
 
-## 16. Scheduling como módulo, no identidad del producto
+## 18. Reservations: módulo de capacidad, no calendario tradicional
 
-Scheduling será el primer capability module importante, pero Request Engine no vuelve a ser “el booking system”.
+El módulo canónico es `reservations`.
+
+No usar `booking` como vocabulario de dominio o API.
 
 Boundary conceptual:
 
 ```text
 Request workflow
       ↓
-scheduling.search_availability
+reservations.search_availability
       ↓
-scheduling.create_offer       [cuando corresponda]
+reservations.create_hold        [cuando corresponde]
       ↓
-scheduling.create_booking
+payment/confirmation            [cuando corresponde]
       ↓
-Fulfillment references booking
+reservations.confirm
+      ↓
+admission/check-in/queue
+      ↓
+service session
+      ↓
+Fulfillment references Reservation
 ```
 
-Buenas decisiones de V1 que se mantienen:
-
-- UTC interno + IANA timezone;
-- buffers;
-- resources;
-- capacity;
-- revalidación antes del commit;
-- idempotency;
-- snapshots;
-- side effects post-commit.
-
-### PostgreSQL y conflictos temporales
-
-V2 debe aprovechar capacidades nativas de PostgreSQL cuando simplifiquen invariantes:
-
-- `timestamptz` para instantes;
-- índices compuestos y parciales;
-- range types cuando el modelo lo justifique;
-- exclusion constraints cuando puedan impedir overlaps inválidos a nivel de DB;
-- row locks/advisory locks solamente con una razón documentada.
-
-No duplicar en Python una garantía que PostgreSQL puede imponer de forma más segura y clara.
+`Reservation` representa **compromiso de capacidad**, no necesariamente exact-time appointment.
 
 ---
 
-## 17. Async Python: dónde sí y dónde no
+## 19. Availability
 
-FastAPI y los adapters externos pueden usar async porque el sistema realiza mucho I/O.
+Availability es lectura de capacidad potencial.
 
-Usar async para:
+Debe soportar diferentes modelos operacionales:
 
-- HTTP clients;
-- DB I/O si el stack elegido lo soporta de manera consistente;
-- external integrations;
-- concurrent independent reads cuando sean seguras.
+- exact slots;
+- arrival windows;
+- queue capacity/estimated wait;
+- hybrid capacity.
 
-No usar async como argumento para paralelizar mutaciones que deben mantener orden o consistencia.
+La respuesta de availability puede ser heterogénea según policy, pero debe exponerse mediante contratos tipados/discriminated unions, no JSON indefinido.
 
-La prioridad es una transacción correcta, no maximizar concurrencia artificialmente.
+Ejemplo conceptual:
+
+```text
+ScheduledOption
+WindowOption
+QueueOption
+HybridOption
+```
+
+`SearchAvailability` nunca garantiza commit futuro.
 
 ---
 
-## 18. AI boundary
+## 20. `CapacityHold`
 
-Python facilita integrar AI, pero eso aumenta el riesgo de contaminar el core.
+`CapacityHold` es una reclamación temporal de capacidad durante una operación con intención real de continuar.
 
-Regla:
+Casos:
+
+- checkout;
+- depósito;
+- confirmación humana;
+- coordinación multi-step corta.
+
+Invariantes:
+
+- expiración explícita;
+- idempotencia;
+- scope organizacional;
+- referencia a capacidad/oferta relevante;
+- no tratarlo como Reservation confirmada;
+- proceso de expiración observable y seguro.
+
+No crear holds por cada lectura de disponibilidad.
+
+---
+
+## 21. Admission policies
+
+`AdmissionPolicy` describe cómo una reservation entra al servicio.
+
+Modos iniciales:
+
+```text
+scheduled
+queue
+window
+hybrid
+```
+
+Preferir estrategia/configuración tipada sobre subclases totalmente independientes que dupliquen identidad, tenancy, audit y lifecycle.
+
+### scheduled
+
+Puede configurar:
+
+```text
+check_in_required
+early_check_in_window
+grace_period
+no_show_after
+```
+
+### queue
+
+Puede configurar:
+
+```text
+ordering_strategy
+priority_rules
+remote_join_allowed
+presence_confirmation
+estimated_service_duration
+```
+
+No asumir FIFO absoluto. El motor debe poder implementar una política estable de `priority + ordering`.
+
+### window
+
+Puede representar:
+
+```text
+window_start
+window_end
+capacity
+```
+
+sin prometer un instante exacto.
+
+### hybrid
+
+Compone comportamiento scheduled + queue, por ejemplo:
+
+```text
+scheduled slot
++ grace period
++ late_behavior = enqueue
+```
+
+También soporta coexistencia controlada de scheduled reservations y walk-ins sobre recursos compartidos.
+
+---
+
+## 22. Check-in, queue y ejecución
+
+Separar:
+
+```text
+Reservation = committed/planned capacity
+CheckIn     = presence/readiness event/state
+QueueEntry  = dynamic operational queue position/priority
+ServiceSession = actual execution
+```
+
+No sobrescribir datos planificados con tiempos reales.
+
+Ejemplo:
+
+```text
+Reservation:
+planned 10:00–10:30
+
+CheckIn:
+10:07
+
+ServiceSession:
+10:14–10:52
+```
+
+`QueueEntry` referencia Reservation y mantiene datos operacionales dinámicos como queue, priority, join/check-in time y state.
+
+En queue-only/walk-in, se crea una Reservation de compromiso queue-based y su correspondiente QueueEntry. Esto mantiene una vista uniforme de toda demanda comprometida.
+
+---
+
+## 23. Resources
+
+Separar `ResourceRequirement` y `ResourceAllocation`.
+
+```text
+Offering
+      ↓
+ResourceRequirement[]
+      ↓
+availability/resource matching
+      ↓
+Reservation
+      ↓
+ResourceAllocation[]
+```
+
+Un resource puede representar, según el módulo:
+
+```text
+person
+chair
+room
+vehicle
+equipment
+capacity pool
+```
+
+No introducir semántica vertical al core. Roles/capabilities determinan compatibilidad.
+
+PostgreSQL puede usar range types, exclusion constraints, row locks o advisory locks cuando simplifiquen garantías de exclusión/capacidad y exista razón documentada.
+
+---
+
+## 24. Reservation concurrency e invariantes
+
+La confirmación debe revalidar capacidad dentro de la transacción.
+
+Invariantes mínimas:
+
+1. tenant correcto;
+2. hold válido si es requerido;
+3. Offering/policy activos;
+4. resources compatibles;
+5. capacidad disponible;
+6. no overlaps inválidos para recursos exclusivos;
+7. capacidad agregada respetada para pools/windows/queues cuando corresponda;
+8. idempotency key coherente;
+9. snapshots comerciales/políticas persistidos;
+10. event/outbox creado en el mismo commit.
+
+No duplicar en Python una garantía que PostgreSQL puede imponer mejor mediante constraints.
+
+---
+
+## 25. Payment coordination
+
+Payments es módulo de coordinación, no accounting.
+
+Policies iniciales pueden representar:
+
+```text
+none
+optional
+deposit
+full_prepaid
+pay_on_arrival
+pay_after_service
+```
+
+Providers externos se implementan como adapters.
+
+Flujo típico:
+
+```text
+CreateCapacityHold
+      ↓
+create external payment session
+      ↓
+commit internal pending state/outbox
+      ↓
+external payment
+      ↓
+signed callback
+      ↓
+idempotent application command
+      ↓
+ConfirmReservation
+```
+
+Nunca mantener una DB transaction abierta mientras se espera un PSP.
+
+---
+
+## 26. Forms / public intake
+
+Primitivas iniciales:
+
+```text
+FormDefinition
+FormSubmission
+```
+
+Schemas de intake deben poder reutilizarse por website, agent, human UI y API.
+
+El submit puede:
+
+```text
+upsert contact
+      ↓
+create/provide request data
+      ↓
+emit event
+      ↓
+resume workflow
+```
+
+No construir inicialmente drag-and-drop builder avanzado, cientos de field types, theme engine ni conditional logic universal.
+
+---
+
+## 27. Agent boundary
+
+Python facilita IA, pero incrementa riesgo de contaminación del core.
 
 ```text
 AI interprets / proposes
@@ -669,25 +998,31 @@ authoritative transaction
 El modelo puede sugerir:
 
 ```text
-intent = "emergency_service"
+intent = reserve_offering
+offering = off_...
 fields = {...}
 ```
 
-El modelo no puede decidir por sí solo:
+No puede ejecutar writes arbitrarios.
+
+Agent tools deben ser goal-oriented, tipadas y scoped. Ejemplos:
 
 ```text
-UPDATE bookings SET ...
+search_offerings
+find_reservation_options
+prepare_reservation
+confirm_reservation
+cancel_reservation
+reschedule_reservation
 ```
 
-Los agentes reciben APIs/tools con schemas explícitos y scopes mínimos.
+No exponer tablas o repositorios directamente a modelos.
 
 ---
 
-## 19. Integraciones son adapters
+## 28. Integraciones son adapters
 
-Chatwoot, WhatsApp, LiveKit, Twilio, n8n y similares se conectan alrededor de Request Engine.
-
-Ejemplo:
+Chatwoot, WhatsApp, LiveKit, Twilio, n8n y similares viven alrededor de Request Engine.
 
 ```text
 Chatwoot event
@@ -699,105 +1034,62 @@ Request Engine API
 Request/workflow
 ```
 
-No:
+n8n puede orquestar integraciones externas y prototipos, pero no es workflow engine autoritativo.
 
-```text
-Request Engine core
-     ↓
-provision and own Chatwoot internals
-```
+LiveKit puede exponer voice agents, pero no es owner de request/reservation state.
 
-n8n puede orquestar integraciones temporales o low-code, pero **no es el workflow engine autoritativo de Request Engine**.
-
-LiveKit puede exponer voice agents, pero **no es el owner de request state**.
-
-Chatwoot puede guardar conversaciones, pero **no es el owner del trabajo estructurado**.
+Chatwoot puede guardar conversaciones, pero no es owner del trabajo estructurado.
 
 ---
 
-## 20. Forms / public intake
-
-Forms será un módulo pequeño inicialmente.
-
-Primitivas:
-
-```text
-FormDefinition
-FormSubmission
-```
-
-El submit puede desencadenar:
-
-```text
-upsert contact
-      ↓
-create/provide data to request
-      ↓
-emit event
-      ↓
-resume workflow
-```
-
-No construir en V2 inicial:
-
-- drag-and-drop builder avanzado;
-- centenares de field types;
-- theme engine;
-- conditional logic universal;
-- competitor completo de Typeform/Jotform.
-
----
-
-## 21. Security baseline
+## 29. Security baseline
 
 Desde el principio:
 
-- credentials nunca en frontend salvo credenciales deliberadamente públicas y restringidas;
-- API keys secretas almacenadas hashed, no reversibles;
+- secret credentials nunca en frontend;
+- API keys secretas almacenadas hashed;
 - scopes explícitos;
 - expiración/revocación;
 - rate limits para superficies públicas;
-- webhook signatures + anti-replay cuando corresponda;
-- encrypted secrets mediante un secrets manager/environment seguro;
+- webhook signatures + anti-replay;
+- encrypted secrets mediante secrets manager/environment seguro;
 - PII sensible cifrada adicionalmente cuando threat model/regulación lo justifique;
 - audit para operaciones privilegiadas;
 - cross-tenant tests.
 
-No diseñar seguridad exclusivamente alrededor de “URLs difíciles de adivinar”.
+No diseñar seguridad alrededor de URLs difíciles de adivinar.
 
 ---
 
-## 22. Observabilidad
-
-Request Engine debe nacer observable.
+## 30. Observabilidad
 
 Mínimo:
 
 - structured logs;
 - correlation IDs;
 - metrics básicas;
-- traces OpenTelemetry cuando aporten diagnóstico real;
+- traces OpenTelemetry cuando aporten valor;
 - health/readiness endpoints;
 - DB pool metrics;
-- worker queue/outbox lag;
-- error classification;
+- outbox lag;
+- capacity-hold expiry metrics;
+- reservation conflict/error classification;
+- queue wait/lag metrics cuando aplique;
 - sanitized request context.
 
-Nunca loggear secrets o PII completa para “hacer debugging más fácil”.
+Nunca loggear secrets o PII completa.
 
 ---
 
-## 23. Testing strategy
-
-V1 demostró demasiada superficie con pocos tests. V2 debe invertir la proporción.
-
-Prioridades:
+## 31. Testing strategy
 
 ### Unit tests
 
-- state transitions;
+- request transitions;
 - workflow decisions;
-- policies;
+- Offering policy resolution;
+- admission policies;
+- queue ordering/priority;
 - temporal calculations;
 - validation.
 
@@ -807,48 +1099,52 @@ Prioridades:
 - constraints;
 - idempotency;
 - concurrency;
-- locking;
+- capacity conflicts;
+- exclusion constraints cuando se usen;
+- hold expiry/confirmation races;
 - cross-tenant isolation;
-- booking conflict prevention;
+- queue/hybrid transitions;
 - outbox claiming/retry.
 
-SQLite no debe ser sustituto del comportamiento PostgreSQL para tests de invariantes PostgreSQL-specific.
+SQLite no sustituye PostgreSQL para invariantes PostgreSQL-specific.
 
 ### Contract tests
 
-- API schemas;
+- REST schemas;
 - generated OpenAPI;
+- agent tool schemas;
 - webhook signatures;
 - backwards compatibility relevante.
 
-### End-to-end vertical slice
+### End-to-end vertical slices
 
-No se considera V2 viable hasta demostrar el vertical slice definido en `00-product-definition.md` con dos organizaciones distintas.
+No se considera V2 viable hasta demostrar los vertical slices de `00-product-definition.md`.
 
 ---
 
-## 24. Performance philosophy
+## 32. Performance philosophy
 
 Primero integridad y observabilidad; después optimización medida.
 
-Evitar desde el comienzo patrones que sabemos que escalan mal:
+Evitar:
 
-- cargar historial completo para detectar un overlap;
-- N+1 por cada candidate slot;
+- cargar historial completo para detectar overlaps;
+- N+1 por candidate slot;
 - scans sin límites;
 - JSONB para todo;
 - synchronous remote calls dentro de transactions;
-- generar registros persistentes por cada interacción de UI si no tienen valor de negocio.
+- generar registros persistentes por cada lectura de availability;
+- recalcular colas completas innecesariamente si una estrategia incremental segura es posible.
 
-Usar PostgreSQL para hacer set-based queries y constraints cuando sea el lugar correcto.
+Usar PostgreSQL para set-based queries y constraints cuando corresponda.
 
-Introducir caches solamente después de identificar reads que realmente lo requieren.
+Caches sólo tras medir necesidad real.
 
 ---
 
-## 25. Deployment inicial
+## 33. Deployment inicial
 
-La topología mínima deseada es pequeña:
+Topología mínima:
 
 ```text
                   ┌─────────────┐
@@ -868,53 +1164,41 @@ Clients ─────────►│ FastAPI API │
                  external systems
 ```
 
-API y Worker pueden usar la misma codebase y dominio, con procesos/deployables separados.
+API y Worker usan misma codebase/dominio, con procesos separados.
 
 No Redis obligatorio.
 No RabbitMQ obligatorio.
 No Kafka obligatorio.
 No workflow platform obligatoria.
 
-Se agregan solamente cuando exista un requisito que PostgreSQL + worker no resuelva bien.
+Se agregan cuando exista un requisito que PostgreSQL + worker no resuelva bien.
 
 ---
 
-## 26. Lo que Python NO arregla
+## 34. Definition of Done para la foundation
 
-Esta decisión debe quedar explícita para evitar repetir V1 en otro lenguaje.
-
-Python no arregla:
-
-- un dominio mal definido;
-- boundaries pobres;
-- coupling a vendors;
-- ausencia de tests;
-- endpoints con demasiadas responsabilidades;
-- schemas genéricos sin disciplina;
-- premature feature expansion;
-- falta de observabilidad.
-
-Un FastAPI spaghetti monolith sería peor que un TypeScript monolith bien diseñado.
-
-El éxito de V2 depende más de preservar los boundaries que de elegir Python.
-
----
-
-## 27. Definition of Done para la foundation
-
-Antes de construir features verticales adicionales, la foundation debe demostrar:
+Antes de construir features verticales adicionales:
 
 ```text
 [ ] Python/FastAPI service bootstrapped
 [ ] PostgreSQL migrations reproducibles
 [ ] organizations/principals tenancy
 [ ] contacts
+[ ] offerings
 [ ] request_types
 [ ] requests + lifecycle
 [ ] versioned workflow interface
-[ ] scheduling minimal capability
-[ ] booking con concurrency protection
-[ ] fulfillment linked to request
+[ ] resource model
+[ ] resource requirements
+[ ] availability contracts for scheduled/window/queue/hybrid
+[ ] capacity holds + expiry
+[ ] reservations + concurrency protection
+[ ] admission policies
+[ ] check-in
+[ ] queue entries
+[ ] service sessions
+[ ] payment policy + provider adapter proof
+[ ] fulfillment linked to request/reservation
 [ ] domain events
 [ ] transactional outbox
 [ ] worker retry/idempotency
@@ -922,40 +1206,53 @@ Antes de construir features verticales adicionales, la foundation debe demostrar
 [ ] secret + public credential model
 [ ] OpenAPI generated from real schemas
 [ ] TypeScript SDK generation proof
+[ ] agent/MCP tool adapter proof
 [ ] structured logs/correlation IDs
 [ ] integration tests using PostgreSQL
-[ ] QuisqueyaTech vertical slice
+[ ] Demo Barbershop vertical slice
 [ ] Demo Plumbing vertical slice
 ```
 
-Hasta entonces, features como insurance, advanced waitlists, omnichannel provisioning o AI runtime no deben competir por prioridad.
+Hasta entonces, insurance, advanced CRM, omnichannel provisioning, generic workflow builder o AI runtime no compiten por prioridad.
 
 ---
 
-## 28. Regla arquitectónica final
+## 35. Regla arquitectónica final
 
-Ante una nueva feature, preguntar en este orden:
+Ante una nueva feature:
 
 ```text
-Does it help represent a request?
+Does it help represent what can be obtained (Offering)?
           │
-          ├─ no → likely outside Request Engine
-          │
-          ▼ yes
-Does it help determine/execute its workflow?
-          │
-          ├─ no → likely adapter/vertical concern
-          │
-          ▼ yes
-Does it need authoritative persisted state?
-          │
-          ├─ no → keep it at the edge when possible
-          │
+          ├─ no ─┐
+          ▼ yes  │
+Does it help represent/process an intention (Request)?
+          │      │
+          ├─ no ─┤
+          ▼ yes  │
+Does it help determine/execute the workflow?
+          │      │
+          ├─ no ─┤
+          ▼ yes  │
+Does it require authoritative Request Engine state?
+          │      │
+          ├─ no ─┴─► likely edge/integration
           ▼ yes
 Core, module, or integration?
 ```
 
-La arquitectura debe permanecer subordinada a la esencia:
+Para capacidad:
+
+```text
+Availability = what could be used
+CapacityHold = what is temporarily claimed
+Reservation  = what capacity is committed
+Admission    = how access to service occurs
+ServiceSession = what actually ran
+Fulfillment  = what outcome was produced
+```
+
+La arquitectura permanece subordinada a la esencia:
 
 ```text
 Something requests something
