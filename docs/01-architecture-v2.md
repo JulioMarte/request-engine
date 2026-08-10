@@ -32,7 +32,7 @@ Su trabajo es:
 8. producir `Fulfillment` verificable;
 9. mantener trazabilidad completa.
 
-No es CRM, ERP, PBX, calendario tradicional, GPS telemetry store, shipping platform ni framework universal de agentes.
+No es CRM, ERP, PBX, calendario tradicional, GPS telemetry store, shipping platform, PSP, banco, accounting ledger ni framework universal de agentes.
 
 ---
 
@@ -54,7 +54,7 @@ El dominio incluye relaciones e invariantes fuertes alrededor de:
 - capacity holds/reservations/allocations;
 - check-ins/queues/service sessions;
 - destinations/service areas/dispatches;
-- payment coordination;
+- payment policies/requirements/attempts/transactions/allocations/reconciliation/refunds;
 - idempotency/audit/events/outbox.
 
 PostgreSQL aporta constraints, locking, range types, partial indexes, temporal queries y JSONB cuando realmente corresponde.
@@ -141,6 +141,10 @@ src/request_engine/
 │   ├── postgres/
 │   ├── webhooks/
 │   ├── integrations/
+│   │   ├── payments/
+│   │   ├── banking/
+│   │   ├── maps/
+│   │   └── tracking/
 │   ├── media/
 │   └── observability/
 └── workers/
@@ -195,7 +199,7 @@ REST favorece composición. Agent tools favorecen objetivos de negocio, inputs p
 
 No convertir PostgreSQL en document store accidental.
 
-Campos de identidad, relaciones, lifecycle, constraints, scheduling y reporting operacional deben ser columnas/tables tipadas.
+Campos de identidad, relaciones, lifecycle, constraints, scheduling, pagos y reporting operacional deben ser columnas/tables tipadas.
 
 JSONB queda para metadata dinámica, snapshots o payloads cuyo schema varía de forma legítima.
 
@@ -209,9 +213,15 @@ off_...
 req_...
 res_...
 dsp_...
+prq_...   payment requirement
+pat_...   payment attempt
+ptx_...   payment transaction
+rfd_...   refund
 ful_...
 evt_...
 ```
+
+External provider IDs permanecen mappings/references.
 
 ---
 
@@ -267,8 +277,24 @@ UpdateDispatchEta
 MarkDispatchArrived
 StartServiceSession
 CompleteServiceSession
+
+CreatePaymentRequirement
+CreatePaymentAttempt
+SubmitPaymentEvidence
+RecordProviderPaymentEvent
+RecordBankTransaction
+VerifyBankTransferManually
+RecordCashReceived
+AllocatePaymentTransaction
+OpenPaymentReconciliationCase
+ResolvePaymentReconciliationCase
+RequestRefund
+RecordRefundProviderEvent
+
 CompleteRequest
 ```
+
+`VerifyBankTransferManually`, `RecordCashReceived`, refund commands y reconciliation overrides requieren scopes privilegiados y audit explícito.
 
 ### Queries
 
@@ -284,9 +310,17 @@ ListReservations
 GetQueueState
 GetDispatch
 GetServiceStatus
+
+GetPaymentRequirement
+ListPaymentRequirements
+GetPaymentOptions
+GetPaymentAttempt
+GetPaymentStatus
+ListUnallocatedTransactions
+GetReconciliationCase
 ```
 
-Queries no producen side effects. `SearchAvailability` no crea holds/reservations.
+Queries no producen side effects. `SearchAvailability` no crea holds/reservations. `GetPaymentStatus` no verifica ni cambia dinero.
 
 ---
 
@@ -296,13 +330,15 @@ Queries no producen side effects. `SearchAvailability` no crea holds/reservation
 BEGIN
   validate current state
   resolve authoritative policy
-  lock/revalidate capacity where needed
+  lock/revalidate capacity or financial allocation where needed
   mutate internal state
   insert domain event/outbox
 COMMIT
 ```
 
-Nunca mantener transacción abierta mientras se llama payment provider, maps/routing provider, WhatsApp, LiveKit, n8n u otro sistema remoto.
+Nunca mantener transacción abierta mientras se llama payment provider, bank API, maps/routing provider, WhatsApp, LiveKit, n8n u otro sistema remoto.
+
+Callbacks externos se validan primero y luego ejecutan commands transaccionales cortos.
 
 ---
 
@@ -313,6 +349,8 @@ PostgreSQL transactional outbox inicialmente.
 Worker con claiming seguro (`FOR UPDATE SKIP LOCKED` u otra estrategia justificada), retry/backoff, dead-letter/failure state, idempotent delivery y event versioning.
 
 Queue externa sólo por necesidad medida.
+
+Payments usa el mismo principio: crear una payment session externa, enviar notifications o solicitar reconciliation bancaria no debe mantener una business transaction abierta.
 
 ---
 
@@ -337,10 +375,34 @@ dispatch.eta_updated
 dispatch.arrived
 service_session.started
 service_session.completed
+
+payment_requirement.created
+payment_attempt.created
+payment.instructions_ready
+payment.evidence_submitted
+payment.processing
+payment.authorized
+payment.transaction_received
+payment.partial_received
+payment.received
+payment.verification_failed
+payment.failed
+payment.expired
+payment.unallocated_funds_detected
+payment_requirement.partially_satisfied
+payment_requirement.satisfied
+payment.reconciliation_required
+payment.refund_requested
+payment.refund_processing
+payment.refunded
+payment.refund_failed
+
 request.fulfilled
 ```
 
 Audit responde quién hizo qué y por qué. Logs son diagnóstico técnico. No confundirlos.
+
+En payments, audit debe poder distinguir `provider_webhook`, `provider_api`, `bank_feed`, `bank_api`, `manual_bank_verification`, `cash_verification` y `external_system` como source de una mutación financiera.
 
 ---
 
@@ -352,6 +414,9 @@ Propagar cuando corresponda:
 request_id
 reservation_id
 dispatch_id
+payment_requirement_id
+payment_attempt_id
+payment_transaction_id
 correlation_id
 causation_id
 principal_id
@@ -365,7 +430,10 @@ input/conversation
  → Request
  → workflow decision
  → reservation/resource decision
- → dispatch/payment/tool action
+ → PaymentRequirement / payment attempt
+ → provider/bank/manual financial verification
+ → PaymentAllocation
+ → dispatch/tool action
  → transaction
  → event/outbox
  → callback
@@ -393,8 +461,10 @@ Resultados posibles:
 need_input
 execute_capability
 create_capacity_hold
+create_payment_requirement
 wait_confirmation
 wait_payment
+wait_payment_verification
 wait_external
 wait_human
 complete
@@ -465,6 +535,8 @@ Invariantes:
 - no tratar como Reservation confirmada.
 
 No crear holds durante browsing normal.
+
+Un pago que llega después de expiry **no revive** el hold. El dinero y la capacidad siguen lifecycles separados.
 
 ---
 
@@ -693,8 +765,6 @@ Cuándo un Offering/Resource/pool puede ser reservado.
 
 Pueden diferir.
 
-Ejemplo:
-
 ```text
 Office BusinessHours: Mon–Fri 09:00–17:00
 Emergency Offering AvailabilitySchedule: 24/7
@@ -749,8 +819,6 @@ Resource / Pool
 ```
 
 Effective availability se calcula por composición/intersección de restricciones aplicables, luego exceptions y capacidad ya comprometida.
-
-Regla de seguridad semántica:
 
 > Un child schedule puede restringir un parent scope, pero no abrir silenciosamente un parent cerrado.
 
@@ -1070,19 +1138,75 @@ Confirmación revalida dentro de la transacción:
 7. hold válido cuando requerido;
 8. no overlaps para exclusive resources;
 9. remaining units para capacity resources/pools;
-10. idempotency key coherente;
-11. snapshots persistidos;
-12. outbox/event en mismo commit.
+10. payment gate satisfecho cuando la policy lo exige;
+11. idempotency key coherente;
+12. snapshots persistidos;
+13. outbox/event en mismo commit.
 
 Usar PostgreSQL constraints/ranges/locking donde simplifiquen garantías.
 
+La comprobación de payment gate usa estado interno ya reconciliado; **no llama al PSP/banco dentro de esta transacción**.
+
 ---
 
-## 41. Payment coordination
+## 41. Payments: arquitectura provider-agnostic y verificable
 
-Payments sigue siendo módulo de coordinación, no accounting.
+Payments es un módulo de coordinación financiera para workflows, **no accounting, PSP ni card vault**.
 
-Policies conceptuales:
+Separación:
+
+```text
+Pricing
+    ↓
+PaymentPolicy
+    ↓
+PaymentRequirement
+    ↓
+PaymentAttempt
+    ↓
+PaymentInstruction / PaymentEvidence?
+    ↓
+PaymentTransaction
+    ↓
+PaymentAllocation
+    ↓
+Requirement state
+    ↓
+Workflow continues
+```
+
+Invariantes:
+
+```text
+PaymentEvidence ≠ money received
+browser success ≠ authoritative confirmation
+PaymentAttempt ≠ PaymentTransaction
+PaymentTransaction ≠ PaymentAllocation
+PaymentRequirement ≠ Invoice
+```
+
+### 41.1 `PaymentPolicy`
+
+Configuration reusable asociada al Offering/workflow/organization según el caso.
+
+Conceptualmente:
+
+```text
+id
+organization_id
+name
+mode
+amount_rule
+payment_timing
+reservation_gate
+capacity_strategy
+accepted_method_configuration_ids
+status
+version
+metadata
+```
+
+Modes iniciales:
 
 ```text
 none
@@ -1093,9 +1217,546 @@ pay_on_arrival
 pay_after_service
 ```
 
-Nunca esperar PSP dentro de una DB transaction.
+Capacity strategies iniciales:
 
-El modelo definitivo de `PaymentRequirement`, payment session/intent y payment record queda explícitamente pendiente de la siguiente sesión de dominio antes de cerrar foundation.
+```text
+hold_until_payment
+revalidate_after_payment
+confirm_then_collect
+```
+
+Policy version/snapshot relevante debe persistirse cuando una operación la consume.
+
+### 41.2 `Money`
+
+Value object obligatorio para toda cantidad:
+
+```text
+amount
+currency
+```
+
+Nunca float binario.
+
+Persistencia debe ser exacta. La representación concreta (`amount_minor BIGINT` + currency ISO o `NUMERIC` + currency) debe fijarse una vez mediante ADR/implementation convention y ser uniforme en todo el módulo.
+
+No FX implícito. Distinta currency requiere policy/conversion explícita.
+
+### 41.3 `PaymentRequirement`
+
+Obligación concreta.
+
+Campos conceptuales:
+
+```text
+id
+public_id
+organization_id
+request_id nullable
+reservation_id nullable
+purpose
+amount
+currency
+status
+due_at nullable
+policy_snapshot
+created_at
+updated_at
+satisfied_at nullable
+metadata
+```
+
+Estados:
+
+```text
+open
+partially_satisfied
+satisfied
+waived
+cancelled
+```
+
+`overdue` derivado de `due_at`.
+
+La cantidad satisfied debe derivarse de allocations válidas, no de un boolean mutable aislado.
+
+### 41.4 `PaymentMethodConfiguration`
+
+Configuración tenant-scoped de métodos aceptados.
+
+```text
+id
+organization_id
+method_family
+provider_connection_id nullable
+display_name
+supported_currencies
+verification_mode
+status
+configuration/reference
+```
+
+Method families:
+
+```text
+card
+bank_transfer
+cash
+wallet
+external
+custom
+```
+
+`method_family` no es provider. Stripe/Azul/PayPal/Bank API/manual son adapters/configurations.
+
+Sensitive provider configuration no se almacena como JSON público; references a secrets/config segura.
+
+### 41.5 `PaymentProviderConnection`
+
+Representa conexión/configuración operacional hacia PSP/banco/external payment system.
+
+Conceptualmente:
+
+```text
+id
+organization_id
+provider_key
+status
+secret_reference
+webhook_configuration/reference
+capabilities
+metadata_safe
+```
+
+No guardar secretos legibles en rows/API responses.
+
+Providers implementan adapters; el dominio no hace switches por marca.
+
+### 41.6 Adapter contract
+
+Contrato conceptual, no necesariamente una sola interfaz gigante:
+
+```text
+create_attempt / create_session
+get_customer_action
+query_status
+handle_webhook
+cancel_or_void
+refund
+fetch_or_receive_transactions [when supported]
+```
+
+Un adapter sólo traduce provider semantics a commands/events internos. No decide business policy.
+
+### 41.7 `PaymentAttempt`
+
+Un intento de satisfacer un Requirement.
+
+```text
+id
+public_id
+organization_id
+payment_requirement_id
+payment_method_configuration_id
+status
+provider_connection_id nullable
+external_attempt_id nullable
+instruction_snapshot nullable
+created_at
+expires_at nullable
+completed_at nullable
+metadata
+```
+
+Estados conceptuales:
+
+```text
+created
+awaiting_customer_action
+evidence_submitted
+verification_pending
+processing
+authorized
+succeeded
+failed
+cancelled
+expired
+```
+
+`Attempt.succeeded` significa que el intento produjo/identificó un resultado financiero válido según el adapter/reconciliation; satisfaction final del Requirement sigue derivándose de Transactions + Allocations.
+
+### 41.8 `PaymentInstruction`
+
+Puede modelarse como owned snapshot/versioned payload del Attempt o entidad separada si reutilización/lifecycle lo exige.
+
+Debe tener contratos discriminados, no JSON indefinido:
+
+```text
+BankTransferInstruction
+RedirectInstruction
+QrInstruction
+CashInstruction
+ExternalInstruction
+```
+
+Bank transfer snapshot puede contener:
+
+```text
+bank_name
+account_holder
+masked/display account details
+account_type
+amount/currency
+transfer_reference
+expires_at
+customer_message
+```
+
+Datos sensibles no necesarios para presentación no se exponen.
+
+Cambio futuro de cuenta bancaria no altera instrucciones históricas.
+
+### 41.9 `PaymentEvidence`
+
+Evidencia customer-supplied.
+
+```text
+id
+organization_id
+payment_attempt_id
+kind
+private_asset_reference nullable
+claimed_amount nullable
+claimed_currency nullable
+claimed_reference nullable
+claimed_at nullable
+file_hash nullable
+status
+submitted_by
+created_at
+reviewed_at nullable
+metadata
+```
+
+Estados:
+
+```text
+submitted
+under_review
+accepted_as_evidence
+rejected
+```
+
+Nunca puede, por sí sola, crear `PaymentTransaction.settled` ni satisfacer Requirement.
+
+Blobs en private object storage, no DB/public bucket. File hash sirve como señal de duplicate/reuse, no sentencia automática de fraude.
+
+### 41.10 `PaymentTransaction`
+
+Representa movimiento financiero autoritativamente observado/confirmado.
+
+```text
+id
+public_id
+organization_id
+provider_connection_id nullable
+method_family
+status
+amount
+currency
+source
+external_transaction_id nullable
+occurred_at nullable
+received_at nullable
+verified_by_principal_id nullable
+verification_metadata/reference
+created_at
+```
+
+Sources:
+
+```text
+provider_webhook
+provider_api
+bank_feed
+bank_api
+manual_bank_verification
+cash_verification
+external_system
+```
+
+Estados financieros conceptuales:
+
+```text
+pending
+authorized
+settled
+failed
+reversed
+```
+
+`authorized` y `settled` son distintos. Default: sólo `settled` puede satisfacer requirements salvo policy futura explícita que acepte authorization como gate.
+
+No borrar transacciones tras reversal/refund/dispute. Registrar el hecho posterior.
+
+Unique/idempotency constraints deben impedir duplicar el mismo external transaction/webhook dentro del mismo provider/tenant.
+
+### 41.11 Bank transfer reconciliation
+
+#### Con bank integration
+
+```text
+bank feed/webhook/API
+      ↓
+validated external event
+      ↓
+RecordBankTransaction
+      ↓
+PaymentTransaction
+      ↓
+match/reconciliation
+      ↓
+PaymentAllocation
+```
+
+#### Sin bank integration
+
+```text
+PaymentEvidence? [optional]
+      ↓
+verification_pending
+      ↓
+authorized principal independently checks bank account
+      ↓
+VerifyBankTransferManually
+      ↓
+PaymentTransaction(source=manual_bank_verification)
+```
+
+Manual verification debe capturar:
+
+```text
+principal
+verified_at
+receiving account/config reference
+bank/external reference when available
+amount/currency
+reason/note when needed
+```
+
+No existe command “accept screenshot as payment”.
+
+### 41.12 `PaymentAllocation`
+
+Join/ledger-like application table entre dinero observado y requirement, sin convertirse en accounting ledger general.
+
+```text
+id
+organization_id
+payment_transaction_id
+payment_requirement_id
+amount
+currency
+status
+created_at
+created_by / source
+reversed_at nullable
+metadata
+```
+
+Debe garantizar:
+
+- currency compatible o conversion explícita;
+- suma de allocations activas no excede monto aplicable de Transaction salvo modelo documentado;
+- satisfaction del Requirement deriva de suma de allocations válidas;
+- allocation es idempotente/reconcilable;
+- reversal/refund puede requerir ajuste/reversal de allocation sin borrar historia.
+
+Soporta partial payments, multiple transactions, one transaction across requirements y overpayment/unallocated funds.
+
+### 41.13 `ReconciliationCase`
+
+Entidad/aggregate operacional cuando no existe matching seguro.
+
+```text
+id
+public_id
+organization_id
+status
+reason
+payment_transaction_id nullable
+payment_attempt_id nullable
+candidate_requirement_ids/reference
+resolution
+resolved_by nullable
+resolved_at nullable
+created_at
+metadata
+```
+
+Reasons iniciales:
+
+```text
+missing_reference
+ambiguous_match
+unknown_attempt
+late_payment
+unallocated_overpayment
+provider_mismatch
+manual_review_required
+```
+
+No auto-asignar si el matching es ambiguo.
+
+### 41.14 Pago tardío versus Reservation
+
+Caso:
+
+```text
+CapacityHold expired
+PaymentTransaction settled later
+```
+
+Resultado:
+
+```text
+money remains real/recorded
+Reservation remains unconfirmed
+workflow enters reconciliation/revalidation
+```
+
+`revalidate_after_payment` puede volver a ejecutar availability/capacity selection.
+
+Nunca confirmar el slot viejo sin revalidar.
+
+### 41.15 Cash
+
+Cash usa el mismo modelo financiero:
+
+```text
+PaymentAttempt(method_family=cash)
+      ↓
+authorized principal receives cash
+      ↓
+RecordCashReceived
+      ↓
+PaymentTransaction(source=cash_verification)
+      ↓
+PaymentAllocation
+```
+
+No crear special boolean `cash_paid` fuera del modelo.
+
+### 41.16 Provider redirects y webhooks
+
+Una success/cancel URL de browser es UX, no autoridad.
+
+Authority:
+
+```text
+signed provider webhook
+server-to-server provider API
+bank API/feed
+manual independent verification
+```
+
+Webhook handling:
+
+1. authenticate/signature validation;
+2. anti-replay/provider event dedupe;
+3. normalize to internal command;
+4. idempotent transaction;
+5. event/outbox;
+6. acknowledge provider.
+
+Nunca ejecutar business mutation autoritativa sólo porque el browser afirma `success=true`.
+
+### 41.17 Refund
+
+Refund lifecycle separado:
+
+```text
+id
+public_id
+organization_id
+payment_transaction_id
+amount
+currency
+status
+provider_connection_id nullable
+external_refund_id nullable
+requested_by
+reason nullable
+created_at
+completed_at nullable
+```
+
+Estados:
+
+```text
+requested
+processing
+succeeded
+failed
+cancelled
+```
+
+Partial refund permitido.
+
+Void/cancel de autorización no capturada no es Refund.
+
+Refund/reversal debe reconciliar impacto sobre PaymentAllocations/Requirements según policy, sin borrar historia.
+
+### 41.18 Provider-independent state mapping
+
+Cada adapter mantiene mapping explícito desde provider states a estados canónicos.
+
+No permitir que provider-specific states aparezcan como condición de workflow en domain code:
+
+```text
+if stripe_status == ...  # no
+```
+
+Workflow consulta:
+
+```text
+PaymentAttempt.status
+PaymentTransaction.status
+PaymentRequirement.status
+```
+
+Raw provider payloads pueden conservarse sólo cuando sean necesarios para audit/debug y con retention/security apropiados; no deben ser la fuente primaria de queries de negocio.
+
+### 41.19 Idempotency y duplicates
+
+Idempotency es crítica para:
+
+```text
+CreatePaymentRequirement
+CreatePaymentAttempt
+provider webhooks
+bank transaction ingestion
+manual verification
+PaymentAllocation
+refund creation/callbacks
+```
+
+Same idempotency key + materially different payload = explicit conflict.
+
+Provider event ID / external transaction ID debe deduplicarse bajo provider + tenant scope cuando sea estable.
+
+### 41.20 Payment evidence/storage security
+
+- PAN/CVV nunca en Request Engine;
+- provider token/reference en su lugar;
+- bank/PSP secrets en secret manager/config segura;
+- PaymentEvidence privado;
+- signed short-lived URLs para acceso cuando corresponda;
+- audit de acceso/verification sensible;
+- scopes separados `payments.read`, `payments.create`, `payments.verify`, `payments.refund`, `payments.reconcile` según surface;
+- no PII financiera completa en logs;
+- agent tools no exponen datos bancarios internos innecesarios;
+- instrucciones públicas exponen sólo lo necesario para ejecutar el método.
 
 ---
 
@@ -1121,19 +1782,27 @@ find_reservation_options
 prepare_reservation
 confirm_reservation
 get_service_status
+get_payment_options
+start_payment
+get_payment_status
+submit_payment_evidence
 cancel_reservation
 reschedule_reservation
 ```
 
-El modelo no recibe access a tables, resource graph internals, raw telemetry ni arbitrary writes.
+El modelo no recibe access a tables, resource graph internals, raw telemetry, PSP internals, bank feeds ni arbitrary writes.
+
+En particular, no se expone al modelo una tool genérica `mark_payment_paid`. Verification/refund/reconciliation requieren deterministic commands + scopes y, cuando corresponde, principal humano o trusted provider callback.
 
 ---
 
 ## 44. Integraciones
 
-Chatwoot, LiveKit, WhatsApp, Twilio, n8n, maps providers, media storage, tracking providers y PSPs son adapters.
+Chatwoot, LiveKit, WhatsApp, Twilio, n8n, maps providers, media storage, tracking providers, banks y PSPs son adapters.
 
-n8n puede experimentar con integrations pero no controla request/reservation state autoritativo.
+n8n puede experimentar con integrations pero no controla request/reservation/payment state autoritativo.
+
+Payment provider adapters traducen provider semantics; no contienen PaymentPolicy de negocio.
 
 ---
 
@@ -1149,11 +1818,16 @@ n8n puede experimentar con integrations pero no controla request/reservation sta
 - cross-tenant tests;
 - location/tracking data scoped appropriately;
 - public tracking tokens expose only minimum necessary data;
-- no raw secrets/PII/GPS trails in logs.
+- no raw secrets/PII/GPS trails in logs;
+- PAN/CVV never stored;
+- PaymentEvidence private;
+- bank/PSP credentials never exposed to browser/agents;
+- manual payment verification requires privileged principal;
+- refunds/reconciliation have distinct scopes from normal payment initiation.
 
 ---
 
-## 46. Observability
+## 46. Observabilidad
 
 Mínimo:
 
@@ -1168,6 +1842,11 @@ Mínimo:
 - queue wait metrics;
 - dispatch state/ETA update failures;
 - external provider error classification;
+- payment webhook validation/dedupe failures;
+- payment reconciliation queue depth/age;
+- payment verification latency;
+- unallocated funds count/amount metrics without leaking PII;
+- refund failures;
 - sanitized context.
 
 Telemetry técnica no sustituye domain events/audit.
@@ -1188,7 +1867,14 @@ Telemetry técnica no sustituye domain events/audit.
 - queue priority;
 - ResourceRequirement matching;
 - service-area validation;
-- Dispatch transitions.
+- Dispatch transitions;
+- PaymentPolicy resolution;
+- PaymentRequirement state derivation;
+- PaymentAttempt transitions;
+- PaymentAllocation math;
+- partial/overpayment behavior;
+- late-payment capacity strategy;
+- refund lifecycle.
 
 ### PostgreSQL integration
 
@@ -1201,19 +1887,40 @@ Telemetry técnica no sustituye domain events/audit.
 - schedule/exception edge cases;
 - cross-tenant isolation;
 - pool allocations/late assignment;
-- outbox claiming/retry.
+- outbox claiming/retry;
+- duplicate provider webhook ingestion;
+- duplicate bank transaction ingestion;
+- concurrent PaymentAllocations cannot overspend transaction;
+- concurrent allocations cannot incorrectly oversatisfy requirement;
+- manual verification audit/scopes;
+- payment arrives after CapacityHold expiry;
+- refund/allocation reconciliation.
 
 ### Contract
 
 - REST/OpenAPI;
 - agent schemas;
 - webhook signatures;
+- provider adapter normalization contracts;
 - public location/tracking projections;
+- payment instruction discriminated schemas;
 - backwards compatibility where relevant.
 
 ### End-to-end
 
 Demo Barbershop + Demo Plumbing vertical slices are mandatory.
+
+Payments E2E must include at least:
+
+```text
+card/provider success path
+cash/manual verification path
+bank-transfer instructions + evidence + independent verification
+bank transfer not found / verification_failed
+partial payment or allocation proof
+late payment after hold expiry
+refund proof
+```
 
 ---
 
@@ -1229,7 +1936,10 @@ Evitar:
 - recalcular colas completas innecesariamente;
 - almacenar raw GPS stream;
 - consultar remote routing/maps dentro de reservation transaction;
-- JSONB para relaciones centrales.
+- consultar PSP/bank synchronously dentro de reservation/payment allocation transaction cuando un callback/projection es suficiente;
+- full scans para matching de bank transactions;
+- JSONB para relaciones centrales;
+- guardar full provider payloads indefinidamente sin necesidad.
 
 Usar set-based SQL, indices y constraints.
 
@@ -1253,7 +1963,9 @@ API y Worker comparten codebase/dominio con procesos separados.
 
 No Redis/RabbitMQ/Kafka/Temporal obligatorios.
 
-Media blobs y tracking telemetry, cuando existan, usan sistemas especializados externos; Request Engine conserva references/projections relevantes.
+Media blobs, PaymentEvidence y tracking telemetry usan storage/sistemas especializados; Request Engine conserva references/projections relevantes.
+
+PSP/bank callbacks entran por endpoints/adapters dedicados y ejecutan application commands idempotentes.
 
 ---
 
@@ -1292,7 +2004,27 @@ Media blobs y tracking telemetry, cuando existan, usan sistemas especializados e
 [ ] ServiceArea validation
 [ ] Dispatch lifecycle
 [ ] dispatch status/ETA/tracking-reference projection
-[ ] payment policy + provider adapter proof
+
+[ ] PaymentPolicy
+[ ] exact Money representation convention
+[ ] PaymentMethodConfiguration
+[ ] PaymentProviderConnection/adapter boundary
+[ ] PaymentRequirement
+[ ] PaymentAttempt lifecycle
+[ ] typed PaymentInstruction snapshots
+[ ] private PaymentEvidence references
+[ ] PaymentTransaction authority/source model
+[ ] PaymentAllocation + partial/multi/overpayment proof
+[ ] bank-transfer reference/instructions flow
+[ ] automated provider callback proof
+[ ] manual independent bank verification flow + audit
+[ ] cash verification flow
+[ ] ReconciliationCase
+[ ] late-payment after hold-expiry handling
+[ ] Refund lifecycle
+[ ] provider webhook signature + dedupe + idempotency proof
+[ ] payment privileged scopes
+
 [ ] Fulfillment linked to Request/Reservation
 [ ] domain events
 [ ] transactional outbox
@@ -1308,7 +2040,7 @@ Media blobs y tracking telemetry, cuando existan, usan sistemas especializados e
 [ ] Demo Plumbing vertical slice
 ```
 
-Payments domain remains the last major model to mature before freezing this foundation.
+La foundation se considera conceptualmente madura cuando estos elementos demuestran que capacity y money pueden coordinarse sin convertir Request Engine en scheduler universal, PSP o ERP.
 
 ---
 
@@ -1338,11 +2070,25 @@ Admission     = how access to service occurs
 Para lugar/ejecución:
 
 ```text
-Location      = where the organization operates/receives
-Destination   = where this specific work must occur
-Dispatch      = movement/coordination toward Destination
+Location       = where the organization operates/receives
+Destination    = where this specific work must occur
+Dispatch       = movement/coordination toward Destination
 ServiceSession = actual execution
-Fulfillment   = verified outcome
+Fulfillment    = verified outcome
 ```
 
-Request Engine debe saber **qué necesita ocurrir, si puede ocurrir válidamente, qué capacidad fue comprometida y cuál fue el resultado**. No debe convertirse en todos los sistemas especializados que participan alrededor de ese proceso.
+Para pagos:
+
+```text
+PaymentPolicy      = how/when payment is required
+PaymentRequirement = concrete money obligation
+PaymentAttempt     = one method-specific attempt
+PaymentInstruction = what the payer was told to do
+PaymentEvidence    = supporting evidence, never money by itself
+PaymentTransaction = authoritative observed financial movement
+PaymentAllocation  = how verified money satisfies requirements
+ReconciliationCase = ambiguity requiring explicit resolution
+Refund             = explicit return-of-funds lifecycle
+```
+
+Request Engine debe saber **qué necesita ocurrir, si puede ocurrir válidamente, qué capacidad fue comprometida, qué obligación financiera existe, qué dinero fue realmente verificado/aplicado y cuál fue el resultado**. No debe convertirse en todos los sistemas especializados que participan alrededor de ese proceso.
