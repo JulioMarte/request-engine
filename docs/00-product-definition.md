@@ -28,11 +28,9 @@ Request Engine no existe para “tener conversaciones”. Existe para **converti
 
 ## 2. Producto headless y developer-first
 
-La primera fase de Request Engine es **API-first y headless**.
+La primera fase es **API-first y headless**.
 
-El primer consumidor es un desarrollador que combina Request Engine con otras herramientas para construir soluciones específicas para negocios. La interfaz que vea el usuario final puede ser un portal, website, mensaje, llamada, dashboard, widget o cualquier otra experiencia apropiada para el problema.
-
-Principio:
+El primer consumidor es un desarrollador que combina Request Engine con otras herramientas para construir soluciones específicas para negocios. La interfaz que vea el usuario final puede ser un portal, website, mensaje, llamada, dashboard, widget o cualquier otra experiencia apropiada.
 
 ```text
 End user sees
@@ -48,11 +46,11 @@ Product-specific experience
         └── other systems
 ```
 
-El usuario final **no necesita conocer las tuberías**.
+El usuario final no necesita conocer las tuberías.
 
 A futuro Request Engine puede convertirse en SaaS para terceros, pero el dominio y los contratos deben ser correctos antes de construir una experiencia de configuración universal.
 
-Una developer console interna para inspeccionar organizaciones, credenciales, offerings, requests, reservations, eventos y webhooks es compatible con esta definición; no convierte a la UI en el centro del producto.
+Una developer console interna para inspeccionar organizations, credentials, offerings, requests, reservations, resources, locations, dispatches, events y webhooks es compatible con esta definición; no convierte a la UI en el centro del producto.
 
 ---
 
@@ -61,7 +59,7 @@ Una developer console interna para inspeccionar organizaciones, credenciales, of
 Los negocios reciben necesidades desde muchos canales:
 
 - websites;
-- formularios;
+- forms;
 - teléfono;
 - WhatsApp;
 - chat;
@@ -76,18 +74,20 @@ Aunque el canal cambia, el negocio necesita resolver preguntas similares:
 2. ¿Qué quiere conseguir?
 3. ¿Qué ofrece la organización que puede satisfacer esa intención?
 4. ¿Qué información falta?
-5. ¿Qué reglas y políticas aplican?
-6. ¿Qué workflow debe ejecutarse?
-7. ¿Qué capacidad o recursos deben reservarse?
-8. ¿Qué acciones pueden ejecutarse automáticamente?
-9. ¿Qué requiere confirmación, pago o intervención humana?
-10. ¿Cuál fue el resultado final?
+5. ¿Dónde puede prestarse o recibirse el servicio?
+6. ¿Cuándo existe capacidad real?
+7. ¿Qué recursos son necesarios?
+8. ¿Qué reglas y políticas aplican?
+9. ¿Qué workflow debe ejecutarse?
+10. ¿Qué requiere confirmación, pago o intervención humana?
+11. Si el servicio ocurre fuera de una location, ¿qué debe desplazarse y hacia dónde?
+12. ¿Cuál fue el resultado final?
 
-Request Engine proporciona una capa común para resolver esas preguntas sin duplicar lógica de negocio en cada website, bot, flujo de n8n, portal o agente de voz.
+Request Engine proporciona una capa común para responder esas preguntas sin duplicar lógica de negocio en cada website, bot, flujo de n8n, portal o agente de voz.
 
 ---
 
-## 4. La unidad fundamental: `Request`
+## 4. `Request`: la unidad de intención procesable
 
 Un `Request` representa **una intención concreta y procesable que una organización debe atender**.
 
@@ -103,8 +103,6 @@ Ejemplos:
 ```
 
 `Request` no significa “cualquier dato del sistema”. No representa un pago, una métrica web, un producto ni una persona.
-
-La regla es:
 
 > **Request puede representar cualquier necesidad procesable, no cualquier cosa existente.**
 
@@ -143,6 +141,8 @@ Offering
 ├── intake requirements
 ├── resource requirements
 ├── reservation behavior
+├── availability restrictions
+├── location/service-area compatibility
 ├── payment policy
 └── module-specific configuration
 ```
@@ -156,75 +156,18 @@ package
 custom
 ```
 
-pero `kind` no debe producir una mega-entidad con cientos de campos nullable.
-
-Los comportamientos especializados pertenecen a módulos/capabilities relacionados.
-
-Ejemplo:
-
-```text
-Offering: Haircut
-
-pricing:
-  fixed: 800 DOP
-
-reservation:
-  nominal_duration: 30m
-
-resource_requirements:
-  barber: 1
-  chair: 1
-
-payment_policy:
-  pay_after_service
-```
-
-Otro:
-
-```text
-Offering: Business Website
-
-pricing:
-  quote_required: true
-
-reservation:
-  none
-
-fulfillment:
-  project/deliverable
-```
-
-El API y los agentes pueden hablar consistentemente en términos de `offering_id` sin perder especialización interna.
+pero no debe producir una mega-entidad con cientos de campos nullable. Los comportamientos especializados pertenecen a módulos/capabilities relacionados.
 
 ---
 
 ## 6. `RequestType`: qué quiere lograr el solicitante
 
-`Offering` y `RequestType` no representan lo mismo.
-
 ```text
-Offering   = what the organization provides
+Offering    = what the organization provides
 RequestType = what the requester wants to accomplish
 ```
 
-Ejemplo:
-
-```text
-Offering: Haircut
-
-RequestType: reserve_offering
-RequestType: request_quote
-RequestType: request_information
-```
-
-Para actuar sobre una reservación existente:
-
-```text
-reschedule_reservation
-cancel_reservation
-```
-
-Se adoptan **RequestTypes relativamente genéricos**, evitando crear un tipo diferente para cada offering:
+RequestTypes relativamente genéricos:
 
 ```text
 reserve_offering
@@ -237,7 +180,7 @@ cancel_reservation
 submit_intake
 ```
 
-La especialización del comportamiento surge de:
+La especialización surge de:
 
 ```text
 RequestType
@@ -245,24 +188,13 @@ RequestType
 Offering
     +
 Organization policies
+    +
+Request context
     ↓
 Workflow version
 ```
 
-Así, `reserve_offering + Haircut` puede usar un workflow estándar mientras `reserve_offering + Dental Surgery` puede resolver a un workflow especializado sin inventar cientos de RequestTypes.
-
-Un `RequestType` puede describir conceptualmente:
-
-```text
-id
-organizationId
-name
-inputSchema
-workflowKey/defaultWorkflowKey
-policies
-status
-version
-```
+Así, `reserve_offering + Haircut` puede usar un workflow estándar mientras otro Offering puede resolver a un workflow especializado sin inventar cientos de RequestTypes.
 
 ---
 
@@ -295,12 +227,18 @@ version
                               │ deterministic rules │
                               └──────────┬──────────┘
                                          │
-                         ┌───────────────┼────────────────┐
-                         ▼               ▼                ▼
-                    Reservations       Quotes          Handoff
-                    / Capacity        / Pricing        / Tasks
-                         │               │                │
-                         └───────────────┼────────────────┘
+                    ┌────────────────────┼─────────────────────┐
+                    ▼                    ▼                     ▼
+               Reservations           Quotes              Handoff
+               / Capacity           / Pricing             / Tasks
+                    │                    │                     │
+                    └────────────────────┼─────────────────────┘
+                                         ▼
+                                   Dispatch?
+                                         │
+                                         ▼
+                                ServiceSession?
+                                         │
                                          ▼
                               ┌─────────────────────┐
                               │     FULFILLMENT     │
@@ -311,45 +249,15 @@ version
                                     EVENTS / AUDIT
 ```
 
-Los canales son **adaptadores**. No deben poseer la lógica autoritativa del negocio.
+Los canales son adapters. No poseen la lógica autoritativa del negocio.
 
 ---
 
-## 8. Ciclo de vida conceptual de `Request`
+## 8. Workflow
 
-El lifecycle exacto puede evolucionar, pero el core debe poder representar como mínimo:
+Request Engine responde:
 
-```text
-received
-   ↓
-understanding
-   ↓
-collecting_information
-   ↓
-ready
-   ↓
-executing
-   ↓
-waiting_external | waiting_confirmation | waiting_human
-   ↓
-completed | failed | cancelled | handoff
-```
-
-Reglas:
-
-- una conversación puede producir cero, uno o varios requests;
-- cambiar de WhatsApp a teléfono no crea necesariamente un request nuevo;
-- el estado del request no depende del estado de Chatwoot, LiveKit, Twilio o n8n;
-- cada transición importante es auditable;
-- completar un request exige un resultado verificable o una razón explícita de terminación.
-
----
-
-## 9. Workflow: decisión y ejecución
-
-Request Engine debe responder:
-
-> Dado este `Request`, su `Offering`, la organización, sus políticas y el contexto actual, ¿qué debe ocurrir ahora?
+> Dado este `Request`, su `Offering`, la organización, sus policies y el contexto actual, ¿qué debe ocurrir ahora?
 
 Un workflow puede:
 
@@ -361,17 +269,16 @@ Un workflow puede:
 6. solicitar confirmación o pago;
 7. esperar un callback;
 8. crear una tarea humana;
-9. completar la solicitud;
-10. fallar de forma recuperable;
-11. hacer handoff.
+9. crear/coordinar un Dispatch;
+10. completar la solicitud;
+11. fallar de forma recuperable;
+12. hacer handoff.
 
-No construir inicialmente BPMN, un editor visual universal ni un clon de n8n/Temporal. La primera versión favorece workflows tipados, versionados y testeables en código/configuración.
+No construir inicialmente BPMN, un editor universal ni un clon de n8n/Temporal. La primera versión favorece workflows tipados, versionados y testeables en código/configuración.
 
 ---
 
-## 10. Capabilities y módulos
-
-Request Engine es extensible mediante **capabilities deterministas**.
+## 9. Capabilities
 
 Ejemplos:
 
@@ -384,9 +291,15 @@ reservations.cancel
 reservations.checkIn
 reservations.joinQueue
 
+locations.getDetails
+locations.getCurrentHours
+
+dispatch.assign
+dispatch.markEnRoute
+dispatch.markArrived
+
 quotes.createDraft
 quotes.send
-
 contacts.upsert
 notifications.send
 handoff.createTask
@@ -394,35 +307,15 @@ handoff.createTask
 
 Un workflow consume capabilities. Los canales y agentes consumen Request Engine.
 
-Dependencia correcta:
-
-```text
-LiveKit ───────┐
-WhatsApp ──────┤
-Website ───────┼──► Request Engine ───► capability modules
-Admin UI ──────┤
-External API ──┘
-```
-
-No:
-
-```text
-Request Engine core
-   ├── knows LiveKit internals
-   ├── provisions Chatwoot
-   ├── depends on n8n
-   └── contains vertical-specific models
-```
-
 ---
 
-## 11. `Reservation`: compromiso de capacidad
+## 10. `Reservation`: compromiso de capacidad
 
 `Reservation` es la primitiva canónica para representar **un compromiso de capacidad de una organización para atender una necesidad**.
 
 No significa necesariamente una cita con hora exacta.
 
-Una reservation puede representar:
+Puede representar:
 
 ```text
 exact time slot
@@ -431,113 +324,65 @@ queue-based commitment
 hybrid scheduled + queue behavior
 ```
 
-Principio:
-
 > **Availability pregunta qué capacidad podría utilizarse. Reservation expresa qué capacidad ya fue comprometida. Admission determina cómo el solicitante entra efectivamente al servicio.**
 
-`Reservation` puede referenciar uno o más Offerings y consumir uno o más Resources.
-
-Conceptualmente:
-
-```text
-Reservation
-├── organization
-├── request
-├── offering(s)
-├── status
-├── mode / policy references
-├── planned temporal data
-├── resource allocations
-├── commercial snapshot
-├── payment state/reference
-└── audit/correlation
-```
-
-No se usa `booking` como vocabulario canónico del dominio o API. La primitiva es `Reservation`.
+No se usa `booking` como vocabulario canónico del dominio o API.
 
 ---
 
-## 12. Availability, `CapacityHold` y confirmación
+## 11. Availability, `ReservationOption`, `CapacityHold` y confirmación
 
-Separar tres conceptos:
+Separar:
 
 ```text
 availability.search
        ↓
-possible capacity
-
-reservation.createHold
+ReservationOption(s)
        ↓
-temporary claim
-
+reservation.createHold [when needed]
+       ↓
 reservation.confirm
-       ↓
-authoritative capacity commitment
 ```
 
 ### Availability
 
-Es una lectura. No debe crear filas persistentes por cada exploración.
+Es lectura de capacidad potencial. No crea writes por cada exploración.
+
+### `ReservationOption`
+
+Representa una opción calculada para el consumidor. Puede ser efímera/opaca y no debe asumirse como garantía futura.
 
 ### `CapacityHold`
 
-Es una reclamación temporal de capacidad cuando existe intención real de continuar, por ejemplo durante confirmación o pago.
-
-Debe tener expiración explícita y no convertirse en una reservation confirmada hasta que se satisfagan sus condiciones.
+Reclamación temporal cuando existe intención real de continuar, por ejemplo durante confirmación o pago. Tiene expiración explícita.
 
 ### Confirmation
 
-Debe revalidar capacidad transaccionalmente. Una respuesta previa de availability nunca garantiza que la capacidad siga disponible.
+Revalida capacidad transaccionalmente. Una respuesta previa de availability nunca garantiza que la capacidad siga disponible.
 
 ---
 
-## 13. `AdmissionPolicy`: cómo se entra al servicio
+## 12. `AdmissionPolicy`
 
-`AdmissionPolicy` define las reglas mediante las cuales una persona obtiene acceso efectivo a la capacidad reservada.
+Define cómo una reservation entra al servicio.
 
-Se adoptan inicialmente cuatro modos:
+Modos iniciales:
 
 ### `scheduled`
 
 Capacidad asociada a un período preciso.
 
-Ejemplo:
-
-```text
-10:00–10:30
-check_in_required = true
-grace_period = 15m
-no_show_after = 20m
-```
-
 ### `queue`
 
-La atención depende principalmente de cola/orden operacional.
-
-No asumir FIFO absoluto. Una `QueuePolicy` puede expresar ordering y prioridades explícitas.
-
-```text
-priority
-+
-arrival/order
-```
+Orden operacional. No asumir FIFO absoluto; puede aplicar `priority + ordering`.
 
 ### `window`
 
-Capacidad comprometida dentro de una ventana, sin prometer un instante exacto.
-
-```text
-09:00–11:00
-13:00–16:00
-```
-
-Útil para técnicos, delivery, visitas, laboratorios y operaciones variables.
+Capacidad comprometida dentro de una ventana sin prometer un instante exacto.
 
 ### `hybrid`
 
-Combina capacidad programada y reglas de cola.
-
-Ejemplos:
+Compone scheduled + queue, por ejemplo:
 
 ```text
 scheduled reservation
@@ -545,134 +390,601 @@ scheduled reservation
 + late_behavior = enqueue
 ```
 
-También puede permitir coexistencia de reservations programadas y walk-ins sobre recursos compartidos.
+También permite coexistencia controlada de reservations programadas y walk-ins sobre capacidad compartida.
 
-Este modo es deliberadamente importante para negocios que necesitan formalizar gradualmente operaciones hoy basadas en orden de llegada o puntualidad imperfecta.
+Este modo es importante para negocios que necesitan formalizar gradualmente operaciones basadas hoy en orden de llegada o puntualidad imperfecta.
 
 ---
 
-## 14. `CheckIn`, `QueueEntry` y presencia
-
-Una reservation no implica que el solicitante ya esté presente o listo para consumir capacidad.
+## 13. `CheckIn`, `QueueEntry` y `ServiceSession`
 
 Separar:
 
 ```text
-Reservation = capacity commitment
-CheckIn     = requester is present/ready
-QueueEntry  = operational position/priority in a queue
+Reservation   = committed/planned capacity
+CheckIn       = requester is present/ready
+QueueEntry    = dynamic operational queue position/priority
+ServiceSession = actual execution
 ```
 
-En un flujo híbrido:
+No sobrescribir lo planificado con tiempos reales.
 
 ```text
-Reservation
-    ↓
-CheckIn
-    ↓
-QueueEntry [when applicable]
-    ↓
-ServiceSession
+Reservation planned: 10:00–10:30
+CheckIn:             10:07
+ServiceSession:      10:14–10:52
 ```
 
-`QueueEntry` representa estado operacional dinámico; no sustituye la identidad durable de la reservation.
-
-Una reservation de tipo queue puede crearse para un walk-in en el momento de llegada, permitiendo que toda demanda comprometida se consulte de forma uniforme mediante reservations.
+Una reservation queue-based puede crearse para un walk-in en el momento de llegada, manteniendo una vista uniforme de toda demanda comprometida.
 
 ---
 
-## 15. Resources, requirements y allocations
+## 14. `Resource`: qué puede proveer capacidad
 
-No modelar una reservation únicamente con un `provider_id`.
+`Resource` representa algo cuya disponibilidad o capacidad limita materialmente si una Reservation puede cumplirse.
 
-Un Offering puede requerir múltiples recursos:
-
-```text
-Haircut
-  barber: 1
-  chair: 1
-
-Dental Cleaning
-  hygienist: 1
-  treatment_chair: 1
-
-Plumbing Visit
-  technician: 1
-  vehicle: 1
-```
-
-Separar conceptualmente:
+Ejemplos:
 
 ```text
-ResourceRequirement = what the Offering needs
-ResourceAllocation  = what a Reservation actually consumes
+person
+facility
+room
+chair
+equipment
+vehicle
+capacity pool
+virtual resource
 ```
 
-El solicitante puede expresar preferencias o constraints, por ejemplo un profesional específico, mientras el engine puede seleccionar recursos compatibles cuando no existe preferencia.
+No todo dato del negocio es un Resource. Un customer, address, payment method u Offering normalmente no lo son.
+
+Regla:
+
+> **Algo es Resource cuando su disponibilidad/capacidad participa de forma autoritativa en la posibilidad de cumplir una Reservation.**
 
 ---
 
-## 16. `ServiceSession`: plan versus ejecución real
+## 15. `ResourceCapability`
 
-Una reservation representa capacidad **planificada/comprometida**. No debe sobrescribirse con la ejecución real.
+No conectar Offerings directamente a nombres concretos de recursos cuando no sea necesario.
+
+```text
+Carlos
+capabilities:
+  haircut
+  beard_trim
+  hair_color
+
+Offering: Hair Coloring
+requires capability: hair_color
+```
+
+`ResourceCapability` es tenant-scoped y configurable. No usar enums globales por industria.
+
+Esto permite que el scheduler encuentre recursos compatibles sin condiciones como `if industry == ...`.
+
+---
+
+## 16. Capacity
+
+Capacity responde:
+
+> **¿Cuánto puede proveer un Resource simultáneamente o dentro del modelo operacional relevante?**
+
+Para V2 se mantienen modelos deliberadamente pequeños:
+
+```text
+exclusive
+units
+```
+
+### `exclusive`
+
+Una Reservation consume el Resource de forma exclusiva en el período relevante.
+
+Ejemplos:
+
+```text
+barber
+dentist
+chair
+vehicle
+machine
+```
+
+### `units`
+
+El Resource expone N unidades reservables y una Reservation consume cierta cantidad.
+
+Ejemplos:
+
+```text
+class seats
+tour seats
+shared support capacity
+reservable equipment pool
+```
+
+No usar capacity como inventario comercial general. Request Engine debe garantizar capacidad reservable, no convertirse en inventory management ni en un scheduler multidimensional tipo cluster/workforce optimizer.
+
+---
+
+## 17. `ResourceRequirement`, `ResourceAllocation` y assignment
+
+Separar tres ideas:
+
+```text
+Requirement
+= what capacity an Offering needs
+
+Allocation
+= what capacity a Reservation committed
+
+Assignment
+= which concrete operational resource will execute
+```
+
+### Requirement
 
 Ejemplo:
 
 ```text
-Reservation planned:
-10:00–10:30
-
-ServiceSession actual:
-10:12–10:46
+Offering: Haircut
+requires:
+  capability barber x1
+  capability barber_chair x1
 ```
 
-`ServiceSession` representa la ejecución real cuando el dominio la necesita.
+### Allocation
 
-Esto conserva hechos operacionales y permite calcular posteriormente duración real, espera, puntualidad, utilización y precisión de estimaciones sin convertir Request Engine en una plataforma genérica de analytics.
-
----
-
-## 17. Estados de `Reservation`
-
-El lifecycle de Reservation es independiente del lifecycle de Request.
-
-Conjunto conceptual inicial:
+Ejemplo:
 
 ```text
-pending
-held
-confirmed
-checked_in
-admitted
-in_service
-completed
-cancelled
-expired
-no_show
+Reservation res_123
+allocates:
+  Carlos x1
+  Chair 2 x1
 ```
 
-La implementación puede derivar algunos estados de `CheckIn`, `QueueEntry` o `ServiceSession`, pero el API debe poder ofrecer una vista operacional coherente.
+### Late assignment
 
-Invariantes principales:
+En field service la capacidad puede reservarse antes de conocer el recurso concreto:
 
-1. una Reservation pertenece exactamente a una organización;
-2. normalmente deriva de un Request, aunque puede existir creación administrativa directa;
-3. reserva capacidad relacionada con uno o más Offerings;
-4. puede consumir uno o más Resources;
-5. no implica necesariamente una hora exacta;
-6. la confirmación revalida capacidad transaccionalmente;
-7. conserva snapshots comerciales/políticas relevantes;
-8. side effects externos ocurren después del commit;
-9. cancelación y reprogramación son idempotentes cuando corresponda;
-10. debe ser posible explicar por qué se asignó esa capacidad/prioridad.
+```text
+Reservation: tomorrow 1–4 PM
+Allocation: North Technician Pool x1
+Later assignment: Miguel + Vehicle 02
+```
+
+La distinción conceptual debe preservarse aunque la primera implementación pueda representar assignment dentro del modelo de allocation.
 
 ---
 
-## 18. Payments
+## 18. Resource pools y groups
 
-Request Engine puede coordinar pagos necesarios para cumplir un workflow, pero no debe convertirse en un procesador de pagos ni sistema contable.
+No confundir:
 
-Un Offering o policy puede declarar:
+```text
+ResourceGroup
+= organizational/query grouping
+
+Resource(kind=pool)
+= reservable aggregate capacity
+```
+
+Un grupo ayuda a descubrir recursos. Un pool puede comprometer capacidad agregada antes de asignar un miembro concreto.
+
+Esto es especialmente útil para field service y operaciones donde la asignación final ocurre cerca de la ejecución.
+
+---
+
+## 19. Principio del scheduler
+
+Availability no debe limitarse a “buscar citas libres”.
+
+Debe responder conceptualmente:
+
+> **¿Existe una combinación válida de tiempo/policy/capacidad que satisfaga todos los ResourceRequirements del Offering?**
+
+```text
+Offering
+    ↓
+ResourceRequirements
+    ↓
+Schedules + policies
+    ↓
+compatible Resources / pools
+    ↓
+remaining capacity
+    ↓
+ReservationOption
+```
+
+Request Engine garantiza capacidad válida y compromisos correctos. **No tiene que resolver el plan global óptimo de una fuerza laboral completa.** Routing global, optimización de costos y planificación avanzada pueden delegarse a sistemas especializados.
+
+---
+
+## 20. Tiempo: `BusinessHours` y `AvailabilitySchedule`
+
+No reducir tiempo a una columna `opening_hours`.
+
+Separar:
+
+```text
+BusinessHours
+= cuándo una organización/location está normalmente abierta o disponible al público
+
+AvailabilitySchedule
+= cuándo una capacidad/Offering/Resource puede realmente reservarse
+```
+
+Pueden diferir.
+
+Ejemplo:
+
+```text
+Office BusinessHours:
+Mon–Fri 09:00–17:00
+
+Emergency Plumbing AvailabilitySchedule:
+24/7
+```
+
+Un schedule debe soportar múltiples intervalos por día y timezone IANA explícita.
+
+Ejemplo:
+
+```text
+Mon–Fri: 09:00–18:00
+Saturday: 09:00–12:00
+Sunday: closed
+```
+
+Y también:
+
+```text
+Monday:
+09:00–12:00
+14:00–18:00
+```
+
+---
+
+## 21. Jerarquía y composición de schedules
+
+Availability efectiva puede depender de múltiples niveles:
+
+```text
+Organization schedule
+        ∩
+Location schedule
+        ∩
+Offering restrictions
+        ∩
+Resource schedule
+        ↓
+Date-specific exceptions
+        ↓
+remaining capacity after holds/reservations
+```
+
+Un Resource puede restringir el horario heredado, pero no debe expandir silenciosamente una location/organization cerrada.
+
+Ejemplo:
+
+```text
+Organization: Sunday closed
+Carlos: Sunday available
+```
+
+no abre automáticamente el negocio. Una apertura extraordinaria debe declararse explícitamente.
+
+---
+
+## 22. `ScheduleException`
+
+Un schedule describe la normalidad. Una exception describe una fecha/rango donde la realidad cambia.
+
+Tipos iniciales:
+
+```text
+closed
+replace_hours
+open_special
+capacity_override
+```
+
+Ejemplos:
+
+```text
+Dec 25 → closed
+Dec 24 → replace_hours 09:00–13:00
+Special Sunday → open_special 10:00–16:00
+Saturday pool → capacity_override 2
+Carlos Aug 15–18 → closed/unavailable
+```
+
+Las exceptions pueden aplicarse al scope correcto: organization, location, Offering, Resource o pool según corresponda.
+
+---
+
+## 23. `HolidayCalendar`
+
+Conservar la capacidad de V1 para feriados y cierres especiales, pero sin hardcodear calendarios mundiales dentro del core.
+
+```text
+HolidayCalendar
+├── HolidayDate
+├── name
+├── date
+├── observed_date?
+└── metadata
+```
+
+Que una fecha sea feriado **no implica automáticamente que el negocio esté cerrado**.
+
+Una policy define el comportamiento:
+
+```text
+closed_by_default
+normal_schedule
+special_hours
+```
+
+También deben permitirse fechas propias de la organización:
+
+```text
+staff training
+company event
+inventory day
+private closure
+```
+
+---
+
+## 24. `Location`: dónde opera o recibe la organización
+
+`Location` es first-class y representa un lugar operativo controlado/presentado por la organización.
+
+Puede incluir:
+
+```text
+name
+description
+structured address
+timezone
+BusinessHours / schedule references
+phone/contact presentation
+arrival instructions
+parking/accessibility instructions
+status
+map reference
+optional coordinates
+```
+
+Una organization puede tener múltiples locations, y Offerings/Resources pueden estar disponibles sólo en ciertas locations.
+
+---
+
+## 25. Ubicación pensada para usuarios reales
+
+Request Engine debe almacenar y devolver la información que realmente sirve a humanos y agentes.
+
+La representación práctica preferida para compartir una location puede ser:
+
+```text
+Google Maps URL
+Google Maps place/share link
+map pin URL
+human-readable address
+arrival instructions
+landmark text
+```
+
+`latitude`/`longitude` pueden existir como datos interoperables opcionales para mapas, validación o integraciones, pero **no son la experiencia primaria que se presenta al usuario**.
+
+Principio:
+
+> **Store enough structured location data for machines, but expose/share the representation humans actually use.**
+
+No acoplar la identidad de Location a Google Maps. El link externo es una referencia/presentation aid, no el primary key.
+
+---
+
+## 26. `LocationMedia`
+
+Una Location puede exponer media/instrucciones útiles:
+
+```text
+image
+video
+text/instruction
+external media reference
+```
+
+Purposes conceptuales:
+
+```text
+hero
+gallery
+entrance
+parking
+arrival_instruction
+accessibility
+landmark
+```
+
+Los binarios deben vivir en object/media storage; Request Engine conserva referencias, metadata, captions, alt text y orden de presentación.
+
+Esto permite que un website muestre fotos/video y que un agente pueda explicar verbalmente cómo llegar usando la misma fuente de verdad.
+
+---
+
+## 27. `Destination`: dónde debe cumplirse una Reservation específica
+
+No confundir Location con la dirección del cliente.
+
+```text
+Location
+= lugar operativo de la organización
+
+Destination
+= lugar concreto donde debe cumplirse esta Reservation
+```
+
+Ejemplo:
+
+```text
+Reservation: Emergency Plumbing Visit
+Destination:
+  customer address snapshot
+  map/share URL if provided
+  optional coordinates
+  access notes
+```
+
+El Destination debe conservar snapshot histórico suficiente. Si posteriormente el Contact cambia su dirección, la Reservation histórica sigue indicando dónde debía prestarse el servicio.
+
+---
+
+## 28. `ServiceArea`
+
+Field service necesita poder responder si una Destination es atendible.
+
+Un `ServiceArea` puede aplicarse a organization, location, Offering o Resource/pool según el caso.
+
+V2 debe comenzar con mecanismos simples y explícitos:
+
+```text
+named zone
+city/province
+postal code
+radius
+```
+
+Polygons, travel-time constraints y routing geoespacial avanzado sólo cuando exista necesidad real.
+
+---
+
+## 29. `Dispatch`: mover capacidad hacia un Destination
+
+Para field service, `Reservation` y `Dispatch` son conceptos distintos.
+
+```text
+Reservation
+= capacity was committed
+
+Dispatch
+= assigned operational capacity is now being coordinated/moved toward Destination
+```
+
+Ejemplo:
+
+```text
+Request: leaking pipe
+    ↓
+Offering: Emergency Plumbing Visit
+    ↓
+Reservation: arrival window 1–4 PM
+    ↓
+Allocation: Technician Pool x1
+    ↓
+Assignment: Miguel + Vehicle 02
+    ↓
+Dispatch
+    ↓
+en_route
+    ↓
+arrived
+    ↓
+ServiceSession
+    ↓
+Fulfillment
+```
+
+Estados conceptuales iniciales:
+
+```text
+planned
+assigned
+en_route
+arrived
+cancelled
+failed
+```
+
+No meter todos estos estados dentro de Reservation.
+
+---
+
+## 30. Dispatch status y tracking
+
+Request Engine debe conservar los hechos operacionales que el usuario realmente necesita:
+
+```text
+assigned resource display info
+dispatch status
+estimated_arrival_at
+tracking/share URL when available
+latest meaningful position/reference when policy allows
+last_updated_at
+```
+
+Puede emitir:
+
+```text
+dispatch.assigned
+dispatch.en_route
+dispatch.eta_updated
+dispatch.arrived
+service_session.started
+service_session.completed
+```
+
+Un website puede mostrar un tracker, WhatsApp puede enviar una actualización y un voice agent puede responder el estado usando los mismos hechos.
+
+### Raw GPS boundary
+
+Request Engine **no debe convertirse en un time-series store de cada GPS ping**.
+
+Si existe tracking continuo:
+
+```text
+technician app / GPS provider
+        ↓
+tracking/telemetry system
+        ↓
+meaningful current state / ETA / reference
+        ↓
+Request Engine
+```
+
+Puede conservar coordenadas recientes cuando sean útiles, pero no necesita almacenar el historial crudo de alta frecuencia.
+
+---
+
+## 31. Dispatch no es todavía un sistema universal de delivery
+
+Un plomero desplaza una persona/vehículo hacia una Destination. Un retailer puede necesitar shipment, courier, pickup, packages y proof-of-delivery.
+
+No forzar ambos dominios dentro de la misma entidad prematuramente.
+
+Para V2:
+
+```text
+Dispatch
+= operational resource movement for service execution
+```
+
+Un futuro módulo `Delivery` puede reutilizar primitivas como Destination, ETA, tracking references y status events cuando existan casos reales de entrega de bienes.
+
+---
+
+## 32. Payments
+
+Request Engine puede coordinar pagos necesarios para cumplir un workflow, pero no debe convertirse en un PSP ni sistema contable.
+
+Policies conceptuales:
 
 ```text
 none
@@ -683,7 +995,7 @@ pay_on_arrival
 pay_after_service
 ```
 
-Flujo conceptual:
+Flujo:
 
 ```text
 Availability
@@ -699,55 +1011,37 @@ Signed/idempotent callback
 Reservation confirmation
 ```
 
-IDs del proveedor son referencias externas, nunca identidad primaria del dominio.
-
-El core puede conservar el estado mínimo necesario para coordinar la operación; ledger, contabilidad, conciliación financiera completa y facturación general pertenecen a otros dominios/módulos.
+Los detalles finales de `PaymentRequirement`, payment session/intent y payment record deben cerrarse en la siguiente exploración del dominio antes de considerar completo el vertical slice.
 
 ---
 
-## 19. Forms / Intake como contrato reutilizable
+## 33. Forms / Intake
 
-Request Engine no debe construir inicialmente un competidor de Typeform o Jotform.
-
-Primitivas suficientes:
+Primitivas iniciales:
 
 ```text
 FormDefinition
 FormSubmission
 ```
 
-Los schemas de intake deben poder reutilizarse entre superficies.
-
-Un mismo requerimiento estructurado puede alimentar:
+Los schemas de intake deben poder reutilizarse por:
 
 ```text
-website form
-voice agent questions
-WhatsApp conversation
+website forms
+voice agents
+WhatsApp
 human UI
 REST API
-MCP/tool schema
+MCP/tool schemas
 ```
 
 La presentación cambia; el contrato de negocio permanece.
 
-Una submission puede:
-
-```text
-identify/create Contact
-        ↓
-create/update Request
-        ↓
-emit Event
-        ↓
-resume Workflow
-```
-
 ---
 
-## 20. API para software y tools para agentes
+## 34. API para software y tools para agentes
 
-Request Engine mantiene **una sola lógica autoritativa de aplicación**, pero no necesita exponer la misma superficie literal a todos los consumidores.
+Una sola lógica autoritativa con superficies apropiadas:
 
 ```text
                   Application layer
@@ -759,49 +1053,40 @@ Request Engine mantiene **una sola lógica autoritativa de aplicación**, pero n
        portals         widgets        MCP/LLM
 ```
 
-El software tradicional necesita APIs composables. Un LLM se beneficia de tools orientadas a objetivos, schemas explícitos y scopes mínimos.
-
-Ejemplo:
+Ejemplos REST:
 
 ```text
-REST:
 GET  /v1/offerings
-GET  /v1/availability
+GET  /v1/locations
+GET  /v1/locations/{id}
+POST /v1/reservations/options
 POST /v1/reservations/holds
 POST /v1/reservations
+GET  /v1/dispatches/{id}
+```
 
-Agent tools:
+Ejemplos agent tools:
+
+```text
 search_offerings
+get_business_locations
+get_location_details
 find_reservation_options
 prepare_reservation
 confirm_reservation
+get_service_status
 cancel_reservation
 reschedule_reservation
 ```
 
-Ambas superficies terminan ejecutando los mismos commands/invariantes del application layer.
-
-La capa para agentes es un **adapter**, no un segundo dominio.
+Los agentes no necesitan razonar sobre resource graphs, locks, pool internals o raw GPS.
 
 ---
 
-## 21. IA no es la autoridad del sistema
-
-Request Engine debe funcionar aunque no exista un LLM.
-
-La IA puede:
-
-- interpretar lenguaje natural;
-- clasificar intención;
-- seleccionar un Offering candidato;
-- extraer campos;
-- explicar opciones;
-- elegir una tool dentro de límites explícitos.
-
-Pero:
+## 35. IA no es autoridad
 
 ```text
-LLM interprets / proposes
+AI interprets / proposes
         ↓
 structured candidate
         ↓
@@ -814,26 +1099,25 @@ typed capability
 authoritative transaction
 ```
 
-Texto libre o una transcripción nunca modifica por sí solos reservations, pagos, identidad u otro estado crítico.
+Texto libre o una transcripción nunca modifican por sí solos reservations, pagos, assignments u otro estado crítico.
 
 ---
 
-## 22. Workflow interno versus n8n y automatización externa
+## 36. Workflow interno versus n8n
 
-Request Engine no debe competir con n8n como plataforma universal de automatización.
+Regla:
 
-Regla práctica:
-
-> **Si eliminar una secuencia de pasos podría dejar inconsistente el estado autoritativo del negocio, esa lógica pertenece al workflow/capabilities de Request Engine.**
+> **Si eliminar una secuencia de pasos podría dejar inconsistente el estado autoritativo del negocio, esa lógica pertenece a Request Engine.**
 
 Ejemplo interno:
 
 ```text
-validate offering
+validate Offering
+resolve Destination/service area
 collect required data
 check capacity
 apply payment policy
-confirm reservation
+confirm Reservation
 ```
 
 Ejemplo externo:
@@ -841,69 +1125,49 @@ Ejemplo externo:
 ```text
 reservation.confirmed
       ↓
-add row to spreadsheet
-send Slack message
-add contact to campaign
+add spreadsheet row
+send Slack notification
+create marketing action
 ```
 
-Eso puede vivir en n8n, Zapier, Make o un consumer propio.
-
-n8n puede servir como laboratorio rápido de integraciones. Cuando una capability demuestra ser repetible, crítica y común, puede promoverse a implementación nativa.
+n8n puede servir como laboratorio de integraciones, no como workflow engine autoritativo.
 
 ---
 
-## 23. CRM, ERP, analytics y otros límites
-
-Separación conceptual:
+## 37. Límites con CRM, ERP, analytics y optimizers
 
 ```text
 CRM
 Who is this person and what is our relationship?
 
 Request Engine
-What does this person/system need and what must happen now?
+What is needed, what must happen, and what operational state is authoritative?
 
 ERP/accounting
 What resources, money, inventory and internal financial operations exist?
 ```
 
-Request Engine necesita `Contact`, pero no tiene que convertirse en plataforma de campañas, lead scoring o marketing automation.
+Request Engine puede consumir analytics o routing como capabilities, pero no se convierte en telemetry platform, accounting system, inventory system ni global workforce optimizer.
 
-Puede coordinar payment state, pero no necesita general ledger, payroll o accounts payable.
-
-Puede producir hechos operacionales y consumir analytics como capability, pero no debe convertirse en almacén universal de page views, Core Web Vitals, logs o series temporales de observabilidad.
-
-Ejemplo válido:
-
-```text
-Request: generate_site_performance_report
-        ↓
-analytics capability
-        ↓
-Fulfillment: report reference
-```
-
-El sistema especializado de analytics sigue siendo dueño de sus métricas.
+Debe saber si existe capacidad suficiente y comprometerla correctamente. No necesariamente debe calcular el plan globalmente óptimo para decenas de técnicos.
 
 ---
 
-## 24. Qué pertenece al core
-
-El núcleo debe permanecer pequeño.
+## 38. Qué pertenece al core
 
 ### Tenancy e identidad operacional
 
 - organizations;
 - principals / credentials;
 - contacts;
-- organization-scoped configuration.
+- organization-scoped configuration;
+- locations como identidad operacional/presentación de lugares del negocio.
 
 ### Intent and work
 
-- offerings como identidad/fachada de lo ofrecido;
+- offerings;
 - request types;
 - requests;
-- request lifecycle;
 - workflow selection/execution state;
 - fulfillments.
 
@@ -913,102 +1177,71 @@ El núcleo debe permanecer pequeño.
 - audit;
 - idempotency;
 - webhooks/outbox;
-- API authentication and scopes;
+- API authentication/scopes;
 - versioned contracts.
 
 ### Módulos iniciales fuera del core puro
 
-- reservations / scheduling;
+- reservations / capacity;
+- schedules / availability;
 - forms / intake;
+- dispatch / field execution;
 - payments coordination.
 
-“Fuera del core” significa **boundary de dominio**, no microservicio obligatorio.
+Boundary de dominio no implica microservicio.
 
 ---
 
-## 25. Qué NO pertenece al core
+## 39. Qué NO pertenece al core
 
-Estas funcionalidades pueden existir como módulos o integraciones, pero no deben contaminar las abstracciones base:
-
-- seguros / ARS;
-- expedientes clínicos;
-- licencias profesionales específicas;
-- conceptos `patient`, `guardian`, `provider` específicos de healthcare;
-- Chatwoot provisioning;
-- Evolution provisioning;
-- Meta WhatsApp provisioning;
+- healthcare-specific records/models;
+- Chatwoot/Evolution/Meta provisioning;
 - n8n workflows externos;
 - LiveKit workers;
-- Gemini / LLM provider details;
-- SIP / PBX implementation;
-- prompts específicos de agentes;
-- lógica específica de una sola industria;
-- inventario completo;
+- LLM provider internals/prompts;
+- SIP/PBX implementation;
+- inventory completo;
 - accounting/ERP;
-- un CRM completo;
-- plataforma universal de analytics/telemetry;
-- editor universal de workflows.
+- CRM completo;
+- universal analytics/telemetry store;
+- raw high-frequency GPS history;
+- global route/workforce optimizer;
+- universal delivery/shipping platform;
+- universal workflow editor.
 
 ---
 
-## 26. Multi-tenancy desde el primer día
+## 40. Multi-tenancy
 
-Toda entidad tenant-owned debe estar claramente scoped a una organización.
+Toda entidad tenant-owned se ejecuta dentro de organización resuelta desde principal/credential.
 
 ```text
 credential
     ↓
-resolve organization + principal + scopes
+organization + principal + scopes
     ↓
-all domain operations execute inside that scope
+domain operation
 ```
 
-No confiar en un `organizationId` arbitrario enviado por browser cuando la identidad de la credencial ya determina el tenant.
-
-Deben existir al menos dos clases de acceso:
-
-### Public/browser access
-
-Para widgets, forms y websites. Permisos limitados, orígenes permitidos y operaciones explícitamente públicas.
-
-### Secret/server access
-
-Para workers, agents, backends e integraciones. API keys privadas, scopes y rotación.
-
-Nunca colocar una secret API key organizacional dentro de JavaScript público.
+Public/browser credentials y secret/server credentials son clases distintas. Nunca colocar organization secret keys en frontend público.
 
 ---
 
-## 27. Eventos, outbox, idempotencia y trazabilidad
+## 41. Eventos, outbox, idempotencia y trazabilidad
 
-Principio:
-
-> **Una transacción interna no depende de que un sistema externo responda correctamente.**
+Una transacción interna no depende de sistemas externos.
 
 ```text
 transaction commits
       ↓
-domain event / outbox entry
+domain event / outbox
       ↓
-async delivery
-      ↓
-external provider
+async external action
       ↓
 idempotent callback
       ↓
-state reconciliation
+reconciliation
 ```
-
-Requisitos:
-
-- event IDs únicos;
-- versionado de eventos;
-- retries explícitos;
-- deduplicación;
-- callbacks firmados cuando corresponda;
-- external IDs como referencias;
-- idempotency en create request, holds, reservation confirmation, reschedule, cancel y callbacks cuando exista riesgo de retry;
-- misma idempotency key con payload diferente produce conflicto explícito.
 
 Cada request/reservation debe permitir reconstruir:
 
@@ -1016,264 +1249,206 @@ Cada request/reservation debe permitir reconstruir:
 Who initiated this?
 What was understood?
 Which Offering was selected?
-What information was collected?
-Which workflow/version handled it?
+Which Location/Destination applied?
+Which schedule/policies applied?
 What capacity was considered/held/committed?
+Which resources/pools were allocated or assigned?
+What dispatch/execution occurred?
 Which principal/tool performed each mutation?
 What external events occurred?
 What was the final outcome?
 ```
 
-Logs sirven para diagnóstico técnico. Events/audit sirven para historia operacional.
-
 ---
 
-## 28. Tiempo y scheduling
-
-Invariantes temporales:
+## 42. Invariantes temporales y de capacidad
 
 - timestamps persistidos como instantes UTC;
-- zonas IANA donde se interpreta tiempo local;
-- availability no equivale a reservation;
-- confirmación de reservation revalida capacidad transaccionalmente;
-- idempotency en confirmación/reprogramación/cancelación;
-- buffers y recursos forman parte del conflicto real;
-- snapshots protegen historial frente a cambios futuros del Offering/políticas;
-- external side effects no ocurren dentro de la transacción;
-- queues, windows y hybrid admission son ciudadanos de primera clase, no hacks sobre exact-time slots.
+- timezone IANA en schedules/locations que interpretan tiempo local;
+- availability no equivale a Reservation;
+- confirmation revalida capacidad transaccionalmente;
+- schedule exceptions/holidays forman parte del cálculo efectivo;
+- BusinessHours y AvailabilitySchedule son conceptos distintos;
+- buffers y resources forman parte del conflicto real;
+- reservations pueden consumir exclusive resources o capacity units;
+- queue/window/hybrid son ciudadanos de primera clase;
+- snapshots conservan condiciones históricas relevantes;
+- side effects externos ocurren post-commit.
 
 ---
 
-## 29. Public IDs e IDs externos
-
-Conservar public IDs separados de IDs internos.
-
-Ejemplos conceptuales:
-
-```text
-org_...
-cnt_...
-off_...
-req_...
-res_...
-ful_...
-evt_...
-```
-
-Integraciones externas se almacenan como mappings/references:
-
-```text
-provider
-externalType
-externalId
-internalEntityType
-internalPublicId
-```
-
-Un ID de Chatwoot, Twilio, LiveKit, Stripe o cualquier provider nunca se convierte en identidad primaria de dominio.
-
----
-
-## 30. Conversations vs Requests
-
-Distinción fundamental:
-
-> **Conversation is context. Request is work.**
-
-Chatwoot u otro sistema puede ser source of truth de una conversación. Request Engine es source of truth del trabajo estructurado que resulta de ella.
-
-```text
-Conversation #381
-        │
-        ├── Request req_A: request quote
-        │
-        └── Request req_B: reserve technician visit
-```
-
-La conversación puede cerrarse y ambos requests conservar lifecycle independiente.
-
----
-
-## 31. Fulfillment
-
-Un Request debe llegar a un resultado verificable, no solamente a un estado `completed` arbitrario.
+## 43. Public IDs e IDs externos
 
 Ejemplos:
 
 ```text
-request_quote
-    fulfillment → quoteId
-
-reserve_offering
-    fulfillment → reservationId
-
-request_callback
-    fulfillment → callbackTaskId
-
-emergency_service
-    fulfillment → reservationId / dispatchId
+org_...
+cnt_...
+loc_...
+off_...
+req_...
+res_...
+dsp_...
+ful_...
+evt_...
 ```
 
-`Fulfillment` conecta intención con resultado real.
+Google Maps place/share URLs, Stripe IDs, Twilio IDs, LiveKit identifiers u otros IDs externos son referencias; nunca identidad primaria del dominio.
 
 ---
 
-## 32. Vertical slice obligatorio de V2
+## 44. Conversations vs Requests
 
-Antes de añadir más módulos, V2 debe demostrar un camino completo:
+> **Conversation is context. Request is work.**
+
+Una conversation puede originar múltiples Requests y cerrarse sin terminar sus lifecycles.
+
+---
+
+## 45. Fulfillment
+
+`Fulfillment` conecta intención con resultado verificable.
 
 ```text
-Organization
-    ↓
-Offering
-    ↓
-Contact
-    ↓
-RequestType
-    ↓
-Request
-    ↓
-Required Intake
-    ↓
-Workflow
-    ↓
-Resource Requirements
-    ↓
-Availability
-    ↓
-CapacityHold [when required]
-    ↓
-Reservation
-    ↓
-Admission / CheckIn / Queue [when applicable]
-    ↓
-ServiceSession [when applicable]
-    ↓
-Domain Event
-    ↓
-Webhook / Outbox
-    ↓
-Fulfillment linked back to Request
+request_quote
+    → quoteId
+
+reserve_offering
+    → reservationId
+
+request_callback
+    → callbackTaskId
+
+emergency_service
+    → reservationId + dispatch/service evidence
 ```
 
-Debe probarse con dos organizaciones deliberadamente distintas:
+---
+
+## 46. Vertical slice obligatorio de V2
 
 ### Demo Barbershop
 
-Debe demostrar al menos:
+Debe demostrar:
 
 ```text
+Offering + ResourceRequirements
+BusinessHours Mon–Fri / Saturday reduced / Sunday closed
+holiday + special-hours exception
+resource-specific availability
 scheduled
 queue
 hybrid
 walk-in
-resource selection
+exclusive resources
+capacity revalidation
+Location with address + map link + arrival media/instructions
 payment policy
 ```
 
 ### Demo Plumbing
 
-Debe demostrar al menos:
+Debe demostrar:
 
 ```text
-intake
-arrival windows
-technician/vehicle resources
-variable-duration service
+Offering + intake
+24/7 or Offering-specific availability independent from office BusinessHours
+arrival window
+ServiceArea validation
+Destination snapshot
+technician pool allocation
+late concrete technician/vehicle assignment
+Dispatch planned → en_route → arrived
+ETA/status updates
+map/share references where useful
+ServiceSession
 optional deposit/payment
 ```
 
-El objetivo no es demostrar muchas features. Es demostrar que las abstracciones sobreviven a dos modelos operacionales diferentes sin condiciones verticales en el core.
-
-QuisqueyaTech puede ser el siguiente caso real para validar una organización de servicios profesionales.
+El objetivo es probar que las abstracciones sobreviven a modelos operacionales diferentes sin lógica vertical en el core.
 
 ---
 
-## 33. Lo que se preserva de V1
-
-Aprendizajes validados:
+## 47. Lo que se preserva de V1
 
 1. multi-tenancy explícito;
 2. public IDs separados de IDs internos;
 3. UTC + IANA timezones;
-4. idempotency keys;
-5. revalidación transaccional antes de comprometer capacidad;
-6. snapshots comerciales relevantes;
-7. outbox / asynchronous side effects;
-8. callbacks idempotentes y tipados;
-9. audit trail separado de logs;
-10. API keys con scopes, expiración y revocación;
-11. external IDs como referencias;
-12. PII cifrada/blind-indexed cuando realmente sea necesaria;
-13. agentes reciben tools deterministas en lugar de acceso libre a tablas;
-14. el system of record interno no depende de Chatwoot, Evolution, n8n o LiveKit.
+4. recurring schedules + exceptions/closures;
+5. holiday-aware availability without hardcoded business closure semantics;
+6. idempotency keys;
+7. revalidación transaccional antes de comprometer capacidad;
+8. snapshots históricos relevantes;
+9. outbox / async side effects;
+10. callbacks idempotentes y tipados;
+11. audit separado de logs;
+12. scoped/revocable API keys;
+13. external IDs como referencias;
+14. agentes reciben tools deterministas;
+15. system of record independiente de Chatwoot, Evolution, n8n o LiveKit.
 
 ---
 
-## 34. Lo que V2 debe evitar
+## 48. Lo que V2 debe evitar
 
-No repetir:
-
-1. modelar healthcare directamente en el core;
-2. mezclar scheduling, insurance, provisioning, AI runtime y omnichannel en un solo dominio;
-3. hacer de n8n una dependencia arquitectónica del engine;
-4. hacer que Request Engine aprovisione sistemas externos como responsabilidad principal;
-5. permitir un único archivo HTTP con routing, auth, parsing, crypto, callbacks y orchestration;
-6. mantener OpenAPI manualmente separado de schemas reales;
-7. generar writes de availability para cada exploración;
-8. crear decenas de tablas/endpoints antes de demostrar un vertical slice;
-9. confundir “reutilizable” con “soporta todas las industrias desde el día uno”;
-10. convertir `Request`, `Offering` o `Reservation` en blobs genéricos que “pueden significar cualquier cosa”;
-11. construir un editor universal de workflows;
-12. usar exact-time appointments como única representación válida de capacidad.
+1. vertical-specific models en el core;
+2. convertir `Request`, `Offering`, `Resource` o `Reservation` en blobs que significan cualquier cosa;
+3. exact-time appointments como única forma de capacity commitment;
+4. una única `opening_hours` incapaz de modelar reality/overrides;
+5. tratar un feriado como cierre universal obligatorio;
+6. tratar Location y customer Destination como el mismo concepto;
+7. almacenar raw GPS high-frequency data sin razón operacional;
+8. convertir Dispatch en un universal logistics platform prematuramente;
+9. construir un workforce optimizer global;
+10. n8n como dependencia autoritativa;
+11. OpenAPI manual separado de schemas reales;
+12. writes por cada availability search;
+13. editor universal de workflows.
 
 ---
 
-## 35. Criterio para añadir una feature
+## 49. Criterio para añadir features
 
-Antes de añadir algo al core:
+Antes de añadir algo al core o módulos iniciales:
 
 1. ¿Ayuda a representar una intención procesable?
 2. ¿Ayuda a describir qué ofrece la organización?
-3. ¿Ayuda a determinar/ejecutar el workflow?
-4. ¿Necesita estado autoritativo dentro de Request Engine?
-5. ¿Es común a múltiples industrias?
-6. ¿Puede vivir mejor como módulo o integración?
-7. ¿Tenemos un caso real que la necesita ahora?
-
-Si no se justifica como core, permanece fuera.
+3. ¿Ayuda a determinar si existe/puede comprometerse capacidad?
+4. ¿Ayuda a ejecutar o demostrar el resultado?
+5. ¿Necesita estado autoritativo dentro de Request Engine?
+6. ¿Es común a múltiples verticales?
+7. ¿Puede vivir mejor como integración/sistema especializado?
+8. ¿Tenemos un caso real que lo exige ahora?
 
 ---
 
-## 36. North Star
+## 50. North Star
 
-Request Engine debe evolucionar hacia:
-
-> **A headless, multi-tenant transactional request engine that turns customer or system intent into deterministic workflows, capacity commitments and verifiable outcomes, independent of channel, AI provider or vertical software.**
+> **A headless, multi-tenant transactional request engine that turns customer or system intent into deterministic workflows, valid capacity commitments and verifiable outcomes, while exposing the operational context needed to complete them across locations, queues and field service.**
 
 En español:
 
-> **Un motor transaccional headless y multiempresa que transforma la intención de una persona o sistema en workflows deterministas, compromisos de capacidad y resultados verificables, independientemente del canal, proveedor de IA o software vertical.**
+> **Un motor transaccional headless y multiempresa que transforma intención en workflows deterministas, compromisos válidos de capacidad y resultados verificables, conservando el contexto operacional necesario para cumplirlos en locations, colas y servicios en campo.**
 
-Frase operativa:
-
-```text
-Something requests something
-           ↓
-Request Engine determines
-           ↓
-what workflow should happen
-```
-
-Y para evaluar boundaries:
+Vocabulario canónico:
 
 ```text
-Offering     = what can be obtained
-Request      = what is wanted now
-Workflow     = what must happen
-Reservation  = what capacity is committed
-Admission    = how service access happens
-Fulfillment  = what outcome actually happened
+Offering      = what can be obtained
+Request       = what is wanted now
+Workflow      = what must happen
+Resource      = what can provide capacity
+Capacity      = how much it can provide
+Requirement   = what capacity an Offering needs
+Allocation    = what capacity a Reservation committed
+Assignment    = which concrete resource will execute
+Schedule      = when capacity may exist
+Location      = where the organization operates/receives
+Destination   = where this specific work must occur
+Reservation   = what capacity is committed
+Admission     = how service access happens
+Dispatch      = how assigned capacity moves toward Destination
+ServiceSession = what actually ran
+Fulfillment   = what outcome actually happened
 ```
 
-Si una feature no ayuda a representar esas responsabilidades o a mantener su trazabilidad e invariantes, probablemente no pertenece al núcleo de Request Engine.
+Si una feature no ayuda a representar estas responsabilidades, mantener sus invariantes o producir trazabilidad operacional útil, probablemente pertenece fuera de Request Engine.
