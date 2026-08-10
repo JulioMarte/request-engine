@@ -1,23 +1,59 @@
 # Request Engine
 
-Motor multiempresa de agenda, clases y orden de llegada diseñado para ser operado por agentes de IA y por un panel humano. Convex es la fuente de verdad transaccional; Chatwoot conserva las conversaciones y n8n funciona como adaptador temporal de automatización.
+Request Engine está evolucionando de un MVP V1 centrado en scheduling/Convex hacia una arquitectura V2 más general: un **motor transaccional headless y multiempresa que transforma intención en workflows deterministas, commitments de capacity, pagos verificables y resultados auditables**.
 
-## Estado de la implementación
+## Estado del repositorio
 
-- Dominio v1 estricto para organizaciones, sedes, personas, tutores, seguros, recursos, calendarios, excepciones, citas, clases, colas, prompts, credenciales y auditoría.
-- Disponibilidad calculada bajo demanda, con ofertas opacas de cinco minutos y máximo cinco opciones por llamada.
-- Reserva serializable con revalidación de capacidad/recursos, snapshot comercial e idempotencia.
-- Citas `fixed_time`, ventanas `arrival_window` y sesiones `class_session`.
-- Confirmaciones multicanal, outbox con reintentos y liberación segura de citas no confirmadas.
-- Check-in transaccional, ticket estable y estimación de espera explícitamente no garantizada.
-- REST `/v1` mediante Convex HTTP Actions y contrato OpenAPI 3.1.
-- API keys propias con hash, scopes, expiración, revocación y separación por organización.
-- PII sensible cifrada con AES-GCM, índice ciego HMAC y valor enmascarado.
-- Panel operativo React para agenda, cola y runtime de agentes.
+### Implementación heredada V1
 
-Las tablas originales (`tenants`, `requests`, `appointments`, etc.) siguen presentes como legado de solo migración. No se borran hasta verificar equivalencia y conteos.
+El código existente contiene un MVP funcional construido principalmente con React/Vite/TypeScript/Convex. Incluye scheduling, resources, queues, holidays, APIs y varias integraciones experimentales.
 
-## Desarrollo
+Ese código es **legacy útil para migración y aprendizaje**, pero ya no define por sí solo el producto ni la arquitectura objetivo.
+
+No asumir que:
+
+- Convex seguirá siendo el source of truth de V2;
+- `booking` es vocabulario vigente;
+- Chatwoot, Evolution o n8n son dependencias obligatorias;
+- modelos específicos de healthcare pertenecen al core;
+- la documentación V1 describe el target actual.
+
+### Arquitectura objetivo V2
+
+La foundation V2 actualmente adoptada favorece:
+
+- PostgreSQL como source of truth transaccional;
+- Python + FastAPI;
+- SQLAlchemy + Alembic;
+- modular monolith;
+- API y workers como procesos separados sobre el mismo dominio;
+- transactional outbox;
+- API-first/headless;
+- multi-tenancy explícito;
+- REST/OpenAPI + tools para agentes sobre el mismo application layer;
+- `Reservation` como vocabulario canónico de capacity commitment;
+- payments provider-agnostic con verificación financiera explícita;
+- integrations externas como adapters, no owners del dominio.
+
+## Documentación
+
+La entrada oficial es [`docs/README.md`](docs/README.md).
+
+Documentos V2 autoritativos:
+
+1. [`docs/00-product-definition.md`](docs/00-product-definition.md) — definición del producto y dominio.
+2. [`docs/01-architecture-v2.md`](docs/01-architecture-v2.md) — arquitectura técnica objetivo.
+3. [`docs/02-v1-lessons-preserved.md`](docs/02-v1-lessons-preserved.md) — lecciones V1 preservadas y estrategia de migración.
+
+Documentación histórica V1:
+
+- [`docs/v1-ideas-viejas/`](docs/v1-ideas-viejas/)
+
+Los documentos del archivo histórico no deben utilizarse como especificación vigente.
+
+## Desarrollo del código V1 existente
+
+Mientras el código legacy siga presente, sus comandos actuales pueden seguir siendo útiles para inspección/migración:
 
 ```bash
 npm install
@@ -26,43 +62,8 @@ npm run lint
 npm run build
 ```
 
-Para validar y desplegar las funciones en el deployment de desarrollo:
+Antes de ejecutar comandos de Convex, provisioning o integraciones históricas, revisar el archivo V1 y validar que el entorno/credenciales continúan siendo correctos. No imprimir ni copiar secretos a Git, logs o conversaciones.
 
-```bash
-npm run typecheck:convex
-```
+## Regla de evolución
 
-## Configuración
-
-Los valores `VITE_` son públicos. Todos los secretos pertenecen al entorno de Convex, nunca al frontend.
-
-```txt
-VITE_CONVEX_URL=
-VITE_CLERK_PUBLISHABLE_KEY=
-
-PLATFORM_BOOTSTRAP_SECRET=
-PII_ENCRYPTION_KEY=
-PII_BLIND_INDEX_KEY=
-INTEGRATION_WEBHOOK_SECRET=
-N8N_OUTBOX_WEBHOOK_URL=
-N8N_OUTBOX_WEBHOOK_SECRET=
-```
-
-El primer alta usa `POST /v1/onboarding/organizations` con `X-Bootstrap-Secret`. Después se emite una API key una sola vez mediante `POST /v1/api-keys`. La empresa permanece en `draft` hasta una publicación explícita.
-
-## Documento de traspaso
-
-Para continuar la configuracion de Convex, Chatwoot, Evolution y n8n desde otra computadora, consulta [docs/handoff-2026-07-31.md](docs/handoff-2026-07-31.md). El documento no guarda valores secretos; indica como recuperarlos o rotarlos de forma segura.
-
-## API para agentes
-
-El documento se sirve en `GET /v1/openapi.json`. El flujo obligatorio de reserva es:
-
-1. `catalog.search`
-2. `availability.summarize`
-3. `availability.listOptions`
-4. `booking.create` con `offerId` e `Idempotency-Key`
-
-Los agentes no reciben calendarios ni catálogos completos en el prompt. `GET /v1/agent/runtime-bundle` entrega prompts publicados, manifest de tools y hasta cinco pistas de catálogo.
-
-Consulta [arquitectura v1](docs/scheduling-v1.md) para invariantes, seguridad, integraciones y migración.
+Las nuevas decisiones de dominio deben documentarse primero contra la foundation V2 y probarse mediante invariantes/casos edge. El código V1 se migra o reemplaza deliberadamente; no debe arrastrar accidentalmente sus boundaries al diseño nuevo.
