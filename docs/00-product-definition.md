@@ -50,7 +50,7 @@ El usuario final no necesita conocer las tuberías.
 
 A futuro Request Engine puede convertirse en SaaS para terceros, pero el dominio y los contratos deben ser correctos antes de construir una experiencia de configuración universal.
 
-Una developer console interna para inspeccionar organizations, credentials, offerings, requests, reservations, resources, locations, dispatches, events y webhooks es compatible con esta definición; no convierte a la UI en el centro del producto.
+Una developer console interna para inspeccionar organizations, credentials, offerings, requests, reservations, resources, locations, dispatches, payments, events y webhooks es compatible con esta definición; no convierte a la UI en el centro del producto.
 
 ---
 
@@ -80,8 +80,9 @@ Aunque el canal cambia, el negocio necesita resolver preguntas similares:
 8. ¿Qué reglas y políticas aplican?
 9. ¿Qué workflow debe ejecutarse?
 10. ¿Qué requiere confirmación, pago o intervención humana?
-11. Si el servicio ocurre fuera de una location, ¿qué debe desplazarse y hacia dónde?
-12. ¿Cuál fue el resultado final?
+11. Si existe un pago, ¿cuánto se debe, cómo puede pagarse y qué evidencia autoritativa confirma que el dinero realmente fue recibido?
+12. Si el servicio ocurre fuera de una location, ¿qué debe desplazarse y hacia dónde?
+13. ¿Cuál fue el resultado final?
 
 Request Engine proporciona una capa común para responder esas preguntas sin duplicar lógica de negocio en cada website, bot, flujo de n8n, portal o agente de voz.
 
@@ -233,6 +234,9 @@ Así, `reserve_offering + Haircut` puede usar un workflow estándar mientras otr
                / Capacity           / Pricing             / Tasks
                     │                    │                     │
                     └────────────────────┼─────────────────────┘
+                                         │
+                                    Payments?
+                                         │
                                          ▼
                                    Dispatch?
                                          │
@@ -266,13 +270,14 @@ Un workflow puede:
 3. ofrecer opciones;
 4. crear un `CapacityHold`;
 5. ejecutar una operación;
-6. solicitar confirmación o pago;
-7. esperar un callback;
-8. crear una tarea humana;
-9. crear/coordinar un Dispatch;
-10. completar la solicitud;
-11. fallar de forma recuperable;
-12. hacer handoff.
+6. crear un `PaymentRequirement`;
+7. solicitar confirmación o pago;
+8. esperar verificación financiera o callback;
+9. crear una tarea humana;
+10. crear/coordinar un Dispatch;
+11. completar la solicitud;
+12. fallar de forma recuperable;
+13. hacer handoff.
 
 No construir inicialmente BPMN, un editor universal ni un clon de n8n/Temporal. La primera versión favorece workflows tipados, versionados y testeables en código/configuración.
 
@@ -297,6 +302,13 @@ locations.getCurrentHours
 dispatch.assign
 dispatch.markEnRoute
 dispatch.markArrived
+
+payments.getOptions
+payments.createAttempt
+payments.submitEvidence
+payments.getStatus
+payments.verifyReceived
+payments.requestRefund
 
 quotes.createDraft
 quotes.send
@@ -401,9 +413,9 @@ Este modo es importante para negocios que necesitan formalizar gradualmente oper
 Separar:
 
 ```text
-Reservation   = committed/planned capacity
-CheckIn       = requester is present/ready
-QueueEntry    = dynamic operational queue position/priority
+Reservation    = committed/planned capacity
+CheckIn        = requester is present/ready
+QueueEntry     = dynamic operational queue position/priority
 ServiceSession = actual execution
 ```
 
@@ -526,8 +538,6 @@ Assignment
 
 ### Requirement
 
-Ejemplo:
-
 ```text
 Offering: Haircut
 requires:
@@ -536,8 +546,6 @@ requires:
 ```
 
 ### Allocation
-
-Ejemplo:
 
 ```text
 Reservation res_123
@@ -620,8 +628,6 @@ AvailabilitySchedule
 
 Pueden diferir.
 
-Ejemplo:
-
 ```text
 Office BusinessHours:
 Mon–Fri 09:00–17:00
@@ -632,15 +638,13 @@ Emergency Plumbing AvailabilitySchedule:
 
 Un schedule debe soportar múltiples intervalos por día y timezone IANA explícita.
 
-Ejemplo:
-
 ```text
 Mon–Fri: 09:00–18:00
 Saturday: 09:00–12:00
 Sunday: closed
 ```
 
-Y también:
+Y también split shifts:
 
 ```text
 Monday:
@@ -669,8 +673,6 @@ remaining capacity after holds/reservations
 ```
 
 Un Resource puede restringir el horario heredado, pero no debe expandir silenciosamente una location/organization cerrada.
-
-Ejemplo:
 
 ```text
 Organization: Sunday closed
@@ -782,8 +784,6 @@ landmark text
 ```
 
 `latitude`/`longitude` pueden existir como datos interoperables opcionales para mapas, validación o integraciones, pero **no son la experiencia primaria que se presenta al usuario**.
-
-Principio:
 
 > **Store enough structured location data for machines, but expose/share the representation humans actually use.**
 
@@ -980,11 +980,34 @@ Un futuro módulo `Delivery` puede reutilizar primitivas como Destination, ETA, 
 
 ---
 
-## 32. Payments
+## 32. Payments: obligación, intento, evidencia y dinero verificado
 
-Request Engine puede coordinar pagos necesarios para cumplir un workflow, pero no debe convertirse en un PSP ni sistema contable.
+Request Engine puede coordinar pagos necesarios para cumplir un workflow, pero **no es un PSP, banco, sistema contable ni ledger general**.
 
-Policies conceptuales:
+La separación fundamental es:
+
+```text
+Pricing
+= cuánto debe cobrarse y por qué
+
+Payments
+= cómo se intenta cobrar, verificar y aplicar ese dinero
+
+Accounting / invoicing
+= representación contable/fiscal del negocio
+```
+
+La invariante principal:
+
+> **Intención de pagar ≠ evidencia de pago ≠ dinero recibido.**
+
+Un screenshot, recibo subido, redirect de éxito del browser o mensaje del cliente nunca son por sí solos prueba autoritativa de que el dinero llegó.
+
+### 32.1 `PaymentPolicy`: regla reusable
+
+`PaymentPolicy` describe **cómo y cuándo un Offering/workflow exige o permite cobrar**, no una deuda concreta.
+
+Modos de producto iniciales:
 
 ```text
 none
@@ -995,23 +1018,526 @@ pay_on_arrival
 pay_after_service
 ```
 
-Flujo:
+Conceptualmente puede resolver:
 
 ```text
-Availability
-    ↓
-CapacityHold
-    ↓
-Payment requirement
-    ↓
-External payment provider
-    ↓
-Signed/idempotent callback
-    ↓
-Reservation confirmation
+amount_rule
+payment_timing
+reservation_gate
+accepted_methods
+capacity_strategy
+expiration_behavior
 ```
 
-Los detalles finales de `PaymentRequirement`, payment session/intent y payment record deben cerrarse en la siguiente exploración del dominio antes de considerar completo el vertical slice.
+Ejemplo:
+
+```text
+Dental Procedure
+
+PaymentPolicy:
+  amount_rule: 20% deposit
+  payment_timing: before_reservation_confirmation
+  reservation_gate: payment_required
+  accepted_methods: card | bank_transfer
+```
+
+### 32.2 `PaymentRequirement`: obligación concreta
+
+`PaymentRequirement` representa **una cantidad concreta que debe satisfacerse para un propósito de negocio**.
+
+Ejemplo:
+
+```text
+PaymentRequirement
+purpose: reservation_deposit
+amount: DOP 2,000
+status: open
+due_at: ...
+```
+
+La policy es reusable; el requirement pertenece a un Request/Reservation/fulfillment concreto.
+
+Estados conceptuales iniciales:
+
+```text
+open
+partially_satisfied
+satisfied
+waived
+cancelled
+```
+
+`overdue` puede derivarse de `due_at`; no necesita ser un estado persistido.
+
+### 32.3 `Money`
+
+Toda cantidad monetaria debe transportar moneda explícita:
+
+```text
+Money
+amount
+currency
+```
+
+Nunca asumir moneda implícita ni usar floating point binario para autoridad financiera.
+
+Conversión FX no ocurre de forma aproximada/implícita. Requiere policy/provider explícito si algún día se soporta.
+
+### 32.4 `PaymentMethodConfiguration`: cómo cobra cada organización
+
+Cada organization puede configurar sus propios métodos.
+
+Ejemplo:
+
+```text
+QuisqueyaTech
+- Bank Transfer - Banreservas
+- Stripe Card
+- Cash
+
+Dental Clinic
+- Azul Card
+- Bank Transfer Popular
+- Cash
+```
+
+Separar:
+
+```text
+method_family
+= economic/user-facing method
+
+provider
+= system/integration that processes or verifies it
+```
+
+Method families iniciales:
+
+```text
+card
+bank_transfer
+cash
+wallet
+external
+custom
+```
+
+Providers pueden ser:
+
+```text
+stripe
+paypal
+square
+azul
+bank_api_x
+manual
+custom_provider
+```
+
+No crear `if stripe`, `if paypal`, `if banreservas` dentro del dominio.
+
+Una configuración puede describir:
+
+```text
+organization
+method_family
+provider_connection
+supported_currencies
+display_name
+verification_mode
+status
+configuration/reference
+```
+
+### 32.5 `PaymentAttempt`: un intento de satisfacer el requirement
+
+Un `PaymentRequirement` puede tener múltiples `PaymentAttempt`.
+
+```text
+Requirement: DOP 1,000
+
+Attempt 1: card → failed
+Attempt 2: card → failed
+Attempt 3: bank_transfer → succeeded
+```
+
+Estados conceptuales:
+
+```text
+created
+awaiting_customer_action
+evidence_submitted
+verification_pending
+processing
+authorized
+succeeded
+failed
+cancelled
+expired
+```
+
+No todos los métodos recorren todos los estados.
+
+Un external ID como Stripe PaymentIntent, PayPal order/capture, Azul reference o bank transaction ID es **referencia externa del Attempt/Transaction**, nunca la identidad canónica de Request Engine.
+
+### 32.6 `PaymentInstruction`: qué debe hacer el cliente
+
+`PaymentInstruction` representa las instrucciones que Request Engine presentó al pagador para un Attempt.
+
+Para transferencia:
+
+```text
+Bank: Banreservas
+Account holder: Empresa X
+Account: ...
+Account type: ...
+Amount: DOP 5,000
+Reference: RE-A7F92
+Expires: ...
+```
+
+Para otros métodos puede ser:
+
+```text
+redirect/payment URL
+QR/reference
+POS instructions
+cash-at-location instructions
+```
+
+Las instrucciones deben conservar **snapshot**. Si mañana cambia la cuenta bancaria de la organization, un Attempt histórico conserva exactamente qué cuenta/instrucción se presentó.
+
+### 32.7 Transferencia bancaria: experiencia y verdad financiera
+
+Flujo preferido:
+
+```text
+PaymentRequirement
+      ↓
+PaymentAttempt: bank_transfer
+      ↓
+PaymentInstruction
+bank/account/reference/amount
+      ↓
+customer transfers money
+      ↓
+PaymentEvidence? [optional]
+      ↓
+bank API/feed OR authorized manual verification
+      ↓
+PaymentTransaction confirmed/settled
+      ↓
+PaymentAllocation
+      ↓
+PaymentRequirement satisfied/partially_satisfied
+```
+
+Request Engine puede mostrar información bancaria y una referencia única para facilitar conciliación.
+
+El cliente puede subir comprobante, pero:
+
+> **El comprobante prueba lo que el cliente afirma haber hecho; no prueba que el banco receptor haya acreditado los fondos.**
+
+### 32.8 `PaymentEvidence`: evidencia presentada, no dinero
+
+`PaymentEvidence` puede representar:
+
+```text
+transfer receipt image
+PDF
+bank receipt/reference
+claimed amount/date/reference
+other supporting artifact
+```
+
+Estados pueden incluir:
+
+```text
+submitted
+under_review
+accepted_as_evidence
+rejected
+```
+
+`accepted_as_evidence` **no equivale** a `PaymentRequirement.satisfied`.
+
+Los archivos son sensibles: almacenamiento privado, acceso scoped/audited y retention policy. Un hash puede ayudar a detectar reutilización del mismo archivo, pero nunca convierte automáticamente una coincidencia en fraude.
+
+### 32.9 Verificación automática versus manual
+
+Fuentes autoritativas posibles:
+
+```text
+provider_webhook
+provider_api
+bank_feed
+bank_api
+manual_bank_verification
+cash_verification
+external_system
+```
+
+#### Banco integrado
+
+El banco/feed/API confirma un movimiento recibido. Request Engine crea/reconcilia una `PaymentTransaction`.
+
+#### Banco sin integración
+
+```text
+Evidence submitted
+      ↓
+verification_pending
+      ↓
+authorized employee opens bank portal/app
+      ↓
+independently confirms received funds
+      ↓
+PaymentTransaction
+source = manual_bank_verification
+verified_by = principal
+```
+
+La acción humana significa **“verifiqué el dinero en una fuente independiente”**, no “el screenshot parece verdadero”.
+
+Debe requerir un scope privilegiado como `payments.verify` y producir audit.
+
+Si no puede verificarse el dinero:
+
+```text
+payment.verification_failed
+```
+
+El workflow puede notificar al cliente, pedir revisión, nuevo intento, método alternativo o intervención humana.
+
+### 32.10 `PaymentTransaction`: movimiento financiero observado
+
+`PaymentTransaction` representa **un movimiento de dinero observado por una autoridad financiera o confirmado mediante un proceso autorizado**.
+
+Conceptualmente:
+
+```text
+amount
+currency
+status
+source
+external_reference
+occurred_at / received_at
+verified_by nullable
+metadata/reference
+```
+
+Estados financieros conceptuales pueden distinguir:
+
+```text
+pending
+authorized
+settled
+failed
+reversed
+```
+
+Por defecto, un `PaymentRequirement` se satisface mediante fondos `settled`/efectivamente recibidos y asignados.
+
+`authorized` no significa necesariamente dinero capturado. Una policy futura puede aceptar autorización como gate solamente cuando el caso de negocio lo requiera explícitamente.
+
+El modelo debe asumir que una transacción confirmada puede posteriormente tener reversal/return/dispute. Nunca borrar historia financiera para fingir que no ocurrió.
+
+### 32.11 `PaymentAllocation`: aplicar dinero a obligaciones
+
+No modelar pago como boolean `paid=true`.
+
+```text
+PaymentTransaction
+      ↓
+PaymentAllocation
+      ↓
+PaymentRequirement
+```
+
+Esto permite:
+
+#### Pago parcial
+
+```text
+Requirement: DOP 10,000
+Transaction A: DOP 4,000
+Allocation A: 4,000
+Remaining: 6,000
+status: partially_satisfied
+```
+
+#### Múltiples pagos
+
+```text
+Transaction A: 3,000
+Transaction B: 2,000
+Requirement: 5,000 → satisfied
+```
+
+#### Un pago para varios requirements
+
+```text
+Transaction: 5,000
+Allocation A → deposit 2,000
+Allocation B → balance 3,000
+```
+
+#### Overpayment
+
+```text
+Requirement: 5,000
+Transaction: 6,000
+Allocation: 5,000
+Unallocated: 1,000
+```
+
+El exceso no se aplica arbitrariamente. Puede requerir refund, credit, otra obligación o conciliación humana.
+
+### 32.12 `ReconciliationCase`
+
+Cuando los fondos existen pero no puede determinarse de forma segura a qué requirement pertenecen, crear un caso explícito en vez de adivinar.
+
+Ejemplos:
+
+```text
+missing transfer reference
+same amount from multiple possible customers
+late transfer after CapacityHold expired
+provider/bank event without known Attempt
+unallocated overpayment
+```
+
+Matching puede considerar referencia, amount, date, sender data y receiving account, pero una coincidencia ambigua no debe mutar estado financiero automáticamente.
+
+### 32.13 Pagos tardíos y relación con capacity
+
+Un pago confirmado **no resucita automáticamente capacidad expirada**.
+
+Ejemplo:
+
+```text
+CapacityHold expires at 18:00
+customer transfer settles at 08:00 next day
+original slot already taken
+```
+
+La `PaymentTransaction` sigue siendo dinero real recibido, pero la Reservation no se confirma retroactivamente.
+
+El workflow debe resolver:
+
+```text
+offer alternative capacity
+refund
+retain authorized credit if product supports it
+human reconciliation
+```
+
+PaymentPolicy debe poder seleccionar una estrategia de capacidad:
+
+```text
+hold_until_payment
+revalidate_after_payment
+confirm_then_collect
+```
+
+#### `hold_until_payment`
+
+Capacidad se retiene por una ventana limitada mientras se espera pago. Adecuado para métodos rápidos; puede ser malo para transferencias lentas.
+
+#### `revalidate_after_payment`
+
+No garantiza capacity mientras el pago viaja. Al confirmarse fondos se vuelve a validar y se ofrece alternativa si ya no existe capacidad.
+
+#### `confirm_then_collect`
+
+Reservation puede confirmarse con requirement aún abierto, por ejemplo `pay_on_arrival` o `pay_after_service`.
+
+### 32.14 Cash y métodos externos son first-class
+
+Cash no es un hack.
+
+```text
+PaymentAttempt
+method_family = cash
+status = awaiting_customer_action
+```
+
+Un principal autorizado registra recepción real:
+
+```text
+PaymentTransaction
+source = cash_verification
+amount
+location/principal/timestamp
+```
+
+Otros métodos externos/custom pueden registrarse mediante adapters sin contaminar el dominio con lógica de proveedor.
+
+### 32.15 Success UI no es autoridad
+
+Nunca considerar una URL como:
+
+```text
+/payment-success
+```
+
+prueba de pago.
+
+Fuentes de autoridad:
+
+```text
+signed/idempotent provider webhook
+server-to-server provider API
+bank feed/API
+authorized independent manual verification
+```
+
+Los callbacks deben ser firmados/validados cuando el provider lo permita, anti-replay e idempotentes.
+
+### 32.16 Refunds, cancelaciones y reversals
+
+`Refund` tiene lifecycle propio y puede ser parcial.
+
+```text
+requested
+processing
+succeeded
+failed
+cancelled
+```
+
+No sobrescribir la PaymentTransaction original.
+
+```text
+PaymentTransaction +5,000
+Refund -2,000
+```
+
+Cancel/void de una autorización no capturada **no es lo mismo** que refund de dinero ya recibido.
+
+El modelo financiero debe conservar historia append-oriented/auditable, incluyendo reversals/returns posteriores cuando ocurran.
+
+### 32.17 Límites con invoicing/accounting
+
+```text
+PaymentRequirement ≠ Invoice
+PaymentTransaction ≠ accounting ledger entry
+```
+
+Invoices pueden requerir numeración fiscal, impuestos, line items y reglas legales. General ledger, reconciliation contable completa, payroll, accounts payable y fiscal reporting permanecen fuera del core de Request Engine.
+
+Request Engine conserva sólo el estado financiero necesario para coordinar correctamente el workflow y demostrar qué ocurrió.
+
+### 32.18 Seguridad de payments
+
+- Request Engine no almacena PAN/CVV;
+- tokens/payment-method references del provider son preferibles;
+- provider secrets fuera del frontend y protegidos;
+- `payments.verify`, `payments.refund` y acciones similares requieren scopes explícitos;
+- PaymentEvidence usa almacenamiento privado y acceso auditable;
+- bank account display data se expone sólo donde corresponde;
+- logs no contienen card data, full bank evidence, secrets o PII financiera innecesaria;
+- una IA puede explicar instrucciones/consultar status, pero no auto-verificar evidencia ni inventar que un pago fue recibido.
 
 ---
 
@@ -1063,6 +1589,9 @@ POST /v1/reservations/options
 POST /v1/reservations/holds
 POST /v1/reservations
 GET  /v1/dispatches/{id}
+GET  /v1/payment-requirements/{id}
+POST /v1/payment-requirements/{id}/attempts
+POST /v1/payment-attempts/{id}/evidence
 ```
 
 Ejemplos agent tools:
@@ -1075,11 +1604,15 @@ find_reservation_options
 prepare_reservation
 confirm_reservation
 get_service_status
+get_payment_options
+start_payment
+get_payment_status
+submit_payment_evidence
 cancel_reservation
 reschedule_reservation
 ```
 
-Los agentes no necesitan razonar sobre resource graphs, locks, pool internals o raw GPS.
+Los agentes no necesitan razonar sobre resource graphs, locks, pool internals, raw GPS, PSP internals o bank reconciliation internals.
 
 ---
 
@@ -1101,6 +1634,18 @@ authoritative transaction
 
 Texto libre o una transcripción nunca modifican por sí solos reservations, pagos, assignments u otro estado crítico.
 
+En payments específicamente:
+
+```text
+LLM can explain payment instructions
+LLM can collect evidence/reference
+LLM can query payment status
+
+LLM cannot declare funds received
+LLM cannot satisfy PaymentRequirement from screenshot/text alone
+LLM cannot perform refund/verification without authorized deterministic capability + scope
+```
+
 ---
 
 ## 36. Workflow interno versus n8n
@@ -1116,8 +1661,10 @@ validate Offering
 resolve Destination/service area
 collect required data
 check capacity
-apply payment policy
-confirm Reservation
+create PaymentRequirement when required
+verify authoritative payment outcome
+apply payment to requirement
+confirm Reservation according to policy
 ```
 
 Ejemplo externo:
@@ -1141,15 +1688,17 @@ CRM
 Who is this person and what is our relationship?
 
 Request Engine
-What is needed, what must happen, and what operational state is authoritative?
+What is needed, what must happen, and what operational/payment state is authoritative for this workflow?
 
 ERP/accounting
-What resources, money, inventory and internal financial operations exist?
+What resources, money, inventory and internal financial operations exist across the enterprise?
 ```
 
-Request Engine puede consumir analytics o routing como capabilities, pero no se convierte en telemetry platform, accounting system, inventory system ni global workforce optimizer.
+Request Engine puede consumir analytics, routing, banks o PSPs como capabilities/integrations, pero no se convierte en telemetry platform, accounting system, inventory system, bank, PSP ni global workforce optimizer.
 
 Debe saber si existe capacidad suficiente y comprometerla correctamente. No necesariamente debe calcular el plan globalmente óptimo para decenas de técnicos.
+
+Debe saber si una obligación de pago fue satisfecha de forma confiable. No necesita convertirse en ledger contable general.
 
 ---
 
@@ -1201,7 +1750,9 @@ Boundary de dominio no implica microservicio.
 - LLM provider internals/prompts;
 - SIP/PBX implementation;
 - inventory completo;
-- accounting/ERP;
+- accounting/ERP/general ledger;
+- full invoicing/tax platform;
+- PSP/card vault;
 - CRM completo;
 - universal analytics/telemetry store;
 - raw high-frequency GPS history;
@@ -1223,7 +1774,7 @@ organization + principal + scopes
 domain operation
 ```
 
-Public/browser credentials y secret/server credentials son clases distintas. Nunca colocar organization secret keys en frontend público.
+Public/browser credentials y secret/server credentials son clases distintas. Nunca colocar organization secret keys, bank integration credentials o PSP secrets en frontend público.
 
 ---
 
@@ -1243,6 +1794,30 @@ idempotent callback
 reconciliation
 ```
 
+Eventos financieros representativos:
+
+```text
+payment_requirement.created
+payment_attempt.created
+payment.instructions_ready
+payment.evidence_submitted
+payment.processing
+payment.authorized
+payment.transaction_received
+payment.partial_received
+payment.received
+payment.verification_failed
+payment.failed
+payment.expired
+payment.unallocated_funds_detected
+payment_requirement.partially_satisfied
+payment_requirement.satisfied
+payment.refund_requested
+payment.refund_processing
+payment.refunded
+payment.refund_failed
+```
+
 Cada request/reservation debe permitir reconstruir:
 
 ```text
@@ -1253,6 +1828,12 @@ Which Location/Destination applied?
 Which schedule/policies applied?
 What capacity was considered/held/committed?
 Which resources/pools were allocated or assigned?
+Which PaymentRequirements were created and why?
+Which payment instructions were shown?
+Which evidence was submitted?
+Which authoritative transactions were observed and how verified?
+How were funds allocated to requirements?
+What refunds/reversals/reconciliation cases occurred?
 What dispatch/execution occurred?
 Which principal/tool performed each mutation?
 What external events occurred?
@@ -1261,7 +1842,7 @@ What was the final outcome?
 
 ---
 
-## 42. Invariantes temporales y de capacidad
+## 42. Invariantes temporales, de capacidad y pagos
 
 - timestamps persistidos como instantes UTC;
 - timezone IANA en schedules/locations que interpretan tiempo local;
@@ -1273,6 +1854,11 @@ What was the final outcome?
 - reservations pueden consumir exclusive resources o capacity units;
 - queue/window/hybrid son ciudadanos de primera clase;
 - snapshots conservan condiciones históricas relevantes;
+- PaymentEvidence nunca satisface por sí sola un PaymentRequirement;
+- browser success/redirect nunca es autoridad de pago;
+- requirement satisfaction deriva de PaymentTransactions autoritativas + PaymentAllocations;
+- pagos tardíos no resucitan automáticamente CapacityHolds/Reservations expiradas;
+- payment/refund/reversal history no se borra para ocultar movimientos ocurridos;
 - side effects externos ocurren post-commit.
 
 ---
@@ -1289,11 +1875,15 @@ off_...
 req_...
 res_...
 dsp_...
+prq_...   PaymentRequirement
+pat_...   PaymentAttempt
+ptx_...   PaymentTransaction
+rfd_...   Refund
 ful_...
 evt_...
 ```
 
-Google Maps place/share URLs, Stripe IDs, Twilio IDs, LiveKit identifiers u otros IDs externos son referencias; nunca identidad primaria del dominio.
+Google Maps place/share URLs, Stripe IDs, PayPal IDs, bank transaction IDs, Twilio IDs, LiveKit identifiers u otros IDs externos son referencias; nunca identidad primaria del dominio.
 
 ---
 
@@ -1323,6 +1913,8 @@ emergency_service
     → reservationId + dispatch/service evidence
 ```
 
+Payments pueden ser condición para Fulfillment o Reservation, pero PaymentTransaction no sustituye Fulfillment: dinero recibido y resultado entregado son hechos diferentes.
+
 ---
 
 ## 46. Vertical slice obligatorio de V2
@@ -1343,7 +1935,10 @@ walk-in
 exclusive resources
 capacity revalidation
 Location with address + map link + arrival media/instructions
-payment policy
+PaymentPolicy: deposit or pay_on_arrival
+card payment adapter path
+cash/manual verified payment path
+PaymentRequirement + PaymentAllocation
 ```
 
 ### Demo Plumbing
@@ -1362,7 +1957,12 @@ Dispatch planned → en_route → arrived
 ETA/status updates
 map/share references where useful
 ServiceSession
-optional deposit/payment
+bank-transfer PaymentInstruction
+PaymentEvidence upload
+manual or provider-backed independent verification
+payment failure notification path
+late-payment/revalidate-after-payment behavior
+optional deposit/full/payment-after-service policy
 ```
 
 El objetivo es probar que las abstracciones sobreviven a modelos operacionales diferentes sin lógica vertical en el core.
@@ -1403,7 +2003,11 @@ El objetivo es probar que las abstracciones sobreviven a modelos operacionales d
 10. n8n como dependencia autoritativa;
 11. OpenAPI manual separado de schemas reales;
 12. writes por cada availability search;
-13. editor universal de workflows.
+13. editor universal de workflows;
+14. considerar screenshot/comprobante como dinero recibido;
+15. copiar el lifecycle de Stripe/PayPal/Azul como dominio interno;
+16. usar `paid: true/false` como único modelo financiero;
+17. convertir payments coordination en accounting/ledger/PSP.
 
 ---
 
@@ -1416,39 +2020,46 @@ Antes de añadir algo al core o módulos iniciales:
 3. ¿Ayuda a determinar si existe/puede comprometerse capacidad?
 4. ¿Ayuda a ejecutar o demostrar el resultado?
 5. ¿Necesita estado autoritativo dentro de Request Engine?
-6. ¿Es común a múltiples verticales?
-7. ¿Puede vivir mejor como integración/sistema especializado?
-8. ¿Tenemos un caso real que lo exige ahora?
+6. Si mueve dinero, ¿necesitamos conocer ese estado para permitir/bloquear el workflow?
+7. ¿Es común a múltiples verticales?
+8. ¿Puede vivir mejor como integración/sistema especializado?
+9. ¿Tenemos un caso real que lo exige ahora?
 
 ---
 
 ## 50. North Star
 
-> **A headless, multi-tenant transactional request engine that turns customer or system intent into deterministic workflows, valid capacity commitments and verifiable outcomes, while exposing the operational context needed to complete them across locations, queues and field service.**
+> **A headless, multi-tenant transactional request engine that turns customer or system intent into deterministic workflows, valid capacity commitments and verifiable outcomes, while exposing the operational and payment state needed to complete them across locations, queues and field service.**
 
 En español:
 
-> **Un motor transaccional headless y multiempresa que transforma intención en workflows deterministas, compromisos válidos de capacidad y resultados verificables, conservando el contexto operacional necesario para cumplirlos en locations, colas y servicios en campo.**
+> **Un motor transaccional headless y multiempresa que transforma intención en workflows deterministas, compromisos válidos de capacidad y resultados verificables, conservando el contexto operacional y financiero necesario para cumplirlos en locations, colas y servicios en campo.**
 
 Vocabulario canónico:
 
 ```text
-Offering      = what can be obtained
-Request       = what is wanted now
-Workflow      = what must happen
-Resource      = what can provide capacity
-Capacity      = how much it can provide
-Requirement   = what capacity an Offering needs
-Allocation    = what capacity a Reservation committed
-Assignment    = which concrete resource will execute
-Schedule      = when capacity may exist
-Location      = where the organization operates/receives
-Destination   = where this specific work must occur
-Reservation   = what capacity is committed
-Admission     = how service access happens
-Dispatch      = how assigned capacity moves toward Destination
-ServiceSession = what actually ran
-Fulfillment   = what outcome actually happened
+Offering           = what can be obtained
+Request            = what is wanted now
+Workflow           = what must happen
+Resource           = what can provide capacity
+Capacity           = how much it can provide
+Requirement        = what capacity an Offering needs
+Allocation         = what capacity a Reservation committed
+Assignment         = which concrete resource will execute
+Schedule           = when capacity may exist
+Location           = where the organization operates/receives
+Destination        = where this specific work must occur
+Reservation        = what capacity is committed
+Admission          = how service access happens
+Dispatch           = how assigned capacity moves toward Destination
+ServiceSession     = what actually ran
+PaymentPolicy      = how/when payment is required
+PaymentRequirement = what money is required for a concrete purpose
+PaymentAttempt     = one attempt to satisfy that requirement
+PaymentEvidence    = evidence submitted, not proof of received funds
+PaymentTransaction = authoritative observed money movement
+PaymentAllocation  = how verified money satisfies requirements
+Fulfillment        = what outcome actually happened
 ```
 
-Si una feature no ayuda a representar estas responsabilidades, mantener sus invariantes o producir trazabilidad operacional útil, probablemente pertenece fuera de Request Engine.
+Si una feature no ayuda a representar estas responsabilidades, mantener sus invariantes o producir trazabilidad operacional/financiera útil, probablemente pertenece fuera de Request Engine.
