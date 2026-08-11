@@ -6,15 +6,13 @@ This repository is the clean Python/PostgreSQL implementation of the V2 architec
 
 ## Read first
 
-Authoritative material is read in this order:
+Start with `docs/README.md`, which maps the canonical documents and their precedence. The most implementation-relevant documents are:
 
-1. `docs/00-product-definition.md`
-2. `docs/01-architecture-v2.md`
-3. `docs/02-pre-sql-domain-contract.md`
-4. `docs/07-database-access-contract.md`
-5. `docs/09-python-module-architecture.md`
-6. `docs/10-module-ownership-map.md`
-7. `docs/README.md`
+- `docs/02-pre-sql-domain-contract.md` — invariants, serialization roots and transaction proofs;
+- `docs/07-database-access-contract.md` — Python ↔ PostgreSQL boundary;
+- `docs/09-python-module-architecture.md` — physical Python layout/import boundaries;
+- `docs/10-module-ownership-map.md` — business ownership;
+- `docs/adr/README.md` — durable architectural rationale.
 
 `docs/legacy/**` is historical and non-authoritative.
 
@@ -25,7 +23,7 @@ The Python code is organized **module first, layer second**. Business capabiliti
 ```text
 request-engine/
 ├── src/request_engine/
-│   ├── bootstrap/                # composition root only
+│   ├── bootstrap/                # composition root + runtime settings
 │   ├── entrypoints/              # HTTP, worker and CLI process adapters
 │   ├── platform/                 # truly cross-cutting technical capabilities
 │   │   ├── db/
@@ -50,32 +48,36 @@ request-engine/
 └── deploy/
 ```
 
-Each business module may contain small internal layers such as:
+A business module grows only the structure real code requires. The preferred vocabulary is:
 
 ```text
 module/
 ├── domain/
 ├── application/
 │   ├── commands/
-│   └── queries/
-├── persistence/
-├── integrations/
+│   ├── queries/
+│   └── ports/
+├── adapters/
+│   ├── db/
+│   └── providers/
 ├── api/
-├── contracts.py
-├── facade.py
+├── contracts/
 └── README.md
 ```
 
-Do not create empty architectural folders pre-emptively. Add a package when real code needs it.
+Do not create empty architectural folders pre-emptively. A small module may remain a handful of cohesive files.
 
 ## Key implementation rules
 
-- One semantic command should have one obvious implementation file.
-- Repositories are semantic persistence ports, not generic CRUD stores.
+- One semantic command should have one obvious implementation/use-case entry point.
+- Application code defines semantic ports; DB/provider implementations are adapters.
+- Repositories are semantic persistence adapters, not generic CRUD stores.
 - SQLAlchemy ORM is useful for ordinary persistence; SQLAlchemy Core / explicit SQL is preferred for locks, ranges, `SKIP LOCKED`, aggregate concurrency checks, and `request_cmd.*` primitives.
-- Domain objects, persistence mappings, and API DTOs are separate concepts.
+- Domain objects, persistence mappings, API DTOs and cross-module contracts are separate concepts.
 - Cross-module transactions are allowed when the domain contract requires one atomic transaction.
-- Cross-module imports must use the target module's public contracts/facade, never its persistence internals.
+- Cross-module imports must use the target module's `contracts` surface, never its domain/application/adapter/API internals.
+- `platform` may not depend on business modules.
+- `bootstrap` wires dependencies; business code must not use it as a service locator.
 - PostgreSQL constraints and transaction protocols are part of application correctness, not implementation details to mock away.
 - No network I/O occurs while authoritative database locks are held.
 
@@ -87,7 +89,7 @@ The current V2.6→V2.10 SQL design chain lives under:
 migrations/sql/design_chain/
 ```
 
-It is executable design history, **not yet production Alembic history**. When the schema is formally frozen, the chain should be consolidated into the first production baseline migration. After that point, migration history is append-only.
+It is executable pre-production design history, **not production Alembic history**. When the schema freeze gate is satisfied, the chain is consolidated into a reviewed first production baseline. After that point, migration history is append-only.
 
 See `migrations/README.md` before changing SQL.
 
@@ -108,12 +110,13 @@ uv run pytest
 
 ## LLM / coding agents
 
-Read `AGENTS.md` before editing. More-specific `AGENTS.md` files and `.github/instructions/*.instructions.md` add path-specific rules. Module ownership is documented in `docs/10-module-ownership-map.md` and in each module README.
+Repository documentation is the engineering system of record. `AGENTS.md` is intentionally a compact map/guardrail file, with nearer `AGENTS.md` files adding local rules. GitHub Copilot, Claude and Gemini instruction files are thin adapters to the same knowledge rather than separate architecture manuals.
 
-The repository is intentionally optimized so an agent can answer these questions before changing code:
+The repository is optimized so a human or agent can answer these questions before changing code:
 
 1. Which module owns this behavior?
 2. Which command/query owns the use case?
-3. Which PostgreSQL tables/views/functions are authoritative?
-4. Which serialization roots and lock order apply?
-5. Which tests prove the invariant?
+3. Which public contract may another module depend on?
+4. Which PostgreSQL tables/views/functions are authoritative?
+5. Which serialization roots and lock order apply?
+6. Which tests prove the invariant and architectural boundary?
