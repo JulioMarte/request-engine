@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: request_engine
+      POSTGRES_USER: request_engine
+      POSTGRES_PASSWORD: request_engine
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U request_engine -d request_engine"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - request_engine_postgres:/var/lib/postgresql/data
+
+volumes:
+  request_engine_postgres:

@@ -1,5 +1,7 @@
-# Request Engine agent guidance
+@AGENTS.md
+@docs/09-python-module-architecture.md
+@docs/10-module-ownership-map.md
 
-Follow the repository-wide instructions in `AGENTS.md` and the authoritative documents it references.
+# Claude-specific note
 
-In particular, `docs/legacy/**` is historical and must not be modified unless the user explicitly requests changes to the archive. The current backend target is PostgreSQL 18+ with Python/FastAPI and SQLAlchemy/Alembic; retired Convex instructions are not authoritative.
+Treat `AGENTS.md` as the repository-wide operating contract. When entering `docs/`, `migrations/`, `src/request_engine/modules/`, or `tests/`, also obey the nearest nested `AGENTS.md`. Do not infer current requirements from `docs/legacy/**`.
