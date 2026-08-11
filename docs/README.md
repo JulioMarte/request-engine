@@ -31,6 +31,8 @@ Este directorio separa explícitamente la **arquitectura V2 vigente** de documen
 
 [`05-postgresql-v2.8-hardening.sql`](05-postgresql-v2.8-hardening.sql) es un delta DBA deliberadamente pequeño sobre V2.7. Corrige orden de locks, hace `CapacityHold` estrictamente monotónico, elimina autoridad duplicada entre trigger inmediato y constraint trigger diferido, y reduce índices redundantes.
 
+[`06-postgresql-v2.9-integrity.sql`](06-postgresql-v2.9-integrity.sql) cierra dos huecos de integridad restantes: hace DB-provable que `FinancialObservation → ObservationCorrection → PaymentAllocationAdjustment` permanezca dentro del mismo `PaymentTransaction`, y materializa coverage tipado `ExternalCommitment → CommitmentRequirement` dentro de la misma `Reservation` en lugar de usar `scope_snapshot` como autoridad.
+
 Aplicación actual:
 
 ```text
@@ -39,6 +41,8 @@ Aplicación actual:
 04-postgresql-v2.7-hardening.sql
         ↓
 05-postgresql-v2.8-hardening.sql
+        ↓
+06-postgresql-v2.9-integrity.sql
 ```
 
 Principios físicos vigentes:
@@ -51,7 +55,9 @@ Principios físicos vigentes:
 - common `CapacityClaim` conflict space para Holds y Allocations;
 - intervalos `[start,end)` con `tstzrange`;
 - consumo histórico con semántica replace-don't-rewrite;
+- al confirmar o reprogramar, un `CapacityClaim` puede reemplazarse atómicamente por otro preservando `replaced_by_capacity_claim_id` y `ResourceAllocation.source_capacity_hold_id`; no se reescribe la prueba histórica de adquisición;
 - facts financieros/outcome/audit append-oriented;
+- `scope_snapshot` y otros JSON históricos son evidencia/provenance, no sustitutos de FKs cuando una relación participa en autoridad o invariantes;
 - constraints antes que triggers cuando PostgreSQL puede expresar la regla declarativamente;
 - triggers pequeños sólo para monotonicidad, inmutabilidad local, revisions y backstops agregados;
 - constraint triggers diferidos sólo cuando la cardinalidad debe comprobarse al final de la transacción;
@@ -76,9 +82,11 @@ Si dos artefactos parecen contradecirse, la prioridad es:
 04-postgresql-v2.7-hardening.sql
         ↓
 05-postgresql-v2.8-hardening.sql
+        ↓
+06-postgresql-v2.9-integrity.sql
 ```
 
-El schema implementa el contrato; no puede redefinir silenciosamente el dominio.
+El schema implementa el contrato; no puede redefinir silenciosamente el dominio. Cuando el SQL elige replacement en vez de update in-place, la equivalencia arquitectónica exige lineage explícita y una transición atómica bajo el mismo command protocol.
 
 ## Lecciones V1 y archivo histórico
 
