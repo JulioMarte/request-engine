@@ -121,8 +121,7 @@ def test_domain_code_does_not_import_framework_or_bootstrap_layers() -> None:
         for path in _python_files(MODULES_ROOT / module_name / "domain"):
             for import_name in _imports(path):
                 if any(
-                    _is_prefixed(import_name, prefix)
-                    for prefix in DOMAIN_FORBIDDEN_IMPORT_PREFIXES
+                    _is_prefixed(import_name, prefix) for prefix in DOMAIN_FORBIDDEN_IMPORT_PREFIXES
                 ):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
