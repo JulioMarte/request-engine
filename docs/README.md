@@ -43,9 +43,7 @@ Este directorio separa explícitamente la **arquitectura V2 vigente** de documen
 
 [`06-postgresql-v2.9-integrity.sql`](06-postgresql-v2.9-integrity.sql) cierra dos huecos de integridad restantes: hace DB-provable que `FinancialObservation → ObservationCorrection → PaymentAllocationAdjustment` permanezca dentro del mismo `PaymentTransaction`, y materializa coverage tipado `ExternalCommitment → CommitmentRequirement` dentro de la misma `Reservation` en lugar de usar `scope_snapshot` como autoridad.
 
-[`08-postgresql-v2.10-access-surface.sql`](08-postgresql-v2.10-access-surface.sql) implementa la frontera DB↔Python definida en `07`: schemas de interface, read views versionadas, command primitives estrechas, outbox claiming/retry, idempotency acquisition/completion y preparación deny-by-default de privileges.
-
-[`09-postgresql-v2.10-routine-hardening.sql`](09-postgresql-v2.10-routine-hardening.sql) endurece las routines internas preexistentes fijando un `search_path` seguro y vuelve a afirmar el deny-by-default de `request_cmd`. No cambia semántica de dominio.
+[`08-postgresql-v2.10-access-surface.sql`](08-postgresql-v2.10-access-surface.sql) implementa la frontera DB↔Python definida en `07` como un único delta V2.10 consolidado: schemas de interface, read views versionadas, command primitives estrechas, idempotency, outbox con `SKIP LOCKED` + lease fencing token, deny-by-default para `request_cmd` y `search_path` seguro para routines reutilizables.
 
 Aplicación actual:
 
@@ -59,8 +57,6 @@ Aplicación actual:
 06-postgresql-v2.9-integrity.sql
         ↓
 08-postgresql-v2.10-access-surface.sql
-        ↓
-09-postgresql-v2.10-routine-hardening.sql
 ```
 
 `07-database-access-contract.md` es documentación normativa y por eso no aparece como migration dentro de la cadena SQL.
@@ -119,6 +115,7 @@ Reglas esenciales:
 - views de `request_read` son contracts de lectura, no security/authorization por sí solas;
 - functions de `request_cmd` usan `SECURITY INVOKER` por defecto y `PUBLIC` no recibe `EXECUTE`;
 - routines reutilizables fijan `search_path` para no depender de resolución de nombres controlada por sesión;
+- outbox leases usan `claim_token` por adquisición; `worker_id` es identidad diagnóstica, no fencing authority;
 - deployment roles/RLS se diseñan juntos cuando quede fijado el modelo de conexiones; RLS será defense-in-depth, nunca sustituto de Principal/Representation authorization;
 - índices únicamente cuando corresponden a predicates/joins realmente calientes y no estén ya implícitos en PK/UNIQUE constraints.
 
@@ -137,7 +134,7 @@ Si dos artefactos parecen contradecirse, la prioridad es:
         ↓
 07-database-access-contract.md
         ↓
-03/04/05/06/08/09 PostgreSQL migrations
+03/04/05/06/08 PostgreSQL migrations
 ```
 
 `07` no puede relajar una invariante de `02`; sólo define cómo Application/Repositories/Query Services consumen correctamente PostgreSQL.
