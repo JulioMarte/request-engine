@@ -54,32 +54,56 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA request_admin
     REVOKE ALL ON TABLES FROM PUBLIC;
 
 -- ============================================================================
--- 2. Read contract: stable, versioned, non-authoritative projections
+-- 2. Read contract: stable, versioned, physically non-updatable projections
 -- ============================================================================
+--
+-- PostgreSQL automatically makes some simple one-table views updatable. Every
+-- request_read view is deliberately defined with a non-updatable relational
+-- shape in addition to receiving SELECT-only deployment grants. No INSTEAD OF
+-- write triggers/rules are permitted by the access contract.
 
 CREATE VIEW request_read.request_summary_v1
 WITH (security_invoker = true) AS
+WITH request_rows AS (
+    SELECT
+        r.organization_id,
+        r.request_id,
+        r.public_id AS request_public_id,
+        r.request_type,
+        r.status,
+        r.completion_validity,
+        r.revision,
+        r.workflow_key,
+        r.workflow_version,
+        r.completion_policy_key,
+        r.completion_policy_version,
+        r.completed_at,
+        r.terminal_at,
+        r.created_at,
+        r.updated_at
+    FROM request_engine.requests AS r
+)
 SELECT
-    r.organization_id,
-    r.request_id,
-    r.public_id AS request_public_id,
-    r.request_type,
-    r.status,
-    r.completion_validity,
-    r.revision,
-    r.workflow_key,
-    r.workflow_version,
-    r.completion_policy_key,
-    r.completion_policy_version,
-    r.completed_at,
-    r.terminal_at,
-    r.created_at,
-    r.updated_at,
-    r.status IN ('completed', 'cancelled', 'failed_terminal') AS is_terminal
-FROM request_engine.requests AS r;
+    rr.organization_id,
+    rr.request_id,
+    rr.request_public_id,
+    rr.request_type,
+    rr.status,
+    rr.completion_validity,
+    rr.revision,
+    rr.workflow_key,
+    rr.workflow_version,
+    rr.completion_policy_key,
+    rr.completion_policy_version,
+    rr.completed_at,
+    rr.terminal_at,
+    rr.created_at,
+    rr.updated_at,
+    rr.status IN ('completed', 'cancelled', 'failed_terminal') AS is_terminal
+FROM request_rows AS rr;
 
 COMMENT ON VIEW request_read.request_summary_v1 IS
-'Current Request read model. is_terminal is a projection; commands still lock/revalidate request_engine.requests.';
+'Current Request read model. Deliberately non-updatable; is_terminal is a projection and commands lock/revalidate request_engine.requests.';
 
 CREATE VIEW request_read.reservation_summary_v1
 WITH (security_invoker = true) AS
