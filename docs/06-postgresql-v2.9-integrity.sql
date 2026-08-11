@@ -61,11 +61,20 @@ ALTER TABLE financial_reversals
 ALTER TABLE payment_allocation_adjustments
     ADD COLUMN payment_transaction_id bigint;
 
+-- The table is append-only in normal operation. The migration temporarily
+-- disables only that local history trigger so existing rows can be backfilled;
+-- all FK/check constraints remain active and the trigger is restored immediately.
+ALTER TABLE payment_allocation_adjustments
+    DISABLE TRIGGER trg_payment_allocation_adjustments_append_only;
+
 UPDATE payment_allocation_adjustments paa
    SET payment_transaction_id = pa.payment_transaction_id
   FROM payment_allocations pa
  WHERE pa.organization_id = paa.organization_id
    AND pa.payment_allocation_id = paa.payment_allocation_id;
+
+ALTER TABLE payment_allocation_adjustments
+    ENABLE TRIGGER trg_payment_allocation_adjustments_append_only;
 
 ALTER TABLE payment_allocation_adjustments
     ALTER COLUMN payment_transaction_id SET NOT NULL,
