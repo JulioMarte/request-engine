@@ -1,40 +1,39 @@
-# Request Engine V2.1 — arquitectura de referencia
+# Request Engine V2.2 — arquitectura de referencia
 
-> **Estado:** arquitectura objetivo para la reimplementación.
+> **Estado:** arquitectura objetivo; schema freeze bloqueado hasta satisfacer `docs/02-pre-sql-domain-contract.md`.
 >
 > **Documento padre:** `docs/00-product-definition.md`.
 >
-> **Contrato pre-SQL:** `docs/02-pre-sql-domain-contract.md`.
->
-> Este documento traduce el dominio canónico a decisiones técnicas. Si existe conflicto, gana `00-product-definition.md`; `02-pre-sql-domain-contract.md` define las garantías mínimas que el schema debe poder implementar.
+> Este documento traduce el dominio canónico a decisiones técnicas. Si existe conflicto, gana `00-product-definition.md`. `02-pre-sql-domain-contract.md` define las garantías que el diseño físico debe demostrar.
 
 ---
 
 ## 1. Objetivo técnico
-
-Request Engine es un motor headless, multi-tenant, API-first y transaccional.
 
 ```text
 Channels / Humans / Agents / Integrations
                    ↓
              Application layer
                    ↓
-         deterministic domain rules
+        deterministic domain rules
                    ↓
               PostgreSQL
                    ↓
        outbox / async integrations
 ```
 
-El sistema debe mantener autoridad aun cuando:
+Request Engine debe conservar autoridad aunque:
 
-- clientes reintentan requests;
-- agentes LLM repiten tools;
-- callbacks llegan duplicados/desordenados;
-- capacity cambia concurrentemente;
-- payments llegan tarde;
-- Resources fallan después de confirmation;
-- workflows cruzan procesos/canales/días.
+- clientes/agents reintenten commands;
+- callbacks lleguen duplicados o fuera de orden;
+- capacity cambie concurrentemente;
+- payments lleguen tarde;
+- Resources fallen después de confirmation;
+- workflows crucen canales, procesos y días;
+- una Party actúe mediante otra Party/Principal;
+- admission ocurra sin Reservation;
+- una ServiceSession ejecute varias Reservations;
+- field-service travel haga imposible un schedule aparentemente libre.
 
 ---
 
@@ -42,30 +41,30 @@ El sistema debe mantener autoridad aun cuando:
 
 ### PostgreSQL
 
-Source of truth transaccional.
+Source of truth transaccional para:
 
-Se utilizará para:
-
-- tenant isolation referential;
-- relational integrity;
-- temporal/capacity conflict protection;
-- row locking;
-- exclusion/unique/check constraints;
-- optimistic versioning support;
-- financial allocation invariants;
-- idempotency;
-- transactional outbox;
-- audit/domain facts.
+```text
+tenant isolation
+referential integrity
+capacity conflict protection
+row/advisory locking where justified
+exclusion/unique/check constraints
+optimistic versioning
+financial allocation invariants
+idempotency
+transactional outbox
+authoritative domain/audit facts
+```
 
 PostgreSQL no se usa como document store accidental.
 
 ### Python + FastAPI
 
-Domain/application/workers/integrations en Python. FastAPI como transporte HTTP.
+Domain/application/workers/integrations en Python; FastAPI como HTTP transport.
 
 ### SQLAlchemy + Alembic
 
-SQLAlchemy para persistence mapping; Alembic para migrations; Pydantic para contracts/API.
+Persistence mapping + migrations.
 
 ```text
 Pydantic → FastAPI → OpenAPI → generated SDKs
@@ -80,18 +79,19 @@ request-engine/
 ├── api/
 ├── domain/
 │   ├── organizations/
-│   ├── principals/
-│   ├── contacts/
+│   ├── identity/          # Principal, Party, authority
 │   ├── offerings/
 │   ├── requests/
 │   ├── pricing/
 │   ├── workflows/
+│   ├── capacity/
 │   ├── reservations/
+│   ├── admission/
 │   ├── schedules/
 │   ├── locations/
 │   ├── dispatch/
 │   ├── payments/
-│   └── fulfillments/
+│   └── fulfillment/
 ├── application/
 │   ├── commands/
 │   ├── queries/
@@ -107,11 +107,11 @@ request-engine/
 
 Boundary de dominio antes que boundary de red.
 
-No crear microservicios por módulo sin necesidad de scaling/isolation/ownership/deployment real.
+No microservices por módulo sin necesidad real de deployment/scaling/isolation/ownership.
 
 ---
 
-## 4. Regla de dependencia
+## 4. Dependency rule
 
 ```text
 API / Worker / Integration / Agent adapter
@@ -133,21 +133,19 @@ Routes/tools no contienen business authority.
 
 ## 5. Aggregate philosophy
 
-Mantener aggregates pequeños con invariantes claras.
+No convertir nouns en aggregate roots automáticamente.
 
-No convertir cada noun del vocabulario en aggregate root.
-
-Aggregate roots probables iniciales:
+Aggregate roots probables:
 
 ```text
 Organization
+Party
 Request
 Offering
 Resource
 CapacityHold
 Reservation
-ReservationDisruption
-Dispatch
+Dispatch        only if lifecycle justifies it
 PaymentRequirement
 PaymentAttempt
 PaymentTransaction observation boundary
@@ -157,30 +155,45 @@ ReconciliationCase
 ServiceSession
 ```
 
-Algunos conceptos son children/value objects/projections:
+Children/value objects/links/projections probables:
 
 ```text
-Participant
+RequestParticipant
 OfferingSelection
+Authority evidence/reference components
+ExternalCorrelation
 ReservationItem
-ResourceRequirement snapshot
+EffectiveResourceRequirement
 ResourceAllocation
+recipient/admission scope links
 PaymentAllocation
 PaymentInstruction
 PriceDetermination components
 ```
 
-La decisión final depende de invariantes transaccionales, no del nombre.
+No asumir aggregate root para:
+
+```text
+ReservationDisruption
+ResourceGroup
+HolidayCalendar
+Assignment
+Quote
+```
+
+hasta que tengan invariantes/lifecycle propios que lo exijan.
 
 ---
 
 ## 6. Tenancy e IDs
 
-Toda tabla tenant-owned tendrá `organization_id` como parte de sus garantías referenciales.
+Toda relación tenant-owned crítica debe poder demostrar:
 
-No basta con filtrar en application code.
+```text
+child.organization_id == parent.organization_id
+```
 
-Objetivo:
+Preferencia estructural:
 
 ```text
 (parent.organization_id, parent.id)
@@ -188,28 +201,29 @@ Objetivo:
 (child.organization_id, child.parent_id)
 ```
 
-Las relaciones críticas deben ser capaces de impedir cross-tenant FKs en DB.
+No depender sólo de ORM filters.
 
 Public IDs separados de internal PKs.
 
-Ejemplos:
+Ejemplos conceptuales:
 
 ```text
 org_...
-cnt_...
+pty_...
+prn_...
+req_...
 off_...
 sel_...
-req_...
+hld_...
 res_...
+ses_...
 dsp_...
-prc_...  PriceDetermination
+prc_...
 prq_...
 pat_...
 ptx_...
 rfd_...
-dspu_... PaymentDispute if public
 ful_...
-evt_...
 ```
 
 External provider IDs son references, nunca primary identity.
@@ -218,27 +232,51 @@ Public ID no es authorization.
 
 ---
 
-## 7. Principal, authorization y agents
+## 7. Principal, Party, authority y agents
 
 Authentication resuelve:
 
 ```text
 credential/session
 → organization
-→ principal
-→ scopes
+→ Principal
+→ scopes/capabilities
 ```
 
-Authorization además evalúa:
+Business identity resuelve separadamente:
 
 ```text
-subject/on-behalf-of relationship
-resource ownership
-current state
-policy
+external/channel identity
+→ verified Party when possible
 ```
 
-Un scope como `reservations.cancel` no permite cancelar cualquier Reservation del tenant automáticamente.
+Authorization evalúa:
+
+```text
+Principal
+Organization
+required capability
+Party/subject correlation
+on-behalf-of authority
+entity ownership/relationship
+current state
+policy/version
+```
+
+`RequestParticipant(role=guardian)` no concede por sí solo cancel/refund/consent authority.
+
+Un `AuthorityGrant/Representation` puede materializarse como entity o como verified relationship + provenance; el schema design debe escoger la forma más pequeña que preserve:
+
+```text
+actor
+represented subject
+allowed scope/action
+source/policy
+validity/revocation when relevant
+audit provenance
+```
+
+No construir generic ACL/relationship graph.
 
 High-risk scopes:
 
@@ -251,24 +289,50 @@ payments.reconcile
 payments.override
 ```
 
-Todos requieren audit + reason.
-
-Agent tools utilizan la misma application layer pero una superficie más estrecha que REST.
+requieren audit + reason y, cuando policy lo exija, stronger approval.
 
 ---
 
-## 8. Request / workflow execution
+## 8. Cross-channel continuation
+
+Persistir `ExternalCorrelation` mínima:
+
+```text
+organization
+request
+channel/integration kind
+external correlation identifier
+optional verified Party reference
+verification/provenance metadata
+created/last-seen timestamps as needed
+```
+
+No almacenar conversación completa por defecto.
+
+Un channel/thread/call identifier:
+
+```text
+is correlation
+≠ authentication
+≠ authorization
+```
+
+Website → WhatsApp → Voice → Human puede continuar `req_123`, pero cada mutation revalida authority.
+
+---
+
+## 9. Request/workflow execution
 
 Request conserva durable intent y workflow correlation.
 
-Persistencia conceptual del workflow:
+Persistencia conceptual:
 
 ```text
 workflow_key
 workflow_version
 workflow_status
 current_step
-workflow_state (typed/versioned payload only where necessary)
+workflow_state typed/versioned only when necessary
 next_action_at
 revision
 ```
@@ -290,170 +354,153 @@ fail_recoverable
 fail_terminal
 ```
 
-No construir state-machine framework universal.
+Request terminality depende de workflow/outcome rules, no de Reservation/payment aislado.
 
-Request terminality debe evaluarse mediante workflow rules y Fulfillment/outcome requirements, no por Reservation status o payment aislado.
+No state-machine framework universal.
 
 ---
 
-## 9. Pricing architecture
+## 10. Pricing architecture
 
-Pricing es un boundary mínimo, no un commerce engine universal.
-
-`PriceDetermination` conserva la explicación histórica de una cantidad.
-
-Debe poder vincularse al scope que priced y a la policy/source utilizada.
-
-Inputs tipados/versionados; no arbitrary code/DSL.
-
-Conceptualmente:
+`PriceDetermination` conserva explicación histórica de una cantidad:
 
 ```text
-scope
-pricing_source / policy key+version
-base amount
+priced scope
+pricing source/policy key+version
+base Money
 quantity semantics
-adjustments[]
+adjustments
 final Money
 provenance
 calculated_at
+override Principal/reason when applicable
 ```
 
-`PaymentRequirement` referencia la determinación/revisión relevante.
-
-Un override humano genera nueva determination/revision con Principal + reason; no modifica silenciosamente el cálculo anterior.
-
-Request Engine puede aceptar un authoritative external price, pero conserva source/reference/snapshot.
-
----
-
-## 10. Money
-
-`Money` siempre es:
-
-```text
-amount decimal/integer-minor-units strategy chosen consistently
-currency ISO-like code
-```
-
-Nunca binary floating point.
+PaymentRequirement referencia determination/provenance relevante.
 
 No FX implícito.
 
-Comparaciones/allocations sólo entre currencies compatibles salvo un futuro explicit FX model.
+`Money` nunca usa binary floating point.
+
+`Quote` sólo aparece si necesitamos lifecycle de oferta/acceptance/expiry independiente. `request_quote` no obliga a crear tabla Quote.
 
 ---
 
-## 11. OfferingSelection y immutable-after-commit semantics
+## 11. OfferingSelection y amendment semantics
 
 Selections pueden evolucionar durante intake.
 
-Después de que una Selection haya contribuido a un commitment/payment/fulfillment, campos históricos materiales no se sobrescriben ciegamente.
+Después de contribuir a commitment/payment/fulfillment, campos materiales no se sobrescriben ciegamente.
 
-Cambios materiales se ejecutan mediante commands de negocio que:
+Commands:
 
 1. validan current revision;
-2. determinan efectos sobre ReservationItems/capacity/pricing/payments;
-3. preservan snapshot previo;
-4. producen nuevas revisions/facts cuando corresponde.
+2. identifican affected recipient/selection scope;
+3. calculan efectos en capacity/pricing/payments/admission;
+4. preservan snapshot/lineage;
+5. producen replacement facts cuando corresponda.
 
-No introducir todavía aggregate genérico `Amendment`.
+No generic Amendment aggregate.
 
 ---
 
-## 12. ResourceRequirement y ResourceAllocation
+## 12. Resource requirements
 
-Ésta es una garantía estructural central.
-
-Cada effective ResourceRequirement materializado para un ReservationItem debe poder relacionarse con las ResourceAllocations que lo satisfacen.
+Separar configuración de Offering de commitment histórico:
 
 ```text
+Offering
+→ ResourceRequirementTemplate
+
 ReservationItem
-    ↓
-effective ResourceRequirement
-    ↓
-ResourceAllocation
-    ↓
-Resource / pool
+→ EffectiveResourceRequirement
+→ ResourceAllocation
+→ Resource/pool
 ```
 
-Allocation incluye conceptualmente:
+`EffectiveResourceRequirement` debe materializar quantity, interval y relevant subject scope.
 
-```text
-reservation
-reservation_item/effective_requirement
-resource or pool
-capacity model
-quantity
-planned interval
-status
-provenance/replacement relationship
-```
+Una confirmed Reservation con requirement insuficientemente allocated debe ser detectablemente `at_risk/blocked`; no puede aparentar `valid`.
 
-Una Reservation confirmada debe tener requirements satisfechos por active allocations o encontrarse en un disruption state detectable.
+No OR/k-of-n requirement algebra en V2.2.
 
 ---
 
 ## 13. Capacity conflict model
 
-Availability es query; authority empieza con Hold/Reservation.
+Availability es query; authority empieza con CapacityHold/confirmed Allocation.
 
-### Exclusive resources
+### Exclusive
 
-Intervals incompatibles sobre un exclusive Resource no pueden coexistir como live capacity claims.
+Intervals incompatibles no pueden coexistir como live claims.
 
-PostgreSQL range/exclusion constraints son candidato preferido cuando el modelo físico lo permita.
+PostgreSQL range/exclusion constraints son candidato preferido cuando la representación física lo permita.
 
-### Unit resources
+### Units
 
-Para `units`, la suma de live claims no puede superar capacity efectiva.
+Debe demostrarse serializabilidad de:
 
-Como una suma entre filas no es un simple CHECK constraint, el schema/transaction strategy debe escoger una garantía serializable mediante locking sobre una capacity bucket/resource-period authority apropiada o una estrategia equivalente demostrable.
+```text
+sum(live holds + active confirmed claims) <= effective capacity
+```
 
-No aceptar un algoritmo check-then-insert sin lock autoritativo.
+No aceptar check-then-insert sin lock authority.
 
 ### Holds
 
-CapacityHold consume el mismo capacity conflict space que confirmed allocations.
-
-Estados mínimos conceptuales:
-
 ```text
-active
-confirmed
-released
-expired
+active → confirmed | released | expired
 ```
 
-Sólo `active` consume capacity como hold; confirmation transforma/realiza el claim sin ventana de oversell.
+Sólo active consume capacity como hold.
+
+Confirmation transforma/realiza el claim sin ventana de oversell.
 
 Expiry y confirmation compiten bajo lock/version.
+
+### Transition/setup/travel time
+
+Si travel/setup/cleanup hace físicamente incompatibles dos commitments, debe participar en el capacity conflict model.
+
+Opciones físicas aceptables incluyen:
+
+- ampliar/reservar blocking intervals;
+- materializar transition claims;
+- serializar contra una authority que evalúe travel constraint de forma determinista.
+
+Lo no aceptable es confirmar dos commitments físicamente imposibles porque sus service intervals no se solapan.
+
+Request Engine no optimiza rutas; sólo protege feasibility cuando el constraint es material.
 
 ---
 
 ## 14. Pool late binding
 
-Un pool representa capacity agregada reservable.
+Pool representa capacity agregada.
 
-La concreción posterior de miembro puede usar una de estas estrategias físicas, a decidir en SQL design:
+Estrategias físicas candidatas:
 
-1. allocation parent pool + child realization que no vuelve a consumir pool total; o
-2. atomic replacement del pool claim por concrete claim conservando lineage.
+1. pool allocation parent + concrete realization child sin doble consumo; o
+2. atomic replacement pool claim → concrete claim preservando lineage.
 
-La implementación elegida debe probar:
+Debe probar:
 
-- no double counting;
-- concrete Resource no oversold;
-- pool capacity no oversold;
-- replacement history preservada.
+```text
+pool not oversold
+member not double-booked
+binding not double-counted
+lineage preserved
+```
 
-No introducir `Assignment` como segunda fuente de verdad.
+No `Assignment` como segunda truth source.
 
 ---
 
 ## 15. Reservation lifecycle
 
-Commitment states canónicos:
+Reservation es **capacity commitment**, no admission.
+
+Estados:
 
 ```text
 confirmed
@@ -462,21 +509,22 @@ expired
 closed
 ```
 
-`closed` significa no remaining committed future capacity. No significa universalmente fulfilled/paid/attended.
-
 No persistir globalmente:
 
 ```text
 completed
 no_show
 checked_in
+waiting
 in_service
 en_route
 ```
 
-como Reservation commitment states.
+### Partial cancellation
 
-Esos hechos pertenecen a Fulfillment/admission/ServiceSession/Dispatch/projections.
+Cancelación parcial debe actuar sobre ReservationItem/allocation/recipient scope y liberar exactamente capacity afectada.
+
+`Reservation.cancelled` sólo aplica cuando todo el commitment termina por cancel operation.
 
 ### Operational health
 
@@ -486,83 +534,115 @@ at_risk
 blocked
 ```
 
-Projection derivada, no arbitrary mutable authority.
+es projection derivada.
 
 ---
 
-## 16. Admission and partial attendance
+## 16. Admission architecture
 
-CheckIn y QueueEntry deben poder asociarse al admission scope apropiado.
+Admission es un módulo ortogonal a capacity commitment.
 
-Para Reservation multi-recipient/group:
+### CheckIn
+
+Observed presence/readiness sobre admission scope específico.
+
+### QueueEntry
+
+Puede existir:
 
 ```text
-Reservation remains confirmed/closed
-participant A → attended
-participant B → no_show
-participant C → cancelled admission
+with Reservation
+without Reservation (walk-in)
 ```
 
-No colapsar a `Reservation.no_show`.
+Nunca crear Reservation ficticia sólo para representar queue position.
 
-NoShowPolicy produce consecuencias por scope afectado y puede generar payment/refund consequences sin alterar hechos de otros participants.
+### WaitlistEntry
+
+Interés sin capacity comprometida.
+
+```text
+Waitlist → match → Hold → acceptance → Reservation
+```
+
+### Mixed attendance
+
+El schema debe poder mapear Party/Participant/recipient scope a Selection/ReservationItem/admission unit.
+
+No global `Reservation.no_show`.
+
+No crear `ReservationParticipant` aggregate si una join/link structure preserva las invariantes.
 
 ---
 
-## 17. Fulfillment architecture
+## 17. ServiceSession y Fulfillment
 
-Fulfillment es pequeño y scope-specific.
+### ServiceSession
+
+Actual execution episode.
+
+Cardinalidad semántica:
+
+```text
+Reservation N:M ServiceSession
+```
+
+Necesitamos un link explícito porque:
+
+- una Reservation puede ejecutarse en varias sessions;
+- una session puede ejecutar varias Reservations;
+- walk-in/external work puede producir ServiceSession sin Reservation.
+
+El link no implica que toda session satisfaga toda Reservation: Fulfillment conserva scope específico.
+
+### Fulfillment
 
 Preferencia:
 
 ```text
 one Fulfillment → one Request
-one Fulfillment → optional OfferingSelection
-one Fulfillment → explicit fulfilled quantity/scope
-one Fulfillment → optional ServiceSession/evidence reference
+optional OfferingSelection
+explicit recipient/quantity/scope
+optional ServiceSession/evidence
 ```
 
-Una ServiceSession que satisface dos Requests crea dos Fulfillment records.
+Una session que satisface dos Requests crea dos Fulfillments.
 
-Una Selection parcialmente satisfecha puede tener múltiples Fulfillments.
-
-Request completion se calcula por workflow/outcome rules sobre el conjunto de Fulfillments, no por un único boolean.
+Remaining fulfillment debe ser determinístico.
 
 ---
 
 ## 18. Schedule/time architecture
 
-Persistir instantes autoritativos como UTC.
+Persist authoritative instants UTC.
 
-Schedules conservan timezone IANA.
+Schedules usan IANA timezone.
 
-La API que recibe local date/time debe resolver DST explícitamente.
-
-Para hora ambigua:
+Ambiguous local time:
 
 ```text
-require offset/fold or return disambiguation options
+require offset/fold or return explicit choices
 ```
 
-Para hora inexistente:
+Nonexistent local time:
 
 ```text
-reject or return next valid options according to explicit policy
+reject or apply explicit communicated policy
 ```
 
-Nunca normalizar silenciosamente.
+BusinessHours ≠ AvailabilitySchedule.
 
-BusinessHours y AvailabilitySchedule son diferentes.
+ScheduleException no reescribe Reservation existente; detecta affected commitments y activa recovery.
 
-ScheduleException nueva no modifica Reservation existente; detection job/command abre disruptions cuando corresponda.
+`HolidayCalendar` no necesita aggregate inicial.
 
 ---
 
 ## 19. Dispatch architecture
 
-Reservation 1 → 0..N Dispatches.
+Dispatch representa operational movement toward Destination, no route plan universal.
 
-Dispatch conserva state útil:
+State útil:
 
 ```text
 planned
@@ -573,151 +653,148 @@ cancelled
 failed
 ETA
 tracking/share reference
-latest meaningful position when allowed
+latest meaningful position
 ```
 
-Cancellation de Reservation no puede dejar Dispatch activo indefinidamente. La cancelación dispara compensating action/event; durante consistencia eventual la projection debe poder mostrar la operación pendiente.
+No congelar `Reservation 1:N Dispatch`.
+
+El diseño físico debe permitir que un Dispatch/trip se relacione con uno o varios Reservation/Service scopes si un mismo movement sirve varios commitments.
+
+Cancellation de todos los scopes relacionados no puede dejar Dispatch activo indefinidamente; compensating action/event es obligatorio.
 
 No raw GPS time-series.
 
 ---
 
-## 20. Payment model
+## 20. External inventory boundary
+
+Offering product no implica inventory subsystem.
+
+Si fulfillment requiere stock externo, application layer debe poder exigir un external commitment/reference antes de confirmar el paso que dependa de él.
+
+No convertir cada SKU en Resource salvo que represente genuinamente capacity reusable/reservable.
+
+Inventory adapters pueden producir:
+
+```text
+availability observation
+reservation/commitment reference
+release/consume result
+```
+
+pero Request Engine conserva sólo lo necesario para explicar por qué el workflow consideró satisfecha la precondición.
+
+---
+
+## 21. Payment model
 
 ### PaymentRequirement
-
-Obligación concreta.
 
 Conceptualmente:
 
 ```text
 Money required
 purpose
-payer when known
+payer Party when known
 PriceDetermination/provenance
-policy snapshot
-status projection/cache
+policy snapshot/reference
 due_at
 revision
+explicit disposition active/waived/cancelled
 ```
 
-Estados como `open/partial/satisfied` deben ser derivables del financial state; si se materializan por performance deben mantenerse transaccionalmente/projection-safe.
-
-`waived/cancelled` sí son decisiones explícitas de negocio.
+`open/partial/satisfied/overdue` son derivados/materialized projections.
 
 ### PaymentAttempt
 
-Representa interaction attempt con método/provider. Provider success no equivale necesariamente a settlement.
+Provider/method interaction attempt. Success no equivale necesariamente a settlement.
 
 ### PaymentEvidence
 
-Nunca crea settlement por sí sola.
+Nunca crea settlement.
 
 ### PaymentTransaction
 
-Representa un financial fact observado.
+Financial fact observado.
 
-No modelar todo como una fila mutable que cambia de `settled` a `reversed` destruyendo semántica previa.
-
-Se conserva original observation y se registran facts posteriores relacionados.
+Original settlement permanece histórico aunque exista refund/reversal/dispute posterior.
 
 ---
 
-## 21. Financial facts, refunds and disputes
+## 22. Financial facts, refunds y disputes
 
-El modelo físico debe distinguir:
+Distinguir:
 
 ```text
 original transaction/observation
 refund operation
-refund financial movement/confirmation
+refund financial confirmation/movement
 reversal/return financial fact
 payment dispute lifecycle
 ```
 
-### Refund
-
-Operation lifecycle:
+Refund:
 
 ```text
-requested
-processing
-succeeded
-failed
-cancelled
+requested → processing → succeeded | failed
+requested → cancelled
 ```
 
-Debe referenciar el value/original transaction scope refundable.
-
-### Reversal/return
-
-Financial fact relacionado con original transaction. Reduce eligible net value.
-
-### PaymentDispute
-
-Lifecycle separado:
+Dispute:
 
 ```text
-opened
-under_review
-won
-lost
-closed
+opened → under_review → won/lost → closed
 ```
 
-`lost` puede producir/relacionarse con reversing financial fact.
-
-No todas las PSPs exponen los mismos estados; adapters normalizan a facts internos mínimos.
+Lost dispute puede relacionarse con reversing financial fact.
 
 ---
 
-## 22. PaymentAllocation invariants
+## 23. PaymentAllocation invariants
 
-PaymentAllocation asigna eligible financial value a PaymentRequirement.
-
-DB/application transaction debe impedir:
+Debe impedirse:
 
 ```text
-sum(active eligible allocations from transaction) > eligible transaction value
+sum(eligible allocations from transaction) > eligible transaction value
 ```
 
-Y debe poder determinar:
+Y calcularse deterministicamente:
 
 ```text
-net allocated value toward requirement
+net satisfied value toward requirement
 ```
 
 después de refunds/reversals/returns.
 
-Overpayment permanece unallocated o explícitamente reasignado; no se fuerza dentro de Requirement.
+Overpayment queda unallocated o explícitamente reasignado.
 
-No usar `paid=true` como source of truth.
+No `paid=true` authority.
 
 ---
 
-## 23. Payment verification strength
+## 24. Manual verification
 
-Manual verification es permitida, pero requiere:
+Manual verification requiere:
 
 ```text
 payments.verify scope
 Principal
-verification source
+independent verification source
 reason/reference
 audit timestamp
 ```
 
-La UI/tool debe expresar que el humano verificó una fuente independiente, no que aprobó visualmente un screenshot.
+Un screenshot aceptado es PaymentEvidence, no independent verification.
 
-Para tenants que lo requieran puede añadirse policy de dual-control/approval, pero no es requisito core inicial.
+El sistema puede hacer una falsa verificación humana auditable; no puede convertir una mentira humana en certeza epistemológica.
+
+Dual-control queda como policy opcional.
 
 ---
 
-## 24. Reconciliation
+## 25. Reconciliation
 
-ReconciliationCase se abre cuando existen financial facts pero no es seguro cómo tratarlos.
-
-Examples:
+ReconciliationCase para:
 
 ```text
 missing_reference
@@ -729,25 +806,47 @@ provider_mismatch
 manual_review_required
 ```
 
-Concurrent reconciliation debe usar lock/version para impedir resoluciones incompatibles.
+Concurrent resolution usa lock/version y financial allocation invariants.
 
 ---
 
-## 25. Commands
+## 26. Policy provenance
 
-Commands iniciales de application layer:
+Toda decisión material basada en policy debe poder reconstruir:
 
-### Requests
+```text
+policy key/version
+resolved scope
+inputs relevant to decision
+winning precedence/source
+override Principal/reason
+```
+
+No generic rules DSL.
+
+La application layer resuelve precedence; el audit/domain fact conserva el resultado suficiente para reproducir por qué se tomó la decisión histórica.
+
+---
+
+## 27. Commands
+
+### Requests / identity
 
 ```text
 CreateRequest
 AddRequestParticipant
+VerifyPartyCorrelation
+GrantOrRecordRepresentation
+RevokeRepresentation
+AddExternalCorrelation
 SelectOffering
 UpdateOfferingSelectionBeforeCommitment
 ProvideRequestData
 AdvanceRequest
 CompleteRequest
 ```
+
+No todos deben exponerse públicamente; algunos son internal/application capabilities.
 
 ### Pricing
 
@@ -757,30 +856,36 @@ RecordExternalPriceDetermination
 OverridePrice
 ```
 
-### Reservations
+### Capacity / reservations
 
 ```text
-SearchAvailability                  [query, not command]
+SearchAvailability                  [query]
 CreateCapacityHold
 ReleaseCapacityHold
 ConfirmReservation
 RescheduleReservation
 CancelReservation
+CancelReservationScope
 CloseReservation
-CheckInParticipant
+ReplaceResourceAllocation
+ReleaseResourceAllocation
+```
+
+### Admission
+
+```text
+CheckIn
 MarkAdmissionNoShow
 JoinQueue
 LeaveQueue
-OpenReservationDisruption
-RecoverReservationDisruption
-ReplaceResourceAllocation
-ReleaseResourceAllocation
+PromoteWaitlistEntry
 ```
 
 ### Dispatch/service
 
 ```text
 CreateDispatch
+LinkDispatchScope
 BindDispatchResources
 MarkDispatchEnRoute
 UpdateDispatchEta
@@ -788,6 +893,7 @@ MarkDispatchArrived
 CancelDispatch
 ChangeDestination
 StartServiceSession
+LinkServiceSessionReservation
 CompleteServiceSession
 RecordFulfillment
 ```
@@ -814,20 +920,23 @@ OpenPaymentDispute
 UpdatePaymentDispute
 ```
 
-No command `SetPaid`.
+Forbidden generic authority commands:
 
-No command `SetReservationStatus` genérico.
-
-No command `UpdateAnything` genérico.
+```text
+SetPaid
+SetReservationStatus
+UpdateAnything
+```
 
 ---
 
-## 26. Queries
+## 28. Queries
 
 ```text
 GetRequest
 ListOpenRequests
 GetRequestParticipants
+GetRequestAuthorityContext
 ListOfferingSelections
 ListOfferings
 GetPriceDetermination
@@ -836,8 +945,8 @@ GetLocationCurrentHours
 SearchAvailability
 GetReservation
 GetReservationOperationalStatus
+GetAdmissionState
 GetQueueState
-GetReservationDisruption
 GetDispatch
 GetServiceStatus
 GetPaymentRequirement
@@ -852,144 +961,161 @@ Queries no producen side effects.
 
 ---
 
-## 27. Transaction template
-
-Authoritative command:
+## 29. Authoritative transaction template
 
 ```text
 BEGIN
-  resolve tenant + principal
-  validate authorization/current revision
+  resolve organization + Principal
+  resolve Party/subject authority if required
+  validate current revision/state
   lock authoritative rows/buckets
   revalidate policy/capacity/financial invariants
   mutate domain state
-  append audit/domain event
+  append audit/domain facts
   append outbox if needed
 COMMIT
 ```
 
-No network calls dentro de authoritative transaction.
+No network calls dentro de transaction.
+
+Cuando una external precondition requiere network I/O:
+
+```text
+call external system outside authoritative transaction
+→ obtain signed/versioned/reference result
+→ begin short transaction
+→ revalidate current state + external result freshness
+→ commit internal decision/reference
+```
 
 ---
 
-## 28. Concurrency strategy
+## 30. Concurrency strategy
 
 ### Optimistic versioning
 
-Mutable aggregate roots relevantes tendrán revision/version.
-
-Lost update:
+Usar para stale mutable aggregate commands:
 
 ```text
 UPDATE ... WHERE id=? AND revision=?
 ```
 
-si affected rows = 0 → concurrency conflict/reload.
+0 rows → conflict/reload.
 
-### Pessimistic locks
+### Pessimistic locking
 
-Usar cuando la invariante depende de totals/competing claims:
+Cuando invariant depende de competing totals/claims:
 
-- capacity unit commitment;
-- Hold confirm/expire;
-- PaymentAllocation totals;
-- refundability totals;
-- reconciliation resolution.
+```text
+unit capacity
+Hold confirm/expire
+PaymentAllocation budget
+refundability budget
+reconciliation resolution
+```
 
 ### Exclusion constraints
 
-Preferidas para exclusive temporal resources si el diseño físico permite range representation limpia.
+Preferidas para exclusive temporal Resource conflicts cuando la representación física lo permita.
 
 ### Unique constraints
 
 Obligatorias para:
 
-- tenant-scoped public IDs;
-- idempotency scope/key;
-- provider event identity;
-- provider transaction identifiers when semantics guarantee uniqueness;
-- other natural dedupe identities.
+```text
+tenant-scoped public IDs
+idempotency scope/key
+provider event identity
+provider transaction identity when semantics guarantee uniqueness
+external correlation identity within its namespace when appropriate
+```
 
 ---
 
-## 29. Explicit race handling
+## 31. Explicit race handling
 
 ### Last capacity
 
-Both transactions lock/conflict on same capacity authority. Only one can commit valid claim.
+Both contenders serialize/conflict on same capacity authority; at most one valid claim commits.
+
+### Hold confirmation vs expiry
+
+Exactly one terminal transition wins.
 
 ### Payment vs Hold expiry
 
-PaymentTransaction may settle regardless. Hold confirmation checks locked current state. If expired first, payment enters revalidation/refund/reconciliation path.
+Payment may settle. Expired capacity never resurrects. Workflow revalidates/refunds/reconciles.
 
 ### Cancellation vs CheckIn
 
-Both compare Reservation/admission revisions and policy. One wins; loser reloads and reevaluates.
+Reservation commitment and admission facts are separate. Commands serialize on relevant scope/revision and policy decides whether cancellation remains allowed after CheckIn.
 
 ### Resource unavailable vs confirmation
 
-Resource availability change and confirmation serialize around capacity authority/revision. If confirmation wins first, subsequent unavailability opens disruption. If unavailability wins, confirmation fails/recomputes.
+Serialize around capacity authority. If confirmation wins first, later unavailability creates detectable risk/recovery. If unavailability wins, confirmation fails/recomputes.
+
+### Partial cancellation vs ServiceSession start
+
+Both operate on explicit ReservationItem/recipient scope. One cannot silently release capacity already converted into active execution without policy decision.
 
 ### Refund vs reversal
 
-Both lock financial value authority. No path may return/allocate more eligible value than exists.
+Refund reservation/budget and external reversal may race. Internal refund command cannot exceed refundable budget, but external reversal is still recorded even if it produces negative/net-deficit financial position.
 
 ### Two workers same outbox
 
-`FOR UPDATE SKIP LOCKED` or equivalent claim; delivery remains at-least-once.
+Claim with `FOR UPDATE SKIP LOCKED` or equivalent. Delivery remains at-least-once.
 
 ### Two reconciliations
 
-Case/transaction revision lock prevents conflicting resolutions.
+Case/transaction revision + allocation budget prevents incompatible resolution.
 
 ---
 
-## 30. Idempotency design requirements
+## 32. Idempotency requirements
 
-Persist at least conceptually:
+Persist conceptually:
 
 ```text
 organization
 operation
-caller/principal scope where needed
+caller/principal/context scope
 idempotency key
 canonical request hash
 status
-result reference/response snapshot
+logical result reference/response snapshot
 created/expires timestamps
 ```
 
-Same key + different canonical hash → conflict.
+Same scope/key + same hash → replay same logical result.
 
-Do not depend on in-memory cache for correctness.
+Same scope/key + different hash → conflict.
+
+Agent adapters should generate/provide operation tokens outside free-form LLM reasoning whenever possible.
 
 ---
 
-## 31. External event ingestion
-
-Persist provider event envelope/fingerprint before applying effects where practical.
-
-Normalized flow:
+## 33. External event ingestion
 
 ```text
 receive
 → authenticate
-→ dedupe
-→ persist raw/minimal reference safely
+→ anti-replay/dedupe
+→ persist provider event identity/reference
 → normalize
 → execute internal command
 → record processed outcome
 ```
 
-Out-of-order events cannot blindly regress internal facts.
+Out-of-order events never blindly regress authoritative state.
 
-Adapters should favor event facts over copying provider state machines wholesale.
+Favor financial/domain facts over copying provider state machines wholesale.
 
 ---
 
-## 32. Transactional outbox
+## 34. Transactional outbox
 
-Outbox written in same transaction as domain mutation.
+Outbox write occurs in same transaction as domain mutation.
 
 Worker supports:
 
@@ -999,82 +1125,87 @@ attempt count
 retry/backoff
 next_attempt_at
 failure/dead-letter state
-idempotent consumer/delivery key
+idempotent delivery/consumer key
 event version
 ```
 
-External queue can be added later if measured need exists.
+External queue sólo después de measured need.
 
 ---
 
-## 33. Audit vs domain events vs logs
+## 35. Audit vs events vs logs
 
 ### Audit
 
 Security/business accountability.
 
-### Domain event
+### DomainEvent
 
-Business fact for internal/external reaction.
+Business fact/reaction trigger.
 
 ### Log
 
 Technical diagnosis.
 
-No usar uno como sustituto de los otros.
-
 Critical audit context:
 
 ```text
 organization
-principal
-on_behalf_of subject when relevant
+Principal
+Party/on_behalf_of subject when relevant
 action
 entity + revision
 policy key/version
 reason/override
+authority provenance
+ExternalCorrelation/source channel
 correlation/causation
-source channel/integration
 ```
 
 ---
 
-## 34. Correlation and causality
+## 36. Correlation and causality
 
 Propagar cuando aplique:
 
 ```text
 request_id
+party_id
+principal_id
 offering_selection_id
 reservation_id
 reservation_item_id
-resource_requirement_id
+effective_requirement_id
 resource_allocation_id
+service_session_id
 dispatch_id
 payment_requirement_id
 payment_attempt_id
 payment_transaction_id
 fulfillment_id
+external_correlation_id
 correlation_id
 causation_id
-principal_id
 trace_id
 ```
 
-Debe poder reconstruirse el camino completo sin depender de logs.
+Debe reconstruirse el camino de negocio sin depender de logs.
 
 ---
 
-## 35. Agent tool design
+## 37. Agent tool design
 
-Tools orientadas a objetivos:
+Goal-oriented tools:
 
 ```text
 search_offerings
-create_or_update_request
+create_or_resume_request
+provide_request_information
 find_reservation_options
 prepare_reservation
 confirm_reservation
+check_in
+join_queue
 get_service_status
 get_payment_options
 start_payment
@@ -1082,71 +1213,74 @@ get_payment_status
 submit_payment_evidence
 cancel_reservation
 reschedule_reservation
+change_destination
 ```
 
 No exponer al LLM:
 
-- raw relationship tables;
-- locks;
-- capacity buckets;
-- provider secrets;
-- bank internals;
-- reconciliation internals;
-- arbitrary status setters.
-
-Cada mutating tool requiere idempotency token fuera del razonamiento libre del modelo y revalida current authoritative state.
-
----
-
-## 36. Cross-channel continuation
-
-Channel/session context es correlation, no authority.
-
 ```text
-Website → req_123
-WhatsApp → authenticate/resolve subject → req_123
-Voice → independently authorize → req_123
-Human → employee Principal → req_123
+raw relationship tables
+raw authority grants
+locks/capacity buckets
+provider secrets
+bank internals
+reconciliation internals
+arbitrary status setters
 ```
 
-El sistema puede almacenar channel references/context metadata, pero no necesita un Conversation aggregate core.
+Mutating tool:
+
+```text
+current-state revalidation
++ authorization
++ policy
++ idempotency
+```
+
+siempre.
 
 ---
 
-## 37. Derived/projection states
+## 38. Derived/projection state
 
-No permitir writes directos a:
+No direct writes a:
 
 ```text
 operational_health
 overdue
-payment satisfied/partial if fully derivable
-request progress percentage
-reservation operational status
+payment satisfied/partial
+request progress
 availability
+queue estimate
+attendance summary
+remaining fulfillment
 ```
 
-Pueden materializarse por performance con rebuild/reconciliation strategy.
+Materialization por performance requiere rebuild/reconciliation strategy.
 
 ---
 
-## 38. Boundary with external systems
+## 39. External-system boundaries
 
 ### CRM
 
-Request Engine conserva Contact/participant state necesario; CRM conserva relationship history broader.
+RE conserva Party/Participant/correlation state mínimo requerido por Requests; CRM conserva relationship history broader.
+
+### Identity
+
+IdP autentica credentials. RE conserva Principal reference, verified Party correlation y authority provenance requerida por business commands.
 
 ### Accounting/invoicing
 
-RE conserva PriceDetermination, obligations y operational payment facts; accounting conserva journals/invoices/tax compliance.
+RE conserva PriceDetermination, obligations y operational financial facts; accounting conserva journals/invoices/tax compliance.
 
 ### Inventory
 
-RE sólo conserva reservable capacity o external inventory reservation reference cuando sea necesario para fulfillment.
+RE conserva external commitment/reference necesario para explicar fulfillment feasibility; no general stock ledger.
 
 ### Workforce/routing
 
-RE necesita valid capacity/assignment and meaningful ETA; optimizer externo puede escoger plan óptimo.
+RE protege feasibility de commitments y meaningful assignment/ETA state. Optimizer externo elige plan óptimo.
 
 ### GPS
 
@@ -1154,23 +1288,31 @@ RE conserva meaningful latest state/reference, no telemetry stream.
 
 ### Communications
 
-RE conserva correlation/provenance, no inbox universal.
+RE conserva ExternalCorrelation/provenance, no inbox universal.
 
 ---
 
-## 39. Test matrix obligatoria antes del schema implementation freeze
-
-El schema debe tener tests concurrentes/integración para:
+## 40. Required test matrix before schema freeze
 
 ```text
 cross-tenant FK rejection
+Principal ≠ Party authorization
+organization payer for employee
+unauthorized guardian/on-behalf-of mutation
+cross-channel correlation without bearer authority
+walk-in QueueEntry without Reservation
+appointment + QueueEntry coexistence
+mixed recipient attendance
+partial Reservation cancellation
 exclusive-resource overlap
 unit-capacity oversell
 concurrent CapacityHolds
 Hold confirm-vs-expire
 resource unavailable-vs-confirm
 pool late-binding without double count
-mixed participant attendance
+travel/transition induced conflict
+one ServiceSession linked to multiple Reservations
+multiple ServiceSessions for one Reservation
 partial fulfillment
 price provenance preservation
 PaymentAllocation overspend
@@ -1185,29 +1327,38 @@ idempotency payload mismatch
 schedule exception after existing Reservations
 DST ambiguous/nonexistent local time
 outbox duplicate delivery
-agent unauthorized on-behalf-of mutation
+agent retry duplication
+hallucinated/cross-tenant ID
+external inventory precondition invalidated before commit
 ```
 
 ---
 
-## 40. Schema design gate
+## 41. Schema design gate
 
-Antes de escribir el SQL definitivo, `docs/02-pre-sql-domain-contract.md` debe estar satisfecho.
-
-El SQL design debe demostrar, para cada invariante:
+Antes del SQL definitivo, `docs/02-pre-sql-domain-contract.md` debe mapear cada invariante a una garantía primaria:
 
 ```text
 DB constraint
 OR lock/transaction protocol
 OR optimistic concurrency
-OR application policy
+OR deterministic application policy
 ```
 
-Si una invariante crítica sólo puede expresarse como “el código normalmente lo comprobará antes”, el schema todavía no está listo.
+Para invariantes de:
+
+```text
+money
+capacity
+tenancy
+idempotency
+```
+
+“el código normalmente lo comprueba” no es una garantía aceptable.
 
 ---
 
-## 41. Lo que NO construiremos todavía
+## 42. Lo que NO construiremos todavía
 
 ```text
 microservices por módulo
@@ -1215,6 +1366,13 @@ BPMN
 Temporal clone
 rules DSL
 generic pricing engine
+generic relationship graph
+generic Amendment aggregate
+Assignment truth source
+ResourceGroup aggregate
+HolidayCalendar aggregate
+ReservationDisruption aggregate unless lifecycle proves need
+Quote aggregate unless acceptance/expiry proves need
 accounting ledger
 invoice/tax platform
 inventory system
@@ -1225,7 +1383,8 @@ ReservationSeries
 Agreement
 Subscription
 Delivery platform
-generic relationship graph
+advanced requirement algebra
+FX
 ```
 
-La siguiente etapa después de estos documentos es **diseñar el schema PostgreSQL a partir de invariantes, no traducir nouns mecánicamente a tablas**.
+La siguiente etapa no es traducir nouns a tablas. Es demostrar el contrato pre-SQL y sólo entonces diseñar PostgreSQL alrededor de las invariantes.
