@@ -1,31 +1,33 @@
-# Request Engine V2.4 — contrato de dominio pre-SQL
+# Request Engine V2.6 — contrato de dominio pre-SQL
 
 > **Estado:** normativo. Schema freeze bloqueado hasta satisfacer este contrato.
 >
-> Este documento no diseña tablas definitivas. Define cardinalidades, state semantics, lock ownership, physical proof obligations e invariantes que el futuro schema PostgreSQL deberá demostrar.
+> Este documento no diseña tablas finales. Define cardinalidades, semantic states, serialization roots, transaction proofs e invariantes que el futuro PostgreSQL schema deberá demostrar.
 
 ---
 
 ## 1. Readiness
 
-V2.4 considera semánticamente resueltos los blockers anteriores y añade pruebas físicas obligatorias para:
+V2.6 incorpora los findings de la segunda revisión adversarial y cierra semánticamente:
 
-1. tenant-safe typed references;
-2. common capacity conflict space;
-3. stable capacity/schedule authority revisions;
-4. pool/direct-resource serialization;
-5. canonical multi-authority lock ordering;
-6. shared-requirement partial cancellation;
-7. hold expiry wall-clock semantics;
-8. two-sided financial adjustment budgets;
-9. Request completion serialization;
-10. local-vs-external authority boundary.
+1. concurrent Fulfillment/outcome-budget serialization;
+2. completion invalidation after Fulfillment correction;
+3. FinancialObservation vs PaymentTransaction vs real FinancialReversal;
+4. ObservationCorrection semantics;
+5. external field-service feasibility TOCTOU via PlanningRevision;
+6. local atomic commitments vs external commitment dependencies;
+7. ReservationItem → OfferingSelection cardinality;
+8. immutable PaymentRequirement amount after financial use;
+9. atomic replacement reschedule;
+10. AdmissionScope lock mapping;
+11. canonical `[start,end)` capacity interval semantics;
+12. variable capacity across schedule change points.
 
-Schema exploration is allowed. Schema freeze is not.
+Schema exploration is allowed. Schema freeze is not allowed until every critical proof has a concrete enforcement strategy.
 
 ---
 
-## 2. Cardinalidades normativas
+## 2. Normative cardinalities
 
 ```text
 Organization 1 ── N Principal
@@ -33,62 +35,71 @@ Organization 1 ── N Party
 Organization 1 ── N Offering
 Organization 1 ── N Request
 
-Request N ── M Party                    via RequestParticipant
+Request N ── M Party via RequestParticipant
 Request 1 ── 0..N typed RequestTarget links
 Request 1 ── 0..N OfferingSelection
 External interaction identity N ── M Request
 
-Request N ── M Reservation              via Selection/ReservationItem lineage
-OfferingSelection N ── M Reservation    via ReservationItem
+OfferingSelection 1 ── 0..N OutcomeScope
+OfferingSelection 1 ── 0..N ReservationItem
+ReservationItem N ── 1 OfferingSelection
+Request N ── M Reservation via ReservationItem lineage
 
 Reservation 1 ── 1..N ReservationItem
 ReservationItem N ── M CommitmentRequirement
 CommitmentRequirement 1 ── 1..N ResourceAllocation
+CapacityHold 1 ── 1..N local CapacityClaims
+Reservation 1 ── 0..N ExternalCommitmentReference
 
 Reservation N ── M ServiceSession
+OutcomeScope 1 ── 0..N Fulfillment
 Request 1 ── 0..N Fulfillment
-OfferingSelection 1 ── 0..N Fulfillment
 ServiceSession 1 ── 0..N Fulfillment
 
+PaymentTransaction 1 ── 1..N FinancialObservation
+PaymentTransaction 1 ── 0..N ObservationCorrection
+PaymentTransaction 1 ── 0..N FinancialReversal
 PaymentTransaction N ── M PaymentRequirement via PaymentAllocation
 PaymentAllocation 1 ── 0..N PaymentAllocationAdjustment
 ```
 
-Physical persistence may introduce internal supertypes/claim rows, but those may not change the semantic cardinalities above.
+`Reservation ↔ Participant` does not require an independent global relation if requested/admission scope is unambiguous through typed links.
 
 ---
 
 ## 3. Typed-reference contract
 
-Critical authoritative relationships must have enforceable referential integrity.
+Critical authoritative relationships require enforceable referential integrity.
 
-Forbidden shortcut:
+Forbidden when used for authority/invariants:
 
 ```text
 entity_type TEXT
 entity_id BIGINT/TEXT
 ```
 
-when the database cannot prove the referenced entity exists in the same tenant.
+without DB-provable target existence + tenant equality.
 
 Applies especially to:
 
 ```text
 RequestTarget
-PriceDetermination priced scope
+PriceDetermination scope
+OutcomeScope requested scope
+ReservationItem → OfferingSelection
 capacity authority target
-financial source/provenance links
+Hold/requirement coverage
+ExternalCommitmentReference scope
+financial observation/correction/reversal lineage
 ```
 
 Allowed strategies:
 
 ```text
-explicit typed link table
+explicit typed link tables
 real relational supertype
-XOR constrained typed foreign keys
+XOR-constrained typed FKs
 ```
-
-Audit/log-like references may be looser only if they are not used to enforce business authority or invariants.
 
 ---
 
@@ -100,35 +111,17 @@ For every critical tenant-owned relationship:
 child.organization_id == parent.organization_id
 ```
 
-Must be DB-enforceable where relationship is authoritative.
+Must be DB-enforceable where authoritative.
 
-Public IDs and external IDs never grant authority.
+Public IDs, external IDs, conversation IDs and idempotency tokens never grant authority.
 
-Public lookups resolve tenant + identifier together where possible.
-
----
-
-## 5. RequestTarget contract
-
-RequestTarget represents an existing entity that the Request intends to act upon.
-
-Initial supported target:
-
-```text
-cancel_reservation / reschedule_reservation → Reservation
-```
-
-Target type must be allowed by RequestType.
-
-Target link is typed and tenant-safe.
-
-Generated lineage is separate and must not be inferred from RequestTarget.
+Public lookup resolves tenant + identifier together.
 
 ---
 
-## 6. Request lifecycle and serialization
+## 5. Request lifecycle and completion-validity contract
 
-Semantic states:
+Request states:
 
 ```text
 active
@@ -138,230 +131,292 @@ cancelled
 failed_terminal
 ```
 
-Terminal states are monotonic initially.
+Terminal states are monotonic.
 
-`CompleteRequest` and every command that changes required outcome obligations must serialize through the same Request root/version.
+`CompleteRequest` and every command changing required outcome obligations serialize through Request root/version.
 
-Forbidden race result:
+`completed` records a historical authoritative completion decision; it is not reopened by later correction.
 
-```text
-T1 CompleteRequest sees obligations satisfied
-T2 adds required component
-both commit
-→ completed Request with unmet obligation
-```
-
-Expected:
+Derived/materialized `completion_validity`:
 
 ```text
-one wins; loser reloads/re-evaluates
+valid
+under_review
+invalidated
 ```
 
-Opaque workflow JSON cannot be sole completion authority.
+If authoritative outcome correction causes previously satisfied required criteria to become unsatisfied:
+
+```text
+Request remains completed
+completion_validity becomes invalidated/under_review
+recovery/review work is emitted according to policy
+```
+
+Forbidden:
+
+```text
+Fulfillment correction invalidates required outcome
+AND Request remains externally represented as currently valid completion without any invalidation/recovery signal
+```
 
 ---
 
-## 7. Party and authority contract
+## 6. Party, Principal and Representation contract
 
 Forbidden assumptions:
 
 ```text
 Principal == Party
 RequestParticipant role == authority
-external authority state is instantly serializable with local DB
+ExternalCorrelation == authority
+external revocation is instantly serializable locally
 ```
 
-Mutation depending on authority requires:
+Authority-dependent mutation requires authenticated/verified Principal, tenant match, capability/scope, relevant Party/subject correlation, current local Representation, current entity state, policy/version and idempotency.
 
-```text
-authenticated Principal
-Organization match
-capability/scope
-verified Party/subject correlation
-current locally materialized authority version
-entity authorization
-current entity state
-policy/version
-idempotency
-```
+Local Representation revocation and dependent mutation share lock/version authority.
 
-### Local revocation race
-
-Authority revocation and dependent mutation must lock/version-check the same local authority root.
-
-Expected:
-
-```text
-revocation commits first → mutation fails/re-evaluates
-mutation commits first → audit stores authority version used
-```
-
-### External authority
-
-External authority is represented by verified snapshot/reference with provenance and optional validity window. Request Engine does not promise atomic awareness of external revocation without a local callback/reverification event.
+Audit preserves exact Representation/policy snapshot used.
 
 ---
 
-## 8. Cross-channel contract
+## 7. Cross-channel contract
 
-ExternalCorrelation is N:M.
+ExternalCorrelation is N:M and never grants authorization.
 
-Forbidden uniqueness assumption:
-
-```text
-(org, channel, external_id) → exactly one Request
-```
-
-Correlation never grants authority.
-
-Durable operation identity may survive controlled channel handoff without conflating it with Party identity.
+Durable operation identity may survive Website → WhatsApp → Voice → Human handoff without becoming bearer authority.
 
 ---
 
-## 9. Fulfillment contract
+## 8. OfferingSelection / ReservationItem contract
 
-Offering/version defines one FulfillmentModel:
+Each OfferingSelection preserves reconstructible Offering/version, quantity, unit semantics, configuration, recipient scope and historical snapshot.
+
+Quantity without unit semantics is invalid.
+
+Each ReservationItem references exactly one OfferingSelection.
+
+Forbidden:
 
 ```text
-binary
-quantity
-components
-external_authoritative
+one ReservationItem → multiple OfferingSelections
 ```
 
-`quantity` arithmetic only when unit semantics make it valid.
-
-`components` uses explicit versioned component keys/scopes.
-
-Fulfillment is append-oriented and references one Request. It may reference optional OfferingSelection, ServiceSession and recipient scope.
-
-Refund/reversal does not erase Fulfillment.
+If multiple commercial components must behave as one package, that packaging belongs in Offering/package semantics.
 
 ---
 
-## 10. CommitmentRequirement contract
+## 9. OutcomeScope contract
 
-Offering configuration uses ResourceRequirementTemplate.
+Every independently mutable requested outcome budget/scope requires one stable serialization identity or equivalent stable typed row.
 
-Reservation commitment uses CommitmentRequirement.
-
-Required traceability:
+An OutcomeScope must prove association to:
 
 ```text
-Reservation
-→ CommitmentRequirement
-↔ covered ReservationItems
-→ ResourceAllocation(s)
-→ capacity authority
+Organization
+Request
+OfferingSelection
+recipient/subject when applicable
+FulfillmentModel/version
+requested quantity/components/result semantics
 ```
 
-Shared requirements consume capacity once.
+Every operation capable of changing current outcome contribution or required outcome must identify the same OutcomeScope lock target.
 
-Every ReservationItem requiring capacity must be covered by the necessary CommitmentRequirements.
-
-Every required CommitmentRequirement must have sufficient active allocation/claim coverage while Reservation remains operationally valid.
+OutcomeScope may remain internal and not appear in public APIs.
 
 ---
 
-## 11. CapacityAuthority physical contract
+## 10. Fulfillment contract
 
-Physical design must provide a stable lockable identity for every reservable capacity authority.
+`ServiceSession` = execution.
 
-Semantically that authority may represent:
+`Fulfillment` = append-oriented application of outcome evidence to one OutcomeScope belonging to exactly one Request.
 
-```text
-Resource
-CapacityPool
-```
-
-Required properties:
+Every Fulfillment proves:
 
 ```text
-organization
-capacity model
-current revision
-current schedule/availability revision
-active/config state
+Request/OutcomeScope same tenant
+scope belongs to Request
+OfferingSelection link valid
+recipient/subject scope valid when present
+FulfillmentModel/version valid
+quantity/components/result valid
+ServiceSession/external evidence source valid when present
+provenance preserved
 ```
 
-It may be implemented as a relational supertype or equivalent typed stable rows.
+Corrections preserve lineage; no destructive historical rewrite.
 
-What matters:
-
-> Every transaction capable of changing or consuming the same capacity can identify and lock the same authority.
+Refund/reversal/dispute never deletes Fulfillment.
 
 ---
 
-## 12. CapacityClaim physical contract
+## 11. Concurrent outcome-budget proof
 
-Holds and confirmed allocations compete in one logical conflict space.
-
-Physical design must therefore either:
-
-1. represent their live claims in a common claim relation; or
-2. prove an equivalent serialization protocol with identical correctness.
-
-Preferred conceptual common claim:
+For additive quantity model with `reject_excess`:
 
 ```text
-organization
-capacity_authority
-origin kind/reference
-interval
-quantity
-claim state
-expires_at if hold-backed
+sum(current net valid Fulfillment contribution for OutcomeScope)
+<= requested quantity
 ```
 
-`CapacityClaim` is persistence-internal; it does not merge CapacityHold and ResourceAllocation semantically.
-
----
-
-## 13. Exclusive capacity proof
-
-Invariant:
-
-> No incompatible live exclusive claims overlap on the same CapacityAuthority.
-
-Preferred proof:
+Protocol:
 
 ```text
-PostgreSQL range + exclusion constraint on common CapacityClaim relation
-```
-
-Separate Hold and Allocation tables with independent exclusion constraints do **not** prove cross-table conflict safety.
-
-The final SQL design must show the actual exclusion/serialization mechanism.
-
----
-
-## 14. Unit capacity proof
-
-Invariant:
-
-```text
-sum(overlapping live hold claims + active allocation claims)
-<= effective capacity
-```
-
-V1 proof protocol:
-
-```text
-LOCK CapacityAuthority
-revalidate schedule/availability revision
-calculate overlapping live claims
-validate requested quantity
-insert/transform claim
+LOCK OutcomeScope
+recompute current net valid contribution
+validate new contribution/correction
+append fact
 COMMIT
 ```
 
-No check-then-insert outside authority lock.
+Two concurrent 6/10 Fulfillments cannot both commit under `reject_excess`.
 
-A single authority row becoming a hotspot is an accepted V1 correctness tradeoff until measurement proves otherwise.
+For `allow_excess`, excess may be recorded explicitly; derived remaining requested quantity floors at zero and is never authoritative negative work.
+
+Components/binary models also serialize when concurrent writes could create incompatible current outcome truth.
 
 ---
 
-## 15. Hold lifecycle and expiry
+## 12. Fulfillment correction vs completion proof
+
+`CorrectFulfillment` affecting a completed Request must serialize against:
+
+```text
+OutcomeScope
+Request/completion decision boundary
+```
+
+It must:
+
+```text
+append correction/supersession
+recompute current outcome truth
+re-evaluate completion_validity
+emit recovery/review if required outcome no longer holds
+```
+
+It must not reopen terminal Request automatically.
+
+Concurrent `CompleteRequest` vs `CorrectFulfillment` must have one serialization order; loser reloads/re-evaluates.
+
+---
+
+## 13. CommitmentRequirement contract
+
+Offering configuration uses ResourceRequirementTemplate.
+
+Reservation commitment uses materialized CommitmentRequirement.
+
+Traceability:
+
+```text
+Reservation
+→ ReservationItem
+↔ CommitmentRequirement
+→ ResourceAllocation
+→ capacity authority
+```
+
+Shared requirement consumes capacity once.
+
+Every mandatory requirement remains sufficiently covered while Reservation is operationally valid.
+
+---
+
+## 14. CapacityAuthority / CapacityClaim contract
+
+Every reservable Resource or CapacityPool has one stable lockable capacity identity or equivalent proven mechanism.
+
+Common CapacityClaim conflict-space includes Hold-backed and Allocation-backed claims.
+
+Separate conflict spaces are insufficient unless an equivalent shared serialization proof exists.
+
+---
+
+## 15. Canonical interval contract
+
+Capacity commitments V1 use:
+
+```text
+[start_at, end_at)
+start_at < end_at
+```
+
+Adjacent intervals such as `[10:00,11:00)` and `[11:00,12:00)` do not overlap.
+
+No zero-duration, infinite or open-ended consuming claims V1.
+
+Planned service interval and capacity conflict interval are distinct when setup/transition/cleanup buffers consume capacity.
+
+---
+
+## 16. Local compound CapacityHold contract
+
+CapacityHold is a local commitment set.
+
+For one mandatory local commitment group:
+
+```text
+all mandatory local claims are created
+OR
+zero are created
+```
+
+No externally visible active partial Hold caused by contention/storage failure.
+
+CreateCapacityHold proof:
+
+```text
+READ complete intended scope
+PLAN complete local claim + lock set
+LOCK CapacityAuthorities canonical order
+VALIDATE revisions/schedules/location/capability/fungibility/planning/live claims
+WRITE Hold + all mandatory local claims one transaction
+```
+
+Partial commitment only when workflow partitions independent groups before acquisition.
+
+---
+
+## 17. Exclusive capacity proof
+
+Invariant:
+
+> No incompatible logically-live exclusive claims overlap on same CapacityAuthority.
+
+Preferred proof: PostgreSQL range + exclusion constraint over common CapacityClaim relation.
+
+Must cover Hold-vs-Hold, Hold-vs-Allocation and Allocation-vs-Allocation.
+
+---
+
+## 18. Unit and variable capacity proof
+
+Invariant applies throughout interval:
+
+```text
+for each relevant subinterval/change point:
+sum(logically-live claims) <= effective capacity
+```
+
+Protocol:
+
+```text
+LOCK CapacityAuthority
+revalidate schedule/config revision
+derive capacity change points intersecting requested interval
+evaluate overlapping live claims in every segment
+insert/transform only if every segment is safe
+```
+
+Checking capacity only at `start_at` is forbidden.
+
+---
+
+## 19. Hold lifecycle / expiry contract
 
 States:
 
@@ -380,9 +435,7 @@ active → released
 active → expired
 ```
 
-No terminal → active.
-
-A hold is logically live only while:
+Logical liveness:
 
 ```text
 state = active
@@ -391,106 +444,147 @@ AND expires_at > authoritative wall-clock time
 
 Cleanup worker does not define expiry truth.
 
-Confirmation must check logical liveness immediately before transition under relevant lock.
-
-A long transaction must not accidentally treat transaction-start timestamp as current wall clock for expiry-sensitive validation.
-
-Late payment never reactivates expired capacity.
+Late payment never reactivates expired Hold.
 
 ---
 
-## 16. Schedule mutation / phantom-race contract
+## 20. ExternalCommitmentReference contract
 
-Schedule rows and exceptions alone are not safe lock targets because concurrent inserts create phantoms.
+External inventory/partner/capacity authority is not represented as if locally atomic.
 
-Any mutation capable of changing reservability must lock/increment a stable authority revision.
+Typed reference preserves at least:
 
-Examples:
+```text
+Organization
+provider/connection
+external commitment identity
+covered scope
+status
+verified_at
+valid_until/expiry when known
+source policy/version
+provenance
+release/compensation capability when known
+```
+
+Reservation confirmation may depend on such reference only under explicit versioned policy.
+
+No distributed all-or-none guarantee is claimed.
+
+If external lease succeeds and local transaction fails, compensation/release is scheduled idempotently via outbox/recovery.
+
+If compensation fails, retained external commitment is visible operationally/reconcilable; it is not hidden.
+
+---
+
+## 21. Hold confirmation / Reservation completeness contract
+
+ConfirmReservation atomically proves:
+
+```text
+Hold logically live
+Request/Selection scope current
+complete mandatory local claim set
+relevant local revisions compatible
+required external commitment references currently acceptable by policy
+all mandatory CommitmentRequirements fully covered
+```
+
+Then atomically writes Reservation, ReservationItems, CommitmentRequirements, ResourceAllocations, local claim transformation, external dependency links and Hold→confirmed.
+
+Forbidden:
+
+```text
+Reservation confirmed with mandatory local under-coverage
+Reservation confirmed using known-expired required external commitment
+```
+
+---
+
+## 22. Schedule/location phantom-race contract
+
+Any mutation affecting reservability locks/increments stable authority revision:
 
 ```text
 AvailabilitySchedule edit
 ScheduleException insert/update
-capacity_override
+capacity override
 Resource unavailable
-CapacityPool membership/eligibility change
+Resource operating-location eligibility
+CapacityPool membership/fungibility
 ```
 
-Claim creation and schedule mutation therefore serialize through the same authority.
+Claim wins → config mutation sees commitment and emits recovery.
 
-Expected race:
-
-```text
-claim commits first
-→ schedule mutation sees existing commitment and triggers recovery/disruption
-
-schedule mutation commits first
-→ claim sees new revision/schedule and fails/recomputes
-```
+Config wins → later claim sees new revision and fails/recomputes.
 
 ---
 
-## 17. CapacityPool contract
+## 23. PlanningRevision / external feasibility contract
+
+External field-service feasibility must be bound to a monotonic PlanningRevision over the bounded planning authority/context whose commitments influence that decision.
+
+Flow:
+
+```text
+read revision R
+perform external feasibility query outside transaction using exact inputs
+receive snapshot bound to R
+BEGIN
+lock planning/capacity authority
+if current revision != R → snapshot stale, reject/recompute
+validate snapshot/policy
+write commitment
+increment revision when planning state changes
+COMMIT
+```
+
+A new/released/replaced commitment capable of changing adjacency/transition feasibility increments relevant PlanningRevision.
+
+If the implementation cannot define a correct bounded revision domain, authoritative external feasibility is not supported; use conservative local buffers.
+
+---
+
+## 24. Canonical lock-order contract
+
+Initial lock classes:
+
+```text
+REPRESENTATION
+REQUEST
+OUTCOME_SCOPE
+RESERVATION
+ADMISSION_SCOPE_ROOT
+CAPACITY_HOLD
+CAPACITY_AUTHORITY
+SERVICE_SESSION
+PAYMENT_TRANSACTION
+PAYMENT_REQUIREMENT
+FINANCIAL_REVERSAL_OR_CORRECTION
+RECONCILIATION_CASE
+```
+
+Within class: one documented total order.
+
+Commands PLAN complete lock set before acquisition where possible.
+
+Deadlock detection/retry is fallback.
+
+---
+
+## 25. CapacityPool contract
 
 V1 pools are member-derived and late-bind only fungible contributors.
 
-### Contributor exclusivity
+Contributor capacity cannot feed conflicting overlapping reservable pools unless a stronger shared protocol is introduced.
 
-A Resource cannot contribute the same capacity simultaneously to reservable pools whose claims may overlap.
+Direct Resource claim and relevant Pool claim serialize together.
 
-Must be structurally forbidden or serializably proven.
-
-### Direct-resource vs pool race
-
-A direct claim against a contributing Resource must serialize with both:
-
-```text
-concrete Resource capacity authority
-relevant CapacityPool authority
-```
-
-in canonical order.
-
-### Fungibility
-
-Pool late binding only when candidate members are interchangeable for the CommitmentRequirement.
-
-If not, concrete Resource binding occurs at Hold/confirmation time.
-
-### Pool mutation
-
-Membership/eligibility changes lock/increment pool authority revision and evaluate existing pool commitments.
+Pool claim + concrete realization is one consumption.
 
 ---
 
-## 18. Canonical lock-order contract
-
-Any transaction locking multiple authority rows must acquire them in deterministic order.
-
-The architecture must define one global lock ordering over lock classes and IDs.
-
-Example conceptual order:
-
-```text
-AuthorityGrant
-Request
-Reservation
-CapacityAuthority
-PaymentTransaction
-PaymentRequirement
-ReconciliationCase
-```
-
-Within same class, ascending internal key.
-
-Exact order may differ, but inconsistency across commands is forbidden.
-
-Deadlock detection/retry is fallback, not design strategy.
-
----
-
-## 19. Reservation contract
-
-Reservation states:
+## 26. Reservation lifecycle contract
 
 ```text
 confirmed
@@ -498,104 +592,127 @@ cancelled
 closed
 ```
 
-No `expired` in initial Reservation lifecycle.
-
-Forbidden global states:
-
-```text
-completed
-no_show
-checked_in
-waiting
-in_service
-en_route
-```
-
-Terminal invariant:
+Terminal:
 
 ```text
 Reservation.status IN {cancelled, closed}
-→ zero active capacity-consuming claims/allocations
+→ zero active local capacity-consuming claims/allocations
 ```
 
-This need not be a simple CHECK, but the terminal command transaction must prove it before commit.
-
-Generic status setter is forbidden.
+No generic status setter.
 
 ---
 
-## 20. Partial cancellation / shared requirement race
+## 27. Partial cancellation/shared requirement contract
 
-If Items A and B share Requirement X, concurrent cancellation of A and B must not leave orphan active capacity.
+Reservation is serialization root for structural commitment amendment.
 
-Required serialization root:
+Concurrent cancellations cannot release survivor capacity, leave orphan active claim or produce terminal Reservation with active claim.
+
+Protocol locks Reservation, computes surviving scope, locks affected CapacityAuthorities canonical order and writes replacements/releases atomically with Amendment Contract provenance.
+
+---
+
+## 28. Atomic reschedule contract
+
+Reschedule uses replacement-before-release semantics.
+
+Required flow:
 
 ```text
-Reservation
-```
-
-Protocol:
-
-```text
-LOCK Reservation
-revalidate current item/revision state
-recompute surviving Requirement coverage
-release/replace affected claims
-set terminal Reservation only if no commitment remains
+prepare replacement CapacityHold + external commitments
+BEGIN
+lock Reservation
+lock replacement Hold
+lock old/new CapacityAuthorities canonical order
+validate original + replacement + policy/session/admission constraints
+confirm replacement commitments
+release/replace old allocations
+preserve lineage
 COMMIT
 ```
 
-Commands may additionally lock affected CapacityAuthorities in canonical order.
+If replacement fails, original commitment remains unless a separate explicit cancellation policy/action says otherwise.
+
+Forbidden:
+
+```text
+release original first → replacement fails → accidental loss of reservation
+```
 
 ---
 
-## 21. ServiceSession concurrency contract
+## 29. AdmissionScope / Queue contract
+
+AdmissionScope maps deterministically to lock root:
+
+```text
+reservation-backed → ReservationItem
+walk-in             → OfferingSelection/Request scope root
+```
+
+Default invariant:
+
+```text
+<= 1 active QueueEntry per AdmissionScope + admission context
+```
+
+unless versioned policy explicitly allows otherwise.
+
+Queue absolute position is not persisted authoritative truth. Persist ordering inputs/facts and derive position/ETA.
+
+Cancellation vs CheckIn and cancellation vs StartServiceSession serialize against relevant admission root + Reservation/ServiceSession.
+
+No-show applies to explicit AdmissionScope.
+
+---
+
+## 30. ServiceSession contract
 
 Reservation ↔ ServiceSession is N:M.
 
-Cancellation/reschedule that conflicts with active execution must observe a serialization-safe session linkage/current session state.
+Cancellation/reschedule conflicting with active execution must observe serialization-safe linkage/current session state.
 
-Forbidden result:
+Planned timestamps remain distinct from actual timestamps.
+
+CompleteServiceSession does not imply CompleteRequest.
+
+---
+
+## 31. Field-service destination contract
+
+Material Destination change after Dispatch planning preserves before/after lineage and invalidates prior feasibility authority.
+
+ChangeDispatchDestination does not silently overwrite historical destination.
+
+No route optimizer in core.
+
+---
+
+## 32. Amendment Contract
+
+Every material post-commitment semantic command preserves:
 
 ```text
-Session starts work for Reservation B
-concurrent cancellation commits as if execution never started
+operation identity
+initiator Principal / represented Party
+reason
+policy/version
+before refs/revisions
+after refs/revisions
+created/released/replaced lineage
+evaluated inputs
+override provenance
+occurred_at
 ```
 
-Policy determines reject/stop/partial/manual behavior after serialization.
+Applies to reschedule, partial cancellation, resource replacement, destination change, repricing, payer/recipient material correction, recovery and external commitment replacement.
+
+No GenericAmendment aggregate required.
 
 ---
 
-## 22. Dispatch contract
-
-Dispatch represents movement toward one Destination.
-
-May link multiple Reservations only when the same movement/destination is shared.
-
-Cancellation of one Reservation does not automatically cancel a Dispatch also serving surviving commitments.
-
-No route planning graph.
-
----
-
-## 23. Pricing provenance contract
-
-Every PaymentRequirement created internally must reference enough pricing/amount-derivation provenance to answer:
-
-```text
-what commercial scope?
-what price determination/version?
-what payment policy/version?
-which calculation inputs?
-what Money resulted?
-who overrode it?
-```
-
-Critical priced-scope references must be typed/FK-safe; opaque polymorphic IDs are forbidden.
-
----
-
-## 24. PaymentRequirement contract
+## 33. PaymentRequirement contract
 
 Business disposition:
 
@@ -605,7 +722,7 @@ waived
 cancelled
 ```
 
-Derived/materialized financial labels:
+Derived labels:
 
 ```text
 open
@@ -614,60 +731,141 @@ satisfied
 overdue
 ```
 
-No manual `paid=true` authority.
+No manual `paid=true`.
 
-Refund does not automatically change business disposition.
+After a Requirement has financial use/allocation, `required Money` is historical and not destructively changed by repricing.
 
-Reversal/return may make an active Requirement outstanding again according to net allocation contribution.
-
----
-
-## 25. PaymentTransaction / allocation contract
-
-Original financial observation remains historical after refund/reversal/dispute.
-
-Positive PaymentAllocation invariant:
-
-```text
-sum(net eligible allocation contributions from transaction)
-<= eligible transaction value
-```
-
-Allocation command locks PaymentTransaction financial authority before spending value.
-
-Currencies must match unless a future explicit FX model exists.
+Repricing creates replacement/new obligation consequences with explicit policy and lineage.
 
 ---
 
-## 26. PaymentAllocationAdjustment contract
+## 34. PaymentTransaction / FinancialObservation contract
 
-Adjustment is append-oriented attribution of invalidated/corrected value against PaymentAllocation.
+`PaymentTransaction` is stable financial operation/value authority.
 
-Two budgets must be protected simultaneously:
+It is not the mutable latest provider status.
 
-### Source budget
+Every current financial interpretation is based on append-oriented `FinancialObservation`s preserving:
 
 ```text
-sum(adjustments attributed to FinancialReversal R)
-<= R.amount
+source/event identity
+source-specific status
+normalized finality
+amount/value interpretation
+occurred/effective_at
+observed_at
+source policy/version
+provenance
 ```
 
-### Allocation budget
+Current finality/eligible value may be materialized but must be reproducible from authoritative facts/policy or explicitly versioned interpretation.
+
+---
+
+## 35. ObservationCorrection contract
+
+`ObservationCorrection` corrects/invalidate prior knowledge without asserting a new movement of money.
+
+Examples:
+
+```text
+duplicate feed observation
+wrong manual verification
+misidentified transaction
+provider correction of prior interpretation
+```
+
+It preserves source/authority/reason/target observation lineage.
+
+`ObservationCorrection` is not `FinancialReversal`.
+
+---
+
+## 36. FinancialReversal contract
+
+FinancialReversal/Return is a separate later financial fact representing actual returned/reversed/invalidated value movement/event according to source semantics.
+
+Original PaymentTransaction/observations remain historical.
+
+---
+
+## 37. Financial eligibility contract
+
+Conceptual normalized knowledge distinguishes at least:
+
+```text
+observed_pending
+observed_available
+observed_final
+```
+
+Only value eligible under versioned source policy can satisfy PaymentRequirements.
+
+PaymentAttempt success contributes zero eligible value by itself.
+
+PaymentEvidence contributes zero eligible value by itself.
+
+AI screenshot/document interpretation cannot create eligible value.
+
+---
+
+## 38. Financial eligibility reduction contract
+
+Any FinancialObservation, ObservationCorrection or FinancialReversal that can reduce current eligible value must serialize against same PaymentTransaction value authority as AllocatePayment.
+
+If new eligible value becomes less than current net allocations:
+
+1. deterministic attribution → create typed PaymentAllocationAdjustment(s) within same/controlled transaction protocol; or
+2. ambiguous attribution → open ReconciliationCase and expose an under_review/inconsistent financial condition.
+
+External truth is never rejected to keep local allocation invariant artificially true.
+
+No silent negative/overallocated state without recovery/reconciliation visibility.
+
+---
+
+## 39. PaymentAllocation contract
+
+PaymentTransaction N:M PaymentRequirement via PaymentAllocation.
+
+Allocation requires same Organization, compatible currency, compatible Requirement disposition/policy and sufficient current eligible value.
+
+Invariant at allocation commit:
+
+```text
+sum(current net eligible allocations from transaction)
+<= current eligible transaction value
+```
+
+Allocation locks PaymentTransaction and Requirements in canonical order where needed.
+
+---
+
+## 40. PaymentAllocationAdjustment contract
+
+Adjustment may be sourced by typed FinancialReversal or ObservationCorrection.
+
+Allocation budget:
 
 ```text
 sum(invalidating adjustments against Allocation A)
 <= A.eligible historical contribution
 ```
 
-Creation locks source financial fact and affected allocations in canonical order.
+For monetary reversal source:
 
-If attribution is ambiguous, no arbitrary adjustment is created; ReconciliationCase is used.
+```text
+sum(adjustments attributed to FinancialReversal R)
+<= R.amount
+```
+
+Creation locks source fact + affected allocations.
+
+Ambiguous attribution creates ReconciliationCase.
 
 ---
 
-## 27. Refund contract
-
-Refund lifecycle:
+## 41. Refund contract
 
 ```text
 requested
@@ -677,22 +875,45 @@ failed
 cancelled
 ```
 
-Refund command locks original PaymentTransaction/value authority and enforces:
-
-```text
-pending + succeeded refundable claims
-<= refundable amount allowed by facts/policy
-```
-
-External reversal cannot be rejected because local refund exists. If both occur and create a deficit, preserve both facts and reconcile.
+Refund creation serializes against PaymentTransaction and enforces pending+succeeded refundable claims <= currently refundable amount under policy/facts.
 
 Void of uncaptured authorization is not Refund.
 
+External reversal/correction still records reality even if it causes deficit/reconciliation.
+
+Refund and PaymentRequirement disposition remain independent.
+
 ---
 
-## 28. Provider callback contract
+## 42. Manual financial verification contract
 
-Dedupe identity is scoped by provider connection/account semantics.
+Privileged operation requires:
+
+```text
+verifier Principal
+explicit capability/scope
+Organization/source/account/cash context
+amount/currency
+evidence/reference
+occurred_at/observed_at
+reason
+policy/version
+idempotency
+```
+
+If dual control required:
+
+```text
+verifier A != approver B
+```
+
+No eligible authoritative value exists before required approval.
+
+Wrong approved verification is corrected by ObservationCorrection, not destructive deletion.
+
+---
+
+## 43. Provider callback contract
 
 Preferred uniqueness when provider guarantees event IDs:
 
@@ -700,25 +921,29 @@ Preferred uniqueness when provider guarantees event IDs:
 (provider_connection, provider_event_id)
 ```
 
-Same identity + same canonical payload → duplicate/replay.
+Same ID + same canonical payload → replay.
 
-Same identity + materially different payload → integrity conflict, audit/review.
+Same ID + materially different payload → integrity/security conflict.
 
-Out-of-order events may append facts or update the same external operation when semantically valid, but never blindly regress authoritative domain state.
+Webhook envelope authentication and domain authorization/interpretation are distinct.
+
+Provider events normalize into typed domain semantics, especially FinancialObservation, Refund, Dispute or FinancialReversal; payload is not direct generic status mutation.
 
 ---
 
-## 29. Reconciliation contract
+## 44. Reconciliation contract
 
-ReconciliationCase is required when financial treatment/matching/attribution is uncertain.
+ReconciliationCase required when matching, attribution, finality, correction effect or treatment is uncertain.
 
 Concurrent resolution uses row lock/version.
 
-Two resolutions cannot consume/attribute the same financial value incompatibly.
+Two resolutions cannot consume/attribute same value incompatibly.
+
+No guess-based match merely because amount/time look similar.
 
 ---
 
-## 30. Idempotency contract
+## 45. Idempotency contract
 
 For scope S, key K, canonical hash H:
 
@@ -728,49 +953,47 @@ same H → replay logical result
 other H → conflict
 ```
 
-Replay does not bypass current read authorization.
+Replay rechecks current read authorization.
 
 Transport idempotency and durable cross-channel operation identity are distinct.
 
-Keys/tokens are not bearer authorization.
-
 ---
 
-## 31. Outbox contract
+## 46. Outbox contract
 
 Domain mutation + outbox append = same DB transaction.
 
-Worker delivery is at-least-once.
+Worker claim prevents concurrent processing of same row; delivery remains at-least-once.
 
-Claim protocol prevents concurrent execution of same outbox row; consumer idempotency handles redelivery.
+Consumers idempotent.
 
----
-
-## 32. Availability projection contract
-
-Availability/materialized slots/current queue estimate/operational health/payment labels are projections.
-
-If materialized:
-
-- rebuildable;
-- not arbitrary write endpoints;
-- never sufficient to create authoritative capacity/payment mutation without locked revalidation.
+External commitment compensation/release is also at-least-once and idempotent.
 
 ---
 
-## 33. Required command proofs
+## 47. Projection contract
 
-Before schema freeze, architecture/schema design must document at minimum the following command plans using:
+Derived/rebuildable state includes:
 
 ```text
-READ
-LOCK
-VALIDATE
-WRITE
-EMIT
+Availability
+materialized slots
+Queue position/ETA
+Operational health
+completion_validity
+PaymentRequirement open/partial/satisfied/overdue
+current PaymentTransaction finality/eligible value interpretation
+remaining fulfillment scope
+Resource utilization
 ```
 
-Required commands:
+If materialized, projections are not arbitrary write endpoints and never independently authorize mutation without revalidation.
+
+---
+
+## 48. Required command proofs
+
+Before schema freeze document READ / PLAN / LOCK / VALIDATE / WRITE / EMIT for:
 
 ```text
 CreateRequest
@@ -789,213 +1012,224 @@ ChangeScheduleException
 ChangeCapacityPoolMembership
 CheckIn
 JoinQueue
+PromoteWaitlistEntry
 StartServiceSession
 CompleteServiceSession
 RecordFulfillment
+CorrectFulfillment
+ChangeDispatchDestination
 CreatePaymentRequirement
-RecordPaymentTransaction
-AllocatePaymentTransaction
-ApplyPaymentAllocationAdjustment
+RepriceCommittedScope
+RecordFinancialObservation
+CorrectFinancialObservation
+VerifyManualPayment
+ApproveManualPaymentVerification
+AllocatePayment
+ApplyAllocationAdjustment
 RequestRefund
 RecordFinancialReversal
-ResolveReconciliationCase
-ChangeDestination
-Create/UpdateDispatch
-RevokeAuthorityGrant
+Open/ResolvePaymentDispute
+Open/ResolveReconciliationCase
 ```
-
-If a command cannot identify a bounded lock set or deterministic lock order, aggregate/authority design is not ready.
 
 ---
 
-## 34. Required race proofs
+## 49. Invariant-to-enforcement matrix required before SQL freeze
 
-### C1 — Last unit
+### Tenant / authority
 
-Two concurrent holds for final unit. Maximum one valid claim commits.
+```text
+I01 no cross-tenant authoritative reference
+I02 public/external IDs never grant authority
+I03 participant role never grants authority
+I04 local Representation revocation races serialize
+I05 audit preserves exact authority/policy version
+```
 
-### C2 — Hold confirm vs expiry
+### Request / outcome
 
-Only one semantic terminal outcome wins. Wall-clock expiry is respected.
+```text
+I06 terminal Request is monotonic
+I07 completion serializes with required-outcome mutation
+I08 completion correction can invalidate completion_validity without reopening Request
+I09 RequestTarget type valid for RequestType
+I10 RequestTarget and generated lineage remain distinct
+I11 Selection quantity has explicit unit semantics
+I12 ReservationItem references exactly one OfferingSelection
+I13 every mutable requested outcome has stable OutcomeScope serialization identity
+I14 Fulfillment references exactly one valid OutcomeScope/Request
+I15 Fulfillment correction preserves history
+I16 reject_excess additive outcome cannot over-fulfill concurrently
+I17 allow_excess never creates negative authoritative remaining scope
+I18 CorrectFulfillment vs CompleteRequest serializes
+```
 
-### C3 — Payment vs Hold expiry
+### Capacity / commitments
 
-Payment remains financial fact; expired capacity is not resurrected.
+```text
+I19 every local consuming commitment has authoritative claim lineage
+I20 incompatible exclusive live claims never overlap
+I21 unit claims never exceed effective capacity over any relevant subinterval
+I22 capacity interval semantics are [start,end) with start<end
+I23 compound mandatory local Hold is all-or-none
+I24 expired/released Hold cannot confirm
+I25 Hold and Allocation claims share conflict space
+I26 Reservation confirmation cannot leave mandatory local requirements under-covered
+I27 shared requirement consumes capacity once
+I28 partial cancellation cannot release surviving shared capacity
+I29 pool claim + realization never double-consume
+I30 direct Resource and Pool claim serialize
+I31 non-fungible pools cannot remain unresolved late-bound
+I32 schedule/location/membership change serializes with local commitment
+I33 external commitments are explicit dependencies, not represented as local atomic claims
+I34 failed local transaction after external lease produces compensation/recovery work
+I35 terminal Reservation has zero active local consuming claims
+I36 all multi-authority lock sets use canonical total ordering
+I37 reschedule replacement failure preserves original commitment
+```
 
-### C4 — Schedule exception vs Hold
+### Field service / admission / execution
 
-Serialize through same CapacityAuthority revision.
+```text
+I38 external feasibility snapshot is bound to PlanningRevision
+I39 relevant intervening commitment invalidates stale feasibility snapshot
+I40 Destination material change preserves before/after lineage and invalidates feasibility
+I41 no-show applies to explicit AdmissionScope
+I42 AdmissionScope maps deterministically to lock root
+I43 default active QueueEntry uniqueness holds per AdmissionScope/context
+I44 Queue absolute position is not authoritative persisted truth
+I45 planned and actual timestamps remain distinct
+I46 cancellation conflicting with active execution serializes
+```
 
-### C5 — Resource unavailable vs confirmation
+### Amendments / pricing
 
-Serialize through same capacity authority.
+```text
+I47 every material post-commitment change preserves Amendment Contract provenance
+I48 old committed facts are not destructively rewritten
+I49 PaymentRequirement required Money is not destructively repriced after financial use
+```
 
-### C6 — Pool claim vs direct member booking
+### Payments
 
-No pool/direct oversell.
+```text
+I50 PaymentEvidence creates zero eligible value
+I51 PaymentAttempt success creates zero eligible value by itself
+I52 PaymentTransaction identity is distinct from FinancialObservation history
+I53 FinancialObservation source/finality/provenance is reconstructible
+I54 ObservationCorrection is distinct from FinancialReversal
+I55 only policy-eligible financial value satisfies Requirements
+I56 net allocations cannot exceed eligible value at allocation commit
+I57 currency mismatch cannot allocate without explicit FX
+I58 eligibility reduction serializes with allocation
+I59 deterministic eligibility reduction creates typed adjustments; ambiguous reduction creates reconciliation
+I60 adjustment cannot exceed allocation historical contribution
+I61 reversal-sourced adjustments cannot exceed reversal amount
+I62 original financial facts/observations survive refund/reversal/correction/dispute
+I63 Refund and Requirement disposition are independent
+I64 manual verification requires privileged authority/provenance
+I65 dual-control policy cannot be satisfied by same Principal
+```
 
-### C7 — Pool membership mutation vs Hold
+### Callbacks / agents / platform
 
-One revision wins; loser recomputes.
-
-### C8 — Shared requirement dual cancellation
-
-No orphan active allocation remains.
-
-### C9 — Session start vs cancellation
-
-Execution/current-state policy determines deterministic winner/consequence.
-
-### C10 — Request completion vs outcome amendment
-
-No completed Request with newly unmet obligation.
-
-### C11 — Authority revocation vs mutation
-
-Local authority version serializes.
-
-### C12 — Duplicate webhook
-
-One logical effect.
-
-### C13 — Same provider event ID, different payload
-
-Integrity conflict; no silent replay.
-
-### C14 — Allocation overspend
-
-Concurrent allocations cannot exceed eligible transaction value.
-
-### C15 — Partial reversal attribution
-
-Two-sided budgets cannot be exceeded.
-
-### C16 — Refund vs refund
-
-Refundable budget not overspent.
-
-### C17 — Refund vs external reversal
-
-Both facts may exist; deficit represented/reconciled, never erased.
-
-### C18 — Two reconciliations
-
-Conflicting resolutions cannot both commit.
-
-### C19 — Two workers same outbox
-
-At most one active row claim; redelivery still idempotent.
-
-### C20 — Idempotent replay after authorization revocation
-
-No duplicate write; no unauthorized disclosure.
+```text
+I66 provider events dedupe within provider connection/account semantics
+I67 same event ID with conflicting payload is integrity conflict
+I68 idempotency same key+same hash replays logical result
+I69 idempotency same key+different hash conflicts
+I70 replay does not bypass current read authorization
+I71 agent interpretation never grants authority
+I72 hallucinated IDs cannot escape tenant boundary
+I73 stale availability never authorizes commitment
+I74 screenshot evidence cannot become settlement through AI inference
+I75 business mutation + outbox append commit atomically
+I76 external delivery/compensation is treated as at-least-once
+```
 
 ---
 
-## 35. DB-guarantee map
+## 50. Required race/integration tests
 
-### Must be DB structural/transactional
-
-```text
-cross-tenant FK integrity
-typed authoritative references
-tenant-scoped public ID uniqueness
-idempotency uniqueness/provider-event dedupe
-exclusive claim overlap
-unit-capacity serialized totals
-hold confirmation/expiry serialization
-schedule/capacity revision serialization
-pool/direct claim serialization
-financial allocation budget
-adjustment source/allocation budgets
-refund budget
-reconciliation exclusivity
-outbox mutation atomicity
-```
-
-### Application policy over DB-protected current state
+At minimum:
 
 ```text
-who may cancel/reschedule
-cancellation/no-show fees
-which policy version applies
-whether active ServiceSession permits cancellation
-whether a pool is semantically fungible for a requirement
-how ambiguous reversal attribution is resolved
-Request outcome criteria
-external inventory acceptance policy
+cross-tenant typed FK rejection
+hallucinated public ID tenant attack
+Request completion vs outcome amendment
+concurrent 6/10 + 6/10 Fulfillment reject_excess
+allow_excess quantity behavior
+CorrectFulfillment after completion invalidates completion_validity
+CorrectFulfillment vs concurrent CompleteRequest
+Fulfillment correction lineage
+one ServiceSession → multiple Requests/Fulfillments
+compound Hold all-or-none 3+ authorities
+compound Hold final-claim rollback
+concurrent compound Holds opposite input ordering
+exclusive Hold-vs-Allocation overlap
+unit capacity oversell
+variable capacity change-point crossing
+adjacent [start,end) capacity claims
+schedule exception vs Hold
+Resource location change vs Hold
+pool membership vs Hold
+pool vs direct member booking
+Hold confirm vs expiry
+payment arrives after Hold expiry
+Reservation confirm missing mandatory coverage rejection
+external lease succeeds + local failure → compensation
+external commitment expires before confirmation
+shared requirement concurrent partial cancellation
+atomic reschedule success
+atomic reschedule replacement failure preserves original
+Reservation close with active claims rejection
+resource unavailable vs confirmation
+external feasibility revision changes after provider check
+Destination mutation invalidates feasibility
+cancellation vs check-in
+cancellation vs StartServiceSession
+concurrent Queue join same AdmissionScope
+repricing after partial allocation preserves old requirement history
+PaymentEvidence cannot satisfy Requirement
+PaymentAttempt success cannot satisfy Requirement
+out-of-order FinancialObservations
+ObservationCorrection vs AllocatePayment
+ObservationCorrection after manual verification
+FinancialReversal vs ObservationCorrection behavior
+eligibility reduction with deterministic allocation attribution
+eligibility reduction with ambiguous attribution → reconciliation
+manual verification unauthorized rejection
+dual-control same-Principal rejection
+PaymentAllocation overspend
+partial reversal adjustment budget race
+refund-vs-refund
+refund-vs-external reversal
+provider duplicate event
+same event ID conflicting payload
+late bank transfer after Hold expiry
+concurrent ReconciliationCase resolution
+idempotency same key/different payload
+idempotent replay after auth revocation
+outbox duplicate delivery
+external compensation duplicate delivery
+DST ambiguous/nonexistent local time
 ```
-
-Application policy must never replace DB protection for capacity, money or tenant integrity.
 
 ---
 
-## 36. Canonical lock-order proof
+## 51. Freeze decision
 
-The SQL design must publish one canonical lock-order table and all command plans must comply.
-
-At minimum it must cover:
+Schema freeze is permitted only when each I01–I76 has an explicit enforcement classification:
 
 ```text
-AuthorityGrant/Representation
-Request
-Reservation
-CapacityAuthority
-ServiceSession
-PaymentTransaction
-PaymentRequirement
-FinancialReversal/Refund
-ReconciliationCase
+DB constraint (FK/unique/check/exclusion)
+stable row-lock authority + transaction protocol
+optimistic revision protocol
+bounded application policy because DB enforcement is semantically incorrect/impossible
 ```
 
-Multi-row locks within a class use deterministic key order.
+For lock-based invariants, command docs identify lock target and canonical order.
 
----
+For application-policy invariants, review explains why DB enforcement is not the right authority.
 
-## 37. Pre-SQL acceptance checklist
-
-Schema freeze is allowed only when all answers are concrete:
-
-```text
-What row/authority serializes each capacity change?
-How do Hold and Allocation conflict in the same physical space?
-How does a new ScheduleException race a Hold without phantom oversell?
-How does a direct Resource booking race its pool?
-How are multiple capacity authorities locked without deadlock-prone arbitrary order?
-How does shared requirement cancellation release exactly the right capacity?
-How is hold expiry evaluated independently of worker delay?
-How are polymorphic-looking relationships given real FK integrity?
-How does Request completion race outcome mutation?
-How does local authority revocation race an on-behalf-of command?
-How are partial reversals attributed without inventing balances?
-How are refund and reversal both preserved if they exceed prior net value?
-Which invariants are DB-enforced versus application-policy-enforced?
-```
-
-If any answer is still “query current rows, check, then insert/update” without a stable locked authority, the model is not ready for SQL implementation freeze.
-
----
-
-## 38. Deliberately deferred
-
-Do not add yet:
-
-```text
-microservices by module
-BPMN/Temporal clone
-generic policy/rules DSL
-universal pricing DSL
-full inventory
-invoice/tax engine
-accounting ledger
-route optimizer
-raw GPS store
-ReservationSeries
-Subscription/Agreement framework
-advanced OR/k-of-n resource requirements
-overlapping arbitrary reservable pools
-capacity sharding/bucket optimization before measured contention
-universal polymorphic entity graph
-```
-
-Correctness first; measured optimization later.
+If a critical rule is defended only by “the service checks first”, schema freeze remains blocked.

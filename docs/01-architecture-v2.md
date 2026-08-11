@@ -1,4 +1,4 @@
-# Request Engine V2.4 — arquitectura de referencia
+# Request Engine V2.6 — arquitectura de referencia
 
 > **Estado:** arquitectura objetivo. Schema freeze bloqueado hasta satisfacer `docs/02-pre-sql-domain-contract.md`.
 >
@@ -20,41 +20,18 @@ Channels / Humans / Agents / Integrations
        outbox / async integrations
 ```
 
-El sistema debe mantener autoridad bajo retries, duplicate/out-of-order callbacks, races de capacity, schedule changes, authority revocation, late payments, multichannel handoffs, partial financial reversals y concurrent recovery.
+El sistema mantiene autoridad bajo retries, duplicate/out-of-order callbacks, races de capacity, concurrent outcome writes, schedule/planning changes, authority revocation, late payments, financial corrections, multichannel handoffs y partial recovery.
 
 ---
 
 ## 2. Stack
 
-### PostgreSQL
+- PostgreSQL: source of truth para tenant isolation, referential integrity, serialization authorities, capacity conflict protection, financial/outcome invariants, idempotency, audit y outbox.
+- Python + FastAPI: domain/application/workers/integrations.
+- SQLAlchemy + Alembic: persistence mapping y migrations.
+- Pydantic → FastAPI → OpenAPI → generated SDKs.
 
-Source of truth para:
-
-```text
-tenant isolation
-referential integrity
-capacity conflict protection
-stable lock authorities
-row/advisory locking where justified
-exclusion/unique/check constraints
-optimistic versioning
-financial allocation/adjustment invariants
-idempotency
-transactional outbox
-authoritative business/audit facts
-```
-
-### Python + FastAPI
-
-Domain/application/workers/integrations en Python. FastAPI como transport.
-
-### SQLAlchemy + Alembic
-
-Persistence mapping y migrations.
-
-```text
-Pydantic → FastAPI → OpenAPI → generated SDKs
-```
+No network calls dentro de authoritative DB transactions.
 
 ---
 
@@ -79,15 +56,7 @@ request-engine/
 │   ├── payments/
 │   └── fulfillment/
 ├── application/
-│   ├── commands/
-│   ├── queries/
-│   └── services/
 ├── infrastructure/
-│   ├── postgres/
-│   ├── webhooks/
-│   ├── integrations/
-│   ├── media/
-│   └── observability/
 └── workers/
 ```
 
@@ -109,15 +78,13 @@ API / Worker / Integration / Agent adapter
             PostgreSQL/adapters
 ```
 
-No network calls dentro de authoritative DB transactions.
-
-External data needed for a transaction must be obtained beforehand and represented as validated snapshot/reference, or processed asynchronously after commit.
+External data necesaria para una transaction se obtiene antes y se representa mediante snapshot/reference/revision verificable, o se procesa después por compensation/outbox.
 
 ---
 
-## 5. Aggregate philosophy
+## 5. Aggregate/authority philosophy
 
-Aggregate roots probables:
+Probable business roots:
 
 ```text
 Organization
@@ -129,48 +96,34 @@ CapacityPool
 CapacityHold
 Reservation
 PaymentRequirement
-PaymentTransaction observation boundary
+PaymentTransaction
 Refund
 PaymentDispute
 ReconciliationCase
 ServiceSession
-Dispatch only if lifecycle justifies root status
+Dispatch if lifecycle justifies it
 ```
 
-Children/value objects/links probables:
+Internal serialization identities/concepts:
 
 ```text
-RequestParticipant
-RequestTarget typed links
-ExternalCorrelation links
-Authority version/snapshot
-OfferingSelection
-ResourceRequirementTemplate
-CommitmentRequirement
-ReservationItem
-ResourceAllocation
-FulfillmentModel
-PaymentAllocation
-PaymentAllocationAdjustment
-PaymentInstruction
-PriceDetermination components
-```
-
-Persistence-internal structures may exist without becoming domain vocabulary:
-
-```text
+OutcomeScope
+AdmissionScope mapping
 CapacityAuthority
 CapacityClaim
-ScheduleAuthority / AvailabilityRevision
+ScheduleAuthorityRevision
+PlanningRevision
 ```
+
+`FinancialObservation` y `ObservationCorrection` son append-oriented facts ligados a PaymentTransaction; no se diseñan como universal ledger.
 
 No noun-to-table mapping automático.
 
 ---
 
-## 6. Tenancy and referential integrity
+## 6. Tenancy and typed references
 
-Toda critical tenant-owned relation debe poder demostrar:
+Toda authoritative tenant-owned relation demuestra:
 
 ```text
 child.organization_id == parent.organization_id
@@ -178,445 +131,441 @@ child.organization_id == parent.organization_id
 
 Prefer tenant-aware composite FKs where practical.
 
-### No generic polymorphic authoritative FK
-
-Forbidden for critical relationships:
+Forbidden para critical relationships:
 
 ```text
 entity_type
 entity_id
 ```
 
-when it bypasses actual FK integrity.
+sin FK real.
 
-Examples that require typed relational design:
-
-```text
-RequestTarget
-PriceDetermination scope
-capacity allocation target
-financial provenance links
-```
-
-Use one of:
-
-```text
-explicit typed FK/link tables
-real common relational supertype
-XOR constrained typed FKs
-```
-
-Do not trade referential integrity for schema convenience.
+Usar explicit typed links, real relational supertype o XOR-constrained typed FKs.
 
 ---
 
 ## 7. Identity and authority transaction semantics
 
-Authentication:
-
-```text
-credential/session → Organization → Principal → scopes
-```
-
-Business identity:
-
-```text
-channel/external identity → verified Party when possible
-```
-
-Authorization:
+Mutation authorization depende de:
 
 ```text
 Principal
-+ tenant
-+ capability
-+ Party/subject correlation
-+ local AuthorityGrant/Representation
-+ entity state
-+ policy/version
+Organization
+capability/scope
+Party/subject correlation when relevant
+current local Representation
+entity state
+policy/version
+idempotency
 ```
 
-### Local authority rule
+Local Representation revocation y dependent mutation comparten lock/version authority.
 
-Strong serializable authorization can only depend on authority represented locally in the same PostgreSQL authority boundary.
+External authority se materializa como verified snapshot/reference con source, verified_at, version/hash/reference, optional validity y locally-known revocation state.
 
-External authority is materialized as a verified snapshot/reference:
-
-```text
-source
-verified_at
-valid_until?
-version/hash/reference
-revocation state known locally
-```
-
-No claim of instantaneous external revocation awareness.
-
-### Authority race
-
-For revocable local authority:
-
-```text
-BEGIN
-  lock/read current authority version
-  validate active + scope
-  lock target aggregate
-  validate current target state
-  mutate
-  persist authority decision snapshot in audit
-COMMIT
-```
-
-Revocation and dependent mutation therefore serialize.
+Audit guarda exact Representation/policy snapshot usada.
 
 ---
 
-## 8. Request serialization boundary
+## 8. Request serialization and completion validity
 
-`Request` is the serialization root for changes that alter its outcome obligations or terminality.
+`Request` es serialization root para cambios que alteran required outcome obligations o lifecycle terminality.
 
-Commands that can change:
+`CompleteRequest`:
 
 ```text
-OfferingSelections
-recipient scope
-required fulfillment components
-required approvals
-workflow outcome criteria
-terminal status
+LOCK Request
+LOCK/read relevant OutcomeScopes in canonical order when completion depends on mutable outcome budgets
+VALIDATE current Request revision + outcome criteria + current net valid Fulfillment contributions
+WRITE Request.completed + completion decision provenance
+EMIT audit/event/outbox
 ```
 
-must revision-check/lock the Request.
+Una correction posterior no reabre Request. Re-evalúa `completion_validity` projection/materialized status y, si queda invalidated, emite recovery/review work.
 
-`CompleteRequest` must lock/revalidate the same root before terminal transition.
+Forbidden:
 
-A terminal Request is not reopened by later financial/operational events.
+```text
+completed Request silently continues to claim valid outcome after authoritative correction invalidates required fulfillment
+```
 
 ---
 
-## 9. RequestTarget physical rule
+## 9. OutcomeScope architecture — V2.6
 
-`RequestTarget` is semantically typed and closed by RequestType.
+`OutcomeScope` es stable serialization identity para una requested outcome obligation.
 
-Do not implement as opaque polymorphic `(target_type, target_id)`.
+Debe identificar tipadamente suficiente scope para relacionar:
 
-For V1, target relationships should be explicit per supported kind, for example a typed reservation target relation for cancel/reschedule flows.
+```text
+Request
+OfferingSelection
+recipient/subject when applicable
+FulfillmentModel/version
+requested quantity/components
+```
 
-If future target kinds proliferate enough to justify a true common supertype, introduce it deliberately rather than simulating one.
+Puede implementarse como explicit relational entity o equivalente stable typed row; no se expone necesariamente como public API noun.
+
+### RecordFulfillment protocol
+
+```text
+READ:
+  Request/Selection/FulfillmentModel
+  evidence/source
+
+PLAN:
+  affected OutcomeScope(s)
+
+LOCK:
+  OutcomeScope(s) canonical order
+  Request when completion decision can race
+
+VALIDATE:
+  scope ownership/tenant
+  model semantics
+  current net valid contributions
+  excess_policy for quantity
+  evidence/source authority
+
+WRITE:
+  append Fulfillment
+
+EMIT:
+  audit/event/outbox
+```
+
+For `reject_excess`:
+
+```text
+net valid additive fulfillment <= requested quantity
+```
+
+For `allow_excess`, excess is recorded but remaining requested scope floors at zero; no negative “remaining” truth.
+
+### CorrectFulfillment protocol
+
+```text
+LOCK affected OutcomeScope(s)
+LOCK Request if completion validity may change
+VALIDATE correction authority/reason/source
+WRITE append correction/supersession lineage
+RECOMPUTE current net outcome contribution
+RE-EVALUATE completion_validity when Request already completed
+EMIT recovery/review if invalidated
+```
+
+No destructive overwrite of historical outcome facts.
 
 ---
 
-## 10. Cross-channel and operation identity
+## 10. OfferingSelection / ReservationItem physical rule
 
-External correlation is N:M semantically.
+`ReservationItem` references exactly one OfferingSelection.
 
-### Transport idempotency
+A Selection may have many ReservationItems and span many Reservations through those items.
 
-Retry protection scoped to:
-
-```text
-organization
-operation
-caller/context
-idempotency key
-canonical payload hash
-```
-
-### Durable operation identity
-
-Server-generated operation/action token may survive controlled handoff across Website → WhatsApp → Voice → Human.
-
-Replay returns same logical outcome/reference, but response fields are filtered under current read authorization.
+Do not allow an item to act as an untyped mini-package aggregating several selections.
 
 ---
 
-## 11. Workflow persistence
+## 11. Pricing and obligation derivation
 
-Conceptual Request workflow state:
+`PriceDetermination` preserves typed scope, source/policy/version, Money, quantity semantics, adjustments, provenance y overrides.
 
-```text
-workflow_key
-workflow_version
-workflow_status
-current_step
-next_action_at
-revision
-typed/versioned workflow payload only where necessary
-```
-
-Outcome criteria cannot live solely in opaque JSON.
-
-No generic state-machine framework.
-
----
-
-## 12. Pricing persistence rule
-
-`PriceDetermination` preserves:
-
-```text
-priced scope
-pricing source/policy + version
-base Money
-quantity semantics
-adjustments
-final Money
-provenance
-override Principal/reason
-```
-
-Priced scope must use typed relational links rather than opaque generic object identifiers for authoritative provenance.
-
-PaymentRequirement separately stores/references amount derivation:
-
-```text
-commercial basis
-payment policy/version
-calculation inputs
-required Money
-```
+`PaymentRequirement` preserves commercial basis + PaymentPolicy/version + calculation inputs + required Money.
 
 No FX implicit.
 
+Once a Requirement has financial use, required Money is not destructively changed by repricing.
+
+### RepriceAfterCommitment
+
+Preferred V1 semantics:
+
+```text
+LOCK affected commercial/Request scope
+LOCK old PaymentRequirement(s) when financial consequences exist
+VALIDATE policy + existing allocations
+WRITE new PriceDetermination
+WRITE replacement/new PaymentRequirement(s)
+mark old business disposition/supersession as policy dictates
+preserve allocation treatment/reconciliation lineage
+EMIT amendment/audit/outbox
+```
+
+Do not rewrite old $100 requirement into $80 after $50 has already been allocated.
+
 ---
 
-## 13. Capacity architecture — key V2.4 change
+## 12. Capacity architecture
 
-The domain keeps these distinct:
+Domain:
 
 ```text
 Resource
 CapacityPool
 CapacityHold
 ResourceAllocation
+ExternalCommitmentReference
 ```
 
-The persistence model should likely use two internal concepts:
-
-### CapacityAuthority
-
-Stable row/identity against which capacity-changing transactions can lock.
-
-One Resource or CapacityPool that can be reserved has one authoritative capacity identity.
-
-Conceptually:
+Internal:
 
 ```text
 CapacityAuthority
-  organization
-  capacity_model
-  revision
-  schedule_revision / availability_revision
-  active/config state
+CapacityClaim
+ScheduleAuthorityRevision
+PlanningRevision
 ```
 
-This can be implemented as a true supertype or equivalent typed authority rows. The key requirement is **one deterministic lock target**.
+### CapacityAuthority
+
+Stable row/identity que todas las operations que consumen/cambian misma capacity pueden identificar y lockear.
 
 ### CapacityClaim
 
-Physical/common conflict-space representation for capacity consumption.
-
-Conceptual fields:
-
-```text
-organization
-capacity_authority
-origin kind/reference: hold | allocation
-interval
-quantity
-claim state
-expires_at when hold-backed
-```
-
-`CapacityClaim` is not a domain aggregate exposed to API. It exists so Holds and confirmed Allocations can conflict in the same PostgreSQL relation/protocol.
+Common conflict-space para Hold claims y active Allocation claims.
 
 ---
 
-## 14. Exclusive capacity enforcement
+## 13. Local compound CapacityHold protocol
 
-For `exclusive` authority, preferred physical strategy:
+`CapacityHold` sólo promete atomicidad dentro de locally authoritative PostgreSQL capacity.
+
+### CreateCapacityHold
 
 ```text
-CapacityClaim rows
-+ PostgreSQL range type
-+ exclusion constraint over live claims
+READ:
+  Request/Selection snapshot
+  requirement templates
+  interval/location context
+
+PLAN:
+  complete local claim intents
+  candidate authorities
+  complete deterministic lock set
+
+LOCK:
+  CapacityAuthorities canonical order
+
+VALIDATE:
+  Request version/scope
+  authority/config revisions
+  schedule/location eligibility
+  pool fungibility
+  capability
+  PlanningRevision/external feasibility when required
+  live claims
+  hold expiry policy
+
+WRITE atomically:
+  CapacityHold
+  all mandatory local CapacityClaims
+  requirement-intent lineage
+
+EMIT audit/event/outbox
 ```
 
-Important: Hold claims and Allocation claims must participate in the same relation or equivalent serialization mechanism. Separate tables with independent exclusion constraints are insufficient because they cannot detect cross-table overlap.
+Failure of any mandatory local claim rolls back entire transaction.
 
-A live hold is logically live only while:
+---
+
+## 14. External commitment protocol — no fake distributed atomicity
+
+`ExternalCommitmentReference` represents inventory/partner/capacity commitment owned outside PostgreSQL.
+
+Typical flow:
+
+```text
+1. request external lease/commitment idempotently
+2. persist/obtain typed reference + valid_until/status/provenance
+3. BEGIN local confirmation transaction
+4. lock local roots/authorities
+5. validate external reference snapshot still usable under policy
+6. acquire/transform local commitments
+7. create Reservation + external dependency links
+8. COMMIT
+9. if local commit fails after external lease: enqueue idempotent release/compensation
+```
+
+Request Engine promises local atomicity + explicit external dependency + compensation semantics, not distributed all-or-none.
+
+External lease expiry racing local confirmation must be checked against authoritative local wall clock and available provider validity semantics immediately before local commit decision.
+
+---
+
+## 15. ConfirmReservation protocol
+
+```text
+LOCK:
+  CapacityHold
+  Request as required
+  involved CapacityAuthorities canonical order
+
+VALIDATE:
+  Hold active/logically live
+  Request/Selection still current
+  complete mandatory local claim set
+  authority revisions compatible
+  required ExternalCommitmentReferences valid under policy
+  every mandatory CommitmentRequirement will be covered
+
+WRITE atomically:
+  Reservation
+  ReservationItems
+  CommitmentRequirements
+  ResourceAllocations
+  transform/repoint local CapacityClaims
+  link external commitments
+  Hold → confirmed
+
+EMIT audit/event/outbox
+```
+
+Forbidden:
+
+```text
+Reservation confirmed with missing mandatory local coverage
+Reservation confirmed while required external commitment is known invalid/expired
+```
+
+---
+
+## 16. Exclusive and unit capacity enforcement
+
+### Interval semantics
+
+Canonical capacity interval:
+
+```text
+[start_at, end_at)
+start_at < end_at
+```
+
+No infinite/open-ended commitments V1.
+
+Conflict interval includes setup/transition/cleanup buffers that actually block capacity; planned service interval remains separate.
+
+### Exclusive
+
+Preferred:
+
+```text
+common CapacityClaim relation
++ PostgreSQL range
++ exclusion constraint for logically-live incompatible claims
+```
+
+### Units
+
+```text
+LOCK CapacityAuthority
+revalidate revisions
+split/evaluate relevant schedule capacity change points
+for every subinterval:
+  sum logically-live overlapping claims + requested <= effective capacity
+insert/transform claims
+```
+
+Checking capacity only at claim start is forbidden.
+
+---
+
+## 17. Hold expiry and wall clock
+
+A Hold is logically live only when:
 
 ```text
 state = active
-AND expires_at > authoritative wall-clock time
+AND expires_at > authoritative current time
 ```
 
-Cleanup worker materializes expiry but does not define temporal truth.
+Cleanup worker no define truth.
 
-If exclusion design cannot express time-based liveness directly, the transaction protocol must ensure stale expired claims are retired/ignored safely before conflict insertion.
+Expiry-sensitive checks occur immediately before authoritative transition and do not rely blindly on transaction-start `now()`.
+
+Late payment never reactivates expired Hold.
 
 ---
 
-## 15. Unit capacity enforcement
+## 18. Schedule/location/planning authority
 
-For `units`, exclusion constraint alone is insufficient.
+Schedule/config mutations affecting reservability lock/increment same stable authority revision consumed by holds.
 
-Preferred V1 protocol:
+Includes:
 
 ```text
-LOCK CapacityAuthority
-revalidate authority/schedule revision
-calculate overlapping live claim sum
-validate requested quantity
-insert/update claim
+schedule edit
+ScheduleException
+capacity override
+Resource unavailable
+Resource operating-location eligibility
+CapacityPool membership/fungibility
+```
+
+### PlanningRevision
+
+For field-service feasibility, claims/allocations that can change adjacency/transition feasibility increment a monotonic PlanningRevision for the relevant planning authority/context.
+
+External feasibility flow:
+
+```text
+read PlanningRevision = R
+call external feasibility provider outside DB transaction
+receive snapshot bound to R + exact inputs
+BEGIN
+lock CapacityAuthority/planning root
+if current PlanningRevision != R:
+    reject snapshot as stale / recompute
+validate snapshot/policy
+commit claim
+increment PlanningRevision if resulting commitment changes planning state
 COMMIT
 ```
 
-This intentionally serializes contention on scarce capacity.
+This closes TOCTOU without network calls inside transaction.
 
-Do not implement check-then-insert without authority lock.
-
-Do not prematurely shard capacity authorities; measure first.
+If a deployment cannot define a bounded planning revision domain, it must use conservative local buffers instead of claiming authoritative external feasibility.
 
 ---
 
-## 16. Schedule and availability authority
+## 19. Canonical lock ordering
 
-Schedule rows/exceptions alone are not adequate lock targets because concurrent insertion creates phantom races.
+All multi-row authority operations use one deterministic total order.
 
-Every reservable Resource/Pool requires a stable authority revision that changes when capacity-affecting configuration changes:
-
-```text
-schedule edits
-ScheduleException insertion/update
-capacity override
-pool membership changes
-eligibility/fungibility configuration changes
-resource unavailable state
-```
-
-CapacityHold/confirmation protocol:
+Initial lock classes:
 
 ```text
-LOCK CapacityAuthority
-read current schedule/availability revision
-re-evaluate date-specific schedule
-re-evaluate live claims
-commit claim
-```
-
-Schedule mutation protocol:
-
-```text
-LOCK same CapacityAuthority
-apply schedule/config mutation
-increment revision
-detect commitments potentially affected
-commit + outbox recovery work
-```
-
-Thus:
-
-```text
-claim wins first → schedule change sees existing commitment → disruption/recovery
-schedule change wins first → subsequent claim sees new revision and fails/recomputes
-```
-
----
-
-## 17. Canonical lock ordering
-
-Any command locking multiple authorities must acquire them in deterministic canonical order.
-
-Suggested conceptual ordering key:
-
-```text
-organization_id
-lock_class
-internal_id
-```
-
-Lock classes themselves must be ordered globally, e.g.:
-
-```text
-AUTHORITY/REPRESENTATION
+REPRESENTATION
 REQUEST
+OUTCOME_SCOPE
 RESERVATION
+ADMISSION_SCOPE_ROOT
+CAPACITY_HOLD
 CAPACITY_AUTHORITY
+SERVICE_SESSION
 PAYMENT_TRANSACTION
 PAYMENT_REQUIREMENT
+FINANCIAL_REVERSAL_OR_CORRECTION
 RECONCILIATION_CASE
 ```
 
-Exact physical order may differ, but must be documented and used consistently.
+Within class: ascending internal key or one documented total order.
 
-PostgreSQL deadlock detection is fallback protection, not primary lock strategy.
-
----
-
-## 18. CommitmentRequirement and partial cancellation
-
-Reservation is structural serialization root for commitment amendments.
-
-For shared requirements:
-
-```text
-Item A ─┐
-        ├→ Requirement X
-Item B ─┘
-```
-
-partial cancellation protocol:
-
-```text
-LOCK Reservation
-lock/revision-check affected CommitmentRequirements/claims as needed
-mark/remove affected item scope
-recompute surviving requirement coverage
-release/replace capacity only if no surviving scope needs it
-commit atomically
-```
-
-Two concurrent item cancellations cannot both independently decide the other surviving item still owns the shared allocation.
+PLAN complete lock set before acquisition when possible. PostgreSQL deadlock detection/retry is fallback.
 
 ---
 
-## 19. CapacityPool architecture
+## 20. CapacityPool binding
 
-V1 supports member-derived reservable pools only.
+V1 only member-derived fungible pools.
 
-### Contributor exclusivity
+Direct Resource claim and relevant Pool claim serialize together.
 
-A Resource cannot contribute the same reservable capacity to overlapping pools that can claim it concurrently.
+Pool realization uses non-consuming binding reference or atomic claim replacement preserving lineage.
 
-### Pool/direct claim concurrency
-
-A direct claim on a contributing Resource must serialize with the relevant pool authority as well as the concrete Resource authority.
-
-Because V1 forbids overlapping reservable contributors, the lock set remains bounded.
-
-### Fungibility
-
-Unresolved late binding is allowed only when candidate members are interchangeable for the CommitmentRequirement at reservation time.
-
-If capability/eligibility leaves only a subset where generic pool arithmetic would be misleading, bind concrete Resource during Hold/confirmation.
-
-### Pool mutation
-
-Membership/eligibility changes lock/increment the pool authority revision and detect affected commitments.
-
----
-
-## 20. ResourceAllocation and binding
-
-ResourceAllocation is domain truth linking CommitmentRequirement to capacity.
-
-Binding strategies may use:
-
-1. pool claim + concrete realization reference that does not consume another pool unit; or
-2. atomic replacement preserving lineage.
-
-Whichever is chosen must prove:
+Must prove:
 
 ```text
 pool unit not double-counted
@@ -624,127 +573,291 @@ member not double-booked
 claim lineage preserved
 ```
 
-No independent Assignment source of truth.
-
 ---
 
-## 21. Reservation lifecycle transaction rules
+## 21. Shared requirements and partial cancellation
 
-States:
+Reservation is structural serialization root.
 
 ```text
-confirmed
-cancelled
-closed
+LOCK Reservation
+PLAN surviving item/requirement scope
+LOCK affected CapacityAuthorities canonical order
+VALIDATE policy/session/admission + surviving coverage
+WRITE releases/replacements atomically
+terminal Reservation only after zero surviving commitment
+EMIT amendment + financial consequences/outbox
 ```
 
-Terminal transition protocol must atomically ensure:
+Concurrent partial cancellations cannot release capacity still needed or leave orphan claims.
+
+---
+
+## 22. Atomic reschedule replacement
+
+`RescheduleReservation` never releases old capacity before replacement is secured.
 
 ```text
-no active capacity-consuming claims remain
+PREPARE:
+  create replacement CapacityHold for new local scope
+  obtain required external commitments if any
+
+BEGIN
+  LOCK Reservation
+  LOCK replacement CapacityHold
+  LOCK old/new CapacityAuthorities canonical order
+  VALIDATE current Reservation, policy, session/admission constraints
+  VALIDATE replacement Hold/external dependencies
+  WRITE replacement CommitmentRequirements/Allocations
+  RELEASE/REPLACE old claims
+  preserve old→new lineage and Amendment Contract
+COMMIT
 ```
 
-`SetReservationStatus` generic command is forbidden.
-
-Close/cancel is a semantic command that releases claims, evaluates admission/session constraints, writes audit/event/outbox, then changes terminal status in one transaction.
+If replacement validation fails, original Reservation remains committed unless policy explicitly performs cancellation as a separate semantic decision.
 
 ---
 
-## 22. Admission and ServiceSession concurrency
+## 23. Admission and queue concurrency
 
-CheckIn, QueueEntry and no-show use explicit admission scope.
+AdmissionScope does not require a universal aggregate, but every scope maps deterministically to a lock target:
 
-Cancellation/reschedule that may conflict with active execution must inspect/lock relevant Reservation plus active ServiceSession linkage/current session state.
+```text
+reservation-backed → ReservationItem
+walk-in             → OfferingSelection/Request scope root
+```
 
-If execution has started, policy chooses legal transition such as reject cancellation, stop/partial outcome, or manual override.
+### JoinQueue
+
+```text
+LOCK AdmissionScope root
+VALIDATE eligibility/current queue state
+WRITE QueueEntry + ordering inputs
+```
+
+Default invariant:
+
+```text
+<= 1 active QueueEntry per AdmissionScope + admission context
+```
+
+unless versioned policy explicitly allows requeue/multi-queue semantics.
+
+Persist ordering inputs, not absolute position. Position/ETA are projections.
+
+Cancellation/check-in/start-session races lock the same admission root plus Reservation/ServiceSession where necessary.
 
 ---
 
-## 23. Dispatch boundary
+## 24. ServiceSession and fulfillment coordination
 
-Dispatch = movement toward one Destination.
+Reservation ↔ ServiceSession is N:M.
 
-May link multiple Reservations only when destination/movement semantics are shared.
+Cancellation/reschedule conflicting with execution locks relevant Reservation + ServiceSession linkage/current state.
 
-Cancellation of Reservation does not automatically mutate Dispatch outside transaction if Dispatch also serves surviving Reservations; command/application policy determines whether Dispatch remains, changes linkage, or is compensated asynchronously.
+`CompleteServiceSession` does not automatically `CompleteRequest`.
 
-No route graph inside Request Engine.
+A ServiceSession satisfying two Requests writes separate Fulfillment records to the respective OutcomeScopes.
 
 ---
 
-## 24. Payment transaction authority
+## 25. Field-service destination mutation
 
-PaymentTransaction is natural lock target for operations spending/refunding its financial value.
+`ChangeDispatchDestination`:
 
-### Positive allocations
+```text
+LOCK Dispatch + relevant Reservation(s)
+VALIDATE authority/policy/current dispatch state
+WRITE before/after destination lineage
+INVALIDATE prior external feasibility snapshot
+if local conservative feasibility: re-evaluate synchronously
+else mark blocked/pending external recheck
+EMIT outbox/recovery
+```
 
-Protocol:
+No route graph in core.
+
+---
+
+## 26. Amendment Contract implementation
+
+No GenericAmendment aggregate.
+
+Every material post-commitment command preserves:
+
+```text
+operation identity
+initiator/represented Party
+reason
+policy/version
+before refs/revisions
+after refs/revisions
+created/released/replaced links
+evaluated inputs
+override provenance
+occurred_at
+```
+
+Typed command records + AuditRecord/DomainEvent are sufficient when material FKs remain in owning modules.
+
+---
+
+## 27. Financial architecture V2.6
+
+### PaymentTransaction
+
+Stable financial operation/value authority used to coordinate allocation/refund semantics.
+
+It is distinct from the sequence of observations about that operation.
+
+### FinancialObservation
+
+Append-oriented knowledge fact.
+
+```text
+transaction
+source/event identity
+source-specific status
+normalized finality
+amount/value interpretation
+occurred/effective_at
+observed_at
+source policy/version
+provenance
+```
+
+### ObservationCorrection
+
+Append-oriented correction of prior knowledge; does not claim a new movement of money.
+
+### FinancialReversal
+
+Separate financial fact for a later real return/reversal/invalidating financial event.
+
+Current finality/eligible value are derived/materialized under versioned source policy from observations, corrections and reversals.
+
+---
+
+## 28. RecordFinancialObservation protocol
+
+```text
+AUTHENTICATE source/principal
+DEDUPE provider event/observation identity where available
+NORMALIZE under source policy/version
+
+BEGIN
+  LOCK PaymentTransaction value authority
+  validate tenant/provider/account context
+  append FinancialObservation
+  derive new current financial interpretation/eligible value
+  if eligible value drops below net allocations:
+      deterministically create/require adjustment attribution when known
+      otherwise open ReconciliationCase and mark financial condition inconsistent/under_review
+  write audit/event/outbox
+COMMIT
+```
+
+External facts are not rejected to preserve local allocation illusion.
+
+Out-of-order observations append knowledge and are interpreted semantically, not by blind status overwrite.
+
+---
+
+## 29. ObservationCorrection protocol
 
 ```text
 LOCK PaymentTransaction
-lock PaymentRequirements in canonical order when needed
-recompute eligible transaction value
-recompute existing allocations/adjustments
-validate new allocation
-insert
+LOCK affected observation/correction lineage as needed
+LOCK affected PaymentAllocations when attribution known
+VALIDATE correction authority/source/reason
+WRITE ObservationCorrection
+RECOMPUTE current eligible value
+WRITE PaymentAllocationAdjustment(s) when deterministic
+OR Open ReconciliationCase when ambiguous
+EMIT audit/event/outbox
 ```
 
-Invariant:
-
-```text
-sum(net eligible positive contribution) <= eligible transaction value
-```
+This is distinct from `RecordFinancialReversal`.
 
 ---
 
-## 25. PaymentAllocationAdjustment two-sided budget
+## 30. Manual financial verification
 
-Creating invalidating adjustment requires protecting two budgets:
+Manual verification is privileged semantic command.
 
-```text
-source reversal budget
-allocation contribution budget
-```
-
-Protocol:
+Checks:
 
 ```text
-LOCK FinancialReversal/source financial fact
-LOCK affected PaymentAllocation(s) in canonical order
-validate sum adjustments from reversal <= reversal amount
-validate sum invalidation against allocation <= eligible contribution
-insert adjustment
+Principal capability
+Organization scope
+source/account/cash context
+amount/currency
+evidence/reference
+occurred_at/observed_at
+policy/version
+reason
+idempotency
+optional dual control
 ```
 
-If attribution cannot be determined, create/continue ReconciliationCase instead of inventing allocation effects.
+When four-eyes is required, first action creates pending review/evidence/observation candidate; distinct Principal approval is required before eligible authoritative value exists.
+
+AI screenshot interpretation never calls the privileged verification command solely from visual inference.
 
 ---
 
-## 26. Refund concurrency
+## 31. Payment allocation and adjustments
 
-Refund creation locks original PaymentTransaction/value authority and validates:
+### AllocatePayment
 
 ```text
-pending + succeeded refundable claims <= refundable amount allowed by policy/facts
+LOCK PaymentTransaction
+LOCK PaymentRequirements canonical order
+VALIDATE current eligible value, currency, net allocations, requirement disposition
+WRITE PaymentAllocation
 ```
 
-Concurrent external reversal still must be recorded even if it creates a deficit/negative net position. That conflict becomes reconciliation; external financial facts are not rejected because local refund already occurred.
+```text
+sum(net allocations) <= current eligible transaction value
+```
+
+### ApplyAllocationAdjustment
+
+Source may be typed FinancialReversal or ObservationCorrection.
+
+```text
+LOCK source fact
+LOCK affected PaymentAllocation(s)
+VALIDATE source budget where monetary + allocation contribution budget
+WRITE adjustment OR ReconciliationCase
+```
+
+Ambiguous attribution is never guessed.
 
 ---
 
-## 27. Provider event ingestion
+## 32. Refund/reversal/dispute concurrency
 
-Dedupe identity is scoped to the provider connection/account semantics, not assumed globally.
+Refund creation locks PaymentTransaction and validates:
 
-Conceptual uniqueness:
+```text
+pending + succeeded refundable claims
+<= currently refundable amount under policy/facts
+```
+
+External reversal/dispute/correction is always recorded even when it creates local deficit/inconsistency; recovery/reconciliation follows.
+
+Original transaction, observations and Fulfillment remain historical.
+
+---
+
+## 33. Provider event ingestion
+
+Preferred dedupe where provider guarantees event IDs:
 
 ```text
 PaymentProviderConnection + provider_event_id
 ```
-
-Same event identity + same canonical payload → duplicate/replay.
-
-Same event identity + materially different payload → integrity/security conflict requiring audit/review.
 
 Flow:
 
@@ -752,173 +865,176 @@ Flow:
 receive
 → authenticate/signature
 → dedupe envelope
-→ persist minimal/raw reference safely
-→ normalize
+→ persist safe raw/minimal reference
+→ normalize to FinancialObservation / Refund / Dispute / Reversal semantics
 → execute internal command
 → record outcome
 ```
 
-Out-of-order events never blindly regress internal state.
+Same event identity + materially different payload = integrity/security conflict.
 
 ---
 
-## 28. Idempotency storage
+## 34. Idempotency
 
 Persist conceptually:
 
 ```text
 organization
 operation
-caller/context scope
+caller/context
 idempotency key
 canonical request hash
 logical result reference
 status
-created/expires timestamps
+timestamps
 ```
 
-Same key + different hash → conflict.
-
-Response snapshot is not an authorization bypass; serialize response under current read policy.
+Same key+same hash replays logical outcome. Same key+different hash conflicts. Current read authorization is always re-evaluated.
 
 ---
 
-## 29. Transactional outbox
+## 35. Transactional outbox
 
-Domain mutation + outbox append = same DB transaction.
+Business mutation + outbox append = same DB transaction.
 
-Workers use claim protocol such as `FOR UPDATE SKIP LOCKED` or equivalent.
+Workers use row-claim protocol such as `FOR UPDATE SKIP LOCKED` where appropriate.
 
-Delivery is at-least-once. Consumers idempotent.
-
----
-
-## 30. Time semantics
-
-Persist instants in UTC.
-
-Local input uses IANA timezone and explicit ambiguity handling.
-
-Hold expiry logic must use database wall-clock semantics appropriate to the decision. Do not accidentally depend on transaction-start `now()` for a long-running expiry-sensitive transaction.
-
-Transactions should remain short; expiry checks occur immediately before authoritative state transition.
+Delivery remains at-least-once; consumers are idempotent.
 
 ---
 
-## 31. Availability projections
+## 36. Projections
 
-Availability caches/materialized slots are projections only.
+Derived/rebuildable unless future module proves otherwise:
 
-Booking flow always revalidates under capacity authority lock/revision before creating Hold/Reservation claim.
+```text
+Availability
+materialized slots
+Queue position / ETA
+Operational health
+completion_validity
+PaymentRequirement open/partial/satisfied/overdue
+current PaymentTransaction finality/eligible value projection
+remaining fulfillment scope
+Resource utilization
+```
 
-Never reserve solely because a cached slot says `available=true`.
+No projection independently authorizes authoritative mutation without locked/versioned revalidation.
 
 ---
 
-## 32. Commands — lock ownership examples
+## 37. Required command proof catalogue
 
-### CreateCapacityHold
-
-```text
-READ: Request/Selection snapshot, requirement templates
-LOCK: involved CapacityAuthorities canonical order
-VALIDATE: authority revisions, schedule, pool fungibility, live claims
-WRITE: CapacityHold + CapacityClaims
-EMIT: audit/domain event/outbox if needed
-```
-
-### ConfirmReservation
+Before schema freeze document `READ / PLAN / LOCK / VALIDATE / WRITE / EMIT` for at least:
 
 ```text
-LOCK: CapacityHold + involved CapacityAuthorities + Request/Reservation creation boundary as needed
-VALIDATE: hold still logically live, authority revisions, payment policy
-WRITE: Reservation, items, CommitmentRequirements, ResourceAllocations; transform/realize claims atomically
-EMIT: audit/event/outbox
-```
-
-### CancelReservationScope
-
-```text
-LOCK: Reservation + affected CapacityAuthorities/claims + relevant session/admission state
-VALIDATE: policy, authority, surviving shared requirements
-WRITE: item/requirement/allocation replacements/releases; terminal status only if no commitment remains
-EMIT: financial consequences/outbox
-```
-
-### CompleteRequest
-
-```text
-LOCK: Request
-VALIDATE: current version + typed outcome criteria against facts
-WRITE: terminal Request state
-EMIT: audit/event/outbox
-```
-
-### AllocatePayment
-
-```text
-LOCK: PaymentTransaction + Requirements canonical order
-VALIDATE: eligible financial value/currency/current net allocations
-WRITE: PaymentAllocation
-```
-
-### ApplyAllocationAdjustment
-
-```text
-LOCK: reversal/source fact + PaymentAllocations canonical order
-VALIDATE: two-sided budgets
-WRITE: adjustment or ReconciliationCase
+CreateRequest
+AddRequestParticipant
+SelectOffering
+UpdateOfferingSelectionBeforeCommitment
+CompleteRequest
+CreateCapacityHold
+ReleaseCapacityHold
+ConfirmReservation
+CancelReservationScope
+RescheduleReservation
+ReplaceResourceAllocation
+ChangeResourceAvailability
+ChangeScheduleException
+ChangeCapacityPoolMembership
+CheckIn
+JoinQueue
+PromoteWaitlistEntry
+StartServiceSession
+CompleteServiceSession
+RecordFulfillment
+CorrectFulfillment
+ChangeDispatchDestination
+CreatePaymentRequirement
+RepriceCommittedScope
+RecordFinancialObservation
+CorrectFinancialObservation
+VerifyManualPayment
+ApproveManualPaymentVerification
+AllocatePayment
+ApplyAllocationAdjustment
+RequestRefund
+RecordFinancialReversal
+Open/ResolvePaymentDispute
+Open/ResolveReconciliationCase
 ```
 
 ---
 
-## 33. Test matrix before schema freeze
-
-Required concurrent/integration tests:
+## 38. Required race/integration matrix
 
 ```text
 cross-tenant FK rejection
-polymorphic-link prohibition/typed FK integrity
-exclusive hold-vs-allocation overlap
+hallucinated public ID tenant escape
+Request completion vs outcome amendment
+concurrent 6/10 + 6/10 Fulfillment reject_excess
+allow_excess quantity semantics
+Fulfillment correction after Request completion invalidates completion_validity
+Fulfillment correction vs concurrent CompleteRequest
+compound local Hold all-or-none across 3+ authorities
+compound Hold final-claim rollback
+concurrent compound Holds opposite input ordering
+external lease succeeds + local Hold/confirmation fails → compensation
+external commitment expiry vs confirmation
+exclusive Hold-vs-Allocation overlap
 unit capacity oversell
-concurrent last-unit holds
-schedule exception vs hold creation
-pool membership mutation vs hold
-pool claim vs direct member booking
-heterogeneous pool rejection/bind-concrete path
-Hold confirm-vs-expire
+variable capacity change point crossing
+adjacent [start,end) bookings do not overlap
+schedule/location mutation vs Hold
+pool membership vs Hold
+pool vs direct member booking
+Hold confirm vs expiry
+Reservation confirm missing mandatory coverage rejection
 shared requirement concurrent partial cancellation
-Reservation close with active claims rejected
+atomic reschedule success
+atomic reschedule replacement failure preserves original
+Reservation close with active claims rejection
 resource unavailable vs confirmation
-multi-resource lock ordering/deadlock retry
-Request completion vs concurrent obligation amendment
-authority revocation vs dependent mutation
+check-in vs cancellation
+start-session vs cancellation
+concurrent Queue joins same AdmissionScope
+Destination change invalidates feasibility
+external feasibility PlanningRevision stale after intervening booking
+one ServiceSession → multiple Requests/Fulfillments
+repricing after partial allocation preserves old requirement history
+PaymentEvidence cannot satisfy Requirement
+PaymentAttempt success cannot satisfy Requirement
+out-of-order FinancialObservations
+ObservationCorrection reducing eligible value vs AllocatePayment
+FinancialReversal vs ObservationCorrection distinction
+manual verification unauthorized rejection
+dual-control same-Principal rejection
 PaymentAllocation overspend
-partial reversal two-sided budget
+partial reversal/correction adjustment budget race
 refund-vs-refund
 refund-vs-external reversal
-duplicate provider event
-duplicate event id with different payload
-out-of-order provider event
-late payment after Hold expiry
+provider duplicate event
+same event id conflicting payload
+late bank transfer after Hold expiry
 concurrent reconciliation
 idempotency same key/different payload
-idempotent replay after read authorization revocation
+idempotent replay after authorization revocation
 outbox duplicate delivery
 DST ambiguous/nonexistent local time
 ```
 
 ---
 
-## 34. Schema design gate
+## 39. Schema design gate
 
-Before writing final SQL, `docs/02-pre-sql-domain-contract.md` must map every critical invariant to one of:
+Antes de final SQL, `docs/02-pre-sql-domain-contract.md` debe mapear cada critical invariant a:
 
 ```text
 FK/unique/check/exclusion constraint
 stable lock authority + transaction protocol
-optimistic version check
-bounded application policy where DB enforcement is impossible/irrelevant
+optimistic revision protocol
+bounded application policy where DB enforcement is impossible/incorrect
 ```
 
-If a critical invariant is defended only by “the service will check first”, the architecture is not ready.
+Una critical invariant defendida sólo por “the service checks first” bloquea schema freeze.
