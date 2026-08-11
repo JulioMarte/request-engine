@@ -19,9 +19,8 @@ SET LOCAL search_path = request_engine, public;
 --
 -- docs/02 defines CAPACITY_HOLD before CAPACITY_AUTHORITY in the canonical lock
 -- order. A trigger must not silently invert that order. Allocation identity is
--- read without an extra row lock; Reservation/Allocation concurrency belongs to
--- the command transaction, while CapacityAuthority remains the aggregate lock for
--- capacity contention.
+-- read without an extra row lock; Allocation/Claim active-state cardinality is
+-- owned by the deferred constraint trigger already installed by V2.7.
 
 CREATE OR REPLACE FUNCTION request_engine.guard_capacity_claim()
 RETURNS trigger
@@ -66,8 +65,9 @@ BEGIN
         -- Derived snapshot; callers never author this value independently.
         NEW.hold_expires_at := v_hold.expires_at;
     ELSE
-        -- No hidden ResourceAllocation row lock here. Consumption identity is
-        -- immutable after creation and the command owns Reservation serialization.
+        -- This check proves only immutable consumption identity. Whether the
+        -- Allocation is active is checked once, at transaction end, by
+        -- check_allocation_claim_cardinality().
         SELECT *
           INTO v_allocation
           FROM resource_allocations
@@ -78,11 +78,10 @@ BEGIN
             RAISE EXCEPTION 'ResourceAllocation not found' USING ERRCODE = '23503';
         END IF;
 
-        IF v_allocation.state <> 'active'
-           OR v_allocation.capacity_authority_id <> NEW.capacity_authority_id
+        IF v_allocation.capacity_authority_id <> NEW.capacity_authority_id
            OR v_allocation.quantity <> NEW.quantity
            OR v_allocation.conflict_range <> NEW.conflict_range THEN
-            RAISE EXCEPTION 'CapacityClaim does not match active ResourceAllocation'
+            RAISE EXCEPTION 'CapacityClaim does not match ResourceAllocation consumption identity'
                 USING ERRCODE = '23514';
         END IF;
     END IF;
