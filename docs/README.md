@@ -45,6 +45,8 @@ Este directorio separa explícitamente la **arquitectura V2 vigente** de documen
 
 [`08-postgresql-v2.10-access-surface.sql`](08-postgresql-v2.10-access-surface.sql) implementa la frontera DB↔Python definida en `07` como un único delta V2.10 consolidado: schemas de interface, read views versionadas, command primitives estrechas, idempotency, outbox con `SKIP LOCKED` + lease fencing token, deny-by-default para `request_cmd` y `search_path` seguro para routines reutilizables.
 
+> **Importante — instalación limpia:** `08-postgresql-v2.10-access-surface.sql` **no es un schema standalone**. Es una migration delta sobre V2.9. En una base vacía deben ejecutarse `03 → 04 → 05 → 06 → 08`, en ese orden y sobre la misma database. V2.10 ahora contiene un preflight que aborta de forma atómica y enumera los objetos faltantes si esa cadena no está instalada, evitando errores tardíos como `relation request_engine.requests does not exist`.
+
 Aplicación actual:
 
 ```text
