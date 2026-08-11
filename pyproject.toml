@@ -1,0 +1,55 @@
+[project]
+name = "request-engine"
+version = "0.1.0"
+description = "Headless multi-tenant transactional request engine"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.18.5,<1.19",
+    "asyncpg>=0.31.0,<1",
+    "fastapi[standard]>=0.141.1,<0.142",
+    "psycopg[binary]>=3.3.4,<4",
+    "pydantic-settings>=2.14.2,<3",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pyright[nodejs]>=1.1.411,<1.2",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.0,<2",
+    "ruff>=0.15.22,<0.16",
+]
+
+[build-system]
+requires = ["hatchling>=1.31.0,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/request_engine"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: pure or isolated unit tests",
+    "postgres: requires PostgreSQL",
+    "integration: crosses component boundaries",
+    "concurrency: proves transactional race behavior",
+    "slow: intentionally slower validation",
+]
