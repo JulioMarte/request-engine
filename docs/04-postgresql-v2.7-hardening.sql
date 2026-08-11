@@ -1,29 +1,25 @@
--- Request Engine V2.7 — PostgreSQL hardening migration
+-- Request Engine V2.7 — PostgreSQL hardening
 -- Target: PostgreSQL 18+
 -- Applies after: docs/03-postgresql-schema.sql
 -- Normative source: docs/02-pre-sql-domain-contract.md
 --
--- Goal: close physical integrity gaps found during the post-schema adversarial
--- review without turning PostgreSQL into a hidden workflow engine.
+-- Design rule:
+--   constraints          -> structural truth
+--   small triggers       -> local monotonicity / immutable identity / backstops
+--   deferred constraints -> transaction-end cardinality
+--   command transaction  -> multi-root and policy-dependent invariants
 --
--- Rule of thumb:
---   FK / UNIQUE / CHECK    -> structural truth
---   small trigger          -> monotonicity, immutable identity, revision bump
---   deferred constraint    -> end-of-transaction cardinality
---   stable row lock        -> aggregate/concurrency invariant
---
--- No network calls. No generic polymorphic references. No implicit FX.
+-- This file is the complete V2.7 delta over the V2.6 reference schema.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '60s';
-SET search_path = request_engine, public;
+SET LOCAL search_path = request_engine, public;
 
 -- ============================================================================
--- 1. Close relational graph holes with composite keys
+-- 1. Structural lineage: prove relationships with composite foreign keys
 -- ============================================================================
 
--- Fulfillment must use the exact OfferingSelection owned by its OutcomeScope.
 ALTER TABLE outcome_scopes
     ADD CONSTRAINT uq_outcome_scopes_fulfillment_key
     UNIQUE (organization_id, request_id, outcome_scope_id, offering_selection_id);
@@ -35,8 +31,6 @@ ALTER TABLE fulfillments
         (organization_id, request_id, outcome_scope_id, offering_selection_id)
     ON DELETE RESTRICT;
 
--- A correction cannot claim a different OutcomeScope from the Fulfillment it
--- corrects.
 ALTER TABLE fulfillments
     ADD CONSTRAINT uq_fulfillments_correction_key
     UNIQUE (organization_id, fulfillment_id, outcome_scope_id);
@@ -48,7 +42,6 @@ ALTER TABLE fulfillment_corrections
     REFERENCES fulfillments (organization_id, fulfillment_id, outcome_scope_id)
     ON DELETE RESTRICT;
 
--- Requirement / item / allocation lineage must remain inside one Reservation.
 ALTER TABLE commitment_requirements
     ADD CONSTRAINT uq_commitment_requirements_reservation_key
     UNIQUE (organization_id, reservation_id, commitment_requirement_id);
@@ -85,20 +78,18 @@ ALTER TABLE resource_allocations
         (organization_id, reservation_id, commitment_requirement_id)
     ON DELETE RESTRICT;
 
--- One ResourceAllocation represents one authority consumption; therefore it has
--- exactly one allocation CapacityClaim while active.
 CREATE UNIQUE INDEX uq_capacity_claims_allocation
     ON capacity_claims (organization_id, resource_allocation_id)
     WHERE resource_allocation_id IS NOT NULL;
 
 -- ============================================================================
--- 2. Fulfillment scope validation and reject_excess serialization
+-- 2. OutcomeScope is the serialization root for reject_excess fulfillment
 -- ============================================================================
 
-DROP TRIGGER trg_fulfillments_budget ON fulfillments;
-DROP FUNCTION request_engine.enforce_fulfillment_budget();
+DROP TRIGGER IF EXISTS trg_fulfillments_budget ON fulfillments;
+DROP FUNCTION IF EXISTS request_engine.enforce_fulfillment_budget();
 
-CREATE OR REPLACE FUNCTION request_engine.validate_fulfillment()
+CREATE OR REPLACE FUNCTION request_engine.guard_fulfillment()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -126,30 +117,32 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
 
-    IF v_scope.fulfillment_model = 'quantity' THEN
-        IF NEW.unit_code IS DISTINCT FROM v_scope.unit_code THEN
-            RAISE EXCEPTION 'Fulfillment unit does not match OutcomeScope'
+    IF v_scope.fulfillment_model <> 'quantity' THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.unit_code IS DISTINCT FROM v_scope.unit_code THEN
+        RAISE EXCEPTION 'Fulfillment unit does not match OutcomeScope'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF v_scope.excess_policy = 'reject_excess' THEN
+        SELECT COALESCE(sum(f.quantity), 0)
+          INTO v_current
+          FROM fulfillments f
+         WHERE f.organization_id = NEW.organization_id
+           AND f.outcome_scope_id = NEW.outcome_scope_id
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM fulfillment_corrections fc
+                 WHERE fc.organization_id = f.organization_id
+                   AND fc.fulfillment_id = f.fulfillment_id
+                   AND fc.correction_kind IN ('invalidate','supersede')
+           );
+
+        IF v_current + NEW.quantity > v_scope.requested_quantity THEN
+            RAISE EXCEPTION 'Fulfillment exceeds reject_excess OutcomeScope budget'
                 USING ERRCODE = '23514';
-        END IF;
-
-        IF v_scope.excess_policy = 'reject_excess' THEN
-            SELECT COALESCE(sum(f.quantity), 0)
-              INTO v_current
-              FROM fulfillments f
-             WHERE f.organization_id = NEW.organization_id
-               AND f.outcome_scope_id = NEW.outcome_scope_id
-               AND NOT EXISTS (
-                    SELECT 1
-                      FROM fulfillment_corrections fc
-                     WHERE fc.organization_id = f.organization_id
-                       AND fc.fulfillment_id = f.fulfillment_id
-                       AND fc.correction_kind IN ('invalidate','supersede')
-               );
-
-            IF v_current + NEW.quantity > v_scope.requested_quantity THEN
-                RAISE EXCEPTION 'Fulfillment exceeds reject_excess OutcomeScope budget'
-                    USING ERRCODE = '23514';
-            END IF;
         END IF;
     END IF;
 
@@ -157,18 +150,18 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_fulfillments_validate
+CREATE TRIGGER trg_fulfillments_guard
 BEFORE INSERT ON fulfillments
-FOR EACH ROW EXECUTE FUNCTION request_engine.validate_fulfillment();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_fulfillment();
 
 -- ============================================================================
--- 3. Capacity: one authority, one lock protocol, correct interval arithmetic
+-- 3. CapacityClaim: serialize increases; never block release on stale revisions
 -- ============================================================================
 
-DROP TRIGGER trg_capacity_claims_enforce ON capacity_claims;
-DROP FUNCTION request_engine.enforce_capacity_claim();
+DROP TRIGGER IF EXISTS trg_capacity_claims_enforce ON capacity_claims;
+DROP FUNCTION IF EXISTS request_engine.enforce_capacity_claim();
 
-CREATE OR REPLACE FUNCTION request_engine.validate_capacity_claim()
+CREATE OR REPLACE FUNCTION request_engine.guard_capacity_claim()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -179,6 +172,17 @@ DECLARE
     v_now timestamptz := clock_timestamp();
     v_peak numeric(30,6);
 BEGIN
+    -- Historical/terminal writes reduce consumption and must remain possible even
+    -- when the claim's captured revisions are stale.
+    IF TG_OP = 'UPDATE' AND NEW.state <> 'active' THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' AND NEW.state <> 'active' THEN
+        RAISE EXCEPTION 'CapacityClaim must be created active'
+            USING ERRCODE = '23514';
+    END IF;
+
     SELECT *
       INTO v_authority
       FROM capacity_authorities
@@ -191,14 +195,10 @@ BEGIN
     END IF;
 
     IF NEW.authority_configuration_revision <> v_authority.configuration_revision
-       OR NEW.authority_schedule_revision <> v_authority.schedule_revision THEN
-        RAISE EXCEPTION 'stale capacity authority revision'
-            USING ERRCODE = '40001';
-    END IF;
-
-    IF NEW.planning_revision IS NOT NULL
-       AND NEW.planning_revision <> v_authority.planning_revision THEN
-        RAISE EXCEPTION 'stale planning revision'
+       OR NEW.authority_schedule_revision <> v_authority.schedule_revision
+       OR (NEW.planning_revision IS NOT NULL
+           AND NEW.planning_revision <> v_authority.planning_revision) THEN
+        RAISE EXCEPTION 'stale CapacityAuthority revision'
             USING ERRCODE = '40001';
     END IF;
 
@@ -215,7 +215,7 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
 
-        -- Snapshot is derived, never caller-authoritative.
+        -- Derived snapshot only. Caller cannot choose a different expiry.
         NEW.hold_expires_at := v_hold.expires_at;
     ELSE
         SELECT *
@@ -233,10 +233,6 @@ BEGIN
             RAISE EXCEPTION 'CapacityClaim does not match active ResourceAllocation'
                 USING ERRCODE = '23514';
         END IF;
-    END IF;
-
-    IF NEW.state <> 'active' THEN
-        RETURN NEW;
     END IF;
 
     IF v_authority.capacity_model = 'exclusive' THEN
@@ -259,86 +255,95 @@ BEGIN
             RAISE EXCEPTION 'exclusive capacity conflict on authority %',
                 NEW.capacity_authority_id USING ERRCODE = '23P01';
         END IF;
-    ELSE
-        -- Evaluate every temporal segment, not the incorrect sum of every claim
-        -- that overlaps anywhere with NEW.conflict_range.
-        WITH live AS (
-            SELECT c.conflict_range, c.quantity
-              FROM capacity_claims c
-              LEFT JOIN capacity_holds h
-                ON h.organization_id = c.organization_id
-               AND h.capacity_hold_id = c.capacity_hold_id
-             WHERE c.organization_id = NEW.organization_id
-               AND c.capacity_authority_id = NEW.capacity_authority_id
-               AND c.capacity_claim_id <> COALESCE(NEW.capacity_claim_id, -1)
-               AND c.state = 'active'
-               AND c.conflict_range && NEW.conflict_range
-               AND (
-                    c.claim_kind = 'allocation'
-                    OR (h.state = 'active' AND h.expires_at > v_now)
-               )
-        ), points AS (
-            SELECT lower(NEW.conflict_range) AS p
-            UNION SELECT upper(NEW.conflict_range)
-            UNION SELECT greatest(lower(conflict_range), lower(NEW.conflict_range)) FROM live
-            UNION SELECT least(upper(conflict_range), upper(NEW.conflict_range)) FROM live
-        ), segments AS (
-            SELECT p AS segment_start,
-                   lead(p) OVER (ORDER BY p) AS segment_end
-              FROM points
-        ), loads AS (
-            SELECT s.segment_start,
-                   COALESCE(sum(l.quantity) FILTER (
-                       WHERE l.conflict_range @> s.segment_start
-                   ), 0) + NEW.quantity AS load
-              FROM segments s
-              LEFT JOIN live l ON l.conflict_range @> s.segment_start
-             WHERE s.segment_end IS NOT NULL
-               AND s.segment_start < s.segment_end
-             GROUP BY s.segment_start
-        )
-        SELECT COALESCE(max(load), NEW.quantity)
-          INTO v_peak
-          FROM loads;
 
-        IF v_peak > v_authority.base_capacity_units THEN
-            RAISE EXCEPTION 'unit capacity exceeded on authority %',
-                NEW.capacity_authority_id USING ERRCODE = '23514';
-        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- Unit-capacity DB backstop. Variable schedule capacity remains command-owned:
+    -- docs/02 requires evaluation at every schedule/exception change point.
+    WITH live AS (
+        SELECT c.conflict_range, c.quantity
+          FROM capacity_claims c
+          LEFT JOIN capacity_holds h
+            ON h.organization_id = c.organization_id
+           AND h.capacity_hold_id = c.capacity_hold_id
+         WHERE c.organization_id = NEW.organization_id
+           AND c.capacity_authority_id = NEW.capacity_authority_id
+           AND c.capacity_claim_id <> COALESCE(NEW.capacity_claim_id, -1)
+           AND c.state = 'active'
+           AND c.conflict_range && NEW.conflict_range
+           AND (
+                c.claim_kind = 'allocation'
+                OR (h.state = 'active' AND h.expires_at > v_now)
+           )
+    ), points AS (
+        SELECT lower(NEW.conflict_range) AS p
+        UNION SELECT upper(NEW.conflict_range)
+        UNION SELECT greatest(lower(conflict_range), lower(NEW.conflict_range)) FROM live
+        UNION SELECT least(upper(conflict_range), upper(NEW.conflict_range)) FROM live
+    ), segments AS (
+        SELECT p AS segment_start,
+               lead(p) OVER (ORDER BY p) AS segment_end
+          FROM points
+    )
+    SELECT COALESCE(max(load), NEW.quantity)
+      INTO v_peak
+      FROM (
+        SELECT s.segment_start,
+               COALESCE(sum(l.quantity) FILTER (
+                   WHERE l.conflict_range @> s.segment_start
+               ), 0) + NEW.quantity AS load
+          FROM segments s
+          LEFT JOIN live l ON l.conflict_range @> s.segment_start
+         WHERE s.segment_end IS NOT NULL
+           AND s.segment_start < s.segment_end
+         GROUP BY s.segment_start
+      ) q;
+
+    IF v_peak > v_authority.base_capacity_units THEN
+        RAISE EXCEPTION 'unit capacity exceeded on authority %',
+            NEW.capacity_authority_id USING ERRCODE = '23514';
     END IF;
 
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER trg_capacity_claims_validate
-BEFORE INSERT OR UPDATE OF capacity_authority_id, state, conflict_range, quantity,
-    capacity_hold_id, resource_allocation_id, authority_configuration_revision,
-    authority_schedule_revision, planning_revision
+CREATE TRIGGER trg_capacity_claims_guard
+BEFORE INSERT OR UPDATE OF state, conflict_range, quantity,
+    capacity_authority_id, capacity_hold_id, resource_allocation_id,
+    authority_configuration_revision, authority_schedule_revision, planning_revision
 ON capacity_claims
-FOR EACH ROW EXECUTE FUNCTION request_engine.validate_capacity_claim();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim();
 
--- Active Allocation <-> active allocation Claim is checked at transaction end so
--- confirmation can create rows in either physical order inside one transaction.
+-- ============================================================================
+-- 4. Allocation <-> claim cardinality is checked at transaction end
+-- ============================================================================
+
 CREATE OR REPLACE FUNCTION request_engine.check_allocation_claim_cardinality()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_allocation_id bigint;
     v_org_id bigint;
-    v_state text;
-    v_count integer;
+    v_allocation_id bigint;
+    v_allocation_state text;
+    v_active_claims integer;
 BEGIN
-    v_allocation_id := COALESCE(NEW.resource_allocation_id, OLD.resource_allocation_id);
-    v_org_id := COALESCE(NEW.organization_id, OLD.organization_id);
+    IF TG_TABLE_NAME = 'resource_allocations' THEN
+        v_org_id := NEW.organization_id;
+        v_allocation_id := NEW.resource_allocation_id;
+    ELSE
+        v_org_id := NEW.organization_id;
+        v_allocation_id := NEW.resource_allocation_id;
+    END IF;
 
     IF v_allocation_id IS NULL THEN
         RETURN NULL;
     END IF;
 
     SELECT state
-      INTO v_state
+      INTO v_allocation_state
       FROM resource_allocations
      WHERE organization_id = v_org_id
        AND resource_allocation_id = v_allocation_id;
@@ -348,15 +353,15 @@ BEGIN
     END IF;
 
     SELECT count(*)
-      INTO v_count
+      INTO v_active_claims
       FROM capacity_claims
      WHERE organization_id = v_org_id
        AND resource_allocation_id = v_allocation_id
        AND claim_kind = 'allocation'
        AND state = 'active';
 
-    IF (v_state = 'active' AND v_count <> 1)
-       OR (v_state <> 'active' AND v_count <> 0) THEN
+    IF (v_allocation_state = 'active' AND v_active_claims <> 1)
+       OR (v_allocation_state <> 'active' AND v_active_claims <> 0) THEN
         RAISE EXCEPTION 'ResourceAllocation/CapacityClaim cardinality violation'
             USING ERRCODE = '23514';
     END IF;
@@ -376,45 +381,74 @@ DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION request_engine.check_allocation_claim_cardinality();
 
 -- ============================================================================
--- 4. Capacity revisions are infrastructure invariants, not caller conventions
+-- 5. Revisions: configuration/schedule are local; PlanningRevision is command-owned
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION request_engine.bump_capacity_schedule_revision()
+CREATE OR REPLACE FUNCTION request_engine.bump_schedule_revision()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_org bigint := COALESCE(NEW.organization_id, OLD.organization_id);
-    v_authority bigint := COALESCE(NEW.capacity_authority_id, OLD.capacity_authority_id);
+    v_old_org bigint;
+    v_old_authority bigint;
+    v_new_org bigint;
+    v_new_authority bigint;
 BEGIN
-    UPDATE capacity_authorities
-       SET schedule_revision = schedule_revision + 1
-     WHERE organization_id = v_org
-       AND capacity_authority_id = v_authority;
+    IF TG_OP <> 'INSERT' THEN
+        v_old_org := OLD.organization_id;
+        v_old_authority := OLD.capacity_authority_id;
+        UPDATE capacity_authorities
+           SET schedule_revision = schedule_revision + 1
+         WHERE organization_id = v_old_org
+           AND capacity_authority_id = v_old_authority;
+    END IF;
+
+    IF TG_OP <> 'DELETE'
+       AND (TG_OP = 'INSERT'
+            OR (NEW.organization_id, NEW.capacity_authority_id)
+               IS DISTINCT FROM (OLD.organization_id, OLD.capacity_authority_id)) THEN
+        v_new_org := NEW.organization_id;
+        v_new_authority := NEW.capacity_authority_id;
+        UPDATE capacity_authorities
+           SET schedule_revision = schedule_revision + 1
+         WHERE organization_id = v_new_org
+           AND capacity_authority_id = v_new_authority;
+    END IF;
+
     RETURN NULL;
 END;
 $$;
 
 CREATE TRIGGER trg_availability_schedules_revision
 AFTER INSERT OR UPDATE OR DELETE ON availability_schedules
-FOR EACH ROW EXECUTE FUNCTION request_engine.bump_capacity_schedule_revision();
+FOR EACH ROW EXECUTE FUNCTION request_engine.bump_schedule_revision();
 
 CREATE TRIGGER trg_schedule_exceptions_revision
 AFTER INSERT OR UPDATE OR DELETE ON schedule_exceptions
-FOR EACH ROW EXECUTE FUNCTION request_engine.bump_capacity_schedule_revision();
+FOR EACH ROW EXECUTE FUNCTION request_engine.bump_schedule_revision();
 
-CREATE OR REPLACE FUNCTION request_engine.bump_resource_configuration_revision()
+CREATE OR REPLACE FUNCTION request_engine.bump_resource_revision()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    v_org bigint := COALESCE(NEW.organization_id, OLD.organization_id);
-    v_resource bigint := COALESCE(NEW.resource_id, OLD.resource_id);
 BEGIN
-    UPDATE capacity_authorities
-       SET configuration_revision = configuration_revision + 1
-     WHERE organization_id = v_org
-       AND resource_id = v_resource;
+    IF TG_OP <> 'INSERT' THEN
+        UPDATE capacity_authorities
+           SET configuration_revision = configuration_revision + 1
+         WHERE organization_id = OLD.organization_id
+           AND resource_id = OLD.resource_id;
+    END IF;
+
+    IF TG_OP <> 'DELETE'
+       AND (TG_OP = 'INSERT'
+            OR (NEW.organization_id, NEW.resource_id)
+               IS DISTINCT FROM (OLD.organization_id, OLD.resource_id)) THEN
+        UPDATE capacity_authorities
+           SET configuration_revision = configuration_revision + 1
+         WHERE organization_id = NEW.organization_id
+           AND resource_id = NEW.resource_id;
+    END IF;
+
     RETURN NULL;
 END;
 $$;
@@ -424,60 +458,101 @@ AFTER UPDATE OF status, operating_location ON resources
 FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status
    OR OLD.operating_location IS DISTINCT FROM NEW.operating_location)
-EXECUTE FUNCTION request_engine.bump_resource_configuration_revision();
+EXECUTE FUNCTION request_engine.bump_resource_revision();
 
 CREATE TRIGGER trg_resource_capability_assignment_revision
 AFTER INSERT OR UPDATE OR DELETE ON resource_capability_assignments
-FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_configuration_revision();
+FOR EACH ROW EXECUTE FUNCTION request_engine.bump_resource_revision();
 
-CREATE OR REPLACE FUNCTION request_engine.bump_pool_configuration_revision()
+CREATE OR REPLACE FUNCTION request_engine.bump_pool_revision()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    v_org bigint := COALESCE(NEW.organization_id, OLD.organization_id);
-    v_pool bigint := COALESCE(NEW.capacity_pool_id, OLD.capacity_pool_id);
 BEGIN
-    UPDATE capacity_authorities
-       SET configuration_revision = configuration_revision + 1
-     WHERE organization_id = v_org
-       AND capacity_pool_id = v_pool;
+    IF TG_OP <> 'INSERT' THEN
+        UPDATE capacity_authorities
+           SET configuration_revision = configuration_revision + 1
+         WHERE organization_id = OLD.organization_id
+           AND capacity_pool_id = OLD.capacity_pool_id;
+    END IF;
+
+    IF TG_OP <> 'DELETE'
+       AND (TG_OP = 'INSERT'
+            OR (NEW.organization_id, NEW.capacity_pool_id)
+               IS DISTINCT FROM (OLD.organization_id, OLD.capacity_pool_id)) THEN
+        UPDATE capacity_authorities
+           SET configuration_revision = configuration_revision + 1
+         WHERE organization_id = NEW.organization_id
+           AND capacity_pool_id = NEW.capacity_pool_id;
+    END IF;
+
     RETURN NULL;
 END;
 $$;
 
 CREATE TRIGGER trg_capacity_pool_membership_revision
 AFTER INSERT OR UPDATE OR DELETE ON capacity_pool_memberships
-FOR EACH ROW EXECUTE FUNCTION request_engine.bump_pool_configuration_revision();
+FOR EACH ROW EXECUTE FUNCTION request_engine.bump_pool_revision();
 
--- Every commitment mutation can invalidate external field-service feasibility.
-CREATE OR REPLACE FUNCTION request_engine.bump_claim_planning_revision()
+CREATE TRIGGER trg_capacity_pool_status_revision
+AFTER UPDATE OF status ON capacity_pools
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status)
+EXECUTE FUNCTION request_engine.bump_pool_revision();
+
+COMMENT ON COLUMN capacity_authorities.planning_revision IS
+'Increment once per semantic planning-sensitive command, never once per physical CapacityClaim row.';
+
+CREATE OR REPLACE FUNCTION request_engine.advance_planning_revision(
+    p_organization_id bigint,
+    p_capacity_authority_id bigint,
+    p_expected_revision bigint
+)
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_revision bigint;
+BEGIN
+    UPDATE capacity_authorities
+       SET planning_revision = planning_revision + 1
+     WHERE organization_id = p_organization_id
+       AND capacity_authority_id = p_capacity_authority_id
+       AND planning_revision = p_expected_revision
+     RETURNING planning_revision INTO v_revision;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'stale PlanningRevision for CapacityAuthority %',
+            p_capacity_authority_id USING ERRCODE = '40001';
+    END IF;
+
+    RETURN v_revision;
+END;
+$$;
+
+-- ============================================================================
+-- 6. Historical commitments are monotonic and non-destructive
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION request_engine.prevent_delete()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF TG_OP = 'INSERT'
-       OR OLD.state IS DISTINCT FROM NEW.state
-       OR OLD.conflict_range IS DISTINCT FROM NEW.conflict_range
-       OR OLD.quantity IS DISTINCT FROM NEW.quantity THEN
-        UPDATE capacity_authorities
-           SET planning_revision = planning_revision + 1
-         WHERE organization_id = NEW.organization_id
-           AND capacity_authority_id = NEW.capacity_authority_id;
-    END IF;
-    RETURN NULL;
+    RAISE EXCEPTION '% history cannot be deleted', TG_TABLE_NAME
+        USING ERRCODE = '55000';
 END;
 $$;
 
-CREATE TRIGGER trg_capacity_claims_planning_revision
-AFTER INSERT OR UPDATE OF state, conflict_range, quantity ON capacity_claims
-FOR EACH ROW EXECUTE FUNCTION request_engine.bump_claim_planning_revision();
+CREATE TRIGGER trg_capacity_claims_no_delete
+BEFORE DELETE ON capacity_claims
+FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_delete();
 
--- ============================================================================
--- 5. Lifecycle monotonicity: committed history never resurrects
--- ============================================================================
+CREATE TRIGGER trg_resource_allocations_no_delete
+BEFORE DELETE ON resource_allocations
+FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_delete();
 
-CREATE OR REPLACE FUNCTION request_engine.guard_terminal_transition()
+CREATE OR REPLACE FUNCTION request_engine.guard_commitment_history()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -486,97 +561,98 @@ BEGIN
         IF OLD.status IN ('cancelled','closed') AND NEW.status IS DISTINCT FROM OLD.status THEN
             RAISE EXCEPTION 'terminal Reservation cannot transition' USING ERRCODE = '55000';
         END IF;
-    ELSE
-        IF OLD.state IN ('released','replaced') AND NEW.state IS DISTINCT FROM OLD.state THEN
-            RAISE EXCEPTION '% terminal state cannot transition', TG_TABLE_NAME
-                USING ERRCODE = '55000';
-        END IF;
+        RETURN NEW;
     END IF;
+
+    IF OLD.state IN ('released','replaced') AND NEW.state IS DISTINCT FROM OLD.state THEN
+        RAISE EXCEPTION '% terminal state cannot transition', TG_TABLE_NAME
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF TG_TABLE_NAME = 'capacity_claims'
+       AND (
+            NEW.organization_id <> OLD.organization_id
+            OR NEW.capacity_authority_id <> OLD.capacity_authority_id
+            OR NEW.claim_kind <> OLD.claim_kind
+            OR NEW.capacity_hold_id IS DISTINCT FROM OLD.capacity_hold_id
+            OR NEW.resource_allocation_id IS DISTINCT FROM OLD.resource_allocation_id
+            OR NEW.conflict_range IS DISTINCT FROM OLD.conflict_range
+            OR NEW.quantity IS DISTINCT FROM OLD.quantity
+       ) THEN
+        RAISE EXCEPTION 'CapacityClaim consumption identity is immutable; replace it instead'
+            USING ERRCODE = '55000';
+    END IF;
+
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER trg_reservations_terminal_transition
+CREATE TRIGGER trg_reservations_terminal
 BEFORE UPDATE OF status ON reservations
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_terminal_transition();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_commitment_history();
 
-CREATE TRIGGER trg_resource_allocations_terminal_transition
+CREATE TRIGGER trg_resource_allocations_terminal
 BEFORE UPDATE OF state ON resource_allocations
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_terminal_transition();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_commitment_history();
 
-CREATE TRIGGER trg_capacity_claims_terminal_transition
-BEFORE UPDATE OF state ON capacity_claims
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_terminal_transition();
+CREATE TRIGGER trg_capacity_claims_history
+BEFORE UPDATE ON capacity_claims
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_commitment_history();
 
--- Hold cannot transition while its consuming hold claims remain active. Commands
--- release/replace claims first, then transition the Hold in the same transaction.
-CREATE OR REPLACE FUNCTION request_engine.guard_capacity_hold_claims()
+CREATE OR REPLACE FUNCTION request_engine.guard_capacity_hold_transition()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF OLD.state = 'active' AND NEW.state <> 'active' THEN
-        IF EXISTS (
-            SELECT 1
-              FROM capacity_claims c
-             WHERE c.organization_id = NEW.organization_id
-               AND c.capacity_hold_id = NEW.capacity_hold_id
-               AND c.claim_kind = 'hold'
-               AND c.state = 'active'
-        ) THEN
-            RAISE EXCEPTION 'CapacityHold cannot transition with active hold claims'
-                USING ERRCODE = '55000';
-        END IF;
+    IF OLD.state = 'active' AND NEW.state <> 'active' AND EXISTS (
+        SELECT 1
+          FROM capacity_claims c
+         WHERE c.organization_id = NEW.organization_id
+           AND c.capacity_hold_id = NEW.capacity_hold_id
+           AND c.claim_kind = 'hold'
+           AND c.state = 'active'
+    ) THEN
+        RAISE EXCEPTION 'CapacityHold cannot transition with active hold claims'
+            USING ERRCODE = '55000';
     END IF;
+
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER trg_capacity_holds_claims
+CREATE TRIGGER trg_capacity_holds_transition
 BEFORE UPDATE OF state ON capacity_holds
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_hold_claims();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_hold_transition();
 
--- Strengthen terminal Reservation proof: no active Allocation and no active
--- allocation Claim may survive.
-DROP TRIGGER trg_reservations_guard_terminal_claims ON reservations;
-DROP FUNCTION request_engine.guard_reservation_terminal_claims();
+DROP TRIGGER IF EXISTS trg_reservations_guard_terminal_claims ON reservations;
+DROP FUNCTION IF EXISTS request_engine.guard_reservation_terminal_claims();
 
 CREATE OR REPLACE FUNCTION request_engine.guard_reservation_terminal_capacity()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    IF OLD.status = 'confirmed' AND NEW.status IN ('cancelled','closed') THEN
-        IF EXISTS (
-            SELECT 1
-              FROM resource_allocations ra
-             WHERE ra.organization_id = NEW.organization_id
-               AND ra.reservation_id = NEW.reservation_id
-               AND ra.state = 'active'
-        ) OR EXISTS (
-            SELECT 1
-              FROM capacity_claims cc
-              JOIN resource_allocations ra
-                ON ra.organization_id = cc.organization_id
-               AND ra.resource_allocation_id = cc.resource_allocation_id
-             WHERE ra.organization_id = NEW.organization_id
-               AND ra.reservation_id = NEW.reservation_id
-               AND cc.state = 'active'
-        ) THEN
-            RAISE EXCEPTION 'terminal Reservation cannot retain active capacity'
-                USING ERRCODE = '55000';
-        END IF;
+    IF OLD.status = 'confirmed' AND NEW.status IN ('cancelled','closed') AND EXISTS (
+        SELECT 1
+          FROM resource_allocations ra
+         WHERE ra.organization_id = NEW.organization_id
+           AND ra.reservation_id = NEW.reservation_id
+           AND ra.state = 'active'
+    ) THEN
+        RAISE EXCEPTION 'terminal Reservation cannot retain active allocations'
+            USING ERRCODE = '55000';
     END IF;
+
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER trg_reservations_guard_terminal_capacity
+CREATE TRIGGER trg_reservations_terminal_capacity
 BEFORE UPDATE OF status ON reservations
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_terminal_capacity();
 
 -- ============================================================================
--- 6. Immutable ingress and idempotency identity
+-- 7. External ingress and durable idempotency identity are immutable
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION request_engine.guard_provider_event_identity()
@@ -623,7 +699,7 @@ BEFORE UPDATE ON idempotency_records
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_idempotency_identity();
 
 -- ============================================================================
--- 7. Financial reductions cannot become silently overallocated
+-- 8. Financial backstops: never hide over-allocation or concurrent refund claims
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION request_engine.guard_eligible_value_reduction()
@@ -631,23 +707,29 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_net_allocated bigint;
+    v_allocated bigint;
+    v_adjusted bigint;
 BEGIN
     IF NEW.current_eligible_amount_minor >= OLD.current_eligible_amount_minor THEN
         RETURN NEW;
     END IF;
 
     SELECT COALESCE(sum(pa.allocated_amount_minor), 0)
-           - COALESCE(sum(adj.amount_minor), 0)
-      INTO v_net_allocated
+      INTO v_allocated
       FROM payment_allocations pa
-      LEFT JOIN payment_allocation_adjustments adj
-        ON adj.organization_id = pa.organization_id
-       AND adj.payment_allocation_id = pa.payment_allocation_id
      WHERE pa.organization_id = OLD.organization_id
        AND pa.payment_transaction_id = OLD.payment_transaction_id;
 
-    IF v_net_allocated > NEW.current_eligible_amount_minor
+    SELECT COALESCE(sum(adj.amount_minor), 0)
+      INTO v_adjusted
+      FROM payment_allocation_adjustments adj
+      JOIN payment_allocations pa
+        ON pa.organization_id = adj.organization_id
+       AND pa.payment_allocation_id = adj.payment_allocation_id
+     WHERE pa.organization_id = OLD.organization_id
+       AND pa.payment_transaction_id = OLD.payment_transaction_id;
+
+    IF v_allocated - v_adjusted > NEW.current_eligible_amount_minor
        AND NOT EXISTS (
             SELECT 1
               FROM reconciliation_cases rc
@@ -667,9 +749,6 @@ CREATE TRIGGER trg_payment_transactions_eligible_reduction
 BEFORE UPDATE OF current_eligible_amount_minor ON payment_transactions
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_eligible_value_reduction();
 
--- Refund writes serialize on PaymentTransaction. The authoritative refundable
--- amount remains policy-derived; this DB backstop only prevents concurrent
--- cumulative refund claims from exceeding nominal transaction value.
 CREATE OR REPLACE FUNCTION request_engine.guard_refund_budget()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -718,10 +797,10 @@ BEFORE INSERT OR UPDATE OF status, amount_minor ON refunds
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_refund_budget();
 
 -- ============================================================================
--- 8. Typed RequestTarget compatibility
+-- 9. Typed RequestTarget compatibility
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION request_engine.validate_reservation_request_target()
+CREATE OR REPLACE FUNCTION request_engine.guard_reservation_request_target()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -739,16 +818,17 @@ BEGIN
         RAISE EXCEPTION 'Reservation target is invalid for RequestType %', v_type
             USING ERRCODE = '23514';
     END IF;
+
     RETURN NEW;
 END;
 $$;
 
-CREATE TRIGGER trg_request_target_reservations_validate
+CREATE TRIGGER trg_request_target_reservations_guard
 BEFORE INSERT OR UPDATE OF request_id, reservation_id ON request_target_reservations
-FOR EACH ROW EXECUTE FUNCTION request_engine.validate_reservation_request_target();
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_request_target();
 
 -- ============================================================================
--- 9. Supporting indexes for the lock/validation paths above
+-- 10. Index only the hot validation paths not already guaranteed by constraints
 -- ============================================================================
 
 CREATE INDEX IF NOT EXISTS ix_capacity_claims_authority_active
@@ -767,26 +847,19 @@ CREATE INDEX IF NOT EXISTS ix_reconciliation_cases_transaction_live
     WHERE status IN ('open','under_review');
 
 -- ============================================================================
--- DBA notes / explicit non-goals
+-- 11. Explicit boundary: what PostgreSQL does NOT pretend to prove here
 -- ============================================================================
 --
--- 1. Variable schedule capacity still requires the command protocol to derive
---    effective capacity at every schedule/exception change point while holding
---    CapacityAuthority. validate_capacity_claim() fixes interval arithmetic at
---    base capacity; it intentionally does not parse schedule_definition JSON.
+-- Command transaction remains authoritative for:
+--   * compound multi-authority acquisition and canonical lock ordering;
+--   * variable schedule capacity at every change point;
+--   * pool/direct-member conflict and late binding;
+--   * shared-requirement amendments and replacement-before-release reschedule;
+--   * completion/correction races across OutcomeScope + Request;
+--   * PlanningRevision advancement over the correct bounded authority set;
+--   * external commitment truth/compensation;
+--   * policy-specific refundable value and ambiguous financial attribution.
 --
--- 2. CapacityPool direct-member conflicts still require the canonical
---    multi-authority lock set from docs/02. This migration does not hide that
---    cross-authority proof inside recursive triggers.
---
--- 3. Refund policy may be stricter than nominal value after reversals, fees or
---    provider semantics. guard_refund_budget() is a concurrency backstop, not a
---    replacement for the versioned financial policy.
---
--- 4. RLS remains deployment-specific defense-in-depth. Tenant integrity is
---    structural here; authorization remains application/domain authority.
---
--- 5. All multi-root commands must preserve the canonical lock class order in
---    docs/02. PostgreSQL deadlock detection is fallback, never the lock plan.
+-- A pre-check outside the documented transaction is never authority.
 
 COMMIT;
