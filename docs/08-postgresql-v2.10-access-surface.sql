@@ -1,6 +1,7 @@
 -- Request Engine V2.10 — PostgreSQL access surface
 -- Target: PostgreSQL 18+
--- Applies after:
+-- Migration type: DELTA, not a standalone clean-install schema.
+-- Applies after, in this exact order:
 --   docs/03-postgresql-schema.sql
 --   docs/04-postgresql-v2.7-hardening.sql
 --   docs/05-postgresql-v2.8-hardening.sql
@@ -14,11 +15,64 @@
 --   * secure routine name resolution;
 --   * fenced outbox leases for multi-worker delivery;
 --   * no stored-procedure application backend and no writable business views.
+--
+-- IMPORTANT:
+--   This migration assumes the authoritative Request Engine schema already
+--   exists. It intentionally does not recreate V2.6-V2.9 tables. The preflight
+--   below fails atomically with a precise message if the migration chain has
+--   not been applied, instead of failing later with an opaque 42P01 error.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '60s';
 SET LOCAL search_path = pg_catalog, request_engine;
+
+-- ============================================================================
+-- 0. Migration-chain preflight
+-- ============================================================================
+
+DO $$
+DECLARE
+    v_missing text[];
+BEGIN
+    SELECT array_agg(required_object ORDER BY required_object)
+      INTO v_missing
+      FROM (
+        VALUES
+            ('request_engine.requests'),
+            ('request_engine.reservations'),
+            ('request_engine.payment_requirements'),
+            ('request_engine.payment_transactions'),
+            ('request_engine.payment_allocations'),
+            ('request_engine.payment_allocation_adjustments'),
+            ('request_engine.external_commitments'),
+            ('request_engine.external_commitment_requirement_links'),
+            ('request_engine.queue_entries'),
+            ('request_engine.capacity_authorities'),
+            ('request_engine.idempotency_records'),
+            ('request_engine.outbox_messages')
+      ) AS required(required_object)
+     WHERE to_regclass(required_object) IS NULL;
+
+    IF v_missing IS NOT NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            MESSAGE = 'Request Engine V2.10 prerequisites are not installed',
+            DETAIL = format('Missing required relations: %s', array_to_string(v_missing, ', ')),
+            HINT = 'Apply docs/03-postgresql-schema.sql, 04-postgresql-v2.7-hardening.sql, 05-postgresql-v2.8-hardening.sql, and 06-postgresql-v2.9-integrity.sql in order, then run 08-postgresql-v2.10-access-surface.sql.';
+    END IF;
+
+    IF to_regprocedure('request_engine.advance_planning_revision(bigint,bigint,bigint)') IS NULL
+       OR to_regprocedure('request_engine.guard_capacity_claim()') IS NULL
+       OR to_regprocedure('request_engine.guard_fulfillment()') IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            MESSAGE = 'Request Engine V2.10 prerequisite routines are not installed',
+            DETAIL = 'The V2.7/V2.8 hardening migrations have not been applied completely.',
+            HINT = 'Apply the full 03 -> 04 -> 05 -> 06 migration chain before V2.10.';
+    END IF;
+END;
+$$;
 
 -- ============================================================================
 -- 1. Interface schemas and deny-by-default posture
