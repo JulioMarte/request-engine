@@ -1,10 +1,10 @@
 # Request Engine — current documentation
 
-This folder contains the authoritative product/domain/architecture design for the current Request Engine rebuild.
+This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files should point here rather than duplicate these documents.
 
 ## Authoritative documents
 
-Read in this order:
+Read according to the task, using this precedence when rules overlap:
 
 1. `00-product-definition.md` — product boundaries, vocabulary, ownership and domain invariants.
 2. `01-architecture-v2.md` — transactional modular-monolith architecture, concurrency, command protocols, workers and integrations.
@@ -15,9 +15,22 @@ Read in this order:
 
 The domain and transaction contracts have precedence over implementation convenience. SQL implements the contracts; it must not silently redefine them.
 
-### Physical layout clarification
+## Architecture Decision Records
 
-`01-architecture-v2.md` established the modular-monolith dependency direction. Its original illustrative horizontal folder tree is superseded for Python **physical organization only** by `09-python-module-architecture.md`.
+`adr/` records durable rationale for hard-to-reverse architectural decisions. ADRs explain why the architecture exists; they do not replace the detailed normative contracts above.
+
+Current accepted decisions include:
+
+- modular monolith instead of premature microservices;
+- smart PostgreSQL with Python-owned command orchestration;
+- module-first Python physical organization;
+- repository documentation as the canonical knowledge system for coding agents.
+
+See `adr/README.md`.
+
+## Physical layout clarification
+
+`01-architecture-v2.md` established the modular-monolith **logical dependency direction**. Its original illustrative horizontal folder tree is superseded for Python **physical organization** by `09-python-module-architecture.md`.
 
 The semantic rule remains:
 
@@ -27,15 +40,21 @@ entrypoint/adapter
 application command/query
       ↓
 domain rules + explicit ports
-      ↓
-PostgreSQL/adapters
+      ↑
+database/provider adapters
 ```
 
-The new physical layout groups those layers inside business modules to improve maintainability; it does not change transactional boundaries or introduce microservices.
+The physical layout groups those layers inside business modules to improve ownership/navigation; it does not change transactional boundaries or introduce microservices.
+
+## Documentation organization policy
+
+The numbered canonical documents are intentionally retained while the domain/schema is still being frozen because many invariant references and design-chain comments point to them. Do not perform a cosmetic bulk move into new directories until the contracts stabilize; that would create link churn without changing architecture.
+
+New durable rationale belongs in `adr/`. New operational documentation should be grouped by purpose rather than extending the historical numbering indefinitely.
 
 ## PostgreSQL executable design chain
 
-Executable SQL no longer lives in `docs/`. The current pre-baseline V2.6→V2.10 design chain is under `migrations/sql/design_chain/` and is applied in this order:
+Executable SQL does not live in `docs/`. The current pre-baseline V2.6→V2.10 design chain is under `migrations/sql/design_chain/` and is applied in this order:
 
 ```text
 03-postgresql-schema.sql
