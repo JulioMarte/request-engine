@@ -38,10 +38,7 @@ DOMAIN_FORBIDDEN_IMPORT_PREFIXES = (
     "sqlalchemy",
     "request_engine.bootstrap",
 )
-
-APPLICATION_FORBIDDEN_IMPORT_PREFIXES = (
-    "fastapi",
-)
+APPLICATION_FORBIDDEN_IMPORT_PREFIXES = ("fastapi",)
 
 
 def _python_files(root: Path) -> list[Path]:
