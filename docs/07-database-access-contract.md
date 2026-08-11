@@ -142,7 +142,10 @@ Rules:
 4. cambiar columnas, significado o tipos de forma incompatible crea una nueva versión;
 5. la versión anterior permanece durante una ventana de migración de consumers;
 6. views pueden componer joins/projections, pero no esconder network/policy decisions;
-7. `security_invoker=true` es el default para permanecer compatible con un futuro modelo RLS basado en el caller.
+7. `security_invoker=true` es el default para permanecer compatible con un futuro modelo RLS basado en el caller;
+8. una `security_invoker` view **no es una privilege boundary**: el caller necesita permisos sobre la view y las relaciones base requeridas. Su propósito primario aquí es estabilidad semántica/query composition, no privilege elevation.
+
+Si en el futuro se requiere que una read view oculte completamente las tablas base a un role, eso será una decisión de security architecture separada y deberá diseñarse junto con RLS/view ownership; no se obtendrá accidentalmente cambiando flags.
 
 ### `request_cmd`
 
@@ -205,6 +208,7 @@ Razón:
 
 - schema-qualified objects;
 - `SECURITY INVOKER` por defecto;
+- `SECURITY INVOKER` significa que la routine **no eleva privileges**: el caller debe tener los permisos necesarios sobre los objetos subyacentes además de `EXECUTE`;
 - `VOLATILE` cuando modifica DB o adquiere locks;
 - `STABLE` sólo para lecturas que satisfagan realmente esa semántica;
 - `IMMUTABLE` sólo para funciones puras sin DB/time/session dependence;
@@ -216,7 +220,7 @@ Razón:
 - no hidden cross-root lock plan distinto al contrato;
 - routines pequeñas, testeables y con una sola responsabilidad.
 
-`SECURITY DEFINER` no es default. Si algún caso futuro lo requiere, debe tener threat model, `search_path` cerrado, grants mínimos y tests específicos contra privilege escalation.
+`SECURITY DEFINER` no es default. Si algún caso futuro lo requiere para crear una privilege boundary real, debe tener threat model, `search_path` cerrado, grants mínimos, owner no-runtime y tests específicos contra privilege escalation.
 
 ---
 
@@ -339,6 +343,8 @@ FastAPI/OpenAPI
 
 Los internal bigint IDs pueden existir en views para repositories/query services, pero no se exponen por defecto al cliente. Public IDs siguen siendo identifiers de API, nunca authority tokens.
 
+`request_read` estandariza el contrato de consultas, pero con `security_invoker=true` no pretende impedir técnicamente un `SELECT` directo sobre las tablas para un role que ya tiene ese permiso. La disciplina de repositories/query services y el futuro privilege/RLS model cumplen responsabilidades distintas.
+
 ---
 
 ## 9. Materialized views
@@ -382,24 +388,38 @@ No se crean dentro de la portable schema migration porque role provisioning es c
 Principios:
 
 - migration owner controla DDL;
-- `PUBLIC` no recibe `CREATE` en los schemas de interface;
+- `PUBLIC` no recibe `CREATE`/`USAGE` implícito en los schemas de interface;
 - `PUBLIC` no recibe `EXECUTE` en `request_cmd`;
-- app/worker roles reciben sólo `USAGE`/`SELECT`/`EXECUTE`/DML que requiera su deployment;
+- `SECURITY INVOKER` views/functions no elevan privileges;
+- app/worker/read roles reciben sólo los privileges de objetos base + interfaces que realmente necesitan;
+- command repositories pueden requerir DML directo sobre un conjunto explícito de `request_engine` tables porque no todo write se canaliza por functions;
+- query roles que usan `security_invoker` views requieren `SELECT` en las relaciones base referenciadas por esas views;
 - RLS puede agregarse como defense-in-depth cuando el modelo de connection roles esté fijado;
 - RLS nunca reemplaza Principal/Representation/domain authorization.
 
 Ejemplo conceptual, ejecutado por provisioning y adaptado al deployment:
 
 ```sql
+-- Semantic interface
 GRANT USAGE ON SCHEMA request_read, request_cmd TO request_app;
 GRANT SELECT ON ALL TABLES IN SCHEMA request_read TO request_app;
 GRANT EXECUTE ON FUNCTION request_cmd.acquire_idempotency(...) TO request_app;
 
+-- SECURITY INVOKER also requires the exact underlying privileges.
+-- Grant only the base relations/DML used by the app's repositories and views;
+-- do not use blanket production grants merely for convenience.
+GRANT SELECT ON request_engine.requests TO request_app;
+
+-- Worker example: EXECUTE plus the exact underlying outbox privileges because
+-- claim_outbox_batch is SECURITY INVOKER.
 GRANT USAGE ON SCHEMA request_cmd TO request_worker;
 GRANT EXECUTE ON FUNCTION request_cmd.claim_outbox_batch(...) TO request_worker;
+GRANT SELECT, UPDATE ON request_engine.outbox_messages TO request_worker;
 ```
 
 No conceder `CREATE` a runtime roles.
+
+Una futura transición de una primitive a `SECURITY DEFINER` deberá ser explícita; no se hará para evitar diseñar correctamente grants/RLS.
 
 ---
 
@@ -473,7 +493,8 @@ Antes de considerar congelada la frontera DB/API:
 5. test de idempotency same-key/same-hash y same-key/different-hash;
 6. multi-worker outbox test con `SKIP LOCKED`, crash lease y reclaim;
 7. privilege test: `PUBLIC` no ejecuta `request_cmd`;
-8. future RLS test antes de activar tenant-scoped DB roles.
+8. privilege test de `SECURITY INVOKER`: caller sin base privilege falla como corresponde;
+9. future RLS test antes de activar tenant-scoped DB roles.
 
 ---
 
@@ -519,3 +540,17 @@ Python domain validation
 ```
 
 Esto es deseable cuando Python produce mejores errores/contexto y PostgreSQL conserva la última línea de defensa. No duplicar workflows completos en ambos lenguajes.
+
+---
+
+## 17. Referencias técnicas de la decisión
+
+Fuentes primarias usadas para esta frontera:
+
+- PostgreSQL 18 `CREATE VIEW`: `security_invoker`, seguridad y updateability: https://www.postgresql.org/docs/18/sql-createview.html
+- PostgreSQL 18 `CREATE FUNCTION`: volatility, `SECURITY INVOKER/DEFINER`, safe `search_path`: https://www.postgresql.org/docs/18/sql-createfunction.html
+- PostgreSQL 18 `CREATE PROCEDURE`: transaction-control/security semantics: https://www.postgresql.org/docs/18/sql-createprocedure.html
+- PostgreSQL 18 privileges: default `EXECUTE` para functions/procedures y schema/object grants: https://www.postgresql.org/docs/18/ddl-priv.html
+- PostgreSQL 18 materialized views / refresh semantics: https://www.postgresql.org/docs/18/rules-materializedviews.html
+- PostgreSQL 18 `REFRESH MATERIALIZED VIEW`: https://www.postgresql.org/docs/18/sql-refreshmaterializedview.html
+- SQLAlchemy 2.0 Session/Unit of Work/transaction scope: https://docs.sqlalchemy.org/en/20/orm/session_basics.html
