@@ -44,9 +44,7 @@ def test_business_modules_have_explicit_ownership_docs() -> None:
 
 
 def test_horizontal_business_layer_roots_do_not_reappear() -> None:
-    unexpected = {
-        name for name in FORBIDDEN_HORIZONTAL_ROOTS if (SRC_ROOT / name).exists()
-    }
+    unexpected = {name for name in FORBIDDEN_HORIZONTAL_ROOTS if (SRC_ROOT / name).exists()}
     assert unexpected == set()
 
 
