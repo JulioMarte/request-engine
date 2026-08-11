@@ -10,16 +10,18 @@
 -- Purpose:
 --   * stable versioned read views for Python Query Services;
 --   * narrow data-centric command primitives for SQLAlchemy repositories/workers;
---   * explicit privilege boundary preparation;
+--   * explicit privilege-boundary preparation;
+--   * secure routine name resolution;
+--   * fenced outbox leases for multi-worker delivery;
 --   * no stored-procedure application backend and no writable business views.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '60s';
-SET LOCAL search_path = pg_catalog, request_engine, request_read, request_cmd, request_admin;
+SET LOCAL search_path = pg_catalog, request_engine;
 
 -- ============================================================================
--- 1. Interface schemas
+-- 1. Interface schemas and deny-by-default posture
 -- ============================================================================
 
 CREATE SCHEMA IF NOT EXISTS request_read;
@@ -39,8 +41,9 @@ REVOKE ALL ON SCHEMA request_read FROM PUBLIC;
 REVOKE ALL ON SCHEMA request_cmd FROM PUBLIC;
 REVOKE ALL ON SCHEMA request_admin FROM PUBLIC;
 
--- PostgreSQL grants EXECUTE on functions to PUBLIC by default. Make the command
--- schema deny-by-default both now and for future routines created by this owner.
+-- PostgreSQL grants EXECUTE on new functions to PUBLIC by default. Make the
+-- command schema deny-by-default both now and for future routines created by
+-- this migration owner.
 ALTER DEFAULT PRIVILEGES IN SCHEMA request_cmd
     REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
@@ -104,7 +107,7 @@ LEFT JOIN request_engine.reservations AS replacement
  AND replacement.reservation_id = r.replaces_reservation_id;
 
 COMMENT ON VIEW request_read.reservation_summary_v1 IS
-'Current Reservation read model. planned timestamps are derived from the canonical [start,end) range.';
+'Current Reservation read model. Planned timestamps are derived from the canonical [start,end) range.';
 
 CREATE VIEW request_read.payment_requirement_status_v1
 WITH (security_invoker = true) AS
@@ -125,55 +128,64 @@ WITH allocation_totals AS (
       ON pa.organization_id = paa.organization_id
      AND pa.payment_allocation_id = paa.payment_allocation_id
     GROUP BY pa.organization_id, pa.payment_requirement_id
+), balances AS (
+    SELECT
+        pr.organization_id,
+        pr.payment_requirement_id,
+        pr.public_id AS payment_requirement_public_id,
+        req.public_id AS request_public_id,
+        pr.payer_party_id,
+        pr.purpose,
+        pr.currency,
+        pr.required_amount_minor,
+        pr.disposition,
+        pr.due_at,
+        GREATEST(
+            COALESCE(a.allocated_amount_minor, 0)
+            - COALESCE(adj.adjusted_amount_minor, 0),
+            0
+        ) AS net_allocated_amount_minor,
+        pr.created_at
+    FROM request_engine.payment_requirements AS pr
+    JOIN request_engine.requests AS req
+      ON req.organization_id = pr.organization_id
+     AND req.request_id = pr.request_id
+    LEFT JOIN allocation_totals AS a
+      ON a.organization_id = pr.organization_id
+     AND a.payment_requirement_id = pr.payment_requirement_id
+    LEFT JOIN adjustment_totals AS adj
+      ON adj.organization_id = pr.organization_id
+     AND adj.payment_requirement_id = pr.payment_requirement_id
 )
 SELECT
-    pr.organization_id,
-    pr.payment_requirement_id,
-    pr.public_id AS payment_requirement_public_id,
-    req.public_id AS request_public_id,
-    pr.payer_party_id,
-    pr.purpose,
-    pr.currency,
-    pr.required_amount_minor,
-    pr.disposition,
-    pr.due_at,
-    GREATEST(
-        COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
-        0
-    ) AS net_allocated_amount_minor,
-    GREATEST(
-        pr.required_amount_minor
-        - GREATEST(
-            COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
-            0
-          ),
-        0
-    ) AS remaining_amount_minor,
+    b.organization_id,
+    b.payment_requirement_id,
+    b.payment_requirement_public_id,
+    b.request_public_id,
+    b.payer_party_id,
+    b.purpose,
+    b.currency,
+    b.required_amount_minor,
+    b.disposition,
+    b.due_at,
+    b.net_allocated_amount_minor,
+    GREATEST(b.required_amount_minor - b.net_allocated_amount_minor, 0)
+        AS remaining_amount_minor,
     CASE
-        WHEN pr.disposition = 'waived' THEN 'waived'
-        WHEN pr.disposition = 'cancelled' THEN 'cancelled'
-        WHEN GREATEST(
-                 COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
-                 0
-             ) >= pr.required_amount_minor THEN 'satisfied'
-        WHEN GREATEST(
-                 COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
-                 0
-             ) > 0 THEN 'partial'
-        WHEN pr.due_at IS NOT NULL AND pr.due_at < clock_timestamp() THEN 'overdue'
+        WHEN b.disposition = 'waived' THEN 'waived'
+        WHEN b.disposition = 'cancelled' THEN 'cancelled'
+        WHEN b.net_allocated_amount_minor >= b.required_amount_minor THEN 'satisfied'
+        WHEN b.due_at IS NOT NULL AND b.due_at < statement_timestamp() THEN 'overdue'
+        WHEN b.net_allocated_amount_minor > 0 THEN 'partial'
         ELSE 'open'
     END AS current_status,
-    pr.created_at
-FROM request_engine.payment_requirements AS pr
-JOIN request_engine.requests AS req
-  ON req.organization_id = pr.organization_id
- AND req.request_id = pr.request_id
-LEFT JOIN allocation_totals AS a
-  ON a.organization_id = pr.organization_id
- AND a.payment_requirement_id = pr.payment_requirement_id
-LEFT JOIN adjustment_totals AS adj
-  ON adj.organization_id = pr.organization_id
- AND adj.payment_requirement_id = pr.payment_requirement_id;
+    b.disposition = 'active'
+      AND b.net_allocated_amount_minor < b.required_amount_minor
+      AND b.due_at IS NOT NULL
+      AND b.due_at < statement_timestamp()
+      AS is_overdue,
+    b.created_at
+FROM balances AS b;
 
 COMMENT ON VIEW request_read.payment_requirement_status_v1 IS
 'Derived PaymentRequirement status. Never authorizes allocation; AllocatePayment revalidates locked authoritative rows.';
@@ -226,13 +238,15 @@ SELECT
     pt.current_finality,
     pt.current_eligible_amount_minor,
     GREATEST(
-        COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
+        COALESCE(a.allocated_amount_minor, 0)
+        - COALESCE(adj.adjusted_amount_minor, 0),
         0
     ) AS net_allocated_amount_minor,
     GREATEST(
         pt.current_eligible_amount_minor
         - GREATEST(
-            COALESCE(a.allocated_amount_minor, 0) - COALESCE(adj.adjusted_amount_minor, 0),
+            COALESCE(a.allocated_amount_minor, 0)
+            - COALESCE(adj.adjusted_amount_minor, 0),
             0
           ),
         0
@@ -260,7 +274,7 @@ LEFT JOIN reconciliation_totals AS rc
  AND rc.payment_transaction_id = pt.payment_transaction_id;
 
 COMMENT ON VIEW request_read.payment_transaction_status_v1 IS
-'Derived financial read model. current_eligible_amount_minor remains authoritative on PaymentTransaction; all derived totals are query projections.';
+'Derived financial read model. current_eligible_amount_minor remains authoritative on PaymentTransaction; all totals are projections.';
 
 CREATE VIEW request_read.external_commitment_status_v1
 WITH (security_invoker = true) AS
@@ -292,7 +306,7 @@ SELECT
     ec.release_capability,
     COALESCE(c.covered_requirement_count, 0) AS covered_requirement_count,
     ec.status = 'committed'
-      AND (ec.valid_until IS NULL OR ec.valid_until > clock_timestamp())
+      AND (ec.valid_until IS NULL OR ec.valid_until > statement_timestamp())
       AS is_wall_clock_current,
     ec.source_policy_key,
     ec.source_policy_version,
@@ -358,12 +372,86 @@ CREATE INDEX IF NOT EXISTS ix_payment_allocation_adjustments_reversal
     WHERE financial_reversal_id IS NOT NULL;
 
 -- ============================================================================
--- 4. Narrow command primitives
+-- 4. Outbox lease state and fencing identity
 -- ============================================================================
 
--- Hardening for the pre-existing internal CAS primitive used by the wrapper below.
+ALTER TABLE request_engine.outbox_messages
+    ADD COLUMN claim_token uuid;
+
+-- Migration safety: any already-claimed row receives an opaque token. Existing
+-- workers must reacquire after their lease expires before acknowledging it.
+UPDATE request_engine.outbox_messages
+SET claim_token = uuidv7()
+WHERE claimed_at IS NOT NULL
+  AND claimed_by IS NOT NULL
+  AND claim_token IS NULL;
+
+ALTER TABLE request_engine.outbox_messages
+    ADD CONSTRAINT ck_outbox_messages_claim_identity
+    CHECK (
+        (claimed_at IS NULL AND claimed_by IS NULL AND claim_token IS NULL)
+        OR
+        (claimed_at IS NOT NULL AND claimed_by IS NOT NULL AND claim_token IS NOT NULL)
+    );
+
+COMMENT ON COLUMN request_engine.outbox_messages.claim_token IS
+'Fresh opaque fencing token for each worker lease acquisition. Worker names are diagnostic identity, not lease authority.';
+
+-- ============================================================================
+-- 5. Harden existing reusable routines
+-- ============================================================================
+--
+-- These functions predate the explicit DB access contract. Pin object resolution
+-- so behavior cannot depend on caller-controlled session search_path.
+
+ALTER FUNCTION request_engine.prevent_fact_mutation()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.touch_updated_at()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_request_terminality()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_payment_requirement_repricing()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.enforce_payment_allocation_budget()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.enforce_allocation_adjustment_budget()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_fulfillment()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_capacity_claim()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.check_allocation_claim_cardinality()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.bump_schedule_revision()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.bump_resource_revision()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.bump_pool_revision()
+    SET search_path = pg_catalog, request_engine, pg_temp;
 ALTER FUNCTION request_engine.advance_planning_revision(bigint, bigint, bigint)
     SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.prevent_delete()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_commitment_history()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_capacity_hold_transition()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_reservation_terminal_capacity()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_provider_event_identity()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_idempotency_identity()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_eligible_value_reduction()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_refund_budget()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.guard_reservation_request_target()
+    SET search_path = pg_catalog, request_engine, pg_temp;
+
+-- ============================================================================
+-- 6. Narrow command primitives
+-- ============================================================================
 
 CREATE OR REPLACE FUNCTION request_cmd.lock_capacity_authorities(
     p_organization_id bigint,
@@ -430,7 +518,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION request_cmd.lock_capacity_authorities(bigint, bigint[]) IS
-'Locks CapacityAuthorities in ascending internal id order and returns current revisions. Called inside a Python-owned transaction.';
+'Locks CapacityAuthorities in ascending internal id order and returns current revisions. Called inside a Python-owned transaction after earlier lock classes are acquired.';
 
 CREATE OR REPLACE FUNCTION request_cmd.advance_planning_revision(
     p_organization_id bigint,
@@ -534,7 +622,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION request_cmd.acquire_idempotency(bigint, text, text, bytea, bigint) IS
-'Race-safe key/hash acquisition. Same key+different hash raises conflict; caller decides replay behavior from returned state/result.';
+'Race-safe key/hash acquisition. Invoke before domain-root locking; same key+different hash raises conflict and caller decides replay from returned state/result.';
 
 CREATE OR REPLACE FUNCTION request_cmd.complete_idempotency(
     p_organization_id bigint,
@@ -608,7 +696,8 @@ RETURNS TABLE (
     payload jsonb,
     attempt_count integer,
     available_at timestamptz,
-    claimed_at timestamptz
+    claimed_at timestamptz,
+    claim_token uuid
 )
 LANGUAGE plpgsql
 VOLATILE
@@ -649,6 +738,7 @@ BEGIN
     UPDATE request_engine.outbox_messages AS om
     SET claimed_at = v_now,
         claimed_by = p_worker_id,
+        claim_token = uuidv7(),
         attempt_count = om.attempt_count + 1
     FROM candidates AS c
     WHERE om.organization_id = c.organization_id
@@ -664,17 +754,19 @@ BEGIN
         om.payload,
         om.attempt_count,
         om.available_at,
-        om.claimed_at;
+        om.claimed_at,
+        om.claim_token;
 END;
 $$;
 
 COMMENT ON FUNCTION request_cmd.claim_outbox_batch(text, integer, interval) IS
-'Worker-only atomic outbox claim using FOR UPDATE SKIP LOCKED. Stale claims become reclaimable after the supplied lease timeout.';
+'Worker-only atomic outbox lease using FOR UPDATE SKIP LOCKED. Every acquisition receives a fresh claim_token fencing stale executions.';
 
 CREATE OR REPLACE FUNCTION request_cmd.mark_outbox_delivered(
     p_organization_id bigint,
     p_outbox_message_id bigint,
-    p_worker_id text
+    p_worker_id text,
+    p_claim_token uuid
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -683,28 +775,37 @@ SECURITY INVOKER
 SET search_path = pg_catalog, request_engine, pg_temp
 AS $$
 BEGIN
+    IF p_claim_token IS NULL THEN
+        RAISE EXCEPTION 'claim_token is required' USING ERRCODE = '22023';
+    END IF;
+
     UPDATE request_engine.outbox_messages AS om
     SET delivered_at = clock_timestamp(),
+        claimed_at = NULL,
+        claimed_by = NULL,
+        claim_token = NULL,
         last_error = NULL
     WHERE om.organization_id = p_organization_id
       AND om.outbox_message_id = p_outbox_message_id
       AND om.delivered_at IS NULL
-      AND om.claimed_by = p_worker_id;
+      AND om.claimed_by = p_worker_id
+      AND om.claim_token = p_claim_token;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'outbox message not claim-owned or already delivered'
+        RAISE EXCEPTION 'outbox lease lost, message already delivered, or claim token stale'
             USING ERRCODE = '55000';
     END IF;
 END;
 $$;
 
-COMMENT ON FUNCTION request_cmd.mark_outbox_delivered(bigint, bigint, text) IS
-'Marks delivery only for the worker that currently owns the claim.';
+COMMENT ON FUNCTION request_cmd.mark_outbox_delivered(bigint, bigint, text, uuid) IS
+'Acknowledges delivery only for the exact current worker lease token, fencing stale executions.';
 
 CREATE OR REPLACE FUNCTION request_cmd.release_outbox_claim(
     p_organization_id bigint,
     p_outbox_message_id bigint,
     p_worker_id text,
+    p_claim_token uuid,
     p_error text,
     p_retry_after interval DEFAULT interval '30 seconds'
 )
@@ -717,6 +818,10 @@ AS $$
 DECLARE
     v_now timestamptz := clock_timestamp();
 BEGIN
+    IF p_claim_token IS NULL THEN
+        RAISE EXCEPTION 'claim_token is required' USING ERRCODE = '22023';
+    END IF;
+
     IF p_retry_after IS NULL OR p_retry_after < interval '0 seconds' THEN
         RAISE EXCEPTION 'retry_after cannot be negative' USING ERRCODE = '22023';
     END IF;
@@ -724,27 +829,29 @@ BEGIN
     UPDATE request_engine.outbox_messages AS om
     SET claimed_at = NULL,
         claimed_by = NULL,
+        claim_token = NULL,
         available_at = GREATEST(om.available_at, v_now + p_retry_after),
         last_error = p_error
     WHERE om.organization_id = p_organization_id
       AND om.outbox_message_id = p_outbox_message_id
       AND om.delivered_at IS NULL
-      AND om.claimed_by = p_worker_id;
+      AND om.claimed_by = p_worker_id
+      AND om.claim_token = p_claim_token;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'outbox message not claim-owned or already delivered'
+        RAISE EXCEPTION 'outbox lease lost, message already delivered, or claim token stale'
             USING ERRCODE = '55000';
     END IF;
 END;
 $$;
 
-COMMENT ON FUNCTION request_cmd.release_outbox_claim(bigint, bigint, text, text, interval) IS
-'Releases a worker-owned outbox claim and schedules the next retry without changing at-least-once semantics.';
+COMMENT ON FUNCTION request_cmd.release_outbox_claim(bigint, bigint, text, uuid, text, interval) IS
+'Releases only the exact current outbox lease token and schedules retry, fencing stale executions.';
 
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA request_cmd FROM PUBLIC;
 
 -- ============================================================================
--- 5. Admin/diagnostic read surface
+-- 7. Admin/diagnostic read surface
 -- ============================================================================
 
 CREATE VIEW request_admin.outbox_health_v1
@@ -760,10 +867,10 @@ SELECT
     ) AS claimed_count,
     count(*) FILTER (
         WHERE om.delivered_at IS NULL
-          AND om.available_at <= clock_timestamp()
+          AND om.available_at <= statement_timestamp()
           AND (
               om.claimed_at IS NULL
-              OR om.claimed_at < clock_timestamp() - interval '5 minutes'
+              OR om.claimed_at < statement_timestamp() - interval '5 minutes'
           )
     ) AS default_lease_claimable_count,
     min(om.available_at) FILTER (
@@ -802,29 +909,34 @@ COMMENT ON VIEW request_admin.open_reconciliation_v1 IS
 REVOKE ALL ON ALL TABLES IN SCHEMA request_admin FROM PUBLIC;
 
 -- ============================================================================
--- 6. Deployment privilege contract
+-- 8. Deployment privilege contract
 -- ============================================================================
 --
 -- Runtime roles are intentionally NOT created here. Role provisioning is
 -- deployment/cluster-specific and may require CREATEROLE beyond Alembic's DDL
--- owner. Provisioning should grant only the required surface, for example:
+-- owner. SECURITY INVOKER means interface objects do not elevate privileges:
+-- callers also need the exact underlying base-table permissions required by
+-- their Query Services/repositories.
 --
 --   request_app:
 --     USAGE request_read, request_cmd
---     SELECT request_read.*
+--     SELECT on selected request_read views
 --     EXECUTE only app-safe request_cmd functions
---     explicit DML on request_engine tables required by command repositories
+--     explicit SELECT/DML on request_engine objects needed by repositories/views
 --
 --   request_worker:
 --     USAGE request_cmd
---     EXECUTE claim/mark/release outbox functions
+--     EXECUTE outbox claim/mark/release
+--     SELECT, UPDATE request_engine.outbox_messages
 --
 --   request_readonly:
 --     USAGE request_read
---     SELECT request_read.*
+--     SELECT selected request_read views
+--     SELECT the exact underlying relations required by those invoker views
 --
 -- Views use security_invoker=true deliberately. If RLS is introduced later,
 -- base-table privileges/policies for the invoking role must be designed together;
--- the view contract is not by itself a tenant authorization boundary.
+-- the view contract is semantic/versioning isolation, not by itself a tenant
+-- authorization or privilege-elevation boundary.
 
 COMMIT;
