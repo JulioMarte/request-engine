@@ -1,35 +1,34 @@
 -- Request Engine V2.6 — PostgreSQL reference schema
 -- Target: PostgreSQL 18+
--- Canonical docs:
+-- Canonical documents:
 --   docs/00-product-definition.md
 --   docs/01-architecture-v2.md
 --   docs/02-pre-sql-domain-contract.md
 --
--- Design rules:
---   * snake_case, unquoted identifiers, explicit constraint/index names.
---   * bigint GENERATED ALWAYS AS IDENTITY for compact internal lock/FK keys.
---   * UUIDv7 for public identifiers; public IDs never authorize a mutation.
---   * organization_id is carried through authoritative relationships and proved
---     with tenant-aware composite foreign keys.
---   * timestamptz for instants; canonical capacity intervals are [start,end).
---   * amount_minor + ISO currency for monetary values; no implicit FX.
---   * jsonb is reserved for snapshots/provenance/configuration, never for an
---     authoritative relationship that requires a foreign key.
---   * historical financial/outcome facts are append-oriented.
---   * cross-row concurrency invariants use stable lock rows plus DB triggers;
---     application commands must still follow the lock protocols in docs/02.
+-- Physical conventions
+-- --------------------
+-- * snake_case, unquoted identifiers, explicit constraint/index names.
+-- * bigint GENERATED ALWAYS AS IDENTITY for internal FK/lock keys.
+-- * uuidv7() for public identifiers. Public IDs never grant authority.
+-- * organization_id participates in every authoritative tenant-owned FK.
+-- * timestamptz for instants; reservable intervals are bounded [start,end).
+-- * monetary values are integer minor units + ISO-4217 currency code.
+-- * jsonb stores snapshots/config/provenance, never critical untyped FKs.
+-- * historical outcome/financial/audit facts are append-oriented.
+-- * cross-row races serialize on stable rows described by docs/02.
 --
--- PostgreSQL 18 is intentional: uuidv7() is core and produces time-ordered
--- public UUIDs without an extension. No PostgreSQL 19 feature is required.
+-- PostgreSQL 18 is intentional: uuidv7() is native. btree_gist is a trusted
+-- PostgreSQL extension and is used only to support GiST operator classes.
 
 BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS request_engine;
 SET search_path = request_engine, public;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
--- ---------------------------------------------------------------------------
--- Shared utility functions
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Utility functions
+-- ==========================================================================
 
 CREATE OR REPLACE FUNCTION request_engine.prevent_fact_mutation()
 RETURNS trigger
@@ -51,9 +50,9 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Tenancy, identity, authority
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Tenancy / identity / authority
+-- ==========================================================================
 
 CREATE TABLE organizations (
     organization_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -65,7 +64,6 @@ CREATE TABLE organizations (
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_organizations_public_id UNIQUE (public_id),
     CONSTRAINT uq_organizations_slug UNIQUE (slug),
-    CONSTRAINT uq_organizations_tenant_key UNIQUE (organization_id),
     CONSTRAINT ck_organizations_slug CHECK (slug = lower(slug) AND slug ~ '^[a-z0-9][a-z0-9_-]{1,62}$'),
     CONSTRAINT ck_organizations_status CHECK (status IN ('active','suspended','closed'))
 );
@@ -83,7 +81,7 @@ CREATE TABLE principals (
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_principals_public_id UNIQUE (public_id),
     CONSTRAINT uq_principals_tenant_key UNIQUE (organization_id, principal_id),
-    CONSTRAINT uq_principals_external_subject UNIQUE NULLS NOT DISTINCT (organization_id, external_subject),
+    CONSTRAINT uq_principals_external_subject UNIQUE (organization_id, external_subject),
     CONSTRAINT fk_principals_org FOREIGN KEY (organization_id)
         REFERENCES organizations (organization_id) ON DELETE RESTRICT,
     CONSTRAINT ck_principals_kind CHECK (principal_kind IN ('human','employee','service_account','agent_runtime','provider','worker')),
@@ -102,7 +100,7 @@ CREATE TABLE parties (
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_parties_public_id UNIQUE (public_id),
     CONSTRAINT uq_parties_tenant_key UNIQUE (organization_id, party_id),
-    CONSTRAINT uq_parties_external_ref UNIQUE NULLS NOT DISTINCT (organization_id, external_ref),
+    CONSTRAINT uq_parties_external_ref UNIQUE (organization_id, external_ref),
     CONSTRAINT fk_parties_org FOREIGN KEY (organization_id)
         REFERENCES organizations (organization_id) ON DELETE RESTRICT,
     CONSTRAINT ck_parties_kind CHECK (party_kind IN ('person','organization'))
@@ -142,9 +140,9 @@ CREATE TABLE representations (
     CONSTRAINT ck_representations_revision CHECK (revision > 0)
 );
 
--- ---------------------------------------------------------------------------
--- Offerings and requests
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Offerings / requests / typed scope
+-- ==========================================================================
 
 CREATE TABLE offerings (
     offering_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -184,8 +182,8 @@ CREATE TABLE offering_versions (
     CONSTRAINT fk_offering_versions_offering FOREIGN KEY (organization_id, offering_id)
         REFERENCES offerings (organization_id, offering_id) ON DELETE RESTRICT,
     CONSTRAINT ck_offering_versions_version CHECK (version_no > 0),
-    CONSTRAINT ck_offering_versions_fulfillment CHECK (fulfillment_model IN ('binary','quantity','components','external_authoritative')),
-    CONSTRAINT ck_offering_versions_excess CHECK (
+    CONSTRAINT ck_offering_versions_model CHECK (fulfillment_model IN ('binary','quantity','components','external_authoritative')),
+    CONSTRAINT ck_offering_versions_quantity_model CHECK (
         (fulfillment_model = 'quantity' AND excess_policy IN ('reject_excess','allow_excess') AND unit_code IS NOT NULL)
         OR (fulfillment_model <> 'quantity' AND excess_policy IS NULL)
     ),
@@ -204,9 +202,9 @@ CREATE TABLE requests (
     workflow_version text NOT NULL,
     completion_policy_key text,
     completion_policy_version text,
+    created_by_principal_id bigint,
     completed_at timestamptz,
     terminal_at timestamptz,
-    created_by_principal_id bigint,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_requests_public_id UNIQUE (public_id),
@@ -217,7 +215,7 @@ CREATE TABLE requests (
         REFERENCES principals (organization_id, principal_id) ON DELETE RESTRICT,
     CONSTRAINT ck_requests_type CHECK (request_type IN ('reserve_offering','purchase_offering','request_quote','request_information','request_callback','reschedule_reservation','cancel_reservation','submit_intake')),
     CONSTRAINT ck_requests_status CHECK (status IN ('active','waiting','completed','cancelled','failed_terminal')),
-    CONSTRAINT ck_requests_completion_validity CHECK (
+    CONSTRAINT ck_requests_completion CHECK (
         (status = 'completed' AND completion_validity IN ('valid','under_review','invalidated') AND completed_at IS NOT NULL)
         OR (status <> 'completed' AND completion_validity IS NULL AND completed_at IS NULL)
     ),
@@ -296,9 +294,9 @@ CREATE TABLE request_external_correlations (
         REFERENCES external_correlations (organization_id, external_correlation_id) ON DELETE RESTRICT
 );
 
--- ---------------------------------------------------------------------------
--- Outcome scopes and append-oriented fulfillment
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Outcome truth
+-- ==========================================================================
 
 CREATE TABLE outcome_scopes (
     outcome_scope_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -331,7 +329,6 @@ CREATE TABLE outcome_scopes (
     CONSTRAINT ck_outcome_scopes_revision CHECK (revision > 0)
 );
 
--- Forward references to service_sessions are added after service session tables.
 CREATE TABLE fulfillments (
     fulfillment_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id bigint NOT NULL,
@@ -401,9 +398,71 @@ CREATE TABLE fulfillment_corrections (
     CONSTRAINT ck_fulfillment_corrections_kind CHECK (correction_kind IN ('invalidate','replace_value','supersede'))
 );
 
--- ---------------------------------------------------------------------------
--- Pricing and obligations
--- ---------------------------------------------------------------------------
+-- Quantity reject_excess is protected by locking the OutcomeScope. Corrections
+-- still require the command protocol because they may invalidate completion.
+CREATE OR REPLACE FUNCTION request_engine.enforce_fulfillment_budget()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_model text;
+    v_policy text;
+    v_requested numeric(28,9);
+    v_unit text;
+    v_current numeric(38,9);
+BEGIN
+    SELECT fulfillment_model, excess_policy, requested_quantity, unit_code
+      INTO v_model, v_policy, v_requested, v_unit
+      FROM request_engine.outcome_scopes
+     WHERE organization_id = NEW.organization_id
+       AND outcome_scope_id = NEW.outcome_scope_id
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'OutcomeScope not found' USING ERRCODE = '23503';
+    END IF;
+
+    IF NEW.model <> v_model THEN
+        RAISE EXCEPTION 'Fulfillment model does not match OutcomeScope' USING ERRCODE = '23514';
+    END IF;
+
+    IF v_model = 'quantity' THEN
+        IF NEW.unit_code <> v_unit THEN
+            RAISE EXCEPTION 'Fulfillment unit does not match OutcomeScope' USING ERRCODE = '23514';
+        END IF;
+
+        IF v_policy = 'reject_excess' THEN
+            SELECT COALESCE(sum(f.quantity), 0)
+              INTO v_current
+              FROM request_engine.fulfillments f
+             WHERE f.organization_id = NEW.organization_id
+               AND f.outcome_scope_id = NEW.outcome_scope_id
+               AND NOT EXISTS (
+                    SELECT 1
+                      FROM request_engine.fulfillment_corrections fc
+                     WHERE fc.organization_id = f.organization_id
+                       AND fc.fulfillment_id = f.fulfillment_id
+                       AND fc.correction_kind IN ('invalidate','supersede')
+               );
+
+            IF v_current + NEW.quantity > v_requested THEN
+                RAISE EXCEPTION 'Fulfillment would exceed reject_excess OutcomeScope budget'
+                    USING ERRCODE = '23514';
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_fulfillments_budget
+BEFORE INSERT ON fulfillments
+FOR EACH ROW EXECUTE FUNCTION request_engine.enforce_fulfillment_budget();
+
+-- ==========================================================================
+-- Pricing / obligations
+-- ==========================================================================
 
 CREATE TABLE price_determinations (
     price_determination_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -469,9 +528,9 @@ CREATE TABLE payment_requirements (
     CONSTRAINT ck_payment_requirements_disposition CHECK (disposition IN ('active','waived','cancelled'))
 );
 
--- ---------------------------------------------------------------------------
--- Resources, capabilities, pools, schedules, capacity authority
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Resources / capacity authority / schedules
+-- ==========================================================================
 
 CREATE TABLE resources (
     resource_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -601,8 +660,8 @@ CREATE TABLE capacity_authorities (
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_capacity_authorities_public_id UNIQUE (public_id),
     CONSTRAINT uq_capacity_authorities_tenant_key UNIQUE (organization_id, capacity_authority_id),
-    CONSTRAINT uq_capacity_authorities_resource UNIQUE NULLS NOT DISTINCT (organization_id, resource_id),
-    CONSTRAINT uq_capacity_authorities_pool UNIQUE NULLS NOT DISTINCT (organization_id, capacity_pool_id),
+    CONSTRAINT uq_capacity_authorities_resource UNIQUE (organization_id, resource_id),
+    CONSTRAINT uq_capacity_authorities_pool UNIQUE (organization_id, capacity_pool_id),
     CONSTRAINT fk_capacity_authorities_resource FOREIGN KEY (organization_id, resource_id)
         REFERENCES resources (organization_id, resource_id) ON DELETE RESTRICT,
     CONSTRAINT fk_capacity_authorities_pool FOREIGN KEY (organization_id, capacity_pool_id)
@@ -667,9 +726,9 @@ CREATE TABLE planning_contexts (
     CONSTRAINT ck_planning_contexts_revision CHECK (revision > 0)
 );
 
--- ---------------------------------------------------------------------------
--- Local holds and common capacity-claim conflict space
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Holds / common capacity claim space
+-- ==========================================================================
 
 CREATE TABLE capacity_holds (
     capacity_hold_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -720,7 +779,6 @@ CREATE TABLE capacity_hold_requirement_intents (
     CONSTRAINT ck_capacity_hold_requirement_intents_quantity CHECK (quantity > 0)
 );
 
--- resource_allocation_id is forward-referenced and constrained later.
 CREATE TABLE capacity_claims (
     capacity_claim_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id bigint NOT NULL,
@@ -760,16 +818,12 @@ CREATE TABLE capacity_claims (
 );
 
 CREATE INDEX ix_capacity_claims_live_overlap
-    ON capacity_claims USING gist (capacity_authority_id, conflict_range)
+    ON capacity_claims USING gist (organization_id, capacity_authority_id, conflict_range)
     WHERE state = 'active';
-
 CREATE INDEX ix_capacity_claims_hold_expiry
     ON capacity_claims (organization_id, capacity_authority_id, hold_expires_at)
     WHERE claim_kind = 'hold' AND state = 'active';
 
--- The trigger deliberately uses clock_timestamp(), not now(). Hold liveness is a
--- wall-clock fact and must not be frozen at transaction start. The authority row
--- lock is the serialization proof shared by hold and allocation claims.
 CREATE OR REPLACE FUNCTION request_engine.enforce_capacity_claim()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -788,15 +842,11 @@ BEGIN
      FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'capacity authority not found for tenant'
-            USING ERRCODE = '23503';
+        RAISE EXCEPTION 'capacity authority not found for tenant' USING ERRCODE = '23503';
     END IF;
 
-    IF NEW.claim_kind = 'hold' THEN
-        IF NEW.hold_expires_at <= v_now THEN
-            RAISE EXCEPTION 'cannot create an already-expired hold claim'
-                USING ERRCODE = '23514';
-        END IF;
+    IF NEW.claim_kind = 'hold' AND NEW.hold_expires_at <= v_now THEN
+        RAISE EXCEPTION 'cannot create an already-expired hold claim' USING ERRCODE = '23514';
     END IF;
 
     IF NEW.state <> 'active' THEN
@@ -829,8 +879,7 @@ BEGIN
            AND c.capacity_claim_id <> COALESCE(NEW.capacity_claim_id, -1);
 
         IF v_current + NEW.quantity > v_base_capacity THEN
-            RAISE EXCEPTION 'unit capacity exceeded on authority %: % + % > %',
-                NEW.capacity_authority_id, v_current, NEW.quantity, v_base_capacity
+            RAISE EXCEPTION 'unit capacity exceeded on authority %', NEW.capacity_authority_id
                 USING ERRCODE = '23514';
         END IF;
     END IF;
@@ -842,19 +891,15 @@ $$;
 CREATE TRIGGER trg_capacity_claims_enforce
 BEFORE INSERT OR UPDATE OF capacity_authority_id, state, conflict_range, quantity, hold_expires_at
 ON capacity_claims
-FOR EACH ROW
-EXECUTE FUNCTION request_engine.enforce_capacity_claim();
+FOR EACH ROW EXECUTE FUNCTION request_engine.enforce_capacity_claim();
 
--- NOTE: the trigger is a hard backstop against oversell at base capacity. The
--- command protocol must additionally validate recurring schedules, exceptions,
--- location/capability eligibility, pool fungibility and every variable-capacity
--- change point while holding the same capacity_authority row and checking the
--- recorded revisions. This is intentional: a volatile wall-clock/schedule rule
--- is not safely representable as a static CHECK or partial exclusion predicate.
+-- The trigger is a DB backstop using the common authority lock. Variable
+-- schedule capacity, capability/location eligibility and pool fungibility are
+-- validated by the command protocol against the same locked authority/revisions.
 
--- ---------------------------------------------------------------------------
--- Reservation commitments
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Reservations / allocations / typed targets
+-- ==========================================================================
 
 CREATE TABLE reservations (
     reservation_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -982,7 +1027,6 @@ ALTER TABLE capacity_claims
     REFERENCES resource_allocations (organization_id, resource_allocation_id)
     ON DELETE RESTRICT;
 
--- Typed RequestTarget: V1 request types that target an existing Reservation.
 CREATE TABLE request_target_reservations (
     organization_id bigint NOT NULL,
     request_id bigint NOT NULL,
@@ -996,9 +1040,9 @@ CREATE TABLE request_target_reservations (
         REFERENCES reservations (organization_id, reservation_id) ON DELETE RESTRICT
 );
 
--- ---------------------------------------------------------------------------
--- External commitment dependencies
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- External commitments
+-- ==========================================================================
 
 CREATE TABLE provider_connections (
     provider_connection_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1057,9 +1101,9 @@ CREATE TABLE reservation_external_commitments (
         REFERENCES external_commitments (organization_id, external_commitment_id) ON DELETE RESTRICT
 );
 
--- ---------------------------------------------------------------------------
--- Admission, queues, execution, dispatch
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Admission / execution / dispatch
+-- ==========================================================================
 
 CREATE TABLE queue_entries (
     queue_entry_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1071,7 +1115,6 @@ CREATE TABLE queue_entries (
     status text NOT NULL DEFAULT 'active',
     priority_class integer NOT NULL DEFAULT 0,
     enqueued_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    ordering_tiebreaker bigint GENERATED ALWAYS AS IDENTITY,
     ended_at timestamptz,
     CONSTRAINT uq_queue_entries_public_id UNIQUE (public_id),
     CONSTRAINT uq_queue_entries_tenant_key UNIQUE (organization_id, queue_entry_id),
@@ -1087,7 +1130,6 @@ CREATE TABLE queue_entries (
 CREATE UNIQUE INDEX uq_queue_entries_active_reservation_scope
     ON queue_entries (organization_id, admission_context, reservation_item_id)
     WHERE status IN ('active','called') AND reservation_item_id IS NOT NULL;
-
 CREATE UNIQUE INDEX uq_queue_entries_active_walkin_scope
     ON queue_entries (organization_id, admission_context, offering_selection_id)
     WHERE status IN ('active','called') AND offering_selection_id IS NOT NULL;
@@ -1173,9 +1215,9 @@ CREATE TABLE dispatch_destination_changes (
         REFERENCES principals (organization_id, principal_id) ON DELETE RESTRICT
 );
 
--- ---------------------------------------------------------------------------
--- Payments and financial facts
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Financial truth
+-- ==========================================================================
 
 CREATE TABLE payment_attempts (
     payment_attempt_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1235,7 +1277,7 @@ CREATE TABLE payment_transactions (
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT uq_payment_transactions_public_id UNIQUE (public_id),
     CONSTRAINT uq_payment_transactions_tenant_key UNIQUE (organization_id, payment_transaction_id),
-    CONSTRAINT uq_payment_transactions_provider_ref UNIQUE NULLS NOT DISTINCT (organization_id, provider_connection_id, external_transaction_ref),
+    CONSTRAINT uq_payment_transactions_provider_ref UNIQUE (organization_id, provider_connection_id, external_transaction_ref),
     CONSTRAINT fk_payment_transactions_provider FOREIGN KEY (organization_id, provider_connection_id)
         REFERENCES provider_connections (organization_id, provider_connection_id) ON DELETE RESTRICT,
     CONSTRAINT fk_payment_transactions_org FOREIGN KEY (organization_id)
@@ -1266,7 +1308,7 @@ CREATE TABLE financial_observations (
     provenance jsonb NOT NULL DEFAULT '{}'::jsonb,
     CONSTRAINT uq_financial_observations_public_id UNIQUE (public_id),
     CONSTRAINT uq_financial_observations_tenant_key UNIQUE (organization_id, financial_observation_id),
-    CONSTRAINT uq_financial_observations_source_event UNIQUE NULLS NOT DISTINCT (organization_id, provider_connection_id, source_event_id),
+    CONSTRAINT uq_financial_observations_source_event UNIQUE (organization_id, provider_connection_id, source_event_id),
     CONSTRAINT fk_financial_observations_transaction FOREIGN KEY (organization_id, payment_transaction_id)
         REFERENCES payment_transactions (organization_id, payment_transaction_id) ON DELETE RESTRICT,
     CONSTRAINT fk_financial_observations_provider FOREIGN KEY (organization_id, provider_connection_id)
@@ -1319,7 +1361,7 @@ CREATE TABLE financial_reversals (
     provenance jsonb NOT NULL DEFAULT '{}'::jsonb,
     CONSTRAINT uq_financial_reversals_public_id UNIQUE (public_id),
     CONSTRAINT uq_financial_reversals_tenant_key UNIQUE (organization_id, financial_reversal_id),
-    CONSTRAINT uq_financial_reversals_provider_ref UNIQUE NULLS NOT DISTINCT (organization_id, provider_connection_id, external_reversal_ref),
+    CONSTRAINT uq_financial_reversals_provider_ref UNIQUE (organization_id, provider_connection_id, external_reversal_ref),
     CONSTRAINT fk_financial_reversals_transaction FOREIGN KEY (organization_id, payment_transaction_id)
         REFERENCES payment_transactions (organization_id, payment_transaction_id) ON DELETE RESTRICT,
     CONSTRAINT fk_financial_reversals_provider FOREIGN KEY (organization_id, provider_connection_id)
@@ -1447,13 +1489,13 @@ CREATE TABLE reconciliation_cases (
     CONSTRAINT ck_reconciliation_cases_revision CHECK (revision > 0),
     CONSTRAINT ck_reconciliation_cases_resolution CHECK (
         (status = 'resolved' AND resolved_at IS NOT NULL AND resolved_by_principal_id IS NOT NULL AND resolution IS NOT NULL)
-        OR (status <> 'resolved')
+        OR status <> 'resolved'
     )
 );
 
--- ---------------------------------------------------------------------------
--- Provider event ingress, idempotency, audit, domain events, outbox
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Callback ingress / idempotency / audit / events / outbox
+-- ==========================================================================
 
 CREATE TABLE provider_events (
     provider_event_row_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -1491,10 +1533,7 @@ CREATE TABLE idempotency_records (
         REFERENCES principals (organization_id, principal_id) ON DELETE RESTRICT,
     CONSTRAINT ck_idempotency_records_hash CHECK (octet_length(canonical_request_hash) >= 32),
     CONSTRAINT ck_idempotency_records_state CHECK (state IN ('in_progress','completed','failed_terminal')),
-    CONSTRAINT ck_idempotency_records_result CHECK (
-        (state = 'completed' AND logical_result IS NOT NULL AND completed_at IS NOT NULL)
-        OR (state <> 'completed')
-    )
+    CONSTRAINT ck_idempotency_records_result CHECK ((state = 'completed' AND logical_result IS NOT NULL AND completed_at IS NOT NULL) OR state <> 'completed')
 );
 
 CREATE TABLE audit_records (
@@ -1576,139 +1615,39 @@ CREATE INDEX ix_outbox_messages_ready
     ON outbox_messages (available_at, outbox_message_id)
     WHERE delivered_at IS NULL;
 
--- ---------------------------------------------------------------------------
--- Append-only protection for facts/history
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Mutation guards and concurrency backstops
+-- ==========================================================================
 
-CREATE TRIGGER trg_fulfillments_append_only
-BEFORE UPDATE OR DELETE ON fulfillments
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_fulfillment_corrections_append_only
-BEFORE UPDATE OR DELETE ON fulfillment_corrections
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_price_determinations_append_only
-BEFORE UPDATE OR DELETE ON price_determinations
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_financial_observations_append_only
-BEFORE UPDATE OR DELETE ON financial_observations
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_observation_corrections_append_only
-BEFORE UPDATE OR DELETE ON observation_corrections
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_financial_reversals_append_only
-BEFORE UPDATE OR DELETE ON financial_reversals
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_payment_allocations_append_only
-BEFORE UPDATE OR DELETE ON payment_allocations
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_payment_allocation_adjustments_append_only
-BEFORE UPDATE OR DELETE ON payment_allocation_adjustments
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_dispatch_destination_changes_append_only
-BEFORE UPDATE OR DELETE ON dispatch_destination_changes
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_audit_records_append_only
-BEFORE UPDATE OR DELETE ON audit_records
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
-CREATE TRIGGER trg_domain_events_append_only
-BEFORE UPDATE OR DELETE ON domain_events
-FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
-
--- ---------------------------------------------------------------------------
--- Targeted mutation guards
--- ---------------------------------------------------------------------------
-
--- A PaymentRequirement amount becomes immutable once financial use exists.
-CREATE OR REPLACE FUNCTION request_engine.guard_payment_requirement_repricing()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    IF NEW.required_amount_minor IS DISTINCT FROM OLD.required_amount_minor
-       OR NEW.currency IS DISTINCT FROM OLD.currency THEN
-        IF EXISTS (
-            SELECT 1
-              FROM request_engine.payment_allocations pa
-             WHERE pa.organization_id = OLD.organization_id
-               AND pa.payment_requirement_id = OLD.payment_requirement_id
-        ) THEN
-            RAISE EXCEPTION 'financially-used PaymentRequirement cannot be destructively repriced; create a replacement requirement'
-                USING ERRCODE = '55000';
-        END IF;
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_payment_requirements_guard_repricing
-BEFORE UPDATE OF required_amount_minor, currency ON payment_requirements
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_payment_requirement_repricing();
-
--- Request terminality is monotonic. completion_validity may change after
--- completion, but status may not move out of a terminal state.
 CREATE OR REPLACE FUNCTION request_engine.guard_request_terminality()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF OLD.status IN ('completed','cancelled','failed_terminal')
-       AND NEW.status IS DISTINCT FROM OLD.status THEN
-        RAISE EXCEPTION 'terminal Request status is monotonic'
-            USING ERRCODE = '55000';
+    IF OLD.status IN ('completed','cancelled','failed_terminal') AND NEW.status IS DISTINCT FROM OLD.status THEN
+        RAISE EXCEPTION 'terminal Request status is monotonic' USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trg_requests_guard_terminality
-BEFORE UPDATE OF status ON requests
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_request_terminality();
+BEFORE UPDATE OF status ON requests FOR EACH ROW EXECUTE FUNCTION request_engine.guard_request_terminality();
 
--- Hold transitions are monotonic and never resurrect an expired/released hold.
 CREATE OR REPLACE FUNCTION request_engine.guard_capacity_hold_transition()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF OLD.state <> 'active' AND NEW.state IS DISTINCT FROM OLD.state THEN
-        RAISE EXCEPTION 'terminal CapacityHold state cannot transition'
-            USING ERRCODE = '55000';
+        RAISE EXCEPTION 'terminal CapacityHold state cannot transition' USING ERRCODE = '55000';
     END IF;
-
-    IF OLD.state = 'active' AND NEW.state NOT IN ('active','confirmed','released','expired') THEN
-        RAISE EXCEPTION 'invalid CapacityHold transition'
-            USING ERRCODE = '55000';
-    END IF;
-
     IF NEW.state = 'confirmed' AND OLD.expires_at <= clock_timestamp() THEN
-        RAISE EXCEPTION 'expired CapacityHold cannot confirm'
-            USING ERRCODE = '55000';
+        RAISE EXCEPTION 'expired CapacityHold cannot confirm' USING ERRCODE = '55000';
     END IF;
-
     RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trg_capacity_holds_guard_transition
-BEFORE UPDATE OF state ON capacity_holds
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_hold_transition();
+BEFORE UPDATE OF state ON capacity_holds FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_hold_transition();
 
--- Reservation terminalization requires zero active allocation claims. This is a
--- backstop; Cancel/Close commands must release/replace claims in the same tx.
 CREATE OR REPLACE FUNCTION request_engine.guard_reservation_terminal_claims()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.status IN ('cancelled','closed') AND OLD.status = 'confirmed' THEN
         IF EXISTS (
@@ -1723,21 +1662,33 @@ BEGIN
                AND ra.state = 'active'
                AND cc.state = 'active'
         ) THEN
-            RAISE EXCEPTION 'terminal Reservation cannot retain active capacity claims'
-                USING ERRCODE = '55000';
+            RAISE EXCEPTION 'terminal Reservation cannot retain active capacity claims' USING ERRCODE = '55000';
         END IF;
     END IF;
     RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trg_reservations_guard_terminal_claims
-BEFORE UPDATE OF status ON reservations
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_terminal_claims();
+BEFORE UPDATE OF status ON reservations FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_terminal_claims();
 
--- ---------------------------------------------------------------------------
--- Financial allocation concurrency backstops
--- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION request_engine.guard_payment_requirement_repricing()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.required_amount_minor IS DISTINCT FROM OLD.required_amount_minor OR NEW.currency IS DISTINCT FROM OLD.currency)
+       AND EXISTS (
+            SELECT 1 FROM request_engine.payment_allocations pa
+             WHERE pa.organization_id = OLD.organization_id
+               AND pa.payment_requirement_id = OLD.payment_requirement_id
+       ) THEN
+        RAISE EXCEPTION 'financially-used PaymentRequirement cannot be destructively repriced; create a replacement requirement'
+            USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_payment_requirements_guard_repricing
+BEFORE UPDATE OF required_amount_minor, currency ON payment_requirements
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_payment_requirement_repricing();
 
 CREATE OR REPLACE FUNCTION request_engine.enforce_payment_allocation_budget()
 RETURNS trigger
@@ -1748,7 +1699,9 @@ DECLARE
     v_req_currency char(3);
     v_req_disposition text;
     v_eligible bigint;
-    v_allocated bigint;
+    v_required bigint;
+    v_tx_net bigint;
+    v_req_net bigint;
 BEGIN
     SELECT currency, current_eligible_amount_minor
       INTO v_tx_currency, v_eligible
@@ -1757,55 +1710,60 @@ BEGIN
        AND payment_transaction_id = NEW.payment_transaction_id
      FOR UPDATE;
 
-    SELECT currency, disposition
-      INTO v_req_currency, v_req_disposition
+    SELECT currency, disposition, required_amount_minor
+      INTO v_req_currency, v_req_disposition, v_required
       FROM request_engine.payment_requirements
      WHERE organization_id = NEW.organization_id
        AND payment_requirement_id = NEW.payment_requirement_id
      FOR UPDATE;
 
     IF v_tx_currency IS NULL OR v_req_currency IS NULL THEN
-        RAISE EXCEPTION 'payment transaction or requirement not found'
-            USING ERRCODE = '23503';
+        RAISE EXCEPTION 'payment transaction or requirement not found' USING ERRCODE = '23503';
     END IF;
-
     IF NEW.currency <> v_tx_currency OR NEW.currency <> v_req_currency THEN
-        RAISE EXCEPTION 'implicit FX is forbidden for PaymentAllocation'
-            USING ERRCODE = '23514';
+        RAISE EXCEPTION 'implicit FX is forbidden for PaymentAllocation' USING ERRCODE = '23514';
     END IF;
-
     IF v_req_disposition <> 'active' THEN
-        RAISE EXCEPTION 'cannot allocate to non-active PaymentRequirement'
-            USING ERRCODE = '23514';
+        RAISE EXCEPTION 'cannot allocate to non-active PaymentRequirement' USING ERRCODE = '23514';
     END IF;
 
     SELECT COALESCE(sum(pa.allocated_amount_minor),0)
-           - COALESCE((
-                SELECT sum(adj.amount_minor)
-                  FROM request_engine.payment_allocation_adjustments adj
-                  JOIN request_engine.payment_allocations pa2
-                    ON pa2.organization_id = adj.organization_id
-                   AND pa2.payment_allocation_id = adj.payment_allocation_id
-                 WHERE pa2.organization_id = NEW.organization_id
-                   AND pa2.payment_transaction_id = NEW.payment_transaction_id
-             ),0)
-      INTO v_allocated
+           - COALESCE((SELECT sum(adj.amount_minor)
+                         FROM request_engine.payment_allocation_adjustments adj
+                         JOIN request_engine.payment_allocations pa2
+                           ON pa2.organization_id = adj.organization_id
+                          AND pa2.payment_allocation_id = adj.payment_allocation_id
+                        WHERE pa2.organization_id = NEW.organization_id
+                          AND pa2.payment_transaction_id = NEW.payment_transaction_id),0)
+      INTO v_tx_net
       FROM request_engine.payment_allocations pa
      WHERE pa.organization_id = NEW.organization_id
        AND pa.payment_transaction_id = NEW.payment_transaction_id;
 
-    IF v_allocated + NEW.allocated_amount_minor > v_eligible THEN
-        RAISE EXCEPTION 'PaymentAllocation exceeds current eligible transaction value'
-            USING ERRCODE = '23514';
-    END IF;
+    SELECT COALESCE(sum(pa.allocated_amount_minor),0)
+           - COALESCE((SELECT sum(adj.amount_minor)
+                         FROM request_engine.payment_allocation_adjustments adj
+                         JOIN request_engine.payment_allocations pa2
+                           ON pa2.organization_id = adj.organization_id
+                          AND pa2.payment_allocation_id = adj.payment_allocation_id
+                        WHERE pa2.organization_id = NEW.organization_id
+                          AND pa2.payment_requirement_id = NEW.payment_requirement_id),0)
+      INTO v_req_net
+      FROM request_engine.payment_allocations pa
+     WHERE pa.organization_id = NEW.organization_id
+       AND pa.payment_requirement_id = NEW.payment_requirement_id;
 
+    IF v_tx_net + NEW.allocated_amount_minor > v_eligible THEN
+        RAISE EXCEPTION 'PaymentAllocation exceeds current eligible transaction value' USING ERRCODE = '23514';
+    END IF;
+    IF v_req_net + NEW.allocated_amount_minor > v_required THEN
+        RAISE EXCEPTION 'PaymentAllocation exceeds PaymentRequirement amount' USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trg_payment_allocations_budget
-BEFORE INSERT ON payment_allocations
-FOR EACH ROW EXECUTE FUNCTION request_engine.enforce_payment_allocation_budget();
+BEFORE INSERT ON payment_allocations FOR EACH ROW EXECUTE FUNCTION request_engine.enforce_payment_allocation_budget();
 
 CREATE OR REPLACE FUNCTION request_engine.enforce_allocation_adjustment_budget()
 RETURNS trigger
@@ -1817,56 +1775,63 @@ DECLARE
     v_source_amount bigint;
     v_source_adjusted bigint;
 BEGIN
-    -- Lock the allocation to serialize concurrent adjustments against it.
-    SELECT allocated_amount_minor
-      INTO v_allocated
+    SELECT allocated_amount_minor INTO v_allocated
       FROM request_engine.payment_allocations
      WHERE organization_id = NEW.organization_id
        AND payment_allocation_id = NEW.payment_allocation_id
      FOR UPDATE;
 
-    SELECT COALESCE(sum(amount_minor),0)
-      INTO v_adjusted
+    SELECT COALESCE(sum(amount_minor),0) INTO v_adjusted
       FROM request_engine.payment_allocation_adjustments
      WHERE organization_id = NEW.organization_id
        AND payment_allocation_id = NEW.payment_allocation_id;
 
     IF v_adjusted + NEW.amount_minor > v_allocated THEN
-        RAISE EXCEPTION 'allocation adjustments exceed historical allocation contribution'
-            USING ERRCODE = '23514';
+        RAISE EXCEPTION 'allocation adjustments exceed historical allocation contribution' USING ERRCODE = '23514';
     END IF;
 
     IF NEW.financial_reversal_id IS NOT NULL THEN
-        SELECT amount_minor
-          INTO v_source_amount
+        SELECT amount_minor INTO v_source_amount
           FROM request_engine.financial_reversals
          WHERE organization_id = NEW.organization_id
            AND financial_reversal_id = NEW.financial_reversal_id
          FOR UPDATE;
 
-        SELECT COALESCE(sum(amount_minor),0)
-          INTO v_source_adjusted
+        SELECT COALESCE(sum(amount_minor),0) INTO v_source_adjusted
           FROM request_engine.payment_allocation_adjustments
          WHERE organization_id = NEW.organization_id
            AND financial_reversal_id = NEW.financial_reversal_id;
 
         IF v_source_adjusted + NEW.amount_minor > v_source_amount THEN
-            RAISE EXCEPTION 'reversal-sourced adjustments exceed reversal amount'
-                USING ERRCODE = '23514';
+            RAISE EXCEPTION 'reversal-sourced adjustments exceed reversal amount' USING ERRCODE = '23514';
         END IF;
     END IF;
-
     RETURN NEW;
 END;
 $$;
-
 CREATE TRIGGER trg_payment_allocation_adjustments_budget
 BEFORE INSERT ON payment_allocation_adjustments
 FOR EACH ROW EXECUTE FUNCTION request_engine.enforce_allocation_adjustment_budget();
 
--- ---------------------------------------------------------------------------
--- Core indexes for hot transactional access paths
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Append-only history protection
+-- ==========================================================================
+
+CREATE TRIGGER trg_fulfillments_append_only BEFORE UPDATE OR DELETE ON fulfillments FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_fulfillment_corrections_append_only BEFORE UPDATE OR DELETE ON fulfillment_corrections FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_price_determinations_append_only BEFORE UPDATE OR DELETE ON price_determinations FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_financial_observations_append_only BEFORE UPDATE OR DELETE ON financial_observations FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_observation_corrections_append_only BEFORE UPDATE OR DELETE ON observation_corrections FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_financial_reversals_append_only BEFORE UPDATE OR DELETE ON financial_reversals FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_payment_allocations_append_only BEFORE UPDATE OR DELETE ON payment_allocations FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_payment_allocation_adjustments_append_only BEFORE UPDATE OR DELETE ON payment_allocation_adjustments FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_dispatch_destination_changes_append_only BEFORE UPDATE OR DELETE ON dispatch_destination_changes FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_audit_records_append_only BEFORE UPDATE OR DELETE ON audit_records FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+CREATE TRIGGER trg_domain_events_append_only BEFORE UPDATE OR DELETE ON domain_events FOR EACH ROW EXECUTE FUNCTION request_engine.prevent_fact_mutation();
+
+-- ==========================================================================
+-- Transactional indexes
+-- ==========================================================================
 
 CREATE INDEX ix_requests_org_status_created ON requests (organization_id, status, created_at DESC);
 CREATE INDEX ix_offering_selections_request ON offering_selections (organization_id, request_id, offering_selection_id);
@@ -1888,9 +1853,9 @@ CREATE INDEX ix_payment_allocations_transaction ON payment_allocations (organiza
 CREATE INDEX ix_payment_allocations_requirement ON payment_allocations (organization_id, payment_requirement_id, created_at);
 CREATE INDEX ix_reconciliation_cases_open ON reconciliation_cases (organization_id, status, opened_at) WHERE status IN ('open','under_review');
 
--- ---------------------------------------------------------------------------
--- Updated-at triggers for mutable aggregate/configuration roots
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- updated_at triggers on mutable roots
+-- ==========================================================================
 
 CREATE TRIGGER trg_organizations_touch BEFORE UPDATE ON organizations FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 CREATE TRIGGER trg_principals_touch BEFORE UPDATE ON principals FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
@@ -1908,62 +1873,56 @@ CREATE TRIGGER trg_dispatches_touch BEFORE UPDATE ON dispatches FOR EACH ROW EXE
 CREATE TRIGGER trg_payment_attempts_touch BEFORE UPDATE ON payment_attempts FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 CREATE TRIGGER trg_payment_transactions_touch BEFORE UPDATE ON payment_transactions FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
 
--- ---------------------------------------------------------------------------
--- DBA notes / enforcement classification
--- ---------------------------------------------------------------------------
+-- ==========================================================================
+-- Enforcement classification / DBA contract
+-- ==========================================================================
 --
--- HARD DB ENFORCEMENT in this file:
---   I01  cross-tenant critical references: composite tenant FKs.
---   I06  terminal Request monotonicity: trigger.
---   I11  quantity/unit presence: checks.
---   I12  ReservationItem -> exactly one OfferingSelection: non-null FK.
---   I13/I14 stable OutcomeScope identity and typed Request linkage: FKs.
---   I15/I48 append-oriented outcome/financial facts: mutation guards.
---   I20/I25 shared hold/allocation capacity conflict space: capacity_claims +
---             capacity_authority row lock trigger.
---   I22  [start,end) bounded intervals: range CHECKs.
---   I24  expired/released Hold cannot confirm: transition trigger + wall clock.
---   I35  terminal Reservation cannot retain live allocation claims: trigger.
---   I43  default active QueueEntry uniqueness: partial UNIQUE indexes.
---   I49  financially-used PaymentRequirement amount immutable: trigger.
---   I52/I54 fact type separation: distinct typed tables/FKs.
---   I56/I57 allocation eligible-value/currency backstop: lock trigger.
---   I60/I61 adjustment/reversal budgets: lock trigger.
---   I66  provider event identity: tenant/provider unique key.
---   I68/I69 idempotency identity + request hash persistence: unique key/hash.
---   I75  domain mutation + outbox can be committed atomically in one DB tx.
+-- Hard DB enforcement represented here:
+-- * tenant equality: composite organization_id FKs on authoritative relations;
+-- * typed relationships instead of authoritative entity_type/entity_id pairs;
+-- * terminal Request monotonicity;
+-- * explicit quantity/unit and bounded [start,end) interval checks;
+-- * stable OutcomeScope + reject_excess serialization backstop;
+-- * one common CapacityClaim space for Hold + Allocation claims;
+-- * wall-clock Hold expiry checked with clock_timestamp(), not transaction now();
+-- * active QueueEntry uniqueness per AdmissionScope/context;
+-- * terminal Reservation cannot retain active allocation claims;
+-- * immutable financially-used PaymentRequirement amount;
+-- * PaymentTransaction / Observation / Correction / Reversal type separation;
+-- * transaction eligible-value, requirement-value and adjustment budgets;
+-- * provider event uniqueness; idempotency key+hash persistence;
+-- * append-only outcome/financial/audit history;
+-- * domain mutation + outbox can commit in the same PostgreSQL transaction.
 --
--- LOCK/COMMAND PROTOCOL REQUIRED (cannot be reduced safely to static DDL):
---   I04, I07-I10, I16-I19, I21, I23, I26-I34, I36-I42, I44-I47,
---   I50-I51, I53, I55, I58-I59, I62-I65, I67, I70-I76.
+-- Stable-row transaction protocols still required by docs/02:
+-- * Representation revocation vs authority-dependent mutation.
+-- * CompleteRequest vs outcome mutation/correction.
+-- * CorrectFulfillment re-evaluation of completion_validity.
+-- * complete compound Hold all-or-none acquisition across authorities.
+-- * unit capacity across variable schedule change-points.
+-- * schedule/location/pool membership mutation vs capacity claims.
+-- * pool contributor/direct-resource conflict proof.
+-- * ConfirmReservation complete mandatory coverage.
+-- * atomic replacement reschedule and shared-requirement partial cancellation.
+-- * PlanningRevision binding for external field-service feasibility.
+-- * execution/admission/cancellation races.
+-- * financial observation/correction/reversal reduction and reconciliation.
+-- * refund/refund and refund/reversal budget coordination.
+-- * provider same-ID/different-hash conflict handling.
+-- * current read authorization on idempotent replay.
+-- * at-least-once outbox and external compensation consumers.
 --
--- Particularly important:
---   * RecordFulfillment/CorrectFulfillment lock OutcomeScope; CompleteRequest
---     also locks Request in canonical order when completion can race.
---   * CreateCapacityHold plans the complete mandatory claim set, locks all
---     CapacityAuthorities in ascending capacity_authority_id order, validates
---     schedule/config/planning revisions and inserts Hold+claims in ONE tx.
---   * Unit capacity with variable schedules must be checked across every
---     relevant change point; the trigger above only supplies the immutable base
---     capacity backstop and common serialization authority.
---   * ConfirmReservation validates the complete requirement set and transforms
---     hold claims to allocation claims atomically; no partial confirmation.
---   * Reschedule is replacement-before-release in one local transaction.
---   * RecordFinancialObservation/Correction/Reversal lock PaymentTransaction;
---     any reduction below allocations creates typed adjustments or a
---     ReconciliationCase rather than rejecting external truth.
---   * AllocatePayment locks PaymentTransaction then PaymentRequirements in the
---     canonical documented order. The trigger is defense in depth, not a
---     substitute for the command protocol.
---   * Provider event replay compares canonical_payload_hash: same ID + same hash
---     replays; same ID + different hash is an integrity/security conflict.
---   * Outbox workers should claim rows with SELECT ... FOR UPDATE SKIP LOCKED,
---     commit claims quickly, and assume at-least-once delivery.
+-- Canonical multi-root lock class order remains the order in docs/02:
+-- REPRESENTATION -> REQUEST -> OUTCOME_SCOPE -> RESERVATION ->
+-- ADMISSION_SCOPE_ROOT -> CAPACITY_HOLD -> CAPACITY_AUTHORITY ->
+-- SERVICE_SESSION -> PAYMENT_TRANSACTION -> PAYMENT_REQUIREMENT ->
+-- FINANCIAL_REVERSAL_OR_CORRECTION -> RECONCILIATION_CASE.
+-- Within a class, lock ascending internal bigint IDs.
 --
--- RLS is intentionally not enabled in the reference DDL. Composite FKs provide
--- structural tenant integrity; deployment roles/RLS depend on the connection
--- model (tenant-scoped API sessions vs cross-tenant workers/migrations). Add RLS
--- as defense-in-depth in a deployment migration once role semantics are fixed;
--- never treat RLS session state as the sole tenant-authorization proof.
+-- RLS is intentionally not enabled in this reference DDL. Composite FKs are
+-- structural tenant integrity. Deployment RLS depends on the eventual role /
+-- connection model (tenant-scoped API sessions vs cross-tenant workers). Add it
+-- as defense-in-depth once roles are fixed; do not make session RLS state the
+-- sole authorization proof.
 
 COMMIT;
