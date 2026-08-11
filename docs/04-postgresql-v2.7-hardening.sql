@@ -172,8 +172,8 @@ DECLARE
     v_now timestamptz := clock_timestamp();
     v_peak numeric(30,6);
 BEGIN
-    -- Historical/terminal writes reduce consumption and must remain possible even
-    -- when the claim's captured revisions are stale.
+    -- Releasing consumption must never fail only because its acquisition snapshot
+    -- is stale. Historical identity is protected by guard_commitment_history().
     IF TG_OP = 'UPDATE' AND NEW.state <> 'active' THEN
         RETURN NEW;
     END IF;
@@ -215,7 +215,6 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
 
-        -- Derived snapshot only. Caller cannot choose a different expiry.
         NEW.hold_expires_at := v_hold.expires_at;
     ELSE
         SELECT *
@@ -325,28 +324,18 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_org_id bigint;
-    v_allocation_id bigint;
     v_allocation_state text;
     v_active_claims integer;
 BEGIN
-    IF TG_TABLE_NAME = 'resource_allocations' THEN
-        v_org_id := NEW.organization_id;
-        v_allocation_id := NEW.resource_allocation_id;
-    ELSE
-        v_org_id := NEW.organization_id;
-        v_allocation_id := NEW.resource_allocation_id;
-    END IF;
-
-    IF v_allocation_id IS NULL THEN
+    IF NEW.resource_allocation_id IS NULL THEN
         RETURN NULL;
     END IF;
 
     SELECT state
       INTO v_allocation_state
       FROM resource_allocations
-     WHERE organization_id = v_org_id
-       AND resource_allocation_id = v_allocation_id;
+     WHERE organization_id = NEW.organization_id
+       AND resource_allocation_id = NEW.resource_allocation_id;
 
     IF NOT FOUND THEN
         RETURN NULL;
@@ -355,8 +344,8 @@ BEGIN
     SELECT count(*)
       INTO v_active_claims
       FROM capacity_claims
-     WHERE organization_id = v_org_id
-       AND resource_allocation_id = v_allocation_id
+     WHERE organization_id = NEW.organization_id
+       AND resource_allocation_id = NEW.resource_allocation_id
        AND claim_kind = 'allocation'
        AND state = 'active';
 
@@ -388,31 +377,22 @@ CREATE OR REPLACE FUNCTION request_engine.bump_schedule_revision()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    v_old_org bigint;
-    v_old_authority bigint;
-    v_new_org bigint;
-    v_new_authority bigint;
 BEGIN
     IF TG_OP <> 'INSERT' THEN
-        v_old_org := OLD.organization_id;
-        v_old_authority := OLD.capacity_authority_id;
         UPDATE capacity_authorities
            SET schedule_revision = schedule_revision + 1
-         WHERE organization_id = v_old_org
-           AND capacity_authority_id = v_old_authority;
+         WHERE organization_id = OLD.organization_id
+           AND capacity_authority_id = OLD.capacity_authority_id;
     END IF;
 
     IF TG_OP <> 'DELETE'
        AND (TG_OP = 'INSERT'
             OR (NEW.organization_id, NEW.capacity_authority_id)
                IS DISTINCT FROM (OLD.organization_id, OLD.capacity_authority_id)) THEN
-        v_new_org := NEW.organization_id;
-        v_new_authority := NEW.capacity_authority_id;
         UPDATE capacity_authorities
            SET schedule_revision = schedule_revision + 1
-         WHERE organization_id = v_new_org
-           AND capacity_authority_id = v_new_authority;
+         WHERE organization_id = NEW.organization_id
+           AND capacity_authority_id = NEW.capacity_authority_id;
     END IF;
 
     RETURN NULL;
@@ -569,6 +549,19 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
+    IF TG_TABLE_NAME = 'resource_allocations'
+       AND (
+            NEW.organization_id <> OLD.organization_id
+            OR NEW.reservation_id <> OLD.reservation_id
+            OR NEW.commitment_requirement_id <> OLD.commitment_requirement_id
+            OR NEW.capacity_authority_id <> OLD.capacity_authority_id
+            OR NEW.conflict_range IS DISTINCT FROM OLD.conflict_range
+            OR NEW.quantity IS DISTINCT FROM OLD.quantity
+       ) THEN
+        RAISE EXCEPTION 'ResourceAllocation consumption identity is immutable; replace it instead'
+            USING ERRCODE = '55000';
+    END IF;
+
     IF TG_TABLE_NAME = 'capacity_claims'
        AND (
             NEW.organization_id <> OLD.organization_id
@@ -578,8 +571,12 @@ BEGIN
             OR NEW.resource_allocation_id IS DISTINCT FROM OLD.resource_allocation_id
             OR NEW.conflict_range IS DISTINCT FROM OLD.conflict_range
             OR NEW.quantity IS DISTINCT FROM OLD.quantity
+            OR NEW.authority_configuration_revision <> OLD.authority_configuration_revision
+            OR NEW.authority_schedule_revision <> OLD.authority_schedule_revision
+            OR NEW.planning_revision IS DISTINCT FROM OLD.planning_revision
+            OR NEW.hold_expires_at IS DISTINCT FROM OLD.hold_expires_at
        ) THEN
-        RAISE EXCEPTION 'CapacityClaim consumption identity is immutable; replace it instead'
+        RAISE EXCEPTION 'CapacityClaim acquisition proof is immutable; replace it instead'
             USING ERRCODE = '55000';
     END IF;
 
@@ -591,8 +588,8 @@ CREATE TRIGGER trg_reservations_terminal
 BEFORE UPDATE OF status ON reservations
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_commitment_history();
 
-CREATE TRIGGER trg_resource_allocations_terminal
-BEFORE UPDATE OF state ON resource_allocations
+CREATE TRIGGER trg_resource_allocations_history
+BEFORE UPDATE ON resource_allocations
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_commitment_history();
 
 CREATE TRIGGER trg_capacity_claims_history
@@ -828,7 +825,7 @@ BEFORE INSERT OR UPDATE OF request_id, reservation_id ON request_target_reservat
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_reservation_request_target();
 
 -- ============================================================================
--- 10. Index only the hot validation paths not already guaranteed by constraints
+-- 10. Index only hot validation paths not already guaranteed by constraints
 -- ============================================================================
 
 CREATE INDEX IF NOT EXISTS ix_capacity_claims_authority_active
