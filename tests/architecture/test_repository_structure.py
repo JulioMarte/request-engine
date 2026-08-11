@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "request_engine"
@@ -33,7 +31,6 @@ DESIGN_CHAIN = [
 ]
 
 
-@pytest.mark.unit
 def test_business_modules_have_explicit_ownership_docs() -> None:
     modules_root = SRC_ROOT / "modules"
     actual_modules = {
@@ -47,7 +44,6 @@ def test_business_modules_have_explicit_ownership_docs() -> None:
         assert (modules_root / module_name / "README.md").is_file()
 
 
-@pytest.mark.unit
 def test_horizontal_business_layer_roots_do_not_reappear() -> None:
     unexpected = {
         name for name in FORBIDDEN_HORIZONTAL_ROOTS if (SRC_ROOT / name).exists()
@@ -55,7 +51,6 @@ def test_horizontal_business_layer_roots_do_not_reappear() -> None:
     assert unexpected == set()
 
 
-@pytest.mark.unit
 def test_executable_sql_is_owned_by_migrations_not_docs() -> None:
     sql_in_docs = list((REPO_ROOT / "docs").glob("**/*.sql"))
     assert sql_in_docs == []
@@ -64,7 +59,6 @@ def test_executable_sql_is_owned_by_migrations_not_docs() -> None:
     assert [path.name for path in sorted(design_root.glob("*.sql"))] == DESIGN_CHAIN
 
 
-@pytest.mark.unit
 def test_agent_guidance_exists_at_important_boundaries() -> None:
     required = [
         REPO_ROOT / "AGENTS.md",
