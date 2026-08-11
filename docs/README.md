@@ -27,19 +27,21 @@ Este directorio separa explícitamente la **arquitectura V2 vigente** de documen
 
 [`03-postgresql-schema.sql`](03-postgresql-schema.sql) es el **reference schema V2.6 para PostgreSQL 18+**.
 
-El archivo traduce el contrato pre-SQL a un modelo físico con:
+[`04-postgresql-v2.7-hardening.sql`](04-postgresql-v2.7-hardening.sql) es el **delta V2.7 consolidado** y se aplica directamente después de `03`. No existe una cadena adicional de parches para V2.7.
 
-- claves internas `bigint identity` y public IDs UUIDv7;
-- foreign keys tenant-aware con `organization_id`;
-- typed relationships en lugar de referencias polimórficas críticas;
-- `OutcomeScope` como serialization identity;
-- common `CapacityClaim` conflict space para holds y allocations;
-- intervalos `[start,end)` con `tstzrange`;
-- hechos outcome/financial/audit append-oriented;
-- guards transaccionales para capacity, fulfillment budgets y financial allocation budgets;
-- transactional outbox e idempotency persistence.
+V2.7 endurece el modelo físico sin convertir PostgreSQL en un workflow engine:
 
-El SQL no sustituye los command protocols de `02-pre-sql-domain-contract.md`. Las invariantes que dependen de múltiples aggregates, schedules variables, external authority o recovery conservan un lock/application protocol explícito sobre las mismas autoridades estables.
+- composite foreign keys tenant-aware para lineage crítico;
+- `OutcomeScope` como serialization root para `reject_excess`;
+- `CapacityAuthority` como lock root estable para consumo local;
+- liberación de capacidad independiente de revisions históricas obsoletas;
+- `ResourceAllocation` y `CapacityClaim` con semántica replace-don't-rewrite;
+- cardinalidad Allocation ↔ active CapacityClaim validada al final de la transacción;
+- schedule/config revisions locales y `PlanningRevision` controlada por command;
+- guards financieros mínimos para over-allocation/reconciliation y refunds concurrentes;
+- índices sólo para rutas de validación calientes no cubiertas ya por constraints.
+
+El SQL no sustituye los command protocols de `02-pre-sql-domain-contract.md`. Las invariantes multi-root, policy-dependent o dependientes de autoridad externa permanecen en transacciones de aplicación con lock order documentado.
 
 ## Prioridad conceptual
 
@@ -53,13 +55,15 @@ Si dos artefactos parecen contradecirse, la prioridad es:
 02-pre-sql-domain-contract.md
         ↓
 03-postgresql-schema.sql
+        ↓
+04-postgresql-v2.7-hardening.sql
 ```
 
 El schema implementa el contrato; no puede redefinir silenciosamente el dominio.
 
 ## Lecciones V1 y archivo histórico
 
-[`02-v1-lessons-preserved.md`](02-v1-lessons-preserved.md) conserva lecciones V1 útiles para migración, pero no tiene precedencia sobre el contrato V2.6.
+[`02-v1-lessons-preserved.md`](02-v1-lessons-preserved.md) conserva lecciones V1 útiles para migración, pero no tiene precedencia sobre el contrato V2.
 
 [`v1-ideas-viejas/`](v1-ideas-viejas/) contiene documentos preservados exclusivamente como contexto histórico.
 
