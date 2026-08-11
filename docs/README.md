@@ -27,21 +27,38 @@ Este directorio separa explícitamente la **arquitectura V2 vigente** de documen
 
 [`03-postgresql-schema.sql`](03-postgresql-schema.sql) es el **reference schema V2.6 para PostgreSQL 18+**.
 
-[`04-postgresql-v2.7-hardening.sql`](04-postgresql-v2.7-hardening.sql) es el **delta V2.7 consolidado** y se aplica directamente después de `03`. No existe una cadena adicional de parches para V2.7.
+[`04-postgresql-v2.7-hardening.sql`](04-postgresql-v2.7-hardening.sql) es el delta V2.7 consolidado. Cierra lineage relacional, capacity serialization básica, lifecycle monotónico y backstops financieros sin convertir PostgreSQL en workflow engine.
 
-V2.7 endurece el modelo físico sin convertir PostgreSQL en un workflow engine:
+[`05-postgresql-v2.8-hardening.sql`](05-postgresql-v2.8-hardening.sql) es un delta DBA deliberadamente pequeño sobre V2.7. Corrige orden de locks, hace `CapacityHold` estrictamente monotónico, elimina autoridad duplicada entre trigger inmediato y constraint trigger diferido, y reduce índices redundantes.
 
-- composite foreign keys tenant-aware para lineage crítico;
-- `OutcomeScope` como serialization root para `reject_excess`;
-- `CapacityAuthority` como lock root estable para consumo local;
-- liberación de capacidad independiente de revisions históricas obsoletas;
-- `ResourceAllocation` y `CapacityClaim` con semántica replace-don't-rewrite;
-- cardinalidad Allocation ↔ active CapacityClaim validada al final de la transacción;
-- schedule/config revisions locales y `PlanningRevision` controlada por command;
-- guards financieros mínimos para over-allocation/reconciliation y refunds concurrentes;
-- índices sólo para rutas de validación calientes no cubiertas ya por constraints.
+Aplicación actual:
 
-El SQL no sustituye los command protocols de `02-pre-sql-domain-contract.md`. Las invariantes multi-root, policy-dependent o dependientes de autoridad externa permanecen en transacciones de aplicación con lock order documentado.
+```text
+03-postgresql-schema.sql
+        ↓
+04-postgresql-v2.7-hardening.sql
+        ↓
+05-postgresql-v2.8-hardening.sql
+```
+
+Principios físicos vigentes:
+
+- claves internas `bigint identity` y public IDs UUIDv7;
+- foreign keys tenant-aware con `organization_id`;
+- typed relationships para lineage crítico;
+- `OutcomeScope` como serialization root de outcome mutable;
+- `CapacityAuthority` como stable lock root de capacidad;
+- common `CapacityClaim` conflict space para Holds y Allocations;
+- intervalos `[start,end)` con `tstzrange`;
+- consumo histórico con semántica replace-don't-rewrite;
+- facts financieros/outcome/audit append-oriented;
+- constraints antes que triggers cuando PostgreSQL puede expresar la regla declarativamente;
+- triggers pequeños sólo para monotonicidad, inmutabilidad local, revisions y backstops agregados;
+- constraint triggers diferidos sólo cuando la cardinalidad debe comprobarse al final de la transacción;
+- command transactions para invariantes multi-root, policy-dependent o dependientes de autoridad externa;
+- índices únicamente cuando corresponden a predicates/joins realmente calientes y no estén ya implícitos en PK/UNIQUE constraints.
+
+El SQL no sustituye los command protocols de `02-pre-sql-domain-contract.md`. Una pre-validación fuera de la transacción documentada nunca es autoridad.
 
 ## Prioridad conceptual
 
@@ -57,6 +74,8 @@ Si dos artefactos parecen contradecirse, la prioridad es:
 03-postgresql-schema.sql
         ↓
 04-postgresql-v2.7-hardening.sql
+        ↓
+05-postgresql-v2.8-hardening.sql
 ```
 
 El schema implementa el contrato; no puede redefinir silenciosamente el dominio.
