@@ -6,7 +6,7 @@
 -- Normative source: docs/02-pre-sql-domain-contract.md
 --
 -- V2.8 is intentionally small. It fixes lock-order/lifecycle details and removes
--- redundant index surface discovered during the post-V2.7 DBA review.
+-- redundant index/trigger surface discovered during the post-V2.7 DBA review.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -186,6 +186,11 @@ $$;
 -- ============================================================================
 -- 2. CapacityHold lifecycle is strictly monotonic and wall-clock safe
 -- ============================================================================
+
+-- V2.6 created trg_capacity_holds_guard_transition and V2.7 introduced the
+-- canonical trg_capacity_holds_transition while reusing the same function.
+-- Keep exactly one trigger so lifecycle validation has one execution path.
+DROP TRIGGER IF EXISTS trg_capacity_holds_guard_transition ON capacity_holds;
 
 CREATE OR REPLACE FUNCTION request_engine.guard_capacity_hold_transition()
 RETURNS trigger
