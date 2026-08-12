@@ -145,7 +145,10 @@ def test_representation_has_explicit_provenance_and_no_persisted_expired_state(
             authority_kind,
             scope_key,
             valid_until
-        ) VALUES (%s, %s, %s, 'guardian', 'appointments.manage', clock_timestamp() + interval '1 day')
+        ) VALUES (
+            %s, %s, %s, 'guardian', 'appointments.manage',
+            clock_timestamp() + interval '1 day'
+        )
         RETURNING id
         """,
         (organization_id, principal_id, party_id),
@@ -206,7 +209,10 @@ def test_current_representation_is_derived_from_status_and_database_time(
     party_id = _party(admin_conn, organization_id)
 
     def insert_window(scope: str, status: str, from_delta: str, until_delta: str | None) -> UUID:
-        until_sql = "NULL" if until_delta is None else f"clock_timestamp() + interval '{until_delta}'"
+        if until_delta is None:
+            until_sql = "NULL"
+        else:
+            until_sql = f"clock_timestamp() + interval '{until_delta}'"
         return _uuid_row(
             admin_conn,
             f"""
