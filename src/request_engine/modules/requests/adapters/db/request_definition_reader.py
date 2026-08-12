@@ -24,36 +24,52 @@ class PostgresRequestDefinitionResolver:
         version: int | None,
     ) -> ResolvedRequestDefinitionVersion:
         async with tenant_transaction(self._session_factory, organization_id) as session:
-            row = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT rdv.id,
-                                   rd.request_key,
-                                   rdv.version
-                            FROM request_engine.request_definitions AS rd
-                            JOIN request_engine.request_definition_versions AS rdv
-                              ON rdv.organization_id = rd.organization_id
-                             AND rdv.request_definition_id = rd.id
-                            WHERE rd.organization_id = :organization_id
-                              AND rd.request_key = :request_key
-                              AND rd.active = true
-                              AND (:version IS NULL OR rdv.version = :version)
-                            ORDER BY rdv.version DESC
-                            LIMIT 1
-                            """
-                        ),
-                        {
-                            "organization_id": organization_id,
-                            "request_key": request_key,
-                            "version": version,
-                        },
-                    )
+            if version is None:
+                statement = text(
+                    """
+                    SELECT rdv.id,
+                           rd.request_key,
+                           rdv.version
+                    FROM request_engine.request_definitions AS rd
+                    JOIN request_engine.request_definition_versions AS rdv
+                      ON rdv.organization_id = rd.organization_id
+                     AND rdv.request_definition_id = rd.id
+                    WHERE rd.organization_id = :organization_id
+                      AND rd.request_key = :request_key
+                      AND rd.active = true
+                    ORDER BY rdv.version DESC
+                    LIMIT 1
+                    """
                 )
-                .mappings()
-                .first()
-            )
+                parameters: dict[str, object] = {
+                    "organization_id": organization_id,
+                    "request_key": request_key,
+                }
+            else:
+                statement = text(
+                    """
+                    SELECT rdv.id,
+                           rd.request_key,
+                           rdv.version
+                    FROM request_engine.request_definitions AS rd
+                    JOIN request_engine.request_definition_versions AS rdv
+                      ON rdv.organization_id = rd.organization_id
+                     AND rdv.request_definition_id = rd.id
+                    WHERE rd.organization_id = :organization_id
+                      AND rd.request_key = :request_key
+                      AND rd.active = true
+                      AND rdv.version = :version
+                    LIMIT 1
+                    """
+                )
+                parameters = {
+                    "organization_id": organization_id,
+                    "request_key": request_key,
+                    "version": version,
+                }
+
+            row = ((await session.execute(statement, parameters)).mappings().first())
+
         if row is None:
             raise RequestDefinitionNotFound(request_key, version)
         return ResolvedRequestDefinitionVersion(
