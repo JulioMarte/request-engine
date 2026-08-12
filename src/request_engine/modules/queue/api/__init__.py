@@ -23,11 +23,13 @@ def install_http(
 ) -> None:
     """Connect the Queue module to the HTTP process through its owned surface."""
 
+    commands = PostgresServiceQueueCommands(session_factory)
     app.add_exception_handler(QueueError, queue_error_handler)
     app.include_router(
         create_router(
-            commands=PostgresServiceQueueCommands(session_factory),
-            leave_commands=PostgresLeaveQueueCommands(session_factory),
+            join_executor=commands,
+            call_next_executor=commands,
+            leave_executor=PostgresLeaveQueueCommands(session_factory),
             reader=PostgresServiceQueueReader(session_factory),
             catalog_reader=PostgresServiceQueueCatalogReader(session_factory),
             actor_resolver=actor_resolver,
