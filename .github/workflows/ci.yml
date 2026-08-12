@@ -63,7 +63,7 @@ jobs:
         run: scripts/db/apply_design_chain.sh
 
   postgres-v3-candidate:
-    name: PostgreSQL 18 V3 candidate and races
+    name: PostgreSQL 18 V3 candidate and verticals
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -99,5 +99,10 @@ jobs:
         run: bash scripts/db/apply_v3_candidate.sh
       - name: Resolve test environment
         run: uv sync --all-groups
-      - name: V3 PostgreSQL invariant and race tests
-        run: uv run pytest tests/db -q -m postgres
+      - name: V3 PostgreSQL invariant, race, and first-vertical tests
+        run: >-
+          uv run pytest
+          tests/db
+          tests/integration/v3_first_vertical
+          -q
+          -m postgres
