@@ -13,6 +13,13 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
 from request_engine.modules.booking.adapters.db.reservation_reader import (
     PostgresReservationReader,
 )
+from request_engine.modules.booking.api.models import (
+    AppointmentSlotView,
+    BookAppointmentBody,
+    CancelReservationBody,
+    RescheduleReservationBody,
+    ReservationView,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     book_appointment,
@@ -31,13 +38,6 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
 )
 from request_engine.modules.booking.application.queries.get_reservation_status import (
     get_reservation_status,
-)
-from request_engine.modules.booking.api.models import (
-    AppointmentSlotView,
-    BookAppointmentBody,
-    CancelReservationBody,
-    RescheduleReservationBody,
-    ReservationView,
 )
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
