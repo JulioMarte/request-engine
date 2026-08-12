@@ -24,7 +24,7 @@ def _request() -> Request:
 async def test_authentication_failure_has_stable_machine_readable_envelope() -> None:
     response = await authentication_required_handler(_request(), AuthenticationRequired())
     assert response.status_code == 401
-    assert json.loads(response.body) == {
+    assert json.loads(bytes(response.body)) == {
         "error": {
             "code": "authentication_required",
             "message": "authentication is required",
@@ -41,7 +41,7 @@ async def test_capability_failure_names_exact_canonical_requirement() -> None:
         CapabilityRequired("appointments.cancel"),
     )
     assert response.status_code == 403
-    assert json.loads(response.body) == {
+    assert json.loads(bytes(response.body)) == {
         "error": {
             "code": "capability_required",
             "message": "the authenticated actor lacks a required capability",
