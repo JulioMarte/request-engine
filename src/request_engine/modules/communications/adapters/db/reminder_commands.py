@@ -305,9 +305,7 @@ async def schedule_reminder_occurrence(
         action_version=REMINDER_ACTION_VERSION,
         subject_kind="ReminderPlan",
         subject_id=reminder_plan_id,
-        dedupe_key=(
-            f"communications:reminder:{reminder_plan_id}:{occurrence_at.isoformat()}:v1"
-        ),
+        dedupe_key=(f"communications:reminder:{reminder_plan_id}:{occurrence_at.isoformat()}:v1"),
         execute_at=occurrence_at,
         payload={
             "reminder_plan_id": str(reminder_plan_id),
