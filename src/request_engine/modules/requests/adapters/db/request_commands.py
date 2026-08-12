@@ -7,6 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.requests.adapters.db.party_authority import (
+    RequestPartyAuthorityEvidence,
+    require_requester_authority,
+)
 from request_engine.modules.requests.adapters.db.request_reader import read_request
 from request_engine.modules.requests.adapters.db.serialization import (
     request_from_json,
@@ -103,6 +107,7 @@ class PostgresRequestCommands:
                 validate_request_schema(version.result_schema)
 
             await validate_request_parties(session, command)
+            authority = await _resolve_submit_authority(session, command)
             await lock_external_correlations(session, command)
             await assert_external_correlations_available(session, command)
 
@@ -156,6 +161,7 @@ class PostgresRequestCommands:
                     "request_definition_version_id": str(request.request_definition_version_id),
                     "participant_count": len(request.participants),
                     "correlation_count": len(request.correlations),
+                    "party_authority": authority.audit_details(),
                 },
                 event_payload={
                     "request_definition_version_id": str(request.request_definition_version_id),
@@ -344,6 +350,8 @@ class PostgresRequestCommands:
             target_status=RequestStatus.CANCELLED,
             details={"reason": command.reason},
             expected_revision=command.expected_revision,
+            party_scope="requests.manage",
+            allow_party_override=command.allow_party_override,
         )
 
     async def fail_request(self, command: FailRequestCommand) -> Request:
@@ -384,6 +392,8 @@ class PostgresRequestCommands:
         target_status: RequestStatus,
         details: dict[str, object],
         expected_revision: int | None,
+        party_scope: str | None = None,
+        allow_party_override: bool = False,
     ) -> Request:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
@@ -402,6 +412,16 @@ class PostgresRequestCommands:
                 organization_id=organization_id,
                 request_id=request_id,
             )
+            authority: RequestPartyAuthorityEvidence | None = None
+            if party_scope is not None:
+                authority = await require_requester_authority(
+                    session,
+                    organization_id=organization_id,
+                    principal_id=principal_id,
+                    requester_party_id=cast(UUID | None, row["requester_party_id"]),
+                    scope_key=party_scope,
+                    allow_operator_override=allow_party_override,
+                )
             ensure_request_open(row, request_id)
             ensure_expected_revision(row, request_id, expected_revision)
             await session.execute(
@@ -422,6 +442,9 @@ class PostgresRequestCommands:
                 },
             )
             request = await read_request(session, organization_id, request_id)
+            audit_details = {**details, "revision": request.revision}
+            if authority is not None:
+                audit_details["party_authority"] = authority.audit_details()
             await _record_command_success(
                 session,
                 organization_id=organization_id,
@@ -430,7 +453,7 @@ class PostgresRequestCommands:
                 request=request,
                 idempotency_id=idempotency_id,
                 event_type=f"request.{target_status.value}.v1",
-                audit_details={**details, "revision": request.revision},
+                audit_details=audit_details,
                 event_payload=details,
             )
             return request
@@ -481,6 +504,22 @@ async def _record_command_success(
         session,
         idempotency_id,
         {"request": request_to_json(request)},
+    )
+
+
+async def _resolve_submit_authority(
+    session: AsyncSession,
+    command: CreateRequestCommand,
+) -> RequestPartyAuthorityEvidence:
+    if command.requester_party_id is None:
+        return RequestPartyAuthorityEvidence(mode="unattributed", scope_key="requests.submit")
+    return await require_requester_authority(
+        session,
+        organization_id=command.organization_id,
+        principal_id=command.principal_id,
+        requester_party_id=command.requester_party_id,
+        scope_key="requests.submit",
+        allow_operator_override=command.allow_party_override,
     )
 
 
@@ -566,6 +605,7 @@ async def lock_request(
                     """
                     SELECT id,
                            request_definition_version_id,
+                           requester_party_id,
                            status,
                            result_payload,
                            revision
