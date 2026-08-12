@@ -1,9 +1,9 @@
 from uuid import UUID
 
 from request_engine.modules.booking.domain.errors import (
-    BookingConfigurationError,
-    BookingError,
+    BookingConfigurationError as BookingConfigurationError,
 )
+from request_engine.modules.booking.domain.errors import BookingError
 
 
 class OfferingVersionNotBookable(BookingError):
