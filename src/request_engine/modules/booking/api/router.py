@@ -10,7 +10,9 @@ from request_engine.modules.booking.adapters.db.appointment_availability_reader 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.reservation_reader import (
+    PostgresReservationReader,
+)
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     BookAppointmentBody,
@@ -163,7 +165,10 @@ def create_router(
         return ReservationView.from_contract(reservation)
 
     router.add_api_route(
-        "/slots", slots, methods=["GET"], response_model=tuple[AppointmentSlotView, ...]
+        "/slots",
+        slots,
+        methods=["GET"],
+        response_model=tuple[AppointmentSlotView, ...],
     )
     router.add_api_route(
         "",
@@ -173,10 +178,16 @@ def create_router(
         status_code=status.HTTP_201_CREATED,
     )
     router.add_api_route(
-        "/{reservation_id}", reservation_status, methods=["GET"], response_model=ReservationView
+        "/{reservation_id}",
+        reservation_status,
+        methods=["GET"],
+        response_model=ReservationView,
     )
     router.add_api_route(
-        "/{reservation_id}/cancel", cancel, methods=["POST"], response_model=ReservationView
+        "/{reservation_id}/cancel",
+        cancel,
+        methods=["POST"],
+        response_model=ReservationView,
     )
     router.add_api_route(
         "/{reservation_id}/reschedule",
