@@ -2,7 +2,7 @@
 
 Applies to `src/request_engine/modules/**` in addition to the root `AGENTS.md`.
 
-Before editing a module, read its `README.md`, confirm ownership in `docs/10-module-ownership-map.md`, and identify the capability (`Query`, `Command`, `Request`, or scheduled business action) plus the V3 invariant/promise affected.
+Before editing a module, read its `README.md`, confirm ownership in `docs/10-module-ownership-map.md`, identify the capability (`Query`, `Command`, `Request`, or scheduled business action), the V3 invariant/promise affected, and every architectural connection surface the change crosses.
 
 ## V3 module status
 
@@ -52,7 +52,33 @@ domain + application ports
 adapters/db + adapters/providers
 ```
 
-`bootstrap` wires dependencies. Do not pull dependencies from a global container inside module code.
+Business transport belongs to the module. `modules/<owner>/api` owns its routers, transport DTOs and business-to-HTTP error mapping. Process entrypoints compose that published API surface; they must not reach into module DB/provider adapters.
+
+## Connection surfaces
+
+A module change is incomplete until its inbound and outbound surfaces are explicit.
+
+Before coding, record mentally or in the change design:
+
+```text
+Inbound caller/contract
+Authentication + capability boundary
+Application Command/Query
+Transaction + idempotency boundary
+Domain invariants
+DB read/write adapter surface
+Cross-module contracts
+Outbox/ScheduledAction/provider surfaces
+Failure/retry/reconciliation semantics
+```
+
+Do not create an adapter merely because two packages need to call each other. First decide ownership, contract direction, transaction boundary and failure semantics.
+
+For Python ↔ PostgreSQL, adapters must be semantic (`ReservationCommands`, `AppointmentAvailabilityReader`, etc.), not generic CRUD repositories. Keep correctness-sensitive SQL visible enough to review locks, constraints and race behavior.
+
+For module ↔ module, use only supported `contracts`; never shortcut through another module's adapters.
+
+For provider/network surfaces, external I/O occurs outside authoritative lock transactions and ambiguous outcomes reconcile before resend.
 
 ## Product-language boundary
 
