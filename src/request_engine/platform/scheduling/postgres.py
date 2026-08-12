@@ -4,7 +4,6 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.platform.db.session import SessionFactory
 
@@ -82,10 +81,22 @@ class PostgresScheduledActionWorker:
         )
 
     async def complete(self, lease: ScheduledActionLease) -> bool:
-        return await self._finish_boolean(
-            "SELECT request_cmd.complete_scheduled_action(:action_id, :claim_token)",
-            lease,
-        )
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                bool,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.complete_scheduled_action(
+                                :action_id, :claim_token
+                            )
+                            """
+                        ),
+                        {"action_id": lease.id, "claim_token": lease.claim_token},
+                    )
+                ).scalar_one(),
+            )
 
     async def dead_letter(self, lease: ScheduledActionLease, *, error_class: str) -> bool:
         async with self._session_factory() as session, session.begin():
@@ -137,18 +148,6 @@ class PostgresScheduledActionWorker:
                             "next_attempt_at": next_attempt_at,
                             "error_class": error_class,
                         },
-                    )
-                ).scalar_one(),
-            )
-
-    async def _finish_boolean(self, query: str, lease: ScheduledActionLease) -> bool:
-        async with self._session_factory() as session, session.begin():
-            return cast(
-                bool,
-                (
-                    await session.execute(
-                        text(query),
-                        {"action_id": lease.id, "claim_token": lease.claim_token},
                     )
                 ).scalar_one(),
             )
