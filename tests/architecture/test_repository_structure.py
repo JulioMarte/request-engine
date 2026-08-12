@@ -22,6 +22,13 @@ DEFERRED_MODULES = {
 
 EXPECTED_MODULES = BASELINE_MODULES | DEFERRED_MODULES
 
+V3_CANONICAL_DOCS = {
+    "docs/11-capability-first-v3.md",
+    "docs/v3/01-capability-contracts.md",
+    "docs/v3/02-pre-sql-contract.md",
+    "docs/v3/sql-disposition.md",
+}
+
 FORBIDDEN_HORIZONTAL_ROOTS = {
     "api",
     "application",
@@ -91,6 +98,11 @@ def test_v3_baseline_modules_are_explicit() -> None:
         "communications",
     } == BASELINE_MODULES
     assert BASELINE_MODULES.isdisjoint(DEFERRED_MODULES)
+
+
+def test_v3_canonical_contracts_exist() -> None:
+    missing = {path for path in V3_CANONICAL_DOCS if not (REPO_ROOT / path).is_file()}
+    assert missing == set()
 
 
 def test_horizontal_business_layer_roots_do_not_reappear() -> None:

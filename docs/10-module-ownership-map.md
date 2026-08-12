@@ -1,25 +1,25 @@
 # Request Engine — module ownership map
 
-> **Estado:** normativo para ownership del código Python durante la transición capability-first V3.
+> **Estado:** normativo para ownership del backend capability-first V3.
 >
-> El modelo relacional definitivo se rediseñará después de cerrar este ownership map. Este documento responde: **¿dónde pertenece un cambio?** No implica una entidad/repository/endpoint por tabla.
+> `docs/v3/02-pre-sql-contract.md` define las cardinalidades, serialization roots, transacciones e invariantes que este mapa distribuye entre módulos.
 
 ## 1. Summary
 
 | Module | V3 status | Primary ownership |
 |---|---|---|
-| `tenancy` | baseline | Organization, Principal, Party, Representation, tenant authority |
-| `catalog` | baseline | Offering/version, structured business/location/service information |
-| `requests` | baseline | durable business-demand Request, participants/correlation, generic intake/extension boundary |
-| `booking` | baseline | Resource, availability, local capacity, Hold, Reservation, attendance policy/state |
-| `queue` | baseline | ServiceQueue/QueueEntry, Waitlist/WaitlistEntry, SlotOffer |
-| `communications` | baseline | transactional communication intent/delivery, channel preference/endpoint contracts, ReminderPlan |
-| `delivery` | deferred | advanced execution/ServiceSession/Fulfillment concepts retained only as V2 design knowledge |
-| `payments` | deferred | pricing/payment/reconciliation concepts retained only as V2 design knowledge |
-| `dispatch` | deferred | field-service dispatch/feasibility concepts retained only as V2 design knowledge |
+| `tenancy` | baseline | Organization, Principal, Party, PartyContactPoint identity, Representation, tenant authority |
+| `catalog` | baseline | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement, structured business info |
+| `requests` | baseline | RequestDefinition/Version, durable Request, participants/correlation, generic extension payload/result boundary |
+| `booking` | baseline | Resource, capability assignment, availability, CapacityHold/Claim, Reservation, AttendanceResponse |
+| `queue` | baseline | ServiceQueue/QueueEntry, WaitlistEntry, SlotOpportunity, SlotOffer |
+| `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
+| `delivery` | deferred | future ServiceSession/Fulfillment/outcome execution domain |
+| `payments` | deferred | future pricing/payment/reconciliation domain |
+| `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
 
-Baseline modules must not depend on deferred modules without a new accepted decision and concrete product use case.
+Baseline modules must not depend on deferred modules without a concrete product use case and accepted architecture change.
 
 ---
 
@@ -31,38 +31,50 @@ Owns:
 Organization
 Principal
 Party
+PartyContactPoint identity/normalization
 Representation
 ```
 
 Responsibilities:
 
-- hard tenant boundary;
+- hard Organization boundary;
 - authenticated actor identity mapping;
-- on-behalf-of authority/delegation/revocation semantics;
-- tenant-scoped contact identity references needed by operational modules.
+- on-behalf-of authority/delegation/revocation;
+- minimal tenant-scoped contact identity needed by operational modules.
 
-Participant role, public IDs, external correlations and possession of a conversation/thread never grant authority by implication.
+A Party/contact point is not a CRM profile. Participant role, phone/email ownership, public IDs and channel correlation never grant authority implicitly.
 
-Other modules consume intentionally small tenancy contracts.
+`communications` owns channel delivery/purpose/preference policy; `tenancy` owns the Party/contact identity being addressed.
 
 ---
 
 ## 3. Catalog
 
-Owns:
+Owns stable/versioned operational configuration:
 
 ```text
-Organization/business profile projection inputs
 Location
 Offering
 OfferingVersion
-reusable offering configuration
-opening/service-hour configuration where authoritative
+ResourceCapability
+OfferingResourceRequirement
+structured business/public-hours information where authoritative
 ```
 
-The catalog provides structured operational truth for agents and applications. It is not a CMS/RAG platform.
+`OfferingVersion` is immutable once referenced by authoritative state.
 
-Expected queries:
+A baseline `OfferingResourceRequirement` is an immutable child/configuration of OfferingVersion:
+
+```text
+one mandatory ResourceCapability
++ units quantity
+```
+
+Multiple rows are ANDed.
+
+There is no baseline reusable `ResourceRequirementTemplate`, OR/k-of-n expression graph, CapacityPool or late-binding optimizer.
+
+Expected Queries:
 
 ```text
 GetBusinessInfo
@@ -71,13 +83,23 @@ GetOfferingDetails
 GetLocations
 ```
 
-Booking may consume offering/resource requirement configuration through catalog contracts. Runtime commitment state never mutates catalog history.
+Booking consumes catalog requirement/version contracts and resolves them to concrete Resources. Runtime claims never mutate catalog history.
 
 ---
 
 ## 4. Requests
 
-Owns `Request` as a durable envelope of **new business demand that requires later processing**.
+Owns durable **new business demand requiring later processing**.
+
+Owns:
+
+```text
+RequestDefinition
+RequestDefinitionVersion
+Request
+RequestParticipant
+ExternalCorrelation
+```
 
 Examples:
 
@@ -85,55 +107,54 @@ Examples:
 request_quote
 request_callback
 request_service
-submit_intake
+website_contact
 ```
 
-By default it does **not** own cancellation/reschedule/attendance/queue mutation semantics merely because those actions originated in a chat.
+`RequestDefinitionVersion` supplies the exact versioned generic input/result contract. Validated extensibility payload/result may use JSONB here.
 
-Owns:
+### Explicit non-ownership
+
+No baseline:
 
 ```text
-Request
-RequestType
-RequestParticipant
-ExternalCorrelation
-OfferingSelection/RequestItem when required by demand scope
-IntakeDefinition
-IntakeSubmission
-Request result/status semantics for extension workflows
+RequestType as mutation-command taxonomy
+IntakeDefinition / IntakeSubmission parallel lifecycle
+OfferingSelection / RequestItem generic graph
+OutcomeScope
+universal Workflow
 ```
 
-Generic intake remains here while small. If intake develops independent lifecycle/policy/scale, it may become its own module through the new-module gate.
+A form representing new demand submits a Request directly against a RequestDefinitionVersion. Draft/partial-form lifecycle can become a separate capability later if proven.
 
-Initial commands/queries:
+Cancel/reschedule/attendance/queue mutations belong to their native domains by default, regardless of whether an LLM/chat initiated them.
+
+Commands/Queries:
 
 ```text
-CreateRequest
-SubmitIntake
+CreateRequest / requests.submit
 RecordRequestResult
 CompleteRequest
 CancelRequest
 GetRequestStatus
 ```
 
-n8n/provider callbacks into a Request must use semantic authenticated/idempotent commands owned here, never generic status mutation.
-
-`OutcomeScope` and universal Workflow ownership are removed from the V3 baseline.
+n8n/provider callbacks use authenticated tenant-bound idempotent semantic commands, never generic status mutation.
 
 ---
 
 ## 5. Booking
 
-Owns local reservation authority:
+Owns local reservation/capacity truth:
 
 ```text
 Resource
+Resource ↔ ResourceCapability assignment
 AvailabilitySchedule
 ScheduleException
-CapacityClaim
 CapacityHold
+CapacityClaim
 Reservation
-AttendanceResponse / reservation-attendance policy
+AttendanceResponse history/current projection
 ```
 
 Initial capacity models:
@@ -143,12 +164,35 @@ exclusive
 units
 ```
 
-Initial commands/queries:
+### Closed baseline decisions
+
+```text
+1 Reservation = 1 OfferingVersion + 1 subject Party + 1 interval
+Resource = capacity serialization/lock root
+CapacityClaim = common Hold/Reservation consumption truth
+```
+
+No baseline:
+
+```text
+ReservationItem
+CapacityAuthority one-to-one indirection
+ResourceAllocation duplicate claim truth
+CapacityPool
+PlanningRevision
+external capacity commitments
+field-service feasibility
+```
+
+If future execution assignment becomes independently mutable from capacity consumption, introduce a proven `ResourceAssignment` then.
+
+Commands/Queries:
 
 ```text
 FindAppointmentSlots
-AcquireCapacityHold (internal/public only when product needs it)
+AcquireCapacityHold
 BookAppointment
+ConfirmCapacityHold
 CancelReservation
 RescheduleReservation
 GetReservationStatus
@@ -158,69 +202,26 @@ ChangeResourceAvailability
 ChangeScheduleException
 ```
 
-### 5.1 Reschedule authority
+Booking owns self-overlap-safe reschedule according to `docs/v3/02-pre-sql-contract.md`.
 
-Booking owns the self-overlap-safe atomic reschedule transaction:
-
-```text
-lock Reservation
-lock old/new capacity sources in canonical order
-validate final state excluding claims replaced by this operation
-replace claims atomically
-commit
-```
-
-A replacement Hold may be used for non-overlapping flows when useful, but must not be a universal prerequisite that conflicts with the Reservation being replaced.
-
-### 5.2 Capacity simplification
-
-`ResourceAllocation`, CapacityPool, external commitments and PlanningRevision are not baseline promises. Before V3 SQL baseline, determine whether Reservation consumption can be represented directly by `CapacityClaim` without duplicate 1:1 state.
-
-### 5.3 Attendance
-
-Booking owns the authoritative relationship between Reservation and attendance response because downstream capacity consequences depend on booking policy.
-
-Do not conflate:
-
-```text
-Reservation confirmed
-with
-attendance accepted
-```
-
-No-response consequences require explicit policy.
+Attendance confirmation is distinct from Reservation confirmation. No-response/decline capacity consequences require explicit versioned booking policy.
 
 ---
 
 ## 6. Queue
 
-The `queue` module owns two distinct capabilities that share customer-flow language but not semantics.
+Owns two distinct capabilities.
 
 ### 6.1 ServiceQueue
-
-Represents subjects waiting to be served now.
-
-Owns:
 
 ```text
 ServiceQueue
 QueueEntry
 ```
 
-Initial states:
+Represents subjects waiting to be served now. Baseline `CallNext` is FIFO by `(admitted_at, id)` under ServiceQueue serialization.
 
-```text
-waiting
-called
-serving
-completed
-cancelled
-no_show
-```
-
-Initial policy is deterministic FIFO among eligible entries.
-
-Commands/queries:
+Commands/Queries:
 
 ```text
 JoinQueue
@@ -232,54 +233,59 @@ MarkNoShow
 GetQueueStatus
 ```
 
-### 6.2 Waitlist
+Queue position is derived, not mutable authoritative counter state.
 
-Represents subjects willing to consume future capacity if it becomes available.
+### 6.2 Waitlist/released-slot recovery
 
 Owns:
 
 ```text
 WaitlistEntry
+SlotOpportunity
 SlotOffer
 ```
 
-Commands/queries:
+`WaitlistEntry` represents future interest and never consumes capacity.
+
+`SlotOpportunity` is the stable coordination root for one released appointment opportunity and sequential candidate chain. It does not prove availability.
+
+Baseline `SlotOffer` is backed by a short booking CapacityHold before notification. Only one active offered SlotOffer exists per Opportunity.
+
+Candidate selection is FIFO among candidates eligible for the concrete Opportunity.
+
+Commands/Queries:
 
 ```text
 JoinWaitlist
 LeaveWaitlist
-CreateSlotOffer (normally event-driven/internal)
+GetWaitlistStatus
+CreateSlotOpportunity           # internal/event-driven
+OfferNextWaitlistCandidate      # internal
 AcceptSlotOffer
 DeclineSlotOffer
-ExpireSlotOffer
-GetWaitlistStatus
+ExpireSlotOffer                 # ScheduledAction target
 ```
 
-WaitlistEntry does not consume booking capacity by itself.
-
-When a SlotOffer must reserve capacity exclusively during its response window, queue coordinates with booking to create a short CapacityHold. Otherwise `AcceptSlotOffer` simply revalidates capacity through booking.
-
-Selection policy starts simple and deterministic; no optimization engine V1.
+`AcceptSlotOffer` is queue-owned orchestration with booking through supported contracts and one local transaction where atomicity requires it.
 
 ---
 
 ## 7. Communications
 
-Owns transactional communication intent and communication-specific business policy, not external provider transport truth alone.
-
-Owns:
+Owns transactional communication intent, delivery facts and recurring reminder business intent:
 
 ```text
 CommunicationTask
 CommunicationDelivery
-CommunicationTemplate or TemplateRef/version
-CommunicationPreference
-ContactEndpoint contract/reference
+communication purpose/channel policy
+stable template/content key + version/snapshot contract
 ReminderPlan
 ReminderAcknowledgement when required
 ```
 
-Initial purposes include:
+No mandatory tenant-editable CommunicationTemplate entity exists in baseline; add one only when product functionality requires template lifecycle.
+
+Typical purposes:
 
 ```text
 appointment_confirmation
@@ -293,12 +299,11 @@ request_completed
 medication_reminder
 ```
 
-Initial commands/queries:
+Commands:
 
 ```text
 CreateCommunicationTask
-RecordDeliveryAttempt
-RecordDeliveryResult
+RecordDeliveryAttempt/Result
 RecordProviderDeliveryCallback
 CreateReminderPlan
 UpdateReminderPlan
@@ -306,33 +311,29 @@ CancelReminderPlan
 AcknowledgeReminder
 ```
 
-Communication provider I/O happens after originating business commit.
+Provider I/O happens after the originating business transaction commits.
 
-The module can define fallback-channel policy, but does not become a marketing journey/campaign platform.
+Provider delivery state cannot directly mutate booking/queue/request truth. An inbound response that means “confirm attendance” invokes booking's supported semantic Command.
 
-Medication reminders execute an authorized plan; the module does not infer clinical dosage/treatment decisions.
+Medication reminders execute an authorized plan; communications does not infer dosage/treatment decisions.
 
 ---
 
 ## 8. Delivery — deferred
 
-The V2 `delivery` module previously owned admission/queue, ServiceSession, Fulfillment and corrections.
+The former V2 admission/queue ownership is removed from `delivery`.
 
-V3 disposition:
+Future `ServiceSession`, Fulfillment/outcome evidence and corrections remain deferred until a real execution vertical needs independent policy/lifecycle.
 
-- Queue/Waitlist move conceptually to `queue`.
-- ServiceSession/Fulfillment/Correction are deferred until a concrete execution/outcome proof requires them.
-- No baseline module may rely on these deferred concepts to complete appointment, queue, communication or generic Request verticals.
-
-Do not delete useful V2 design history until the clean V3 baseline is complete; do not treat it as active architecture either.
+No baseline module may depend on delivery to complete V3 proof flows.
 
 ---
 
 ## 9. Payments — deferred
 
-V2 financial concepts remain useful future design material, but payments do not block the first baseline.
+V2 financial distinctions remain design knowledge, not baseline dependencies.
 
-Re-entry requires concrete product semantics such as:
+Re-entry requires concrete product policies such as:
 
 ```text
 pay/deposit before confirm
@@ -340,15 +341,13 @@ reserve now / pay before deadline
 no payment prerequisite
 ```
 
-When reactivated, financial truth remains separate from booking/fulfillment truth and provider observations remain distinct from business obligations.
+Financial truth remains separate from booking/execution truth when reactivated.
 
 ---
 
 ## 10. Dispatch — deferred
 
-Dispatch/field-service destination and feasibility planning are not baseline capabilities.
-
-Do not preserve PlanningRevision, external feasibility or routing complexity merely to keep the V2 schema shape. Reactivate only for a real field-service vertical.
+Field-service destination, feasibility, planning and routing are outside baseline. `PlanningRevision` and related V2 concepts are not reproduced in clean V3 SQL unless a field-service capability proves the need.
 
 ---
 
@@ -358,54 +357,57 @@ Platform is technical infrastructure, never a business catch-all.
 
 ### `platform/db`
 
-- engine/session factories;
-- transaction plumbing;
-- PostgreSQL error translation;
-- technical DB types.
+```text
+engine/session factories
+transaction plumbing
+PostgreSQL technical error translation
+runtime tenant-context plumbing
+```
 
 ### `platform/idempotency`
 
-- idempotency acquisition/completion mechanics;
-- request-hash/command result replay infrastructure.
+```text
+idempotency acquire/complete/replay mechanics
+canonical command fingerprinting support
+```
 
-Business meaning of a command remains in its module.
+Business command semantics remain module-owned.
 
 ### `platform/outbox`
 
-- outbox claim/delivery leases;
-- fencing;
-- bounded retry/dead-letter plumbing;
-- generic publisher runtime.
+```text
+outbox persistence/claim
+lease/fencing
+bounded retry/dead-letter/manual replay plumbing
+publisher runtime
+```
 
-Business event payload production remains with emitting modules.
+Event vocabulary/payload production remains emitting-module-owned.
 
 ### `platform/scheduling`
-
-Owns generic durable scheduling mechanics:
 
 ```text
 ScheduledAction persistence contract
 clock abstraction
 claim batching
 lease/fencing
-retry/dead-letter
-manual replay plumbing
+bounded retry/dead-letter/manual replay
 scheduling lag telemetry
 ```
 
-It does not decide why an appointment reminder, SlotOffer expiry or medication reminder exists.
+Platform does not decide why a reminder, SlotOffer expiry or deadline exists.
 
 ### `platform/audit` / `platform/events`
 
-Cross-cutting append/serialization mechanics only; business event vocabulary belongs to emitting modules.
+Append/serialization mechanics only. Do not grow a universal business event bus abstraction before needed.
 
 ### `platform/observability`
 
-Tracing/metrics/logging infrastructure. Audit is not telemetry.
+Tracing/metrics/logging. Audit is not telemetry.
 
 ### `platform/security`
 
-Authentication/Principal plumbing and common technical enforcement. Representation/business authority remains tenancy/application policy.
+Authentication/runtime role/RLS-context plumbing. Representation/business authority remains tenancy/application policy.
 
 ---
 
@@ -415,43 +417,56 @@ Authentication/Principal plumbing and common technical enforcement. Representati
 
 Owner: `booking`.
 
-May read catalog/request context through contracts. Local capacity and Reservation changes commit atomically inside booking's authoritative transaction.
-
-After commit, an outbox fact may cause `communications` to create confirmation/reminder tasks.
+Consumes immutable catalog contracts; Resource/Reservation/claims commit atomically. Confirmation/reminder consequences are emitted after commit.
 
 ### RescheduleReservation
 
 Owner: `booking`.
 
-Replaces capacity atomically. After commit, communication policy may cancel obsolete scheduled reminders and create new ones.
+Old/new Resource claims replace atomically. After commit communications cancels/regenerates obsolete reminder tasks/actions idempotently.
 
 ### ConfirmAttendance
 
-Owner: `booking` for authoritative attendance/reservation consequence. Communications/provider adapter may supply the inbound response through a booking contract.
+Owner: `booking`.
 
-### JoinQueue
+Communications/provider adapters may route an inbound response into this command, but do not mutate Reservation state themselves.
+
+### JoinQueue / CallNext
 
 Owner: `queue`.
 
-Does not automatically create a Reservation unless a documented capability explicitly coordinates both.
+Queue completion does not imply universal Fulfillment or Request completion.
+
+### Reservation cancellation → standby recovery
+
+```text
+booking cancel commit
+→ outbox reservation.cancelled
+→ queue create/get SlotOpportunity
+→ queue selects WaitlistEntry
+→ booking CapacityHold
+→ SlotOffer
+→ communications notification
+```
+
+Only booking claims capacity.
 
 ### AcceptSlotOffer
 
-Owner: `queue` for offer lifecycle, coordinating booking contract for capacity/Reservation creation. If capacity correctness requires one local transaction across both modules, keep it one PostgreSQL transaction rather than using asynchronous events for aesthetic separation.
+Owner: `queue` for offer/opportunity lifecycle, coordinating booking to confirm the Hold into a Reservation in the same local transaction required by V3-I40.
 
-### Create appointment reminder
+### Appointment communication
 
-Booking emits reservation fact after commit. Communications owns communication intent. `platform/scheduling` owns when/how the future action is safely claimed, not the business policy that requested it.
+Booking emits durable fact after commit. Communications owns task/reminder policy. `platform/scheduling` owns lease/clock/retry mechanics only.
 
 ### Generic quote Request via n8n
 
-Owner: `requests`.
-
 ```text
-CreateRequest
+requests.submit
 → commit/outbox
-→ n8n integration
-→ authenticated idempotent RecordRequestResult/CompleteRequest
+→ n8n
+→ authenticated idempotent requests.record_result
+→ requests.complete
 ```
 
 ---
@@ -460,21 +475,20 @@ CreateRequest
 
 Moving a concept between top-level modules or activating a deferred module requires updating:
 
+- `docs/v3/01-capability-contracts.md` when external semantics change;
+- `docs/v3/02-pre-sql-contract.md` when cardinality/transaction/invariants change;
 - this map;
-- affected module READMEs;
-- architecture/import tests;
-- DB/read/cmd ownership mapping;
-- an ADR when material or hard to reverse.
+- affected module READMEs/contracts/tests;
+- DB/read/cmd mapping;
+- an ADR when hard to reverse.
 
-Never infer automatically:
+Never infer:
 
 ```text
 table → domain entity → repository → endpoint
 ```
 
-Some rows exist only as serialization identities, relational links, append facts or integrity mechanics.
-
-The core V3 rule remains:
+The V3 north star remains:
 
 ```text
 one public operational API

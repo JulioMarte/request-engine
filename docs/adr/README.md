@@ -2,7 +2,7 @@
 
 ADRs capture durable, hard-to-reverse architectural decisions. They explain **why** a constraint exists; canonical domain/transaction documents remain authoritative for detailed invariants and protocols.
 
-Use an ADR when changing module boundaries, Python/PostgreSQL ownership, deployment/migration strategy, cross-module contracts, or another decision that future maintainers are likely to question.
+Use an ADR when changing module boundaries, Python/PostgreSQL ownership, deployment/migration strategy, cross-module contracts, security/isolation posture, or another decision future maintainers are likely to question.
 
 Format:
 
@@ -26,3 +26,5 @@ Current records:
 - `0004-agent-knowledge-system.md`
 - `0005-capability-first-product-core.md`
 - `0006-durable-transactional-communications.md`
+- `0007-minimal-booking-capacity-model.md`
+- `0008-tenant-rls-runtime-isolation.md`

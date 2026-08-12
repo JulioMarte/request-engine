@@ -6,21 +6,31 @@ Owns local reservation and reservability truth:
 
 ```text
 Resource
+resource capability assignment
 AvailabilitySchedule
 ScheduleException
 CapacityClaim
 CapacityHold
 Reservation
-AttendanceResponse / attendance policy coupled to reservation consequences
+AttendanceResponse history / attendance policy consequences
 ```
 
-Initial capacity models are only `exclusive` and `units`.
+Catalog owns `ResourceCapability` vocabulary and immutable `OfferingVersion` mandatory resource requirements; booking resolves those requirements to concrete Resources.
 
-Initial commands/queries include:
+Initial capacity models are only:
+
+```text
+exclusive
+units
+```
+
+Initial commands/queries:
 
 ```text
 FindAppointmentSlots
+AcquireCapacityHold
 BookAppointment
+ConfirmCapacityHold
 CancelReservation
 RescheduleReservation
 GetReservationStatus
@@ -30,12 +40,27 @@ ChangeResourceAvailability
 ChangeScheduleException
 ```
 
-`CapacityHold` remains the temporary local commitment primitive when a flow needs one. V3 does not require CapacityPool, PlanningRevision, external commitment planning, or advanced field-service feasibility in the baseline.
+### Baseline decisions
 
-Before the clean V3 SQL candidate is frozen, re-evaluate whether the V2 `ResourceAllocation` + 1:1 `CapacityClaim` pair contains two independent truths. Prefer one authoritative reservation-consumption claim unless a real operational assignment concept requires a separate entity.
+- `1 Reservation = 1 OfferingVersion + 1 subject + 1 interval`.
+- No `ReservationItem` baseline.
+- Concrete `Resource` is the capacity serialization/lock root; no separate one-to-one `CapacityAuthority` baseline.
+- `CapacityClaim` is the common Hold/Reservation capacity-consumption truth.
+- No `ResourceAllocation` baseline. Add a future `ResourceAssignment` only if execution assignment becomes independently mutable from capacity consumption.
+- No CapacityPool, PlanningRevision, external commitment planning or field-service feasibility baseline.
 
-Reschedule must be self-overlap safe: lock the Reservation and old/new capacity sources in canonical order, validate the **final** state excluding claims replaced by the same operation, and atomically replace claims. A replacement Hold must not be a universal prerequisite when it would conflict with the Reservation being replaced.
+An OfferingVersion may have multiple mandatory resource requirements. Booking must satisfy them atomically with one concrete Resource per requirement and the required units. No OR/k-of-n/late-binding expression language in baseline.
 
-Reservation confirmation and customer/patient attendance confirmation are distinct. No-response consequences require explicit policy.
+`CapacityHold` is a temporary commitment. Wall-clock expiry is authoritative even before cleanup persists an `expired` state.
 
-Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications are produced after commit through outbox/communications contracts.
+Hold confirmation must promote/associate existing claims with the Reservation without temporary Hold + Reservation double counting.
+
+Reschedule is self-overlap safe: lock the Reservation, then the union of old/new Resources in stable-id order; validate the **final** desired state excluding only this Reservation's claims being replaced; atomically mark old claims replaced and insert new claims. Failure/rollback preserves the original Reservation and claims.
+
+Routine schedule changes do not silently rewrite already-committed Reservations. New booking/hold acquisition revalidates schedule under Resource locks; administrative invalidation of an existing Hold/Reservation must be an explicit semantic command.
+
+Reservation confirmation and customer/patient attendance confirmation are distinct. Attendance responses are history-preserving facts/current projection; no-response or decline changes Reservation/capacity only through explicit versioned policy.
+
+Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts.
+
+The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`.
