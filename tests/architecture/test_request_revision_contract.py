@@ -38,9 +38,7 @@ def test_request_mutation_bodies_reject_non_positive_revision() -> None:
     with pytest.raises(ValidationError):
         CancelRequestBody.model_validate({"expected_revision": 0})
     with pytest.raises(ValidationError):
-        FailRequestBody.model_validate(
-            {"error_class": "provider_error", "expected_revision": 0}
-        )
+        FailRequestBody.model_validate({"error_class": "provider_error", "expected_revision": 0})
 
 
 @pytest.mark.asyncio
