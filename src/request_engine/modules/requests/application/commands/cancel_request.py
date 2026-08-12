@@ -13,6 +13,7 @@ class CancelRequestCommand:
     idempotency_key: str
     reason: str | None = None
     expected_revision: int | None = None
+    allow_party_override: bool = False
 
 
 class CancelRequestHandler(Protocol):

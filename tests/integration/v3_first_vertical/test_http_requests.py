@@ -23,6 +23,7 @@ _FULL_REQUEST_CAPABILITIES = frozenset(
         "requests.complete",
         "requests.cancel",
         "requests.fail",
+        "requests.party_override",
     }
 )
 

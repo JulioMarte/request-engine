@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.requests.adapters.db.party_authority import require_requester_authority
 from request_engine.modules.requests.contracts.request import (
     ExternalCorrelation,
     Request,
@@ -22,12 +23,23 @@ class PostgresRequestReader:
     async def get_request(
         self,
         organization_id: UUID,
+        principal_id: UUID,
         request_id: UUID,
+        *,
+        allow_party_override: bool,
     ) -> Request | None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             row = await read_request_row(session, organization_id, request_id)
             if row is None:
                 return None
+            await require_requester_authority(
+                session,
+                organization_id=organization_id,
+                principal_id=principal_id,
+                requester_party_id=cast(UUID | None, row["requester_party_id"]),
+                scope_key="requests.manage",
+                allow_operator_override=allow_party_override,
+            )
             participants = await read_participants(session, organization_id, request_id)
             correlations = await read_correlations(session, organization_id, request_id)
         return request_from_row(

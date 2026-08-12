@@ -118,6 +118,7 @@ def create_router(
                     for item in body.correlations
                 ),
                 idempotency_key=idempotency_key,
+                allow_party_override=actor.allows("requests.party_override"),
             ),
         )
         return SubmittedRequestView(
@@ -134,7 +135,9 @@ def create_router(
         request = await get_request_status(
             reader,
             organization_id=actor.organization_id,
+            principal_id=actor.principal_id,
             request_id=request_id,
+            allow_party_override=actor.allows("requests.party_override"),
         )
         if request is None:
             raise HTTPException(status_code=404, detail="Request not found")
@@ -196,6 +199,7 @@ def create_router(
                 reason=body.reason,
                 expected_revision=body.expected_revision,
                 idempotency_key=idempotency_key,
+                allow_party_override=actor.allows("requests.party_override"),
             ),
         )
         return RequestView.from_contract(request)

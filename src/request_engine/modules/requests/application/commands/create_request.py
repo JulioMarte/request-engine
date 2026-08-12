@@ -20,6 +20,7 @@ class CreateRequestCommand:
     recipient_party_id: UUID | None = None
     participants: tuple[RequestParticipantInput, ...] = ()
     correlations: tuple[ExternalCorrelationInput, ...] = ()
+    allow_party_override: bool = False
 
 
 class CreateRequestHandler(Protocol):

@@ -24,7 +24,7 @@ ALL_MODULES = BASELINE_MODULES | DEFERRED_MODULES
 MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "tenancy": frozenset(),
     "catalog": frozenset(),
-    "requests": frozenset(),
+    "requests": frozenset({"tenancy"}),
     "booking": frozenset({"catalog", "tenancy"}),
     "queue": frozenset({"booking", "tenancy"}),
     "communications": frozenset({"booking"}),
