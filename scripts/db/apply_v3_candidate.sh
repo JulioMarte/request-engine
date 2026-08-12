@@ -13,12 +13,13 @@ files=(
   "006-capacity-hardening.sql"
   "007-contract-convergence.sql"
   "008-tenant-party-authority.sql"
+  "009-party-authority-resolution.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
 : "${PGPORT:=5432}"
 : "${PGDATABASE:=request_engine_v3}"
-: "${PGUSER:=request_engine}"
+: "${PGUSER:=request_engine"
 
 export PGHOST PGPORT PGDATABASE PGUSER
 
