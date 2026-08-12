@@ -221,9 +221,7 @@ async def test_find_book_replay_read_cancel_and_release_slot(
     assert len(slots) == 6
     first = slots[0]
     assert first.start_at == datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
-    assert first.resources == (
-        ResourceChoice(fixture.requirement_id, fixture.resource_id),
-    )
+    assert first.resources == (ResourceChoice(fixture.requirement_id, fixture.resource_id),)
 
     booking_command = BookAppointmentCommand(
         organization_id=fixture.organization_id,

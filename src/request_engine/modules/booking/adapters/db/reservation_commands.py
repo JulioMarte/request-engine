@@ -785,7 +785,8 @@ def _revalidate_exact_slot(
             and requirements_by_resource[resource_id] > 1
         ):
             raise InvalidResourceSelection(
-                f"exclusive Resource {resource_id} cannot satisfy multiple simultaneous requirements"
+                f"exclusive Resource {resource_id} cannot satisfy multiple "
+                "simultaneous requirements"
             )
         if not interval_has_resource_capacity(
             profile,

@@ -32,6 +32,7 @@ from request_engine.modules.booking.domain.availability import (
     interval_has_resource_capacity,
     require_aware_utc,
 )
+from request_engine.modules.booking.domain.policy import slot_step_minutes
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
 
@@ -85,7 +86,7 @@ class PostgresAppointmentAvailabilityReader:
 
             duration_minutes = cast(int, offering["duration_minutes"])
             booking_policy = cast(dict[str, object], offering["booking_policy"])
-            step_minutes = _slot_step_minutes(booking_policy, duration_minutes)
+            step_minutes = slot_step_minutes(booking_policy, duration_minutes)
 
             candidate_rows = (
                 (
@@ -301,12 +302,7 @@ def _slot_location(
 ) -> UUID | None:
     if requested_location_id is not None:
         return requested_location_id
-    locations = {candidate.location_id for candidate in combination if candidate.location_id is not None}
+    locations = {
+        candidate.location_id for candidate in combination if candidate.location_id is not None
+    }
     return next(iter(locations)) if len(locations) == 1 else None
-
-
-def _slot_step_minutes(policy: dict[str, object], duration_minutes: int) -> int:
-    raw = policy.get("slot_step_minutes", duration_minutes)
-    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
-        raise BookingConfigurationError("booking_policy.slot_step_minutes must be a positive integer")
-    return raw

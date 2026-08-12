@@ -269,11 +269,7 @@ def _recurring_candidates(
                 local_end = local_cursor + duration
                 start_at = resolve_local_instant(local_cursor, schedule.timezone)
                 end_at = resolve_local_instant(local_end, schedule.timezone)
-                if (
-                    end_at > start_at
-                    and start_at >= window_start
-                    and end_at <= window_end
-                ):
+                if end_at > start_at and start_at >= window_start and end_at <= window_end:
                     candidates.add(AvailableInterval(start_at, end_at))
                 local_cursor += step
         current_date += timedelta(days=1)
