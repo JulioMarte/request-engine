@@ -32,6 +32,9 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     get_reservation_status,
 )
 from request_engine.modules.booking.contracts.appointments import ReservationStatus, ResourceChoice
+from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
+    PostgresPartyAuthorityReader,
+)
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
@@ -216,6 +219,7 @@ async def test_find_book_replay_read_cancel_and_release_slot(
     availability = PostgresAppointmentAvailabilityReader(session_factory)
     commands = PostgresReservationCommands(session_factory)
     reader = PostgresReservationReader(session_factory)
+    authority_reader = PostgresPartyAuthorityReader(session_factory)
 
     slots = await find_appointment_slots(availability, _slot_query(fixture))
     assert len(slots) == 6
@@ -232,6 +236,7 @@ async def test_find_book_replay_read_cancel_and_release_slot(
         start_at=first.start_at,
         resources=first.resources,
         idempotency_key=f"book-{uuid4().hex}",
+        allow_subject_override=True,
     )
     reservation = await book_appointment(commands, booking_command)
     replay = await book_appointment(commands, booking_command)
@@ -240,8 +245,11 @@ async def test_find_book_replay_read_cancel_and_release_slot(
 
     stored = await get_reservation_status(
         reader,
+        authority_reader,
         organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
         reservation_id=reservation.id,
+        allow_subject_override=True,
     )
     assert stored == reservation
 
@@ -268,6 +276,7 @@ async def test_find_book_replay_read_cancel_and_release_slot(
             reservation_id=reservation.id,
             idempotency_key=f"cancel-{uuid4().hex}",
             reason="patient unavailable",
+            allow_subject_override=True,
         ),
     )
     assert cancelled.status is ReservationStatus.CANCELLED
@@ -314,6 +323,7 @@ async def test_concurrent_direct_booking_serializes_on_resource(
         start_at=slot.start_at,
         resources=slot.resources,
         idempotency_key=f"book-race-{uuid4().hex}",
+        allow_subject_override=True,
     )
     second = BookAppointmentCommand(
         organization_id=fixture.organization_id,
@@ -324,6 +334,7 @@ async def test_concurrent_direct_booking_serializes_on_resource(
         start_at=slot.start_at,
         resources=slot.resources,
         idempotency_key=f"book-race-{uuid4().hex}",
+        allow_subject_override=True,
     )
 
     outcomes = await asyncio.gather(
