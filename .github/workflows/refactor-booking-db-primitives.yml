@@ -1,0 +1,64 @@
+name: Refactor booking DB primitives
+
+on:
+  push:
+    branches: [feature/v3-booking-commitments]
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Promote shared booking DB primitives
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path("src/request_engine/modules/booking/adapters/db/reservation_commands.py"),
+              Path("src/request_engine/modules/booking/adapters/db/commitment_commands.py"),
+          ]
+          renames = {
+              "_LockedResource": "LockedResource",
+              "_load_bookable_offering": "load_bookable_offering",
+              "_load_locked_profiles": "load_locked_profiles",
+              "_load_requirements": "load_requirements",
+              "_lock_resource_ids": "lock_resource_ids",
+              "_lock_resources": "lock_resources",
+              "_read_reservation": "read_reservation",
+              "_reservation_from_json": "reservation_from_json",
+              "_reservation_to_json": "reservation_to_json",
+              "_revalidate_exact_slot": "revalidate_exact_slot",
+              "_validate_choice_cardinality": "validate_choice_cardinality",
+              "_validate_resource_capabilities": "validate_resource_capabilities",
+              "_validate_subject_location_and_origin": "validate_subject_location_and_origin",
+          }
+          for path in files:
+              text = path.read_text()
+              for old, new in renames.items():
+                  text = text.replace(old, new)
+              path.write_text(text)
+          PY
+      - name: Install Ruff
+        run: python -m pip install --disable-pip-version-check 'ruff>=0.15.22,<0.16'
+      - name: Canonicalize and validate
+        run: |
+          ruff format .
+          ruff check --fix .
+          ruff format .
+          ruff check .
+      - name: Commit refactor
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "refactor: expose shared booking DB primitives"
+          git push origin HEAD:feature/v3-booking-commitments
