@@ -5,6 +5,15 @@ class QueueError(Exception):
     """Base class for semantic service-queue errors."""
 
 
+class SubjectAuthorityRequired(QueueError):
+    def __init__(self, subject_party_id: UUID, scope_key: str) -> None:
+        super().__init__(
+            f"Principal is not authorized to act for Party {subject_party_id} in scope {scope_key}"
+        )
+        self.subject_party_id = subject_party_id
+        self.scope_key = scope_key
+
+
 class QueueNotFound(QueueError):
     def __init__(self, queue_id: UUID) -> None:
         super().__init__(f"ServiceQueue {queue_id} was not found")
