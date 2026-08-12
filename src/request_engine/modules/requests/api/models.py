@@ -8,14 +8,12 @@ from request_engine.modules.requests.contracts.request import Request
 
 class RequestParticipantInputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     party_id: UUID
     role_key: str = Field(min_length=1, max_length=120)
 
 
 class ExternalCorrelationInputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     correlation_kind: str = Field(min_length=1, max_length=120)
     provider_key: str = Field(min_length=1, max_length=120)
     external_key: str = Field(min_length=1, max_length=500)
@@ -23,7 +21,6 @@ class ExternalCorrelationInputModel(BaseModel):
 
 class SubmitRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     definition_version: int | None = Field(default=None, gt=0)
     payload: dict[str, object]
     requester_party_id: UUID | None = None
@@ -36,7 +33,6 @@ class SubmitRequestBody(BaseModel):
         participant_keys = [(item.party_id, item.role_key) for item in self.participants]
         if len(set(participant_keys)) != len(participant_keys):
             raise ValueError("participants must be unique by party_id and role_key")
-
         correlation_keys = [
             (item.correlation_kind, item.provider_key, item.external_key)
             for item in self.correlations
@@ -50,28 +46,24 @@ class SubmitRequestBody(BaseModel):
 
 class RecordRequestResultBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     result_payload: dict[str, object]
     expected_revision: int | None = Field(default=None, gt=0)
 
 
 class CompleteRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     result_payload: dict[str, object] | None = None
     expected_revision: int | None = Field(default=None, gt=0)
 
 
 class CancelRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     reason: str | None = Field(default=None, max_length=1000)
     expected_revision: int | None = Field(default=None, gt=0)
 
 
 class FailRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     error_class: str = Field(min_length=1, max_length=200)
     details: dict[str, object] = Field(default_factory=dict)
     expected_revision: int | None = Field(default=None, gt=0)
@@ -138,14 +130,3 @@ class SubmittedRequestView(BaseModel):
     request_key: str
     definition_version: int
     request: RequestView
-
-
-class ErrorBody(BaseModel):
-    code: str
-    message: str
-    retryable: bool = False
-    details: dict[str, object] = Field(default_factory=dict)
-
-
-class ErrorEnvelope(BaseModel):
-    error: ErrorBody

@@ -1,8 +1,12 @@
 from uuid import UUID
 
-
-class RequestError(Exception):
-    """Base class for durable Request semantic failures."""
+from request_engine.modules.requests.domain.errors import RequestError
+from request_engine.modules.requests.domain.errors import (
+    RequestPayloadInvalid as RequestPayloadInvalid,
+)
+from request_engine.modules.requests.domain.errors import (
+    UnsupportedRequestSchema as UnsupportedRequestSchema,
+)
 
 
 class RequestDefinitionNotFound(RequestError):
@@ -23,20 +27,6 @@ class RequestDefinitionInactive(RequestError):
     def __init__(self, version_id: UUID) -> None:
         super().__init__(f"RequestDefinitionVersion {version_id} belongs to an inactive definition")
         self.version_id = version_id
-
-
-class RequestPayloadInvalid(RequestError):
-    def __init__(self, path: str, reason: str) -> None:
-        super().__init__(f"invalid Request payload at {path}: {reason}")
-        self.path = path
-        self.reason = reason
-
-
-class UnsupportedRequestSchema(RequestError):
-    def __init__(self, path: str, keyword: str) -> None:
-        super().__init__(f"unsupported Request schema keyword {keyword!r} at {path}")
-        self.path = path
-        self.keyword = keyword
 
 
 class RequestResultNotDefined(RequestError):

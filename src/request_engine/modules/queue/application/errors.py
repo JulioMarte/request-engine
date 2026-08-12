@@ -23,3 +23,18 @@ class AlreadyInQueue(QueueError):
         super().__init__(message)
         self.queue_id = queue_id
         self.subject_party_id = subject_party_id
+
+
+class ActiveQueueEntryNotFound(QueueError):
+    def __init__(self, queue_id: UUID, subject_party_id: UUID) -> None:
+        message = f"Party {subject_party_id} has no cancellable entry in queue {queue_id}"
+        super().__init__(message)
+        self.queue_id = queue_id
+        self.subject_party_id = subject_party_id
+
+
+class QueueEntryNotCancellable(QueueError):
+    def __init__(self, entry_id: UUID, status: str) -> None:
+        super().__init__(f"QueueEntry {entry_id} cannot be cancelled from status {status}")
+        self.entry_id = entry_id
+        self.status = status

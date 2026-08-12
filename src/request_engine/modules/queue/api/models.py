@@ -1,0 +1,84 @@
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from request_engine.modules.queue.application.queries.list_service_queues import ServiceQueueSummary
+from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueStatus
+
+
+class ServiceQueueView(BaseModel):
+    id: UUID
+    queue_key: str
+    display_name: str
+    location_id: UUID | None
+    offering_id: UUID | None
+    active: bool
+
+    @classmethod
+    def from_contract(cls, queue: ServiceQueueSummary) -> "ServiceQueueView":
+        return cls(
+            id=queue.id,
+            queue_key=queue.queue_key,
+            display_name=queue.display_name,
+            location_id=queue.location_id,
+            offering_id=queue.offering_id,
+            active=queue.active,
+        )
+
+
+class QueueEntryView(BaseModel):
+    id: UUID
+    queue_id: UUID
+    subject_party_id: UUID
+    status: str
+    admitted_at: datetime
+    called_at: datetime | None
+    revision: int
+
+    @classmethod
+    def from_contract(cls, entry: QueueEntry) -> "QueueEntryView":
+        return cls(
+            id=entry.id,
+            queue_id=entry.queue_id,
+            subject_party_id=entry.subject_party_id,
+            status=entry.status.value,
+            admitted_at=entry.admitted_at,
+            called_at=entry.called_at,
+            revision=entry.revision,
+        )
+
+
+class QueueStatusView(BaseModel):
+    queue_id: UUID
+    queue_key: str
+    display_name: str
+    entry: QueueEntryView | None
+    entries_ahead: int | None
+
+    @classmethod
+    def from_contract(cls, queue_status: QueueStatus) -> "QueueStatusView":
+        return cls(
+            queue_id=queue_status.queue_id,
+            queue_key=queue_status.queue_key,
+            display_name=queue_status.display_name,
+            entry=(
+                QueueEntryView.from_contract(queue_status.entry)
+                if queue_status.entry is not None
+                else None
+            ),
+            entries_ahead=queue_status.entries_ahead,
+        )
+
+
+class JoinQueueBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject_party_id: UUID
+    reservation_id: UUID | None = None
+    offering_id: UUID | None = None
+
+
+class LeaveQueueBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject_party_id: UUID
+    reason: str | None = Field(default=None, max_length=1000)

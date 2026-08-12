@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import cast
 
-from request_engine.modules.communications.application.errors import DeliveryConfigurationError
+from request_engine.modules.communications.domain.errors import DeliveryConfigurationError
 
 _ENDPOINT_CHANNELS = {
     "email": "email",

@@ -1,14 +1,9 @@
 from uuid import UUID
 
-
-class BookingError(Exception):
-    """Base class for semantic booking failures."""
-
-
-class BookingConfigurationError(BookingError):
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
+from request_engine.modules.booking.domain.errors import (
+    BookingConfigurationError as BookingConfigurationError,
+)
+from request_engine.modules.booking.domain.errors import BookingError
 
 
 class OfferingVersionNotBookable(BookingError):

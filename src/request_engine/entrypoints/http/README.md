@@ -1,6 +1,43 @@
 # HTTP entrypoint
 
-The HTTP layer exposes semantic Request Engine capabilities; it is not a table/CRUD gateway.
+The HTTP process exposes semantic Request Engine capabilities; it is not a table/CRUD gateway and it is not a second business taxonomy.
+
+## Composition boundary
+
+`entrypoints/http` owns process-level HTTP concerns only:
+
+```text
+app creation
+shared authentication/trust boundary
+middleware / transport-global errors
+```
+
+Business routers, transport DTOs and business-specific HTTP error mappings are owned by their modules:
+
+```text
+modules/requests/api/
+modules/catalog/api/
+modules/booking/api/
+modules/queue/api/
+```
+
+`create_app()` composes those modules through each module's `install_http(...)` connection surface. It must not import module DB/provider adapters directly.
+
+Conceptually:
+
+```text
+FastAPI process
+     |
+     | modules.<owner>.api.install_http
+     |
+module-owned HTTP adapter
+     |
+     | Command / Query
+     |
+module application/domain
+```
+
+See `docs/13-connection-surfaces.md`.
 
 ## Authentication boundary
 
@@ -11,7 +48,7 @@ X-Organization-Id
 X-Principal-Id
 ```
 
-A deployment adapter is responsible for authenticating a bearer token, API key, mTLS identity, OIDC subject or equivalent and materializing an `ActorContext`:
+A deployment adapter authenticates a bearer token, API key, mTLS identity, OIDC subject or equivalent and materializes an `ActorContext`:
 
 ```text
 organization_id
@@ -19,38 +56,48 @@ principal_id
 capabilities
 ```
 
-The context is technical authenticated identity, not a replacement for tenancy `Representation` semantics. A production resolver must derive capabilities from the tenant authority model/policy; public UUIDs never grant authority by themselves.
+The shared HTTP trust contract is `platform.security.http.ActorResolver`. The context is technical authenticated identity, not a replacement for tenancy `Representation` semantics. Public UUIDs never grant authority by themselves.
 
-## Request surface
+## Capability surfaces
 
-Initial V3 routes are capability-oriented:
+Current V3 HTTP capabilities include:
 
 ```text
+Requests
 POST /v1/requests/definitions/{request_key}/submit
 GET  /v1/requests/{request_id}
 POST /v1/requests/{request_id}/result
 POST /v1/requests/{request_id}/complete
 POST /v1/requests/{request_id}/cancel
 POST /v1/requests/{request_id}/fail
+
+Catalog/business info
+GET /v1/business
+GET /v1/catalog/offerings
+GET /v1/catalog/offerings/{offering_key}
+
+Appointments
+GET  /v1/appointments/slots
+POST /v1/appointments
+GET  /v1/appointments/{reservation_id}
+POST /v1/appointments/{reservation_id}/cancel
+POST /v1/appointments/{reservation_id}/reschedule
+
+FIFO queue
+GET  /v1/queues
+POST /v1/queues/{queue_id}/join
+GET  /v1/queues/{queue_id}/status
+POST /v1/queues/{queue_id}/leave
+POST /v1/queues/{queue_id}/call-next
 ```
 
-Writes require `Idempotency-Key` and the corresponding capability:
-
-```text
-requests.submit
-requests.record_result
-requests.complete
-requests.cancel
-requests.fail
-```
-
-Reads require `requests.read`.
-
-Submit accepts an optional positive `definition_version`. When omitted, the resolver selects the highest version currently present under the active tenant `RequestDefinition`, then passes the exact immutable version ID to the command. The created Request always persists that exact version ID; later processing does not depend on a moving `latest` alias.
+Writes require `Idempotency-Key` where the underlying semantic command is idempotent. Reads and writes require the capability owned by the module.
 
 ## Errors
 
-Domain conflicts are exposed as machine-readable envelopes:
+Business modules own mapping from their domain/application errors to HTTP. Transport-global database-integrity fallback remains at the process entrypoint.
+
+Domain conflicts use machine-readable envelopes:
 
 ```json
 {
@@ -66,4 +113,4 @@ Domain conflicts are exposed as machine-readable envelopes:
 }
 ```
 
-Payload contract errors are `422`, missing resources are `404`, authority failures are `401/403`, and lifecycle/idempotency conflicts are `409`. Stored Request schema configuration errors are server errors because they are operator/configuration defects, not caller payload mistakes.
+Payload contract errors are `422`, missing resources are generally `404`, authority failures are `401/403`, and lifecycle/idempotency conflicts are generally `409`.

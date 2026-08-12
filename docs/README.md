@@ -21,8 +21,10 @@ Use this precedence when rules overlap:
 3. `v3/02-pre-sql-contract.md` — V3 entities/cardinalities, serialization roots, lock ordering, transaction protocols, invariants and race matrix.
 4. `07-database-access-contract.md` — Python ↔ PostgreSQL boundary where not superseded by V3.
 5. `09-python-module-architecture.md` — physical Python repository/module rules.
-6. `10-module-ownership-map.md` — module ownership.
-7. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
+6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
+7. `10-module-ownership-map.md` — module ownership.
+8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
+9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
 Transition support documents:
 
@@ -63,7 +65,19 @@ domain rules + explicit ports
 database/provider adapters
 ```
 
-Physical organization is module-first according to `09-python-module-architecture.md`. This remains one modular monolith and does not imply microservice boundaries.
+Physical organization is module-first according to `09-python-module-architecture.md`. Business transport is module-owned, while process entrypoints compose published module surfaces rather than reaching into module persistence/provider internals.
+
+Every boundary crossing is also an explicit connection surface according to `13-connection-surfaces.md`:
+
+```text
+BOX A
+  |
+ |-|
+  |
+BOX B
+```
+
+The connector must define ownership, contract, trust/tenant context, transaction semantics and failure/retry behavior where applicable. `14-architecture-fitness-functions.md` converts high-value structural rules into CI failures so these surfaces cannot be bypassed silently. This remains one modular monolith and does not imply microservice boundaries.
 
 ## Documentation organization policy
 
