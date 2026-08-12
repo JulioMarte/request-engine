@@ -377,8 +377,9 @@ def parse_daily_schedule(schedule_spec: dict[str, object]) -> DailyReminderSched
         or raw_lateness > 1440
     ):
         raise ValueError("daily reminder max_lateness_minutes must be between 1 and 1440")
+    typed_times = cast(list[object], raw_times)
     parsed: list[time] = []
-    for raw in raw_times:
+    for raw in typed_times:
         if not isinstance(raw, str):
             raise ValueError("daily reminder schedule time must be a string")
         parsed.append(time.fromisoformat(raw))
