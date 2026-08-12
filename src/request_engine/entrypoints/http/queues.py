@@ -11,19 +11,34 @@ from request_engine.entrypoints.http.operations_models import (
     ServiceQueueView,
 )
 from request_engine.entrypoints.http.security import ActorResolver, AuthenticationRequired
-from request_engine.modules.queue.adapters.db.leave_queue_commands import PostgresLeaveQueueCommands
+from request_engine.modules.queue.adapters.db.leave_queue_commands import (
+    PostgresLeaveQueueCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
-from request_engine.modules.queue.application.commands.call_next import CallNextCommand, call_next
-from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand, join_queue
-from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand, leave_queue
+from request_engine.modules.queue.adapters.db.service_queue_reader import (
+    PostgresServiceQueueReader,
+)
+from request_engine.modules.queue.application.commands.call_next import (
+    CallNextCommand,
+    call_next,
+)
+from request_engine.modules.queue.application.commands.join_queue import (
+    JoinQueueCommand,
+    join_queue,
+)
+from request_engine.modules.queue.application.commands.leave_queue import (
+    LeaveQueueCommand,
+    leave_queue,
+)
 from request_engine.modules.queue.application.queries.get_queue_status import get_queue_status
-from request_engine.modules.queue.application.queries.list_service_queues import list_service_queues
+from request_engine.modules.queue.application.queries.list_service_queues import (
+    list_service_queues,
+)
 from request_engine.platform.security.context import ActorContext
 
 IdempotencyKey = Annotated[
