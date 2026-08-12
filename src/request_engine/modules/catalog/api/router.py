@@ -2,17 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from request_engine.modules.catalog.adapters.db.business_info_reader import (
-    PostgresBusinessInfoReader,
-)
-from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
-    PostgresOfferingCatalogReader,
-)
 from request_engine.modules.catalog.api.models import BusinessInfoView, OfferingView
 from request_engine.modules.catalog.application.queries.get_business_info import (
+    BusinessInfoReader,
     get_business_info,
 )
 from request_engine.modules.catalog.application.queries.search_offerings import (
+    OfferingCatalogReader,
     SearchOfferingsQuery,
     get_offering_details,
     search_offerings,
@@ -23,8 +19,8 @@ from request_engine.platform.security.http import ActorResolver, AuthenticationR
 
 def create_router(
     *,
-    business_reader: PostgresBusinessInfoReader,
-    offering_reader: PostgresOfferingCatalogReader,
+    business_reader: BusinessInfoReader,
+    offering_reader: OfferingCatalogReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(tags=["catalog"])
