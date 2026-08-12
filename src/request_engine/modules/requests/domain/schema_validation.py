@@ -224,11 +224,7 @@ def _validate_object(
         raise RequestPayloadInvalid(data_path, f"allows at most {maximum} properties")
 
     raw_properties = schema.get("properties", {})
-    properties = (
-        cast(dict[str, object], raw_properties)
-        if isinstance(raw_properties, dict)
-        else {}
-    )
+    properties = cast(dict[str, object], raw_properties) if isinstance(raw_properties, dict) else {}
     additional = schema.get("additionalProperties", True)
 
     for name, child_value in value.items():
