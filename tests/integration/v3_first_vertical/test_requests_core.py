@@ -223,6 +223,7 @@ def _base_create_command(
         ),
         correlations=correlations,
         idempotency_key=idempotency_key,
+        allow_party_override=True,
     )
 
 
@@ -267,7 +268,9 @@ async def test_request_result_completion_and_replay_are_transactional(
     queried = await get_request_status(
         reader,
         organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
         request_id=created.id,
+        allow_party_override=True,
     )
     assert queried == created
 
@@ -323,6 +326,7 @@ async def test_request_result_completion_and_replay_are_transactional(
                 reason="too late",
                 expected_revision=3,
                 idempotency_key=f"late-cancel-{uuid4().hex}",
+                allow_party_override=True,
             ),
         )
 
@@ -434,7 +438,9 @@ async def test_request_contract_failures_do_not_mutate_authoritative_state(
     unchanged = await get_request_status(
         reader,
         organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
         request_id=result_required.id,
+        allow_party_override=True,
     )
     assert unchanged is not None
     assert unchanged.status is RequestStatus.OPEN
@@ -470,6 +476,7 @@ async def test_request_contract_failures_do_not_mutate_authoritative_state(
                 request_id=no_result.id,
                 expected_revision=99,
                 idempotency_key=f"bad-revision-{uuid4().hex}",
+                allow_party_override=True,
             ),
         )
 
@@ -628,6 +635,7 @@ async def test_terminal_request_commands_serialize_on_request_row(
                     expected_revision=1,
                     reason="concurrent cancellation",
                     idempotency_key=f"terminal-cancel-{uuid4().hex}",
+                    allow_party_override=True,
                 ),
             )
         ),
