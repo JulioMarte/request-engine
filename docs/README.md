@@ -10,6 +10,8 @@ The V3 product thesis is followed by concrete capability and pre-SQL transaction
 
 The historical V2 PostgreSQL design chain remains useful as executable design history, but it is **not** a schema to freeze or extend. The active candidate is still pre-baseline: it must survive the required PostgreSQL invariant/race/security tests and application vertical slices before becoming `0001_initial`.
 
+`v3/capability-manifest.toml` is the machine-readable capability inventory. Its `freeze_ready` field is deliberately `false` until the adversarial schema-freeze gates are satisfied. `15-adversarial-architecture-review.md` records current blockers and deliberately has authority to prevent a baseline freeze even when the candidate SQL is executable.
+
 When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the first schema, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
 
 ## Authoritative documents
@@ -19,12 +21,14 @@ Use this precedence when rules overlap:
 1. `11-capability-first-v3.md` — product thesis, baseline capabilities and explicit V2 reductions.
 2. `v3/01-capability-contracts.md` — public/application capability semantics for agents, forms, apps and integrations.
 3. `v3/02-pre-sql-contract.md` — V3 entities/cardinalities, serialization roots, lock ordering, transaction protocols, invariants and race matrix.
-4. `07-database-access-contract.md` — Python ↔ PostgreSQL boundary where not superseded by V3.
-5. `09-python-module-architecture.md` — physical Python repository/module rules.
-6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
-7. `10-module-ownership-map.md` — module ownership.
-8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
-9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
+4. `15-adversarial-architecture-review.md` — current evidence-based blockers, contradiction resolution and schema-freeze gates.
+5. `v3/capability-manifest.toml` — machine-readable capability identity/owner/permission/proof status.
+6. `07-database-access-contract.md` — Python ↔ PostgreSQL boundary where not superseded by V3.
+7. `09-python-module-architecture.md` — physical Python repository/module rules.
+8. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
+9. `10-module-ownership-map.md` — module ownership.
+10. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
+11. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
 Transition support documents:
 
@@ -41,7 +45,7 @@ The domain/transaction contracts have precedence over implementation convenience
 Current accepted decisions include:
 
 - modular monolith instead of premature microservices;
-- smart PostgreSQL with Python-owned command orchestration;
+- smart PostgreSQL with Python-owned semantic command intent and explicit deep transactional executors where correctness is data-centric;
 - module-first Python physical organization;
 - repository documentation as the canonical knowledge system for coding agents;
 - capability-first product core instead of a universal workflow/domain model;
@@ -58,12 +62,14 @@ The semantic dependency direction remains:
 ```text
 entrypoint/adapter
       ↓
-application command/query
+application command/query contract
       ↓
 domain rules + explicit ports
       ↑
 database/provider adapters
 ```
+
+For correctness-sensitive PostgreSQL commands, the concrete DB adapter may be a **deep transactional executor** that keeps the full lock/revalidation/write/audit/outbox protocol in one implementation unit. This is not permission to put arbitrary business policy in persistence code; it avoids replacing a coherent transaction script with shallow Repository/UnitOfWork ceremony that leaks `AsyncSession` mechanics upward.
 
 Physical organization is module-first according to `09-python-module-architecture.md`. Business transport is module-owned, while process entrypoints compose published module surfaces rather than reaching into module persistence/provider internals.
 
@@ -78,6 +84,12 @@ BOX B
 ```
 
 The connector must define ownership, contract, trust/tenant context, transaction semantics and failure/retry behavior where applicable. `14-architecture-fitness-functions.md` converts high-value structural rules into CI failures so these surfaces cannot be bypassed silently. This remains one modular monolith and does not imply microservice boundaries.
+
+### Capability identity vs permission
+
+A public/application capability ID answers **which semantic operation exists**. A permission answers **which authority is required to execute it**. They may intentionally use the same string for a simple capability, but they are not the same concept. The canonical distinction is recorded in `v3/capability-manifest.toml`.
+
+Stable capability IDs must not be derived from Python function names, adapter class names or SQL routine names. Refactoring implementation must not silently change authorization or idempotency identity.
 
 ## Documentation organization policy
 
@@ -103,7 +115,9 @@ It is installed by:
 bash scripts/db/apply_v3_candidate.sh
 ```
 
-CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history and must not be called `0001_initial` until the freeze gate in `v3/02-pre-sql-contract.md` passes.
+CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history and must not be called `0001_initial` until both the freeze gate in `v3/02-pre-sql-contract.md` and the adversarial gates in `15-adversarial-architecture-review.md` pass.
+
+In particular, persisted coordination concepts that remain `contract` rather than `implemented` in `v3/capability-manifest.toml` cannot be promoted to a frozen baseline solely because their DDL/tests compile.
 
 ### Historical V2 design chain
 
