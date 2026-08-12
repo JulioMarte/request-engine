@@ -214,6 +214,7 @@ def _book_command(
         start_at=start_at,
         resources=_choice(fixture),
         idempotency_key=f"book-{uuid4().hex}",
+        allow_subject_override=True,
     )
 
 
@@ -395,6 +396,7 @@ async def test_self_overlap_reschedule_replaces_claim_without_self_conflict(
             start_at=new_start,
             resources=_choice(fixture),
             idempotency_key=f"reschedule-{uuid4().hex}",
+            allow_subject_override=True,
         ),
     )
     assert moved.id == reservation.id
@@ -455,6 +457,7 @@ async def test_failed_reschedule_rolls_back_original_reservation_and_claim(
                 start_at=blocked_start,
                 resources=_choice(fixture),
                 idempotency_key=f"reschedule-fail-{uuid4().hex}",
+                allow_subject_override=True,
             ),
         )
 
