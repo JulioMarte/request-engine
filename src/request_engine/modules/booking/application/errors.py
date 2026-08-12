@@ -30,6 +30,15 @@ class AppointmentUnavailable(BookingError):
         self.reason = reason
 
 
+class SubjectAuthorityRequired(BookingError):
+    def __init__(self, subject_party_id: UUID, scope_key: str) -> None:
+        super().__init__(
+            f"Principal is not authorized to act for Party {subject_party_id} in scope {scope_key}"
+        )
+        self.subject_party_id = subject_party_id
+        self.scope_key = scope_key
+
+
 class InvalidHoldExpiration(BookingError):
     def __init__(self) -> None:
         super().__init__("CapacityHold expires_at must be after the database wall-clock time")
