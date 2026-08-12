@@ -39,8 +39,30 @@ The originating business transaction commits before provider I/O occurs. Communi
 - `CommunicationTask` is durable intent. Creating a new task and its first `dispatch_task` ScheduledAction is one tenant-scoped transaction.
 - Idempotency-key replay and domain `dedupe_key` are distinct. Reusing a dedupe key is legal only when it identifies the exact same communication intent; differing payload/recipient/template is a conflict.
 - Provider/network I/O never occurs while the authoritative task transaction is open.
-- A provider delivery is at-least-once from Request Engine's perspective; provider idempotency/correlation must prevent duplicate external effects where supported.
-- Exactly-once external delivery is not promised. Ambiguous provider outcomes require query/reconciliation rather than blind resend.
+- A concrete endpoint is resolved and the `CommunicationDelivery(status=attempting)` fact is committed before provider I/O begins.
+- Each delivery attempt receives a deterministic provider idempotency key derived from `CommunicationTask + attempt_no`.
+- The worker executes three phases: `prepare DB transaction -> provider I/O -> finalize DB transaction`.
+- A crashed/leased replay that finds the latest Delivery in `attempting`, `accepted` or `ambiguous` performs provider lookup/reconciliation before any new send.
+- A send-side exception is treated conservatively as `ambiguous`; it is never interpreted as proof that the provider did not accept the request.
+- `accepted` and `ambiguous` results schedule a fenced `reconcile_delivery` action. Repeated `accepted` lookups may schedule another future reconciliation, but replay first reuses already-scheduled future work.
+- `delivered` completes the CommunicationTask.
+- A non-retryable provider failure fails the CommunicationTask.
+- A retryable provider failure returns the task to `pending` and schedules a **new** future `dispatch_task` keyed by the Delivery that failed. An old/reclaimed lease observes that future retry and cannot bypass its backoff.
+- Lookup infrastructure failures retry the lookup action; they do not trigger a send.
+- Exactly-once external delivery is not promised. The contract is duplicate-resistant, provider-correlated and reconciliation-first after uncertainty.
+
+The initial `channel_policy` surface is intentionally small:
+
+```json
+{
+  "channels": ["whatsapp", "sms"],
+  "provider_key": "provider-name",
+  "retry_after_seconds": 60,
+  "reconcile_after_seconds": 300
+}
+```
+
+`channels` is ordered. `sms` and `voice` resolve against a `phone` ContactPoint; `email` and `whatsapp` resolve against matching endpoint types. An explicit ContactPoint must still match the policy and remain active. Automatic endpoint selection only uses active, verified ContactPoints.
 
 ## ReminderPlan baseline
 
