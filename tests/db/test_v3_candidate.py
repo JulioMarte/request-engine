@@ -2,7 +2,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Event
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -23,7 +23,7 @@ class BookingFixture:
 
 def _uuid_row(
     conn: PgConnection,
-    sql: str,
+    sql: LiteralString,
     params: tuple[object, ...] = (),
 ) -> UUID:
     row = conn.execute(sql, params).fetchone()

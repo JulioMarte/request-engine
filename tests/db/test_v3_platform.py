@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -10,7 +10,7 @@ PgConnection = Connection[tuple[Any, ...]]
 
 def _uuid_row(
     conn: PgConnection,
-    sql: str,
+    sql: LiteralString,
     params: tuple[object, ...] = (),
 ) -> UUID:
     row = conn.execute(sql, params).fetchone()
