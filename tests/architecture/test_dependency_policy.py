@@ -62,6 +62,10 @@ def _is_prefixed(import_name: str, prefix: str) -> bool:
     return import_name == prefix or import_name.startswith(f"{prefix}.")
 
 
+def _matches_any(import_name: str, prefixes: Iterable[str]) -> bool:
+    return any(_is_prefixed(import_name, prefix) for prefix in prefixes)
+
+
 def _cross_module_target(owner: str, import_name: str) -> tuple[str, str | None] | None:
     prefix = "request_engine.modules."
     if not import_name.startswith(prefix):
@@ -169,17 +173,18 @@ def test_module_dependencies_match_approved_direction_policy() -> None:
         violations,
         "Do not widen MODULE_DEPENDENCY_POLICY as a mechanical fix. First verify ownership, "
         "whether the dependency must be synchronous, and whether an event/outbox boundary is "
-        "the correct connection surface; update canonical architecture docs when a new edge is accepted.",
+        "correct. Update canonical architecture docs when a new edge is accepted.",
     )
 
 
 def test_actual_module_dependency_graph_is_acyclic() -> None:
     graph = _actual_dependency_graph()
     cycle = _find_cycle(graph)
-    assert cycle is None, (
+    message = (
         "Business-module dependency cycle detected: "
-        f"{' -> '.join(cycle or ())}. Revisit ownership or introduce a one-way contract/event surface."
+        f"{' -> '.join(cycle or ())}. Revisit ownership or use a one-way surface."
     )
+    assert cycle is None, message
 
 
 def test_domain_layers_do_not_depend_on_outer_layers_or_infrastructure() -> None:
@@ -194,9 +199,9 @@ def test_domain_layers_do_not_depend_on_outer_layers_or_infrastructure() -> None
         )
         for path in _python_files(MODULES_ROOT / module / "domain"):
             for import_name in _imports(path):
-                if any(_is_prefixed(import_name, item) for item in FRAMEWORK_OR_INFRA_PREFIXES):
-                    violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
-                elif any(_is_prefixed(import_name, item) for item in forbidden_internal):
+                if _matches_any(import_name, FRAMEWORK_OR_INFRA_PREFIXES) or _matches_any(
+                    import_name, forbidden_internal
+                ):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert not violations, _format_violations(
@@ -218,16 +223,16 @@ def test_application_layers_do_not_import_module_adapters_or_transport() -> None
         )
         for path in _python_files(MODULES_ROOT / module / "application"):
             for import_name in _imports(path):
-                if any(_is_prefixed(import_name, item) for item in FRAMEWORK_OR_INFRA_PREFIXES):
-                    violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
-                elif any(_is_prefixed(import_name, item) for item in forbidden_internal):
+                if _matches_any(import_name, FRAMEWORK_OR_INFRA_PREFIXES) or _matches_any(
+                    import_name, forbidden_internal
+                ):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert not violations, _format_violations(
         "Application layer imported a concrete adapter or transport concern.",
         violations,
-        "Define/use a Protocol at the application boundary and compose its concrete adapter outside "
-        "the application layer.",
+        "Define/use a Protocol at the application boundary. Compose its concrete adapter "
+        "outside the application layer.",
     )
 
 
@@ -244,8 +249,8 @@ def test_http_routers_depend_on_application_surfaces_not_concrete_adapters() -> 
     assert not violations, _format_violations(
         "HTTP router depends on a concrete adapter.",
         violations,
-        "Type routers against application Protocols. Concrete PostgreSQL/provider construction belongs "
-        "in the module-owned install/composition surface, not router.py.",
+        "Type routers against application Protocols. Concrete PostgreSQL/provider construction "
+        "belongs in the module-owned install/composition surface, not router.py.",
     )
 
 
@@ -262,16 +267,16 @@ def test_contract_surfaces_are_dependency_light() -> None:
         )
         for path in _python_files(MODULES_ROOT / module / "contracts"):
             for import_name in _imports(path):
-                if any(_is_prefixed(import_name, item) for item in FRAMEWORK_OR_INFRA_PREFIXES):
-                    violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
-                elif any(_is_prefixed(import_name, item) for item in forbidden_internal):
+                if _matches_any(import_name, FRAMEWORK_OR_INFRA_PREFIXES) or _matches_any(
+                    import_name, forbidden_internal
+                ):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert not violations, _format_violations(
         "Published module contract leaked internal/framework dependencies.",
         violations,
-        "Contracts must remain stable, dependency-light connection surfaces. Map internal domain or "
-        "persistence objects into explicit contract values instead of re-exporting internals.",
+        "Contracts must remain stable, dependency-light connection surfaces. Map internal domain "
+        "or persistence objects into explicit contract values instead of re-exporting internals.",
     )
 
 
@@ -286,12 +291,12 @@ def test_database_adapters_do_not_depend_on_http_transport() -> None:
         )
         for path in _python_files(db_root):
             for import_name in _imports(path):
-                if any(_is_prefixed(import_name, item) for item in forbidden):
+                if _matches_any(import_name, forbidden):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert not violations, _format_violations(
         "Database adapter depends on HTTP transport.",
         violations,
-        "Map database rows/errors to application/domain contracts inside the DB adapter. HTTP DTOs "
-        "and FastAPI concerns belong outside persistence.",
+        "Map database rows/errors to application/domain contracts inside the DB adapter. HTTP "
+        "DTOs and FastAPI concerns belong outside persistence.",
     )
