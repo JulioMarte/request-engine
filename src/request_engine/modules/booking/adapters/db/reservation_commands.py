@@ -15,6 +15,11 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
     load_resource_exceptions,
     load_resource_schedules,
 )
+from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
+from request_engine.modules.booking.application.authority import (
+    BOOK_APPOINTMENT_SCOPE,
+    MANAGE_APPOINTMENT_SCOPE,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
 )
@@ -123,6 +128,14 @@ class PostgresReservationCommands:
                 subject_party_id=command.subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=command.origin_request_id,
+            )
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                scope_key=BOOK_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
             )
             requirements = await load_requirements(
                 session,
@@ -244,6 +257,7 @@ class PostgresReservationCommands:
                 details={
                     "offering_version_id": str(command.offering_version_id),
                     "subject_party_id": str(command.subject_party_id),
+                    "subject_authority": authority.audit_details(),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
                     "resource_ids": [str(choice.resource_id) for choice in choices.values()],
@@ -301,7 +315,7 @@ class PostgresReservationCommands:
                     await session.execute(
                         text(
                             """
-                            SELECT id, status
+                            SELECT id, status, subject_party_id
                             FROM request_engine.reservations
                             WHERE organization_id = :organization_id
                               AND id = :reservation_id
@@ -319,6 +333,15 @@ class PostgresReservationCommands:
             )
             if locked is None:
                 raise ReservationNotFound(command.reservation_id)
+            subject_party_id = cast(UUID, locked["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key=MANAGE_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
+            )
             status = cast(str, locked["status"])
             if status != "confirmed":
                 raise ReservationNotCancellable(command.reservation_id, status)
@@ -389,7 +412,11 @@ class PostgresReservationCommands:
                 aggregate_kind="Reservation",
                 aggregate_id=command.reservation_id,
                 idempotency_id=idempotency_id,
-                details={"reason": command.reason},
+                details={
+                    "reason": command.reason,
+                    "subject_party_id": str(subject_party_id),
+                    "subject_authority": authority.audit_details(),
+                },
             )
             await append_outbox(
                 session,
