@@ -19,7 +19,7 @@ files=(
 : "${PGHOST:=127.0.0.1}"
 : "${PGPORT:=5432}"
 : "${PGDATABASE:=request_engine_v3}"
-: "${PGUSER:=request_engine"
+: "${PGUSER:=request_engine}"
 
 export PGHOST PGPORT PGDATABASE PGUSER
 
