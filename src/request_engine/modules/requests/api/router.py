@@ -50,7 +50,7 @@ from request_engine.modules.requests.contracts.request import (
     RequestParticipantInput,
 )
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -72,13 +72,7 @@ def create_router(
     router = APIRouter(prefix="/v1/requests", tags=["requests"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
-        try:
-            return await actor_resolver.resolve_actor(request)
-        except AuthenticationRequired as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="authentication required",
-            ) from exc
+        return await actor_resolver.resolve_actor(request)
 
     async def submit_request(
         request_key: str,
@@ -86,7 +80,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> SubmittedRequestView:
-        _require(actor, "requests.submit")
+        require_capability(actor, "requests.submit")
         resolved = await resolve_request_definition(
             definition_resolver,
             organization_id=actor.organization_id,
@@ -131,7 +125,7 @@ def create_router(
         request_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> RequestView:
-        _require(actor, "requests.read")
+        require_capability(actor, "requests.read")
         request = await get_request_status(
             reader,
             organization_id=actor.organization_id,
@@ -149,7 +143,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
-        _require(actor, "requests.record_result")
+        require_capability(actor, "requests.record_result")
         request = await record_request_result(
             record_result_handler,
             RecordRequestResultCommand(
@@ -169,7 +163,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
-        _require(actor, "requests.complete")
+        require_capability(actor, "requests.complete")
         request = await complete_request(
             complete_handler,
             CompleteRequestCommand(
@@ -189,7 +183,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
-        _require(actor, "requests.cancel")
+        require_capability(actor, "requests.cancel")
         request = await cancel_request(
             cancel_handler,
             CancelRequestCommand(
@@ -210,7 +204,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
-        _require(actor, "requests.fail")
+        require_capability(actor, "requests.fail")
         request = await fail_request(
             fail_handler,
             FailRequestCommand(
@@ -263,11 +257,3 @@ def create_router(
         response_model=RequestView,
     )
     return router
-
-
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
-        )
