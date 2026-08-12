@@ -12,6 +12,7 @@ files=(
   "005-read-access.sql"
   "006-capacity-hardening.sql"
   "007-contract-convergence.sql"
+  "008-tenant-party-authority.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
