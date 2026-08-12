@@ -42,7 +42,9 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
         )
     if isinstance(exc, RequestNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
-            code="request_not_found", message=str(exc), details={"request_id": str(exc.request_id)}
+            code="request_not_found",
+            message=str(exc),
+            details={"request_id": str(exc.request_id)},
         )
     if isinstance(exc, RequestPayloadInvalid):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
@@ -52,7 +54,9 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
         )
     if isinstance(exc, RequestPartyNotUsable):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
-            code="request_party_not_usable", message=str(exc), details={"party_id": str(exc.party_id)}
+            code="request_party_not_usable",
+            message=str(exc),
+            details={"party_id": str(exc.party_id)},
         )
     if isinstance(exc, UnsupportedRequestSchema):
         return status.HTTP_500_INTERNAL_SERVER_ERROR, ErrorBody(
@@ -103,7 +107,8 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
             details={"version_id": str(exc.version_id)},
         )
     return status.HTTP_500_INTERNAL_SERVER_ERROR, ErrorBody(
-        code="request_error", message="the Request command failed"
+        code="request_error",
+        message="the Request command failed",
     )
 
 
@@ -112,5 +117,7 @@ def _conflict(
     exc: RequestResultAlreadyRecorded | RequestResultRequired,
 ) -> tuple[int, ErrorBody]:
     return status.HTTP_409_CONFLICT, ErrorBody(
-        code=code, message=str(exc), details={"request_id": str(exc.request_id)}
+        code=code,
+        message=str(exc),
+        details={"request_id": str(exc.request_id)},
     )
