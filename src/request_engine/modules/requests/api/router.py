@@ -3,7 +3,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from request_engine.modules.requests.adapters.db.request_commands import PostgresRequestCommands
+from request_engine.modules.requests.adapters.db.request_commands import (
+    PostgresRequestCommands,
+)
 from request_engine.modules.requests.adapters.db.request_definition_reader import (
     PostgresRequestDefinitionResolver,
 )
@@ -37,7 +39,9 @@ from request_engine.modules.requests.application.commands.record_request_result 
     RecordRequestResultCommand,
     record_request_result,
 )
-from request_engine.modules.requests.application.queries.get_request_status import get_request_status
+from request_engine.modules.requests.application.queries.get_request_status import (
+    get_request_status,
+)
 from request_engine.modules.requests.application.queries.resolve_request_definition import (
     resolve_request_definition,
 )
@@ -95,7 +99,10 @@ def create_router(
                 requester_party_id=body.requester_party_id,
                 recipient_party_id=body.recipient_party_id,
                 participants=tuple(
-                    RequestParticipantInput(party_id=item.party_id, role_key=item.role_key)
+                    RequestParticipantInput(
+                        party_id=item.party_id,
+                        role_key=item.role_key,
+                    )
                     for item in body.participants
                 ),
                 correlations=tuple(
@@ -217,17 +224,36 @@ def create_router(
         response_model=SubmittedRequestView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route("/{request_id}", read_request, methods=["GET"], response_model=RequestView)
     router.add_api_route(
-        "/{request_id}/result", record_result, methods=["POST"], response_model=RequestView
+        "/{request_id}",
+        read_request,
+        methods=["GET"],
+        response_model=RequestView,
     )
     router.add_api_route(
-        "/{request_id}/complete", complete, methods=["POST"], response_model=RequestView
+        "/{request_id}/result",
+        record_result,
+        methods=["POST"],
+        response_model=RequestView,
     )
     router.add_api_route(
-        "/{request_id}/cancel", cancel, methods=["POST"], response_model=RequestView
+        "/{request_id}/complete",
+        complete,
+        methods=["POST"],
+        response_model=RequestView,
     )
-    router.add_api_route("/{request_id}/fail", fail, methods=["POST"], response_model=RequestView)
+    router.add_api_route(
+        "/{request_id}/cancel",
+        cancel,
+        methods=["POST"],
+        response_model=RequestView,
+    )
+    router.add_api_route(
+        "/{request_id}/fail",
+        fail,
+        methods=["POST"],
+        response_model=RequestView,
+    )
     return router
 
 
