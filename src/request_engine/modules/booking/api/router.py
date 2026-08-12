@@ -11,6 +11,7 @@ from request_engine.modules.booking.api.models import (
     RescheduleReservationBody,
     ReservationView,
 )
+from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     BookAppointmentHandler,
@@ -35,6 +36,7 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
+from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
 
@@ -51,6 +53,7 @@ def create_router(
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
     reservation_reader: ReservationReader,
+    authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/appointments", tags=["appointments"])
@@ -104,6 +107,7 @@ def create_router(
                 location_id=body.location_id,
                 origin_request_id=body.origin_request_id,
                 idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return ReservationView.from_contract(reservation)
@@ -115,8 +119,11 @@ def create_router(
         _require(actor, "booking.read")
         reservation = await get_reservation_status(
             reservation_reader,
+            authority_reader,
             organization_id=actor.organization_id,
+            principal_id=actor.principal_id,
             reservation_id=reservation_id,
+            allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
         )
         if reservation is None:
             raise HTTPException(status_code=404, detail="Reservation not found")
@@ -137,6 +144,7 @@ def create_router(
                 reservation_id=reservation_id,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return ReservationView.from_contract(reservation)
@@ -158,6 +166,7 @@ def create_router(
                 resources=tuple(item.to_contract() for item in body.resources),
                 location_id=body.location_id,
                 idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return ReservationView.from_contract(reservation)
