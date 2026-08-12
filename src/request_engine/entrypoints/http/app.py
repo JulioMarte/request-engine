@@ -15,21 +15,31 @@ from request_engine.entrypoints.http.security import ActorResolver
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import PostgresReservationCommands
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.reservation_commands import (
+    PostgresReservationCommands,
+)
+from request_engine.modules.booking.adapters.db.reservation_reader import (
+    PostgresReservationReader,
+)
 from request_engine.modules.booking.application.errors import BookingError
-from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader
+from request_engine.modules.catalog.adapters.db.business_info_reader import (
+    PostgresBusinessInfoReader,
+)
 from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
     PostgresOfferingCatalogReader,
 )
-from request_engine.modules.queue.adapters.db.leave_queue_commands import PostgresLeaveQueueCommands
+from request_engine.modules.queue.adapters.db.leave_queue_commands import (
+    PostgresLeaveQueueCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
+from request_engine.modules.queue.adapters.db.service_queue_reader import (
+    PostgresServiceQueueReader,
+)
 from request_engine.modules.queue.application.errors import QueueError
 from request_engine.modules.requests.adapters.db.request_commands import PostgresRequestCommands
 from request_engine.modules.requests.adapters.db.request_definition_reader import (
