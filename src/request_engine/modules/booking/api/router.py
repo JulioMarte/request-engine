@@ -75,7 +75,7 @@ def create_router(
         location_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
-        _require(actor, "booking.find_slots")
+        _require(actor, "appointments.find_slots")
         result = await find_appointment_slots(
             availability_reader,
             FindAppointmentSlotsQuery(
@@ -94,7 +94,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.book_appointment")
+        _require(actor, "appointments.book")
         reservation = await book_appointment(
             book_handler,
             BookAppointmentCommand(
@@ -116,7 +116,7 @@ def create_router(
         reservation_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> ReservationView:
-        _require(actor, "booking.read")
+        _require(actor, "appointments.read")
         reservation = await get_reservation_status(
             reservation_reader,
             authority_reader,
@@ -135,7 +135,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.cancel_reservation")
+        _require(actor, "appointments.cancel")
         reservation = await cancel_reservation(
             cancel_handler,
             CancelReservationCommand(
@@ -155,7 +155,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.reschedule_reservation")
+        _require(actor, "appointments.reschedule")
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
