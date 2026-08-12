@@ -3,14 +3,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from request_engine.modules.queue.adapters.db.leave_queue_commands import PostgresLeaveQueueCommands
+from request_engine.modules.queue.adapters.db.leave_queue_commands import (
+    PostgresLeaveQueueCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
+from request_engine.modules.queue.adapters.db.service_queue_reader import (
+    PostgresServiceQueueReader,
+)
 from request_engine.modules.queue.api.models import (
     JoinQueueBody,
     LeaveQueueBody,
@@ -18,11 +22,24 @@ from request_engine.modules.queue.api.models import (
     QueueStatusView,
     ServiceQueueView,
 )
-from request_engine.modules.queue.application.commands.call_next import CallNextCommand, call_next
-from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand, join_queue
-from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand, leave_queue
-from request_engine.modules.queue.application.queries.get_queue_status import get_queue_status
-from request_engine.modules.queue.application.queries.list_service_queues import list_service_queues
+from request_engine.modules.queue.application.commands.call_next import (
+    CallNextCommand,
+    call_next,
+)
+from request_engine.modules.queue.application.commands.join_queue import (
+    JoinQueueCommand,
+    join_queue,
+)
+from request_engine.modules.queue.application.commands.leave_queue import (
+    LeaveQueueCommand,
+    leave_queue,
+)
+from request_engine.modules.queue.application.queries.get_queue_status import (
+    get_queue_status,
+)
+from request_engine.modules.queue.application.queries.list_service_queues import (
+    list_service_queues,
+)
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
 
@@ -134,7 +151,12 @@ def create_router(
         )
         return QueueEntryView.from_contract(entry) if entry is not None else None
 
-    router.add_api_route("", queues, methods=["GET"], response_model=tuple[ServiceQueueView, ...])
+    router.add_api_route(
+        "",
+        queues,
+        methods=["GET"],
+        response_model=tuple[ServiceQueueView, ...],
+    )
     router.add_api_route(
         "/{queue_id}/join",
         join,
@@ -143,10 +165,16 @@ def create_router(
         status_code=status.HTTP_201_CREATED,
     )
     router.add_api_route(
-        "/{queue_id}/status", queue_status, methods=["GET"], response_model=QueueStatusView
+        "/{queue_id}/status",
+        queue_status,
+        methods=["GET"],
+        response_model=QueueStatusView,
     )
     router.add_api_route(
-        "/{queue_id}/leave", leave, methods=["POST"], response_model=QueueEntryView
+        "/{queue_id}/leave",
+        leave,
+        methods=["POST"],
+        response_model=QueueEntryView,
     )
     router.add_api_route(
         "/{queue_id}/call-next",
