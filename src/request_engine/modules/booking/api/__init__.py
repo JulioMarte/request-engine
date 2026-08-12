@@ -22,11 +22,14 @@ def install_http(
 ) -> None:
     """Connect the Booking module to the HTTP process through its owned surface."""
 
+    commands = PostgresReservationCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
-            commands=PostgresReservationCommands(session_factory),
+            book_handler=commands,
+            cancel_handler=commands,
+            reschedule_handler=commands,
             reservation_reader=PostgresReservationReader(session_factory),
             actor_resolver=actor_resolver,
         )
