@@ -23,7 +23,8 @@ Use this precedence when rules overlap:
 5. `09-python-module-architecture.md` — physical Python repository/module rules.
 6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
 7. `10-module-ownership-map.md` — module ownership.
-8. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
+8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
+9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
 Transition support documents:
 
@@ -76,7 +77,7 @@ BOX A
 BOX B
 ```
 
-The connector must define ownership, contract, trust/tenant context, transaction semantics and failure/retry behavior where applicable. This remains one modular monolith and does not imply microservice boundaries.
+The connector must define ownership, contract, trust/tenant context, transaction semantics and failure/retry behavior where applicable. `14-architecture-fitness-functions.md` converts high-value structural rules into CI failures so these surfaces cannot be bypassed silently. This remains one modular monolith and does not imply microservice boundaries.
 
 ## Documentation organization policy
 

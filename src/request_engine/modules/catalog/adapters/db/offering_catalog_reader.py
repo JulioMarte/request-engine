@@ -11,6 +11,33 @@ from request_engine.modules.catalog.application.queries.search_offerings import 
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
+_SEARCH_SELECT = """
+SELECT o.id,
+       o.offering_key,
+       o.display_name,
+       o.description,
+       latest.id AS version_id,
+       latest.version,
+       latest.duration_minutes,
+       latest.bookable,
+       latest.requestable,
+       latest.public_data
+FROM request_engine.offerings AS o
+JOIN LATERAL (
+    SELECT ov.id,
+           ov.version,
+           ov.duration_minutes,
+           ov.bookable,
+           ov.requestable,
+           ov.public_data
+    FROM request_engine.offering_versions AS ov
+    WHERE ov.organization_id = o.organization_id
+      AND ov.offering_id = o.id
+    ORDER BY ov.version DESC
+    LIMIT 1
+) AS latest ON true
+"""
+
 
 class PostgresOfferingCatalogReader:
     def __init__(self, session_factory: SessionFactory) -> None:
@@ -20,67 +47,36 @@ class PostgresOfferingCatalogReader:
         self,
         query: SearchOfferingsQuery,
     ) -> tuple[OfferingSummary, ...]:
-        search_pattern = (
-            f"%{query.search_text.strip()}%"
-            if query.search_text is not None and query.search_text.strip()
-            else None
+        predicates = ["o.organization_id = :organization_id", "o.active"]
+        parameters: dict[str, object] = {
+            "organization_id": query.organization_id,
+            "limit": query.limit,
+        }
+
+        if query.search_text is not None and (search_text := query.search_text.strip()):
+            predicates.append(
+                "("
+                "o.offering_key ILIKE :search_pattern "
+                "OR o.display_name ILIKE :search_pattern "
+                "OR COALESCE(o.description, '') ILIKE :search_pattern"
+                ")"
+            )
+            parameters["search_pattern"] = f"%{search_text}%"
+        if query.bookable is not None:
+            predicates.append("latest.bookable = :bookable")
+            parameters["bookable"] = query.bookable
+        if query.requestable is not None:
+            predicates.append("latest.requestable = :requestable")
+            parameters["requestable"] = query.requestable
+
+        statement = text(
+            _SEARCH_SELECT
+            + "WHERE "
+            + "\n  AND ".join(predicates)
+            + "\nORDER BY o.display_name, o.id\nLIMIT :limit"
         )
         async with tenant_transaction(self._session_factory, query.organization_id) as session:
-            rows = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT o.id,
-                                   o.offering_key,
-                                   o.display_name,
-                                   o.description,
-                                   latest.id AS version_id,
-                                   latest.version,
-                                   latest.duration_minutes,
-                                   latest.bookable,
-                                   latest.requestable,
-                                   latest.public_data
-                            FROM request_engine.offerings AS o
-                            JOIN LATERAL (
-                                SELECT ov.id,
-                                       ov.version,
-                                       ov.duration_minutes,
-                                       ov.bookable,
-                                       ov.requestable,
-                                       ov.public_data
-                                FROM request_engine.offering_versions AS ov
-                                WHERE ov.organization_id = o.organization_id
-                                  AND ov.offering_id = o.id
-                                ORDER BY ov.version DESC
-                                LIMIT 1
-                            ) AS latest ON true
-                            WHERE o.organization_id = :organization_id
-                              AND o.active
-                              AND (
-                                  :search_pattern IS NULL
-                                  OR o.offering_key ILIKE :search_pattern
-                                  OR o.display_name ILIKE :search_pattern
-                                  OR COALESCE(o.description, '') ILIKE :search_pattern
-                              )
-                              AND (:bookable IS NULL OR latest.bookable = :bookable)
-                              AND (:requestable IS NULL OR latest.requestable = :requestable)
-                            ORDER BY o.display_name, o.id
-                            LIMIT :limit
-                            """
-                        ),
-                        {
-                            "organization_id": query.organization_id,
-                            "search_pattern": search_pattern,
-                            "bookable": query.bookable,
-                            "requestable": query.requestable,
-                            "limit": query.limit,
-                        },
-                    )
-                )
-                .mappings()
-                .all()
-            )
+            rows = (await session.execute(statement, parameters)).mappings().all()
         return tuple(_offering_from_row(row) for row in rows)
 
     async def get_offering_by_key(
@@ -88,41 +84,18 @@ class PostgresOfferingCatalogReader:
         organization_id: UUID,
         offering_key: str,
     ) -> OfferingSummary | None:
+        statement = text(
+            _SEARCH_SELECT
+            + """WHERE o.organization_id = :organization_id
+  AND o.offering_key = :offering_key
+  AND o.active
+"""
+        )
         async with tenant_transaction(self._session_factory, organization_id) as session:
             row = (
                 (
                     await session.execute(
-                        text(
-                            """
-                            SELECT o.id,
-                                   o.offering_key,
-                                   o.display_name,
-                                   o.description,
-                                   latest.id AS version_id,
-                                   latest.version,
-                                   latest.duration_minutes,
-                                   latest.bookable,
-                                   latest.requestable,
-                                   latest.public_data
-                            FROM request_engine.offerings AS o
-                            JOIN LATERAL (
-                                SELECT ov.id,
-                                       ov.version,
-                                       ov.duration_minutes,
-                                       ov.bookable,
-                                       ov.requestable,
-                                       ov.public_data
-                                FROM request_engine.offering_versions AS ov
-                                WHERE ov.organization_id = o.organization_id
-                                  AND ov.offering_id = o.id
-                                ORDER BY ov.version DESC
-                                LIMIT 1
-                            ) AS latest ON true
-                            WHERE o.organization_id = :organization_id
-                              AND o.offering_key = :offering_key
-                              AND o.active
-                            """
-                        ),
+                        statement,
                         {
                             "organization_id": organization_id,
                             "offering_key": offering_key,

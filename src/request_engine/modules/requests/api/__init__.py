@@ -20,10 +20,15 @@ def install_http(
 ) -> None:
     """Connect the Request module to the HTTP process through its owned surface."""
 
+    commands = PostgresRequestCommands(session_factory)
     app.add_exception_handler(RequestError, request_error_handler)
     app.include_router(
         create_router(
-            commands=PostgresRequestCommands(session_factory),
+            create_handler=commands,
+            record_result_handler=commands,
+            complete_handler=commands,
+            cancel_handler=commands,
+            fail_handler=commands,
             reader=PostgresRequestReader(session_factory),
             definition_resolver=PostgresRequestDefinitionResolver(session_factory),
             actor_resolver=actor_resolver,

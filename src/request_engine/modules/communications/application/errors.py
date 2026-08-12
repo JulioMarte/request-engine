@@ -1,8 +1,9 @@
 from uuid import UUID
 
-
-class CommunicationsError(Exception):
-    """Base class for transactional communication failures."""
+from request_engine.modules.communications.domain.errors import CommunicationsError
+from request_engine.modules.communications.domain.errors import (
+    DeliveryConfigurationError as DeliveryConfigurationError,
+)
 
 
 class RecipientNotFound(CommunicationsError):
@@ -27,12 +28,6 @@ class CommunicationDedupeConflict(CommunicationsError):
     def __init__(self, dedupe_key: str) -> None:
         super().__init__(f"communication dedupe key {dedupe_key!r} identifies different intent")
         self.dedupe_key = dedupe_key
-
-
-class DeliveryConfigurationError(CommunicationsError):
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
 
 
 class DeliveryProviderNotConfigured(CommunicationsError):

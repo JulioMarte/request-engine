@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
+from request_engine.modules.booking.adapters.db.commitment_commands import (
+    PostgresBookingCommitmentCommands,
+)
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
@@ -22,11 +25,15 @@ def install_http(
 ) -> None:
     """Connect the Booking module to the HTTP process through its owned surface."""
 
+    reservation_commands = PostgresReservationCommands(session_factory)
+    commitment_commands = PostgresBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
-            commands=PostgresReservationCommands(session_factory),
+            book_handler=reservation_commands,
+            cancel_handler=reservation_commands,
+            reschedule_handler=commitment_commands,
             reservation_reader=PostgresReservationReader(session_factory),
             actor_resolver=actor_resolver,
         )

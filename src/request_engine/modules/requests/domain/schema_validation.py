@@ -3,7 +3,7 @@ import re
 from collections.abc import Sequence
 from typing import cast
 
-from request_engine.modules.requests.application.errors import (
+from request_engine.modules.requests.domain.errors import (
     RequestPayloadInvalid,
     UnsupportedRequestSchema,
 )
