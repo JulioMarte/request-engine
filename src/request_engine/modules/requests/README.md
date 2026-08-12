@@ -54,6 +54,49 @@ Every write uses one tenant-scoped PostgreSQL transaction for authoritative stat
 
 `expected_revision` is an optimistic-concurrency contract for callers that need compare-and-set semantics. It supplements rather than replaces row locking.
 
+## Requester Party authority
+
+`requester_party_id` is the caller-facing authority anchor for a Request. It identifies the Party whose demand the Request represents.
+
+The baseline deliberately separates business correlation from authority:
+
+```text
+requester_party_id   -> authority anchor
+recipient_party_id   -> business recipient only
+RequestParticipant   -> business role only
+ExternalCorrelation  -> provenance/correlation only
+```
+
+`recipient_party_id`, `guardian`, `authorized_contact`, `payer`, or any other `RequestParticipant.role_key` never grant permission by themselves. Authority comes only from an authenticated Principal plus explicit capability and, where required, a current exact-scope `Representation`.
+
+Caller-facing policy:
+
+```text
+requests.submit
+  + requester_party_id present
+  -> current Representation scope requests.submit
+     OR explicit requests.party_override
+
+requests.submit
+  + requester_party_id absent
+  -> allowed as unattributed/anonymous demand
+
+requests.read / requests.cancel
+  + requester_party_id present
+  -> current Representation scope requests.manage
+     OR explicit requests.party_override
+
+requests.read / requests.cancel
+  + requester_party_id absent
+  -> explicit requests.party_override only
+```
+
+`requests.record_result`, `requests.complete`, and `requests.fail` are tenant-side processing capabilities. They operate on the organization's processing of the Request and do not claim to act as the requester, so they do not require requester Representation in the V3 baseline.
+
+Authority for mutations is resolved inside the same authoritative tenant transaction as the Request write. `CancelRequest` first locks the Request serialization root, resolves the current requester authority against PostgreSQL wall-clock truth, then validates lifecycle/revision and writes. Request audit facts record whether authority came from `representation`, `operator`, or an `unattributed` submission path.
+
+The shared PostgreSQL primitive `request_engine.resolve_current_party_authority(...)` owns the definition of a current exact-scope Representation. Requests must not duplicate Representation validity SQL.
+
 ## Versioned payload contract
 
 V3 does **not** claim arbitrary/full JSON Schema support. Python implements and tests an explicit JSON-Schema-like subset and rejects every unsupported keyword instead of silently accepting it.
