@@ -78,10 +78,11 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
         )
     if isinstance(exc, RequestRevisionConflict):
         return status.HTTP_409_CONFLICT, ErrorBody(
-            code="request_revision_conflict",
-            message=str(exc),
+            code="revision_conflict",
+            message="the aggregate changed since it was read",
             details={
-                "request_id": str(exc.request_id),
+                "aggregate_kind": "Request",
+                "aggregate_id": str(exc.request_id),
                 "expected_revision": exc.expected,
                 "current_revision": exc.actual,
             },
