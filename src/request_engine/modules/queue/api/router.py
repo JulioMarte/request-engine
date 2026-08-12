@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.queue.api.models import (
     JoinQueueBody,
@@ -34,7 +34,7 @@ from request_engine.modules.queue.application.queries.list_service_queues import
     list_service_queues,
 )
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -56,18 +56,12 @@ def create_router(
     router = APIRouter(prefix="/v1/queues", tags=["queues"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
-        try:
-            return await actor_resolver.resolve_actor(request)
-        except AuthenticationRequired as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="authentication required",
-            ) from exc
+        return await actor_resolver.resolve_actor(request)
 
     async def queues(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> tuple[ServiceQueueView, ...]:
-        _require(actor, "queue.list")
+        require_capability(actor, "queue.list")
         result = await list_service_queues(
             catalog_reader,
             organization_id=actor.organization_id,
@@ -81,7 +75,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView:
-        _require(actor, "queue.join")
+        require_capability(actor, "queue.join")
         entry = await join_queue(
             join_executor,
             JoinQueueCommand(
@@ -102,7 +96,7 @@ def create_router(
         subject_party_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> QueueStatusView:
-        _require(actor, "queue.status")
+        require_capability(actor, "queue.status")
         result = await get_queue_status(
             reader,
             organization_id=actor.organization_id,
@@ -119,7 +113,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView:
-        _require(actor, "queue.leave")
+        require_capability(actor, "queue.leave")
         entry = await leave_queue(
             leave_executor,
             LeaveQueueCommand(
@@ -139,7 +133,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView | None:
-        _require(actor, "queue.call_next")
+        require_capability(actor, "queue.call_next")
         entry = await call_next(
             call_next_executor,
             CallNextCommand(
@@ -183,11 +177,3 @@ def create_router(
         response_model=QueueEntryView | None,
     )
     return router
-
-
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
-        )
