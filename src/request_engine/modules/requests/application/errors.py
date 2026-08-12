@@ -76,6 +76,14 @@ class RequestPartyNotUsable(RequestError):
         self.party_id = party_id
 
 
+class RequestPartyAuthorityRequired(RequestError):
+    def __init__(self, requester_party_id: UUID | None, scope_key: str) -> None:
+        requester = str(requester_party_id) if requester_party_id is not None else "unattributed Request"
+        super().__init__(f"Party authority {scope_key!r} is required for {requester}")
+        self.requester_party_id = requester_party_id
+        self.scope_key = scope_key
+
+
 class ExternalCorrelationConflict(RequestError):
     def __init__(self, correlation_kind: str, provider_key: str, external_key: str) -> None:
         super().__init__(
