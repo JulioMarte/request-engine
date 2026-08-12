@@ -4,6 +4,7 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     REMINDER_ACTION_TYPE,
@@ -18,6 +19,7 @@ from request_engine.modules.communications.adapters.db.task_store import (
     insert_or_reuse_communication_task,
 )
 from request_engine.modules.communications.application.errors import UnsupportedScheduledAction
+from request_engine.modules.communications.contracts.reminders import ReminderPlan
 from request_engine.modules.communications.domain.daily_schedule import next_daily_occurrence
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.outbox.postgres import append_outbox
@@ -63,16 +65,12 @@ class PostgresReminderOccurrenceCommands:
                     skipped_reason="plan_inactive",
                 )
 
-            next_occurrence = next_daily_occurrence(
-                after=db_now,
-                timezone=plan.timezone,
-                times=plan.schedule.times,
-            )
-            await schedule_reminder_occurrence(
+            next_occurrence = await _ensure_next_occurrence(
                 session,
                 organization_id=lease.organization_id,
-                reminder_plan_id=plan.id,
-                occurrence_at=next_occurrence,
+                plan=plan,
+                current_occurrence_at=occurrence_at,
+                db_now=db_now,
             )
 
             recipient_active = cast(
@@ -138,20 +136,20 @@ class PostgresReminderOccurrenceCommands:
                     expires_at=expires_at,
                 ),
             )
-            await schedule_action(
-                session,
-                organization_id=lease.organization_id,
-                owner_module="communications",
-                action_type="dispatch_task",
-                action_version=1,
-                subject_kind="CommunicationTask",
-                subject_id=task.id,
-                dedupe_key=f"communications:dispatch:{task.id}:v1",
-                execute_at=max(db_now, occurrence_at),
-                payload={"communication_task_id": str(task.id)},
-                max_attempts=8,
-            )
             if created:
+                await schedule_action(
+                    session,
+                    organization_id=lease.organization_id,
+                    owner_module="communications",
+                    action_type="dispatch_task",
+                    action_version=1,
+                    subject_kind="CommunicationTask",
+                    subject_id=task.id,
+                    dedupe_key=f"communications:dispatch:{task.id}:v1",
+                    execute_at=occurrence_at,
+                    payload={"communication_task_id": str(task.id)},
+                    max_attempts=8,
+                )
                 await append_outbox(
                     session,
                     organization_id=lease.organization_id,
@@ -174,6 +172,55 @@ class PostgresReminderOccurrenceCommands:
                 next_occurrence_at=next_occurrence,
                 skipped_reason=None,
             )
+
+
+async def _ensure_next_occurrence(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    plan: ReminderPlan,
+    current_occurrence_at: datetime,
+    db_now: datetime,
+) -> datetime:
+    existing = (
+        await session.execute(
+            text(
+                """
+                SELECT execute_at
+                FROM request_engine.scheduled_actions
+                WHERE organization_id = :organization_id
+                  AND owner_module = 'communications'
+                  AND action_type = :action_type
+                  AND subject_kind = 'ReminderPlan'
+                  AND subject_id = :reminder_plan_id
+                  AND execute_at > :current_occurrence_at
+                ORDER BY execute_at, id
+                LIMIT 1
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "action_type": REMINDER_ACTION_TYPE,
+                "reminder_plan_id": plan.id,
+                "current_occurrence_at": current_occurrence_at,
+            },
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return cast(datetime, existing)
+
+    next_occurrence = next_daily_occurrence(
+        after=db_now,
+        timezone=plan.timezone,
+        times=plan.schedule.times,
+    )
+    await schedule_reminder_occurrence(
+        session,
+        organization_id=organization_id,
+        reminder_plan_id=plan.id,
+        occurrence_at=next_occurrence,
+    )
+    return next_occurrence
 
 
 def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
