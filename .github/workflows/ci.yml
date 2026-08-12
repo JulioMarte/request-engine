@@ -63,7 +63,7 @@ jobs:
         run: scripts/db/apply_design_chain.sh
 
   postgres-v3-candidate:
-    name: PostgreSQL 18 V3 candidate
+    name: PostgreSQL 18 V3 candidate and races
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -87,9 +87,17 @@ jobs:
       PGPASSWORD: request_engine
     steps:
       - uses: actions/checkout@v6
-      - name: Install PostgreSQL client
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install uv and PostgreSQL client
         run: |
+          python -m pip install --disable-pip-version-check uv
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
       - name: Apply clean V3 candidate
         run: bash scripts/db/apply_v3_candidate.sh
+      - name: Resolve test environment
+        run: uv sync --all-groups
+      - name: V3 PostgreSQL invariant and race tests
+        run: uv run pytest tests/db -q -m postgres
