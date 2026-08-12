@@ -74,9 +74,10 @@ class PostgresServiceQueueCommands:
                 raise AlreadyInQueue(command.queue_id, command.subject_party_id)
 
             row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         INSERT INTO request_engine.queue_entries (
                             organization_id,
                             service_queue_id,
@@ -93,16 +94,19 @@ class PostgresServiceQueueCommands:
                         RETURNING id, service_queue_id, subject_party_id, status,
                                   admitted_at, called_at, revision
                         """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "queue_id": command.queue_id,
-                        "subject_party_id": command.subject_party_id,
-                        "reservation_id": command.reservation_id,
-                        "offering_id": command.offering_id,
-                    },
+                        ),
+                        {
+                            "organization_id": command.organization_id,
+                            "queue_id": command.queue_id,
+                            "subject_party_id": command.subject_party_id,
+                            "reservation_id": command.reservation_id,
+                            "offering_id": command.offering_id,
+                        },
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             entry = _queue_entry_from_row(row)
 
             await _append_audit(
@@ -174,9 +178,10 @@ class PostgresServiceQueueCommands:
 
             entry_id = cast(UUID, next_row[0])
             row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         UPDATE request_engine.queue_entries
                         SET status = 'called',
                             called_at = clock_timestamp(),
@@ -187,13 +192,16 @@ class PostgresServiceQueueCommands:
                         RETURNING id, service_queue_id, subject_party_id, status,
                                   admitted_at, called_at, revision
                         """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "entry_id": entry_id,
-                    },
+                        ),
+                        {
+                            "organization_id": command.organization_id,
+                            "entry_id": entry_id,
+                        },
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             entry = _queue_entry_from_row(row)
 
             await _append_audit(
@@ -233,9 +241,7 @@ class PostgresServiceQueueCommands:
                             "queue_entry_id": str(entry.id),
                             "queue_id": str(entry.queue_id),
                             "subject_party_id": str(entry.subject_party_id),
-                            "called_at": (
-                                entry.called_at.isoformat() if entry.called_at else None
-                            ),
+                            "called_at": (entry.called_at.isoformat() if entry.called_at else None),
                         },
                         separators=(",", ":"),
                     ),
@@ -284,9 +290,10 @@ async def _acquire_idempotency(
     fingerprint: str,
 ) -> tuple[UUID, dict[str, object] | None]:
     row = (
-        await session.execute(
-            text(
-                """
+        (
+            await session.execute(
+                text(
+                    """
                 SELECT idempotency_id, status, result_data, replay
                 FROM request_cmd.acquire_idempotency(
                     :organization_id,
@@ -296,16 +303,19 @@ async def _acquire_idempotency(
                     :fingerprint
                 )
                 """
-            ),
-            {
-                "organization_id": organization_id,
-                "principal_id": principal_id,
-                "capability": capability,
-                "idempotency_key": idempotency_key,
-                "fingerprint": fingerprint,
-            },
+                ),
+                {
+                    "organization_id": organization_id,
+                    "principal_id": principal_id,
+                    "capability": capability,
+                    "idempotency_key": idempotency_key,
+                    "fingerprint": fingerprint,
+                },
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
 
     idempotency_id = cast(UUID, row["idempotency_id"])
     if cast(bool, row["replay"]):
