@@ -26,7 +26,7 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "catalog": frozenset(),
     "requests": frozenset(),
     "booking": frozenset({"catalog", "tenancy"}),
-    "queue": frozenset({"booking"}),
+    "queue": frozenset({"booking", "tenancy"}),
     "communications": frozenset({"booking"}),
     "delivery": frozenset(),
     "payments": frozenset(),

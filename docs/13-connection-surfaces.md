@@ -122,6 +122,8 @@ ActorContext
 
 Module HTTP adapters perform capability checks before invoking application operations.
 
+Authentication and action capability do not by themselves grant authority over an arbitrary same-tenant Party. Capabilities that name or mutate a subject must state whether they require a current `Representation`, an explicit operator override, or no Party authority at all.
+
 ## 6. Module ↔ module surface
 
 A module may use another module only through the target module's supported `contracts` package unless an explicit architecture decision defines another public facade.
@@ -133,6 +135,17 @@ booking
    |
 catalog
 ```
+
+Subject-authority edges are equally explicit:
+
+```text
+booking ----> tenancy.contracts   # appointments subject authority vocabulary
+queue   ----> tenancy.contracts   # FIFO queue subject authority vocabulary
+```
+
+Tenancy owns Principal/Party/Representation semantics. Booking and Queue own the operation-specific policy that selects an exact scope (`appointments.book`, `appointments.manage`, `queue.join`, `queue.manage`) and whether an authenticated operator permission may bypass Representation.
+
+The shared PostgreSQL `request_engine.resolve_current_party_authority(...)` function is the database definition of a current exact-scope Representation. It is `SECURITY INVOKER`; tenant RLS remains effective. Mutation callers resolve it inside their authoritative transaction to avoid revoke/expiry TOCTOU.
 
 Forbidden:
 

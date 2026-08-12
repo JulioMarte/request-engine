@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.application.errors import SubjectAuthorityRequired
+from request_engine.modules.queue.application.errors import SubjectAuthorityRequired
 from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 
 
@@ -37,8 +37,6 @@ async def require_subject_authority(
     scope_key: str,
     allow_operator_override: bool,
 ) -> SubjectAuthorityEvidence:
-    """Resolve current exact-scope Party authority inside the caller transaction."""
-
     if allow_operator_override:
         return SubjectAuthorityEvidence(mode="operator", scope_key=scope_key)
 

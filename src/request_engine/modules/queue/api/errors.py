@@ -8,6 +8,7 @@ from request_engine.modules.queue.application.errors import (
     QueueError,
     QueueInactive,
     QueueNotFound,
+    SubjectAuthorityRequired,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope
 
@@ -20,6 +21,15 @@ async def queue_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, SubjectAuthorityRequired):
+        return status.HTTP_403_FORBIDDEN, ErrorBody(
+            code="subject_authority_required",
+            message=str(exc),
+            details={
+                "subject_party_id": str(exc.subject_party_id),
+                "scope_key": exc.scope_key,
+            },
+        )
     if isinstance(exc, QueueNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
             code="queue_not_found", message=str(exc), details={"queue_id": str(exc.queue_id)}

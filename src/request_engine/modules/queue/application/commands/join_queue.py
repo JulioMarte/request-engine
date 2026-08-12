@@ -14,6 +14,7 @@ class JoinQueueCommand:
     idempotency_key: str
     reservation_id: UUID | None = None
     offering_id: UUID | None = None
+    allow_subject_override: bool = False
 
 
 class JoinQueueExecutor(Protocol):

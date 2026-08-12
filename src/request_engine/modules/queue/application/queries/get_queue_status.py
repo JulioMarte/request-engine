@@ -8,8 +8,10 @@ class QueueStatusReader(Protocol):
     async def get_queue_status(
         self,
         organization_id: UUID,
+        principal_id: UUID,
         queue_id: UUID,
         subject_party_id: UUID,
+        allow_subject_override: bool,
     ) -> QueueStatus: ...
 
 
@@ -17,9 +19,17 @@ async def get_queue_status(
     reader: QueueStatusReader,
     *,
     organization_id: UUID,
+    principal_id: UUID,
     queue_id: UUID,
     subject_party_id: UUID,
+    allow_subject_override: bool = False,
 ) -> QueueStatus:
-    """Return the caller-safe current FIFO queue state for one subject."""
+    """Return current FIFO state only after subject authority is established."""
 
-    return await reader.get_queue_status(organization_id, queue_id, subject_party_id)
+    return await reader.get_queue_status(
+        organization_id,
+        principal_id,
+        queue_id,
+        subject_party_id,
+        allow_subject_override,
+    )

@@ -13,6 +13,7 @@ class LeaveQueueCommand:
     subject_party_id: UUID
     idempotency_key: str
     reason: str | None = None
+    allow_subject_override: bool = False
 
 
 class LeaveQueueExecutor(Protocol):

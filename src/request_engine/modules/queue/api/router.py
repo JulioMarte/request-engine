@@ -41,6 +41,8 @@ IdempotencyKey = Annotated[
     Header(alias="Idempotency-Key", min_length=1, max_length=250),
 ]
 
+SUBJECT_OVERRIDE_PERMISSION = "queue.subject_override"
+
 
 def create_router(
     *,
@@ -90,6 +92,7 @@ def create_router(
                 reservation_id=body.reservation_id,
                 offering_id=body.offering_id,
                 idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return QueueEntryView.from_contract(entry)
@@ -103,8 +106,10 @@ def create_router(
         result = await get_queue_status(
             reader,
             organization_id=actor.organization_id,
+            principal_id=actor.principal_id,
             queue_id=queue_id,
             subject_party_id=subject_party_id,
+            allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
         )
         return QueueStatusView.from_contract(result)
 
@@ -124,6 +129,7 @@ def create_router(
                 subject_party_id=body.subject_party_id,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return QueueEntryView.from_contract(entry)

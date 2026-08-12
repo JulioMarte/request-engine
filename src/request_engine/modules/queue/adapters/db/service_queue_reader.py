@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.errors import QueueNotFound
 from request_engine.modules.queue.contracts.service_queue import (
     QueueEntry,
@@ -20,10 +21,21 @@ class PostgresServiceQueueReader:
     async def get_queue_status(
         self,
         organization_id: UUID,
+        principal_id: UUID,
         queue_id: UUID,
         subject_party_id: UUID,
+        allow_subject_override: bool,
     ) -> QueueStatus:
         async with tenant_transaction(self._session_factory, organization_id) as session:
+            await require_subject_authority(
+                session,
+                organization_id=organization_id,
+                principal_id=principal_id,
+                subject_party_id=subject_party_id,
+                scope_key="queue.manage",
+                allow_operator_override=allow_subject_override,
+            )
+
             queue_row = (
                 (
                     await session.execute(
