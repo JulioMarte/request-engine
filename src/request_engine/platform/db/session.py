@@ -50,7 +50,6 @@ async def tenant_transaction(
 ) -> AsyncIterator[AsyncSession]:
     """Open one task-local session and one explicit tenant-scoped transaction."""
 
-    async with session_factory() as session:
-        async with session.begin():
-            await set_tenant_context(session, organization_id)
-            yield session
+    async with session_factory() as session, session.begin():
+        await set_tenant_context(session, organization_id)
+        yield session
