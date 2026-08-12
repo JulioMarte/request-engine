@@ -35,6 +35,11 @@ class AppointmentUnavailable(BookingError):
         self.reason = reason
 
 
+class InvalidHoldExpiration(BookingError):
+    def __init__(self) -> None:
+        super().__init__("CapacityHold expires_at must be after the database wall-clock time")
+
+
 class CapacityHoldNotFound(BookingError):
     def __init__(self, hold_id: UUID) -> None:
         super().__init__(f"CapacityHold {hold_id} was not found")
