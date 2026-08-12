@@ -1,4 +1,4 @@
-from request_engine.modules.booking.application.errors import BookingConfigurationError
+from request_engine.modules.booking.domain.errors import BookingConfigurationError
 
 
 def slot_step_minutes(policy: dict[str, object], duration_minutes: int) -> int:
