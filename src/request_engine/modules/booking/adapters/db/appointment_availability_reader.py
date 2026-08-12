@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import product
 from typing import cast
@@ -244,7 +245,7 @@ class PostgresAppointmentAvailabilityReader:
 
 
 def _build_candidate_resources(
-    rows: list[RowMapping],
+    rows: Sequence[RowMapping],
     *,
     schedules: dict[UUID, tuple[RecurringAvailability, ...]],
     exceptions: dict[UUID, tuple[AvailabilityException, ...]],
