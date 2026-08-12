@@ -29,6 +29,30 @@ class CommunicationDedupeConflict(CommunicationsError):
         self.dedupe_key = dedupe_key
 
 
+class DeliveryConfigurationError(CommunicationsError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class DeliveryProviderNotConfigured(CommunicationsError):
+    def __init__(self, provider_key: str) -> None:
+        super().__init__(f"communication provider {provider_key!r} is not configured")
+        self.provider_key = provider_key
+
+
+class CommunicationTaskNotFound(CommunicationsError):
+    def __init__(self, communication_task_id: UUID) -> None:
+        super().__init__(f"CommunicationTask {communication_task_id} was not found")
+        self.communication_task_id = communication_task_id
+
+
+class CommunicationDeliveryNotFound(CommunicationsError):
+    def __init__(self, delivery_id: UUID) -> None:
+        super().__init__(f"CommunicationDelivery {delivery_id} was not found")
+        self.delivery_id = delivery_id
+
+
 class ReminderPlanNotFound(CommunicationsError):
     def __init__(self, reminder_plan_id: UUID) -> None:
         super().__init__(f"ReminderPlan {reminder_plan_id} was not found")
