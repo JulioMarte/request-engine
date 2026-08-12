@@ -753,7 +753,10 @@ async def _set_task_status(
             """
             UPDATE request_engine.communication_tasks
             SET status = :status,
-                revision = CASE WHEN status IS DISTINCT FROM :status THEN revision + 1 ELSE revision END,
+                revision = CASE
+                    WHEN status IS DISTINCT FROM :status THEN revision + 1
+                    ELSE revision
+                END,
                 updated_at = clock_timestamp()
             WHERE organization_id = :organization_id
               AND id = :communication_task_id
