@@ -17,6 +17,18 @@ Baseline serializes `CallNext` through the stable `ServiceQueue` row and chooses
 
 At most one active QueueEntry exists for the same `(ServiceQueue, subject)` in baseline. Queue position is derived, never an authoritative mutable counter.
 
+### Subject authority
+
+Queue action capability and authority over a Party are separate decisions.
+
+- `JoinQueue` requires exact current Representation scope `queue.join` for the subject Party, unless the authenticated actor has explicit `queue.subject_override`.
+- `GetQueueStatus` and `LeaveQueue` require exact current Representation scope `queue.manage`, unless that same explicit operator override is present.
+- `CallNext` is an operator action over the FIFO queue and does not require a Representation for the Party selected by the queue itself.
+- Possession of a same-tenant Party UUID is never authority.
+- Mutation-time Representation resolution occurs inside the authoritative PostgreSQL transaction so revocation/expiry cannot race a successful write.
+
+Queue consumes only Tenancy's published authority vocabulary and the shared PostgreSQL current-authority primitive; it does not own Representation lifecycle.
+
 Initial commands/queries:
 
 ```text
