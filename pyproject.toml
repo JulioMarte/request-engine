@@ -36,6 +36,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/db/test_v3_candidate.py" = ["E501"]
+
 [tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.13"
