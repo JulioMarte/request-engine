@@ -9,7 +9,7 @@ import psycopg
 import pytest
 from psycopg import Connection, Error
 
-PgConnection = Connection[tuple[Any, ...]]
+PgConnection = Connection[Any]
 
 
 @dataclass(frozen=True)
@@ -542,7 +542,8 @@ def test_scheduled_action_fencing_rejects_stale_worker(
     try:
         worker.execute("SET ROLE request_engine_worker")
         first_claim = worker.execute(
-            "SELECT action_id, organization_id, claim_token FROM request_cmd.claim_scheduled_actions(1, interval '30 seconds')"
+            "SELECT action_id, organization_id, claim_token "
+            "FROM request_cmd.claim_scheduled_actions(1, interval '30 seconds')"
         ).fetchone()
         assert first_claim is not None
         assert first_claim[0] == action_id
@@ -559,7 +560,8 @@ def test_scheduled_action_fencing_rejects_stale_worker(
         )
 
         second_claim = worker.execute(
-            "SELECT action_id, claim_token FROM request_cmd.claim_scheduled_actions(1, interval '30 seconds')"
+            "SELECT action_id, claim_token "
+            "FROM request_cmd.claim_scheduled_actions(1, interval '30 seconds')"
         ).fetchone()
         assert second_claim is not None
         assert second_claim[0] == action_id
