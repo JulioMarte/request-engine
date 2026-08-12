@@ -5,15 +5,22 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "request_engine"
 MODULES_ROOT = SRC_ROOT / "modules"
 
-EXPECTED_MODULES = {
+BASELINE_MODULES = {
     "tenancy",
     "catalog",
     "requests",
     "booking",
+    "queue",
+    "communications",
+}
+
+DEFERRED_MODULES = {
     "delivery",
     "payments",
     "dispatch",
 }
+
+EXPECTED_MODULES = BASELINE_MODULES | DEFERRED_MODULES
 
 FORBIDDEN_HORIZONTAL_ROOTS = {
     "api",
@@ -74,6 +81,18 @@ def test_business_modules_have_explicit_ownership_docs() -> None:
         assert (MODULES_ROOT / module_name / "README.md").is_file()
 
 
+def test_v3_baseline_modules_are_explicit() -> None:
+    assert BASELINE_MODULES == {
+        "tenancy",
+        "catalog",
+        "requests",
+        "booking",
+        "queue",
+        "communications",
+    }
+    assert BASELINE_MODULES.isdisjoint(DEFERRED_MODULES)
+
+
 def test_horizontal_business_layer_roots_do_not_reappear() -> None:
     unexpected = {name for name in FORBIDDEN_HORIZONTAL_ROOTS if (SRC_ROOT / name).exists()}
     assert unexpected == set()
@@ -85,6 +104,12 @@ def test_platform_does_not_gain_generic_dumping_ground_packages() -> None:
         name for name in FORBIDDEN_GENERIC_PLATFORM_BUCKETS if (platform_root / name).exists()
     }
     assert unexpected == set()
+
+
+def test_durable_scheduling_has_an_explicit_platform_boundary() -> None:
+    scheduling_root = SRC_ROOT / "platform" / "scheduling"
+    assert (scheduling_root / "__init__.py").is_file()
+    assert (scheduling_root / "README.md").is_file()
 
 
 def test_runtime_settings_are_owned_by_bootstrap() -> None:
@@ -174,5 +199,19 @@ def test_cross_module_imports_use_contracts_only() -> None:
                 allowed_prefix = f"request_engine.modules.{target}.contracts"
                 if not _is_prefixed(import_name, allowed_prefix):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
+
+    assert violations == []
+
+
+def test_v3_baseline_modules_do_not_depend_on_deferred_modules() -> None:
+    violations: list[str] = []
+
+    for owner in BASELINE_MODULES:
+        for path in _python_files(MODULES_ROOT / owner):
+            for import_name in _imports(path):
+                for deferred in DEFERRED_MODULES:
+                    deferred_prefix = f"request_engine.modules.{deferred}"
+                    if _is_prefixed(import_name, deferred_prefix):
+                        violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert violations == []
