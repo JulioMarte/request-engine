@@ -11,6 +11,7 @@ files=(
   "004-worker-primitives.sql"
   "005-read-access.sql"
   "006-capacity-hardening.sql"
+  "007-contract-convergence.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
