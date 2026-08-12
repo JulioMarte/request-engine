@@ -9,6 +9,7 @@ from request_engine.modules.requests.application.errors import (
     RequestError,
     RequestNotFound,
     RequestNotOpen,
+    RequestPartyAuthorityRequired,
     RequestPartyNotUsable,
     RequestPayloadInvalid,
     RequestResultAlreadyRecorded,
@@ -45,6 +46,17 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
             code="request_not_found",
             message=str(exc),
             details={"request_id": str(exc.request_id)},
+        )
+    if isinstance(exc, RequestPartyAuthorityRequired):
+        return status.HTTP_403_FORBIDDEN, ErrorBody(
+            code="request_party_authority_required",
+            message=str(exc),
+            details={
+                "requester_party_id": (
+                    str(exc.requester_party_id) if exc.requester_party_id is not None else None
+                ),
+                "scope_key": exc.scope_key,
+            },
         )
     if isinstance(exc, RequestPayloadInvalid):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
