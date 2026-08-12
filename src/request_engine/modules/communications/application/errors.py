@@ -1,8 +1,8 @@
 from uuid import UUID
 
+from request_engine.modules.communications.domain.errors import CommunicationsError
 from request_engine.modules.communications.domain.errors import (
-    CommunicationsError,
-    DeliveryConfigurationError,
+    DeliveryConfigurationError as DeliveryConfigurationError,
 )
 
 
