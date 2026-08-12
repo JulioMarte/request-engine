@@ -1,4 +1,3 @@
-import json
 from dataclasses import dataclass
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
