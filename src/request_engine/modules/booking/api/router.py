@@ -35,6 +35,13 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
+from request_engine.modules.booking.contracts.capabilities import (
+    BOOK,
+    CANCEL,
+    FIND_SLOTS,
+    GET,
+    RESCHEDULE,
+)
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
 
@@ -72,7 +79,7 @@ def create_router(
         location_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
-        _require(actor, "booking.find_slots")
+        _require(actor, FIND_SLOTS)
         result = await find_appointment_slots(
             availability_reader,
             FindAppointmentSlotsQuery(
@@ -91,7 +98,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.book_appointment")
+        _require(actor, BOOK)
         reservation = await book_appointment(
             book_handler,
             BookAppointmentCommand(
@@ -112,7 +119,7 @@ def create_router(
         reservation_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> ReservationView:
-        _require(actor, "booking.read")
+        _require(actor, GET)
         reservation = await get_reservation_status(
             reservation_reader,
             organization_id=actor.organization_id,
@@ -128,7 +135,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.cancel_reservation")
+        _require(actor, CANCEL)
         reservation = await cancel_reservation(
             cancel_handler,
             CancelReservationCommand(
@@ -147,7 +154,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.reschedule_reservation")
+        _require(actor, RESCHEDULE)
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
