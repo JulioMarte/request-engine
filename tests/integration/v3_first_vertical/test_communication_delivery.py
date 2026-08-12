@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
@@ -23,7 +24,10 @@ from request_engine.modules.communications.contracts.delivery import (
 )
 from request_engine.modules.communications.contracts.tasks import CommunicationTaskStatus
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
 
 PgConnection = Connection[Any]
 
@@ -42,7 +46,7 @@ class FakeProvider:
         *,
         send_results: list[ProviderDeliveryResult | Exception],
         lookup_results: list[ProviderDeliveryResult | Exception] | None = None,
-        lock_probe: callable[[UUID], None] | None = None,
+        lock_probe: Callable[[UUID], None] | None = None,
     ) -> None:
         self._send_results = send_results
         self._lookup_results = lookup_results or []
@@ -164,7 +168,7 @@ async def _claim_action_for_subject(
     scheduler: PostgresScheduledActionWorker,
     *,
     subject_id: UUID,
-) -> Any:
+) -> ScheduledActionLease:
     leases = await scheduler.claim(limit=500)
     return next(lease for lease in leases if lease.subject_id == subject_id)
 
@@ -390,7 +394,7 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_retryable_failure_does_not_let_stale_lease_bypass_backoff(
+async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -412,8 +416,8 @@ async def test_retryable_failure_does_not_let_stale_lease_bypass_backoff(
         {"fake": provider},
     )
 
-    stale_lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
-    failed = await worker.process(stale_lease)
+    original_lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
+    failed = await worker.process(original_lease)
     assert failed.detail == "failed"
     assert len(provider.send_requests) == 1
 
@@ -433,8 +437,8 @@ async def test_retryable_failure_does_not_let_stale_lease_bypass_backoff(
     assert retry_row is not None
     assert retry_row[1] is True
 
-    # Simulate replay of an older lease after the failed result committed but before
-    # that stale scheduler lease had been acknowledged. It must not send again.
-    replay_outcome = await worker.process(stale_lease)
-    assert replay_outcome.detail in {"retry_already_scheduled", "no_work"}
+    # Defensive replay of the old lease object must observe the durable future retry
+    # and must not invoke the provider a second time before that backoff is due.
+    replay_outcome = await worker.process(original_lease)
+    assert replay_outcome.detail == "retry_already_scheduled"
     assert len(provider.send_requests) == 1
