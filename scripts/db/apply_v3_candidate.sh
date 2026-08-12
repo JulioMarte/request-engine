@@ -10,6 +10,7 @@ files=(
   "003-integrity.sql"
   "004-worker-primitives.sql"
   "005-read-access.sql"
+  "006-capacity-hardening.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
