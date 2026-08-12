@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+candidate_dir="${repo_root}/migrations/sql/v3_candidate"
+
+files=(
+  "001-foundation.sql"
+  "002-schema.sql"
+  "003-integrity.sql"
+  "004-worker-primitives.sql"
+  "005-read-access.sql"
+)
+
+: "${PGHOST:=127.0.0.1}"
+: "${PGPORT:=5432}"
+: "${PGDATABASE:=request_engine_v3}"
+: "${PGUSER:=request_engine}"
+
+export PGHOST PGPORT PGDATABASE PGUSER
+
+for file in "${files[@]}"; do
+  echo "==> Applying V3 candidate ${file}"
+  psql --set=ON_ERROR_STOP=1 --file="${candidate_dir}/${file}"
+done
+
+echo "==> Request Engine V3 PostgreSQL candidate applied successfully"
