@@ -74,17 +74,10 @@ def create_requests_router(
                 detail="authentication required",
             ) from exc
 
-    Actor = Annotated[ActorContext, Depends(authenticated_actor)]
-
-    @router.post(
-        "/definitions/{request_key}/submit",
-        response_model=SubmittedRequestView,
-        status_code=status.HTTP_201_CREATED,
-    )
     async def submit_request(
         request_key: str,
         body: SubmitRequestBody,
-        actor: Actor,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> SubmittedRequestView:
         _require(actor, "requests.submit")
@@ -127,8 +120,10 @@ def create_requests_router(
             request=RequestView.from_contract(request),
         )
 
-    @router.get("/{request_id}", response_model=RequestView)
-    async def read_request(request_id: UUID, actor: Actor) -> RequestView:
+    async def read_request(
+        request_id: UUID,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> RequestView:
         _require(actor, "requests.read")
         request = await get_request_status(
             reader,
@@ -136,14 +131,16 @@ def create_requests_router(
             request_id=request_id,
         )
         if request is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Request not found",
+            )
         return RequestView.from_contract(request)
 
-    @router.post("/{request_id}/result", response_model=RequestView)
     async def record_result(
         request_id: UUID,
         body: RecordRequestResultBody,
-        actor: Actor,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
         _require(actor, "requests.record_result")
@@ -160,11 +157,10 @@ def create_requests_router(
         )
         return RequestView.from_contract(request)
 
-    @router.post("/{request_id}/complete", response_model=RequestView)
     async def complete(
         request_id: UUID,
         body: CompleteRequestBody,
-        actor: Actor,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
         _require(actor, "requests.complete")
@@ -181,11 +177,10 @@ def create_requests_router(
         )
         return RequestView.from_contract(request)
 
-    @router.post("/{request_id}/cancel", response_model=RequestView)
     async def cancel(
         request_id: UUID,
         body: CancelRequestBody,
-        actor: Actor,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
         _require(actor, "requests.cancel")
@@ -202,11 +197,10 @@ def create_requests_router(
         )
         return RequestView.from_contract(request)
 
-    @router.post("/{request_id}/fail", response_model=RequestView)
     async def fail(
         request_id: UUID,
         body: FailRequestBody,
-        actor: Actor,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RequestView:
         _require(actor, "requests.fail")
@@ -224,6 +218,43 @@ def create_requests_router(
         )
         return RequestView.from_contract(request)
 
+    router.add_api_route(
+        "/definitions/{request_key}/submit",
+        submit_request,
+        methods=["POST"],
+        response_model=SubmittedRequestView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    router.add_api_route(
+        "/{request_id}",
+        read_request,
+        methods=["GET"],
+        response_model=RequestView,
+    )
+    router.add_api_route(
+        "/{request_id}/result",
+        record_result,
+        methods=["POST"],
+        response_model=RequestView,
+    )
+    router.add_api_route(
+        "/{request_id}/complete",
+        complete,
+        methods=["POST"],
+        response_model=RequestView,
+    )
+    router.add_api_route(
+        "/{request_id}/cancel",
+        cancel,
+        methods=["POST"],
+        response_model=RequestView,
+    )
+    router.add_api_route(
+        "/{request_id}/fail",
+        fail,
+        methods=["POST"],
+        response_model=RequestView,
+    )
     return router
 
 
