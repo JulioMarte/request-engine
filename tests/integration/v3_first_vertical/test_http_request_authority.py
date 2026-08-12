@@ -271,7 +271,7 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
           AND aggregate_kind = 'Request'
           AND aggregate_id = %s
           AND command_name IN ('requests.submit', 'requests.cancel')
-        ORDER BY occurred_at, id
+        ORDER BY created_at, id
         """,
         (fixture.organization_id, request_id),
     ).fetchall()
