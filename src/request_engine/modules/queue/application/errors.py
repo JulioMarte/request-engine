@@ -19,6 +19,7 @@ class QueueInactive(QueueError):
 
 class AlreadyInQueue(QueueError):
     def __init__(self, queue_id: UUID, subject_party_id: UUID) -> None:
-        super().__init__(f"Party {subject_party_id} already has an active entry in queue {queue_id}")
+        message = f"Party {subject_party_id} already has an active entry in queue {queue_id}"
+        super().__init__(message)
         self.queue_id = queue_id
         self.subject_party_id = subject_party_id
