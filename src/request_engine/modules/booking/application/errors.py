@@ -5,6 +5,12 @@ class BookingError(Exception):
     """Base class for semantic booking failures."""
 
 
+class BookingConfigurationError(BookingError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class OfferingVersionNotBookable(BookingError):
     def __init__(self, offering_version_id: UUID) -> None:
         super().__init__(f"OfferingVersion {offering_version_id} is not bookable")
