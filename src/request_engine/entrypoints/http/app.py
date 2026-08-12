@@ -1,14 +1,22 @@
 from fastapi import FastAPI
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.entrypoints.http.errors import integrity_error_handler
+from request_engine.entrypoints.http.errors import (
+    authentication_required_handler,
+    capability_required_handler,
+    integrity_error_handler,
+)
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import (
+    ActorResolver,
+    AuthenticationRequired,
+    CapabilityRequired,
+)
 
 
 def create_app(
@@ -26,6 +34,8 @@ def create_app(
             "by the deployment ActorResolver; request bodies never select their own tenant."
         ),
     )
+    app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
+    app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
     party_authority_reader = build_party_authority_reader(session_factory)
 
