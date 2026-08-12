@@ -17,32 +17,40 @@ class PostgresBusinessInfoReader:
     async def get_business_info(self, organization_id: UUID) -> BusinessInfo:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             business_row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT organization_id, organization_key, display_name, public_profile
                         FROM request_read.business_info_v1
                         WHERE organization_id = :organization_id
                         """
-                    ),
-                    {"organization_id": organization_id},
+                        ),
+                        {"organization_id": organization_id},
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
 
             location_rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT id, location_key, display_name, timezone, public_data
                         FROM request_read.locations_v1
                         WHERE organization_id = :organization_id
                           AND active
                         ORDER BY display_name, id
                         """
-                    ),
-                    {"organization_id": organization_id},
+                        ),
+                        {"organization_id": organization_id},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
 
         return BusinessInfo(
             organization_id=cast(UUID, business_row["organization_id"]),
