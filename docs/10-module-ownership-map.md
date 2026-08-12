@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para ownership del backend capability-first V3.
 >
-> `docs/v3/02-pre-sql-contract.md` define las cardinalidades, serialization roots, transacciones e invariantes que este mapa distribuye entre módulos.
+> `docs/v3/02-pre-sql-contract.md` define cardinalidades, serialization roots, transacciones e invariantes. ADR 0009 refines the original V3 boundary by moving future-capacity waitlist recovery from `queue` to `booking`.
 
 ## 1. Summary
 
@@ -11,8 +11,8 @@
 | `tenancy` | baseline | Organization, Principal, Party, PartyContactPoint identity, Representation, tenant authority |
 | `catalog` | baseline | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement, structured business info |
 | `requests` | baseline | RequestDefinition/Version, durable Request, participants/correlation, generic extension payload/result boundary |
-| `booking` | baseline | Resource, capability assignment, availability, CapacityHold/Claim, Reservation, AttendanceResponse |
-| `queue` | baseline | ServiceQueue/QueueEntry, WaitlistEntry, SlotOpportunity, SlotOffer |
+| `booking` | baseline | Resource, capability assignment, availability, CapacityHold/Claim, Reservation, AttendanceResponse, WaitlistEntry, SlotOpportunity, SlotOffer |
+| `queue` | baseline | live ServiceQueue/QueueEntry only |
 | `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
 | `delivery` | deferred | future ServiceSession/Fulfillment/outcome execution domain |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
@@ -70,11 +70,9 @@ one mandatory ResourceCapability
 + units quantity
 ```
 
-Multiple rows are ANDed.
+Multiple rows are ANDed. There is no baseline reusable requirement template, OR/k-of-n expression graph, CapacityPool or late-binding optimizer.
 
-There is no baseline reusable `ResourceRequirementTemplate`, OR/k-of-n expression graph, CapacityPool or late-binding optimizer.
-
-Expected Queries:
+Expected queries:
 
 ```text
 GetBusinessInfo
@@ -83,15 +81,13 @@ GetOfferingDetails
 GetLocations
 ```
 
-Booking consumes catalog requirement/version contracts and resolves them to concrete Resources. Runtime claims never mutate catalog history.
+Booking consumes catalog configuration through stable references/read surfaces and resolves requirements to concrete Resources. Runtime claims never mutate catalog history.
 
 ---
 
 ## 4. Requests
 
-Owns durable **new business demand requiring later processing**.
-
-Owns:
+Owns durable **new business demand requiring later processing**:
 
 ```text
 RequestDefinition
@@ -112,8 +108,6 @@ website_contact
 
 `RequestDefinitionVersion` supplies the exact versioned generic input/result contract. Validated extensibility payload/result may use JSONB here.
 
-### Explicit non-ownership
-
 No baseline:
 
 ```text
@@ -124,11 +118,9 @@ OutcomeScope
 universal Workflow
 ```
 
-A form representing new demand submits a Request directly against a RequestDefinitionVersion. Draft/partial-form lifecycle can become a separate capability later if proven.
+A form representing new demand submits a Request directly against a RequestDefinitionVersion. Cancel/reschedule/attendance/queue mutations remain commands of their native domains.
 
-Cancel/reschedule/attendance/queue mutations belong to their native domains by default, regardless of whether an LLM/chat initiated them.
-
-Commands/Queries:
+Commands/queries:
 
 ```text
 CreateRequest / requests.submit
@@ -144,7 +136,9 @@ n8n/provider callbacks use authenticated tenant-bound idempotent semantic comman
 
 ## 5. Booking
 
-Owns local reservation/capacity truth:
+Booking owns **local appointment capacity, reservations and future appointment-capacity recovery**.
+
+Core ownership:
 
 ```text
 Resource
@@ -157,6 +151,16 @@ Reservation
 AttendanceResponse history/current projection
 ```
 
+Future-capacity recovery ownership (ADR 0009):
+
+```text
+WaitlistEntry
+SlotOpportunity
+SlotOffer
+released-slot candidate selection policy
+accept/decline/expire offer orchestration
+```
+
 Initial capacity models:
 
 ```text
@@ -164,12 +168,15 @@ exclusive
 units
 ```
 
-### Closed baseline decisions
+Closed baseline decisions:
 
 ```text
 1 Reservation = 1 OfferingVersion + 1 subject Party + 1 interval
 Resource = capacity serialization/lock root
 CapacityClaim = common Hold/Reservation consumption truth
+WaitlistEntry = future interest; never capacity consumption
+SlotOpportunity = recovery coordination root; never capacity authority
+SlotOffer = one candidate offer backed by a short CapacityHold
 ```
 
 No baseline:
@@ -186,7 +193,7 @@ field-service feasibility
 
 If future execution assignment becomes independently mutable from capacity consumption, introduce a proven `ResourceAssignment` then.
 
-Commands/Queries:
+Appointment commands/queries:
 
 ```text
 FindAppointmentSlots
@@ -202,26 +209,41 @@ ChangeResourceAvailability
 ChangeScheduleException
 ```
 
-Booking owns self-overlap-safe reschedule according to `docs/v3/02-pre-sql-contract.md`.
+Waitlist/recovery commands/queries:
 
-Attendance confirmation is distinct from Reservation confirmation. No-response/decline capacity consequences require explicit versioned booking policy.
+```text
+JoinWaitlist
+LeaveWaitlist
+GetWaitlistStatus
+CreateSlotOpportunity           # internal/event-driven
+OfferNextWaitlistCandidate      # internal
+AcceptSlotOffer
+DeclineSlotOffer
+ExpireSlotOffer                 # ScheduledAction target
+```
+
+### Why waitlist belongs here
+
+The strongest invariants are capacity invariants, not live-queue invariants. `AcceptSlotOffer` must atomically validate/promote booking-owned Hold/claims into a Reservation while closing the offer/opportunity. Keeping these concepts in `booking` avoids leaking transaction/session mechanics through a cross-module contract or allowing queue to mutate booking-owned state.
+
+Public capabilities remain `waitlist.*`; public API taxonomy does not dictate Python module ownership.
+
+Booking owns self-overlap-safe reschedule according to `docs/v3/02-pre-sql-contract.md`. Attendance confirmation remains distinct from Reservation confirmation; no-response/decline consequences require explicit versioned booking policy.
 
 ---
 
 ## 6. Queue
 
-Owns two distinct capabilities.
-
-### 6.1 ServiceQueue
+`queue` owns the **live service queue only**:
 
 ```text
 ServiceQueue
 QueueEntry
 ```
 
-Represents subjects waiting to be served now. Baseline `CallNext` is FIFO by `(admitted_at, id)` under ServiceQueue serialization.
+It represents subjects waiting to be served now. Baseline `CallNext` is FIFO by `(admitted_at, id)` under ServiceQueue serialization.
 
-Commands/Queries:
+Commands/queries:
 
 ```text
 JoinQueue
@@ -235,38 +257,7 @@ GetQueueStatus
 
 Queue position is derived, not mutable authoritative counter state.
 
-### 6.2 Waitlist/released-slot recovery
-
-Owns:
-
-```text
-WaitlistEntry
-SlotOpportunity
-SlotOffer
-```
-
-`WaitlistEntry` represents future interest and never consumes capacity.
-
-`SlotOpportunity` is the stable coordination root for one released appointment opportunity and sequential candidate chain. It does not prove availability.
-
-Baseline `SlotOffer` is backed by a short booking CapacityHold before notification. Only one active offered SlotOffer exists per Opportunity.
-
-Candidate selection is FIFO among candidates eligible for the concrete Opportunity.
-
-Commands/Queries:
-
-```text
-JoinWaitlist
-LeaveWaitlist
-GetWaitlistStatus
-CreateSlotOpportunity           # internal/event-driven
-OfferNextWaitlistCandidate      # internal
-AcceptSlotOffer
-DeclineSlotOffer
-ExpireSlotOffer                 # ScheduledAction target
-```
-
-`AcceptSlotOffer` is queue-owned orchestration with booking through supported contracts and one local transaction where atomicity requires it.
+Queue does not own appointment waitlists merely because candidate selection happens to be FIFO. Future-capacity interest and released-slot recovery belong to booking under ADR 0009.
 
 ---
 
@@ -311,9 +302,7 @@ CancelReminderPlan
 AcknowledgeReminder
 ```
 
-Provider I/O happens after the originating business transaction commits.
-
-Provider delivery state cannot directly mutate booking/queue/request truth. An inbound response that means “confirm attendance” invokes booking's supported semantic Command.
+Provider I/O happens after the originating business transaction commits. Provider delivery state cannot directly mutate booking/queue/request truth. An inbound response with business meaning invokes the owning semantic command.
 
 Medication reminders execute an authorized plan; communications does not infer dosage/treatment decisions.
 
@@ -321,11 +310,7 @@ Medication reminders execute an authorized plan; communications does not infer d
 
 ## 8. Delivery — deferred
 
-The former V2 admission/queue ownership is removed from `delivery`.
-
-Future `ServiceSession`, Fulfillment/outcome evidence and corrections remain deferred until a real execution vertical needs independent policy/lifecycle.
-
-No baseline module may depend on delivery to complete V3 proof flows.
+Future `ServiceSession`, Fulfillment/outcome evidence and corrections remain deferred until a real execution vertical needs independent policy/lifecycle. No baseline module may depend on delivery to complete V3 proof flows.
 
 ---
 
@@ -411,49 +396,52 @@ Authentication/runtime role/RLS-context plumbing. Representation/business author
 
 ---
 
-## 12. Cross-module transaction/event examples
+## 12. Transaction/event examples
 
-### BookAppointment
+### BookAppointment / RescheduleReservation
 
-Owner: `booking`.
-
-Consumes immutable catalog contracts; Resource/Reservation/claims commit atomically. Confirmation/reminder consequences are emitted after commit.
-
-### RescheduleReservation
-
-Owner: `booking`.
-
-Old/new Resource claims replace atomically. After commit communications cancels/regenerates obsolete reminder tasks/actions idempotently.
+Owner: `booking`. Resource/Reservation/claims commit atomically. Communications are consequences after commit.
 
 ### ConfirmAttendance
 
-Owner: `booking`.
-
-Communications/provider adapters may route an inbound response into this command, but do not mutate Reservation state themselves.
+Owner: `booking`. Communications/provider adapters may route an inbound response into this command but never mutate Reservation directly.
 
 ### JoinQueue / CallNext
 
-Owner: `queue`.
-
-Queue completion does not imply universal Fulfillment or Request completion.
+Owner: `queue`. Queue completion means only that live queue service ended; it does not imply universal Fulfillment or Request completion.
 
 ### Reservation cancellation → standby recovery
 
 ```text
 booking cancel commit
 → outbox reservation.cancelled
-→ queue create/get SlotOpportunity
-→ queue selects WaitlistEntry
-→ booking CapacityHold
-→ SlotOffer
+→ booking create/get SlotOpportunity
+→ booking selects eligible WaitlistEntry
+→ booking creates short CapacityHold
+→ booking creates SlotOffer
+→ commit
 → communications notification
 ```
 
-Only booking claims capacity.
+Only booking owns capacity and the standby coordination state.
 
 ### AcceptSlotOffer
 
-Owner: `queue` for offer/opportunity lifecycle, coordinating booking to confirm the Hold into a Reservation in the same local transaction required by V3-I40.
+Owner: `booking`.
+
+```text
+SlotOpportunity
+→ SlotOffer
+→ CapacityHold
+→ Resources sorted
+→ promote held claims / create Reservation
+→ fulfill WaitlistEntry
+→ mark offer accepted + opportunity filled
+→ audit/outbox
+→ commit
+```
+
+This is one local transaction without a cross-module Python UnitOfWork surface.
 
 ### Appointment communication
 
@@ -471,13 +459,26 @@ requests.submit
 
 ---
 
-## 13. Ownership change gate
+## 13. Cross-module database rule
+
+In the shared PostgreSQL modular monolith, distinguish three surfaces:
+
+1. **tenant-safe relational reference** — an FK/correlation may cross conceptual owners when the relationship itself is a documented invariant;
+2. **semantic cross-module call** — Python uses the target module's supported `contracts` surface and requires an explicitly approved dependency edge;
+3. **direct mutation of another owner's authoritative rows** — forbidden unless an explicit architecture decision defines a shared atomic protocol.
+
+Do not manufacture Python services simply to replace a stronger FK. Conversely, do not use “shared database” as permission for arbitrary cross-owner mutation.
+
+---
+
+## 14. Ownership change gate
 
 Moving a concept between top-level modules or activating a deferred module requires updating:
 
 - `docs/v3/01-capability-contracts.md` when external semantics change;
 - `docs/v3/02-pre-sql-contract.md` when cardinality/transaction/invariants change;
 - this map;
+- `docs/v3/capability-manifest.toml`;
 - affected module READMEs/contracts/tests;
 - DB/read/cmd mapping;
 - an ADR when hard to reverse.
