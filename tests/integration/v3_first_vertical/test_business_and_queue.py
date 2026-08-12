@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,13 +9,23 @@ from psycopg import Connection
 from request_engine.modules.catalog.adapters.db.business_info_reader import (
     PostgresBusinessInfoReader,
 )
-from request_engine.modules.catalog.application.queries.get_business_info import get_business_info
+from request_engine.modules.catalog.application.queries.get_business_info import (
+    get_business_info,
+)
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
-from request_engine.modules.queue.application.commands.call_next import CallNextCommand, call_next
-from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand, join_queue
+from request_engine.modules.queue.adapters.db.service_queue_reader import (
+    PostgresServiceQueueReader,
+)
+from request_engine.modules.queue.application.commands.call_next import (
+    CallNextCommand,
+    call_next,
+)
+from request_engine.modules.queue.application.commands.join_queue import (
+    JoinQueueCommand,
+    join_queue,
+)
 from request_engine.modules.queue.application.queries.get_queue_status import get_queue_status
 from request_engine.modules.queue.contracts.service_queue import QueueEntryStatus
 from request_engine.platform.db.session import SessionFactory
@@ -25,7 +35,7 @@ PgConnection = Connection[Any]
 
 def _uuid_row(
     conn: PgConnection,
-    sql: str,
+    sql: LiteralString,
     params: tuple[object, ...] = (),
 ) -> UUID:
     row = conn.execute(sql, params).fetchone()

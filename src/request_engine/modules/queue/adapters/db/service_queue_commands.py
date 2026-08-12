@@ -1,14 +1,20 @@
 import hashlib
 import json
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand
-from request_engine.modules.queue.application.errors import AlreadyInQueue, QueueInactive, QueueNotFound
+from request_engine.modules.queue.application.errors import (
+    AlreadyInQueue,
+    QueueInactive,
+    QueueNotFound,
+)
 from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueEntryStatus
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
@@ -68,9 +74,10 @@ class PostgresServiceQueueCommands:
                 raise AlreadyInQueue(command.queue_id, command.subject_party_id)
 
             row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         INSERT INTO request_engine.queue_entries (
                             organization_id,
                             service_queue_id,
@@ -87,16 +94,19 @@ class PostgresServiceQueueCommands:
                         RETURNING id, service_queue_id, subject_party_id, status,
                                   admitted_at, called_at, revision
                         """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "queue_id": command.queue_id,
-                        "subject_party_id": command.subject_party_id,
-                        "reservation_id": command.reservation_id,
-                        "offering_id": command.offering_id,
-                    },
+                        ),
+                        {
+                            "organization_id": command.organization_id,
+                            "queue_id": command.queue_id,
+                            "subject_party_id": command.subject_party_id,
+                            "reservation_id": command.reservation_id,
+                            "offering_id": command.offering_id,
+                        },
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             entry = _queue_entry_from_row(row)
 
             await _append_audit(
@@ -168,9 +178,10 @@ class PostgresServiceQueueCommands:
 
             entry_id = cast(UUID, next_row[0])
             row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         UPDATE request_engine.queue_entries
                         SET status = 'called',
                             called_at = clock_timestamp(),
@@ -181,13 +192,16 @@ class PostgresServiceQueueCommands:
                         RETURNING id, service_queue_id, subject_party_id, status,
                                   admitted_at, called_at, revision
                         """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "entry_id": entry_id,
-                    },
+                        ),
+                        {
+                            "organization_id": command.organization_id,
+                            "entry_id": entry_id,
+                        },
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             entry = _queue_entry_from_row(row)
 
             await _append_audit(
@@ -227,7 +241,7 @@ class PostgresServiceQueueCommands:
                             "queue_entry_id": str(entry.id),
                             "queue_id": str(entry.queue_id),
                             "subject_party_id": str(entry.subject_party_id),
-                            "called_at": entry.called_at.isoformat() if entry.called_at else None,
+                            "called_at": (entry.called_at.isoformat() if entry.called_at else None),
                         },
                         separators=(",", ":"),
                     ),
@@ -241,7 +255,11 @@ class PostgresServiceQueueCommands:
             return entry
 
 
-async def _lock_active_queue(session: Any, organization_id: UUID, queue_id: UUID) -> None:
+async def _lock_active_queue(
+    session: AsyncSession,
+    organization_id: UUID,
+    queue_id: UUID,
+) -> None:
     row = (
         await session.execute(
             text(
@@ -263,7 +281,7 @@ async def _lock_active_queue(session: Any, organization_id: UUID, queue_id: UUID
 
 
 async def _acquire_idempotency(
-    session: Any,
+    session: AsyncSession,
     *,
     organization_id: UUID,
     principal_id: UUID,
@@ -272,9 +290,10 @@ async def _acquire_idempotency(
     fingerprint: str,
 ) -> tuple[UUID, dict[str, object] | None]:
     row = (
-        await session.execute(
-            text(
-                """
+        (
+            await session.execute(
+                text(
+                    """
                 SELECT idempotency_id, status, result_data, replay
                 FROM request_cmd.acquire_idempotency(
                     :organization_id,
@@ -284,16 +303,19 @@ async def _acquire_idempotency(
                     :fingerprint
                 )
                 """
-            ),
-            {
-                "organization_id": organization_id,
-                "principal_id": principal_id,
-                "capability": capability,
-                "idempotency_key": idempotency_key,
-                "fingerprint": fingerprint,
-            },
+                ),
+                {
+                    "organization_id": organization_id,
+                    "principal_id": principal_id,
+                    "capability": capability,
+                    "idempotency_key": idempotency_key,
+                    "fingerprint": fingerprint,
+                },
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
 
     idempotency_id = cast(UUID, row["idempotency_id"])
     if cast(bool, row["replay"]):
@@ -302,7 +324,7 @@ async def _acquire_idempotency(
 
 
 async def _complete_idempotency(
-    session: Any,
+    session: AsyncSession,
     idempotency_id: UUID,
     result: dict[str, object],
 ) -> None:
@@ -327,7 +349,7 @@ async def _complete_idempotency(
 
 
 async def _append_audit(
-    session: Any,
+    session: AsyncSession,
     *,
     organization_id: UUID,
     principal_id: UUID,
@@ -379,7 +401,7 @@ def _command_fingerprint(capability: str, values: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _queue_entry_from_row(row: Any) -> QueueEntry:
+def _queue_entry_from_row(row: RowMapping) -> QueueEntry:
     return QueueEntry(
         id=cast(UUID, row["id"]),
         queue_id=cast(UUID, row["service_queue_id"]),

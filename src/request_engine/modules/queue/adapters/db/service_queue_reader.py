@@ -25,26 +25,31 @@ class PostgresServiceQueueReader:
     ) -> QueueStatus:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             queue_row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT queue_id, queue_key, display_name
                         FROM request_read.service_queue_status_v1
                         WHERE organization_id = :organization_id
                           AND queue_id = :queue_id
                         LIMIT 1
                         """
-                    ),
-                    {"organization_id": organization_id, "queue_id": queue_id},
+                        ),
+                        {"organization_id": organization_id, "queue_id": queue_id},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             if queue_row is None:
                 raise QueueNotFound(queue_id)
 
             entry_row = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT id, service_queue_id, subject_party_id, status,
                                admitted_at, called_at, revision
                         FROM request_engine.queue_entries
@@ -55,14 +60,17 @@ class PostgresServiceQueueReader:
                         ORDER BY admitted_at DESC, id DESC
                         LIMIT 1
                         """
-                    ),
-                    {
-                        "organization_id": organization_id,
-                        "queue_id": queue_id,
-                        "subject_party_id": subject_party_id,
-                    },
+                        ),
+                        {
+                            "organization_id": organization_id,
+                            "queue_id": queue_id,
+                            "subject_party_id": subject_party_id,
+                        },
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
 
             entry: QueueEntry | None = None
             entries_ahead: int | None = None
