@@ -1,5 +1,4 @@
 import json
-from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import cast
 from uuid import UUID
@@ -14,10 +13,11 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
     _load_requirements,
     _lock_resource_ids,
     _lock_resources,
+    _LockedResource,
     _read_reservation,
-    _revalidate_exact_slot,
     _reservation_from_json,
     _reservation_to_json,
+    _revalidate_exact_slot,
     _validate_choice_cardinality,
     _validate_resource_capabilities,
     _validate_subject_location_and_origin,
@@ -37,11 +37,11 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     RescheduleReservationCommand,
 )
 from request_engine.modules.booking.application.errors import (
-    AppointmentUnavailable,
     BookingConfigurationError,
     CapacityHoldExpired,
     CapacityHoldNotActive,
     CapacityHoldNotFound,
+    InvalidHoldExpiration,
     ReservationNotFound,
     ReservationNotReschedulable,
 )
@@ -104,9 +104,11 @@ class PostgresBookingCommitmentCommands:
             if replay is not None:
                 return _hold_from_json(cast(dict[str, object], replay["hold"]))
 
-            now = cast(datetime, (await session.execute(text("SELECT clock_timestamp()"))).scalar_one())
+            now = cast(
+                datetime, (await session.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            )
             if expires_at <= now:
-                raise CapacityHoldExpired(UUID(int=0))
+                raise InvalidHoldExpiration()
 
             offering = await _load_bookable_offering(
                 session,
@@ -562,6 +564,10 @@ class PostgresBookingCommitmentCommands:
             old_by_requirement = {
                 cast(UUID, row["requirement_id"]): cast(UUID, row["id"]) for row in old_claims
             }
+            if set(old_by_requirement) != set(requirements):
+                raise BookingConfigurationError(
+                    f"Reservation {command.reservation_id} does not have the canonical claim set"
+                )
             replacement_ids: dict[UUID, UUID] = {}
             for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
                 choice = choices[requirement.id]
@@ -697,7 +703,7 @@ async def _read_hold_row(
         """
         SELECT id, offering_version_id, subject_party_id, location_id,
                during, lower(during) AS start_at, upper(during) AS end_at,
-               status, expires_at, revision
+               status, expires_at, revision, clock_timestamp() AS db_now
         FROM request_engine.capacity_holds
         WHERE organization_id = :organization_id
           AND id = :hold_id
@@ -720,7 +726,7 @@ def _assert_live_hold(row: RowMapping, hold_id: UUID) -> None:
     status = cast(str, row["status"])
     if status != "active":
         raise CapacityHoldNotActive(hold_id, status)
-    if cast(datetime, row["expires_at"]) <= datetime.now().astimezone():
+    if cast(datetime, row["expires_at"]) <= cast(datetime, row["db_now"]):
         raise CapacityHoldExpired(hold_id)
 
 
@@ -823,7 +829,7 @@ async def _load_profiles_excluding_reservation(
     session: AsyncSession,
     *,
     organization_id: UUID,
-    resources: dict[UUID, object],
+    resources: dict[UUID, _LockedResource],
     start_at: datetime,
     end_at: datetime,
     reservation_id: UUID,
@@ -847,13 +853,10 @@ async def _load_profiles_excluding_reservation(
     )
     profiles: dict[UUID, ResourceAvailability] = {}
     for resource_id, resource in resources.items():
-        capacity_model = getattr(resource, "capacity_model")
-        capacity_units = getattr(resource, "capacity_units")
-        default_timezone = getattr(resource, "default_timezone")
         profiles[resource_id] = ResourceAvailability(
-            capacity_model=capacity_model,
-            capacity_units=capacity_units,
-            default_timezone=default_timezone,
+            capacity_model=resource.capacity_model,
+            capacity_units=resource.capacity_units,
+            default_timezone=resource.default_timezone,
             schedules=schedules.get(resource_id, ()),
             exceptions=exceptions.get(resource_id, ()),
             live_claims=claims.get(resource_id, ()),

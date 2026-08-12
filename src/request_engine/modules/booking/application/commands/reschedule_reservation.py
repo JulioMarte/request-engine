@@ -18,7 +18,9 @@ class RescheduleReservationCommand:
 
 
 class RescheduleReservationHandler(Protocol):
-    async def reschedule_reservation(self, command: RescheduleReservationCommand) -> Reservation: ...
+    async def reschedule_reservation(
+        self, command: RescheduleReservationCommand
+    ) -> Reservation: ...
 
 
 async def reschedule_reservation(
