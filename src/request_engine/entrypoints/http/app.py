@@ -6,6 +6,7 @@ from request_engine.modules.booking.api import install_http as install_booking_h
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
+from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
@@ -26,6 +27,7 @@ def create_app(
         ),
     )
     app.add_exception_handler(IntegrityError, integrity_error_handler)
+    party_authority_reader = build_party_authority_reader(session_factory)
 
     install_requests_http(
         app,
@@ -41,6 +43,7 @@ def create_app(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+        party_authority_reader=party_authority_reader,
     )
     install_queue_http(
         app,

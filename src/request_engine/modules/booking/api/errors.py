@@ -11,6 +11,7 @@ from request_engine.modules.booking.application.errors import (
     ReservationNotCancellable,
     ReservationNotFound,
     ReservationNotReschedulable,
+    SubjectAuthorityRequired,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope
 
@@ -34,6 +35,15 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             code="reservation_not_found",
             message=str(exc),
             details={"reservation_id": str(exc.reservation_id)},
+        )
+    if isinstance(exc, SubjectAuthorityRequired):
+        return status.HTTP_403_FORBIDDEN, ErrorBody(
+            code="subject_authority_required",
+            message="the actor is not authorized to act for this Party",
+            details={
+                "subject_party_id": str(exc.subject_party_id),
+                "scope_key": exc.scope_key,
+            },
         )
     if isinstance(exc, OfferingVersionNotBookable):
         return status.HTTP_409_CONFLICT, ErrorBody(

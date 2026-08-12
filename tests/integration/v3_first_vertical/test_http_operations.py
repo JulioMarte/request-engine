@@ -25,6 +25,7 @@ _FULL_CAPABILITIES = frozenset(
         "booking.read",
         "booking.cancel_reservation",
         "booking.reschedule_reservation",
+        "appointments.subject_override",
         "queue.read",
         "queue.join",
         "queue.leave",

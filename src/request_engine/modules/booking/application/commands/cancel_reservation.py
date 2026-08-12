@@ -12,6 +12,7 @@ class CancelReservationCommand:
     reservation_id: UUID
     idempotency_key: str
     reason: str | None = None
+    allow_subject_override: bool = False
 
 
 class CancelReservationHandler(Protocol):

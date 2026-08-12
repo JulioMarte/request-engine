@@ -17,6 +17,7 @@ class BookAppointmentCommand:
     idempotency_key: str
     location_id: UUID | None = None
     origin_request_id: UUID | None = None
+    allow_subject_override: bool = False
 
 
 class BookAppointmentHandler(Protocol):
