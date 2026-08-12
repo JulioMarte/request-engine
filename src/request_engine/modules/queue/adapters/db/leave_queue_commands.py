@@ -3,10 +3,10 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from request_engine.modules.queue.adapters.db.service_queue_commands import (
-    _queue_entry_from_json,
-    _queue_entry_from_row,
-    _queue_entry_to_json,
+from request_engine.modules.queue.adapters.db.queue_entry_codec import (
+    queue_entry_from_json,
+    queue_entry_from_row,
+    queue_entry_to_json,
 )
 from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand
 from request_engine.modules.queue.application.errors import (
@@ -54,7 +54,7 @@ class PostgresLeaveQueueCommands:
                 raw_entry = replay.get("entry")
                 if not isinstance(raw_entry, dict):
                     raise RuntimeError("completed queue.leave replay has no entry")
-                return _queue_entry_from_json(cast(dict[str, object], raw_entry))
+                return queue_entry_from_json(cast(dict[str, object], raw_entry))
 
             queue_exists = (
                 await session.execute(
@@ -134,7 +134,7 @@ class PostgresLeaveQueueCommands:
                 .mappings()
                 .one()
             )
-            entry = _queue_entry_from_row(updated)
+            entry = queue_entry_from_row(updated)
             await append_audit(
                 session,
                 organization_id=command.organization_id,
@@ -165,6 +165,6 @@ class PostgresLeaveQueueCommands:
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"entry": _queue_entry_to_json(entry)},
+                {"entry": queue_entry_to_json(entry)},
             )
             return entry
