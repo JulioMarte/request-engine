@@ -36,8 +36,8 @@ from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     BookAppointmentBody,
     CancelReservationBody,
-    ReservationView,
     RescheduleReservationBody,
+    ReservationView,
 )
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
