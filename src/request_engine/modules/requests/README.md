@@ -88,7 +88,7 @@ default
 examples
 ```
 
-Input payload is validated against the exact `RequestDefinitionVersion` used by the Request. If a result schema exists, result payload is validated against that same version before it can be recorded or supplied atomically with completion. If a version declares a result schema, completion requires a validated result. If it declares no result schema, arbitrary result payload is rejected.
+Input payload is validated against the exact `RequestDefinitionVersion` used by the Request. The stored schema itself is also validated at submission time, so an unsupported or malformed version cannot silently admit new Requests. If a result schema exists, result payload is validated against that same version before it can be recorded or supplied atomically with completion. If a version declares a result schema, completion requires a validated result. If it declares no result schema, arbitrary result payload is rejected.
 
 JSON values are required to be representable as real JSON; non-finite floating-point values such as `NaN` and infinities are rejected before persistence. JSON numeric equality follows JSON Schema expectations for `enum`, `const` and `uniqueItems`, so for example `1` and `1.0` compare as the same JSON number.
 
