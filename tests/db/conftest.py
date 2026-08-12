@@ -6,7 +6,7 @@ import psycopg
 import pytest
 from psycopg import Connection
 
-PgConnection = Connection[tuple[Any, ...]]
+PgConnection = Connection[Any]
 
 
 def _conninfo() -> str:
