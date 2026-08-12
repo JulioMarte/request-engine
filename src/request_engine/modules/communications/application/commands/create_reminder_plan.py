@@ -18,6 +18,7 @@ class CreateReminderPlanCommand:
     template_key: str
     template_version: int
     idempotency_key: str
+    max_lateness_minutes: int = 60
 
 
 class CreateReminderPlanHandler(Protocol):
@@ -36,4 +37,6 @@ async def create_reminder_plan(
         raise ValueError("template_key is required")
     if command.template_version <= 0:
         raise ValueError("template_version must be positive")
+    if command.max_lateness_minutes <= 0 or command.max_lateness_minutes > 1440:
+        raise ValueError("max_lateness_minutes must be between 1 and 1440")
     return await handler.create_reminder_plan(command)
