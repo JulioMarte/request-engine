@@ -82,14 +82,14 @@ def test_business_modules_have_explicit_ownership_docs() -> None:
 
 
 def test_v3_baseline_modules_are_explicit() -> None:
-    assert BASELINE_MODULES == {
+    assert {
         "tenancy",
         "catalog",
         "requests",
         "booking",
         "queue",
         "communications",
-    }
+    } == BASELINE_MODULES
     assert BASELINE_MODULES.isdisjoint(DEFERRED_MODULES)
 
 
