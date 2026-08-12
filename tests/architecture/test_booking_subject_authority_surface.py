@@ -11,12 +11,12 @@ def test_booking_http_propagates_explicit_subject_override_permission() -> None:
 
 
 def test_authoritative_booking_mutations_resolve_subject_authority_in_transaction() -> None:
-    reservation_commands = (
-        BOOKING_ROOT / "adapters" / "db" / "reservation_commands.py"
-    ).read_text(encoding="utf-8")
-    commitment_commands = (
-        BOOKING_ROOT / "adapters" / "db" / "commitment_commands.py"
-    ).read_text(encoding="utf-8")
+    reservation_commands = (BOOKING_ROOT / "adapters" / "db" / "reservation_commands.py").read_text(
+        encoding="utf-8"
+    )
+    commitment_commands = (BOOKING_ROOT / "adapters" / "db" / "commitment_commands.py").read_text(
+        encoding="utf-8"
+    )
 
     assert reservation_commands.count("require_subject_authority(") >= 2
     assert commitment_commands.count("require_subject_authority(") >= 1
