@@ -36,11 +36,11 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     get_reservation_status,
 )
 from request_engine.modules.booking.contracts.capabilities import (
-    BOOK,
-    CANCEL,
-    FIND_SLOTS,
-    GET,
-    RESCHEDULE,
+    BOOK_PERMISSION,
+    CANCEL_PERMISSION,
+    FIND_SLOTS_PERMISSION,
+    GET_PERMISSION,
+    RESCHEDULE_PERMISSION,
 )
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
@@ -79,7 +79,7 @@ def create_router(
         location_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
-        _require(actor, FIND_SLOTS)
+        _require(actor, FIND_SLOTS_PERMISSION)
         result = await find_appointment_slots(
             availability_reader,
             FindAppointmentSlotsQuery(
@@ -98,7 +98,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, BOOK)
+        _require(actor, BOOK_PERMISSION)
         reservation = await book_appointment(
             book_handler,
             BookAppointmentCommand(
@@ -119,7 +119,7 @@ def create_router(
         reservation_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> ReservationView:
-        _require(actor, GET)
+        _require(actor, GET_PERMISSION)
         reservation = await get_reservation_status(
             reservation_reader,
             organization_id=actor.organization_id,
@@ -135,7 +135,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, CANCEL)
+        _require(actor, CANCEL_PERMISSION)
         reservation = await cancel_reservation(
             cancel_handler,
             CancelReservationCommand(
@@ -154,7 +154,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, RESCHEDULE)
+        _require(actor, RESCHEDULE_PERMISSION)
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
@@ -203,9 +203,9 @@ def create_router(
     return router
 
 
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
+def _require(actor: ActorContext, permission: str) -> None:
+    if not actor.allows(permission):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
+            detail=f"permission {permission!r} is required",
         )
