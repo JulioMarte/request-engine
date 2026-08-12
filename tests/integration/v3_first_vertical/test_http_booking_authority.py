@@ -327,7 +327,7 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
         WHERE organization_id = %s
           AND aggregate_kind = 'Reservation'
           AND aggregate_id = %s
-        ORDER BY occurred_at, id
+        ORDER BY created_at, id
         """,
         (fixture.organization_id, reservation_id),
     ).fetchall()
