@@ -137,8 +137,9 @@ async def load_live_capacity_claims(
                       AND c.status = 'active'
                       AND c.during && tstzrange(:window_start, :window_end, '[)')
                       AND (
-                          :exclude_reservation_id IS NULL
-                          OR c.reservation_id IS DISTINCT FROM :exclude_reservation_id
+                          CAST(:exclude_reservation_id AS uuid) IS NULL
+                          OR c.reservation_id IS DISTINCT FROM
+                             CAST(:exclude_reservation_id AS uuid)
                       )
                       AND (
                           (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
