@@ -117,9 +117,9 @@ class PostgresAppointmentAvailabilityReader:
                               AND rr.offering_version_id = :offering_version_id
                               AND r.active
                               AND (
-                                  :location_id IS NULL
+                                  CAST(:location_id AS uuid) IS NULL
                                   OR r.location_id IS NULL
-                                  OR r.location_id = :location_id
+                                  OR r.location_id = CAST(:location_id AS uuid)
                               )
                             ORDER BY rr.ordinal, r.id
                             """
