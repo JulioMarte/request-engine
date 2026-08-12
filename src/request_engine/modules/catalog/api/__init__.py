@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
-from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader
+from request_engine.modules.catalog.adapters.db.business_info_reader import (
+    PostgresBusinessInfoReader,
+)
 from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
     PostgresOfferingCatalogReader,
 )
