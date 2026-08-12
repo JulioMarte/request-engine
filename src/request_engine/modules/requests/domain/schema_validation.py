@@ -386,9 +386,14 @@ def _json_equal(left: object, right: object) -> bool:
     if isinstance(left, str) or isinstance(right, str):
         return isinstance(left, str) and isinstance(right, str) and left == right
     if isinstance(left, list) and isinstance(right, list):
-        if len(left) != len(right):
+        left_items = cast(list[object], left)
+        right_items = cast(list[object], right)
+        if len(left_items) != len(right_items):
             return False
-        return all(_json_equal(a, b) for a, b in zip(left, right, strict=True))
+        return all(
+            _json_equal(a, b)
+            for a, b in zip(left_items, right_items, strict=True)
+        )
     if isinstance(left, dict) and isinstance(right, dict):
         left_map = cast(dict[str, object], left)
         right_map = cast(dict[str, object], right)
