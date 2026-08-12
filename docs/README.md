@@ -6,27 +6,28 @@ This folder is the system of record for the current Request Engine product/domai
 
 Request Engine is in a **pre-baseline capability-first V3 transition**.
 
-`11-capability-first-v3.md` records the current product/architecture direction after the adversarial V2 review. The V2 PostgreSQL design chain remains useful as an executable design notebook, but it is **not** a schema to freeze while it contains concepts that V3 has deferred or redefined.
+The V3 product thesis is now followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`. The V2 PostgreSQL design chain remains useful as an executable design notebook, but it is **not** a schema to freeze while it contains concepts V3 deferred or replaced.
 
-When V3 and V2 conflict about product scope, Request semantics, baseline capabilities or whether a concept belongs in the first schema, V3 wins. Proven V2 safety rules such as tenant integrity, explicit transaction boundaries, canonical locking, idempotency, outbox-after-commit and real PostgreSQL race testing remain in force where the corresponding V3 concept still exists.
+When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the first schema, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
 
 ## Authoritative documents
 
-Read according to the task, using this precedence when rules overlap:
+Use this precedence when rules overlap:
 
-1. `11-capability-first-v3.md` — current product thesis, capability model, V3 baseline and explicit V2 reductions.
-2. `00-product-definition.md` — V2 product/domain contract; authoritative only where it does not conflict with V3 during transition.
-3. `01-architecture-v2.md` — proven transactional/concurrency architecture retained where the V3 concept still exists.
-4. `02-pre-sql-domain-contract.md` — V2 invariant/race catalog; source material for the reduced V3 matrix, not a baseline-freeze checklist until rewritten.
-5. `07-database-access-contract.md` — normative Python ↔ PostgreSQL boundary, Unit of Work, repositories, read views and narrow DB primitives unless V3 explicitly changes the concept.
-6. `09-python-module-architecture.md` — normative physical Python repository/module rules and transition topology.
-7. `10-module-ownership-map.md` — normative mapping from domain concepts/commands/DB surfaces to module ownership.
+1. `11-capability-first-v3.md` — product thesis, baseline capabilities and explicit V2 reductions.
+2. `v3/01-capability-contracts.md` — public/application capability semantics for agents, forms, apps and integrations.
+3. `v3/02-pre-sql-contract.md` — V3 entities/cardinalities, serialization roots, lock ordering, transaction protocols, invariants and race matrix.
+4. `07-database-access-contract.md` — Python ↔ PostgreSQL boundary where not superseded by V3.
+5. `09-python-module-architecture.md` — physical Python repository/module rules.
+6. `10-module-ownership-map.md` — module ownership.
+7. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
-Transition execution order and disposition of V2 concepts are documented in:
+Transition support documents:
 
-- `12-v3-transition-plan.md`.
+- `12-v3-transition-plan.md` — implementation/reduction order;
+- `v3/sql-disposition.md` — V2 SQL disposition inventory; later V3 contracts close previously open `RE_EVALUATE` questions.
 
-The domain and transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
+The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
 
 ## Architecture Decision Records
 
@@ -45,9 +46,7 @@ See `adr/README.md`.
 
 ## Physical layout clarification
 
-`01-architecture-v2.md` established the modular-monolith **logical dependency direction**. Its original illustrative horizontal folder tree is superseded for Python **physical organization** by `09-python-module-architecture.md`.
-
-The semantic rule remains:
+The semantic dependency direction remains:
 
 ```text
 entrypoint/adapter
@@ -59,17 +58,17 @@ domain rules + explicit ports
 database/provider adapters
 ```
 
-The physical layout groups those layers inside business modules to improve ownership/navigation; it does not change transactional boundaries or introduce microservices.
+Physical organization is module-first according to `09-python-module-architecture.md`. This remains one modular monolith and does not imply microservice boundaries.
 
 ## Documentation organization policy
 
-The numbered canonical documents are intentionally retained while the domain/schema is being reduced and frozen because many invariant references and design-chain comments point to them. Do not perform a cosmetic bulk move into new directories until the V3 contracts stabilize; that would create link churn without changing architecture.
+The older numbered canonical documents are retained during transition because design history and invariant references still point to them. Do not perform cosmetic bulk moves while V3 is stabilizing.
 
-New durable rationale belongs in `adr/`. New operational documentation should be grouped by purpose rather than extending historical numbering indefinitely after the V3 transition.
+New V3 domain/schema contracts belong under `docs/v3/`. Durable rationale belongs in `adr/`.
 
 ## PostgreSQL executable design chain
 
-Executable SQL does not live in `docs/`. The current pre-baseline V2.6→V2.10 design chain is under `migrations/sql/design_chain/` and is applied in this order:
+Executable SQL does not live in `docs/`. The historical pre-baseline V2.6→V2.10 design chain remains under `migrations/sql/design_chain/`:
 
 ```text
 03-postgresql-schema.sql
@@ -79,8 +78,10 @@ Executable SQL does not live in `docs/`. The current pre-baseline V2.6→V2.10 d
 08-postgresql-v2.10-access-surface.sql
 ```
 
-These are pre-production design deltas, not permanent Alembic production history and not the V3 baseline. V3 should construct a clean reduced candidate schema rather than indefinitely layering compatibility migrations over speculative V2 concepts. See `migrations/README.md` and `12-v3-transition-plan.md`.
+These files are pre-production design history, not permanent Alembic history and not the V3 candidate. The next SQL artifact is a **clean reduced V3 candidate** derived from `v3/02-pre-sql-contract.md`, not another compatibility layer over speculative V2 objects.
+
+See `migrations/README.md` before changing SQL.
 
 ## Historical material
 
-Everything under `legacy/` is historical and non-authoritative. Do not edit, move, delete, reformat, or implement directly from it unless the user explicitly requests an archive edit.
+Everything under `legacy/` is historical and non-authoritative. Do not edit, move, delete, reformat, or implement directly from it unless explicitly requested.
