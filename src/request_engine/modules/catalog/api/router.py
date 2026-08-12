@@ -2,12 +2,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader
+from request_engine.modules.catalog.adapters.db.business_info_reader import (
+    PostgresBusinessInfoReader,
+)
 from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
     PostgresOfferingCatalogReader,
 )
 from request_engine.modules.catalog.api.models import BusinessInfoView, OfferingView
-from request_engine.modules.catalog.application.queries.get_business_info import get_business_info
+from request_engine.modules.catalog.application.queries.get_business_info import (
+    get_business_info,
+)
 from request_engine.modules.catalog.application.queries.search_offerings import (
     SearchOfferingsQuery,
     get_offering_details,
@@ -76,7 +80,10 @@ def create_router(
         return OfferingView.from_contract(offering)
 
     router.add_api_route(
-        "/v1/business", business_info, methods=["GET"], response_model=BusinessInfoView
+        "/v1/business",
+        business_info,
+        methods=["GET"],
+        response_model=BusinessInfoView,
     )
     router.add_api_route(
         "/v1/catalog/offerings",
