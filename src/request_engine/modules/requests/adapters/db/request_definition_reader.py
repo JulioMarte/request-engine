@@ -68,7 +68,7 @@ class PostgresRequestDefinitionResolver:
                     "version": version,
                 }
 
-            row = ((await session.execute(statement, parameters)).mappings().first())
+            row = (await session.execute(statement, parameters)).mappings().first()
 
         if row is None:
             raise RequestDefinitionNotFound(request_key, version)
