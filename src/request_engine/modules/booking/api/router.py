@@ -4,15 +4,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
-from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
-    PostgresAppointmentAvailabilityReader,
-)
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
-)
-from request_engine.modules.booking.adapters.db.reservation_reader import (
-    PostgresReservationReader,
-)
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     BookAppointmentBody,
@@ -22,21 +13,26 @@ from request_engine.modules.booking.api.models import (
 )
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
+    BookAppointmentHandler,
     book_appointment,
 )
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
+    CancelReservationHandler,
     cancel_reservation,
 )
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
+    RescheduleReservationHandler,
     reschedule_reservation,
 )
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
+    AppointmentAvailabilityReader,
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
 from request_engine.modules.booking.application.queries.get_reservation_status import (
+    ReservationReader,
     get_reservation_status,
 )
 from request_engine.platform.security.context import ActorContext
@@ -50,9 +46,11 @@ IdempotencyKey = Annotated[
 
 def create_router(
     *,
-    availability_reader: PostgresAppointmentAvailabilityReader,
-    commands: PostgresReservationCommands,
-    reservation_reader: PostgresReservationReader,
+    availability_reader: AppointmentAvailabilityReader,
+    book_handler: BookAppointmentHandler,
+    cancel_handler: CancelReservationHandler,
+    reschedule_handler: RescheduleReservationHandler,
+    reservation_reader: ReservationReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/appointments", tags=["appointments"])
@@ -95,7 +93,7 @@ def create_router(
     ) -> ReservationView:
         _require(actor, "booking.book_appointment")
         reservation = await book_appointment(
-            commands,
+            book_handler,
             BookAppointmentCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -132,7 +130,7 @@ def create_router(
     ) -> ReservationView:
         _require(actor, "booking.cancel_reservation")
         reservation = await cancel_reservation(
-            commands,
+            cancel_handler,
             CancelReservationCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -151,7 +149,7 @@ def create_router(
     ) -> ReservationView:
         _require(actor, "booking.reschedule_reservation")
         reservation = await reschedule_reservation(
-            commands,
+            reschedule_handler,
             RescheduleReservationCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
