@@ -19,15 +19,17 @@ BASELINE_MODULES = frozenset(
 DEFERRED_MODULES = frozenset({"delivery", "payments", "dispatch"})
 ALL_MODULES = BASELINE_MODULES | DEFERRED_MODULES
 
-# Approved synchronous Python dependency directions. An allowed edge still has to
-# use the target module's contracts surface; it is permission, not ownership.
+# Approved synchronous Python dependency directions. This is evidence-based, not a
+# roadmap. Do not pre-approve an edge merely because a future design might need it.
+# When a real vertical introduces a dependency, first define the target module's
+# supported contracts surface and document the new |-| boundary before adding it.
 MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "tenancy": frozenset(),
     "catalog": frozenset(),
     "requests": frozenset(),
-    "booking": frozenset({"catalog"}),
-    "queue": frozenset({"booking"}),
-    "communications": frozenset({"booking"}),
+    "booking": frozenset(),
+    "queue": frozenset(),
+    "communications": frozenset(),
     "delivery": frozenset(),
     "payments": frozenset(),
     "dispatch": frozenset(),
@@ -174,6 +176,19 @@ def test_module_dependencies_match_approved_direction_policy() -> None:
         "Do not widen MODULE_DEPENDENCY_POLICY as a mechanical fix. First verify ownership, "
         "whether the dependency must be synchronous, and whether an event/outbox boundary is "
         "correct. Update canonical architecture docs when a new edge is accepted.",
+    )
+
+
+def test_dependency_policy_does_not_preapprove_unused_edges() -> None:
+    graph = _actual_dependency_graph()
+    speculative = {
+        module: sorted(MODULE_DEPENDENCY_POLICY[module] - graph[module])
+        for module in ALL_MODULES
+        if MODULE_DEPENDENCY_POLICY[module] - graph[module]
+    }
+    assert not speculative, (
+        "Dependency policy contains speculative edges with no current Python evidence: "
+        f"{speculative}. Remove them; add an edge only with the vertical that needs it."
     )
 
 
