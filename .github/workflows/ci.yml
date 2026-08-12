@@ -107,5 +107,6 @@ jobs:
           tests/db
           tests/integration/v3_first_vertical
           tests/integration/v3_booking_core
+          tests/integration/v3_booking_commitments
           -q
           -m postgres
