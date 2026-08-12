@@ -13,6 +13,7 @@ class ReminderPlanStatus(StrEnum):
 @dataclass(frozen=True, slots=True)
 class DailyReminderSchedule:
     times: tuple[time, ...]
+    max_lateness_minutes: int
 
 
 @dataclass(frozen=True, slots=True)
