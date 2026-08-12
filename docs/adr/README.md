@@ -28,3 +28,4 @@ Current records:
 - `0006-durable-transactional-communications.md`
 - `0007-minimal-booking-capacity-model.md`
 - `0008-tenant-rls-runtime-isolation.md`
+- `0009-waitlist-belongs-to-booking.md`
