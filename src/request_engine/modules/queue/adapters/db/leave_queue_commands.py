@@ -3,6 +3,11 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from request_engine.modules.queue.adapters.db.service_queue_commands import (
+    _queue_entry_from_json,
+    _queue_entry_from_row,
+    _queue_entry_to_json,
+)
 from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
@@ -10,11 +15,6 @@ from request_engine.modules.queue.application.errors import (
     QueueNotFound,
 )
 from request_engine.modules.queue.contracts.service_queue import QueueEntry
-from request_engine.modules.queue.adapters.db.service_queue_commands import (
-    _queue_entry_from_json,
-    _queue_entry_from_row,
-    _queue_entry_to_json,
-)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
