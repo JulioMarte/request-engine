@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand
 from request_engine.modules.queue.application.errors import (
@@ -47,6 +48,15 @@ class PostgresServiceQueueCommands:
             )
             if replay_data is not None:
                 return _queue_entry_from_json(cast(dict[str, object], replay_data["entry"]))
+
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                scope_key="queue.join",
+                allow_operator_override=command.allow_subject_override,
+            )
 
             await _lock_active_queue(session, command.organization_id, command.queue_id)
 
@@ -118,6 +128,7 @@ class PostgresServiceQueueCommands:
                 details={
                     "queue_id": str(command.queue_id),
                     "subject_party_id": str(command.subject_party_id),
+                    "subject_authority": authority.audit_details(),
                 },
                 idempotency_id=idempotency_id,
             )
