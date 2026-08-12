@@ -153,16 +153,12 @@ class PostgresRequestCommands:
                 idempotency_id=idempotency_id,
                 event_type="request.created.v1",
                 audit_details={
-                    "request_definition_version_id": str(
-                        request.request_definition_version_id
-                    ),
+                    "request_definition_version_id": str(request.request_definition_version_id),
                     "participant_count": len(request.participants),
                     "correlation_count": len(request.correlations),
                 },
                 event_payload={
-                    "request_definition_version_id": str(
-                        request.request_definition_version_id
-                    ),
+                    "request_definition_version_id": str(request.request_definition_version_id),
                     "requester_party_id": (
                         str(request.requester_party_id)
                         if request.requester_party_id is not None
@@ -289,9 +285,7 @@ class PostgresRequestCommands:
                 version,
                 existing_result=cast(dict[str, object] | None, row["result_payload"]),
             )
-            serialized_result = (
-                _json(result_to_store) if result_to_store is not None else None
-            )
+            serialized_result = _json(result_to_store) if result_to_store is not None else None
             await session.execute(
                 text(
                     """
@@ -789,10 +783,7 @@ def _correlation_identity(
     provider_key: str,
     external_key: str,
 ) -> str:
-    return (
-        f"request-correlation:{organization_id}:"
-        f"{correlation_kind}:{provider_key}:{external_key}"
-    )
+    return f"request-correlation:{organization_id}:{correlation_kind}:{provider_key}:{external_key}"
 
 
 def _json(value: dict[str, object]) -> str:
