@@ -25,6 +25,11 @@ ALTER ROLE request_engine_app NOLOGIN NOBYPASSRLS;
 ALTER ROLE request_engine_worker NOLOGIN NOBYPASSRLS;
 ALTER ROLE request_engine_admin NOLOGIN BYPASSRLS;
 
+-- Needed for the mixed UUID + tstzrange GiST capacity index. This is a
+-- PostgreSQL-supplied trusted extension, declared explicitly rather than
+-- relying on an operator class that may not exist in a clean database.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 CREATE SCHEMA request_engine AUTHORIZATION request_engine_schema_owner;
 CREATE SCHEMA request_read AUTHORIZATION request_engine_schema_owner;
 CREATE SCHEMA request_cmd AUTHORIZATION request_engine_schema_owner;
