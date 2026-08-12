@@ -21,11 +21,7 @@ def test_capability_registry_has_unique_canonical_keys_and_unambiguous_aliases()
     assert not (set(aliases) & set(canonical))
     # Legacy read umbrellas may intentionally fan out during migration. Every other
     # alias must resolve to a single canonical capability.
-    assert {
-        alias: targets
-        for alias, targets in aliases.items()
-        if len(targets) > 1
-    } == {
+    assert {alias: targets for alias, targets in aliases.items() if len(targets) > 1} == {
         "catalog.read": {
             "catalog.get_offering_details",
             "catalog.search_offerings",
