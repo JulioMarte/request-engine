@@ -55,7 +55,7 @@ class PostgresOfferingCatalogReader:
 
         if query.search_text is not None and (search_text := query.search_text.strip()):
             predicates.append(
-                "(" 
+                "("
                 "o.offering_key ILIKE :search_pattern "
                 "OR o.display_name ILIKE :search_pattern "
                 "OR COALESCE(o.description, '') ILIKE :search_pattern"
