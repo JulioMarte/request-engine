@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -7,8 +7,12 @@ from psycopg import Connection, Error
 PgConnection = Connection[Any]
 
 
-def _uuid_row(conn: PgConnection, sql: str, params: tuple[object, ...]) -> UUID:
-    row = conn.execute(sql, params).fetchone()
+def _uuid_row(
+    conn: PgConnection,
+    query: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
+    row = conn.execute(query, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
 
@@ -208,25 +212,38 @@ def test_current_representation_is_derived_from_status_and_database_time(
     principal_id = _principal(admin_conn, organization_id)
     party_id = _party(admin_conn, organization_id)
 
-    def insert_window(scope: str, status: str, from_delta: str, until_delta: str | None) -> UUID:
-        if until_delta is None:
-            until_sql = "NULL"
-        else:
-            until_sql = f"clock_timestamp() + interval '{until_delta}'"
+    def insert_window(
+        scope: str,
+        status: str,
+        from_delta: str,
+        until_delta: str | None,
+    ) -> UUID:
         return _uuid_row(
             admin_conn,
-            f"""
+            """
             INSERT INTO request_engine.representations (
                 organization_id, principal_id, represented_party_id,
                 authority_kind, scope_key, status, valid_from, valid_until
             ) VALUES (
                 %s, %s, %s, 'delegated', %s, %s,
-                clock_timestamp() + interval '{from_delta}',
-                {until_sql}
+                clock_timestamp() + %s::interval,
+                CASE
+                    WHEN %s::text IS NULL THEN NULL
+                    ELSE clock_timestamp() + %s::interval
+                END
             )
             RETURNING id
             """,
-            (organization_id, principal_id, party_id, scope, status),
+            (
+                organization_id,
+                principal_id,
+                party_id,
+                scope,
+                status,
+                from_delta,
+                until_delta,
+                until_delta,
+            ),
         )
 
     current_id = insert_window("appointments.manage", "active", "-1 hour", "1 hour")
