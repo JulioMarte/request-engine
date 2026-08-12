@@ -39,10 +39,14 @@ class ProviderDeliveryResult:
     status: ProviderDeliveryStatus
     provider_message_id: str | None = None
     retryable: bool = False
-    result_data: dict[str, object] = field(default_factory=dict)
+    result_data: dict[str, object] = field(default_factory=lambda: _empty_result_data())
 
 
 class CommunicationDeliveryProvider(Protocol):
     async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult: ...
 
     async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult: ...
+
+
+def _empty_result_data() -> dict[str, object]:
+    return {}
