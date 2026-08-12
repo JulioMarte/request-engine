@@ -3,13 +3,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from request_engine.modules.requests.adapters.db.request_commands import (
-    PostgresRequestCommands,
-)
-from request_engine.modules.requests.adapters.db.request_definition_reader import (
-    PostgresRequestDefinitionResolver,
-)
-from request_engine.modules.requests.adapters.db.request_reader import PostgresRequestReader
 from request_engine.modules.requests.api.models import (
     CancelRequestBody,
     CompleteRequestBody,
@@ -21,28 +14,35 @@ from request_engine.modules.requests.api.models import (
 )
 from request_engine.modules.requests.application.commands.cancel_request import (
     CancelRequestCommand,
+    CancelRequestHandler,
     cancel_request,
 )
 from request_engine.modules.requests.application.commands.complete_request import (
     CompleteRequestCommand,
+    CompleteRequestHandler,
     complete_request,
 )
 from request_engine.modules.requests.application.commands.create_request import (
     CreateRequestCommand,
+    CreateRequestHandler,
     create_request,
 )
 from request_engine.modules.requests.application.commands.fail_request import (
     FailRequestCommand,
+    FailRequestHandler,
     fail_request,
 )
 from request_engine.modules.requests.application.commands.record_request_result import (
     RecordRequestResultCommand,
+    RecordRequestResultHandler,
     record_request_result,
 )
 from request_engine.modules.requests.application.queries.get_request_status import (
+    RequestReader,
     get_request_status,
 )
 from request_engine.modules.requests.application.queries.resolve_request_definition import (
+    RequestDefinitionResolver,
     resolve_request_definition,
 )
 from request_engine.modules.requests.contracts.request import (
@@ -60,9 +60,13 @@ IdempotencyKey = Annotated[
 
 def create_router(
     *,
-    commands: PostgresRequestCommands,
-    reader: PostgresRequestReader,
-    definition_resolver: PostgresRequestDefinitionResolver,
+    create_handler: CreateRequestHandler,
+    record_result_handler: RecordRequestResultHandler,
+    complete_handler: CompleteRequestHandler,
+    cancel_handler: CancelRequestHandler,
+    fail_handler: FailRequestHandler,
+    reader: RequestReader,
+    definition_resolver: RequestDefinitionResolver,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/requests", tags=["requests"])
@@ -90,7 +94,7 @@ def create_router(
             version=body.definition_version,
         )
         request = await create_request(
-            commands,
+            create_handler,
             CreateRequestCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -144,7 +148,7 @@ def create_router(
     ) -> RequestView:
         _require(actor, "requests.record_result")
         request = await record_request_result(
-            commands,
+            record_result_handler,
             RecordRequestResultCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -164,7 +168,7 @@ def create_router(
     ) -> RequestView:
         _require(actor, "requests.complete")
         request = await complete_request(
-            commands,
+            complete_handler,
             CompleteRequestCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -184,7 +188,7 @@ def create_router(
     ) -> RequestView:
         _require(actor, "requests.cancel")
         request = await cancel_request(
-            commands,
+            cancel_handler,
             CancelRequestCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -204,7 +208,7 @@ def create_router(
     ) -> RequestView:
         _require(actor, "requests.fail")
         request = await fail_request(
-            commands,
+            fail_handler,
             FailRequestCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
