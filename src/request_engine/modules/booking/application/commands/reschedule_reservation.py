@@ -15,6 +15,7 @@ class RescheduleReservationCommand:
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
     location_id: UUID | None = None
+    allow_subject_override: bool = False
 
 
 class RescheduleReservationHandler(Protocol):
