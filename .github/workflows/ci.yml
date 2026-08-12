@@ -29,6 +29,8 @@ jobs:
         run: uv run pyright
       - name: Architecture tests
         run: uv run pytest tests/architecture -q
+      - name: Module unit tests
+        run: uv run pytest tests/modules -q
 
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
@@ -99,10 +101,11 @@ jobs:
         run: bash scripts/db/apply_v3_candidate.sh
       - name: Resolve test environment
         run: uv sync --all-groups
-      - name: V3 PostgreSQL invariant, race, and first-vertical tests
+      - name: V3 PostgreSQL invariant, race, and vertical tests
         run: >-
           uv run pytest
           tests/db
           tests/integration/v3_first_vertical
+          tests/integration/v3_booking_core
           -q
           -m postgres
