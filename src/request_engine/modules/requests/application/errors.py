@@ -5,6 +5,14 @@ class RequestError(Exception):
     """Base class for durable Request semantic failures."""
 
 
+class RequestDefinitionNotFound(RequestError):
+    def __init__(self, request_key: str, version: int | None) -> None:
+        version_label = f" version {version}" if version is not None else ""
+        super().__init__(f"RequestDefinition {request_key!r}{version_label} was not found")
+        self.request_key = request_key
+        self.version = version
+
+
 class RequestDefinitionVersionNotFound(RequestError):
     def __init__(self, version_id: UUID) -> None:
         super().__init__(f"RequestDefinitionVersion {version_id} was not found")
