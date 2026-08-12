@@ -1,9 +1,11 @@
 from uuid import UUID
 
+from request_engine.modules.requests.domain.errors import RequestError
 from request_engine.modules.requests.domain.errors import (
-    RequestError,
-    RequestPayloadInvalid,
-    UnsupportedRequestSchema,
+    RequestPayloadInvalid as RequestPayloadInvalid,
+)
+from request_engine.modules.requests.domain.errors import (
+    UnsupportedRequestSchema as UnsupportedRequestSchema,
 )
 
 
