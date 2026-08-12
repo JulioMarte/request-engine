@@ -38,10 +38,7 @@ async def set_tenant_context(session: AsyncSession, organization_id: UUID) -> No
     """Bind the current transaction to one tenant for PostgreSQL RLS."""
 
     await session.execute(
-        text(
-            "SELECT set_config(" 
-            "'request_engine.organization_id', :organization_id, true)"
-        ),
+        text("SELECT set_config('request_engine.organization_id', :organization_id, true)"),
         {"organization_id": str(organization_id)},
     )
 
