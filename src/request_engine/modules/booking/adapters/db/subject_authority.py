@@ -37,12 +37,7 @@ async def require_subject_authority(
     scope_key: str,
     allow_operator_override: bool,
 ) -> SubjectAuthorityEvidence:
-    """Resolve authority in the same transaction as the booking mutation.
-
-    The operator path is an explicit policy decision made from authenticated
-    actor permissions. Otherwise, a current exact-scope Representation must
-    still exist at the database wall-clock instant of the authoritative write.
-    """
+    """Resolve current exact-scope Party authority inside the caller transaction."""
 
     if allow_operator_override:
         return SubjectAuthorityEvidence(mode="operator", scope_key=scope_key)
@@ -52,26 +47,13 @@ async def require_subject_authority(
             await session.execute(
                 text(
                     """
-                    SELECT r.id AS representation_id, r.authority_kind
-                    FROM request_engine.representations r
-                    JOIN request_engine.principals p
-                      ON p.organization_id = r.organization_id
-                     AND p.id = r.principal_id
-                    JOIN request_engine.parties party
-                      ON party.organization_id = r.organization_id
-                     AND party.id = r.represented_party_id
-                    CROSS JOIN LATERAL (SELECT clock_timestamp() AS db_now) clock
-                    WHERE r.organization_id = :organization_id
-                      AND r.principal_id = :principal_id
-                      AND r.represented_party_id = :subject_party_id
-                      AND r.scope_key = :scope_key
-                      AND r.status = 'active'
-                      AND p.active
-                      AND party.active
-                      AND r.valid_from <= clock.db_now
-                      AND (r.valid_until IS NULL OR r.valid_until > clock.db_now)
-                    ORDER BY r.valid_from DESC, r.id
-                    LIMIT 1
+                    SELECT representation_id, authority_kind
+                    FROM request_engine.resolve_current_party_authority(
+                        :organization_id,
+                        :principal_id,
+                        :subject_party_id,
+                        :scope_key
+                    )
                     """
                 ),
                 {
