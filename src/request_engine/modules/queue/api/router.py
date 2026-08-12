@@ -3,18 +3,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from request_engine.modules.queue.adapters.db.leave_queue_commands import (
-    PostgresLeaveQueueCommands,
-)
-from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
-    PostgresServiceQueueCatalogReader,
-)
-from request_engine.modules.queue.adapters.db.service_queue_commands import (
-    PostgresServiceQueueCommands,
-)
-from request_engine.modules.queue.adapters.db.service_queue_reader import (
-    PostgresServiceQueueReader,
-)
 from request_engine.modules.queue.api.models import (
     JoinQueueBody,
     LeaveQueueBody,
@@ -24,20 +12,25 @@ from request_engine.modules.queue.api.models import (
 )
 from request_engine.modules.queue.application.commands.call_next import (
     CallNextCommand,
+    CallNextExecutor,
     call_next,
 )
 from request_engine.modules.queue.application.commands.join_queue import (
     JoinQueueCommand,
+    JoinQueueExecutor,
     join_queue,
 )
 from request_engine.modules.queue.application.commands.leave_queue import (
     LeaveQueueCommand,
+    LeaveQueueExecutor,
     leave_queue,
 )
 from request_engine.modules.queue.application.queries.get_queue_status import (
+    QueueStatusReader,
     get_queue_status,
 )
 from request_engine.modules.queue.application.queries.list_service_queues import (
+    ServiceQueueCatalogReader,
     list_service_queues,
 )
 from request_engine.platform.security.context import ActorContext
@@ -51,10 +44,11 @@ IdempotencyKey = Annotated[
 
 def create_router(
     *,
-    commands: PostgresServiceQueueCommands,
-    leave_commands: PostgresLeaveQueueCommands,
-    reader: PostgresServiceQueueReader,
-    catalog_reader: PostgresServiceQueueCatalogReader,
+    join_executor: JoinQueueExecutor,
+    call_next_executor: CallNextExecutor,
+    leave_executor: LeaveQueueExecutor,
+    reader: QueueStatusReader,
+    catalog_reader: ServiceQueueCatalogReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/queues", tags=["queues"])
@@ -87,7 +81,7 @@ def create_router(
     ) -> QueueEntryView:
         _require(actor, "queue.join")
         entry = await join_queue(
-            commands,
+            join_executor,
             JoinQueueCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -122,7 +116,7 @@ def create_router(
     ) -> QueueEntryView:
         _require(actor, "queue.leave")
         entry = await leave_queue(
-            leave_commands,
+            leave_executor,
             LeaveQueueCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
@@ -141,7 +135,7 @@ def create_router(
     ) -> QueueEntryView | None:
         _require(actor, "queue.call_next")
         entry = await call_next(
-            commands,
+            call_next_executor,
             CallNextCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
