@@ -8,14 +8,16 @@ Before editing, identify the primary owner and read only the canonical material 
 
 1. `docs/README.md` — documentation map and precedence.
 2. `docs/11-capability-first-v3.md` — current product thesis and V3 baseline.
-3. `docs/10-module-ownership-map.md` — where business changes belong.
-4. owning `src/request_engine/modules/<module>/README.md` — local scope/boundary.
-5. `docs/12-v3-transition-plan.md` — V2 disposition and baseline migration plan when touching transitional concepts/SQL.
-6. `docs/07-database-access-contract.md` — Python ↔ PostgreSQL ownership and UoW rules.
-7. `docs/09-python-module-architecture.md` — physical Python layout/import rules.
-8. `docs/adr/README.md` — accepted architectural decisions and their rationale.
+3. `docs/v3/01-capability-contracts.md` — public/application capability semantics.
+4. `docs/v3/02-pre-sql-contract.md` — V3 cardinalities, serialization roots, locks, transactions, invariants and race matrix.
+5. `docs/10-module-ownership-map.md` — where business changes belong.
+6. owning `src/request_engine/modules/<module>/README.md` — local scope/boundary.
+7. `docs/07-database-access-contract.md` — Python ↔ PostgreSQL ownership and UoW rules.
+8. `docs/09-python-module-architecture.md` — physical Python layout/import rules.
+9. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — migration/disposition context when touching transitional V2 concepts.
+10. `docs/adr/README.md` — accepted architectural decisions and rationale.
 
-Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-pre-sql-domain-contract.md` as V2 safety/design source material only according to the precedence in `docs/README.md`. Do not reintroduce a V2 concept that V3 explicitly deferred merely because it exists in those files or the design-chain SQL.
+Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-pre-sql-domain-contract.md` only as V2 source material according to `docs/README.md`. Do not reintroduce a V2 concept V3 explicitly removed/deferred merely because it exists in old docs or SQL.
 
 `docs/legacy/**` is historical and non-authoritative.
 
@@ -36,16 +38,18 @@ Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-p
 - n8n/providers are adapters/extensions, not owners of booking/request/queue authority. Their callbacks use authenticated idempotent semantic commands.
 - `request_read.*` is a read contract, never mutation authority. `request_cmd.*` contains narrow consistency primitives, never workflow-sized stored procedures.
 
-## Product-language discipline
-
-Do not recreate the universal-model drift V3 is correcting.
+## V3 product-language discipline
 
 - `Request` is new durable business demand needing later processing; cancel/reschedule are Commands by default.
-- `ServiceQueue` is current FIFO service flow; `Waitlist` is future capacity interest. They are not synonyms.
+- `1 Reservation = 1 OfferingVersion + 1 subject + 1 interval` in baseline; no universal ReservationItem/cart.
+- concrete `Resource` is the V3 capacity serialization root; do not recreate a one-to-one `CapacityAuthority` table without a new proven source type.
+- `CapacityClaim` is the common Hold/Reservation capacity truth; do not recreate V2 `ResourceAllocation` one-to-one duplication.
+- `ServiceQueue` is current FIFO service flow; `Waitlist` is future capacity interest.
+- `SlotOpportunity` coordinates one released-slot recovery chain; `SlotOffer` is one candidate offer backed by a short CapacityHold in baseline.
 - Reservation confirmation is distinct from attendance confirmation.
-- Communications/recordatorios are durable transactional intent; provider transport remains external.
-- `Workflow`, `OutcomeScope`, advanced Fulfillment, CapacityPool, PlanningRevision, dispatch and advanced payments are not baseline dependencies unless a later accepted decision reactivates them.
-- Prefer stable capability names such as `appointments.book`, `queue.join`, `quotes.request` over table-shaped endpoints/tools.
+- Communications/reminders are durable transactional intent; provider transport remains external.
+- `Workflow`, `OutcomeScope`, advanced Fulfillment, CapacityPool, PlanningRevision, dispatch and advanced payments are not baseline dependencies.
+- Prefer stable capabilities such as `appointments.book`, `queue.join`, `waitlist.accept_offer`, `requests.submit` over table-shaped endpoints/tools.
 
 ## File/abstraction discipline
 
@@ -59,11 +63,12 @@ Do not infer `table → entity → repository → endpoint`. Database structures
 
 For booking/capacity, queue selection, waitlist offers, scheduling, communications, authority, idempotency, outbox, or any concurrent mutation:
 
-- identify the V3 promise/invariant being protected; during transition, consult relevant V2 invariant/race material only where the concept survives;
-- preserve `READ / PLAN / LOCK / VALIDATE / WRITE / EMIT` ordering where specified;
-- plan the full lock set and canonical lock order before acquisition when required;
-- use real PostgreSQL tests for constraints, range overlap, locks, isolation, `SKIP LOCKED`, lease/fencing, privilege behavior and races;
-- add a regression test for every fixed invariant/race bug.
+- identify the exact `V3-Ixx` invariants in `docs/v3/02-pre-sql-contract.md`;
+- preserve the documented `READ / PLAN / LOCK / VALIDATE / WRITE / EMIT` protocol;
+- follow canonical lock order and serialization roots before choosing SQL shape;
+- use real PostgreSQL tests for constraints, range overlap, locks, isolation, `SKIP LOCKED`, lease/fencing, RLS/privilege behavior and races;
+- add a regression test for every fixed invariant/race bug;
+- do not claim `0001_initial` readiness until the V3 schema construction gate passes.
 
 ## Validation before completion
 
