@@ -65,9 +65,7 @@ def test_http_authentication_surface_is_explicit_platform_contract() -> None:
 
 def test_http_module_installers_are_connection_surfaces() -> None:
     for module_name in HTTP_MODULES:
-        source = (MODULES_ROOT / module_name / "api" / "__init__.py").read_text(
-            encoding="utf-8"
-        )
+        source = (MODULES_ROOT / module_name / "api" / "__init__.py").read_text(encoding="utf-8")
         assert "def install_http(" in source
         assert "session_factory: SessionFactory" in source
         assert "actor_resolver: ActorResolver" in source
