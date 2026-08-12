@@ -390,10 +390,7 @@ def _json_equal(left: object, right: object) -> bool:
         right_items = cast(list[object], right)
         if len(left_items) != len(right_items):
             return False
-        return all(
-            _json_equal(a, b)
-            for a, b in zip(left_items, right_items, strict=True)
-        )
+        return all(_json_equal(a, b) for a, b in zip(left_items, right_items, strict=True))
     if isinstance(left, dict) and isinstance(right, dict):
         left_map = cast(dict[str, object], left)
         right_map = cast(dict[str, object], right)
