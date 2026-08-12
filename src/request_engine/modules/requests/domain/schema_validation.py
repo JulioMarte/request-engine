@@ -1,4 +1,4 @@
-import json
+import math
 import re
 from collections.abc import Sequence
 from typing import cast
@@ -114,9 +114,19 @@ def _validate_schema(schema: dict[str, object], *, schema_path: str) -> None:
         for value in cast(list[object], enum_values):
             _ensure_json_value(value, path=f"{schema_path}.enum")
 
-    for keyword in ("minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"):
+    bounded_count_keywords = (
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "minProperties",
+        "maxProperties",
+    )
+    for keyword in bounded_count_keywords:
         value = schema.get(keyword)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
             raise RequestPayloadInvalid(
                 schema_path,
                 f"schema {keyword} must be a non-negative integer",
@@ -161,7 +171,7 @@ def _validate_value(
             expected = " | ".join(allowed_types)
             raise RequestPayloadInvalid(data_path, f"expected type {expected}")
 
-    if "const" in schema and value != schema["const"]:
+    if "const" in schema and not _json_equal(value, schema["const"]):
         raise RequestPayloadInvalid(data_path, "value does not match const")
 
     enum_values = schema.get("enum")
@@ -201,7 +211,10 @@ def _validate_object(
     if isinstance(required, list):
         for required_name in cast(list[object], required):
             if isinstance(required_name, str) and required_name not in value:
-                raise RequestPayloadInvalid(data_path, f"missing required property {required_name!r}")
+                raise RequestPayloadInvalid(
+                    data_path,
+                    f"missing required property {required_name!r}",
+                )
 
     minimum = schema.get("minProperties")
     maximum = schema.get("maxProperties")
@@ -254,9 +267,9 @@ def _validate_array(
         raise RequestPayloadInvalid(data_path, f"allows at most {maximum} items")
 
     if schema.get("uniqueItems") is True:
-        canonical = [_canonical_json(item) for item in value]
-        if len(set(canonical)) != len(canonical):
-            raise RequestPayloadInvalid(data_path, "array items must be unique")
+        for index, item in enumerate(value):
+            if any(_json_equal(item, previous) for previous in value[:index]):
+                raise RequestPayloadInvalid(data_path, "array items must be unique")
 
     items = schema.get("items")
     if isinstance(items, dict):
@@ -360,13 +373,30 @@ def _ensure_json_value(value: object, *, path: str) -> None:
 
 
 def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or math.isfinite(value)
 
 
 def _json_equal(left: object, right: object) -> bool:
-    return _canonical_json(left) == _canonical_json(right)
-
-
-def _canonical_json(value: object) -> str:
-    _ensure_json_value(value, path="$")
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    _ensure_json_value(left, path="$")
+    _ensure_json_value(right, path="$")
+    if _is_number(left) and _is_number(right):
+        return cast(int | float, left) == cast(int | float, right)
+    if left is None or right is None:
+        return left is right
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left == right
+    if isinstance(left, str) or isinstance(right, str):
+        return isinstance(left, str) and isinstance(right, str) and left == right
+    if isinstance(left, list) and isinstance(right, list):
+        if len(left) != len(right):
+            return False
+        return all(_json_equal(a, b) for a, b in zip(left, right, strict=True))
+    if isinstance(left, dict) and isinstance(right, dict):
+        left_map = cast(dict[str, object], left)
+        right_map = cast(dict[str, object], right)
+        if left_map.keys() != right_map.keys():
+            return False
+        return all(_json_equal(left_map[key], right_map[key]) for key in left_map)
+    return False
