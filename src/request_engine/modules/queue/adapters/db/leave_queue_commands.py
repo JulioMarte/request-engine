@@ -8,6 +8,7 @@ from request_engine.modules.queue.adapters.db.queue_entry_codec import (
     queue_entry_from_row,
     queue_entry_to_json,
 )
+from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
@@ -55,6 +56,15 @@ class PostgresLeaveQueueCommands:
                 if not isinstance(raw_entry, dict):
                     raise RuntimeError("completed queue.leave replay has no entry")
                 return queue_entry_from_json(cast(dict[str, object], raw_entry))
+
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                scope_key="queue.manage",
+                allow_operator_override=command.allow_subject_override,
+            )
 
             queue_exists = (
                 await session.execute(
@@ -147,6 +157,7 @@ class PostgresLeaveQueueCommands:
                     "queue_id": str(command.queue_id),
                     "subject_party_id": str(command.subject_party_id),
                     "reason": command.reason,
+                    "subject_authority": authority.audit_details(),
                 },
             )
             await append_outbox(
