@@ -132,7 +132,10 @@ def _request_error(exc: RequestError) -> tuple[int, ErrorBody]:
     )
 
 
-def _request_conflict(code: str, exc: RequestResultAlreadyRecorded | RequestResultRequired) -> tuple[int, ErrorBody]:
+def _request_conflict(
+    code: str,
+    exc: RequestResultAlreadyRecorded | RequestResultRequired,
+) -> tuple[int, ErrorBody]:
     return status.HTTP_409_CONFLICT, ErrorBody(
         code=code,
         message=str(exc),
