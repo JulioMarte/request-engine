@@ -30,6 +30,7 @@ _FULL_CAPABILITIES = frozenset(
         "queue.join",
         "queue.leave",
         "queue.call_next",
+        "queue.subject_override",
     }
 )
 
