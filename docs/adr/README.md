@@ -24,3 +24,5 @@ Current records:
 - `0002-smart-postgresql-boundary.md`
 - `0003-module-first-python-layout.md`
 - `0004-agent-knowledge-system.md`
+- `0005-capability-first-product-core.md`
+- `0006-durable-transactional-communications.md`
