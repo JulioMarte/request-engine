@@ -14,8 +14,12 @@ def request_to_json(request: Request) -> dict[str, object]:
     return {
         "id": str(request.id),
         "request_definition_version_id": str(request.request_definition_version_id),
-        "requester_party_id": str(request.requester_party_id) if request.requester_party_id else None,
-        "recipient_party_id": str(request.recipient_party_id) if request.recipient_party_id else None,
+        "requester_party_id": (
+            str(request.requester_party_id) if request.requester_party_id else None
+        ),
+        "recipient_party_id": (
+            str(request.recipient_party_id) if request.recipient_party_id else None
+        ),
         "status": request.status.value,
         "payload": request.payload,
         "result_payload": request.result_payload,
