@@ -1,0 +1,76 @@
+name: Format V3 booking branch
+
+on:
+  push:
+    branches: [feature/v3-booking-core]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Apply exact booking cleanup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          reader = Path("src/request_engine/modules/booking/adapters/db/appointment_availability_reader.py")
+          text = reader.read_text()
+          marker = "from request_engine.platform.db.session import SessionFactory, tenant_transaction\n"
+          policy_import = "from request_engine.modules.booking.domain.policy import slot_step_minutes\n"
+          if policy_import not in text:
+              text = text.replace(marker, policy_import + marker)
+          text = text.replace(
+              "step_minutes = _slot_step_minutes(booking_policy, duration_minutes)",
+              "step_minutes = slot_step_minutes(booking_policy, duration_minutes)",
+          )
+          text = text.replace(
+              "    locations = {candidate.location_id for candidate in combination if candidate.location_id is not None}\n",
+              "    locations = {\n"
+              "        candidate.location_id\n"
+              "        for candidate in combination\n"
+              "        if candidate.location_id is not None\n"
+              "    }\n",
+          )
+          old_helper = '''\n\ndef _slot_step_minutes(policy: dict[str, object], duration_minutes: int) -> int:\n    raw = policy.get("slot_step_minutes", duration_minutes)\n    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:\n        raise BookingConfigurationError("booking_policy.slot_step_minutes must be a positive integer")\n    return raw\n'''
+          if old_helper not in text:
+              raise SystemExit("unexpected appointment reader policy helper")
+          text = text.replace(old_helper, "\n")
+          reader.write_text(text)
+
+          commands = Path("src/request_engine/modules/booking/adapters/db/reservation_commands.py")
+          text = commands.read_text()
+          old = '                f"exclusive Resource {resource_id} cannot satisfy multiple simultaneous requirements"\n'
+          new = (
+              '                f"exclusive Resource {resource_id} cannot satisfy multiple "\n'
+              '                "simultaneous requirements"\n'
+          )
+          if old not in text:
+              raise SystemExit("unexpected reservation command long error")
+          commands.write_text(text.replace(old, new))
+          PY
+      - name: Install Ruff
+        run: python -m pip install --disable-pip-version-check 'ruff>=0.15.22,<0.16'
+      - name: Canonicalize formatting
+        run: |
+          ruff check --fix .
+          ruff format .
+          ruff check .
+      - name: Commit cleanup
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests .github/workflows/ci.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "style: canonicalize V3 booking implementation"
+          git push origin HEAD:feature/v3-booking-core
