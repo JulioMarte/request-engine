@@ -84,7 +84,7 @@ def _cross_module_target(owner: str, import_name: str) -> tuple[str, str | None]
 
 
 def _actual_dependency_graph() -> dict[str, set[str]]:
-    graph = {module: set() for module in ALL_MODULES}
+    graph: dict[str, set[str]] = {module: set() for module in ALL_MODULES}
     for owner in ALL_MODULES:
         for path in _python_files(MODULES_ROOT / owner):
             for import_name in _imports(path):
