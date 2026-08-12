@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -47,7 +47,7 @@ async def set_tenant_context(session: AsyncSession, organization_id: UUID) -> No
 async def tenant_transaction(
     session_factory: SessionFactory,
     organization_id: UUID,
-) -> AsyncIterator[AsyncSession]:
+) -> AsyncGenerator[AsyncSession]:
     """Open one task-local session and one explicit tenant-scoped transaction."""
 
     async with session_factory() as session, session.begin():
