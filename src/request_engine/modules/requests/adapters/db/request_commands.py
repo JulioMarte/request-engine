@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
@@ -51,6 +52,14 @@ from request_engine.platform.idempotency.postgres import (
 from request_engine.platform.outbox.postgres import append_outbox
 
 
+@dataclass(frozen=True, slots=True)
+class RequestDefinitionVersionData:
+    id: UUID
+    input_schema: dict[str, object]
+    result_schema: dict[str, object] | None
+    definition_active: bool
+
+
 class PostgresRequestCommands:
     """Transactional Request commands with Request as lifecycle serialization root."""
 
@@ -70,7 +79,6 @@ class PostgresRequestCommands:
                 "correlations": _correlation_fingerprint(command),
             },
         )
-
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
@@ -81,7 +89,7 @@ class PostgresRequestCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return request_from_json(cast(dict[str, object], replay["request"]))
+                return _request_from_replay(replay)
 
             version = await load_request_definition_version(
                 session,
@@ -90,9 +98,7 @@ class PostgresRequestCommands:
             )
             if not version.definition_active:
                 raise RequestDefinitionInactive(command.request_definition_version_id)
-
-            validate_request_schema(version.input_schema)
-            validate_request_document(command.payload, version.input_schema)
+            _validate_schema_and_document(command.payload, version.input_schema)
             if version.result_schema is not None:
                 validate_request_schema(version.result_schema)
 
@@ -134,79 +140,26 @@ class PostgresRequestCommands:
                     )
                 ).scalar_one(),
             )
-
-            for participant in command.participants:
-                await session.execute(
-                    text(
-                        """
-                        INSERT INTO request_engine.request_participants (
-                            organization_id, request_id, party_id, role_key
-                        ) VALUES (
-                            :organization_id, :request_id, :party_id, :role_key
-                        )
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "request_id": request_id,
-                        "party_id": participant.party_id,
-                        "role_key": participant.role_key,
-                    },
-                )
-
-            for correlation in command.correlations:
-                await session.execute(
-                    text(
-                        """
-                        INSERT INTO request_engine.external_correlations (
-                            organization_id,
-                            request_id,
-                            correlation_kind,
-                            provider_key,
-                            external_key
-                        ) VALUES (
-                            :organization_id,
-                            :request_id,
-                            :correlation_kind,
-                            :provider_key,
-                            :external_key
-                        )
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "request_id": request_id,
-                        "correlation_kind": correlation.correlation_kind,
-                        "provider_key": correlation.provider_key,
-                        "external_key": correlation.external_key,
-                    },
-                )
+            await _insert_participants(session, command, request_id)
+            await _insert_correlations(session, command, request_id)
 
             request = await read_request(session, command.organization_id, request_id)
-            await append_audit(
+            await _record_command_success(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name=capability,
-                aggregate_kind="Request",
-                aggregate_id=request.id,
+                capability=capability,
+                request=request,
                 idempotency_id=idempotency_id,
-                details={
+                event_type="request.created.v1",
+                audit_details={
                     "request_definition_version_id": str(
                         request.request_definition_version_id
                     ),
                     "participant_count": len(request.participants),
                     "correlation_count": len(request.correlations),
                 },
-            )
-            await append_outbox(
-                session,
-                organization_id=command.organization_id,
-                event_type="request.created.v1",
-                aggregate_kind="Request",
-                aggregate_id=request.id,
-                payload={
-                    "request_id": str(request.id),
+                event_payload={
                     "request_definition_version_id": str(
                         request.request_definition_version_id
                     ),
@@ -221,13 +174,7 @@ class PostgresRequestCommands:
                         else None
                     ),
                     "payload": request.payload,
-                    "revision": request.revision,
                 },
-            )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"request": request_to_json(request)},
             )
             return request
 
@@ -251,7 +198,7 @@ class PostgresRequestCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return request_from_json(cast(dict[str, object], replay["request"]))
+                return _request_from_replay(replay)
 
             row = await lock_request(
                 session,
@@ -270,8 +217,7 @@ class PostgresRequestCommands:
             )
             if version.result_schema is None:
                 raise RequestResultNotDefined(version.id)
-            validate_request_schema(version.result_schema)
-            validate_request_document(command.result_payload, version.result_schema)
+            _validate_schema_and_document(command.result_payload, version.result_schema)
 
             await session.execute(
                 text(
@@ -291,32 +237,16 @@ class PostgresRequestCommands:
                 },
             )
             request = await read_request(session, command.organization_id, command.request_id)
-            await append_audit(
+            await _record_command_success(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name=capability,
-                aggregate_kind="Request",
-                aggregate_id=request.id,
+                capability=capability,
+                request=request,
                 idempotency_id=idempotency_id,
-                details={"revision": request.revision},
-            )
-            await append_outbox(
-                session,
-                organization_id=command.organization_id,
                 event_type="request.result_recorded.v1",
-                aggregate_kind="Request",
-                aggregate_id=request.id,
-                payload={
-                    "request_id": str(request.id),
-                    "result_payload": request.result_payload,
-                    "revision": request.revision,
-                },
-            )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"request": request_to_json(request)},
+                audit_details={"revision": request.revision},
+                event_payload={"result_payload": request.result_payload},
             )
             return request
 
@@ -340,7 +270,7 @@ class PostgresRequestCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return request_from_json(cast(dict[str, object], replay["request"]))
+                return _request_from_replay(replay)
 
             row = await lock_request(
                 session,
@@ -349,28 +279,19 @@ class PostgresRequestCommands:
             )
             ensure_request_open(row, command.request_id)
             ensure_expected_revision(row, command.request_id, command.expected_revision)
-
             version = await load_request_definition_version(
                 session,
                 organization_id=command.organization_id,
                 version_id=cast(UUID, row["request_definition_version_id"]),
             )
-            existing_result = cast(dict[str, object] | None, row["result_payload"])
-            result_to_store: dict[str, object] | None = None
-
-            if version.result_schema is None:
-                if command.result_payload is not None:
-                    raise RequestResultNotDefined(version.id)
-            else:
-                validate_request_schema(version.result_schema)
-                if command.result_payload is not None:
-                    if existing_result is not None:
-                        raise RequestResultAlreadyRecorded(command.request_id)
-                    validate_request_document(command.result_payload, version.result_schema)
-                    result_to_store = command.result_payload
-                elif existing_result is None:
-                    raise RequestResultRequired(command.request_id)
-
+            result_to_store = _validate_completion_result(
+                command,
+                version,
+                existing_result=cast(dict[str, object] | None, row["result_payload"]),
+            )
+            serialized_result = (
+                _json(result_to_store) if result_to_store is not None else None
+            )
             await session.execute(
                 text(
                     """
@@ -390,58 +311,41 @@ class PostgresRequestCommands:
                 {
                     "organization_id": command.organization_id,
                     "request_id": command.request_id,
-                    "result_payload": _json(result_to_store) if result_to_store is not None else None,
+                    "result_payload": serialized_result,
                 },
             )
             request = await read_request(session, command.organization_id, command.request_id)
-            await append_audit(
+            await _record_command_success(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name=capability,
-                aggregate_kind="Request",
-                aggregate_id=request.id,
+                capability=capability,
+                request=request,
                 idempotency_id=idempotency_id,
-                details={
+                event_type="request.completed.v1",
+                audit_details={
                     "revision": request.revision,
                     "result_present": request.result_payload is not None,
                 },
-            )
-            await append_outbox(
-                session,
-                organization_id=command.organization_id,
-                event_type="request.completed.v1",
-                aggregate_kind="Request",
-                aggregate_id=request.id,
-                payload={
-                    "request_id": str(request.id),
-                    "result_payload": request.result_payload,
-                    "revision": request.revision,
-                },
-            )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"request": request_to_json(request)},
+                event_payload={"result_payload": request.result_payload},
             )
             return request
 
     async def cancel_request(self, command: CancelRequestCommand) -> Request:
         capability = "requests.cancel"
-        fingerprint = command_fingerprint(
-            capability,
-            {
-                "request_id": command.request_id,
-                "reason": command.reason,
-                "expected_revision": command.expected_revision,
-            },
-        )
         return await self._terminal_without_result(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             request_id=command.request_id,
             idempotency_key=command.idempotency_key,
-            fingerprint=fingerprint,
+            fingerprint=command_fingerprint(
+                capability,
+                {
+                    "request_id": command.request_id,
+                    "reason": command.reason,
+                    "expected_revision": command.expected_revision,
+                },
+            ),
             capability=capability,
             target_status=RequestStatus.CANCELLED,
             details={"reason": command.reason},
@@ -450,15 +354,6 @@ class PostgresRequestCommands:
 
     async def fail_request(self, command: FailRequestCommand) -> Request:
         capability = "requests.fail"
-        fingerprint = command_fingerprint(
-            capability,
-            {
-                "request_id": command.request_id,
-                "error_class": command.error_class,
-                "details": command.details,
-                "expected_revision": command.expected_revision,
-            },
-        )
         details: dict[str, object] = {
             "error_class": command.error_class,
             "details": command.details,
@@ -468,7 +363,15 @@ class PostgresRequestCommands:
             principal_id=command.principal_id,
             request_id=command.request_id,
             idempotency_key=command.idempotency_key,
-            fingerprint=fingerprint,
+            fingerprint=command_fingerprint(
+                capability,
+                {
+                    "request_id": command.request_id,
+                    "error_class": command.error_class,
+                    "details": command.details,
+                    "expected_revision": command.expected_revision,
+                },
+            ),
             capability=capability,
             target_status=RequestStatus.FAILED,
             details=details,
@@ -498,7 +401,7 @@ class PostgresRequestCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return request_from_json(cast(dict[str, object], replay["request"]))
+                return _request_from_replay(replay)
 
             row = await lock_request(
                 session,
@@ -507,7 +410,6 @@ class PostgresRequestCommands:
             )
             ensure_request_open(row, request_id)
             ensure_expected_revision(row, request_id, expected_revision)
-
             await session.execute(
                 text(
                     """
@@ -526,49 +428,96 @@ class PostgresRequestCommands:
                 },
             )
             request = await read_request(session, organization_id, request_id)
-            await append_audit(
+            await _record_command_success(
                 session,
                 organization_id=organization_id,
                 principal_id=principal_id,
-                command_name=capability,
-                aggregate_kind="Request",
-                aggregate_id=request.id,
+                capability=capability,
+                request=request,
                 idempotency_id=idempotency_id,
-                details={**details, "revision": request.revision},
-            )
-            await append_outbox(
-                session,
-                organization_id=organization_id,
                 event_type=f"request.{target_status.value}.v1",
-                aggregate_kind="Request",
-                aggregate_id=request.id,
-                payload={
-                    "request_id": str(request.id),
-                    **details,
-                    "revision": request.revision,
-                },
-            )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"request": request_to_json(request)},
+                audit_details={**details, "revision": request.revision},
+                event_payload=details,
             )
             return request
 
 
-class RequestDefinitionVersionData:
-    def __init__(
-        self,
-        *,
-        id: UUID,
-        input_schema: dict[str, object],
-        result_schema: dict[str, object] | None,
-        definition_active: bool,
-    ) -> None:
-        self.id = id
-        self.input_schema = input_schema
-        self.result_schema = result_schema
-        self.definition_active = definition_active
+def _request_from_replay(replay: dict[str, object]) -> Request:
+    raw_request = replay.get("request")
+    if not isinstance(raw_request, dict):
+        raise RuntimeError("completed Request idempotency record has no Request object")
+    return request_from_json(cast(dict[str, object], raw_request))
+
+
+async def _record_command_success(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    principal_id: UUID,
+    capability: str,
+    request: Request,
+    idempotency_id: UUID,
+    event_type: str,
+    audit_details: dict[str, object],
+    event_payload: dict[str, object],
+) -> None:
+    await append_audit(
+        session,
+        organization_id=organization_id,
+        principal_id=principal_id,
+        command_name=capability,
+        aggregate_kind="Request",
+        aggregate_id=request.id,
+        idempotency_id=idempotency_id,
+        details=audit_details,
+    )
+    await append_outbox(
+        session,
+        organization_id=organization_id,
+        event_type=event_type,
+        aggregate_kind="Request",
+        aggregate_id=request.id,
+        payload={
+            "request_id": str(request.id),
+            **event_payload,
+            "revision": request.revision,
+        },
+    )
+    await complete_idempotency(
+        session,
+        idempotency_id,
+        {"request": request_to_json(request)},
+    )
+
+
+def _validate_completion_result(
+    command: CompleteRequestCommand,
+    version: RequestDefinitionVersionData,
+    *,
+    existing_result: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if version.result_schema is None:
+        if command.result_payload is not None:
+            raise RequestResultNotDefined(version.id)
+        return None
+
+    validate_request_schema(version.result_schema)
+    if command.result_payload is not None:
+        if existing_result is not None:
+            raise RequestResultAlreadyRecorded(command.request_id)
+        validate_request_document(command.result_payload, version.result_schema)
+        return command.result_payload
+    if existing_result is None:
+        raise RequestResultRequired(command.request_id)
+    return None
+
+
+def _validate_schema_and_document(
+    document: dict[str, object],
+    schema: dict[str, object],
+) -> None:
+    validate_request_schema(schema)
+    validate_request_document(document, schema)
 
 
 async def load_request_definition_version(
@@ -719,11 +668,11 @@ async def assert_external_correlations_available(
     command: CreateRequestCommand,
 ) -> None:
     for correlation in command.correlations:
-        existing_request_id = (
+        existing_correlation_id = (
             await session.execute(
                 text(
                     """
-                    SELECT request_id
+                    SELECT id
                     FROM request_engine.external_correlations
                     WHERE organization_id = :organization_id
                       AND correlation_kind = :correlation_kind
@@ -739,12 +688,71 @@ async def assert_external_correlations_available(
                 },
             )
         ).scalar_one_or_none()
-        if existing_request_id is not None:
+        if existing_correlation_id is not None:
             raise ExternalCorrelationConflict(
                 correlation.correlation_kind,
                 correlation.provider_key,
                 correlation.external_key,
             )
+
+
+async def _insert_participants(
+    session: AsyncSession,
+    command: CreateRequestCommand,
+    request_id: UUID,
+) -> None:
+    for participant in command.participants:
+        await session.execute(
+            text(
+                """
+                INSERT INTO request_engine.request_participants (
+                    organization_id, request_id, party_id, role_key
+                ) VALUES (
+                    :organization_id, :request_id, :party_id, :role_key
+                )
+                """
+            ),
+            {
+                "organization_id": command.organization_id,
+                "request_id": request_id,
+                "party_id": participant.party_id,
+                "role_key": participant.role_key,
+            },
+        )
+
+
+async def _insert_correlations(
+    session: AsyncSession,
+    command: CreateRequestCommand,
+    request_id: UUID,
+) -> None:
+    for correlation in command.correlations:
+        await session.execute(
+            text(
+                """
+                INSERT INTO request_engine.external_correlations (
+                    organization_id,
+                    request_id,
+                    correlation_kind,
+                    provider_key,
+                    external_key
+                ) VALUES (
+                    :organization_id,
+                    :request_id,
+                    :correlation_kind,
+                    :provider_key,
+                    :external_key
+                )
+                """
+            ),
+            {
+                "organization_id": command.organization_id,
+                "request_id": request_id,
+                "correlation_kind": correlation.correlation_kind,
+                "provider_key": correlation.provider_key,
+                "external_key": correlation.external_key,
+            },
+        )
 
 
 def _participant_fingerprint(command: CreateRequestCommand) -> list[dict[str, object]]:
@@ -788,4 +796,10 @@ def _correlation_identity(
 
 
 def _json(value: dict[str, object]) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
