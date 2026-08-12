@@ -15,8 +15,12 @@ from request_engine.entrypoints.http.security import ActorResolver, Authenticati
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import PostgresReservationCommands
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.reservation_commands import (
+    PostgresReservationCommands,
+)
+from request_engine.modules.booking.adapters.db.reservation_reader import (
+    PostgresReservationReader,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     book_appointment,
