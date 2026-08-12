@@ -1,0 +1,370 @@
+schema_version = 1
+freeze_ready = false
+
+# status values:
+# implemented  = a current Python/application vertical exists
+# contract     = normative contract exists but the vertical is not implemented yet
+# internal     = semantic internal operation, not an arbitrary end-user capability
+#
+# permission is an authorization requirement. It is intentionally separate from id.
+# Equality between capability id and permission is allowed but never assumed.
+
+[[capability]]
+id = "business.get_info"
+owner = "catalog"
+semantic = "query"
+status = "implemented"
+permission = "catalog.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "catalog.search_offerings"
+owner = "catalog"
+semantic = "query"
+status = "implemented"
+permission = "catalog.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "catalog.get_offering"
+owner = "catalog"
+semantic = "query"
+status = "implemented"
+permission = "catalog.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.find_slots"
+owner = "booking"
+semantic = "query"
+status = "implemented"
+permission = "appointments.find_slots"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.hold"
+owner = "booking"
+semantic = "command"
+status = "implemented"
+permission = "appointments.hold"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.book"
+owner = "booking"
+semantic = "command"
+status = "implemented"
+permission = "appointments.book"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.get"
+owner = "booking"
+semantic = "query"
+status = "implemented"
+permission = "appointments.get"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.cancel"
+owner = "booking"
+semantic = "command"
+status = "implemented"
+permission = "appointments.cancel"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.reschedule"
+owner = "booking"
+semantic = "command"
+status = "implemented"
+permission = "appointments.reschedule"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "appointments.confirm_attendance"
+owner = "booking"
+semantic = "command"
+status = "contract"
+permission = "appointments.confirm_attendance"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.list"
+owner = "queue"
+semantic = "query"
+status = "implemented"
+permission = "queue.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.join"
+owner = "queue"
+semantic = "command"
+status = "implemented"
+permission = "queue.join"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.status"
+owner = "queue"
+semantic = "query"
+status = "implemented"
+permission = "queue.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.leave"
+owner = "queue"
+semantic = "command"
+status = "implemented"
+permission = "queue.leave"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.call_next"
+owner = "queue"
+semantic = "command"
+status = "implemented"
+permission = "queue.call_next"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.start_service"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "queue.serve"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.complete"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "queue.serve"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "queue.mark_no_show"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "queue.serve"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.join"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "waitlist.join"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.status"
+owner = "queue"
+semantic = "query"
+status = "contract"
+permission = "waitlist.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.leave"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "waitlist.leave"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.accept_offer"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "waitlist.accept_offer"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.decline_offer"
+owner = "queue"
+semantic = "command"
+status = "contract"
+permission = "waitlist.decline_offer"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "waitlist.expire_offer"
+owner = "queue"
+semantic = "scheduled_action"
+status = "contract"
+permission = "internal"
+idempotency = "semantic"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.submit"
+owner = "requests"
+semantic = "command"
+status = "implemented"
+permission = "requests.submit"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.get"
+owner = "requests"
+semantic = "query"
+status = "implemented"
+permission = "requests.read"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.record_result"
+owner = "requests"
+semantic = "command"
+status = "implemented"
+permission = "requests.record_result"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.complete"
+owner = "requests"
+semantic = "command"
+status = "implemented"
+permission = "requests.complete"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.cancel"
+owner = "requests"
+semantic = "command"
+status = "implemented"
+permission = "requests.cancel"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "requests.fail"
+owner = "requests"
+semantic = "command"
+status = "implemented"
+permission = "requests.fail"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "communications.create_task"
+owner = "communications"
+semantic = "command"
+status = "implemented"
+permission = "internal"
+idempotency = "semantic"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "reminders.create_plan"
+owner = "communications"
+semantic = "command"
+status = "implemented"
+permission = "reminders.manage"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "reminders.cancel_plan"
+owner = "communications"
+semantic = "command"
+status = "implemented"
+permission = "reminders.manage"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "reminders.update_plan"
+owner = "communications"
+semantic = "command"
+status = "contract"
+permission = "reminders.manage"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "reminders.acknowledge"
+owner = "communications"
+semantic = "command"
+status = "contract"
+permission = "reminders.acknowledge"
+idempotency = "required"
+authoritative_write = true
+external_io_in_transaction = false
+
+[[capability]]
+id = "capabilities.list"
+owner = "tenancy"
+semantic = "query"
+status = "contract"
+permission = "authenticated"
+idempotency = "none"
+authoritative_write = false
+external_io_in_transaction = false
