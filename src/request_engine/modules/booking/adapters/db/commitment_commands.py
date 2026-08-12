@@ -8,19 +8,19 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
-    _load_bookable_offering,
-    _load_locked_profiles,
-    _load_requirements,
-    _lock_resource_ids,
-    _lock_resources,
-    _LockedResource,
-    _read_reservation,
-    _reservation_from_json,
-    _reservation_to_json,
-    _revalidate_exact_slot,
-    _validate_choice_cardinality,
-    _validate_resource_capabilities,
-    _validate_subject_location_and_origin,
+    LockedResource,
+    load_bookable_offering,
+    load_locked_profiles,
+    load_requirements,
+    lock_resource_ids,
+    lock_resources,
+    read_reservation,
+    reservation_from_json,
+    reservation_to_json,
+    revalidate_exact_slot,
+    validate_choice_cardinality,
+    validate_resource_capabilities,
+    validate_subject_location_and_origin,
 )
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
@@ -110,7 +110,7 @@ class PostgresBookingCommitmentCommands:
             if expires_at <= now:
                 raise InvalidHoldExpiration()
 
-            offering = await _load_bookable_offering(
+            offering = await load_bookable_offering(
                 session,
                 command.organization_id,
                 command.offering_version_id,
@@ -120,25 +120,25 @@ class PostgresBookingCommitmentCommands:
             step_minutes = slot_step_minutes(policy, duration_minutes)
             end_at = start_at + timedelta(minutes=duration_minutes)
 
-            await _validate_subject_location_and_origin(
+            await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
                 subject_party_id=command.subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=None,
             )
-            requirements = await _load_requirements(
+            requirements = await load_requirements(
                 session,
                 command.organization_id,
                 command.offering_version_id,
             )
-            choices = _validate_choice_cardinality(requirements, command.resources)
-            resources = await _lock_resources(
+            choices = validate_choice_cardinality(requirements, command.resources)
+            resources = await lock_resources(
                 session,
                 organization_id=command.organization_id,
                 resource_ids=tuple(choice.resource_id for choice in choices.values()),
             )
-            await _validate_resource_capabilities(
+            await validate_resource_capabilities(
                 session,
                 organization_id=command.organization_id,
                 requirements=requirements,
@@ -146,14 +146,14 @@ class PostgresBookingCommitmentCommands:
                 resources=resources,
                 location_id=command.location_id,
             )
-            profiles = await _load_locked_profiles(
+            profiles = await load_locked_profiles(
                 session,
                 organization_id=command.organization_id,
                 resources=resources,
                 start_at=start_at,
                 end_at=end_at,
             )
-            _revalidate_exact_slot(
+            revalidate_exact_slot(
                 requirements=requirements,
                 choices=choices,
                 profiles=profiles,
@@ -284,11 +284,11 @@ class PostgresBookingCommitmentCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _reservation_from_json(cast(dict[str, object], replay["reservation"]))
+                return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
             hold_row = await _lock_hold(session, command.organization_id, command.hold_id)
             _assert_live_hold(hold_row, command.hold_id)
-            await _validate_subject_location_and_origin(
+            await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
                 subject_party_id=cast(UUID, hold_row["subject_party_id"]),
@@ -300,11 +300,11 @@ class PostgresBookingCommitmentCommands:
                 command.organization_id,
                 hold_id=command.hold_id,
             )
-            await _lock_resource_ids(session, command.organization_id, resource_ids)
+            await lock_resource_ids(session, command.organization_id, resource_ids)
             hold_row = await _read_locked_hold(session, command.organization_id, command.hold_id)
             _assert_live_hold(hold_row, command.hold_id)
 
-            offering = await _load_bookable_offering(
+            offering = await load_bookable_offering(
                 session,
                 command.organization_id,
                 cast(UUID, hold_row["offering_version_id"]),
@@ -404,7 +404,7 @@ class PostgresBookingCommitmentCommands:
                     "end_at": cast(datetime, hold_row["end_at"]).isoformat(),
                 },
             )
-            reservation = await _read_reservation(
+            reservation = await read_reservation(
                 session,
                 command.organization_id,
                 reservation_id,
@@ -412,7 +412,7 @@ class PostgresBookingCommitmentCommands:
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"reservation": _reservation_to_json(reservation)},
+                {"reservation": reservation_to_json(reservation)},
             )
             return reservation
 
@@ -446,7 +446,7 @@ class PostgresBookingCommitmentCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _reservation_from_json(cast(dict[str, object], replay["reservation"]))
+                return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
             reservation_row = await _lock_reservation(
                 session,
@@ -458,7 +458,7 @@ class PostgresBookingCommitmentCommands:
                 raise ReservationNotReschedulable(command.reservation_id, status)
 
             offering_version_id = cast(UUID, reservation_row["offering_version_id"])
-            offering = await _load_bookable_offering(
+            offering = await load_bookable_offering(
                 session,
                 command.organization_id,
                 offering_version_id,
@@ -468,19 +468,19 @@ class PostgresBookingCommitmentCommands:
             step_minutes = slot_step_minutes(policy, duration_minutes)
             end_at = start_at + timedelta(minutes=duration_minutes)
 
-            await _validate_subject_location_and_origin(
+            await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
                 subject_party_id=cast(UUID, reservation_row["subject_party_id"]),
                 location_id=command.location_id,
                 origin_request_id=cast(UUID | None, reservation_row["origin_request_id"]),
             )
-            requirements = await _load_requirements(
+            requirements = await load_requirements(
                 session,
                 command.organization_id,
                 offering_version_id,
             )
-            choices = _validate_choice_cardinality(requirements, command.resources)
+            choices = validate_choice_cardinality(requirements, command.resources)
             old_claims = await _active_reservation_claims(
                 session,
                 command.organization_id,
@@ -489,7 +489,7 @@ class PostgresBookingCommitmentCommands:
             old_resource_ids = tuple(cast(UUID, row["resource_id"]) for row in old_claims)
             new_resource_ids = tuple(choice.resource_id for choice in choices.values())
             union_resource_ids = tuple(sorted(set(old_resource_ids + new_resource_ids), key=str))
-            resources = await _lock_resources(
+            resources = await lock_resources(
                 session,
                 organization_id=command.organization_id,
                 resource_ids=union_resource_ids,
@@ -497,7 +497,7 @@ class PostgresBookingCommitmentCommands:
             selected_resources = {
                 resource_id: resources[resource_id] for resource_id in set(new_resource_ids)
             }
-            await _validate_resource_capabilities(
+            await validate_resource_capabilities(
                 session,
                 organization_id=command.organization_id,
                 requirements=requirements,
@@ -513,7 +513,7 @@ class PostgresBookingCommitmentCommands:
                 end_at=end_at,
                 reservation_id=command.reservation_id,
             )
-            _revalidate_exact_slot(
+            revalidate_exact_slot(
                 requirements=requirements,
                 choices=choices,
                 profiles=profiles,
@@ -656,7 +656,7 @@ class PostgresBookingCommitmentCommands:
                     "end_at": end_at.isoformat(),
                 },
             )
-            reservation = await _read_reservation(
+            reservation = await read_reservation(
                 session,
                 command.organization_id,
                 command.reservation_id,
@@ -664,7 +664,7 @@ class PostgresBookingCommitmentCommands:
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"reservation": _reservation_to_json(reservation)},
+                {"reservation": reservation_to_json(reservation)},
             )
             return reservation
 
@@ -829,7 +829,7 @@ async def _load_profiles_excluding_reservation(
     session: AsyncSession,
     *,
     organization_id: UUID,
-    resources: dict[UUID, _LockedResource],
+    resources: dict[UUID, LockedResource],
     start_at: datetime,
     end_at: datetime,
     reservation_id: UUID,

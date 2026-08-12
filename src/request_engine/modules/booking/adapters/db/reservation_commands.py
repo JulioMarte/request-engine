@@ -58,7 +58,7 @@ class _Requirement:
 
 
 @dataclass(frozen=True, slots=True)
-class _LockedResource:
+class LockedResource:
     id: UUID
     location_id: UUID | None
     capacity_model: CapacityModel
@@ -105,9 +105,9 @@ class PostgresReservationCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _reservation_from_json(cast(dict[str, object], replay["reservation"]))
+                return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
-            offering = await _load_bookable_offering(
+            offering = await load_bookable_offering(
                 session,
                 command.organization_id,
                 command.offering_version_id,
@@ -117,25 +117,25 @@ class PostgresReservationCommands:
             step_minutes = slot_step_minutes(policy, duration_minutes)
             end_at = start_at + timedelta(minutes=duration_minutes)
 
-            await _validate_subject_location_and_origin(
+            await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
                 subject_party_id=command.subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=command.origin_request_id,
             )
-            requirements = await _load_requirements(
+            requirements = await load_requirements(
                 session,
                 command.organization_id,
                 command.offering_version_id,
             )
-            choices = _validate_choice_cardinality(requirements, command.resources)
-            resources = await _lock_resources(
+            choices = validate_choice_cardinality(requirements, command.resources)
+            resources = await lock_resources(
                 session,
                 organization_id=command.organization_id,
                 resource_ids=tuple(choice.resource_id for choice in choices.values()),
             )
-            await _validate_resource_capabilities(
+            await validate_resource_capabilities(
                 session,
                 organization_id=command.organization_id,
                 requirements=requirements,
@@ -143,14 +143,14 @@ class PostgresReservationCommands:
                 resources=resources,
                 location_id=command.location_id,
             )
-            profiles = await _load_locked_profiles(
+            profiles = await load_locked_profiles(
                 session,
                 organization_id=command.organization_id,
                 resources=resources,
                 start_at=start_at,
                 end_at=end_at,
             )
-            _revalidate_exact_slot(
+            revalidate_exact_slot(
                 requirements=requirements,
                 choices=choices,
                 profiles=profiles,
@@ -264,7 +264,7 @@ class PostgresReservationCommands:
                     "end_at": end_at.isoformat(),
                 },
             )
-            reservation = await _read_reservation(
+            reservation = await read_reservation(
                 session,
                 command.organization_id,
                 reservation_id,
@@ -272,7 +272,7 @@ class PostgresReservationCommands:
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"reservation": _reservation_to_json(reservation)},
+                {"reservation": reservation_to_json(reservation)},
             )
             return reservation
 
@@ -294,7 +294,7 @@ class PostgresReservationCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _reservation_from_json(cast(dict[str, object], replay["reservation"]))
+                return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
             locked = (
                 (
@@ -346,7 +346,7 @@ class PostgresReservationCommands:
                 raise BookingConfigurationError(
                     f"confirmed Reservation {command.reservation_id} has no active claims"
                 )
-            await _lock_resource_ids(session, command.organization_id, resource_ids)
+            await lock_resource_ids(session, command.organization_id, resource_ids)
 
             await session.execute(
                 text(
@@ -402,7 +402,7 @@ class PostgresReservationCommands:
                     "reason": command.reason,
                 },
             )
-            reservation = await _read_reservation(
+            reservation = await read_reservation(
                 session,
                 command.organization_id,
                 command.reservation_id,
@@ -410,12 +410,12 @@ class PostgresReservationCommands:
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"reservation": _reservation_to_json(reservation)},
+                {"reservation": reservation_to_json(reservation)},
             )
             return reservation
 
 
-async def _load_bookable_offering(
+async def load_bookable_offering(
     session: AsyncSession,
     organization_id: UUID,
     offering_version_id: UUID,
@@ -447,7 +447,7 @@ async def _load_bookable_offering(
     return row
 
 
-async def _validate_subject_location_and_origin(
+async def validate_subject_location_and_origin(
     session: AsyncSession,
     *,
     organization_id: UUID,
@@ -520,7 +520,7 @@ async def _validate_subject_location_and_origin(
             raise InvalidResourceSelection("origin Request does not exist")
 
 
-async def _load_requirements(
+async def load_requirements(
     session: AsyncSession,
     organization_id: UUID,
     offering_version_id: UUID,
@@ -561,7 +561,7 @@ async def _load_requirements(
     }
 
 
-def _validate_choice_cardinality(
+def validate_choice_cardinality(
     requirements: dict[UUID, _Requirement],
     choices: tuple[ResourceChoice, ...],
 ) -> dict[UUID, ResourceChoice]:
@@ -579,12 +579,12 @@ def _validate_choice_cardinality(
     return by_requirement
 
 
-async def _lock_resources(
+async def lock_resources(
     session: AsyncSession,
     *,
     organization_id: UUID,
     resource_ids: tuple[UUID, ...],
-) -> dict[UUID, _LockedResource]:
+) -> dict[UUID, LockedResource]:
     unique_ids = tuple(sorted(set(resource_ids), key=str))
     rows = (
         (
@@ -615,11 +615,11 @@ async def _lock_resources(
     if len(rows) != len(unique_ids):
         raise InvalidResourceSelection("one or more selected Resources do not exist")
 
-    result: dict[UUID, _LockedResource] = {}
+    result: dict[UUID, LockedResource] = {}
     for row in rows:
         if row["active"] is not True:
             raise AppointmentUnavailable(f"Resource {row['id']} is inactive")
-        resource = _LockedResource(
+        resource = LockedResource(
             id=cast(UUID, row["id"]),
             location_id=cast(UUID | None, row["location_id"]),
             capacity_model=CapacityModel(cast(str, row["capacity_model"])),
@@ -630,7 +630,7 @@ async def _lock_resources(
     return result
 
 
-async def _lock_resource_ids(
+async def lock_resource_ids(
     session: AsyncSession,
     organization_id: UUID,
     resource_ids: tuple[UUID, ...],
@@ -658,13 +658,13 @@ async def _lock_resource_ids(
         raise BookingConfigurationError("Reservation references missing Resources")
 
 
-async def _validate_resource_capabilities(
+async def validate_resource_capabilities(
     session: AsyncSession,
     *,
     organization_id: UUID,
     requirements: dict[UUID, _Requirement],
     choices: dict[UUID, ResourceChoice],
-    resources: dict[UUID, _LockedResource],
+    resources: dict[UUID, LockedResource],
     location_id: UUID | None,
 ) -> None:
     assignment_rows = (
@@ -702,11 +702,11 @@ async def _validate_resource_capabilities(
             )
 
 
-async def _load_locked_profiles(
+async def load_locked_profiles(
     session: AsyncSession,
     *,
     organization_id: UUID,
-    resources: dict[UUID, _LockedResource],
+    resources: dict[UUID, LockedResource],
     start_at: object,
     end_at: object,
 ) -> dict[UUID, ResourceAvailability]:
@@ -743,7 +743,7 @@ async def _load_locked_profiles(
     }
 
 
-def _revalidate_exact_slot(
+def revalidate_exact_slot(
     *,
     requirements: dict[UUID, _Requirement],
     choices: dict[UUID, ResourceChoice],
@@ -797,7 +797,7 @@ def _revalidate_exact_slot(
             raise AppointmentUnavailable(f"Resource {resource_id} no longer has capacity")
 
 
-async def _read_reservation(
+async def read_reservation(
     session: AsyncSession,
     organization_id: UUID,
     reservation_id: UUID,
@@ -828,7 +828,7 @@ async def _read_reservation(
     return reservation_from_row(row)
 
 
-def _reservation_to_json(reservation: Reservation) -> dict[str, object]:
+def reservation_to_json(reservation: Reservation) -> dict[str, object]:
     return {
         "id": str(reservation.id),
         "offering_version_id": str(reservation.offering_version_id),
@@ -842,7 +842,7 @@ def _reservation_to_json(reservation: Reservation) -> dict[str, object]:
     }
 
 
-def _reservation_from_json(data: dict[str, object]) -> Reservation:
+def reservation_from_json(data: dict[str, object]) -> Reservation:
     from datetime import datetime
 
     from request_engine.modules.booking.contracts.appointments import (
