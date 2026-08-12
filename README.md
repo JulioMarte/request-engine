@@ -1,14 +1,20 @@
 # Request Engine
 
-Request Engine is a headless, multi-tenant transactional engine that turns durable intent into deterministic work, capacity commitments, monetary obligations, observable execution, and auditable outcomes.
+Request Engine is a **headless, multi-tenant operational capability API** for agents, forms, applications and automation systems. It exposes deterministic business capabilities such as structured business information, appointment booking, queues, waitlists, transactional communications and durable Requests without requiring every business process to fit one universal workflow model.
 
-This repository is the clean Python/PostgreSQL implementation of the V2 architecture. PostgreSQL is authoritative for relational and transactional truth; Python owns commands, authorization, policies, orchestration, external I/O, and transaction boundaries.
+PostgreSQL owns local relational/transactional truth, locks and consistency backstops. Python owns semantic commands/queries, authorization, policy orchestration, external I/O and transaction framing.
+
+The repository is currently in a **pre-baseline capability-first V3 transition**. The V2 SQL design chain remains useful design history but is not the schema to freeze.
 
 ## Read first
 
-Start with `docs/README.md`, which maps the canonical documents and their precedence. The most implementation-relevant documents are:
+Start with `docs/README.md`, which defines canonical precedence.
 
-- `docs/02-pre-sql-domain-contract.md` — invariants, serialization roots and transaction proofs;
+Most relevant current documents:
+
+- `docs/11-capability-first-v3.md` — current product thesis, capability semantics and V3 baseline;
+- `docs/12-v3-transition-plan.md` — V2 reduction/migration plan;
+- `docs/v3/sql-disposition.md` — PostgreSQL object disposition before the clean V3 candidate;
 - `docs/07-database-access-contract.md` — Python ↔ PostgreSQL boundary;
 - `docs/09-python-module-architecture.md` — physical Python layout/import boundaries;
 - `docs/10-module-ownership-map.md` — business ownership;
@@ -16,31 +22,67 @@ Start with `docs/README.md`, which maps the canonical documents and their preced
 
 `docs/legacy/**` is historical and non-authoritative.
 
+## Product semantics
+
+Public/application behavior is explicit about four different semantics:
+
+```text
+Query            read current state
+Command          execute a semantic immediate mutation
+Request          create durable new business demand requiring later processing
+ScheduledAction  execute durable future work
+```
+
+Do not use `Request` as a universal wrapper for every operation merely because of the project name.
+
+Examples of capability-oriented surfaces:
+
+```text
+business.get_info
+catalog.search_offerings
+appointments.find_slots
+appointments.book
+appointments.cancel
+appointments.reschedule
+appointments.confirm_attendance
+queue.join
+queue.status
+waitlist.join
+waitlist.status
+quotes.request
+requests.status
+```
+
+Internal persistence nouns such as CapacityClaim, outbox rows or provider events are not automatically public/agent tools.
+
 ## Repository architecture
 
-The Python code is organized **module first, layer second**. Business capabilities stay together so a change normally has one obvious home.
+Python is organized **module first, layer second**.
 
 ```text
 request-engine/
 ├── src/request_engine/
 │   ├── bootstrap/                # composition root + runtime settings
 │   ├── entrypoints/              # HTTP, worker and CLI process adapters
-│   ├── platform/                 # truly cross-cutting technical capabilities
+│   ├── platform/                 # technical cross-cutting capabilities
 │   │   ├── db/
 │   │   ├── idempotency/
 │   │   ├── outbox/
 │   │   ├── audit/
 │   │   ├── events/
+│   │   ├── scheduling/
 │   │   ├── observability/
 │   │   └── security/
 │   └── modules/
-│       ├── tenancy/
-│       ├── catalog/
-│       ├── requests/
-│       ├── booking/
-│       ├── delivery/
-│       ├── payments/
-│       └── dispatch/
+│       ├── tenancy/              # V3 baseline
+│       ├── catalog/              # V3 baseline
+│       ├── requests/             # V3 baseline
+│       ├── booking/              # V3 baseline
+│       ├── queue/                # V3 baseline
+│       ├── communications/       # V3 baseline
+│       ├── delivery/             # deferred/incubating
+│       ├── payments/             # deferred/incubating
+│       └── dispatch/             # deferred/incubating
 ├── migrations/
 ├── tests/
 ├── docs/
@@ -48,7 +90,9 @@ request-engine/
 └── deploy/
 ```
 
-A business module grows only the structure real code requires. The preferred vocabulary is:
+Baseline modules may not depend on deferred modules unless a concrete product requirement reactivates that boundary through an accepted architecture change.
+
+A module grows only the structure real code requires:
 
 ```text
 module/
@@ -65,39 +109,76 @@ module/
 └── README.md
 ```
 
-Do not create empty architectural folders pre-emptively. A small module may remain a handful of cohesive files.
+Do not create empty architectural folders pre-emptively.
+
+## Current V3 baseline capabilities
+
+### Structured business information
+
+Operational profile/location/hours/Offering truth that agents and applications can query. Request Engine does not become a universal CMS/RAG system.
+
+### Booking
+
+Local `Resource` availability, Holds/claims and Reservations with `exclusive`/`units` capacity models. Booking owns race-safe book/cancel/reschedule semantics.
+
+Reservation confirmation is distinct from customer/patient attendance confirmation.
+
+### Service queue
+
+FIFO service flow for people/items waiting to be served now.
+
+### Waitlist
+
+Future capacity interest, distinct from the live service queue. Released capacity may produce expiring `SlotOffer` opportunities that still revalidate through booking.
+
+### Transactional communications
+
+Request Engine owns durable communication intent/result; WhatsApp, SMS, email, voice and n8n are replaceable adapters/providers.
+
+### Durable scheduling
+
+`platform/scheduling` owns generic lease/fencing/retry/dead-letter mechanics for future actions. Business modules own why those actions exist.
+
+### Generic Requests and n8n extension
+
+New or volatile processes can begin as durable Request/intake + outbox → n8n → authenticated idempotent semantic callback. Stable high-value processes can later be promoted into native modules without changing the external capability contract.
+
+Principle:
+
+> **Experiment outside; harden inside.**
 
 ## Key implementation rules
 
-- One semantic command should have one obvious implementation/use-case entry point.
+- One semantic command/query has one obvious owner.
 - Application code defines semantic ports; DB/provider implementations are adapters.
 - Repositories are semantic persistence adapters, not generic CRUD stores.
-- SQLAlchemy ORM is useful for ordinary persistence; SQLAlchemy Core / explicit SQL is preferred for locks, ranges, `SKIP LOCKED`, aggregate concurrency checks, and `request_cmd.*` primitives.
+- SQLAlchemy ORM is appropriate for ordinary persistence; Core/explicit SQL is preferred for locks, ranges, `SKIP LOCKED`, aggregate concurrency checks and narrow `request_cmd.*` primitives.
 - Domain objects, persistence mappings, API DTOs and cross-module contracts are separate concepts.
-- Cross-module transactions are allowed when the domain contract requires one atomic transaction.
-- Cross-module imports must use the target module's `contracts` surface, never its domain/application/adapter/API internals.
+- Cross-module transactions are allowed when a real local invariant requires one atomic transaction.
+- Cross-module imports use the target module's `contracts` surface.
 - `platform` may not depend on business modules.
 - `bootstrap` wires dependencies; business code must not use it as a service locator.
-- PostgreSQL constraints and transaction protocols are part of application correctness, not implementation details to mock away.
-- No network I/O occurs while authoritative database locks are held.
+- PostgreSQL constraints and concurrency protocols are part of correctness, not implementation details to mock away.
+- No external network I/O occurs while authoritative database locks are held.
+- n8n/providers never mutate Request Engine storage directly; callbacks execute authenticated idempotent semantic commands.
 
 ## SQL and migrations
 
-The current V2.6→V2.10 SQL design chain lives under:
+The V2.6→V2.10 design chain remains under:
 
 ```text
 migrations/sql/design_chain/
 ```
 
-It is executable pre-production design history, **not production Alembic history**. When the schema freeze gate is satisfied, the chain is consolidated into a reviewed first production baseline. After that point, migration history is append-only.
+It is executable pre-production design history, **not production Alembic history and not the V3 baseline candidate**.
+
+Do not continue adding V2.x hardening deltas by default. V3 will construct a clean reduced candidate after object disposition and capability contracts are proven. Because no production baseline exists yet, obsolete speculative object shapes do not require compatibility migrations.
 
 See `migrations/README.md` before changing SQL.
 
 ## Development tooling
 
 The project uses `uv` and `pyproject.toml` as the Python project control plane.
-
-Typical workflow after runtime implementation begins:
 
 ```bash
 uv sync --all-groups
@@ -110,13 +191,22 @@ uv run pytest
 
 ## LLM / coding agents
 
-Repository documentation is the engineering system of record. `AGENTS.md` is intentionally a compact map/guardrail file, with nearer `AGENTS.md` files adding local rules. GitHub Copilot, Claude and Gemini instruction files are thin adapters to the same knowledge rather than separate architecture manuals.
+Repository documentation is the engineering system of record. `AGENTS.md` is a compact map/guardrail file, with nearer instruction files adding local rules.
 
-The repository is optimized so a human or agent can answer these questions before changing code:
+Before changing code, a human or agent should be able to answer:
 
-1. Which module owns this behavior?
-2. Which command/query owns the use case?
+1. Which capability/module owns this behavior?
+2. Is it a Query, Command, Request, or ScheduledAction?
 3. Which public contract may another module depend on?
-4. Which PostgreSQL tables/views/functions are authoritative?
-5. Which serialization roots and lock order apply?
-6. Which tests prove the invariant and architectural boundary?
+4. Which PostgreSQL row(s) serialize the authoritative mutation?
+5. Which locks/races/failure modes must be proven?
+6. Which provider work occurs only after commit?
+7. Which tests demonstrate the invariant rather than merely the happy path?
+
+The V3 north star is intentionally simple:
+
+```text
+one public operational API
+        ≠
+one universal domain model
+```
