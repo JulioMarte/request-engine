@@ -101,9 +101,7 @@ class PostgresReminderOccurrenceCommands:
                     skipped_reason="recipient_inactive",
                 )
 
-            expires_at = occurrence_at + timedelta(
-                minutes=plan.schedule.max_lateness_minutes
-            )
+            expires_at = occurrence_at + timedelta(minutes=plan.schedule.max_lateness_minutes)
             if db_now >= expires_at:
                 return ReminderOccurrenceResult(
                     reminder_plan_id=plan.id,
@@ -129,9 +127,7 @@ class PostgresReminderOccurrenceCommands:
                         "reminder_plan_id": str(plan.id),
                         "occurrence_at": occurrence_at.isoformat(),
                     },
-                    dedupe_key=(
-                        f"reminder-task:{plan.id}:{occurrence_at.isoformat()}:v1"
-                    ),
+                    dedupe_key=(f"reminder-task:{plan.id}:{occurrence_at.isoformat()}:v1"),
                     not_before=occurrence_at,
                     expires_at=expires_at,
                 ),
