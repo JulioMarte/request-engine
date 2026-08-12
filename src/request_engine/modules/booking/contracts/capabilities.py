@@ -1,9 +1,8 @@
-"""Stable public capability identities owned by the booking module.
+"""Stable booking capability identities and their current permission requirements.
 
-These identifiers are part of the application/public contract. They are deliberately
-independent from Python handler names, adapter class names, and database routines.
-Renaming an implementation detail must not silently change authorization or
-idempotency scope.
+Capability IDs are public/application semantic identities. Permission strings are
+an authorization vocabulary and may differ. Neither is derived from Python handler,
+adapter, or SQL routine names by convention; both are explicit contracts.
 """
 
 FIND_SLOTS = "appointments.find_slots"
@@ -13,3 +12,11 @@ GET = "appointments.get"
 CANCEL = "appointments.cancel"
 RESCHEDULE = "appointments.reschedule"
 CONFIRM_ATTENDANCE = "appointments.confirm_attendance"
+
+FIND_SLOTS_PERMISSION = "booking.find_slots"
+HOLD_PERMISSION = "booking.acquire_capacity_hold"
+BOOK_PERMISSION = "booking.book_appointment"
+GET_PERMISSION = "booking.read"
+CANCEL_PERMISSION = "booking.cancel_reservation"
+RESCHEDULE_PERMISSION = "booking.reschedule_reservation"
+CONFIRM_ATTENDANCE_PERMISSION = "booking.confirm_attendance"
