@@ -1,6 +1,5 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time
 from itertools import product
 from typing import cast
 from uuid import UUID
@@ -8,6 +7,11 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 
+from request_engine.modules.booking.adapters.db.resource_availability import (
+    load_live_capacity_claims,
+    load_resource_exceptions,
+    load_resource_schedules,
+)
 from request_engine.modules.booking.application.errors import (
     BookingConfigurationError,
     OfferingVersionNotBookable,
@@ -21,7 +25,6 @@ from request_engine.modules.booking.domain.availability import (
     AvailabilityException,
     AvailableInterval,
     CapacityModel,
-    ExceptionKind,
     LiveCapacityClaim,
     RecurringAvailability,
     ResourceAvailability,
@@ -159,15 +162,19 @@ class PostgresAppointmentAvailabilityReader:
             resource_ids = tuple(
                 sorted({cast(UUID, row["resource_id"]) for row in candidate_rows}, key=str)
             )
-            schedules = await _load_schedules(session, query.organization_id, resource_ids)
-            exceptions = await _load_exceptions(
+            schedules = await load_resource_schedules(
+                session,
+                query.organization_id,
+                resource_ids,
+            )
+            exceptions = await load_resource_exceptions(
                 session,
                 query.organization_id,
                 resource_ids,
                 window_start,
                 window_end,
             )
-            live_claims = await _load_live_claims(
+            live_claims = await load_live_capacity_claims(
                 session,
                 query.organization_id,
                 resource_ids,
@@ -233,166 +240,6 @@ class PostgresAppointmentAvailabilityReader:
                     return tuple(slots)
 
         return tuple(slots)
-
-
-async def _load_schedules(
-    session: object,
-    organization_id: UUID,
-    resource_ids: tuple[UUID, ...],
-) -> dict[UUID, tuple[RecurringAvailability, ...]]:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    if not isinstance(session, AsyncSession):
-        raise TypeError("session must be AsyncSession")
-    rows = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT resource_id, weekday, local_start, local_end, timezone,
-                           valid_from, valid_until
-                    FROM request_engine.availability_schedules
-                    WHERE organization_id = :organization_id
-                      AND resource_id = ANY(CAST(:resource_ids AS uuid[]))
-                      AND active
-                    ORDER BY resource_id, weekday, local_start, id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "resource_ids": [str(value) for value in resource_ids],
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-    grouped: dict[UUID, list[RecurringAvailability]] = defaultdict(list)
-    for row in rows:
-        grouped[cast(UUID, row["resource_id"])].append(
-            RecurringAvailability(
-                weekday=cast(int, row["weekday"]),
-                local_start=cast(time, row["local_start"]),
-                local_end=cast(time, row["local_end"]),
-                timezone=cast(str, row["timezone"]),
-                valid_from=cast(date | None, row["valid_from"]),
-                valid_until=cast(date | None, row["valid_until"]),
-            )
-        )
-    return {key: tuple(value) for key, value in grouped.items()}
-
-
-async def _load_exceptions(
-    session: object,
-    organization_id: UUID,
-    resource_ids: tuple[UUID, ...],
-    window_start: datetime,
-    window_end: datetime,
-) -> dict[UUID, tuple[AvailabilityException, ...]]:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    if not isinstance(session, AsyncSession):
-        raise TypeError("session must be AsyncSession")
-    rows = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT resource_id, lower(during) AS start_at, upper(during) AS end_at,
-                           exception_kind
-                    FROM request_engine.schedule_exceptions
-                    WHERE organization_id = :organization_id
-                      AND resource_id = ANY(CAST(:resource_ids AS uuid[]))
-                      AND during && tstzrange(:window_start, :window_end, '[)')
-                    ORDER BY resource_id, lower(during), id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "resource_ids": [str(value) for value in resource_ids],
-                    "window_start": window_start,
-                    "window_end": window_end,
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-    grouped: dict[UUID, list[AvailabilityException]] = defaultdict(list)
-    for row in rows:
-        grouped[cast(UUID, row["resource_id"])].append(
-            AvailabilityException(
-                start_at=cast(datetime, row["start_at"]),
-                end_at=cast(datetime, row["end_at"]),
-                kind=ExceptionKind(cast(str, row["exception_kind"])),
-            )
-        )
-    return {key: tuple(value) for key, value in grouped.items()}
-
-
-async def _load_live_claims(
-    session: object,
-    organization_id: UUID,
-    resource_ids: tuple[UUID, ...],
-    window_start: datetime,
-    window_end: datetime,
-) -> dict[UUID, tuple[LiveCapacityClaim, ...]]:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    if not isinstance(session, AsyncSession):
-        raise TypeError("session must be AsyncSession")
-    rows = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT c.resource_id,
-                           lower(c.during) AS start_at,
-                           upper(c.during) AS end_at,
-                           c.quantity
-                    FROM request_engine.capacity_claims c
-                    LEFT JOIN request_engine.reservations r
-                      ON r.organization_id = c.organization_id
-                     AND r.id = c.reservation_id
-                    LEFT JOIN request_engine.capacity_holds h
-                      ON h.organization_id = c.organization_id
-                     AND h.id = c.hold_id
-                    WHERE c.organization_id = :organization_id
-                      AND c.resource_id = ANY(CAST(:resource_ids AS uuid[]))
-                      AND c.status = 'active'
-                      AND c.during && tstzrange(:window_start, :window_end, '[)')
-                      AND (
-                          (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
-                          OR (
-                              c.reservation_id IS NULL
-                              AND h.status = 'active'
-                              AND h.expires_at > clock_timestamp()
-                          )
-                      )
-                    ORDER BY c.resource_id, lower(c.during), c.id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "resource_ids": [str(value) for value in resource_ids],
-                    "window_start": window_start,
-                    "window_end": window_end,
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-    grouped: dict[UUID, list[LiveCapacityClaim]] = defaultdict(list)
-    for row in rows:
-        grouped[cast(UUID, row["resource_id"])].append(
-            LiveCapacityClaim(
-                start_at=cast(datetime, row["start_at"]),
-                end_at=cast(datetime, row["end_at"]),
-                quantity=cast(int, row["quantity"]),
-            )
-        )
-    return {key: tuple(value) for key, value in grouped.items()}
 
 
 def _build_candidate_resources(
