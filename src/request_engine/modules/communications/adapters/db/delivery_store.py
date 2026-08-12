@@ -105,7 +105,7 @@ async def prepare_dispatch(
                 kind=DeliveryWorkKind.LOOKUP,
                 communication_task_id=communication_task_id,
                 delivery_id=cast(UUID, latest["id"]),
-                lookup_request=_lookup_request(task, latest),
+                lookup_request=_lookup_request(latest),
             )
         if latest_status == "delivered":
             await _mark_task_completed(session, organization_id, communication_task_id)
@@ -122,6 +122,18 @@ async def prepare_dispatch(
                 communication_task_id=communication_task_id,
                 delivery_id=cast(UUID, latest["id"]),
                 skip_reason="non_retryable_failure",
+            )
+        if latest_status == "failed" and await _future_dispatch_exists(
+            session,
+            organization_id=organization_id,
+            communication_task_id=communication_task_id,
+            db_now=db_now,
+        ):
+            return PreparedDeliveryWork(
+                kind=DeliveryWorkKind.SKIP,
+                communication_task_id=communication_task_id,
+                delivery_id=cast(UUID, latest["id"]),
+                skip_reason="retry_already_scheduled",
             )
 
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
@@ -243,13 +255,9 @@ async def prepare_reconciliation(
     delivery_id: UUID,
 ) -> PreparedDeliveryWork:
     delivery = await _lock_delivery(session, organization_id, delivery_id)
-    task = await _lock_task(
-        session,
-        organization_id,
-        cast(UUID, delivery["communication_task_id"]),
-    )
-    delivery_status = cast(str, delivery["status"])
     task_id = cast(UUID, delivery["communication_task_id"])
+    await _lock_task(session, organization_id, task_id)
+    delivery_status = cast(str, delivery["status"])
     if delivery_status == "delivered":
         await _mark_task_completed(session, organization_id, task_id)
         return PreparedDeliveryWork(
@@ -277,7 +285,7 @@ async def prepare_reconciliation(
         kind=DeliveryWorkKind.LOOKUP,
         communication_task_id=task_id,
         delivery_id=delivery_id,
-        lookup_request=_lookup_request(task, delivery),
+        lookup_request=_lookup_request(delivery),
     )
 
 
@@ -319,6 +327,7 @@ async def finalize_provider_result(
             result_data={**result.result_data, "reconciliation": "not_found"},
         )
 
+    db_now = await _database_now(session)
     result_data = dict(effective.result_data)
     result_data["retryable"] = effective.retryable
     await session.execute(
@@ -328,8 +337,8 @@ async def finalize_provider_result(
             SET status = :status,
                 provider_message_id = COALESCE(:provider_message_id, provider_message_id),
                 result_data = result_data || CAST(:result_data AS jsonb),
-                completed_at = clock_timestamp(),
-                updated_at = clock_timestamp()
+                completed_at = :completed_at,
+                updated_at = :completed_at
             WHERE organization_id = :organization_id
               AND id = :delivery_id
             """
@@ -340,10 +349,12 @@ async def finalize_provider_result(
             "status": effective.status.value,
             "provider_message_id": effective.provider_message_id,
             "result_data": json.dumps(result_data, default=str, separators=(",", ":")),
+            "completed_at": db_now,
         },
     )
 
     task_terminal = False
+    policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
     if effective.status is ProviderDeliveryStatus.DELIVERED:
         await _mark_task_completed(session, organization_id, task_id)
         task_terminal = True
@@ -362,6 +373,13 @@ async def finalize_provider_result(
     elif effective.status is ProviderDeliveryStatus.FAILED:
         if effective.retryable:
             await _mark_task_pending(session, organization_id, task_id)
+            await _schedule_retry_dispatch(
+                session,
+                organization_id=organization_id,
+                communication_task_id=task_id,
+                source_delivery_id=delivery_id,
+                execute_at=db_now + timedelta(seconds=policy.retry_after_seconds),
+            )
         else:
             await _mark_task_failed(session, organization_id, task_id)
             task_terminal = True
@@ -378,13 +396,12 @@ async def finalize_provider_result(
                 },
             )
     else:
-        policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
-        await _schedule_reconciliation(
+        await _ensure_reconciliation(
             session,
             organization_id=organization_id,
             delivery_id=delivery_id,
-            execute_at=await _database_now(session)
-            + timedelta(seconds=policy.reconcile_after_seconds),
+            db_now=db_now,
+            delay_seconds=policy.reconcile_after_seconds,
         )
 
     return FinalizedDelivery(
@@ -567,7 +584,7 @@ async def _latest_delivery(
     )
 
 
-def _lookup_request(task: RowMapping, delivery: RowMapping) -> ProviderLookupRequest:
+def _lookup_request(delivery: RowMapping) -> ProviderLookupRequest:
     return ProviderLookupRequest(
         delivery_id=cast(UUID, delivery["id"]),
         communication_task_id=cast(UUID, delivery["communication_task_id"]),
@@ -582,13 +599,83 @@ def _delivery_retryable(delivery: RowMapping) -> bool:
     return result_data.get("retryable") is True
 
 
-async def _schedule_reconciliation(
+async def _future_dispatch_exists(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    communication_task_id: UUID,
+    db_now: datetime,
+) -> bool:
+    return cast(
+        bool,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM request_engine.scheduled_actions
+                        WHERE organization_id = :organization_id
+                          AND owner_module = 'communications'
+                          AND action_type = :action_type
+                          AND subject_kind = 'CommunicationTask'
+                          AND subject_id = :communication_task_id
+                          AND status IN ('pending', 'leased')
+                          AND execute_at > :db_now
+                    )
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "action_type": DISPATCH_ACTION_TYPE,
+                    "communication_task_id": communication_task_id,
+                    "db_now": db_now,
+                },
+            )
+        ).scalar_one(),
+    )
+
+
+async def _ensure_reconciliation(
     session: AsyncSession,
     *,
     organization_id: UUID,
     delivery_id: UUID,
-    execute_at: datetime,
+    db_now: datetime,
+    delay_seconds: int,
 ) -> None:
+    existing = cast(
+        bool,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM request_engine.scheduled_actions
+                        WHERE organization_id = :organization_id
+                          AND owner_module = 'communications'
+                          AND action_type = :action_type
+                          AND subject_kind = 'CommunicationDelivery'
+                          AND subject_id = :delivery_id
+                          AND status IN ('pending', 'leased')
+                          AND execute_at > :db_now
+                    )
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "action_type": RECONCILE_ACTION_TYPE,
+                    "delivery_id": delivery_id,
+                    "db_now": db_now,
+                },
+            )
+        ).scalar_one(),
+    )
+    if existing:
+        return
+
+    execute_at = db_now + timedelta(seconds=delay_seconds)
     await schedule_action(
         session,
         organization_id=organization_id,
@@ -597,10 +684,37 @@ async def _schedule_reconciliation(
         action_version=RECONCILE_ACTION_VERSION,
         subject_kind="CommunicationDelivery",
         subject_id=delivery_id,
-        dedupe_key=f"communications:reconcile:{delivery_id}:v1",
+        dedupe_key=(
+            f"communications:reconcile:{delivery_id}:{execute_at.isoformat()}:v1"
+        ),
         execute_at=execute_at,
         payload={"delivery_id": str(delivery_id)},
         max_attempts=12,
+    )
+
+
+async def _schedule_retry_dispatch(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    communication_task_id: UUID,
+    source_delivery_id: UUID,
+    execute_at: datetime,
+) -> None:
+    await schedule_action(
+        session,
+        organization_id=organization_id,
+        owner_module="communications",
+        action_type=DISPATCH_ACTION_TYPE,
+        action_version=DISPATCH_ACTION_VERSION,
+        subject_kind="CommunicationTask",
+        subject_id=communication_task_id,
+        dedupe_key=(
+            f"communications:dispatch:{communication_task_id}:after:{source_delivery_id}:v1"
+        ),
+        execute_at=execute_at,
+        payload={"communication_task_id": str(communication_task_id)},
+        max_attempts=8,
     )
 
 
