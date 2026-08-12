@@ -138,6 +138,7 @@ def create_router(
                 reservation_id=reservation_id,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
@@ -160,6 +161,7 @@ def create_router(
                 resources=tuple(item.to_contract() for item in body.resources),
                 location_id=body.location_id,
                 idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
