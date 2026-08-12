@@ -684,9 +684,7 @@ async def _ensure_reconciliation(
         action_version=RECONCILE_ACTION_VERSION,
         subject_kind="CommunicationDelivery",
         subject_id=delivery_id,
-        dedupe_key=(
-            f"communications:reconcile:{delivery_id}:{execute_at.isoformat()}:v1"
-        ),
+        dedupe_key=(f"communications:reconcile:{delivery_id}:{execute_at.isoformat()}:v1"),
         execute_at=execute_at,
         payload={"delivery_id": str(delivery_id)},
         max_attempts=12,
