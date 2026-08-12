@@ -67,7 +67,7 @@ def create_router(
     async def queues(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> tuple[ServiceQueueView, ...]:
-        _require(actor, "queue.read")
+        _require(actor, "queue.list")
         result = await list_service_queues(
             catalog_reader,
             organization_id=actor.organization_id,
@@ -102,7 +102,7 @@ def create_router(
         subject_party_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> QueueStatusView:
-        _require(actor, "queue.read")
+        _require(actor, "queue.status")
         result = await get_queue_status(
             reader,
             organization_id=actor.organization_id,

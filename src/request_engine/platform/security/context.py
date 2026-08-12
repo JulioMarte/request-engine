@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from request_engine.platform.security.capabilities import grant_satisfies
+
 
 @dataclass(frozen=True, slots=True)
 class ActorContext:
@@ -9,6 +11,10 @@ class ActorContext:
     Business authority remains tenant-owned. This context only carries the
     organization/principal already authenticated by the outer adapter plus the
     materialized capability set the entrypoint may enforce.
+
+    ``allows()`` evaluates canonical V3 capability requirements while accepting
+    explicitly registered legacy grant aliases during the pre-baseline transition.
+    A technical capability grant never implies Party authority.
     """
 
     organization_id: UUID
@@ -16,4 +22,4 @@ class ActorContext:
     capabilities: frozenset[str]
 
     def allows(self, capability: str) -> bool:
-        return capability in self.capabilities
+        return any(grant_satisfies(granted, capability) for granted in self.capabilities)

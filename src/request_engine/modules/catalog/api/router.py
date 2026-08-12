@@ -37,7 +37,7 @@ def create_router(
     async def business_info(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> BusinessInfoView:
-        _require(actor, "business.read")
+        _require(actor, "business.get_info")
         info = await get_business_info(business_reader, actor.organization_id)
         return BusinessInfoView.from_contract(info)
 
@@ -48,7 +48,7 @@ def create_router(
         requestable: bool | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[OfferingView, ...]:
-        _require(actor, "catalog.read")
+        _require(actor, "catalog.search_offerings")
         result = await search_offerings(
             offering_reader,
             SearchOfferingsQuery(
@@ -65,7 +65,7 @@ def create_router(
         offering_key: str,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> OfferingView:
-        _require(actor, "catalog.read")
+        _require(actor, "catalog.get_offering_details")
         offering = await get_offering_details(
             offering_reader,
             organization_id=actor.organization_id,
