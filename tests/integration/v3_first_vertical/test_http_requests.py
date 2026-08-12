@@ -275,9 +275,7 @@ async def test_http_submit_resolves_latest_version_and_replays_idempotently(
     assert response_data == replay_data
     assert response_data["request_key"] == fixture.request_key
     assert response_data["definition_version"] == 2
-    assert response_data["request"]["request_definition_version_id"] == str(
-        fixture.version_2_id
-    )
+    assert response_data["request"]["request_definition_version_id"] == str(fixture.version_2_id)
 
     request_count = admin_conn.execute(
         """
@@ -322,9 +320,7 @@ async def test_http_explicit_definition_version_and_semantic_completion(
         assert created_response.status_code == 201
         created = created_response.json()
         assert created["definition_version"] == 1
-        assert created["request"]["request_definition_version_id"] == str(
-            fixture.version_1_id
-        )
+        assert created["request"]["request_definition_version_id"] == str(fixture.version_1_id)
         request_id = created["request"]["id"]
 
         completed_response = await client.post(
