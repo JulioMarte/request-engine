@@ -11,6 +11,7 @@ EXPECTED_V3_CANDIDATE = [
     "004-worker-primitives.sql",
     "005-read-access.sql",
     "006-capacity-hardening.sql",
+    "007-contract-convergence.sql",
 ]
 
 
