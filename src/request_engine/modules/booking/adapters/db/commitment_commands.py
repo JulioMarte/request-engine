@@ -27,6 +27,8 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
     load_resource_exceptions,
     load_resource_schedules,
 )
+from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
+from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
     AcquireCapacityHoldCommand,
 )
@@ -453,6 +455,15 @@ class PostgresBookingCommitmentCommands:
                 command.organization_id,
                 command.reservation_id,
             )
+            subject_party_id = cast(UUID, reservation_row["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key=MANAGE_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
+            )
             status = cast(str, reservation_row["status"])
             if status != "confirmed":
                 raise ReservationNotReschedulable(command.reservation_id, status)
@@ -471,7 +482,7 @@ class PostgresBookingCommitmentCommands:
             await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
-                subject_party_id=cast(UUID, reservation_row["subject_party_id"]),
+                subject_party_id=subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=cast(UUID | None, reservation_row["origin_request_id"]),
             )
@@ -638,6 +649,8 @@ class PostgresBookingCommitmentCommands:
                 aggregate_id=command.reservation_id,
                 idempotency_id=idempotency_id,
                 details={
+                    "subject_party_id": str(subject_party_id),
+                    "subject_authority": authority.audit_details(),
                     "old_start_at": cast(datetime, reservation_row["start_at"]).isoformat(),
                     "old_end_at": cast(datetime, reservation_row["end_at"]).isoformat(),
                     "new_start_at": start_at.isoformat(),
