@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import cast
 
 from request_engine.modules.communications.application.errors import DeliveryConfigurationError
 
@@ -46,9 +47,10 @@ def parse_delivery_policy(value: dict[str, object]) -> DeliveryPolicy:
         field="channel_policy.retry_after_seconds",
     )
 
+    typed_channels = cast(list[object], raw_channels)
     routes: list[DeliveryRoute] = []
     seen: set[str] = set()
-    for raw_channel in raw_channels:
+    for raw_channel in typed_channels:
         if not isinstance(raw_channel, str) or raw_channel not in _ENDPOINT_CHANNELS:
             raise DeliveryConfigurationError(
                 "channel_policy.channels contains an unsupported channel"
