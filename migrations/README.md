@@ -30,15 +30,19 @@ Current candidate order:
 004-worker-primitives.sql
 005-read-access.sql
 006-capacity-hardening.sql
+007-contract-convergence.sql
 ```
 
 The candidate is derived from:
 
 - `docs/v3/01-capability-contracts.md`;
 - `docs/v3/02-pre-sql-contract.md`;
+- `docs/v3/03-db-contract-convergence.md`;
 - `docs/v3/sql-disposition.md`.
 
-It is deliberately smaller than V2 and excludes deferred concepts such as universal Workflow/OutcomeScope, ReservationItem, CapacityAuthority, ResourceAllocation, CapacityPool, advanced Fulfillment, payments and dispatch.
+`03-db-contract-convergence.md` is a temporary normative pre-baseline amendment for the explicitly listed booking/database decisions. Its decisions must be folded into the canonical V3 contract before `0001_initial` is frozen.
+
+The candidate is deliberately smaller than V2 and excludes deferred concepts such as universal Workflow/OutcomeScope, ReservationItem, CapacityAuthority, ResourceAllocation, CapacityPool, advanced Fulfillment, payments and dispatch.
 
 The candidate is validated independently in CI against PostgreSQL 18 plus real DB/race/RLS tests under `tests/db/`.
 
