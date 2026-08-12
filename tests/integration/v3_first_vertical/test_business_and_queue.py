@@ -161,6 +161,7 @@ async def test_join_queue_is_idempotent_and_status_reports_entries_ahead(
             queue_id=queue_id,
             subject_party_id=first_subject,
             idempotency_key=f"join-{uuid4().hex}",
+            allow_subject_override=True,
         ),
     )
     second_key = f"join-{uuid4().hex}"
@@ -170,6 +171,7 @@ async def test_join_queue_is_idempotent_and_status_reports_entries_ahead(
         queue_id=queue_id,
         subject_party_id=second_subject,
         idempotency_key=second_key,
+        allow_subject_override=True,
     )
     second = await join_queue(commands, second_command)
     replay = await join_queue(commands, second_command)
@@ -181,8 +183,10 @@ async def test_join_queue_is_idempotent_and_status_reports_entries_ahead(
     status = await get_queue_status(
         PostgresServiceQueueReader(session_factory),
         organization_id=organization_id,
+        principal_id=principal_id,
         queue_id=queue_id,
         subject_party_id=second_subject,
+        allow_subject_override=True,
     )
     assert status.entry == second
     assert status.entries_ahead == 1
