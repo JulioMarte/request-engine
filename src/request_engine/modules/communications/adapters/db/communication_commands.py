@@ -104,20 +104,20 @@ class PostgresCommunicationCommands:
                     expires_at=expires_at,
                 ),
             )
-            execute_at = max(db_now, task.not_before or db_now)
-            await schedule_action(
-                session,
-                organization_id=command.organization_id,
-                owner_module="communications",
-                action_type="dispatch_task",
-                action_version=1,
-                subject_kind="CommunicationTask",
-                subject_id=task.id,
-                dedupe_key=f"communications:dispatch:{task.id}:v1",
-                execute_at=execute_at,
-                payload={"communication_task_id": str(task.id)},
-                max_attempts=8,
-            )
+            if created:
+                await schedule_action(
+                    session,
+                    organization_id=command.organization_id,
+                    owner_module="communications",
+                    action_type="dispatch_task",
+                    action_version=1,
+                    subject_kind="CommunicationTask",
+                    subject_id=task.id,
+                    dedupe_key=f"communications:dispatch:{task.id}:v1",
+                    execute_at=task.not_before or db_now,
+                    payload={"communication_task_id": str(task.id)},
+                    max_attempts=8,
+                )
 
             await append_audit(
                 session,
