@@ -12,7 +12,9 @@ def normalize_daily_times(values: tuple[time, ...]) -> tuple[time, ...]:
     normalized: list[time] = []
     for value in values:
         if value.tzinfo is not None:
-            raise ReminderScheduleError("daily reminder times must be naive local wall-clock values")
+            raise ReminderScheduleError(
+                "daily reminder times must be naive local wall-clock values"
+            )
         normalized.append(value.replace(microsecond=0))
     unique = tuple(sorted(set(normalized)))
     if len(unique) != len(values):
