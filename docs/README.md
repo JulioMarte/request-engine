@@ -6,7 +6,9 @@ This folder is the system of record for the current Request Engine product/domai
 
 Request Engine is in a **pre-baseline capability-first V3 transition**.
 
-The V3 product thesis is now followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`. The V2 PostgreSQL design chain remains useful as an executable design notebook, but it is **not** a schema to freeze while it contains concepts V3 deferred or replaced.
+The V3 product thesis is followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`, and those contracts now drive an executable clean PostgreSQL 18 candidate under `migrations/sql/v3_candidate/`.
+
+The historical V2 PostgreSQL design chain remains useful as executable design history, but it is **not** a schema to freeze or extend. The active candidate is still pre-baseline: it must survive the required PostgreSQL invariant/race/security tests and application vertical slices before becoming `0001_initial`.
 
 When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the first schema, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
 
@@ -25,7 +27,8 @@ Use this precedence when rules overlap:
 Transition support documents:
 
 - `12-v3-transition-plan.md` — implementation/reduction order;
-- `v3/sql-disposition.md` — V2 SQL disposition inventory; later V3 contracts close previously open `RE_EVALUATE` questions.
+- `v3/sql-disposition.md` — V2 SQL disposition inventory; later V3 contracts close previously open `RE_EVALUATE` questions;
+- `migrations/README.md` — active V3 candidate ownership, apply order and baseline-freeze gate.
 
 The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
 
@@ -40,7 +43,9 @@ Current accepted decisions include:
 - module-first Python physical organization;
 - repository documentation as the canonical knowledge system for coding agents;
 - capability-first product core instead of a universal workflow/domain model;
-- durable transactional communications and scheduling separated from provider delivery.
+- durable transactional communications and scheduling separated from provider delivery;
+- the minimal V3 booking/capacity model;
+- PostgreSQL RLS as tenant defense-in-depth with narrow cross-tenant worker claim surfaces.
 
 See `adr/README.md`.
 
@@ -66,19 +71,35 @@ The older numbered canonical documents are retained during transition because de
 
 New V3 domain/schema contracts belong under `docs/v3/`. Durable rationale belongs in `adr/`.
 
-## PostgreSQL executable design chain
+## PostgreSQL executable surfaces
 
-Executable SQL does not live in `docs/`. The historical pre-baseline V2.6→V2.10 design chain remains under `migrations/sql/design_chain/`:
+Executable SQL does not live in `docs/`.
+
+### Active V3 candidate
+
+The active clean pre-baseline candidate is under:
 
 ```text
-03-postgresql-schema.sql
-04-postgresql-v2.7-hardening.sql
-05-postgresql-v2.8-hardening.sql
-06-postgresql-v2.9-integrity.sql
-08-postgresql-v2.10-access-surface.sql
+migrations/sql/v3_candidate/
 ```
 
-These files are pre-production design history, not permanent Alembic history and not the V3 candidate. The next SQL artifact is a **clean reduced V3 candidate** derived from `v3/02-pre-sql-contract.md`, not another compatibility layer over speculative V2 objects.
+It is installed by:
+
+```bash
+bash scripts/db/apply_v3_candidate.sh
+```
+
+CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history and must not be called `0001_initial` until the freeze gate in `v3/02-pre-sql-contract.md` passes.
+
+### Historical V2 design chain
+
+The historical V2.6→V2.10 chain remains under:
+
+```text
+migrations/sql/design_chain/
+```
+
+Those files are pre-production design history, not permanent Alembic history and not the active candidate. CI validates them separately so useful historical SQL does not silently rot.
 
 See `migrations/README.md` before changing SQL.
 
