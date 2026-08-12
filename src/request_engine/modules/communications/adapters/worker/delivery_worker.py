@@ -10,6 +10,7 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     RECONCILE_ACTION_TYPE,
     RECONCILE_ACTION_VERSION,
     DeliveryWorkKind,
+    PreparedDeliveryWork,
     finalize_provider_result,
     prepare_dispatch,
     prepare_reconciliation,
@@ -138,7 +139,7 @@ class CommunicationDeliveryWorker:
             detail=finalized.status.value,
         )
 
-    async def _prepare(self, lease: ScheduledActionLease):  # type: ignore[no-untyped-def]
+    async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
         if (
             lease.owner_module == "communications"
             and lease.action_type == DISPATCH_ACTION_TYPE
