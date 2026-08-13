@@ -6,7 +6,10 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from request_engine.modules.booking.api.errors import booking_error_handler
-from request_engine.modules.booking.api.models import CancelReservationBody, RescheduleReservationBody
+from request_engine.modules.booking.api.models import (
+    CancelReservationBody,
+    RescheduleReservationBody,
+)
 from request_engine.modules.booking.application.errors import ReservationRevisionConflict
 from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.models import LeaveQueueBody
@@ -39,7 +42,6 @@ def test_appointment_mutations_require_positive_expected_revision() -> None:
 
 
 def test_queue_leave_targets_entry_identity_and_revision_not_subject_body() -> None:
-    entry_id = uuid4()
     body = LeaveQueueBody.model_validate({"expected_revision": 3, "reason": "left"})
     assert body.expected_revision == 3
 
@@ -57,7 +59,6 @@ def test_queue_leave_targets_entry_identity_and_revision_not_subject_body() -> N
     assert "queue_entry_id" in command_fields
     assert "expected_revision" in command_fields
     assert "subject_party_id" not in command_fields
-    assert entry_id != uuid4()
 
 
 @pytest.mark.asyncio
