@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.requests.api.models import (
     CancelRequestBody,
@@ -37,6 +37,7 @@ from request_engine.modules.requests.application.commands.record_request_result 
     RecordRequestResultHandler,
     record_request_result,
 )
+from request_engine.modules.requests.application.errors import RequestNotFound
 from request_engine.modules.requests.application.queries.get_request_status import (
     RequestReader,
     get_request_status,
@@ -134,7 +135,7 @@ def create_router(
             allow_party_override=actor.allows("requests.party_override"),
         )
         if request is None:
-            raise HTTPException(status_code=404, detail="Request not found")
+            raise RequestNotFound(request_id)
         return RequestView.from_contract(request)
 
     async def record_result(
