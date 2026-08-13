@@ -37,9 +37,7 @@ class PostgresScheduledActionWorker:
     ) -> tuple[ScheduledActionLease, ...]:
         if limit <= 0 or limit > 500:
             raise ValueError("limit must be between 1 and 500")
-        lease_seconds = lease.total_seconds()
-        if lease_seconds <= 0 or lease_seconds > 900:
-            raise ValueError("lease must be > 0 and <= 15 minutes")
+        lease_seconds = _lease_seconds(lease)
 
         async with self._session_factory() as session, session.begin():
             rows = (
@@ -79,6 +77,36 @@ class PostgresScheduledActionWorker:
             )
             for row in rows
         )
+
+    async def renew(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        extension: timedelta = timedelta(seconds=60),
+    ) -> datetime | None:
+        lease_seconds = _lease_seconds(extension)
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                datetime | None,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.renew_scheduled_action_lease(
+                                :action_id,
+                                :claim_token,
+                                make_interval(secs => :lease_seconds)
+                            )
+                            """
+                        ),
+                        {
+                            "action_id": lease.id,
+                            "claim_token": lease.claim_token,
+                            "lease_seconds": lease_seconds,
+                        },
+                    )
+                ).scalar_one(),
+            )
 
     async def complete(self, lease: ScheduledActionLease) -> bool:
         async with self._session_factory() as session, session.begin():
@@ -151,3 +179,10 @@ class PostgresScheduledActionWorker:
                     )
                 ).scalar_one(),
             )
+
+
+def _lease_seconds(value: timedelta) -> float:
+    seconds = value.total_seconds()
+    if seconds <= 0 or seconds > 900:
+        raise ValueError("lease must be > 0 and <= 15 minutes")
+    return seconds

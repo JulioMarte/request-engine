@@ -18,9 +18,6 @@ class CapabilityDefinition:
     legacy_aliases: frozenset[str] = frozenset()
 
 
-# Capability keys are a public contract. Additions are cheap; renames/removals require an
-# explicit compatibility decision. Party authority is deliberately metadata on top of a
-# technical capability grant: possessing a capability never implies authority over a Party.
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     CapabilityDefinition(
         key="business.get_info",
@@ -121,6 +118,30 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         key="queue.subject_override",
         exposure=CapabilityExposure.OPERATOR,
         description="Operate on queue subjects without delegated Party authority.",
+    ),
+    CapabilityDefinition(
+        key="communications.send",
+        exposure=CapabilityExposure.OPERATOR,
+        description="Create one transactional CommunicationTask for an explicit recipient.",
+    ),
+    CapabilityDefinition(
+        key="reminders.create",
+        exposure=CapabilityExposure.PUBLIC,
+        description="Create a recurring ReminderPlan for an authorized subject Party.",
+        party_scope="reminders.manage",
+        override_capability="reminders.subject_override",
+    ),
+    CapabilityDefinition(
+        key="reminders.cancel",
+        exposure=CapabilityExposure.PUBLIC,
+        description="Cancel a ReminderPlan for an authorized subject Party.",
+        party_scope="reminders.manage",
+        override_capability="reminders.subject_override",
+    ),
+    CapabilityDefinition(
+        key="reminders.subject_override",
+        exposure=CapabilityExposure.OPERATOR,
+        description="Operate on ReminderPlans without delegated Party authority.",
     ),
     CapabilityDefinition(
         key="requests.submit",
