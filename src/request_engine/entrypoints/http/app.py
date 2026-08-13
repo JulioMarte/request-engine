@@ -17,20 +17,16 @@ from request_engine.modules.requests.api import install_http as install_requests
 from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
-from request_engine.platform.security.http import (
-    ActorResolver,
-    AuthenticationRequired,
-    CapabilityRequired,
-)
+from request_engine.platform.security.http import ActorResolver, AuthenticationRequired, CapabilityRequired
 
 
 def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    appointment_option_signing_key: bytes,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around platform dependencies."""
-
     app = FastAPI(
         title="Request Engine",
         version="0.1.0",
@@ -47,25 +43,14 @@ def create_app(
     app.add_exception_handler(IntegrityError, integrity_error_handler)
     party_authority_reader = build_party_authority_reader(session_factory)
 
-    install_requests_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
-    install_catalog_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
+    install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
+    install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_booking_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         party_authority_reader=party_authority_reader,
+        appointment_option_signing_key=appointment_option_signing_key,
     )
-    install_queue_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
+    install_queue_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     return app

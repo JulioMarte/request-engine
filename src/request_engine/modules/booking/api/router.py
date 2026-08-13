@@ -37,6 +37,7 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -55,6 +56,7 @@ def create_router(
     reschedule_handler: RescheduleReservationHandler,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
+    option_codec: AppointmentOptionCodec,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/appointments", tags=["appointments"])
@@ -82,7 +84,13 @@ def create_router(
                 limit=limit,
             ),
         )
-        return tuple(AppointmentSlotView.from_contract(item) for item in result)
+        return tuple(
+            AppointmentSlotView.from_contract(
+                item,
+                option_id=option_codec.issue(actor.organization_id, item),
+            )
+            for item in result
+        )
 
     async def book(
         body: BookAppointmentBody,
@@ -90,16 +98,17 @@ def create_router(
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
         require_capability(actor, "appointments.book")
+        option = option_codec.decode(actor.organization_id, body.option_id)
         reservation = await book_appointment(
             book_handler,
             BookAppointmentCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
-                offering_version_id=body.offering_version_id,
+                offering_version_id=option.offering_version_id,
                 subject_party_id=body.subject_party_id,
-                start_at=body.start_at,
-                resources=tuple(item.to_contract() for item in body.resources),
-                location_id=body.location_id,
+                start_at=option.start_at,
+                resources=option.resources,
+                location_id=option.location_id,
                 origin_request_id=body.origin_request_id,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
@@ -152,51 +161,27 @@ def create_router(
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
         require_capability(actor, "appointments.reschedule")
+        option = option_codec.decode(actor.organization_id, body.option_id)
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 reservation_id=reservation_id,
-                start_at=body.start_at,
-                resources=tuple(item.to_contract() for item in body.resources),
-                location_id=body.location_id,
+                start_at=option.start_at,
+                resources=option.resources,
+                location_id=option.location_id,
                 idempotency_key=idempotency_key,
                 expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+                option_offering_version_id=option.offering_version_id,
             ),
         )
         return ReservationView.from_contract(reservation)
 
-    router.add_api_route(
-        "/slots",
-        slots,
-        methods=["GET"],
-        response_model=tuple[AppointmentSlotView, ...],
-    )
-    router.add_api_route(
-        "",
-        book,
-        methods=["POST"],
-        response_model=ReservationView,
-        status_code=status.HTTP_201_CREATED,
-    )
-    router.add_api_route(
-        "/{reservation_id}",
-        reservation_status,
-        methods=["GET"],
-        response_model=ReservationView,
-    )
-    router.add_api_route(
-        "/{reservation_id}/cancel",
-        cancel,
-        methods=["POST"],
-        response_model=ReservationView,
-    )
-    router.add_api_route(
-        "/{reservation_id}/reschedule",
-        reschedule,
-        methods=["POST"],
-        response_model=ReservationView,
-    )
+    router.add_api_route("/slots", slots, methods=["GET"], response_model=tuple[AppointmentSlotView, ...])
+    router.add_api_route("", book, methods=["POST"], response_model=ReservationView, status_code=status.HTTP_201_CREATED)
+    router.add_api_route("/{reservation_id}", reservation_status, methods=["GET"], response_model=ReservationView)
+    router.add_api_route("/{reservation_id}/cancel", cancel, methods=["POST"], response_model=ReservationView)
+    router.add_api_route("/{reservation_id}/reschedule", reschedule, methods=["POST"], response_model=ReservationView)
     return router
