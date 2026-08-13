@@ -6,6 +6,7 @@ from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
     http_exception_handler,
+    idempotency_conflict_handler,
     integrity_error_handler,
     request_validation_error_handler,
 )
@@ -15,6 +16,7 @@ from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.http import (
     ActorResolver,
     AuthenticationRequired,
@@ -39,6 +41,7 @@ def create_app(
     )
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
+    app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
