@@ -1,10 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
+    http_exception_handler,
     integrity_error_handler,
+    request_validation_error_handler,
 )
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.catalog.api import install_http as install_catalog_http
@@ -36,6 +39,8 @@ def create_app(
     )
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
     party_authority_reader = build_party_authority_reader(session_factory)
 
