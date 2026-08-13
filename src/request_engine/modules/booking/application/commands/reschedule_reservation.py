@@ -11,13 +11,13 @@ class RescheduleReservationCommand:
     organization_id: UUID
     principal_id: UUID
     reservation_id: UUID
-    option_offering_version_id: UUID
     start_at: datetime
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
     expected_revision: int
     location_id: UUID | None = None
     allow_subject_override: bool = False
+    option_offering_version_id: UUID | None = None
 
 
 class RescheduleReservationHandler(Protocol):
