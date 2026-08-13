@@ -274,6 +274,7 @@ async def test_find_book_replay_read_cancel_and_release_slot(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
             reservation_id=reservation.id,
+            expected_revision=reservation.revision,
             idempotency_key=f"cancel-{uuid4().hex}",
             reason="patient unavailable",
             allow_subject_override=True,
