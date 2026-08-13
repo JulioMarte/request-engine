@@ -34,6 +34,7 @@ class PostgresServiceQueueReader:
                 subject_party_id=subject_party_id,
                 scope_key="queue.manage",
                 allow_operator_override=allow_subject_override,
+                lock_authority=False,
             )
 
             queue_row = (

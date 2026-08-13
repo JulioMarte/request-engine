@@ -286,6 +286,7 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers=delegated,
         )
         assert readable.status_code == 200
+        current_revision = cast(int, readable.json()["revision"])
 
         admin_conn.execute(
             """
@@ -301,7 +302,10 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
         )
         cancel_after_revoke = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "should not be authorized"},
+            json={
+                "reason": "should not be authorized",
+                "expected_revision": current_revision,
+            },
             headers={**delegated, "Idempotency-Key": f"cancel-denied-{uuid4().hex}"},
         )
         assert read_after_revoke.status_code == 403
@@ -312,9 +316,13 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers=operator,
         )
         assert operator_read.status_code == 200
+        operator_revision = cast(int, operator_read.json()["revision"])
         operator_cancel = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "staff cancellation"},
+            json={
+                "reason": "staff cancellation",
+                "expected_revision": operator_revision,
+            },
             headers={**operator, "Idempotency-Key": f"cancel-{uuid4().hex}"},
         )
         assert operator_cancel.status_code == 200

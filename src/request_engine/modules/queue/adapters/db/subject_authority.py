@@ -36,24 +36,31 @@ async def require_subject_authority(
     subject_party_id: UUID,
     scope_key: str,
     allow_operator_override: bool,
+    lock_authority: bool = True,
 ) -> SubjectAuthorityEvidence:
     if allow_operator_override:
         return SubjectAuthorityEvidence(mode="operator", scope_key=scope_key)
 
+    function_name = (
+        "request_engine.lock_current_party_authority"
+        if lock_authority
+        else "request_engine.resolve_current_party_authority"
+    )
+    query = text(
+        f"""
+        SELECT representation_id, authority_kind
+        FROM {function_name}(
+            :organization_id,
+            :principal_id,
+            :subject_party_id,
+            :scope_key
+        )
+        """
+    )
     row = (
         (
             await session.execute(
-                text(
-                    """
-                    SELECT representation_id, authority_kind
-                    FROM request_engine.resolve_current_party_authority(
-                        :organization_id,
-                        :principal_id,
-                        :subject_party_id,
-                        :scope_key
-                    )
-                    """
-                ),
+                query,
                 {
                     "organization_id": organization_id,
                     "principal_id": principal_id,

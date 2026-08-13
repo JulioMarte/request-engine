@@ -80,5 +80,5 @@ class JoinQueueBody(BaseModel):
 
 class LeaveQueueBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    subject_party_id: UUID
+    expected_revision: int = Field(gt=0)
     reason: str | None = Field(default=None, max_length=1000)

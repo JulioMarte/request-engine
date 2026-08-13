@@ -85,7 +85,39 @@ represented Party.active = true
 
 This avoids dual truth where `status='active'` conflicts with an elapsed validity interval or `status='expired'` conflicts with a future `valid_until`.
 
-## 5. PostgreSQL versus Python ownership
+## 5. Read resolution versus mutation linearization
+
+V3 exposes two database-owned authority surfaces with the same exact-scope validity semantics but different concurrency behavior.
+
+### Read-only resolution
+
+`request_engine.resolve_current_party_authority(...)` performs a non-locking authority read. Queries such as Request/Queue/Reservation status may use this surface because they do not commit a subject-scoped business mutation.
+
+### Mutation-time resolution
+
+`request_engine.lock_current_party_authority(...)` resolves the same current Representation and acquires `FOR SHARE` row locks on:
+
+- the Representation;
+- the authenticated Principal endpoint;
+- the represented Party endpoint.
+
+The function is `SECURITY INVOKER`; tenant RLS remains in force.
+
+This defines the mutation authority linearization point. Once a command has acquired these locks using a Representation that is current at PostgreSQL wall-clock time, a concurrent Representation revoke or Principal/Party deactivation must serialize after that command. The authorized command may finish; the subsequent revoke/deactivation governs later commands.
+
+The baseline does not attempt to retroactively invalidate a transaction merely because `valid_until` passes between authority resolution and commit. Temporal validity is evaluated at the database instant when authority is established.
+
+Using the non-locking resolver from a mutation is incomplete because `READ COMMITTED` alone does not stop this race:
+
+```text
+T1 resolve Representation = active
+T2 revoke Representation + commit
+T1 write subject-scoped mutation + commit
+```
+
+Mutation adapters therefore use the locking surface; read adapters explicitly remain on the non-locking resolver.
+
+## 6. PostgreSQL versus Python ownership
 
 PostgreSQL proves structural facts:
 
@@ -93,19 +125,21 @@ PostgreSQL proves structural facts:
 - Representation validity interval is well formed;
 - authority kind/status values are valid;
 - tenant-local foreign keys cannot cross Organization boundaries;
-- RLS prevents runtime cross-tenant access.
+- RLS prevents runtime cross-tenant access;
+- mutation-time Representation/revoke ordering can be serialized through the locking authority primitive.
 
 Python owns command policy:
 
 - which Party is the subject of the command;
 - which exact scope is required;
 - whether an operator override is allowed for that command;
+- whether a use site is a query or mutation and therefore which authority surface it consumes;
 - how a resolved Representation or operator grant is recorded in audit provenance;
 - denial behavior and public error mapping.
 
 PostgreSQL must not become a universal RBAC/policy language.
 
-## 6. Tenant-local FK invariant
+## 7. Tenant-local FK invariant
 
 For two tenant-owned tables that both contain `organization_id`, any relational FK between them must carry `organization_id` on both the source and target side.
 
@@ -113,7 +147,7 @@ Allowed exception: direct FK to the `organizations` tenant root itself.
 
 Soft polymorphic references (`kind + id`) are allowed only for provenance/correlation where referential existence is not a business invariant. If a reference participates in authorization, capacity, lifecycle or money invariants, it requires a typed tenant-scoped relational FK.
 
-## 7. Connection-surface requirement
+## 8. Connection-surface requirement
 
 Every subject-scoped command surface must state:
 
@@ -124,6 +158,7 @@ whether operator override exists
 representation/operator provenance written to audit
 same-tenant structural proof
 failure code when authority is absent
+mutation-time authority locking behavior
 ```
 
 A new subject-scoped API is incomplete until this connection is tested.

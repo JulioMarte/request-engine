@@ -37,7 +37,7 @@ async def require_subject_authority(
     scope_key: str,
     allow_operator_override: bool,
 ) -> SubjectAuthorityEvidence:
-    """Resolve current exact-scope Party authority inside the caller transaction."""
+    """Lock current exact-scope Party authority inside a booking mutation transaction."""
 
     if allow_operator_override:
         return SubjectAuthorityEvidence(mode="operator", scope_key=scope_key)
@@ -48,7 +48,7 @@ async def require_subject_authority(
                 text(
                     """
                     SELECT representation_id, authority_kind
-                    FROM request_engine.resolve_current_party_authority(
+                    FROM request_engine.lock_current_party_authority(
                         :organization_id,
                         :principal_id,
                         :subject_party_id,

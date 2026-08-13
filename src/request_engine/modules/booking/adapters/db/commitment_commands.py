@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     LockedResource,
+    ensure_reservation_revision,
     load_bookable_offering,
     load_locked_profiles,
     load_requirements,
@@ -424,6 +425,7 @@ class PostgresBookingCommitmentCommands:
             "booking.reschedule_reservation",
             {
                 "reservation_id": command.reservation_id,
+                "expected_revision": command.expected_revision,
                 "start_at": start_at,
                 "location_id": command.location_id,
                 "resources": [
@@ -463,6 +465,11 @@ class PostgresBookingCommitmentCommands:
                 subject_party_id=subject_party_id,
                 scope_key=MANAGE_APPOINTMENT_SCOPE,
                 allow_operator_override=command.allow_subject_override,
+            )
+            ensure_reservation_revision(
+                reservation_row,
+                command.reservation_id,
+                command.expected_revision,
             )
             status = cast(str, reservation_row["status"])
             if status != "confirmed":
@@ -651,6 +658,7 @@ class PostgresBookingCommitmentCommands:
                 details={
                     "subject_party_id": str(subject_party_id),
                     "subject_authority": authority.audit_details(),
+                    "expected_revision": command.expected_revision,
                     "old_start_at": cast(datetime, reservation_row["start_at"]).isoformat(),
                     "old_end_at": cast(datetime, reservation_row["end_at"]).isoformat(),
                     "new_start_at": start_at.isoformat(),

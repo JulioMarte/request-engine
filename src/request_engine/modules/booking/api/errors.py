@@ -11,6 +11,7 @@ from request_engine.modules.booking.application.errors import (
     ReservationNotCancellable,
     ReservationNotFound,
     ReservationNotReschedulable,
+    ReservationRevisionConflict,
     SubjectAuthorityRequired,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope
@@ -43,6 +44,17 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             details={
                 "subject_party_id": str(exc.subject_party_id),
                 "scope_key": exc.scope_key,
+            },
+        )
+    if isinstance(exc, ReservationRevisionConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="revision_conflict",
+            message="the aggregate changed since it was read",
+            details={
+                "aggregate_kind": "Reservation",
+                "aggregate_id": str(exc.reservation_id),
+                "expected_revision": exc.expected,
+                "current_revision": exc.actual,
             },
         )
     if isinstance(exc, OfferingVersionNotBookable):

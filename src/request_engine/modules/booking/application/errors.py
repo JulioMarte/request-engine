@@ -69,6 +69,16 @@ class ReservationNotFound(BookingError):
         self.reservation_id = reservation_id
 
 
+class ReservationRevisionConflict(BookingError):
+    def __init__(self, reservation_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"Reservation {reservation_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.reservation_id = reservation_id
+        self.expected = expected
+        self.actual = actual
+
+
 class ReservationNotCancellable(BookingError):
     def __init__(self, reservation_id: UUID, status: str) -> None:
         super().__init__(f"Reservation {reservation_id} cannot be cancelled from status {status}")

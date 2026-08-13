@@ -42,6 +42,23 @@ class ActiveQueueEntryNotFound(QueueError):
         self.subject_party_id = subject_party_id
 
 
+class QueueEntryNotFound(QueueError):
+    def __init__(self, queue_id: UUID, entry_id: UUID) -> None:
+        super().__init__(f"QueueEntry {entry_id} was not found in ServiceQueue {queue_id}")
+        self.queue_id = queue_id
+        self.entry_id = entry_id
+
+
+class QueueEntryRevisionConflict(QueueError):
+    def __init__(self, entry_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"QueueEntry {entry_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.entry_id = entry_id
+        self.expected = expected
+        self.actual = actual
+
+
 class QueueEntryNotCancellable(QueueError):
     def __init__(self, entry_id: UUID, status: str) -> None:
         super().__init__(f"QueueEntry {entry_id} cannot be cancelled from status {status}")

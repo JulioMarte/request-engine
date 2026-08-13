@@ -25,9 +25,28 @@ Queue action capability and authority over a Party are separate decisions.
 - `GetQueueStatus` and `LeaveQueue` require exact current Representation scope `queue.manage`, unless that same explicit operator override is present.
 - `CallNext` is an operator action over the FIFO queue and does not require a Representation for the Party selected by the queue itself.
 - Possession of a same-tenant Party UUID is never authority.
-- Mutation-time Representation resolution occurs inside the authoritative PostgreSQL transaction so revocation/expiry cannot race a successful write.
+- Mutation-time Representation resolution uses the locking Party-authority primitive inside the authoritative PostgreSQL transaction; a concurrent revoke/deactivation serializes after a command that already established authority.
+- Read-only queue status uses the non-locking current-authority resolver.
 
-Queue consumes only Tenancy's published authority vocabulary and the shared PostgreSQL current-authority primitive; it does not own Representation lifecycle.
+Queue consumes only Tenancy's published authority vocabulary and database authority surfaces; it does not own Representation lifecycle.
+
+### QueueEntry identity and optimistic concurrency
+
+`LeaveQueue` targets a concrete caller-observed QueueEntry, not merely a Party currently found in the queue.
+
+The mutation contract is:
+
+```text
+queue_id
++ queue_entry_id
++ expected_revision
+```
+
+The public request body does not supply `subject_party_id`. PostgreSQL locks the exact QueueEntry identified by `queue_entry_id`, verifies that it belongs to the selected ServiceQueue, derives the subject Party from that authoritative row, establishes `queue.manage` authority for that Party, compares `expected_revision`, and only then performs the state transition.
+
+This prevents an ABA/re-entry error. If Entry A is observed and later leaves, a new Entry B for the same Party is a different aggregate even if both rows independently have revision 1. A stale command for A can never cancel B.
+
+`CallNext` deliberately does not accept `expected_revision`: it is not a caller-selected QueueEntry mutation. PostgreSQL chooses the deterministic next FIFO entry under the ServiceQueue serialization lock.
 
 Initial commands/queries:
 
