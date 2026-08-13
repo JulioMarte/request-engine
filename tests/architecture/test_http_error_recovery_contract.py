@@ -11,9 +11,13 @@ from request_engine.entrypoints.http.errors import (
     request_validation_error_handler,
 )
 from request_engine.modules.booking.api.errors import booking_error_handler
-from request_engine.modules.booking.application.errors import SubjectAuthorityRequired as BookingAuthorityRequired
+from request_engine.modules.booking.application.errors import (
+    SubjectAuthorityRequired as BookingAuthorityRequired,
+)
 from request_engine.modules.queue.api.errors import queue_error_handler
-from request_engine.modules.queue.application.errors import SubjectAuthorityRequired as QueueAuthorityRequired
+from request_engine.modules.queue.application.errors import (
+    SubjectAuthorityRequired as QueueAuthorityRequired,
+)
 from request_engine.modules.requests.api.errors import request_error_handler
 from request_engine.modules.requests.application.errors import RequestPartyAuthorityRequired
 
