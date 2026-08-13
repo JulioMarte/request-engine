@@ -11,8 +11,9 @@ from request_engine.modules.queue.adapters.db.queue_entry_codec import (
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.commands.leave_queue import LeaveQueueCommand
 from request_engine.modules.queue.application.errors import (
-    ActiveQueueEntryNotFound,
     QueueEntryNotCancellable,
+    QueueEntryNotFound,
+    QueueEntryRevisionConflict,
     QueueNotFound,
 )
 from request_engine.modules.queue.contracts.service_queue import QueueEntry
@@ -27,7 +28,7 @@ from request_engine.platform.outbox.postgres import append_outbox
 
 
 class PostgresLeaveQueueCommands:
-    """Cancel a waiting/called queue entry while preserving serving work."""
+    """Cancel one caller-selected waiting/called QueueEntry by identity and revision."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
@@ -38,7 +39,8 @@ class PostgresLeaveQueueCommands:
             capability,
             {
                 "queue_id": command.queue_id,
-                "subject_party_id": command.subject_party_id,
+                "queue_entry_id": command.queue_entry_id,
+                "expected_revision": command.expected_revision,
                 "reason": command.reason,
             },
         )
@@ -56,15 +58,6 @@ class PostgresLeaveQueueCommands:
                 if not isinstance(raw_entry, dict):
                     raise RuntimeError("completed queue.leave replay has no entry")
                 return queue_entry_from_json(cast(dict[str, object], raw_entry))
-
-            authority = await require_subject_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                subject_party_id=command.subject_party_id,
-                scope_key="queue.manage",
-                allow_operator_override=command.allow_subject_override,
-            )
 
             queue_exists = (
                 await session.execute(
@@ -96,17 +89,14 @@ class PostgresLeaveQueueCommands:
                             FROM request_engine.queue_entries
                             WHERE organization_id = :organization_id
                               AND service_queue_id = :queue_id
-                              AND subject_party_id = :subject_party_id
-                              AND status IN ('waiting', 'called', 'serving')
-                            ORDER BY admitted_at DESC, id DESC
-                            LIMIT 1
+                              AND id = :queue_entry_id
                             FOR UPDATE
                             """
                         ),
                         {
                             "organization_id": command.organization_id,
                             "queue_id": command.queue_id,
-                            "subject_party_id": command.subject_party_id,
+                            "queue_entry_id": command.queue_entry_id,
                         },
                     )
                 )
@@ -114,11 +104,30 @@ class PostgresLeaveQueueCommands:
                 .first()
             )
             if row is None:
-                raise ActiveQueueEntryNotFound(command.queue_id, command.subject_party_id)
-            status = cast(str, row["status"])
+                raise QueueEntryNotFound(command.queue_id, command.queue_entry_id)
+
             entry_id = cast(UUID, row["id"])
-            if status not in ("waiting", "called"):
-                raise QueueEntryNotCancellable(entry_id, status)
+            subject_party_id = cast(UUID, row["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key="queue.manage",
+                allow_operator_override=command.allow_subject_override,
+            )
+
+            current_revision = cast(int, row["revision"])
+            if current_revision != command.expected_revision:
+                raise QueueEntryRevisionConflict(
+                    entry_id,
+                    command.expected_revision,
+                    current_revision,
+                )
+
+            entry_status = cast(str, row["status"])
+            if entry_status not in ("waiting", "called"):
+                raise QueueEntryNotCancellable(entry_id, entry_status)
 
             updated = (
                 (
@@ -155,8 +164,9 @@ class PostgresLeaveQueueCommands:
                 idempotency_id=idempotency_id,
                 details={
                     "queue_id": str(command.queue_id),
-                    "subject_party_id": str(command.subject_party_id),
+                    "subject_party_id": str(subject_party_id),
                     "reason": command.reason,
+                    "expected_revision": command.expected_revision,
                     "subject_authority": authority.audit_details(),
                 },
             )
