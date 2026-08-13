@@ -1,10 +1,18 @@
 import hashlib
 import json
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from request_engine.platform.idempotency.errors import IdempotencyConflict
+
+
+@runtime_checkable
+class _HasSqlState(Protocol):
+    sqlstate: str | None
 
 
 def command_fingerprint(capability: str, values: dict[str, object]) -> str:
@@ -30,33 +38,39 @@ async def acquire_idempotency(
 ) -> tuple[UUID, dict[str, object] | None]:
     """Acquire/serialize one idempotency identity and return replay data when completed."""
 
-    row = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT idempotency_id, result_data, replay
-                    FROM request_cmd.acquire_idempotency(
-                        :organization_id,
-                        :principal_id,
-                        :capability,
-                        :idempotency_key,
-                        :fingerprint
-                    )
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "principal_id": principal_id,
-                    "capability": capability,
-                    "idempotency_key": idempotency_key,
-                    "fingerprint": fingerprint,
-                },
+    try:
+        row = (
+            (
+                await session.execute(
+                    text(
+                        """
+                        SELECT idempotency_id, result_data, replay
+                        FROM request_cmd.acquire_idempotency(
+                            :organization_id,
+                            :principal_id,
+                            :capability,
+                            :idempotency_key,
+                            :fingerprint
+                        )
+                        """
+                    ),
+                    {
+                        "organization_id": organization_id,
+                        "principal_id": principal_id,
+                        "capability": capability,
+                        "idempotency_key": idempotency_key,
+                        "fingerprint": fingerprint,
+                    },
+                )
             )
+            .mappings()
+            .one()
         )
-        .mappings()
-        .one()
-    )
+    except DBAPIError as exc:
+        sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
+        if sqlstate == "P1001":
+            raise IdempotencyConflict(capability, idempotency_key) from exc
+        raise
 
     idempotency_id = cast(UUID, row["idempotency_id"])
     if not cast(bool, row["replay"]):
