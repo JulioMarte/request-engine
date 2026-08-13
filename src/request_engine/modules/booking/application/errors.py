@@ -18,6 +18,17 @@ class OfferingVersionNotFound(BookingError):
         self.offering_version_id = offering_version_id
 
 
+class AppointmentOptionInvalid(BookingError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"AppointmentOption is invalid: {reason}")
+        self.reason = reason
+
+
+class AppointmentOptionExpired(BookingError):
+    def __init__(self) -> None:
+        super().__init__("AppointmentOption has expired")
+
+
 class InvalidResourceSelection(BookingError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
