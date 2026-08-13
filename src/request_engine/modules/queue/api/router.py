@@ -109,6 +109,7 @@ def create_router(
 
     async def leave(
         queue_id: UUID,
+        queue_entry_id: UUID,
         body: LeaveQueueBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
@@ -120,7 +121,8 @@ def create_router(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 queue_id=queue_id,
-                subject_party_id=body.subject_party_id,
+                queue_entry_id=queue_entry_id,
+                expected_revision=body.expected_revision,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
@@ -165,7 +167,7 @@ def create_router(
         response_model=QueueStatusView,
     )
     router.add_api_route(
-        "/{queue_id}/leave",
+        "/{queue_id}/entries/{queue_entry_id}/leave",
         leave,
         methods=["POST"],
         response_model=QueueEntryView,
