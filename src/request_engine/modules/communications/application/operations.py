@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, time
+from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.communications.application.commands.cancel_reminder_plan import (
@@ -24,6 +25,10 @@ from request_engine.modules.communications.contracts.reminders import ReminderPl
 from request_engine.modules.communications.contracts.tasks import CommunicationTask
 from request_engine.platform.security.authorization import require_capability
 from request_engine.platform.security.context import ActorContext
+
+
+class ReminderPlanHandler(CreateReminderPlanHandler, CancelReminderPlanHandler, Protocol):
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +73,7 @@ class CommunicationsOperations:
         self,
         *,
         communication_handler: CreateCommunicationTaskHandler,
-        reminder_handler: CreateReminderPlanHandler | CancelReminderPlanHandler,
+        reminder_handler: ReminderPlanHandler,
     ) -> None:
         self._communication_handler = communication_handler
         self._reminder_handler = reminder_handler
