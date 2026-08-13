@@ -11,7 +11,9 @@ class CancelReminderPlanCommand:
     principal_id: UUID
     reminder_plan_id: UUID
     idempotency_key: str
+    expected_revision: int
     reason: str | None = None
+    allow_subject_override: bool = False
 
 
 class CancelReminderPlanHandler(Protocol):
@@ -24,4 +26,6 @@ async def cancel_reminder_plan(
 ) -> ReminderPlan:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    if command.expected_revision <= 0:
+        raise ValueError("expected_revision must be positive")
     return await handler.cancel_reminder_plan(command)
