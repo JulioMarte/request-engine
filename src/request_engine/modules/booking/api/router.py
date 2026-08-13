@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
@@ -27,6 +27,7 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     RescheduleReservationHandler,
     reschedule_reservation,
 )
+from request_engine.modules.booking.application.errors import ReservationNotFound
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     AppointmentAvailabilityReader,
     FindAppointmentSlotsQuery,
@@ -120,7 +121,7 @@ def create_router(
             allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
         )
         if reservation is None:
-            raise HTTPException(status_code=404, detail="Reservation not found")
+            raise ReservationNotFound(reservation_id)
         return ReservationView.from_contract(reservation)
 
     async def cancel(

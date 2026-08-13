@@ -55,6 +55,7 @@ async def test_request_revision_conflict_uses_common_machine_readable_shape() ->
             "code": "revision_conflict",
             "message": "the aggregate changed since it was read",
             "retryable": False,
+            "resolution": "refresh_and_retry",
             "details": {
                 "aggregate_kind": "Request",
                 "aggregate_id": str(request_id),

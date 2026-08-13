@@ -15,6 +15,7 @@ EXPECTED_V3_CANDIDATE = [
     "008-tenant-party-authority.sql",
     "009-party-authority-resolution.sql",
     "010-party-authority-linearization.sql",
+    "011-idempotency-error-contract.sql",
 ]
 
 

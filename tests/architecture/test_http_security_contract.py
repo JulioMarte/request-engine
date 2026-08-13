@@ -29,6 +29,7 @@ async def test_authentication_failure_has_stable_machine_readable_envelope() -> 
             "code": "authentication_required",
             "message": "authentication is required",
             "retryable": False,
+            "resolution": "reauthenticate",
             "details": {},
         }
     }
@@ -46,6 +47,7 @@ async def test_capability_failure_names_exact_canonical_requirement() -> None:
             "code": "capability_required",
             "message": "the authenticated actor lacks a required capability",
             "retryable": False,
+            "resolution": "request_authority",
             "details": {"capability": "appointments.cancel"},
         }
     }
