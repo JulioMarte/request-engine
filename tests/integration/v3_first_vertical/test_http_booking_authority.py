@@ -268,7 +268,8 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers={**delegated, "Idempotency-Key": f"denied-{uuid4().hex}"},
         )
         assert denied.status_code == 403
-        assert denied.json()["error"]["code"] == "subject_authority_required"
+        assert denied.json()["error"]["code"] == "party_authority_required"
+        assert denied.json()["error"]["resolution"] == "request_authority"
         assert denied.json()["error"]["details"]["scope_key"] == "appointments.book"
 
         book_representation_id = _grant(admin_conn, fixture, "appointments.book")
