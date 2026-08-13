@@ -58,8 +58,8 @@ async def test_idempotency_fingerprint_mismatch_has_semantic_error(
         assert replay is None
         await complete_idempotency(session, idempotency_id, {"ok": True})
 
-    async with tenant_transaction(session_factory, organization_id) as session:
-        with pytest.raises(IdempotencyConflict) as captured:
+    with pytest.raises(IdempotencyConflict) as captured:
+        async with tenant_transaction(session_factory, organization_id) as session:
             await acquire_idempotency(
                 session,
                 organization_id=organization_id,
