@@ -81,6 +81,7 @@ async def test_reservation_and_queue_entry_conflicts_share_revision_error_shape(
     assert reservation_response.status_code == 409
     assert queue_response.status_code == 409
     assert reservation_error["code"] == queue_error["code"] == "revision_conflict"
+    assert reservation_error["resolution"] == queue_error["resolution"] == "refresh_and_retry"
     assert reservation_error["details"] == {
         "aggregate_kind": "Reservation",
         "aggregate_id": str(reservation_id),
