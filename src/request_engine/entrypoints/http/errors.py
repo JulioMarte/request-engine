@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 
 
@@ -37,6 +38,23 @@ async def capability_required_handler(_: Request, exc: Exception) -> JSONRespons
             message="the authenticated actor lacks a required capability",
             resolution=ErrorResolution.REQUEST_AUTHORITY,
             details={"capability": exc.capability},
+        ),
+    )
+
+
+async def idempotency_conflict_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, IdempotencyConflict):
+        raise exc
+    return _response(
+        status.HTTP_409_CONFLICT,
+        ErrorBody(
+            code="idempotency_conflict",
+            message="the idempotency key was already used for a different command",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={
+                "capability": exc.capability,
+                "idempotency_key": exc.idempotency_key,
+            },
         ),
     )
 
