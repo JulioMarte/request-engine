@@ -5,6 +5,8 @@ from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
     AlreadyInQueue,
     QueueEntryNotCancellable,
+    QueueEntryNotFound,
+    QueueEntryRevisionConflict,
     QueueError,
     QueueInactive,
     QueueNotFound,
@@ -33,6 +35,26 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
     if isinstance(exc, QueueNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
             code="queue_not_found", message=str(exc), details={"queue_id": str(exc.queue_id)}
+        )
+    if isinstance(exc, QueueEntryNotFound):
+        return status.HTTP_404_NOT_FOUND, ErrorBody(
+            code="queue_entry_not_found",
+            message=str(exc),
+            details={
+                "queue_id": str(exc.queue_id),
+                "queue_entry_id": str(exc.entry_id),
+            },
+        )
+    if isinstance(exc, QueueEntryRevisionConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="revision_conflict",
+            message="the aggregate changed since it was read",
+            details={
+                "aggregate_kind": "QueueEntry",
+                "aggregate_id": str(exc.entry_id),
+                "expected_revision": exc.expected,
+                "current_revision": exc.actual,
+            },
         )
     if isinstance(exc, QueueInactive):
         return status.HTTP_409_CONFLICT, ErrorBody(
