@@ -91,6 +91,18 @@ def _create_fixture(conn: PgConnection) -> CommunicationFixture:
         """,
         (organization_id, f"Patient {suffix}"),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.representations (
+            organization_id,
+            principal_id,
+            represented_party_id,
+            scope_key,
+            authority_kind
+        ) VALUES (%s, %s, %s, 'reminders.manage', 'delegated')
+        """,
+        (organization_id, principal_id, party_id),
+    )
     contact_point_id = _uuid_row(
         conn,
         """
@@ -262,6 +274,7 @@ async def test_reminder_plan_creation_and_cancellation_own_future_schedule(
             reminder_plan_id=plan.id,
             reason="plan no longer needed",
             idempotency_key=f"cancel-reminder-{uuid4().hex}",
+            expected_revision=plan.revision,
         ),
     )
     assert cancelled.status is ReminderPlanStatus.CANCELLED
@@ -308,33 +321,19 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             fixture.organization_id,
             fixture.party_id,
             json.dumps(
-                {
-                    "type": "daily_times",
-                    "times": ["00:00:00"],
-                    "max_lateness_minutes": 60,
-                }
+                {"type": "daily_times", "times": ["00:00:00"], "max_lateness_minutes": 60}
             ),
             json.dumps({"channels": ["whatsapp"], "provider_key": "n8n"}),
             "medication-reminder",
         ),
     )
-    occurrence_at = _database_now(admin_conn).astimezone(UTC).replace(microsecond=0) - timedelta(
-        minutes=5
-    )
+    occurrence_at = _database_now(admin_conn).astimezone(UTC).replace(microsecond=0) - timedelta(minutes=5)
     action_id = _uuid_row(
         admin_conn,
         """
         INSERT INTO request_engine.scheduled_actions (
-            organization_id,
-            owner_module,
-            action_type,
-            action_version,
-            subject_kind,
-            subject_id,
-            payload,
-            dedupe_key,
-            execute_at,
-            next_attempt_at
+            organization_id, owner_module, action_type, action_version,
+            subject_kind, subject_id, payload, dedupe_key, execute_at, next_attempt_at
         ) VALUES (
             %s, 'communications', %s, 1, 'ReminderPlan', %s,
             %s::jsonb, %s, %s, %s
@@ -345,12 +344,7 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             fixture.organization_id,
             REMINDER_ACTION_TYPE,
             plan_id,
-            json.dumps(
-                {
-                    "reminder_plan_id": str(plan_id),
-                    "occurrence_at": occurrence_at.isoformat(),
-                }
-            ),
+            json.dumps({"reminder_plan_id": str(plan_id), "occurrence_at": occurrence_at.isoformat()}),
             f"test-reminder:{plan_id}:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
@@ -439,33 +433,17 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
         (
             fixture.organization_id,
             fixture.party_id,
-            json.dumps(
-                {
-                    "type": "daily_times",
-                    "times": ["00:00:00"],
-                    "max_lateness_minutes": 1,
-                }
-            ),
+            json.dumps({"type": "daily_times", "times": ["00:00:00"], "max_lateness_minutes": 1}),
             "medication-reminder",
         ),
     )
-    occurrence_at = _database_now(admin_conn).astimezone(UTC).replace(microsecond=0) - timedelta(
-        minutes=5
-    )
+    occurrence_at = _database_now(admin_conn).astimezone(UTC).replace(microsecond=0) - timedelta(minutes=5)
     action_id = _uuid_row(
         admin_conn,
         """
         INSERT INTO request_engine.scheduled_actions (
-            organization_id,
-            owner_module,
-            action_type,
-            action_version,
-            subject_kind,
-            subject_id,
-            payload,
-            dedupe_key,
-            execute_at,
-            next_attempt_at
+            organization_id, owner_module, action_type, action_version,
+            subject_kind, subject_id, payload, dedupe_key, execute_at, next_attempt_at
         ) VALUES (
             %s, 'communications', %s, 1, 'ReminderPlan', %s,
             %s::jsonb, %s, %s, %s
@@ -476,12 +454,7 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
             fixture.organization_id,
             REMINDER_ACTION_TYPE,
             plan_id,
-            json.dumps(
-                {
-                    "reminder_plan_id": str(plan_id),
-                    "occurrence_at": occurrence_at.isoformat(),
-                }
-            ),
+            json.dumps({"reminder_plan_id": str(plan_id), "occurrence_at": occurrence_at.isoformat()}),
             f"test-stale-reminder:{plan_id}:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
