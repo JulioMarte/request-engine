@@ -444,7 +444,10 @@ async def test_http_idempotency_key_reuse_with_different_payload_is_conflict(
         )
     assert first.status_code == 201
     assert second.status_code == 409
-    assert second.json()["error"]["code"] == "conflict"
+    error = second.json()["error"]
+    assert error["code"] == "idempotency_conflict"
+    assert error["resolution"] == "fix_request"
+    assert error["details"]["idempotency_key"] == idempotency_key
 
 
 @pytest.mark.asyncio
