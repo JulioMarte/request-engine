@@ -29,7 +29,10 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
     load_resource_schedules,
 )
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
-from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
+from request_engine.modules.booking.application.authority import (
+    BOOK_APPOINTMENT_SCOPE,
+    MANAGE_APPOINTMENT_SCOPE,
+)
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
     AcquireCapacityHoldCommand,
 )
@@ -44,6 +47,7 @@ from request_engine.modules.booking.application.errors import (
     CapacityHoldExpired,
     CapacityHoldNotActive,
     CapacityHoldNotFound,
+    CapacityHoldRevisionConflict,
     InvalidHoldExpiration,
     ReservationNotFound,
     ReservationNotReschedulable,
@@ -129,6 +133,14 @@ class PostgresBookingCommitmentCommands:
                 subject_party_id=command.subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=None,
+            )
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                scope_key=BOOK_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
             )
             requirements = await load_requirements(
                 session,
@@ -246,6 +258,7 @@ class PostgresBookingCommitmentCommands:
                 details={
                     "offering_version_id": str(command.offering_version_id),
                     "subject_party_id": str(command.subject_party_id),
+                    "subject_authority": authority.audit_details(),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
                     "expires_at": expires_at.isoformat(),
@@ -275,7 +288,11 @@ class PostgresBookingCommitmentCommands:
     async def confirm_capacity_hold(self, command: ConfirmCapacityHoldCommand) -> Reservation:
         fingerprint = command_fingerprint(
             "booking.confirm_capacity_hold",
-            {"hold_id": command.hold_id, "origin_request_id": command.origin_request_id},
+            {
+                "hold_id": command.hold_id,
+                "expected_revision": command.expected_revision,
+                "origin_request_id": command.origin_request_id,
+            },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
@@ -290,11 +307,21 @@ class PostgresBookingCommitmentCommands:
                 return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
             hold_row = await _lock_hold(session, command.organization_id, command.hold_id)
+            subject_party_id = cast(UUID, hold_row["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key=BOOK_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
+            )
+            ensure_hold_revision(hold_row, command.hold_id, command.expected_revision)
             _assert_live_hold(hold_row, command.hold_id)
             await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
-                subject_party_id=cast(UUID, hold_row["subject_party_id"]),
+                subject_party_id=subject_party_id,
                 location_id=cast(UUID | None, hold_row["location_id"]),
                 origin_request_id=command.origin_request_id,
             )
@@ -391,7 +418,12 @@ class PostgresBookingCommitmentCommands:
                 aggregate_kind="Reservation",
                 aggregate_id=reservation_id,
                 idempotency_id=idempotency_id,
-                details={"hold_id": str(command.hold_id)},
+                details={
+                    "hold_id": str(command.hold_id),
+                    "subject_party_id": str(subject_party_id),
+                    "subject_authority": authority.audit_details(),
+                    "expected_hold_revision": command.expected_revision,
+                },
             )
             await append_outbox(
                 session,
@@ -741,6 +773,12 @@ async def _read_hold_row(
         .mappings()
         .first()
     )
+
+
+def ensure_hold_revision(row: RowMapping, hold_id: UUID, expected_revision: int) -> None:
+    current_revision = cast(int, row["revision"])
+    if current_revision != expected_revision:
+        raise CapacityHoldRevisionConflict(hold_id, expected_revision, current_revision)
 
 
 def _assert_live_hold(row: RowMapping, hold_id: UUID) -> None:
