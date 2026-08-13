@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from fastapi import HTTPException, Request, status
@@ -91,12 +92,11 @@ async def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
         code = "method_not_allowed"
     else:
         code = "http_error"
-    message = exc.detail if isinstance(exc.detail, str) else "the request could not be processed"
     return _response(
         exc.status_code,
         ErrorBody(
             code=code,
-            message=message,
+            message=exc.detail,
             resolution=ErrorResolution.FIX_REQUEST,
             details={"status_code": exc.status_code},
         ),
@@ -127,7 +127,7 @@ def _response(
     status_code: int,
     body: ErrorBody,
     *,
-    headers: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
