@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
@@ -23,13 +25,26 @@ from request_engine.platform.security.http import (
     CapabilityRequired,
 )
 
+_APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
+
 
 def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    appointment_option_signing_key: bytes | None = None,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around platform dependencies."""
+
+    signing_key = appointment_option_signing_key
+    if signing_key is None:
+        configured_key = os.environ.get(_APPOINTMENT_OPTION_SIGNING_KEY_ENV)
+        if configured_key is None:
+            raise RuntimeError(
+                f"{_APPOINTMENT_OPTION_SIGNING_KEY_ENV} must be configured when no signing key "
+                "is supplied explicitly"
+            )
+        signing_key = configured_key.encode("utf-8")
 
     app = FastAPI(
         title="Request Engine",
@@ -62,6 +77,7 @@ def create_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         party_authority_reader=party_authority_reader,
+        appointment_option_signing_key=signing_key,
     )
     install_queue_http(
         app,

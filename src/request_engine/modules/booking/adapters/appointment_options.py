@@ -80,7 +80,7 @@ class SignedAppointmentOptionCodec:
             raise AppointmentOptionInvalid("signature verification failed")
 
         try:
-            decoded = json.loads(_decode(encoded_payload).decode("utf-8"))
+            decoded = cast(object, json.loads(_decode(encoded_payload).decode("utf-8")))
         except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
             raise AppointmentOptionInvalid("malformed payload") from exc
         if not isinstance(decoded, dict):
@@ -113,9 +113,10 @@ class SignedAppointmentOptionCodec:
         resources_raw = payload.get("resources")
         if not isinstance(resources_raw, list) or not resources_raw:
             raise AppointmentOptionInvalid("resources are missing")
+        resource_items = cast(list[object], resources_raw)
         resources: list[ResourceChoice] = []
         seen_requirements: set[UUID] = set()
-        for raw in resources_raw:
+        for raw in resource_items:
             if not isinstance(raw, dict):
                 raise AppointmentOptionInvalid("resource selection is malformed")
             item = cast(dict[str, object], raw)

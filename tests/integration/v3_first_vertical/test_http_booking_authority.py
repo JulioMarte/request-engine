@@ -254,12 +254,10 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
         )
         assert slots_response.status_code == 200
         slot = slots_response.json()[0]
+        assert set(slot) == {"option_id", "start_at", "end_at", "location_id"}
         booking_body = {
-            "offering_version_id": str(fixture.offering_version_id),
+            "option_id": slot["option_id"],
             "subject_party_id": str(fixture.subject_party_id),
-            "location_id": str(fixture.location_id),
-            "start_at": slot["start_at"],
-            "resources": slot["resources"],
         }
 
         denied = await client.post(
