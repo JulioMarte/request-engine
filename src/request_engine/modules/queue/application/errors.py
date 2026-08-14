@@ -5,6 +5,13 @@ class QueueError(Exception):
     """Base class for semantic service-queue and waitlist errors."""
 
 
+class TenantReferenceNotUsable(QueueError):
+    def __init__(self, reference_kind: str, reference_id: UUID) -> None:
+        super().__init__(f"{reference_kind} reference is not usable for this tenant")
+        self.reference_kind = reference_kind
+        self.reference_id = reference_id
+
+
 class SubjectAuthorityRequired(QueueError):
     def __init__(self, subject_party_id: UUID, scope_key: str) -> None:
         super().__init__(
