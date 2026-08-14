@@ -67,7 +67,8 @@ async def app_session_factory() -> AsyncIterator[SessionFactory]:
     admin = _admin_connection()
     admin.execute(
         sql.SQL(
-            "CREATE ROLE {} LOGIN INHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}"
+            "CREATE ROLE {} LOGIN INHERIT NOBYPASSRLS NOSUPERUSER "
+            "NOCREATEDB NOCREATEROLE PASSWORD {}"
         ).format(sql.Identifier(role_name), sql.Literal(password))
     )
     admin.execute(
