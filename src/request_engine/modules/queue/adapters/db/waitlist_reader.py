@@ -3,7 +3,6 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.authority import MANAGE_WAITLIST_SCOPE
@@ -48,7 +47,7 @@ class PostgresWaitlistEntryReader:
 
             subject_party_id = cast(UUID, row["subject_party_id"])
             await require_subject_authority(
-                cast(AsyncSession, session),
+                session,
                 organization_id=organization_id,
                 principal_id=principal_id,
                 subject_party_id=subject_party_id,
