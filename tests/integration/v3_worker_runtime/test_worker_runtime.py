@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
@@ -53,14 +52,13 @@ def _organization(conn: PgConnection) -> UUID:
     )
 
 
-def _uuid_list() -> list[UUID]:
-    return []
-
-
-@dataclass
 class FlakyPublisher:
-    failures_remaining: int = 1
-    published: list[UUID] = field(default_factory=_uuid_list)
+    failures_remaining: int
+    published: list[UUID]
+
+    def __init__(self, failures_remaining: int = 1) -> None:
+        self.failures_remaining = failures_remaining
+        self.published = []
 
     async def publish(self, event: OutboxEvent) -> None:
         if self.failures_remaining:
