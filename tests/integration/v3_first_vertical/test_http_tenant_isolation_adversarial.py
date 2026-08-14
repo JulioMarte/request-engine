@@ -236,14 +236,14 @@ async def _first_slot(
 @pytest.mark.postgres
 async def test_foreign_booking_identifiers_are_indistinguishable_from_nonexistent_ids(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     tenant_a = _fixture(admin_conn, "a")
     tenant_b = _fixture(admin_conn, "b")
     headers_a = {"Authorization": "Bearer tenant-a"}
     headers_b = {"Authorization": "Bearer tenant-b"}
 
-    async with _client(session_factory, tenant_a, tenant_b) as client:
+    async with _client(app_session_factory, tenant_a, tenant_b) as client:
         foreign_slots = await client.get(
             "/v1/appointments/slots",
             params={
@@ -327,12 +327,12 @@ async def test_foreign_booking_identifiers_are_indistinguishable_from_nonexisten
 @pytest.mark.postgres
 async def test_tenant_bound_appointment_option_cannot_be_replayed_by_another_tenant(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     tenant_a = _fixture(admin_conn, "a-option")
     tenant_b = _fixture(admin_conn, "b-option")
 
-    async with _client(session_factory, tenant_a, tenant_b) as client:
+    async with _client(app_session_factory, tenant_a, tenant_b) as client:
         slot_b = await _first_slot(client, tenant_b, "tenant-b")
         response = await client.post(
             "/v1/appointments",
