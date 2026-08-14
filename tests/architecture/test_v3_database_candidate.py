@@ -22,6 +22,7 @@ EXPECTED_V3_CANDIDATE = [
     "015-worker-runtime-hardening.sql",
     "016-provider-event-dead-letter.sql",
     "017-expired-lease-finalization-fence.sql",
+    "018-retry-finalization-fence.sql",
 ]
 
 

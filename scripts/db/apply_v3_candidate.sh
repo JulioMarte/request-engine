@@ -22,6 +22,7 @@ files=(
   "015-worker-runtime-hardening.sql"
   "016-provider-event-dead-letter.sql"
   "017-expired-lease-finalization-fence.sql"
+  "018-retry-finalization-fence.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
