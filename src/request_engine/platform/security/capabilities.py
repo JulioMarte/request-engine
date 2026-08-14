@@ -230,6 +230,22 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         override_capability="waitlist.subject_override",
     ),
     _command(
+        "waitlist.accept_offer",
+        CapabilityExposure.PUBLIC,
+        "Accept an active SlotOffer and atomically promote its hold to a Reservation.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
+    ),
+    _command(
+        "waitlist.decline_offer",
+        CapabilityExposure.PUBLIC,
+        "Decline an active SlotOffer and release its capacity hold.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
+    ),
+    _command(
         "waitlist.subject_override",
         CapabilityExposure.OPERATOR,
         "Permission to operate on waitlist subjects without delegated Party authority.",
