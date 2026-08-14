@@ -104,8 +104,7 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
         """,
     )
     errors.extend(
-        {"kind": "security_definer_without_pinned_search_path", **row}
-        for row in unsafe_definers
+        {"kind": "security_definer_without_pinned_search_path", **row} for row in unsafe_definers
     )
 
     public_privileges = fetch_rows(
@@ -262,8 +261,7 @@ def collect_warnings(connection: psycopg.Connection[Any]) -> list[dict[str, Any]
         """,
     )
     warnings.extend(
-        {"kind": "foreign_key_without_prefix_index", **row}
-        for row in fk_without_prefix_index
+        {"kind": "foreign_key_without_prefix_index", **row} for row in fk_without_prefix_index
     )
 
     duplicate_indexes = fetch_rows(
