@@ -66,7 +66,7 @@ class PostgresReleasedSlotRecovery:
             ),
         )
         expires_at = min(
-            now + timedelta(seconds=self._offer_ttl_seconds),
+            opportunity.created_at + timedelta(seconds=self._offer_ttl_seconds),
             slot.start_at - timedelta(seconds=1),
         )
         if expires_at <= now:
