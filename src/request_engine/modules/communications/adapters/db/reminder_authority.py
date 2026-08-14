@@ -4,7 +4,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.communications.application.errors import ReminderSubjectAuthorityRequired
+from request_engine.modules.communications.application.errors import (
+    ReminderSubjectAuthorityRequired,
+)
 from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 
 REMINDER_MANAGE_SCOPE = "reminders.manage"
