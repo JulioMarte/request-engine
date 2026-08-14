@@ -20,6 +20,12 @@ def reset_actor_context(token: Token[ActorContext | None]) -> None:
     _current_actor.reset(token)
 
 
+def clear_actor_context() -> None:
+    """Clear actor state at the end of a top-level request execution."""
+
+    _current_actor.set(None)
+
+
 def current_actor_context() -> ActorContext | None:
     """Return the actor bound to this async task, if any."""
 
