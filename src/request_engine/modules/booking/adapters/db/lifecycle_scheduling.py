@@ -3,9 +3,9 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.contracts.lifecycle import ReservationLifecycleSnapshot
-from request_engine.modules.booking.domain.lifecycle_policy import reservation_lifecycle_policy
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.scheduling.store import schedule_action
 
@@ -23,13 +23,12 @@ class PostgresReservationLifecycleScheduling:
         *,
         source_event_id: UUID,
     ) -> None:
-        policy = reservation_lifecycle_policy(snapshot.booking_policy_snapshot)
         async with tenant_transaction(self._session_factory, snapshot.organization_id) as session:
             await _cancel_pending(session, snapshot.organization_id, snapshot.reservation_id)
-            if snapshot.status != "confirmed" or policy.attendance.no_show_after_minutes is None:
+            if snapshot.status != "confirmed" or snapshot.no_show_after_minutes is None:
                 return
             execute_at = snapshot.start_at + timedelta(
-                minutes=policy.attendance.no_show_after_minutes
+                minutes=snapshot.no_show_after_minutes
             )
             db_now = cast(
                 datetime,
@@ -66,8 +65,12 @@ class PostgresReservationLifecycleScheduling:
             await _cancel_pending(session, organization_id, reservation_id)
 
 
-async def _cancel_pending(session: object, organization_id: UUID, reservation_id: UUID) -> None:
-    await cast(object, session).execute(  # type: ignore[attr-defined]
+async def _cancel_pending(
+    session: AsyncSession,
+    organization_id: UUID,
+    reservation_id: UUID,
+) -> None:
+    await session.execute(
         text(
             """
             UPDATE request_engine.scheduled_actions
