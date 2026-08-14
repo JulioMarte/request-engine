@@ -59,7 +59,9 @@ class PostgresSlotOfferNotificationIntent:
                         :dedupe_key,
                         :expires_at
                     )
-                    ON CONFLICT (organization_id, dedupe_key) DO NOTHING
+                    ON CONFLICT (organization_id, dedupe_key)
+                    WHERE dedupe_key IS NOT NULL
+                    DO NOTHING
                     RETURNING id
                     """
                 ),
