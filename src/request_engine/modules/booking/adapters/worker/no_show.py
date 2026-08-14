@@ -14,7 +14,7 @@ async def handle_no_show_action(
     organization_id: UUID,
     worker_principal_id: UUID,
     reservation_id: UUID,
-    source_event_id: UUID,
+    lifecycle_key: str,
 ) -> ReservationAttendanceState:
     return await evaluate_no_show(
         handler,
@@ -22,6 +22,6 @@ async def handle_no_show_action(
             organization_id=organization_id,
             principal_id=worker_principal_id,
             reservation_id=reservation_id,
-            idempotency_key=f"scheduled:no-show:{reservation_id}:{source_event_id}",
+            idempotency_key=f"scheduled:no-show:{reservation_id}:{lifecycle_key}",
         ),
     )
