@@ -8,6 +8,8 @@ from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
 from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
+from request_engine.modules.queue.adapters.db.waitlist_commands import PostgresWaitlistCommands
+from request_engine.modules.queue.adapters.db.waitlist_reader import PostgresWaitlistEntryReader
 from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.router import create_router
 from request_engine.modules.queue.application.errors import QueueError
@@ -24,6 +26,7 @@ def install_http(
     """Connect the Queue module to the HTTP process through its owned surface."""
 
     commands = PostgresServiceQueueCommands(session_factory)
+    waitlist_commands = PostgresWaitlistCommands(session_factory)
     app.add_exception_handler(QueueError, queue_error_handler)
     app.include_router(
         create_router(
@@ -32,6 +35,9 @@ def install_http(
             leave_executor=PostgresLeaveQueueCommands(session_factory),
             reader=PostgresServiceQueueReader(session_factory),
             catalog_reader=PostgresServiceQueueCatalogReader(session_factory),
+            waitlist_join_executor=waitlist_commands,
+            waitlist_leave_executor=waitlist_commands,
+            waitlist_reader=PostgresWaitlistEntryReader(session_factory),
             actor_resolver=actor_resolver,
         )
     )
