@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 
+from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.errors import (
     authentication_required_handler,
     capability_required_handler,
@@ -19,6 +20,7 @@ from request_engine.modules.requests.api import install_http as install_requests
 from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.security.discovery import TenantCapabilityPolicy
 from request_engine.platform.security.http import (
     ActorResolver,
     AuthenticationRequired,
@@ -33,6 +35,7 @@ def create_app(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     appointment_option_signing_key: bytes | None = None,
+    tenant_capability_policy: TenantCapabilityPolicy | None = None,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around platform dependencies."""
 
@@ -62,6 +65,12 @@ def create_app(
     app.add_exception_handler(IntegrityError, integrity_error_handler)
     party_authority_reader = build_party_authority_reader(session_factory)
 
+    app.include_router(
+        create_capability_router(
+            actor_resolver=actor_resolver,
+            tenant_capability_policy=tenant_capability_policy,
+        )
+    )
     install_requests_http(
         app,
         session_factory=session_factory,
