@@ -23,6 +23,7 @@ files=(
   "016-provider-event-dead-letter.sql"
   "017-expired-lease-finalization-fence.sql"
   "018-retry-finalization-fence.sql"
+  "019-trusted-execution-provenance.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
