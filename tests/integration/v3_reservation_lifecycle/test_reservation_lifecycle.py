@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -30,7 +31,11 @@ from request_engine.modules.booking.application.commands.evaluate_no_show import
     evaluate_no_show,
 )
 from request_engine.modules.booking.application.commands.record_attendance import (
+    confirm_attendance,
     decline_attendance,
+)
+from request_engine.modules.booking.application.errors import (
+    ReservationRevisionConflict,
 )
 from request_engine.modules.booking.contracts.appointments import AttendanceStatus
 from request_engine.modules.booking.contracts.attendance import AttendanceOutcomeStatus
@@ -256,7 +261,8 @@ def _fixture(
 
 def _future_start() -> datetime:
     now = datetime.now(UTC).replace(second=0, microsecond=0)
-    return now + timedelta(days=3)
+    aligned = now + timedelta(minutes=(-now.minute) % 15)
+    return aligned + timedelta(days=3)
 
 
 @pytest.mark.asyncio
@@ -594,3 +600,66 @@ def test_database_rejects_impossible_attendance_outcome_timestamps(
             """,
             (fixture.organization_id, fixture.reservation_id),
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.concurrency
+async def test_concurrent_confirm_and_decline_serialize_on_reservation(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _fixture(
+        admin_conn,
+        policy={"attendance": {"decline_action": "keep"}},
+        start_at=_future_start(),
+    )
+    commands = PostgresAttendanceCommands(session_factory)
+
+    results = await asyncio.gather(
+        confirm_attendance(
+            commands,
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            reservation_id=fixture.reservation_id,
+            source_key="test:confirm-race",
+            idempotency_key=f"confirm-race-{uuid4().hex}",
+            expected_revision=1,
+            allow_subject_override=True,
+        ),
+        decline_attendance(
+            commands,
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            reservation_id=fixture.reservation_id,
+            source_key="test:decline-race",
+            idempotency_key=f"decline-race-{uuid4().hex}",
+            expected_revision=1,
+            allow_subject_override=True,
+        ),
+        return_exceptions=True,
+    )
+
+    successes = [value for value in results if not isinstance(value, BaseException)]
+    conflicts = [value for value in results if isinstance(value, ReservationRevisionConflict)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    row = admin_conn.execute(
+        """
+        SELECT revision
+        FROM request_engine.reservations
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, fixture.reservation_id),
+    ).fetchone()
+    assert row == (2,)
+    response_count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.attendance_responses
+        WHERE organization_id = %s AND reservation_id = %s
+        """,
+        (fixture.organization_id, fixture.reservation_id),
+    ).fetchone()
+    assert response_count == (1,)
