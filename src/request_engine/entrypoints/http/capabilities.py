@@ -30,7 +30,6 @@ class CapabilityView(BaseModel):
     tenant_enabled: bool
     actor_granted: bool
     openapi_operation_id: str | None
-    context_executable: None = None
 
     @classmethod
     def from_availability(cls, item: CapabilityAvailability) -> "CapabilityView":
