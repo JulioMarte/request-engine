@@ -92,8 +92,6 @@ def _command(
     )
 
 
-# This registry is the executable machine-facing product contract. HTTP, discovery,
-# OpenAPI fitness tests and future tool-schema adapters consume the same definitions.
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _query(
         "business.get_info",
@@ -152,6 +150,14 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.reschedule_reservation"}),
+    ),
+    _command(
+        "appointments.confirm_attendance",
+        CapabilityExposure.PUBLIC,
+        "Record the subject Party's accepted or declined attendance response.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
     ),
     _command(
         "appointments.subject_override",
@@ -296,8 +302,6 @@ def capability_is_known(key: str) -> bool:
 
 
 def grant_satisfies(granted_key: str, required_key: str) -> bool:
-    """Return whether one materialized grant satisfies one canonical requirement."""
-
     if granted_key == required_key:
         return True
     definition = CAPABILITY_BY_KEY.get(required_key)
