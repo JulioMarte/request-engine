@@ -158,11 +158,7 @@ def test_scheduled_action_claiming_is_fair_across_tenants(
     finally:
         worker_conn.close()
 
-    ours = [
-        (cast(UUID, row[0]), cast(UUID, row[1]))
-        for row in rows
-        if row[1] in {hot, quiet}
-    ]
+    ours = [(cast(UUID, row[0]), cast(UUID, row[1])) for row in rows if row[1] in {hot, quiet}]
     assert ours == [
         (hot_oldest, hot),
         (quiet_oldest, quiet),
@@ -194,11 +190,7 @@ def test_outbox_claiming_is_fair_across_tenants(
     finally:
         worker_conn.close()
 
-    ours = [
-        (cast(UUID, row[0]), cast(UUID, row[1]))
-        for row in rows
-        if row[1] in {hot, quiet}
-    ]
+    ours = [(cast(UUID, row[0]), cast(UUID, row[1])) for row in rows if row[1] in {hot, quiet}]
     assert ours == [
         (hot_oldest, hot),
         (quiet_oldest, quiet),
