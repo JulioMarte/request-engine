@@ -35,7 +35,7 @@ def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
-    slot_offer_ports: QueueSlotOfferHttpPorts,
+    slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
 ) -> FastAPI:
