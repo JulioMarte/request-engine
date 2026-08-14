@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from fastapi import Request
 
 from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.discovery import TenantCapabilityPolicy
 from request_engine.platform.security.execution_context import bind_actor_context
 
 REQUEST_CORRELATION_STATE_KEY = "request_engine_correlation_id"
@@ -15,7 +16,7 @@ class AuthenticationRequired(Exception):
 
 
 class CapabilityRequired(Exception):
-    """Raised when an authenticated actor lacks a required technical capability."""
+    """Raised when an authenticated actor lacks a required effective capability."""
 
     def __init__(self, capability: str) -> None:
         super().__init__(f"capability {capability!r} is required")
@@ -42,6 +43,25 @@ class RequestExecutionActorResolver:
         return bound_actor
 
 
+class TenantCapabilityActorResolver:
+    """Reduce authenticated grants to capabilities enabled for the actor's tenant.
+
+    Discovery uses the pre-filtered actor so it can report tenant_enabled and
+    actor_granted independently. Executable routes receive this effective actor,
+    making tenant feature policy part of authorization instead of presentation.
+    """
+
+    def __init__(self, delegate: ActorResolver, policy: TenantCapabilityPolicy) -> None:
+        self._delegate = delegate
+        self._policy = policy
+
+    async def resolve_actor(self, request: Request) -> ActorContext:
+        actor = await self._delegate.resolve_actor(request)
+        enabled = await self._policy.enabled_capabilities(actor.organization_id)
+        effective = frozenset(key for key in enabled if actor.allows(key))
+        return replace(actor, capabilities=effective)
+
+
 def request_correlation_id(request: Request) -> UUID:
     value = getattr(request.state, REQUEST_CORRELATION_STATE_KEY, None)
     if isinstance(value, UUID):
@@ -52,7 +72,7 @@ def request_correlation_id(request: Request) -> UUID:
 
 
 def require_capability(actor: ActorContext, capability: str) -> None:
-    """Enforce one canonical capability requirement at an HTTP entrypoint."""
+    """Enforce one canonical effective capability at an HTTP entrypoint."""
 
     if not actor.allows(capability):
         raise CapabilityRequired(capability)
