@@ -27,7 +27,8 @@ async def schedule_action(
 
     Reusing a dedupe key is allowed only for the exact same scheduled work. A
     different payload/target under the same key is a semantic conflict rather
-    than an implicit overwrite.
+    than an implicit overwrite. Correlation metadata is durable transport
+    provenance and does not participate in semantic dedupe equality.
     """
 
     if not owner_module or not action_type or not dedupe_key:
@@ -51,7 +52,8 @@ async def schedule_action(
                     dedupe_key,
                     execute_at,
                     next_attempt_at,
-                    max_attempts
+                    max_attempts,
+                    correlation_data
                 ) VALUES (
                     :organization_id,
                     :owner_module,
@@ -63,7 +65,12 @@ async def schedule_action(
                     :dedupe_key,
                     :execute_at,
                     :execute_at,
-                    :max_attempts
+                    :max_attempts,
+                    jsonb_strip_nulls(jsonb_build_object(
+                        'correlation_id', NULLIF(
+                            current_setting('request_engine.correlation_id', true), ''
+                        )
+                    ))
                 )
                 ON CONFLICT (organization_id, dedupe_key) DO NOTHING
                 RETURNING id
