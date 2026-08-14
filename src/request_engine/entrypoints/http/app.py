@@ -75,7 +75,7 @@ def create_app(
     )
 
     @app.middleware("http")
-    async def request_execution_context(
+    async def _request_execution_context(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
