@@ -21,6 +21,7 @@ EXPECTED_V3_CANDIDATE = [
     "014-reservation-lifecycle.sql",
     "015-worker-runtime-hardening.sql",
     "016-provider-event-dead-letter.sql",
+    "017-expired-lease-finalization-fence.sql",
 ]
 
 
