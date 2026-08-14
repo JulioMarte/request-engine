@@ -5,7 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.queue.application.queries.list_service_queues import ServiceQueueSummary
 from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueStatus
-from request_engine.modules.queue.contracts.waitlist import WaitlistEntry
+from request_engine.modules.queue.contracts.waitlist import (
+    AcceptedSlotOffer,
+    SlotOffer,
+    WaitlistEntry,
+)
 
 
 class ServiceQueueView(BaseModel):
@@ -126,4 +130,43 @@ class WaitlistEntryView(BaseModel):
             status=entry.status.value,
             revision=entry.revision,
             created_at=entry.created_at,
+        )
+
+
+class ResolveSlotOfferBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
+
+
+class SlotOfferView(BaseModel):
+    """Public offer state. CapacityHold and next-candidate identities stay private."""
+
+    id: UUID
+    waitlist_entry_id: UUID
+    expires_at: datetime
+    status: str
+    revision: int
+
+    @classmethod
+    def from_contract(cls, offer: SlotOffer) -> "SlotOfferView":
+        return cls(
+            id=offer.id,
+            waitlist_entry_id=offer.waitlist_entry_id,
+            expires_at=offer.expires_at,
+            status=offer.status.value,
+            revision=offer.revision,
+        )
+
+
+class AcceptedSlotOfferView(BaseModel):
+    offer: SlotOfferView
+    reservation_id: UUID
+    reservation_revision: int
+
+    @classmethod
+    def from_contract(cls, accepted: AcceptedSlotOffer) -> "AcceptedSlotOfferView":
+        return cls(
+            offer=SlotOfferView.from_contract(accepted.offer),
+            reservation_id=accepted.reservation.id,
+            reservation_revision=accepted.reservation.revision,
         )
