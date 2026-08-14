@@ -28,6 +28,7 @@ def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    appointment_option_signing_key: bytes,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around platform dependencies."""
 
@@ -62,6 +63,7 @@ def create_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         party_authority_reader=party_authority_reader,
+        appointment_option_signing_key=appointment_option_signing_key,
     )
     install_queue_http(
         app,
