@@ -14,6 +14,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: phase-3-reservation-lifecycle
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -21,45 +22,72 @@ jobs:
         run: python -m pip install --disable-pip-version-check uv
       - name: Resolve environment
         run: uv sync --all-groups
-      - name: Normalize Phase 3 typing
+      - name: Repair baseline and harden Phase 3 tests
         run: |
+          git fetch origin development
+          git show origin/development:tests/db/test_v3_contract_convergence.py > tests/db/test_v3_contract_convergence.py
           python - <<'PY'
           from pathlib import Path
 
-          attendance = Path("src/request_engine/modules/booking/adapters/db/attendance_commands.py")
-          text = attendance.read_text(encoding="utf-8")
+          convergence = Path("tests/db/test_v3_contract_convergence.py")
+          text = convergence.read_text(encoding="utf-8")
           text = text.replace(
-              "from sqlalchemy.engine import RowMapping\n",
-              "from sqlalchemy.engine import RowMapping\nfrom sqlalchemy.ext.asyncio import AsyncSession\n",
+              '        "reservations",\n        "service_queues",',
+              '        "reservations",\n        "reservation_attendance",\n        "service_queues",',
           )
-          text = text.replace("session: object", "session: AsyncSession")
-          text = text.replace(
-              "await cast(object, session).execute(  # type: ignore[attr-defined]",
-              "await session.execute(",
-          )
-          attendance.write_text(text, encoding="utf-8")
+          convergence.write_text(text, encoding="utf-8")
 
-          communications = Path(
-              "src/request_engine/modules/communications/adapters/db/reservation_lifecycle_intent.py"
+          lifecycle = Path(
+              "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle.py"
           )
-          text = communications.read_text(encoding="utf-8")
+          text = lifecycle.read_text(encoding="utf-8")
+          if not text.startswith("import asyncio\n"):
+              text = "import asyncio\n" + text
           text = text.replace(
-              "    context = {\n",
-              "    context: dict[str, object] = {\n",
+              "from request_engine.modules.booking.application.commands.record_attendance import (\n"
+              "    decline_attendance,\n"
+              ")\n",
+              "from request_engine.modules.booking.application.commands.record_attendance import (\n"
+              "    confirm_attendance,\n"
+              "    decline_attendance,\n"
+              ")\n",
           )
-          communications.write_text(text, encoding="utf-8")
+          if "ReservationRevisionConflict" not in text:
+              text = text.replace(
+                  "from request_engine.modules.booking.contracts.appointments import AttendanceStatus\n",
+                  "from request_engine.modules.booking.application.errors import (\n"
+                  "    ReservationRevisionConflict,\n"
+                  ")\n"
+                  "from request_engine.modules.booking.contracts.appointments import AttendanceStatus\n",
+              )
+          old_future = (
+              "def _future_start() -> datetime:\n"
+              "    now = datetime.now(UTC).replace(second=0, microsecond=0)\n"
+              "    return now + timedelta(days=3)\n"
+          )
+          new_future = (
+              "def _future_start() -> datetime:\n"
+              "    now = datetime.now(UTC).replace(second=0, microsecond=0)\n"
+              "    aligned = now + timedelta(minutes=(-now.minute) % 15)\n"
+              "    return aligned + timedelta(days=3)\n"
+          )
+          text = text.replace(old_future, new_future)
+          marker = "async def test_concurrent_confirm_and_decline_serialize_on_reservation"
+          if marker not in text:
+              text += '''\n\n@pytest.mark.asyncio\n@pytest.mark.integration\n@pytest.mark.postgres\n@pytest.mark.concurrency\nasync def test_concurrent_confirm_and_decline_serialize_on_reservation(\n    admin_conn: PgConnection,\n    session_factory: SessionFactory,\n) -> None:\n    fixture = _fixture(\n        admin_conn,\n        policy={\"attendance\": {\"decline_action\": \"keep\"}},\n        start_at=_future_start(),\n    )\n    commands = PostgresAttendanceCommands(session_factory)\n\n    results = await asyncio.gather(\n        confirm_attendance(\n            commands,\n            organization_id=fixture.organization_id,\n            principal_id=fixture.principal_id,\n            reservation_id=fixture.reservation_id,\n            source_key=\"test:confirm-race\",\n            idempotency_key=f\"confirm-race-{uuid4().hex}\",\n            expected_revision=1,\n            allow_subject_override=True,\n        ),\n        decline_attendance(\n            commands,\n            organization_id=fixture.organization_id,\n            principal_id=fixture.principal_id,\n            reservation_id=fixture.reservation_id,\n            source_key=\"test:decline-race\",\n            idempotency_key=f\"decline-race-{uuid4().hex}\",\n            expected_revision=1,\n            allow_subject_override=True,\n        ),\n        return_exceptions=True,\n    )\n\n    successes = [value for value in results if not isinstance(value, BaseException)]\n    conflicts = [\n        value for value in results if isinstance(value, ReservationRevisionConflict)\n    ]\n    assert len(successes) == 1\n    assert len(conflicts) == 1\n    row = admin_conn.execute(\n        \"\"\"\n        SELECT revision\n        FROM request_engine.reservations\n        WHERE organization_id = %s AND id = %s\n        \"\"\",\n        (fixture.organization_id, fixture.reservation_id),\n    ).fetchone()\n    assert row == (2,)\n    response_count = admin_conn.execute(\n        \"\"\"\n        SELECT count(*)\n        FROM request_engine.attendance_responses\n        WHERE organization_id = %s AND reservation_id = %s\n        \"\"\",\n        (fixture.organization_id, fixture.reservation_id),\n    ).fetchone()\n    assert response_count == (1,)\n'''
+          lifecycle.write_text(text, encoding="utf-8")
           PY
       - name: Normalize Ruff lint and format
         run: |
           uv run ruff check --fix . || true
           uv run ruff format .
           uv run ruff check --fix . || true
-      - name: Commit formatting changes
+      - name: Commit repaired tests
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --quiet; then
             git add .
-            git commit -m "Normalize Phase 3 typing and formatting"
+            git commit -m "Repair Phase 3 test baseline and add race coverage"
             git push origin HEAD:phase-3-reservation-lifecycle
           fi
