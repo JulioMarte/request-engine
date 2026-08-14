@@ -1,5 +1,3 @@
-import hashlib
-import json
 from datetime import datetime
 from typing import cast
 from uuid import UUID
@@ -32,15 +30,24 @@ from request_engine.modules.queue.contracts.waitlist import (
     WaitlistEntry,
     WaitlistEntryStatus,
 )
+from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    command_fingerprint,
+    complete_idempotency,
+)
+from request_engine.platform.outbox.postgres import append_outbox
 
 
 class PostgresWaitlistCommands:
+    """Authoritative Waitlist and SlotOpportunity PostgreSQL commands."""
+
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
     async def join_waitlist(self, command: JoinWaitlistCommand) -> WaitlistEntry:
-        fingerprint = _fingerprint(
+        fingerprint = command_fingerprint(
             "waitlist.join",
             {
                 "offering_id": command.offering_id,
@@ -52,7 +59,7 @@ class PostgresWaitlistCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
-            idempotency_id, replay = await _acquire_idempotency(
+            idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -71,31 +78,11 @@ class PostgresWaitlistCommands:
                 scope_key=JOIN_WAITLIST_SCOPE,
                 allow_operator_override=command.allow_subject_override,
             )
-            await _lock_active_offering(session, command.organization_id, command.offering_id)
-
-            existing = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT id
-                        FROM request_engine.waitlist_entries
-                        WHERE organization_id = :organization_id
-                          AND offering_id = :offering_id
-                          AND subject_party_id = :subject_party_id
-                          AND status = 'active'
-                        LIMIT 1
-                        FOR UPDATE
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "offering_id": command.offering_id,
-                        "subject_party_id": command.subject_party_id,
-                    },
-                )
-            ).first()
-            if existing is not None:
-                raise AlreadyOnWaitlist(command.offering_id, command.subject_party_id)
+            await _lock_active_offering(
+                session,
+                command.organization_id,
+                command.offering_id,
+            )
 
             row = (
                 (
@@ -103,14 +90,28 @@ class PostgresWaitlistCommands:
                         text(
                             """
                             INSERT INTO request_engine.waitlist_entries (
-                                organization_id, offering_id, subject_party_id,
-                                location_id, preferred_resource_id,
-                                earliest_start, latest_start
+                                organization_id,
+                                offering_id,
+                                subject_party_id,
+                                location_id,
+                                preferred_resource_id,
+                                earliest_start,
+                                latest_start
                             ) VALUES (
-                                :organization_id, :offering_id, :subject_party_id,
-                                :location_id, :preferred_resource_id,
-                                :earliest_start, :latest_start
+                                :organization_id,
+                                :offering_id,
+                                :subject_party_id,
+                                :location_id,
+                                :preferred_resource_id,
+                                :earliest_start,
+                                :latest_start
                             )
+                            ON CONFLICT (
+                                organization_id,
+                                offering_id,
+                                subject_party_id
+                            ) WHERE status = 'active'
+                            DO NOTHING
                             RETURNING id, offering_id, subject_party_id, location_id,
                                       preferred_resource_id, earliest_start, latest_start,
                                       status, revision, created_at
@@ -128,10 +129,13 @@ class PostgresWaitlistCommands:
                     )
                 )
                 .mappings()
-                .one()
+                .first()
             )
+            if row is None:
+                raise AlreadyOnWaitlist(command.offering_id, command.subject_party_id)
+
             entry = _entry_from_row(row)
-            await _audit(
+            await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -145,7 +149,7 @@ class PostgresWaitlistCommands:
                     "subject_authority": authority.audit_details(),
                 },
             )
-            await _outbox(
+            await append_outbox(
                 session,
                 organization_id=command.organization_id,
                 event_type="waitlist.entry_joined.v1",
@@ -157,11 +161,15 @@ class PostgresWaitlistCommands:
                     "subject_party_id": str(entry.subject_party_id),
                 },
             )
-            await _complete_idempotency(session, idempotency_id, {"entry": _entry_to_json(entry)})
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"entry": _entry_to_json(entry)},
+            )
             return entry
 
     async def leave_waitlist(self, command: LeaveWaitlistCommand) -> WaitlistEntry:
-        fingerprint = _fingerprint(
+        fingerprint = command_fingerprint(
             "waitlist.leave",
             {
                 "waitlist_entry_id": command.waitlist_entry_id,
@@ -170,7 +178,7 @@ class PostgresWaitlistCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
-            idempotency_id, replay = await _acquire_idempotency(
+            idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -181,49 +189,27 @@ class PostgresWaitlistCommands:
             if replay is not None:
                 return _entry_from_json(cast(dict[str, object], replay["entry"]))
 
-            locked = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT id, offering_id, subject_party_id, location_id,
-                                   preferred_resource_id, earliest_start, latest_start,
-                                   status, revision, created_at
-                            FROM request_engine.waitlist_entries
-                            WHERE organization_id = :organization_id
-                              AND id = :entry_id
-                            FOR UPDATE
-                            """
-                        ),
-                        {
-                            "organization_id": command.organization_id,
-                            "entry_id": command.waitlist_entry_id,
-                        },
-                    )
-                )
-                .mappings()
-                .first()
+            locked = await _lock_waitlist_entry(
+                session,
+                command.organization_id,
+                command.waitlist_entry_id,
             )
-            if locked is None:
-                raise WaitlistEntryNotFound(command.waitlist_entry_id)
-            current = _entry_from_row(locked)
-
             authority = await require_subject_authority(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                subject_party_id=current.subject_party_id,
+                subject_party_id=locked.subject_party_id,
                 scope_key=MANAGE_WAITLIST_SCOPE,
                 allow_operator_override=command.allow_subject_override,
             )
-            if current.revision != command.expected_revision:
+            if locked.revision != command.expected_revision:
                 raise WaitlistEntryRevisionConflict(
-                    current.id,
+                    locked.id,
                     command.expected_revision,
-                    current.revision,
+                    locked.revision,
                 )
-            if current.status is not WaitlistEntryStatus.ACTIVE:
-                raise WaitlistEntryNotCancellable(current.id, current.status.value)
+            if locked.status is not WaitlistEntryStatus.ACTIVE:
+                raise WaitlistEntryNotCancellable(locked.id, locked.status.value)
 
             row = (
                 (
@@ -231,10 +217,13 @@ class PostgresWaitlistCommands:
                         text(
                             """
                             UPDATE request_engine.waitlist_entries
-                            SET status = 'cancelled', revision = revision + 1
+                            SET status = 'cancelled',
+                                revision = revision + 1,
+                                updated_at = clock_timestamp()
                             WHERE organization_id = :organization_id
                               AND id = :entry_id
                               AND revision = :expected_revision
+                              AND status = 'active'
                             RETURNING id, offering_id, subject_party_id, location_id,
                                       preferred_resource_id, earliest_start, latest_start,
                                       status, revision, created_at
@@ -242,7 +231,7 @@ class PostgresWaitlistCommands:
                         ),
                         {
                             "organization_id": command.organization_id,
-                            "entry_id": current.id,
+                            "entry_id": locked.id,
                             "expected_revision": command.expected_revision,
                         },
                     )
@@ -251,7 +240,7 @@ class PostgresWaitlistCommands:
                 .one()
             )
             entry = _entry_from_row(row)
-            await _audit(
+            await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -264,7 +253,7 @@ class PostgresWaitlistCommands:
                     "subject_authority": authority.audit_details(),
                 },
             )
-            await _outbox(
+            await append_outbox(
                 session,
                 organization_id=command.organization_id,
                 event_type="waitlist.entry_cancelled.v1",
@@ -276,14 +265,18 @@ class PostgresWaitlistCommands:
                     "subject_party_id": str(entry.subject_party_id),
                 },
             )
-            await _complete_idempotency(session, idempotency_id, {"entry": _entry_to_json(entry)})
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"entry": _entry_to_json(entry)},
+            )
             return entry
 
     async def create_slot_opportunity(
         self,
         command: CreateSlotOpportunityCommand,
     ) -> SlotOpportunity:
-        fingerprint = _fingerprint(
+        fingerprint = command_fingerprint(
             "waitlist.create_opportunity",
             {
                 "offering_version_id": command.offering_version_id,
@@ -295,7 +288,7 @@ class PostgresWaitlistCommands:
             },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
-            idempotency_id, replay = await _acquire_idempotency(
+            idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -306,53 +299,28 @@ class PostgresWaitlistCommands:
             if replay is not None:
                 return _opportunity_from_json(cast(dict[str, object], replay["opportunity"]))
 
-            existing = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT id, offering_version_id, location_id, source_event_id,
-                                   source_reservation_id, lower(during) AS start_at,
-                                   upper(during) AS end_at, status, revision, created_at
-                            FROM request_engine.slot_opportunities
-                            WHERE organization_id = :organization_id
-                              AND source_event_id = :source_event_id
-                            FOR UPDATE
-                            """
-                        ),
-                        {
-                            "organization_id": command.organization_id,
-                            "source_event_id": command.source_event_id,
-                        },
-                    )
-                )
-                .mappings()
-                .first()
-            )
-            if existing is not None:
-                opportunity = _opportunity_from_row(existing)
-                if not _matches_opportunity(command, opportunity):
-                    raise SlotOpportunitySourceConflict(command.source_event_id)
-                await _complete_idempotency(
-                    session,
-                    idempotency_id,
-                    {"opportunity": _opportunity_to_json(opportunity)},
-                )
-                return opportunity
-
             row = (
                 (
                     await session.execute(
                         text(
                             """
                             INSERT INTO request_engine.slot_opportunities (
-                                organization_id, offering_version_id, location_id,
-                                source_reservation_id, source_event_id, during
+                                organization_id,
+                                offering_version_id,
+                                location_id,
+                                source_reservation_id,
+                                source_event_id,
+                                during
                             ) VALUES (
-                                :organization_id, :offering_version_id, :location_id,
-                                :source_reservation_id, :source_event_id,
+                                :organization_id,
+                                :offering_version_id,
+                                :location_id,
+                                :source_reservation_id,
+                                :source_event_id,
                                 tstzrange(:start_at, :end_at, '[)')
                             )
+                            ON CONFLICT (organization_id, source_event_id)
+                            DO NOTHING
                             RETURNING id, offering_version_id, location_id, source_event_id,
                                       source_reservation_id, lower(during) AS start_at,
                                       upper(during) AS end_at, status, revision, created_at
@@ -370,34 +338,47 @@ class PostgresWaitlistCommands:
                     )
                 )
                 .mappings()
-                .one()
+                .first()
             )
+
+            created = row is not None
+            if row is None:
+                row = await _lock_opportunity_by_source_event(
+                    session,
+                    command.organization_id,
+                    command.source_event_id,
+                )
             opportunity = _opportunity_from_row(row)
-            await _audit(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                command_name="waitlist.create_opportunity",
-                aggregate_kind="SlotOpportunity",
-                aggregate_id=opportunity.id,
-                idempotency_id=idempotency_id,
-                details={"source_event_id": str(command.source_event_id)},
-            )
-            await _outbox(
-                session,
-                organization_id=command.organization_id,
-                event_type="waitlist.slot_opportunity_created.v1",
-                aggregate_kind="SlotOpportunity",
-                aggregate_id=opportunity.id,
-                payload={
-                    "slot_opportunity_id": str(opportunity.id),
-                    "source_event_id": str(opportunity.source_event_id),
-                    "offering_version_id": str(opportunity.offering_version_id),
-                    "start_at": opportunity.start_at.isoformat(),
-                    "end_at": opportunity.end_at.isoformat(),
-                },
-            )
-            await _complete_idempotency(
+            if not _matches_opportunity(command, opportunity):
+                raise SlotOpportunitySourceConflict(command.source_event_id)
+
+            if created:
+                await append_audit(
+                    session,
+                    organization_id=command.organization_id,
+                    principal_id=command.principal_id,
+                    command_name="waitlist.create_opportunity",
+                    aggregate_kind="SlotOpportunity",
+                    aggregate_id=opportunity.id,
+                    idempotency_id=idempotency_id,
+                    details={"source_event_id": str(command.source_event_id)},
+                )
+                await append_outbox(
+                    session,
+                    organization_id=command.organization_id,
+                    event_type="waitlist.slot_opportunity_created.v1",
+                    aggregate_kind="SlotOpportunity",
+                    aggregate_id=opportunity.id,
+                    payload={
+                        "slot_opportunity_id": str(opportunity.id),
+                        "source_event_id": str(opportunity.source_event_id),
+                        "offering_version_id": str(opportunity.offering_version_id),
+                        "start_at": opportunity.start_at.isoformat(),
+                        "end_at": opportunity.end_at.isoformat(),
+                    },
+                )
+
+            await complete_idempotency(
                 session,
                 idempotency_id,
                 {"opportunity": _opportunity_to_json(opportunity)},
@@ -405,7 +386,11 @@ class PostgresWaitlistCommands:
             return opportunity
 
 
-async def _lock_active_offering(session: AsyncSession, organization_id: UUID, offering_id: UUID) -> None:
+async def _lock_active_offering(
+    session: AsyncSession,
+    organization_id: UUID,
+    offering_id: UUID,
+) -> None:
     row = (
         await session.execute(
             text(
@@ -424,134 +409,65 @@ async def _lock_active_offering(session: AsyncSession, organization_id: UUID, of
         raise OfferingNotAvailableForWaitlist(offering_id)
 
 
-async def _acquire_idempotency(
+async def _lock_waitlist_entry(
     session: AsyncSession,
-    *,
     organization_id: UUID,
-    principal_id: UUID,
-    capability: str,
-    idempotency_key: str,
-    fingerprint: str,
-) -> tuple[UUID, dict[str, object] | None]:
+    entry_id: UUID,
+) -> WaitlistEntry:
     row = (
         (
             await session.execute(
                 text(
                     """
-                    SELECT idempotency_id, result_data, replay
-                    FROM request_cmd.acquire_idempotency(
-                        :organization_id, :principal_id, :capability,
-                        :idempotency_key, :fingerprint
-                    )
+                    SELECT id, offering_id, subject_party_id, location_id,
+                           preferred_resource_id, earliest_start, latest_start,
+                           status, revision, created_at
+                    FROM request_engine.waitlist_entries
+                    WHERE organization_id = :organization_id
+                      AND id = :entry_id
+                    FOR UPDATE
+                    """
+                ),
+                {"organization_id": organization_id, "entry_id": entry_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise WaitlistEntryNotFound(entry_id)
+    return _entry_from_row(row)
+
+
+async def _lock_opportunity_by_source_event(
+    session: AsyncSession,
+    organization_id: UUID,
+    source_event_id: UUID,
+) -> RowMapping:
+    row = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, offering_version_id, location_id, source_event_id,
+                           source_reservation_id, lower(during) AS start_at,
+                           upper(during) AS end_at, status, revision, created_at
+                    FROM request_engine.slot_opportunities
+                    WHERE organization_id = :organization_id
+                      AND source_event_id = :source_event_id
+                    FOR UPDATE
                     """
                 ),
                 {
                     "organization_id": organization_id,
-                    "principal_id": principal_id,
-                    "capability": capability,
-                    "idempotency_key": idempotency_key,
-                    "fingerprint": fingerprint,
+                    "source_event_id": source_event_id,
                 },
             )
         )
         .mappings()
         .one()
     )
-    idempotency_id = cast(UUID, row["idempotency_id"])
-    if cast(bool, row["replay"]):
-        return idempotency_id, cast(dict[str, object], row["result_data"])
-    return idempotency_id, None
-
-
-async def _complete_idempotency(
-    session: AsyncSession,
-    idempotency_id: UUID,
-    result: dict[str, object],
-) -> None:
-    completed = (
-        await session.execute(
-            text("SELECT request_cmd.complete_idempotency(:id, CAST(:result AS jsonb))"),
-            {"id": idempotency_id, "result": json.dumps(result, separators=(",", ":"))},
-        )
-    ).scalar_one()
-    if completed is not True:
-        raise RuntimeError(f"idempotency record {idempotency_id} could not be completed")
-
-
-async def _audit(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    principal_id: UUID,
-    command_name: str,
-    aggregate_kind: str,
-    aggregate_id: UUID,
-    idempotency_id: UUID,
-    details: dict[str, object],
-) -> None:
-    await session.execute(
-        text(
-            """
-            INSERT INTO request_engine.audit_records (
-                organization_id, actor_principal_id, command_name,
-                aggregate_kind, aggregate_id, idempotency_record_id, details
-            ) VALUES (
-                :organization_id, :principal_id, :command_name,
-                :aggregate_kind, :aggregate_id, :idempotency_id, CAST(:details AS jsonb)
-            )
-            """
-        ),
-        {
-            "organization_id": organization_id,
-            "principal_id": principal_id,
-            "command_name": command_name,
-            "aggregate_kind": aggregate_kind,
-            "aggregate_id": aggregate_id,
-            "idempotency_id": idempotency_id,
-            "details": json.dumps(details, separators=(",", ":")),
-        },
-    )
-
-
-async def _outbox(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    event_type: str,
-    aggregate_kind: str,
-    aggregate_id: UUID,
-    payload: dict[str, object],
-) -> None:
-    await session.execute(
-        text(
-            """
-            INSERT INTO request_engine.outbox_messages (
-                organization_id, event_type, schema_version,
-                aggregate_kind, aggregate_id, payload
-            ) VALUES (
-                :organization_id, :event_type, 1,
-                :aggregate_kind, :aggregate_id, CAST(:payload AS jsonb)
-            )
-            """
-        ),
-        {
-            "organization_id": organization_id,
-            "event_type": event_type,
-            "aggregate_kind": aggregate_kind,
-            "aggregate_id": aggregate_id,
-            "payload": json.dumps(payload, separators=(",", ":")),
-        },
-    )
-
-
-def _fingerprint(capability: str, values: dict[str, object]) -> str:
-    canonical = json.dumps(
-        {"capability": capability, **values},
-        default=str,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    return row
 
 
 def _entry_from_row(row: RowMapping) -> WaitlistEntry:
