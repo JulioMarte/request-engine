@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import timedelta
 from uuid import UUID
 
 from request_engine.modules.communications.adapters.db.delivery_store import (
@@ -18,20 +19,43 @@ from request_engine.modules.communications.contracts.delivery import (
     ProviderDeliveryStatus,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
-from request_engine.platform.scheduling.postgres import ScheduledActionLease
-from request_engine.platform.worker.runtime import PermanentWorkError, RetryableWorkError
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
+from request_engine.platform.worker.runtime import (
+    LeaseLostWorkError,
+    PermanentWorkError,
+    RetryableWorkError,
+)
 
 
 class CommunicationDeliveryScheduledHandler:
-    """Execute provider work while the generic runtime owns lease finalization."""
+    """Execute provider work while the generic runtime owns lease finalization.
+
+    Provider I/O is intentionally outside tenant transactions. Before writing
+    its result, the handler renews the same claim token. A stale worker can
+    therefore make an idempotent provider request but cannot authoritatively
+    persist its result after another worker owns the ScheduledAction.
+    """
 
     def __init__(
         self,
         session_factory: SessionFactory,
+        scheduler: PostgresScheduledActionWorker,
         providers: Mapping[str, CommunicationDeliveryProvider],
+        *,
+        finalization_lease_extension: timedelta = timedelta(seconds=60),
     ) -> None:
         self._session_factory = session_factory
+        self._scheduler = scheduler
         self._providers = providers
+        if (
+            finalization_lease_extension <= timedelta(0)
+            or finalization_lease_extension > timedelta(minutes=15)
+        ):
+            raise ValueError("finalization_lease_extension must be > 0 and <= 15 minutes")
+        self._finalization_lease_extension = finalization_lease_extension
 
     async def handle(self, lease: ScheduledActionLease) -> None:
         work = await self._prepare(lease)
@@ -74,6 +98,14 @@ class CommunicationDeliveryScheduledHandler:
 
         if work.delivery_id is None:
             raise PermanentWorkError("prepared_delivery_missing_identity")
+
+        still_owned = await self._scheduler.renew(
+            lease,
+            extension=self._finalization_lease_extension,
+        )
+        if not still_owned:
+            raise LeaseLostWorkError("provider_result_finalization_fence_lost")
+
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
             await finalize_provider_result(
                 session,
@@ -140,7 +172,14 @@ def _validate_payload_identity(
     expected: UUID,
 ) -> None:
     raw = lease.payload.get(field)
-    if not isinstance(raw, str) or UUID(raw) != expected:
+    try:
+        payload_id = UUID(raw) if isinstance(raw, str) else None
+    except ValueError as exc:
+        raise PermanentWorkError(
+            "scheduled_action_payload_mismatch",
+            f"ScheduledAction payload {field} is not a UUID",
+        ) from exc
+    if payload_id != expected:
         raise PermanentWorkError(
             "scheduled_action_payload_mismatch",
             f"ScheduledAction payload {field} does not match subject identity",
