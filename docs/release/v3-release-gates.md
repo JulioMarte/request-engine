@@ -31,6 +31,8 @@ CI `#433` establishes the current release-proof baseline for G01-G04:
 
 The same release cycle discovered and fixed a real deny-by-default defect before that green baseline: application functions still inherited PostgreSQL's default `PUBLIC EXECUTE`. Candidate migration `021-release-privilege-hardening.sql` and dedicated DB tests now enforce the intended boundary.
 
+Phase 6I adversarial tenant work is additionally green in CI `#462` on commit `63d2d5004cd74800cb41d08f293e6aa5523f0a70`. That run executed 124 PostgreSQL/integration tests and added direct `request_engine_app` RLS proof, cross-tenant/nonexistent identifier equivalence, HTTP Booking/Request/Queue/Waitlist attacks, operator-override tenant binding, and a real Request submit versus Representation revocation race. This evidence intentionally does not promote G06 because the HTTP application harness still does not execute with a production login granted only `request_engine_app`, and protected worker/admin/function surfaces plus the remaining subject-scoped material-command races still need complete adversarial coverage.
+
 ## Gate matrix
 
 | Gate | Release claim | Status | Existing evidence | Required proof before PASS | Primary phase |
@@ -40,7 +42,7 @@ The same release cycle discovered and fixed a real deny-by-default defect before
 | G03 | Unit/domain logic | PASS | CI #433: complete `tests/modules` suite green | Keep mandatory in final release CI | 6A/6P |
 | G04 | Fresh PostgreSQL bootstrap | PASS | CI #433: dedicated PostgreSQL 18 repeated clean candidate bootstrap passed | Preserve proof until final bootstrap is replaced by `0001_initial` in 6O | 6B |
 | G05 | Schema integrity | PARTIAL | fingerprint/catalog audit green in CI #433; current DB/vertical suite green | Complete critical constraint/invariant and race proof | 6B/6C/6D |
-| G06 | Tenant isolation | PARTIAL | tenant authority DB tests and HTTP authority tests | Cross-tenant adversarial RLS/FK/function coverage for all sensitive surfaces | 6I |
+| G06 | Tenant isolation | PARTIAL | CI #462: direct app-role RLS/fail-closed tests plus adversarial Booking/Request/Queue/Waitlist HTTP coverage, foreign-vs-nonexistent checks, tenant-bound operator override, and authority/revocation evidence | Run application verticals with true least-privileged runtime login; complete worker/admin/function-surface attacks and remaining subject-scoped material-command races | 6I |
 | G07 | Booking vertical | PARTIAL | `v3_booking_core`, `v3_booking_commitments`, first vertical | Release appointment flow including lifecycle communications and completion | 6K |
 | G08 | Slot recovery | PARTIAL | `v3_slot_offer_recovery` | Full accept/decline/expiry/candidate race matrix and recovery vertical | 6D/6K |
 | G09 | Worker claim race | PARTIAL | DB worker runtime and integration worker runtime suites | Deterministic multi-worker ownership proof at increasing concurrency | 6F |
