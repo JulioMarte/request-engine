@@ -35,16 +35,20 @@ def install_http(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
-    slot_offer_ports: QueueSlotOfferHttpPorts,
+    slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
 ) -> None:
     """Connect the Queue module to the HTTP process through its owned surface."""
 
     commands = PostgresServiceQueueCommands(session_factory)
     waitlist_commands = PostgresWaitlistCommands(session_factory)
-    slot_offer_commands = PostgresSlotOfferCommands(
-        session_factory,
-        capacity=slot_offer_ports.capacity,
-        notification=slot_offer_ports.notification,
+    slot_offer_commands = (
+        PostgresSlotOfferCommands(
+            session_factory,
+            capacity=slot_offer_ports.capacity,
+            notification=slot_offer_ports.notification,
+        )
+        if slot_offer_ports is not None
+        else None
     )
     app.add_exception_handler(QueueError, queue_error_handler)
     app.include_router(
