@@ -15,6 +15,7 @@ from request_engine.entrypoints.http.errors import (
 )
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.catalog.api import install_http as install_catalog_http
+from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.modules.tenancy.api import build_party_authority_reader
@@ -34,10 +35,11 @@ def create_app(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    slot_offer_ports: QueueSlotOfferHttpPorts,
     appointment_option_signing_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
 ) -> FastAPI:
-    """Compose module-owned HTTP surfaces around platform dependencies."""
+    """Compose module-owned HTTP surfaces around explicit external ports."""
 
     signing_key = appointment_option_signing_key
     if signing_key is None:
@@ -92,5 +94,6 @@ def create_app(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+        slot_offer_ports=slot_offer_ports,
     )
     return app
