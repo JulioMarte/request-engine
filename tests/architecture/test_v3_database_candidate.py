@@ -23,6 +23,8 @@ EXPECTED_V3_CANDIDATE = [
     "016-provider-event-dead-letter.sql",
     "017-expired-lease-finalization-fence.sql",
     "018-retry-finalization-fence.sql",
+    "019-trusted-execution-provenance.sql",
+    "020-durable-correlation.sql",
 ]
 
 

@@ -26,14 +26,20 @@ async def append_outbox(
                 schema_version,
                 aggregate_kind,
                 aggregate_id,
-                payload
+                payload,
+                correlation_data
             ) VALUES (
                 :organization_id,
                 :event_type,
                 :schema_version,
                 :aggregate_kind,
                 :aggregate_id,
-                CAST(:payload AS jsonb)
+                CAST(:payload AS jsonb),
+                jsonb_strip_nulls(jsonb_build_object(
+                    'correlation_id', NULLIF(
+                        current_setting('request_engine.correlation_id', true), ''
+                    )
+                ))
             )
             """
         ),

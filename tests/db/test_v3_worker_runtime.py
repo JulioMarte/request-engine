@@ -315,6 +315,7 @@ def test_admin_replay_is_privileged_preserves_history_and_is_audited(
         attempt_count=8,
         max_attempts=8,
     )
+    correlation_id = uuid4()
     runtime_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
         runtime_conn.execute("SET ROLE request_engine_worker")
@@ -322,22 +323,30 @@ def test_admin_replay_is_privileged_preserves_history_and_is_audited(
             runtime_conn.execute(
                 """
                 SELECT request_admin.replay_dead_scheduled_action(
-                    %s, %s, %s, 3, 'worker must not replay'
+                    %s, %s, 3, 'worker must not replay'
                 )
                 """,
-                (organization_id, action_id, actor_id),
+                (organization_id, action_id),
             ).fetchone()
         assert exc_info.value.sqlstate == "42501"
 
         runtime_conn.execute("RESET ROLE")
         runtime_conn.execute("SET ROLE request_engine_admin")
+        for key, value in {
+            "request_engine.organization_id": str(organization_id),
+            "request_engine.authenticated_principal_id": str(actor_id),
+            "request_engine.principal_kind": "human",
+            "request_engine.authentication_method": "test_admin_adapter",
+            "request_engine.correlation_id": str(correlation_id),
+        }.items():
+            runtime_conn.execute("SELECT set_config(%s, %s, false)", (key, value))
         replayed = runtime_conn.execute(
             """
             SELECT request_admin.replay_dead_scheduled_action(
-                %s, %s, %s, 3, 'operator approved replay'
+                %s, %s, 3, 'operator approved replay'
             )
             """,
-            (organization_id, action_id, actor_id),
+            (organization_id, action_id),
         ).fetchone()
     finally:
         runtime_conn.close()
@@ -355,7 +364,8 @@ def test_admin_replay_is_privileged_preserves_history_and_is_audited(
     assert state == ("pending", 8, 11, 1, True)
     audit = admin_conn.execute(
         """
-        SELECT command_name, actor_principal_id, details->>'reason'
+        SELECT command_name, actor_principal_id, details->>'reason',
+               correlation_data->>'correlation_id'
         FROM request_engine.audit_records
         WHERE organization_id = %s
           AND aggregate_kind = 'ScheduledAction'
@@ -365,7 +375,12 @@ def test_admin_replay_is_privileged_preserves_history_and_is_audited(
         """,
         (organization_id, action_id),
     ).fetchone()
-    assert audit == ("admin.replay_scheduled_action", actor_id, "operator approved replay")
+    assert audit == (
+        "admin.replay_scheduled_action",
+        actor_id,
+        "operator approved replay",
+        str(correlation_id),
+    )
 
 
 @pytest.mark.postgres

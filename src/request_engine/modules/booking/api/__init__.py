@@ -1,8 +1,13 @@
 from fastapi import FastAPI
 
-from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
+from request_engine.modules.booking.adapters.appointment_options import (
+    SignedAppointmentOptionCodec,
+)
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
+)
+from request_engine.modules.booking.adapters.db.attendance_commands import (
+    PostgresAttendanceCommands,
 )
 from request_engine.modules.booking.adapters.db.commitment_commands import (
     PostgresBookingCommitmentCommands,
@@ -10,7 +15,9 @@ from request_engine.modules.booking.adapters.db.commitment_commands import (
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.reservation_reader import (
+    PostgresReservationReader,
+)
 from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.errors import BookingError
@@ -40,6 +47,7 @@ def install_http(
             book_handler=reservation_commands,
             cancel_handler=reservation_commands,
             reschedule_handler=commitment_commands,
+            attendance_handler=PostgresAttendanceCommands(session_factory),
             reservation_reader=PostgresReservationReader(session_factory),
             authority_reader=party_authority_reader,
             actor_resolver=actor_resolver,

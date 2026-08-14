@@ -8,194 +8,331 @@ class CapabilityExposure(StrEnum):
     INTERNAL = "internal"
 
 
+class CapabilityKind(StrEnum):
+    QUERY = "query"
+    COMMAND = "command"
+
+
+class IdempotencyPolicy(StrEnum):
+    NONE = "none"
+    REQUIRED = "required"
+
+
+class RevisionPolicy(StrEnum):
+    NONE = "none"
+    REQUIRED = "required"
+    SERVER_SELECTED = "server_selected"
+
+
 @dataclass(frozen=True, slots=True)
 class CapabilityDefinition:
     key: str
     exposure: CapabilityExposure
     description: str
+    kind: CapabilityKind
+    idempotency: IdempotencyPolicy
+    revision: RevisionPolicy
+    schema_version: int = 1
     party_scope: str | None = None
     override_capability: str | None = None
     legacy_aliases: frozenset[str] = frozenset()
+    runtime_available: bool = True
+
+    @property
+    def discoverable(self) -> bool:
+        return self.exposure is not CapabilityExposure.INTERNAL
 
 
-# Capability keys are a public contract. Additions are cheap; renames/removals require an
-# explicit compatibility decision. Party authority is deliberately metadata on top of a
-# technical capability grant: possessing a capability never implies authority over a Party.
+def _query(
+    key: str,
+    exposure: CapabilityExposure,
+    description: str,
+    *,
+    party_scope: str | None = None,
+    override_capability: str | None = None,
+    legacy_aliases: frozenset[str] = frozenset(),
+    runtime_available: bool = True,
+) -> CapabilityDefinition:
+    return CapabilityDefinition(
+        key=key,
+        exposure=exposure,
+        description=description,
+        kind=CapabilityKind.QUERY,
+        idempotency=IdempotencyPolicy.NONE,
+        revision=RevisionPolicy.NONE,
+        party_scope=party_scope,
+        override_capability=override_capability,
+        legacy_aliases=legacy_aliases,
+        runtime_available=runtime_available,
+    )
+
+
+def _command(
+    key: str,
+    exposure: CapabilityExposure,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+    party_scope: str | None = None,
+    override_capability: str | None = None,
+    legacy_aliases: frozenset[str] = frozenset(),
+    runtime_available: bool = True,
+) -> CapabilityDefinition:
+    return CapabilityDefinition(
+        key=key,
+        exposure=exposure,
+        description=description,
+        kind=CapabilityKind.COMMAND,
+        idempotency=IdempotencyPolicy.REQUIRED,
+        revision=revision,
+        party_scope=party_scope,
+        override_capability=override_capability,
+        legacy_aliases=legacy_aliases,
+        runtime_available=runtime_available,
+    )
+
+
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
-    CapabilityDefinition(
-        key="business.get_info",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read structured public/operational business information.",
+    _query(
+        "business.get_info",
+        CapabilityExposure.PUBLIC,
+        "Read structured public/operational business information.",
         legacy_aliases=frozenset({"business.read"}),
     ),
-    CapabilityDefinition(
-        key="catalog.search_offerings",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Search the tenant offering catalog.",
+    _query(
+        "catalog.search_offerings",
+        CapabilityExposure.PUBLIC,
+        "Search the tenant offering catalog.",
         legacy_aliases=frozenset({"catalog.read"}),
     ),
-    CapabilityDefinition(
-        key="catalog.get_offering_details",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read one offering and its exposed version details.",
+    _query(
+        "catalog.get_offering_details",
+        CapabilityExposure.PUBLIC,
+        "Read one offering and its exposed version details.",
         legacy_aliases=frozenset({"catalog.read"}),
     ),
-    CapabilityDefinition(
-        key="appointments.find_slots",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Find appointment slots without committing capacity.",
+    _query(
+        "appointments.find_slots",
+        CapabilityExposure.PUBLIC,
+        "Find appointment slots without committing capacity.",
         legacy_aliases=frozenset({"booking.find_slots"}),
     ),
-    CapabilityDefinition(
-        key="appointments.book",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Book an appointment for an authorized subject Party.",
+    _command(
+        "appointments.book",
+        CapabilityExposure.PUBLIC,
+        "Book an appointment for an authorized subject Party.",
         party_scope="appointments.book",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.book_appointment"}),
     ),
-    CapabilityDefinition(
-        key="appointments.read",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read an appointment for an authorized subject Party.",
+    _query(
+        "appointments.read",
+        CapabilityExposure.PUBLIC,
+        "Read an appointment for an authorized subject Party.",
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.read"}),
     ),
-    CapabilityDefinition(
-        key="appointments.cancel",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Cancel an appointment for an authorized subject Party.",
+    _command(
+        "appointments.cancel",
+        CapabilityExposure.PUBLIC,
+        "Cancel an appointment for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.cancel_reservation"}),
     ),
-    CapabilityDefinition(
-        key="appointments.reschedule",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Reschedule an appointment for an authorized subject Party.",
+    _command(
+        "appointments.reschedule",
+        CapabilityExposure.PUBLIC,
+        "Reschedule an appointment for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.reschedule_reservation"}),
     ),
-    CapabilityDefinition(
-        key="appointments.subject_override",
-        exposure=CapabilityExposure.OPERATOR,
-        description="Operate on appointment subjects without delegated Party authority.",
-        legacy_aliases=frozenset({"booking.subject_override"}),
+    _command(
+        "appointments.confirm_attendance",
+        CapabilityExposure.PUBLIC,
+        "Record the subject Party's accepted or declined attendance response.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
     ),
-    CapabilityDefinition(
-        key="queue.list",
-        exposure=CapabilityExposure.PUBLIC,
-        description="List active service queues.",
+    _command(
+        "appointments.subject_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on appointment subjects without delegated Party authority.",
+        legacy_aliases=frozenset({"booking.subject_override"}),
+        runtime_available=False,
+    ),
+    _query(
+        "queue.list",
+        CapabilityExposure.PUBLIC,
+        "List active service queues.",
         legacy_aliases=frozenset({"queue.read"}),
     ),
-    CapabilityDefinition(
-        key="queue.join",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Join a service queue for an authorized subject Party.",
+    _command(
+        "queue.join",
+        CapabilityExposure.PUBLIC,
+        "Join a service queue for an authorized subject Party.",
         party_scope="queue.join",
         override_capability="queue.subject_override",
     ),
-    CapabilityDefinition(
-        key="queue.status",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read queue status for an authorized subject Party.",
+    _query(
+        "queue.status",
+        CapabilityExposure.PUBLIC,
+        "Read queue status for an authorized subject Party.",
         party_scope="queue.manage",
         override_capability="queue.subject_override",
         legacy_aliases=frozenset({"queue.read"}),
     ),
-    CapabilityDefinition(
-        key="queue.leave",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Leave a service queue for an authorized subject Party.",
+    _command(
+        "queue.leave",
+        CapabilityExposure.PUBLIC,
+        "Leave a service queue for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
         party_scope="queue.manage",
         override_capability="queue.subject_override",
     ),
-    CapabilityDefinition(
-        key="queue.call_next",
-        exposure=CapabilityExposure.OPERATOR,
-        description="Advance a service queue by calling the deterministic next entry.",
+    _command(
+        "queue.call_next",
+        CapabilityExposure.OPERATOR,
+        "Advance a service queue by calling the deterministic next entry.",
+        revision=RevisionPolicy.SERVER_SELECTED,
     ),
-    CapabilityDefinition(
-        key="queue.subject_override",
-        exposure=CapabilityExposure.OPERATOR,
-        description="Operate on queue subjects without delegated Party authority.",
+    _command(
+        "queue.subject_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on queue subjects without delegated Party authority.",
+        runtime_available=False,
     ),
-    CapabilityDefinition(
-        key="waitlist.join",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Join an Offering waitlist for an authorized subject Party.",
+    _command(
+        "waitlist.join",
+        CapabilityExposure.PUBLIC,
+        "Join an Offering waitlist for an authorized subject Party.",
         party_scope="waitlist.join",
         override_capability="waitlist.subject_override",
     ),
-    CapabilityDefinition(
-        key="waitlist.read",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read a waitlist entry for an authorized subject Party.",
+    _query(
+        "waitlist.read",
+        CapabilityExposure.PUBLIC,
+        "Read a waitlist entry for an authorized subject Party.",
         party_scope="waitlist.manage",
         override_capability="waitlist.subject_override",
     ),
-    CapabilityDefinition(
-        key="waitlist.leave",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Cancel an active waitlist entry for an authorized subject Party.",
+    _command(
+        "waitlist.leave",
+        CapabilityExposure.PUBLIC,
+        "Cancel an active waitlist entry for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
         party_scope="waitlist.manage",
         override_capability="waitlist.subject_override",
     ),
-    CapabilityDefinition(
-        key="waitlist.subject_override",
-        exposure=CapabilityExposure.OPERATOR,
-        description="Operate on waitlist subjects without delegated Party authority.",
+    _command(
+        "waitlist.accept_offer",
+        CapabilityExposure.PUBLIC,
+        "Accept an active SlotOffer and atomically promote its hold to a Reservation.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
     ),
-    CapabilityDefinition(
-        key="waitlist.create_opportunity",
-        exposure=CapabilityExposure.INTERNAL,
-        description="Create a deduplicated slot opportunity from a capacity-release event.",
+    _command(
+        "waitlist.decline_offer",
+        CapabilityExposure.PUBLIC,
+        "Decline an active SlotOffer and release its capacity hold.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
     ),
-    CapabilityDefinition(
-        key="requests.submit",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Submit durable business demand.",
+    _command(
+        "waitlist.subject_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on waitlist subjects without delegated Party authority.",
+        runtime_available=False,
+    ),
+    _command(
+        "waitlist.create_opportunity",
+        CapabilityExposure.INTERNAL,
+        "Create a deduplicated slot opportunity from a capacity-release event.",
+    ),
+    _command(
+        "reminders.create_plan",
+        CapabilityExposure.PUBLIC,
+        "Create a durable recurring ReminderPlan for an authorized subject Party.",
+        party_scope="reminders.manage",
+        override_capability="reminders.subject_override",
+        legacy_aliases=frozenset({"communications.create_reminder_plan"}),
+    ),
+    _query(
+        "reminders.read",
+        CapabilityExposure.PUBLIC,
+        "Read a ReminderPlan for an authorized subject Party.",
+        party_scope="reminders.manage",
+        override_capability="reminders.subject_override",
+    ),
+    _command(
+        "reminders.cancel_plan",
+        CapabilityExposure.PUBLIC,
+        "Cancel an active ReminderPlan for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="reminders.manage",
+        override_capability="reminders.subject_override",
+        legacy_aliases=frozenset({"communications.cancel_reminder_plan"}),
+    ),
+    _command(
+        "reminders.subject_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on ReminderPlans without delegated Party authority.",
+        runtime_available=False,
+    ),
+    _command(
+        "requests.submit",
+        CapabilityExposure.PUBLIC,
+        "Submit durable business demand.",
         party_scope="requests.submit",
         override_capability="requests.party_override",
     ),
-    CapabilityDefinition(
-        key="requests.read",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Read a Request for its authorized requester Party.",
+    _query(
+        "requests.read",
+        CapabilityExposure.PUBLIC,
+        "Read a Request for its authorized requester Party.",
         party_scope="requests.manage",
         override_capability="requests.party_override",
     ),
-    CapabilityDefinition(
-        key="requests.cancel",
-        exposure=CapabilityExposure.PUBLIC,
-        description="Cancel a Request for its authorized requester Party.",
+    _command(
+        "requests.cancel",
+        CapabilityExposure.PUBLIC,
+        "Cancel a Request for its authorized requester Party.",
+        revision=RevisionPolicy.REQUIRED,
         party_scope="requests.manage",
         override_capability="requests.party_override",
     ),
-    CapabilityDefinition(
-        key="requests.record_result",
-        exposure=CapabilityExposure.INTERNAL,
-        description="Record a validated result while processing a Request.",
+    _command(
+        "requests.record_result",
+        CapabilityExposure.INTERNAL,
+        "Record a validated result while processing a Request.",
+        revision=RevisionPolicy.REQUIRED,
     ),
-    CapabilityDefinition(
-        key="requests.complete",
-        exposure=CapabilityExposure.INTERNAL,
-        description="Complete Request processing.",
+    _command(
+        "requests.complete",
+        CapabilityExposure.INTERNAL,
+        "Complete Request processing.",
+        revision=RevisionPolicy.REQUIRED,
     ),
-    CapabilityDefinition(
-        key="requests.fail",
-        exposure=CapabilityExposure.INTERNAL,
-        description="Fail Request processing with a classified error.",
+    _command(
+        "requests.fail",
+        CapabilityExposure.INTERNAL,
+        "Fail Request processing with a classified error.",
+        revision=RevisionPolicy.REQUIRED,
     ),
-    CapabilityDefinition(
-        key="requests.party_override",
-        exposure=CapabilityExposure.OPERATOR,
-        description="Operate on Requests without requester Party authority.",
+    _command(
+        "requests.party_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on Requests without requester Party authority.",
+        runtime_available=False,
     ),
 )
-
 
 CAPABILITY_BY_KEY = {definition.key: definition for definition in CAPABILITIES}
 
@@ -211,8 +348,6 @@ def capability_is_known(key: str) -> bool:
 
 
 def grant_satisfies(granted_key: str, required_key: str) -> bool:
-    """Return whether one materialized grant satisfies one canonical requirement."""
-
     if granted_key == required_key:
         return True
     definition = CAPABILITY_BY_KEY.get(required_key)

@@ -4,20 +4,33 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.queue.api.models import (
+    AcceptedSlotOfferView,
     JoinQueueBody,
     JoinWaitlistBody,
     LeaveQueueBody,
     LeaveWaitlistBody,
     QueueEntryView,
     QueueStatusView,
+    ResolveSlotOfferBody,
     ServiceQueueView,
+    SlotOfferView,
     WaitlistEntryView,
 )
 from request_engine.modules.queue.application.authority import WAITLIST_SUBJECT_OVERRIDE_PERMISSION
+from request_engine.modules.queue.application.commands.accept_slot_offer import (
+    AcceptSlotOfferCommand,
+    AcceptSlotOfferExecutor,
+    accept_slot_offer,
+)
 from request_engine.modules.queue.application.commands.call_next import (
     CallNextCommand,
     CallNextExecutor,
     call_next,
+)
+from request_engine.modules.queue.application.commands.decline_slot_offer import (
+    DeclineSlotOfferCommand,
+    DeclineSlotOfferExecutor,
+    decline_slot_offer,
 )
 from request_engine.modules.queue.application.commands.join_queue import (
     JoinQueueCommand,
@@ -52,6 +65,7 @@ from request_engine.modules.queue.application.queries.list_service_queues import
     ServiceQueueCatalogReader,
     list_service_queues,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -74,6 +88,8 @@ def create_router(
     waitlist_leave_executor: LeaveWaitlistExecutor,
     waitlist_reader: WaitlistEntryReader,
     actor_resolver: ActorResolver,
+    slot_offer_accept_executor: AcceptSlotOfferExecutor | None = None,
+    slot_offer_decline_executor: DeclineSlotOfferExecutor | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["queues"])
 
@@ -229,54 +245,132 @@ def create_router(
         )
         return WaitlistEntryView.from_contract(entry)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues",
         queues,
+        capability="queue.list",
         methods=["GET"],
         response_model=tuple[ServiceQueueView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/join",
         join,
+        capability="queue.join",
         methods=["POST"],
         response_model=QueueEntryView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/status",
         queue_status,
+        capability="queue.status",
         methods=["GET"],
         response_model=QueueStatusView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/entries/{queue_entry_id}/leave",
         leave,
+        capability="queue.leave",
         methods=["POST"],
         response_model=QueueEntryView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/call-next",
         call_next_entry,
+        capability="queue.call_next",
         methods=["POST"],
         response_model=QueueEntryView | None,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist",
         join_waitlist_entry,
+        capability="waitlist.join",
         methods=["POST"],
         response_model=WaitlistEntryView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist/{waitlist_entry_id}",
         waitlist_entry_status,
+        capability="waitlist.read",
         methods=["GET"],
         response_model=WaitlistEntryView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist/{waitlist_entry_id}/leave",
         leave_waitlist_entry,
+        capability="waitlist.leave",
         methods=["POST"],
         response_model=WaitlistEntryView,
     )
+
+    if slot_offer_accept_executor is not None and slot_offer_decline_executor is not None:
+        accept_executor = slot_offer_accept_executor
+        decline_executor = slot_offer_decline_executor
+
+        async def accept_offer(
+            slot_offer_id: UUID,
+            body: ResolveSlotOfferBody,
+            actor: Annotated[ActorContext, Depends(authenticated_actor)],
+            idempotency_key: IdempotencyKey,
+        ) -> AcceptedSlotOfferView:
+            require_capability(actor, "waitlist.accept_offer")
+            accepted = await accept_slot_offer(
+                accept_executor,
+                AcceptSlotOfferCommand(
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    slot_offer_id=slot_offer_id,
+                    expected_revision=body.expected_revision,
+                    idempotency_key=idempotency_key,
+                    allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+                ),
+            )
+            return AcceptedSlotOfferView.from_contract(accepted)
+
+        async def decline_offer(
+            slot_offer_id: UUID,
+            body: ResolveSlotOfferBody,
+            actor: Annotated[ActorContext, Depends(authenticated_actor)],
+            idempotency_key: IdempotencyKey,
+        ) -> SlotOfferView:
+            require_capability(actor, "waitlist.decline_offer")
+            resolution = await decline_slot_offer(
+                decline_executor,
+                DeclineSlotOfferCommand(
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    slot_offer_id=slot_offer_id,
+                    expected_revision=body.expected_revision,
+                    idempotency_key=idempotency_key,
+                    allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+                ),
+            )
+            return SlotOfferView.from_contract(resolution.offer)
+
+        add_capability_route(
+            router,
+            "/waitlist/offers/{slot_offer_id}/accept",
+            accept_offer,
+            capability="waitlist.accept_offer",
+            methods=["POST"],
+            response_model=AcceptedSlotOfferView,
+        )
+        add_capability_route(
+            router,
+            "/waitlist/offers/{slot_offer_id}/decline",
+            decline_offer,
+            capability="waitlist.decline_offer",
+            methods=["POST"],
+            response_model=SlotOfferView,
+        )
+
     return router

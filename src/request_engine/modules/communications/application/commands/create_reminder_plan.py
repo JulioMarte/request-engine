@@ -19,6 +19,7 @@ class CreateReminderPlanCommand:
     template_version: int
     idempotency_key: str
     max_lateness_minutes: int = 60
+    allow_subject_override: bool = False
 
 
 class CreateReminderPlanHandler(Protocol):
