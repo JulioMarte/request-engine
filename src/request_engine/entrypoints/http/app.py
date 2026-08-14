@@ -1,6 +1,7 @@
 import os
+from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -15,6 +16,7 @@ from request_engine.entrypoints.http.errors import (
 )
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.catalog.api import install_http as install_catalog_http
+from request_engine.modules.communications.api import install_http as install_communications_http
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
@@ -73,7 +75,10 @@ def create_app(
     )
 
     @app.middleware("http")
-    async def request_execution_context(request: Request, call_next):
+    async def request_execution_context(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         correlation_id = request_correlation_id(request)
         try:
             response = await call_next(request)
@@ -118,5 +123,10 @@ def create_app(
         session_factory=session_factory,
         actor_resolver=execution_actor_resolver,
         slot_offer_ports=slot_offer_ports,
+    )
+    install_communications_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=execution_actor_resolver,
     )
     return app
