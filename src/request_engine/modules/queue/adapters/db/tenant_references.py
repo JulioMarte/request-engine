@@ -42,24 +42,39 @@ async def require_tenant_reference(
 ) -> None:
     if reference_id is None:
         return
-    allowed_tables = {
-        "locations",
-        "offerings",
-        "reservations",
-        "resources",
-    }
-    if table_name not in allowed_tables:
+    if table_name == "locations":
+        query = text(
+            """
+            SELECT 1 FROM request_engine.locations
+            WHERE organization_id = :organization_id AND id = :reference_id
+            """
+        )
+    elif table_name == "offerings":
+        query = text(
+            """
+            SELECT 1 FROM request_engine.offerings
+            WHERE organization_id = :organization_id AND id = :reference_id
+            """
+        )
+    elif table_name == "reservations":
+        query = text(
+            """
+            SELECT 1 FROM request_engine.reservations
+            WHERE organization_id = :organization_id AND id = :reference_id
+            """
+        )
+    elif table_name == "resources":
+        query = text(
+            """
+            SELECT 1 FROM request_engine.resources
+            WHERE organization_id = :organization_id AND id = :reference_id
+            """
+        )
+    else:
         raise ValueError(f"unsupported tenant reference table: {table_name}")
     found = (
         await session.execute(
-            text(
-                f"""
-                SELECT 1
-                FROM request_engine.{table_name}
-                WHERE organization_id = :organization_id
-                  AND id = :reference_id
-                """
-            ),
+            query,
             {
                 "organization_id": organization_id,
                 "reference_id": reference_id,
