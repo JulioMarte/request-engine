@@ -53,10 +53,14 @@ def _organization(conn: PgConnection) -> UUID:
     )
 
 
+def _uuid_list() -> list[UUID]:
+    return []
+
+
 @dataclass
 class FlakyPublisher:
     failures_remaining: int = 1
-    published: list[UUID] = field(default_factory=list)
+    published: list[UUID] = field(default_factory=_uuid_list)
 
     async def publish(self, event: OutboxEvent) -> None:
         if self.failures_remaining:
