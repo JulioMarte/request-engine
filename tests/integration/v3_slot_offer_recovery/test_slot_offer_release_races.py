@@ -1,7 +1,10 @@
+# pyright: reportPrivateUsage=false
+
 import asyncio
+from collections.abc import Coroutine, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
@@ -32,6 +35,9 @@ from request_engine.platform.db.session import SessionFactory
 from .test_slot_offer_recovery import _fixture, _prepare
 
 PgConnection = Connection[Any]
+RaceCoroutine = Coroutine[Any, Any, object]
+RaceResult = object | BaseException
+TerminalGraph = tuple[str, str, str, int, int]
 
 
 async def _issue_offer(
@@ -63,11 +69,11 @@ async def _issue_offer(
 async def _start_behind_opportunity_lock(
     admin_conn: PgConnection,
     *,
-    organization_id,
-    opportunity_id,
-    coroutines,
+    organization_id: UUID,
+    opportunity_id: UUID,
+    coroutines: Sequence[RaceCoroutine],
     hold_seconds: float = 0.1,
-):
+) -> list[RaceResult]:
     with admin_conn.transaction():
         admin_conn.execute(
             """
@@ -82,25 +88,27 @@ async def _start_behind_opportunity_lock(
         tasks = [asyncio.create_task(coroutine) for coroutine in coroutines]
         await asyncio.sleep(hold_seconds)
 
-    return await asyncio.gather(*tasks, return_exceptions=True)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    return list(results)
 
 
 def _terminal_graph(
     admin_conn: PgConnection,
     *,
-    organization_id,
-    opportunity_id,
-    offer_id,
-):
+    organization_id: UUID,
+    opportunity_id: UUID,
+    offer_id: UUID,
+) -> TerminalGraph:
     row = admin_conn.execute(
         """
         SELECT so.status,
                h.status,
                o.status,
-               (SELECT count(*)
-                  FROM request_engine.reservations r
-                 WHERE r.organization_id = so.organization_id
-                   AND r.id = h.reservation_id),
+               (SELECT count(DISTINCT cc.reservation_id)
+                  FROM request_engine.capacity_claims cc
+                 WHERE cc.organization_id = so.organization_id
+                   AND cc.hold_id = h.id
+                   AND cc.reservation_id IS NOT NULL),
                (SELECT count(*)
                   FROM request_engine.slot_offers active_offer
                  WHERE active_offer.organization_id = so.organization_id
@@ -120,7 +128,7 @@ def _terminal_graph(
         (organization_id, opportunity_id, offer_id),
     ).fetchone()
     assert row is not None
-    return row
+    return cast(TerminalGraph, row)
 
 
 @pytest.mark.asyncio
