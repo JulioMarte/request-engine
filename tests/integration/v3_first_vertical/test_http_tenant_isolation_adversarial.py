@@ -345,8 +345,11 @@ async def test_tenant_bound_appointment_option_cannot_be_replayed_by_another_ten
                 "Idempotency-Key": f"foreign-option-{uuid4().hex}",
             },
         )
-        assert response.status_code in {400, 409, 422}
-        assert response.status_code < 500
+        assert _error_shape(response) == (422, "appointment_option_invalid", "fix_request")
+        assert response.json()["error"]["message"] == (
+            "the appointment option is invalid for this request"
+        )
+        assert response.json()["error"]["details"] == {}
 
     cross_tenant_reservations = admin_conn.execute(
         """
