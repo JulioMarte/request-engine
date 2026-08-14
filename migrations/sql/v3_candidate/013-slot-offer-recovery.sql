@@ -52,14 +52,17 @@ BEGIN
      WHERE h.organization_id = offer_row.organization_id
        AND h.id = offer_row.capacity_hold_id;
 
-    SELECT o, ov.offering_id
-      INTO STRICT opportunity_row, opportunity_offering_id
+    SELECT o
+      INTO STRICT opportunity_row
       FROM request_engine.slot_opportunities o
-      JOIN request_engine.offering_versions ov
-        ON ov.organization_id = o.organization_id
-       AND ov.id = o.offering_version_id
      WHERE o.organization_id = offer_row.organization_id
        AND o.id = offer_row.slot_opportunity_id;
+
+    SELECT ov.offering_id
+      INTO STRICT opportunity_offering_id
+      FROM request_engine.offering_versions ov
+     WHERE ov.organization_id = opportunity_row.organization_id
+       AND ov.id = opportunity_row.offering_version_id;
 
     SELECT w
       INTO STRICT waitlist_row
