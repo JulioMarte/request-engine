@@ -5,11 +5,15 @@ from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.queue.api.models import (
     JoinQueueBody,
+    JoinWaitlistBody,
     LeaveQueueBody,
+    LeaveWaitlistBody,
     QueueEntryView,
     QueueStatusView,
     ServiceQueueView,
+    WaitlistEntryView,
 )
+from request_engine.modules.queue.application.authority import WAITLIST_SUBJECT_OVERRIDE_PERMISSION
 from request_engine.modules.queue.application.commands.call_next import (
     CallNextCommand,
     CallNextExecutor,
@@ -20,14 +24,29 @@ from request_engine.modules.queue.application.commands.join_queue import (
     JoinQueueExecutor,
     join_queue,
 )
+from request_engine.modules.queue.application.commands.join_waitlist import (
+    JoinWaitlistCommand,
+    JoinWaitlistExecutor,
+    join_waitlist,
+)
 from request_engine.modules.queue.application.commands.leave_queue import (
     LeaveQueueCommand,
     LeaveQueueExecutor,
     leave_queue,
 )
+from request_engine.modules.queue.application.commands.leave_waitlist import (
+    LeaveWaitlistCommand,
+    LeaveWaitlistExecutor,
+    leave_waitlist,
+)
+from request_engine.modules.queue.application.errors import WaitlistEntryNotFound
 from request_engine.modules.queue.application.queries.get_queue_status import (
     QueueStatusReader,
     get_queue_status,
+)
+from request_engine.modules.queue.application.queries.get_waitlist_entry import (
+    WaitlistEntryReader,
+    get_waitlist_entry,
 )
 from request_engine.modules.queue.application.queries.list_service_queues import (
     ServiceQueueCatalogReader,
@@ -51,9 +70,12 @@ def create_router(
     leave_executor: LeaveQueueExecutor,
     reader: QueueStatusReader,
     catalog_reader: ServiceQueueCatalogReader,
+    waitlist_join_executor: JoinWaitlistExecutor,
+    waitlist_leave_executor: LeaveWaitlistExecutor,
+    waitlist_reader: WaitlistEntryReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
-    router = APIRouter(prefix="/v1/queues", tags=["queues"])
+    router = APIRouter(prefix="/v1", tags=["queues"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
@@ -147,35 +169,114 @@ def create_router(
         )
         return QueueEntryView.from_contract(entry) if entry is not None else None
 
+    async def join_waitlist_entry(
+        body: JoinWaitlistBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.join")
+        entry = await join_waitlist(
+            waitlist_join_executor,
+            JoinWaitlistCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                offering_id=body.offering_id,
+                subject_party_id=body.subject_party_id,
+                location_id=body.location_id,
+                preferred_resource_id=body.preferred_resource_id,
+                earliest_start=body.earliest_start,
+                latest_start=body.latest_start,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return WaitlistEntryView.from_contract(entry)
+
+    async def waitlist_entry_status(
+        waitlist_entry_id: UUID,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.read")
+        entry = await get_waitlist_entry(
+            waitlist_reader,
+            organization_id=actor.organization_id,
+            principal_id=actor.principal_id,
+            waitlist_entry_id=waitlist_entry_id,
+            allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+        )
+        if entry is None:
+            raise WaitlistEntryNotFound(waitlist_entry_id)
+        return WaitlistEntryView.from_contract(entry)
+
+    async def leave_waitlist_entry(
+        waitlist_entry_id: UUID,
+        body: LeaveWaitlistBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.leave")
+        entry = await leave_waitlist(
+            waitlist_leave_executor,
+            LeaveWaitlistCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                waitlist_entry_id=waitlist_entry_id,
+                expected_revision=body.expected_revision,
+                reason=body.reason,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return WaitlistEntryView.from_contract(entry)
+
     router.add_api_route(
-        "",
+        "/queues",
         queues,
         methods=["GET"],
         response_model=tuple[ServiceQueueView, ...],
     )
     router.add_api_route(
-        "/{queue_id}/join",
+        "/queues/{queue_id}/join",
         join,
         methods=["POST"],
         response_model=QueueEntryView,
         status_code=status.HTTP_201_CREATED,
     )
     router.add_api_route(
-        "/{queue_id}/status",
+        "/queues/{queue_id}/status",
         queue_status,
         methods=["GET"],
         response_model=QueueStatusView,
     )
     router.add_api_route(
-        "/{queue_id}/entries/{queue_entry_id}/leave",
+        "/queues/{queue_id}/entries/{queue_entry_id}/leave",
         leave,
         methods=["POST"],
         response_model=QueueEntryView,
     )
     router.add_api_route(
-        "/{queue_id}/call-next",
+        "/queues/{queue_id}/call-next",
         call_next_entry,
         methods=["POST"],
         response_model=QueueEntryView | None,
+    )
+    router.add_api_route(
+        "/waitlist",
+        join_waitlist_entry,
+        methods=["POST"],
+        response_model=WaitlistEntryView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    router.add_api_route(
+        "/waitlist/{waitlist_entry_id}",
+        waitlist_entry_status,
+        methods=["GET"],
+        response_model=WaitlistEntryView,
+    )
+    router.add_api_route(
+        "/waitlist/{waitlist_entry_id}/leave",
+        leave_waitlist_entry,
+        methods=["POST"],
+        response_model=WaitlistEntryView,
     )
     return router
