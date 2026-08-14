@@ -100,7 +100,6 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.PUBLIC,
         "Read structured public/operational business information.",
         legacy_aliases=frozenset({"business.read"}),
-        runtime_available=False,
     ),
     _query(
         "catalog.search_offerings",
