@@ -70,7 +70,15 @@ def create_router(
     reader: RequestReader,
     definition_resolver: RequestDefinitionResolver,
     actor_resolver: ActorResolver,
+    include_internal: bool = False,
 ) -> APIRouter:
+    """Build the Request HTTP surface.
+
+    Public compositions omit internal processing commands entirely. Trusted
+    integration compositions may opt in explicitly instead of relying on
+    OpenAPI hiding as a security boundary.
+    """
+
     router = APIRouter(prefix="/v1/requests", tags=["requests"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
@@ -235,22 +243,23 @@ def create_router(
         methods=["GET"],
         response_model=RequestView,
     )
-    add_capability_route(
-        router,
-        "/{request_id}/result",
-        record_result,
-        capability="requests.record_result",
-        methods=["POST"],
-        response_model=RequestView,
-    )
-    add_capability_route(
-        router,
-        "/{request_id}/complete",
-        complete,
-        capability="requests.complete",
-        methods=["POST"],
-        response_model=RequestView,
-    )
+    if include_internal:
+        add_capability_route(
+            router,
+            "/{request_id}/result",
+            record_result,
+            capability="requests.record_result",
+            methods=["POST"],
+            response_model=RequestView,
+        )
+        add_capability_route(
+            router,
+            "/{request_id}/complete",
+            complete,
+            capability="requests.complete",
+            methods=["POST"],
+            response_model=RequestView,
+        )
     add_capability_route(
         router,
         "/{request_id}/cancel",
@@ -259,12 +268,13 @@ def create_router(
         methods=["POST"],
         response_model=RequestView,
     )
-    add_capability_route(
-        router,
-        "/{request_id}/fail",
-        fail,
-        capability="requests.fail",
-        methods=["POST"],
-        response_model=RequestView,
-    )
+    if include_internal:
+        add_capability_route(
+            router,
+            "/{request_id}/fail",
+            fail,
+            capability="requests.fail",
+            methods=["POST"],
+            response_model=RequestView,
+        )
     return router
