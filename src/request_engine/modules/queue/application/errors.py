@@ -111,3 +111,45 @@ class SlotOpportunitySourceConflict(QueueError):
             f"source event {source_event_id} is already bound to a different SlotOpportunity"
         )
         self.source_event_id = source_event_id
+
+
+class SlotOpportunityNotFound(QueueError):
+    def __init__(self, opportunity_id: UUID) -> None:
+        super().__init__(f"SlotOpportunity {opportunity_id} was not found")
+        self.opportunity_id = opportunity_id
+
+
+class SlotOpportunityNotOpen(QueueError):
+    def __init__(self, opportunity_id: UUID, status: str) -> None:
+        super().__init__(f"SlotOpportunity {opportunity_id} is not open: {status}")
+        self.opportunity_id = opportunity_id
+        self.status = status
+
+
+class SlotOfferNotFound(QueueError):
+    def __init__(self, slot_offer_id: UUID) -> None:
+        super().__init__(f"SlotOffer {slot_offer_id} was not found")
+        self.slot_offer_id = slot_offer_id
+
+
+class SlotOfferRevisionConflict(QueueError):
+    def __init__(self, slot_offer_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"SlotOffer {slot_offer_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.slot_offer_id = slot_offer_id
+        self.expected = expected
+        self.actual = actual
+
+
+class SlotOfferNotActionable(QueueError):
+    def __init__(self, slot_offer_id: UUID, status: str) -> None:
+        super().__init__(f"SlotOffer {slot_offer_id} is not actionable from status {status}")
+        self.slot_offer_id = slot_offer_id
+        self.status = status
+
+
+class SlotOfferExpired(QueueError):
+    def __init__(self, slot_offer_id: UUID) -> None:
+        super().__init__(f"SlotOffer {slot_offer_id} has expired")
+        self.slot_offer_id = slot_offer_id

@@ -3,6 +3,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
+from request_engine.modules.booking.contracts.appointments import Reservation
+
 
 class WaitlistEntryStatus(StrEnum):
     ACTIVE = "active"
@@ -16,6 +18,14 @@ class SlotOpportunityStatus(StrEnum):
     FILLED = "filled"
     CLOSED = "closed"
     EXPIRED = "expired"
+
+
+class SlotOfferStatus(StrEnum):
+    OFFERED = "offered"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,3 +54,27 @@ class SlotOpportunity:
     status: SlotOpportunityStatus
     revision: int
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SlotOffer:
+    id: UUID
+    slot_opportunity_id: UUID
+    waitlist_entry_id: UUID
+    capacity_hold_id: UUID
+    expires_at: datetime
+    status: SlotOfferStatus
+    revision: int
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptedSlotOffer:
+    offer: SlotOffer
+    reservation: Reservation
+
+
+@dataclass(frozen=True, slots=True)
+class SlotOfferResolution:
+    offer: SlotOffer
+    next_offer: SlotOffer | None
