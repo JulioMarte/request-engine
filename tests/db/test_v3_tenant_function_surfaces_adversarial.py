@@ -142,10 +142,13 @@ def test_complete_idempotency_hides_foreign_records_like_nonexistent_records(
             "SELECT request_cmd.complete_idempotency(%s, '{}'::jsonb)",
             (uuid4(),),
         ).fetchone() == (False,)
-        assert app_a.execute(
-            "SELECT id FROM request_engine.idempotency_records WHERE id = %s",
-            (foreign_id,),
-        ).fetchall() == []
+        assert (
+            app_a.execute(
+                "SELECT id FROM request_engine.idempotency_records WHERE id = %s",
+                (foreign_id,),
+            ).fetchall()
+            == []
+        )
     finally:
         app_a.close()
         app_b.close()
