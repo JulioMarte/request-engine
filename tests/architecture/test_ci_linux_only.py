@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 WORKFLOWS_DIR = Path(".github/workflows")
 FORBIDDEN_RUNNERS = ("windows", "macos", "self-hosted")
 
