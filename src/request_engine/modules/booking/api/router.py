@@ -168,7 +168,6 @@ def create_router(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 reservation_id=reservation_id,
-                option_offering_version_id=option.offering_version_id,
                 start_at=option.start_at,
                 resources=option.resources,
                 location_id=option.location_id,
