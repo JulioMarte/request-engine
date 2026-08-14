@@ -18,6 +18,7 @@ files=(
   "011-idempotency-error-contract.sql"
   "012-waitlist-foundation.sql"
   "013-slot-offer-recovery.sql"
+  "014-reservation-lifecycle.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"

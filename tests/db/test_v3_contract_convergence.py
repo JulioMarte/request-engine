@@ -347,6 +347,7 @@ def test_all_revision_managed_aggregates_install_revision_guard(
         "requests",
         "capacity_holds",
         "reservations",
+        "reservation_attendance",
         "service_queues",
         "queue_entries",
         "waitlist_entries",
