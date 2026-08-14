@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
@@ -73,9 +74,11 @@ class WorkerRuntimeConfig:
     claim_batch_size: int = 8
     lease_duration: timedelta = timedelta(seconds=60)
     heartbeat_interval: timedelta = timedelta(seconds=20)
+    processing_timeout: timedelta = timedelta(minutes=5)
     idle_sleep: timedelta = timedelta(milliseconds=500)
     retry_base: timedelta = timedelta(seconds=5)
     retry_cap: timedelta = timedelta(minutes=5)
+    retry_jitter_fraction: float = 0.2
 
     def __post_init__(self) -> None:
         if self.max_concurrency <= 0:
@@ -88,10 +91,14 @@ class WorkerRuntimeConfig:
             raise ValueError("heartbeat_interval must be positive")
         if self.heartbeat_interval >= self.lease_duration:
             raise ValueError("heartbeat_interval must be shorter than lease_duration")
+        if self.processing_timeout <= timedelta(0) or self.processing_timeout > timedelta(hours=24):
+            raise ValueError("processing_timeout must be > 0 and <= 24 hours")
         if self.idle_sleep < timedelta(0):
             raise ValueError("idle_sleep cannot be negative")
         if self.retry_base < timedelta(0) or self.retry_cap < self.retry_base:
             raise ValueError("retry bounds are invalid")
+        if not 0.0 <= self.retry_jitter_fraction <= 0.5:
+            raise ValueError("retry_jitter_fraction must be between 0.0 and 0.5")
 
 
 class FencedWorkerRuntime[TLease: WorkLease]:
@@ -100,6 +107,10 @@ class FencedWorkerRuntime[TLease: WorkLease]:
     A batch never claims more rows than can execute concurrently. If heartbeat
     renewal loses the claim token, the runtime does not finalize that lease;
     the new owner is authoritative and must replay the idempotent work.
+
+    Processing is bounded by ``processing_timeout``. Processors must remain
+    cancellation-safe and provider/network timeouts should be shorter than the
+    runtime timeout so a live process cannot renew one lease indefinitely.
     """
 
     def __init__(
@@ -139,7 +150,10 @@ class FencedWorkerRuntime[TLease: WorkLease]:
         )
         failure: Exception | None = None
         try:
-            await self._processor.process(lease)
+            async with asyncio.timeout(self._config.processing_timeout.total_seconds()):
+                await self._processor.process(lease)
+        except TimeoutError:
+            failure = RetryableWorkError("processing_timeout")
         except Exception as exc:
             failure = exc
         finally:
@@ -172,7 +186,7 @@ class FencedWorkerRuntime[TLease: WorkLease]:
         )
         retry_state = await self._store.retry_after(
             lease,
-            delay=self._retry_delay(lease.attempt_count),
+            delay=self._retry_delay(lease),
             error_class=error_class,
         )
         if retry_state == "stale":
@@ -208,8 +222,18 @@ class FencedWorkerRuntime[TLease: WorkLease]:
                     lost_lease.set()
                     return
 
-    def _retry_delay(self, attempt_count: int) -> timedelta:
-        exponent = max(0, min(attempt_count - 1, 20))
+    def _retry_delay(self, lease: TLease) -> timedelta:
+        exponent = max(0, min(lease.attempt_count - 1, 20))
         base_seconds = self._config.retry_base.total_seconds()
         cap_seconds = self._config.retry_cap.total_seconds()
-        return timedelta(seconds=min(base_seconds * (2**exponent), cap_seconds))
+        bounded_seconds = min(base_seconds * (2**exponent), cap_seconds)
+        jitter = self._config.retry_jitter_fraction
+        if jitter == 0.0 or bounded_seconds == 0.0:
+            return timedelta(seconds=bounded_seconds)
+
+        digest = hashlib.blake2b(
+            f"{lease.id}:{lease.attempt_count}".encode(), digest_size=8
+        ).digest()
+        unit = int.from_bytes(digest, "big") / ((1 << 64) - 1)
+        factor = (1.0 - jitter) + (2.0 * jitter * unit)
+        return timedelta(seconds=min(bounded_seconds * factor, cap_seconds))
