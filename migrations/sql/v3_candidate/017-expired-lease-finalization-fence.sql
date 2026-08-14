@@ -6,6 +6,9 @@ SET search_path = request_engine, request_cmd, pg_catalog;
 -- hardening, an expired worker could still complete/retry/dead-letter work in
 -- the interval after lease expiry but before another worker reclaimed it.
 -- Every worker-side terminal/retry mutation now fences on the PostgreSQL clock.
+-- Retry paths validate the live lease with SELECT ... FOR UPDATE. That row lock
+-- is the linearization point; after it succeeds, no reclaimer can become owner
+-- until the retry transition commits, so the UPDATE must not re-read the clock.
 
 CREATE OR REPLACE FUNCTION request_cmd.complete_scheduled_action(
     p_action_id uuid,
@@ -78,8 +81,7 @@ BEGIN
            updated_at = clock_timestamp()
      WHERE id = p_action_id
        AND status = 'leased'
-       AND claim_token = p_claim_token
-       AND lease_until > clock_timestamp();
+       AND claim_token = p_claim_token;
 
     RETURN v_status;
 END
@@ -132,8 +134,7 @@ BEGIN
            updated_at = clock_timestamp()
      WHERE id = p_action_id
        AND status = 'leased'
-       AND claim_token = p_claim_token
-       AND lease_until > clock_timestamp();
+       AND claim_token = p_claim_token;
 
     RETURN v_status;
 END
@@ -238,8 +239,7 @@ BEGIN
            updated_at = clock_timestamp()
      WHERE id = p_message_id
        AND status = 'leased'
-       AND claim_token = p_claim_token
-       AND lease_until > clock_timestamp();
+       AND claim_token = p_claim_token;
 
     RETURN v_status;
 END
@@ -292,8 +292,7 @@ BEGIN
            updated_at = clock_timestamp()
      WHERE id = p_message_id
        AND status = 'leased'
-       AND claim_token = p_claim_token
-       AND lease_until > clock_timestamp();
+       AND claim_token = p_claim_token;
 
     RETURN v_status;
 END
@@ -404,8 +403,7 @@ BEGIN
            updated_at = clock_timestamp()
      WHERE id = p_provider_event_row_id
        AND status = 'leased'
-       AND claim_token = p_claim_token
-       AND lease_until > clock_timestamp();
+       AND claim_token = p_claim_token;
 
     RETURN v_status;
 END
