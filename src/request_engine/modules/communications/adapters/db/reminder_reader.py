@@ -1,10 +1,9 @@
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
 
-from request_engine.modules.communications.adapters.db.reminder_commands import reminder_plan_from_row
 from request_engine.modules.communications.adapters.db.reminder_authority import REMINDER_MANAGE_SCOPE
+from request_engine.modules.communications.adapters.db.reminder_commands import reminder_plan_from_row
 from request_engine.modules.communications.contracts.reminders import ReminderPlan
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
