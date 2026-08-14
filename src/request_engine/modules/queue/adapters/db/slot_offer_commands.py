@@ -316,7 +316,7 @@ class PostgresSlotOfferCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _resolution_from_json(cast(dict[str, object], replay))
+                return _resolution_from_json(replay)
 
             resolution = await self._resolve_offer(
                 session,
@@ -354,7 +354,7 @@ class PostgresSlotOfferCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _resolution_from_json(cast(dict[str, object], replay))
+                return _resolution_from_json(replay)
 
             probe = await _read_offer(session, command.organization_id, command.slot_offer_id)
             opportunity = await _lock_opportunity(

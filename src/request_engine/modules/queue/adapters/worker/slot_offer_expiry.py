@@ -1,4 +1,3 @@
-from typing import cast
 from uuid import UUID
 
 from request_engine.modules.queue.application.commands.expire_slot_offer import (
@@ -38,7 +37,7 @@ class SlotOfferExpiryScheduledHandler:
                 organization_id=lease.organization_id,
                 principal_id=UUID(raw_principal_id),
                 slot_offer_id=UUID(raw_offer_id),
-                expected_revision=cast(int, raw_revision),
+                expected_revision=raw_revision,
                 idempotency_key=f"scheduled-action:{lease.id}",
             ),
         )
