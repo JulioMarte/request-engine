@@ -2,22 +2,36 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI
 
-from request_engine.modules.booking.contracts.slot_offer_capacity import SlotOfferCapacityPort
-from request_engine.modules.queue.adapters.db.leave_queue_commands import PostgresLeaveQueueCommands
+from request_engine.modules.booking.contracts.slot_offer_capacity import (
+    SlotOfferCapacityPort,
+)
+from request_engine.modules.queue.adapters.db.leave_queue_commands import (
+    PostgresLeaveQueueCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.adapters.db.service_queue_reader import PostgresServiceQueueReader
-from request_engine.modules.queue.adapters.db.slot_offer_commands import PostgresSlotOfferCommands
-from request_engine.modules.queue.adapters.db.waitlist_commands import PostgresWaitlistCommands
-from request_engine.modules.queue.adapters.db.waitlist_reader import PostgresWaitlistEntryReader
+from request_engine.modules.queue.adapters.db.service_queue_reader import (
+    PostgresServiceQueueReader,
+)
+from request_engine.modules.queue.adapters.db.slot_offer_commands import (
+    PostgresSlotOfferCommands,
+)
+from request_engine.modules.queue.adapters.db.waitlist_commands import (
+    PostgresWaitlistCommands,
+)
+from request_engine.modules.queue.adapters.db.waitlist_reader import (
+    PostgresWaitlistEntryReader,
+)
 from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.router import create_router
 from request_engine.modules.queue.application.errors import QueueError
-from request_engine.modules.queue.application.slot_offer_notifications import SlotOfferNotificationPort
+from request_engine.modules.queue.application.slot_offer_notifications import (
+    SlotOfferNotificationPort,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
