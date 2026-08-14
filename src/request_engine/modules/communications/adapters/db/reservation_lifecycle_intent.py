@@ -6,7 +6,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.contracts.lifecycle import ReservationLifecycleSnapshot
-from request_engine.modules.booking.domain.lifecycle_policy import reservation_lifecycle_policy
 from request_engine.modules.communications.adapters.db.task_store import (
     CommunicationTaskIntent,
     insert_or_reuse_communication_task,
@@ -28,18 +27,17 @@ class PostgresReservationLifecycleNotificationIntent:
         *,
         source_event_id: UUID,
     ) -> None:
-        policy = reservation_lifecycle_policy(snapshot.booking_policy_snapshot)
+        del source_event_id
+        plan = snapshot.notification_plan
         async with tenant_transaction(self._session_factory, snapshot.organization_id) as session:
             await _cancel_pending_for_reservation(
                 session, snapshot.organization_id, snapshot.reservation_id
             )
             if snapshot.status != "confirmed":
                 return
-            channel_policy = policy.communications.channel_policy
-            has_channels = isinstance(channel_policy.get("channels"), list) and bool(
-                cast(list[object], channel_policy.get("channels"))
-            )
-            if not has_channels:
+            channel_policy = plan.channel_policy
+            raw_channels = channel_policy.get("channels")
+            if not isinstance(raw_channels, list) or not raw_channels:
                 return
             await validate_recipient_and_contact_point(
                 session,
@@ -57,7 +55,7 @@ class PostgresReservationLifecycleNotificationIntent:
                 "end_at": snapshot.end_at.isoformat(),
                 "location_id": str(snapshot.location_id) if snapshot.location_id else None,
             }
-            if policy.communications.confirmation and snapshot.start_at > db_now:
+            if plan.confirmation and snapshot.start_at > db_now:
                 await _materialize(
                     session,
                     snapshot=snapshot,
@@ -72,7 +70,7 @@ class PostgresReservationLifecycleNotificationIntent:
                     not_before=db_now,
                     expires_at=snapshot.start_at,
                 )
-            for offset in policy.communications.reminders_before_minutes:
+            for offset in plan.reminders_before_minutes:
                 not_before = snapshot.start_at - timedelta(minutes=offset)
                 if not_before <= db_now or not_before >= snapshot.start_at:
                     continue
@@ -90,8 +88,8 @@ class PostgresReservationLifecycleNotificationIntent:
                     not_before=not_before,
                     expires_at=snapshot.start_at,
                 )
-            request_offset = policy.attendance.attendance_request_before_minutes
-            if policy.attendance.confirmation_required and request_offset is not None:
+            request_offset = plan.attendance_request_before_minutes
+            if plan.attendance_confirmation_required and request_offset is not None:
                 not_before = snapshot.start_at - timedelta(minutes=request_offset)
                 if db_now < not_before < snapshot.start_at:
                     await _materialize(
