@@ -26,6 +26,8 @@ def test_public_capability_route_exports_stable_machine_metadata() -> None:
     assert operation["x-request-engine-idempotency"] == "required"
     assert operation["x-request-engine-expected-revision"] == "required"
     assert operation["x-request-engine-exposure"] == "public"
+    assert operation["x-request-engine-party-scope"] == "appointments.manage"
+    assert operation["x-request-engine-override-capability"] == "appointments.subject_override"
 
 
 def test_internal_capability_route_is_not_published_in_openapi() -> None:
