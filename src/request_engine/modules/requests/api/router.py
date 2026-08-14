@@ -50,6 +50,7 @@ from request_engine.modules.requests.contracts.request import (
     ExternalCorrelationInput,
     RequestParticipantInput,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -98,10 +99,7 @@ def create_router(
                 requester_party_id=body.requester_party_id,
                 recipient_party_id=body.recipient_party_id,
                 participants=tuple(
-                    RequestParticipantInput(
-                        party_id=item.party_id,
-                        role_key=item.role_key,
-                    )
+                    RequestParticipantInput(party_id=item.party_id, role_key=item.role_key)
                     for item in body.participants
                 ),
                 correlations=tuple(
@@ -220,40 +218,52 @@ def create_router(
         )
         return RequestView.from_contract(request)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/definitions/{request_key}/submit",
         submit_request,
+        capability="requests.submit",
         methods=["POST"],
         response_model=SubmittedRequestView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{request_id}",
         read_request,
+        capability="requests.read",
         methods=["GET"],
         response_model=RequestView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{request_id}/result",
         record_result,
+        capability="requests.record_result",
         methods=["POST"],
         response_model=RequestView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{request_id}/complete",
         complete,
+        capability="requests.complete",
         methods=["POST"],
         response_model=RequestView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{request_id}/cancel",
         cancel,
+        capability="requests.cancel",
         methods=["POST"],
         response_model=RequestView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{request_id}/fail",
         fail,
+        capability="requests.fail",
         methods=["POST"],
         response_model=RequestView,
     )
