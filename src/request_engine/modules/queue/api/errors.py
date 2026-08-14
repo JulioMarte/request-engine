@@ -14,6 +14,7 @@ from request_engine.modules.queue.application.errors import (
     QueueNotFound,
     SlotOpportunitySourceConflict,
     SubjectAuthorityRequired,
+    TenantReferenceNotUsable,
     WaitlistEntryNotCancellable,
     WaitlistEntryNotFound,
     WaitlistEntryRevisionConflict,
@@ -32,6 +33,13 @@ async def queue_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, TenantReferenceNotUsable):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="tenant_reference_not_usable",
+            message="a referenced entity is not usable for this tenant",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"reference_kind": exc.reference_kind},
+        )
     if isinstance(exc, SubjectAuthorityRequired):
         return status.HTTP_403_FORBIDDEN, ErrorBody(
             code="party_authority_required",
