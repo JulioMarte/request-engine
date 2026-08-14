@@ -2,7 +2,9 @@
 
 from request_engine.modules.booking.contracts.slot_offer_capacity import SlotOfferCapacityPort
 from request_engine.modules.queue.adapters.db.slot_offer_commands import PostgresSlotOfferCommands
-from request_engine.modules.queue.application.slot_offer_notifications import SlotOfferNotificationPort
+from request_engine.modules.queue.application.slot_offer_notifications import (
+    SlotOfferNotificationPort,
+)
 from request_engine.platform.db.session import SessionFactory
 
 

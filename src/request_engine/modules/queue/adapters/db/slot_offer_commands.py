@@ -17,13 +17,18 @@ from request_engine.modules.booking.contracts.slot_offer_capacity import (
 )
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.application.authority import MANAGE_WAITLIST_SCOPE
-from request_engine.modules.queue.application.commands.accept_slot_offer import AcceptSlotOfferCommand
-from request_engine.modules.queue.application.commands.decline_slot_offer import DeclineSlotOfferCommand
-from request_engine.modules.queue.application.commands.expire_slot_offer import ExpireSlotOfferCommand
+from request_engine.modules.queue.application.commands.accept_slot_offer import (
+    AcceptSlotOfferCommand,
+)
+from request_engine.modules.queue.application.commands.decline_slot_offer import (
+    DeclineSlotOfferCommand,
+)
+from request_engine.modules.queue.application.commands.expire_slot_offer import (
+    ExpireSlotOfferCommand,
+)
 from request_engine.modules.queue.application.commands.offer_next_waitlist_candidate import (
     OfferNextWaitlistCandidateCommand,
 )
-from request_engine.modules.queue.application.slot_offer_notifications import SlotOfferNotificationPort
 from request_engine.modules.queue.application.errors import (
     SlotOfferExpired,
     SlotOfferNotActionable,
@@ -31,6 +36,9 @@ from request_engine.modules.queue.application.errors import (
     SlotOfferRevisionConflict,
     SlotOpportunityNotFound,
     SlotOpportunityNotOpen,
+)
+from request_engine.modules.queue.application.slot_offer_notifications import (
+    SlotOfferNotificationPort,
 )
 from request_engine.modules.queue.contracts.waitlist import (
     AcceptedSlotOffer,
@@ -105,7 +113,9 @@ class PostgresSlotOfferCommands:
             )
             if existing is not None:
                 offer = _offer_from_row(existing)
-                await complete_idempotency(session, idempotency_id, {"offer": _offer_to_json(offer)})
+                await complete_idempotency(
+                    session, idempotency_id, {"offer": _offer_to_json(offer)}
+                )
                 return offer
 
             offer = await self._issue_next_locked(
@@ -992,7 +1002,10 @@ def _reservation_to_json(reservation: Reservation) -> dict[str, object]:
 
 
 def _reservation_from_json(data: dict[str, object]) -> Reservation:
-    from request_engine.modules.booking.contracts.appointments import AttendanceStatus, ReservationStatus
+    from request_engine.modules.booking.contracts.appointments import (
+        AttendanceStatus,
+        ReservationStatus,
+    )
 
     location_raw = cast(str | None, data["location_id"])
     return Reservation(

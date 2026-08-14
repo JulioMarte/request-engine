@@ -478,7 +478,12 @@ def test_database_rejects_offer_hold_graph_mismatch(admin_conn: PgConnection) ->
             organization_id, offering_id, subject_party_id, location_id
         ) VALUES (%s, %s, %s, %s) RETURNING id
         """,
-        (fixture.organization_id, fixture.offering_id, fixture.first_subject_id, fixture.location_id),
+        (
+            fixture.organization_id,
+            fixture.offering_id,
+            fixture.first_subject_id,
+            fixture.location_id,
+        ),
     )
     opportunity_id = _uuid_row(
         admin_conn,
@@ -488,8 +493,12 @@ def test_database_rejects_offer_hold_graph_mismatch(admin_conn: PgConnection) ->
         ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)')) RETURNING id
         """,
         (
-            fixture.organization_id, fixture.offering_version_id, fixture.location_id,
-            uuid4(), fixture.start_at, fixture.end_at,
+            fixture.organization_id,
+            fixture.offering_version_id,
+            fixture.location_id,
+            uuid4(),
+            fixture.start_at,
+            fixture.end_at,
         ),
     )
     expires_at = datetime.now(UTC) + timedelta(minutes=5)
@@ -502,21 +511,31 @@ def test_database_rejects_offer_hold_graph_mismatch(admin_conn: PgConnection) ->
         ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)'), %s) RETURNING id
         """,
         (
-            fixture.organization_id, fixture.offering_version_id, wrong_subject,
-            fixture.location_id, fixture.start_at, fixture.end_at, expires_at,
+            fixture.organization_id,
+            fixture.offering_version_id,
+            wrong_subject,
+            fixture.location_id,
+            fixture.start_at,
+            fixture.end_at,
+            expires_at,
         ),
     )
-    with pytest.raises(CheckViolation, match="Hold subject does not match"):
-        with admin_conn.transaction():
-            admin_conn.execute(
-                """
+    with (
+        pytest.raises(CheckViolation, match="Hold subject does not match"),
+        admin_conn.transaction(),
+    ):
+        admin_conn.execute(
+            """
                 INSERT INTO request_engine.slot_offers (
                     organization_id, slot_opportunity_id, waitlist_entry_id,
                     capacity_hold_id, expires_at
                 ) VALUES (%s, %s, %s, %s, %s)
                 """,
-                (
-                    fixture.organization_id, opportunity_id, waitlist_entry_id,
-                    hold_id, expires_at,
-                ),
-            )
+            (
+                fixture.organization_id,
+                opportunity_id,
+                waitlist_entry_id,
+                hold_id,
+                expires_at,
+            ),
+        )

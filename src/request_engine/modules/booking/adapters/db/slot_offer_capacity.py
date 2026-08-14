@@ -45,8 +45,8 @@ from request_engine.modules.booking.contracts.slot_offer_capacity import (
     SlotOfferCapacityUnavailable,
 )
 from request_engine.modules.booking.domain.availability import (
-    AvailableInterval,
     AvailabilityException,
+    AvailableInterval,
     CapacityModel,
     LiveCapacityClaim,
     RecurringAvailability,
@@ -204,18 +204,13 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
             if _combination_has_capacity(combination, interval):
                 all_available.append(combination)
         if not all_available:
-            raise SlotOfferCapacityUnavailable(
-                "SlotOpportunity no longer has eligible capacity"
-            )
+            raise SlotOfferCapacityUnavailable("SlotOpportunity no longer has eligible capacity")
 
         eligible_combinations = [
             combination
             for combination in all_available
             if request.preferred_resource_id is None
-            or any(
-                value.resource_id == request.preferred_resource_id
-                for value in combination
-            )
+            or any(value.resource_id == request.preferred_resource_id for value in combination)
         ]
         if not eligible_combinations:
             raise SlotOfferCandidatePreferenceUnavailable(
