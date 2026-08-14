@@ -61,6 +61,27 @@ class ReminderPlanNotActive(CommunicationsError):
         self.status = status
 
 
+class ReminderPlanRevisionConflict(CommunicationsError):
+    def __init__(self, reminder_plan_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"ReminderPlan {reminder_plan_id} revision conflict: "
+            f"expected {expected}, current {actual}"
+        )
+        self.reminder_plan_id = reminder_plan_id
+        self.expected = expected
+        self.actual = actual
+
+
+class ReminderSubjectAuthorityRequired(CommunicationsError):
+    def __init__(self, subject_party_id: UUID, scope_key: str) -> None:
+        super().__init__(
+            f"Principal is not authorized to act for Party {subject_party_id} "
+            f"in scope {scope_key}"
+        )
+        self.subject_party_id = subject_party_id
+        self.scope_key = scope_key
+
+
 class UnsupportedScheduledAction(CommunicationsError):
     def __init__(self, owner_module: str, action_type: str, action_version: int) -> None:
         super().__init__(
