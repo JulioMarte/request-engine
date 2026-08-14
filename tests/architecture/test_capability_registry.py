@@ -19,8 +19,6 @@ def test_capability_registry_has_unique_canonical_keys_and_unambiguous_aliases()
             aliases.setdefault(alias, set()).add(definition.key)
 
     assert not (set(aliases) & set(canonical))
-    # Legacy read umbrellas may intentionally fan out during migration. Every other
-    # alias must resolve to a single canonical capability.
     assert {alias: targets for alias, targets in aliases.items() if len(targets) > 1} == {
         "catalog.read": {
             "catalog.get_offering_details",
@@ -42,9 +40,14 @@ def test_party_authority_metadata_points_to_operator_override_capabilities() -> 
         assert override.party_scope is None
 
 
-def test_internal_request_processing_is_not_public_capability_surface() -> None:
+def test_internal_processing_is_not_public_capability_surface() -> None:
     by_key = {definition.key: definition for definition in CAPABILITIES}
-    for key in ("requests.record_result", "requests.complete", "requests.fail"):
+    for key in (
+        "requests.record_result",
+        "requests.complete",
+        "requests.fail",
+        "waitlist.create_opportunity",
+    ):
         assert by_key[key].exposure is CapabilityExposure.INTERNAL
         assert by_key[key].party_scope is None
 
@@ -88,6 +91,9 @@ def test_canonical_registry_contains_expected_v3_public_surface() -> None:
         "queue.join",
         "queue.status",
         "queue.leave",
+        "waitlist.join",
+        "waitlist.read",
+        "waitlist.leave",
         "requests.submit",
         "requests.read",
         "requests.cancel",
