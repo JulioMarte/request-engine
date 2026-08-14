@@ -35,8 +35,11 @@ def test_caller_selected_mutations_declare_expected_revision() -> None:
     for key in (
         "appointments.cancel",
         "appointments.reschedule",
+        "appointments.confirm_attendance",
         "queue.leave",
         "waitlist.leave",
+        "waitlist.accept_offer",
+        "waitlist.decline_offer",
         "requests.cancel",
         "requests.record_result",
         "requests.complete",
@@ -47,6 +50,7 @@ def test_caller_selected_mutations_declare_expected_revision() -> None:
     assert by_key["queue.call_next"].revision is RevisionPolicy.SERVER_SELECTED
     assert by_key["appointments.book"].revision is RevisionPolicy.NONE
     assert by_key["queue.join"].revision is RevisionPolicy.NONE
+    assert by_key["waitlist.join"].revision is RevisionPolicy.NONE
     assert by_key["requests.submit"].revision is RevisionPolicy.NONE
 
 
@@ -83,3 +87,14 @@ def test_discovery_shows_only_granted_operator_capabilities() -> None:
         if item.definition.exposure is CapabilityExposure.OPERATOR
     }
     assert operator_keys == {"queue.call_next"}
+
+
+def test_permission_only_capabilities_are_not_claimed_as_runtime_operations() -> None:
+    by_key = {definition.key: definition for definition in CAPABILITIES}
+    for key in (
+        "appointments.subject_override",
+        "queue.subject_override",
+        "waitlist.subject_override",
+        "requests.party_override",
+    ):
+        assert by_key[key].runtime_available is False
