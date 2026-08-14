@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -8,7 +8,11 @@ from psycopg import Connection, Error
 PgConnection = Connection[Any]
 
 
-def _uuid_row(conn: PgConnection, sql: str, params: tuple[object, ...] = ()) -> UUID:
+def _uuid_row(
+    conn: PgConnection,
+    sql: LiteralString,
+    params: tuple[object, ...] = (),
+) -> UUID:
     row = conn.execute(sql, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
