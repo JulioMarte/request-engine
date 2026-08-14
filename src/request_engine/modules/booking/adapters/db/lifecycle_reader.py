@@ -7,7 +7,9 @@ from sqlalchemy import text
 from request_engine.modules.booking.contracts.lifecycle import (
     ReleasedReservationSlot,
     ReservationLifecycleSnapshot,
+    ReservationNotificationPlan,
 )
+from request_engine.modules.booking.domain.lifecycle_policy import reservation_lifecycle_policy
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
 
@@ -41,6 +43,9 @@ class PostgresReservationLifecycleReader:
             )
         if row is None:
             return None
+        policy = reservation_lifecycle_policy(
+            cast(dict[str, object], row["booking_policy_snapshot"])
+        )
         return ReservationLifecycleSnapshot(
             organization_id=organization_id,
             reservation_id=cast(UUID, row["id"]),
@@ -51,7 +56,16 @@ class PostgresReservationLifecycleReader:
             end_at=cast(datetime, row["end_at"]),
             status=cast(str, row["status"]),
             revision=cast(int, row["revision"]),
-            booking_policy_snapshot=cast(dict[str, object], row["booking_policy_snapshot"]),
+            no_show_after_minutes=policy.attendance.no_show_after_minutes,
+            notification_plan=ReservationNotificationPlan(
+                confirmation=policy.communications.confirmation,
+                reminders_before_minutes=policy.communications.reminders_before_minutes,
+                attendance_confirmation_required=policy.attendance.confirmation_required,
+                attendance_request_before_minutes=(
+                    policy.attendance.attendance_request_before_minutes
+                ),
+                channel_policy=policy.communications.channel_policy,
+            ),
         )
 
     async def get_released_slot(
@@ -109,6 +123,9 @@ class PostgresReservationLifecycleReader:
             else:
                 start_at = cast(datetime, reservation["start_at"])
                 end_at = cast(datetime, reservation["end_at"])
+            policy = reservation_lifecycle_policy(
+                cast(dict[str, object], reservation["booking_policy_snapshot"])
+            )
         return ReleasedReservationSlot(
             organization_id=organization_id,
             reservation_id=reservation_id,
@@ -116,5 +133,6 @@ class PostgresReservationLifecycleReader:
             location_id=cast(UUID | None, reservation["location_id"]),
             start_at=start_at,
             end_at=end_at,
-            booking_policy_snapshot=cast(dict[str, object], reservation["booking_policy_snapshot"]),
+            recovery_enabled=policy.slot_recovery.enabled,
+            minimum_lead_minutes=policy.slot_recovery.minimum_lead_minutes,
         )
