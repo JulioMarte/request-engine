@@ -3,7 +3,6 @@ from uuid import UUID
 
 from request_engine.modules.booking.contracts.lifecycle import ReleasedReservationSlot
 from request_engine.modules.booking.contracts.slot_offer_capacity import SlotOfferCapacityPort
-from request_engine.modules.booking.domain.lifecycle_policy import reservation_lifecycle_policy
 from request_engine.modules.queue.adapters.db.slot_offer_commands import PostgresSlotOfferCommands
 from request_engine.modules.queue.adapters.db.waitlist_commands import PostgresWaitlistCommands
 from request_engine.modules.queue.application.commands.create_slot_opportunity import (
@@ -45,11 +44,10 @@ class PostgresReleasedSlotRecovery:
         source_event_id: UUID,
         principal_id: UUID,
     ) -> tuple[SlotOpportunity, SlotOffer | None] | None:
-        policy = reservation_lifecycle_policy(slot.booking_policy_snapshot)
-        if not policy.slot_recovery.enabled:
+        if not slot.recovery_enabled:
             return None
         now = datetime.now(UTC)
-        if slot.start_at <= now + timedelta(minutes=policy.slot_recovery.minimum_lead_minutes):
+        if slot.start_at <= now + timedelta(minutes=slot.minimum_lead_minutes):
             return None
         opportunity = await create_slot_opportunity(
             self._opportunities,
