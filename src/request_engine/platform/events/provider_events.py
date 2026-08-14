@@ -173,9 +173,17 @@ class PostgresProviderEventWorker:
                 (
                     await session.execute(
                         text(
-                            "SELECT request_cmd.dead_letter_provider_event(:id, :token, :error_class)"
+                            """
+                            SELECT request_cmd.dead_letter_provider_event(
+                                :id, :token, :error_class
+                            )
+                            """
                         ),
-                        {"id": lease.id, "token": lease.claim_token, "error_class": error_class},
+                        {
+                            "id": lease.id,
+                            "token": lease.claim_token,
+                            "error_class": error_class,
+                        },
                     )
                 ).scalar_one(),
             )
@@ -186,8 +194,18 @@ class PostgresProviderEventWorker:
                 bool,
                 (
                     await session.execute(
-                        text("SELECT request_cmd.reject_provider_event(:id, :token, :error_class)"),
-                        {"id": lease.id, "token": lease.claim_token, "error_class": error_class},
+                        text(
+                            """
+                            SELECT request_cmd.reject_provider_event(
+                                :id, :token, :error_class
+                            )
+                            """
+                        ),
+                        {
+                            "id": lease.id,
+                            "token": lease.claim_token,
+                            "error_class": error_class,
+                        },
                     )
                 ).scalar_one(),
             )
