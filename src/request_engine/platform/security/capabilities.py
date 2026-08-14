@@ -123,6 +123,37 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         description="Operate on queue subjects without delegated Party authority.",
     ),
     CapabilityDefinition(
+        key="waitlist.join",
+        exposure=CapabilityExposure.PUBLIC,
+        description="Join an Offering waitlist for an authorized subject Party.",
+        party_scope="waitlist.join",
+        override_capability="waitlist.subject_override",
+    ),
+    CapabilityDefinition(
+        key="waitlist.read",
+        exposure=CapabilityExposure.PUBLIC,
+        description="Read a waitlist entry for an authorized subject Party.",
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
+    ),
+    CapabilityDefinition(
+        key="waitlist.leave",
+        exposure=CapabilityExposure.PUBLIC,
+        description="Cancel an active waitlist entry for an authorized subject Party.",
+        party_scope="waitlist.manage",
+        override_capability="waitlist.subject_override",
+    ),
+    CapabilityDefinition(
+        key="waitlist.subject_override",
+        exposure=CapabilityExposure.OPERATOR,
+        description="Operate on waitlist subjects without delegated Party authority.",
+    ),
+    CapabilityDefinition(
+        key="waitlist.create_opportunity",
+        exposure=CapabilityExposure.INTERNAL,
+        description="Create a deduplicated slot opportunity from a capacity-release event.",
+    ),
+    CapabilityDefinition(
         key="requests.submit",
         exposure=CapabilityExposure.PUBLIC,
         description="Submit durable business demand.",
