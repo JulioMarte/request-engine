@@ -96,7 +96,7 @@ def _desired_communications(
     raw_channels = plan.channel_policy.get("channels")
     if not isinstance(raw_channels, list) or not raw_channels:
         return ()
-    context = {
+    context: dict[str, object] = {
         "reservation_id": str(snapshot.reservation_id),
         "start_at": snapshot.start_at.isoformat(),
         "end_at": snapshot.end_at.isoformat(),

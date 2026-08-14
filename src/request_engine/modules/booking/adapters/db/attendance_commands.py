@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     ensure_reservation_revision,
@@ -475,11 +476,11 @@ class PostgresAttendanceCommands:
 
 
 async def _lock_reservation(
-    session: object, organization_id: UUID, reservation_id: UUID
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
 ) -> RowMapping:
     row = (
         (
-            await cast(object, session).execute(  # type: ignore[attr-defined]
+            await session.execute(
                 text(
                     """
                     SELECT id, status, subject_party_id, revision,
@@ -504,9 +505,9 @@ async def _lock_reservation(
 
 
 async def _ensure_attendance_projection(
-    session: object, organization_id: UUID, reservation_id: UUID
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
 ) -> None:
-    await cast(object, session).execute(  # type: ignore[attr-defined]
+    await session.execute(
         text(
             """
             INSERT INTO request_engine.reservation_attendance (organization_id, reservation_id)
@@ -519,11 +520,11 @@ async def _ensure_attendance_projection(
 
 
 async def _lock_attendance(
-    session: object, organization_id: UUID, reservation_id: UUID
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
 ) -> RowMapping:
     return (
         (
-            await cast(object, session).execute(  # type: ignore[attr-defined]
+            await session.execute(
                 text(
                     """
                     SELECT * FROM request_engine.reservation_attendance
@@ -540,10 +541,10 @@ async def _lock_attendance(
 
 
 async def _active_resource_ids(
-    session: object, organization_id: UUID, reservation_id: UUID
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
 ) -> tuple[UUID, ...]:
     rows = (
-        await cast(object, session).execute(  # type: ignore[attr-defined]
+        await session.execute(
             text(
                 """
                 SELECT DISTINCT resource_id
@@ -561,11 +562,11 @@ async def _active_resource_ids(
 
 
 async def _cancel_booking_lifecycle_actions(
-    session: object,
+    session: AsyncSession,
     organization_id: UUID,
     reservation_id: UUID,
 ) -> None:
-    await cast(object, session).execute(  # type: ignore[attr-defined]
+    await session.execute(
         text(
             """
             UPDATE request_engine.scheduled_actions
@@ -582,11 +583,11 @@ async def _cancel_booking_lifecycle_actions(
 
 
 async def _read_state(
-    session: object, organization_id: UUID, reservation_id: UUID
+    session: AsyncSession, organization_id: UUID, reservation_id: UUID
 ) -> ReservationAttendanceState:
     row = (
         (
-            await cast(object, session).execute(  # type: ignore[attr-defined]
+            await session.execute(
                 text(
                     """
                     SELECT r.id AS reservation_id,
