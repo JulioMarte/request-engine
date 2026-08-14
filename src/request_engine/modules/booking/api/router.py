@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
+    AttendanceResponseBody,
+    AttendanceStateView,
     BookAppointmentBody,
     CancelReservationBody,
     RescheduleReservationBody,
@@ -21,6 +23,11 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
     CancelReservationCommand,
     CancelReservationHandler,
     cancel_reservation,
+)
+from request_engine.modules.booking.application.commands.record_attendance import (
+    RecordAttendanceResponseCommand,
+    RecordAttendanceResponseHandler,
+    record_attendance_response,
 )
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
@@ -56,6 +63,7 @@ def create_router(
     book_handler: BookAppointmentHandler,
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
+    attendance_handler: RecordAttendanceResponseHandler,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
@@ -179,6 +187,28 @@ def create_router(
         )
         return ReservationView.from_contract(reservation)
 
+    async def attendance_response(
+        reservation_id: UUID,
+        body: AttendanceResponseBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> AttendanceStateView:
+        require_capability(actor, "appointments.confirm_attendance")
+        attendance = await record_attendance_response(
+            attendance_handler,
+            RecordAttendanceResponseCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                reservation_id=reservation_id,
+                response=body.response,
+                source_key="http",
+                idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return AttendanceStateView.from_contract(attendance)
+
     add_capability_route(
         router,
         "/slots",
@@ -219,5 +249,13 @@ def create_router(
         capability="appointments.reschedule",
         methods=["POST"],
         response_model=ReservationView,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}/attendance",
+        attendance_response,
+        capability="appointments.confirm_attendance",
+        methods=["POST"],
+        response_model=AttendanceStateView,
     )
     return router
