@@ -481,16 +481,21 @@ def test_inactive_authority_endpoint_invalidates_representation(
             (tenant.representation_id, "guardian")
         ]
         if endpoint == "principal":
-            updated = app_conn.execute(
-                "UPDATE request_engine.principals SET active = false WHERE id = %s",
-                (tenant.principal_id,),
+            assert (
+                app_conn.execute(
+                    "UPDATE request_engine.principals SET active = false WHERE id = %s",
+                    (tenant.principal_id,),
+                ).rowcount
+                == 1
             )
         else:
-            updated = app_conn.execute(
-                "UPDATE request_engine.parties SET active = false WHERE id = %s",
-                (tenant.party_id,),
+            assert (
+                app_conn.execute(
+                    "UPDATE request_engine.parties SET active = false WHERE id = %s",
+                    (tenant.party_id,),
+                ).rowcount
+                == 1
             )
-        assert updated.rowcount == 1
         assert _resolve_authority(app_conn, tenant) == []
     finally:
         app_conn.close()
