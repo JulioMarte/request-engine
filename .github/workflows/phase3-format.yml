@@ -21,6 +21,34 @@ jobs:
         run: python -m pip install --disable-pip-version-check uv
       - name: Resolve environment
         run: uv sync --all-groups
+      - name: Normalize Phase 3 typing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          attendance = Path("src/request_engine/modules/booking/adapters/db/attendance_commands.py")
+          text = attendance.read_text(encoding="utf-8")
+          text = text.replace(
+              "from sqlalchemy.engine import RowMapping\n",
+              "from sqlalchemy.engine import RowMapping\nfrom sqlalchemy.ext.asyncio import AsyncSession\n",
+          )
+          text = text.replace("session: object", "session: AsyncSession")
+          text = text.replace(
+              "await cast(object, session).execute(  # type: ignore[attr-defined]",
+              "await session.execute(",
+          )
+          attendance.write_text(text, encoding="utf-8")
+
+          communications = Path(
+              "src/request_engine/modules/communications/adapters/db/reservation_lifecycle_intent.py"
+          )
+          text = communications.read_text(encoding="utf-8")
+          text = text.replace(
+              "    context = {\n",
+              "    context: dict[str, object] = {\n",
+          )
+          communications.write_text(text, encoding="utf-8")
+          PY
       - name: Normalize Ruff lint and format
         run: |
           uv run ruff check --fix . || true
@@ -32,6 +60,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --quiet; then
             git add .
-            git commit -m "Normalize Phase 3 formatting"
+            git commit -m "Normalize Phase 3 typing and formatting"
             git push origin HEAD:phase-3-reservation-lifecycle
           fi
