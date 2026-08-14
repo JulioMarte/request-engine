@@ -15,7 +15,6 @@ class RescheduleReservationCommand:
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
     expected_revision: int
-    option_offering_version_id: UUID | None = None
     location_id: UUID | None = None
     allow_subject_override: bool = False
 
