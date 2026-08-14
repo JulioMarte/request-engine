@@ -41,6 +41,19 @@ _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING
 _CORRELATION_HEADER = "X-Correlation-ID"
 
 
+async def _request_execution_context(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    correlation_id = request_correlation_id(request)
+    try:
+        response = await call_next(request)
+        response.headers[_CORRELATION_HEADER] = str(correlation_id)
+        return response
+    finally:
+        clear_actor_context()
+
+
 def create_app(
     *,
     session_factory: SessionFactory,
@@ -73,19 +86,7 @@ def create_app(
             "by the deployment ActorResolver; request bodies never select their own tenant."
         ),
     )
-
-    @app.middleware("http")
-    async def _request_execution_context(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        correlation_id = request_correlation_id(request)
-        try:
-            response = await call_next(request)
-            response.headers[_CORRELATION_HEADER] = str(correlation_id)
-            return response
-        finally:
-            clear_actor_context()
+    app.middleware("http")(_request_execution_context)
 
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
