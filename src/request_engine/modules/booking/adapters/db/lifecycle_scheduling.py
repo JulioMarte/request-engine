@@ -23,10 +23,26 @@ class PostgresReservationLifecycleScheduling:
         *,
         source_event_id: UUID,
     ) -> None:
+        del source_event_id
         async with tenant_transaction(self._session_factory, snapshot.organization_id) as session:
-            await _cancel_pending(session, snapshot.organization_id, snapshot.reservation_id)
             if snapshot.status != "confirmed" or snapshot.no_show_after_minutes is None:
+                await _cancel_pending(
+                    session,
+                    snapshot.organization_id,
+                    snapshot.reservation_id,
+                    keep_dedupe_key=None,
+                )
                 return
+            dedupe_key = (
+                f"booking:no-show:{snapshot.reservation_id}:"
+                f"{snapshot.start_at.isoformat()}:v1"
+            )
+            await _cancel_pending(
+                session,
+                snapshot.organization_id,
+                snapshot.reservation_id,
+                keep_dedupe_key=dedupe_key,
+            )
             execute_at = snapshot.start_at + timedelta(
                 minutes=snapshot.no_show_after_minutes
             )
@@ -44,14 +60,11 @@ class PostgresReservationLifecycleScheduling:
                 action_version=NO_SHOW_ACTION_VERSION,
                 subject_kind="Reservation",
                 subject_id=snapshot.reservation_id,
-                dedupe_key=(
-                    f"booking:no-show:{snapshot.reservation_id}:"
-                    f"{snapshot.start_at.isoformat()}:v1"
-                ),
+                dedupe_key=dedupe_key,
                 execute_at=execute_at,
                 payload={
                     "reservation_id": str(snapshot.reservation_id),
-                    "source_event_id": str(source_event_id),
+                    "lifecycle_key": snapshot.start_at.isoformat(),
                 },
                 max_attempts=8,
             )
@@ -62,13 +75,20 @@ class PostgresReservationLifecycleScheduling:
         reservation_id: UUID,
     ) -> None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
-            await _cancel_pending(session, organization_id, reservation_id)
+            await _cancel_pending(
+                session,
+                organization_id,
+                reservation_id,
+                keep_dedupe_key=None,
+            )
 
 
 async def _cancel_pending(
     session: AsyncSession,
     organization_id: UUID,
     reservation_id: UUID,
+    *,
+    keep_dedupe_key: str | None,
 ) -> None:
     await session.execute(
         text(
@@ -81,11 +101,16 @@ async def _cancel_pending(
               AND subject_kind = 'Reservation'
               AND subject_id = :reservation_id
               AND status = 'pending'
+              AND (
+                  CAST(:keep_dedupe_key AS text) IS NULL
+                  OR dedupe_key <> CAST(:keep_dedupe_key AS text)
+              )
             """
         ),
         {
             "organization_id": organization_id,
             "reservation_id": reservation_id,
             "action_type": NO_SHOW_ACTION_TYPE,
+            "keep_dedupe_key": keep_dedupe_key,
         },
     )
