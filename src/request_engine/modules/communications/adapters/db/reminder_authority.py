@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.communications.application.errors import (
     ReminderSubjectAuthorityRequired,
 )
-from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 
 REMINDER_MANAGE_SCOPE = "reminders.manage"
 
@@ -17,7 +16,7 @@ class ReminderAuthorityEvidence:
     mode: str
     scope_key: str
     representation_id: UUID | None = None
-    authority_kind: AuthorityKind | None = None
+    authority_kind: str | None = None
 
     def audit_details(self) -> dict[str, object]:
         return {
@@ -26,9 +25,7 @@ class ReminderAuthorityEvidence:
             "representation_id": (
                 str(self.representation_id) if self.representation_id is not None else None
             ),
-            "authority_kind": (
-                self.authority_kind.value if self.authority_kind is not None else None
-            ),
+            "authority_kind": self.authority_kind,
         }
 
 
@@ -77,5 +74,5 @@ async def require_reminder_subject_authority(
         mode="representation",
         scope_key=REMINDER_MANAGE_SCOPE,
         representation_id=row["representation_id"],
-        authority_kind=AuthorityKind(row["authority_kind"]),
+        authority_kind=str(row["authority_kind"]),
     )
