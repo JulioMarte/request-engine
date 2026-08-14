@@ -1,9 +1,11 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
+from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
 
 
 class AppointmentSlotView(BaseModel):
@@ -39,6 +41,34 @@ class RescheduleReservationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1, max_length=8192)
     expected_revision: int = Field(gt=0)
+
+
+class AttendanceResponseBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    response: Literal["accepted", "declined"]
+    expected_revision: int = Field(gt=0)
+
+
+class AttendanceStateView(BaseModel):
+    reservation_id: UUID
+    reservation_revision: int
+    response_status: str
+    outcome_status: str
+    responded_at: datetime | None
+    checked_in_at: datetime | None
+    no_show_at: datetime | None
+
+    @classmethod
+    def from_contract(cls, state: ReservationAttendanceState) -> "AttendanceStateView":
+        return cls(
+            reservation_id=state.reservation_id,
+            reservation_revision=state.reservation_revision,
+            response_status=state.response_status.value,
+            outcome_status=state.outcome_status.value,
+            responded_at=state.responded_at,
+            checked_in_at=state.checked_in_at,
+            no_show_at=state.no_show_at,
+        )
 
 
 class ReservationView(BaseModel):
