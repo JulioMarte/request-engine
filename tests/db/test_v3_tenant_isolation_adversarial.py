@@ -27,7 +27,11 @@ def _uuid_row(
     return cast(UUID, row[0])
 
 
-def _create_tenant_fixture(conn: PgConnection, *, scope_key: str = "appointments.manage") -> TenantFixture:
+def _create_tenant_fixture(
+    conn: PgConnection,
+    *,
+    scope_key: str = "appointments.manage",
+) -> TenantFixture:
     suffix = uuid4().hex
     organization_id = _uuid_row(
         conn,
@@ -203,7 +207,9 @@ def test_app_role_fails_closed_and_cannot_read_or_mutate_foreign_tenant_rows(
         assert no_context.execute("SELECT count(*) FROM request_engine.organizations").fetchone() == (
             0,
         )
-        assert no_context.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (0,)
+        assert no_context.execute(
+            "SELECT count(*) FROM request_engine.principals"
+        ).fetchone() == (0,)
         assert no_context.execute("SELECT count(*) FROM request_engine.parties").fetchone() == (0,)
         assert no_context.execute(
             "SELECT count(*) FROM request_engine.representations"
