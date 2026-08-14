@@ -1,8 +1,9 @@
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
-from typing import Generic, Protocol, TypeVar
+from typing import Protocol
 from uuid import UUID
 
 
@@ -14,10 +15,7 @@ class WorkLease(Protocol):
     def attempt_count(self) -> int: ...
 
 
-TLease = TypeVar("TLease", bound=WorkLease)
-
-
-class LeaseStore(Protocol[TLease]):
+class LeaseStore[TLease: WorkLease](Protocol):
     async def claim(self, *, limit: int, lease: timedelta) -> tuple[TLease, ...]: ...
 
     async def complete(self, lease: TLease) -> bool: ...
@@ -35,7 +33,7 @@ class LeaseStore(Protocol[TLease]):
     async def renew(self, lease: TLease, *, extension: timedelta) -> bool: ...
 
 
-class LeaseProcessor(Protocol[TLease]):
+class LeaseProcessor[TLease: WorkLease](Protocol):
     async def process(self, lease: TLease) -> None: ...
 
 
@@ -96,7 +94,7 @@ class WorkerRuntimeConfig:
             raise ValueError("retry bounds are invalid")
 
 
-class FencedWorkerRuntime(Generic[TLease]):
+class FencedWorkerRuntime[TLease: WorkLease]:
     """Bounded lease runner with heartbeat, fencing, retry, and backpressure.
 
     A batch never claims more rows than can execute concurrently. If heartbeat
@@ -128,12 +126,10 @@ class FencedWorkerRuntime(Generic[TLease]):
             outcomes = await self.run_once()
             if outcomes:
                 continue
-            try:
+            with suppress(TimeoutError):
                 await asyncio.wait_for(
                     stop_event.wait(), timeout=self._config.idle_sleep.total_seconds()
                 )
-            except TimeoutError:
-                pass
 
     async def _process_one(self, lease: TLease) -> WorkerItemOutcome:
         stop_heartbeat = asyncio.Event()
