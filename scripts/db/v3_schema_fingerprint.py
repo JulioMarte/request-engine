@@ -370,9 +370,7 @@ def build_fingerprint_payload(connection: psycopg.Connection[Any]) -> dict[str, 
         "postgres_major": server_version_num // 10000,
         "application_schemas": list(APPLICATION_SCHEMAS),
         "fingerprint_roles": list(FINGERPRINT_ROLES),
-        "catalog": {
-            name: _fetch_rows(connection, query) for name, query in QUERIES.items()
-        },
+        "catalog": {name: _fetch_rows(connection, query) for name, query in QUERIES.items()},
     }
 
 
