@@ -4,20 +4,33 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.queue.api.models import (
+    AcceptedSlotOfferView,
     JoinQueueBody,
     JoinWaitlistBody,
     LeaveQueueBody,
     LeaveWaitlistBody,
     QueueEntryView,
     QueueStatusView,
+    ResolveSlotOfferBody,
     ServiceQueueView,
+    SlotOfferView,
     WaitlistEntryView,
 )
 from request_engine.modules.queue.application.authority import WAITLIST_SUBJECT_OVERRIDE_PERMISSION
+from request_engine.modules.queue.application.commands.accept_slot_offer import (
+    AcceptSlotOfferCommand,
+    AcceptSlotOfferExecutor,
+    accept_slot_offer,
+)
 from request_engine.modules.queue.application.commands.call_next import (
     CallNextCommand,
     CallNextExecutor,
     call_next,
+)
+from request_engine.modules.queue.application.commands.decline_slot_offer import (
+    DeclineSlotOfferCommand,
+    DeclineSlotOfferExecutor,
+    decline_slot_offer,
 )
 from request_engine.modules.queue.application.commands.join_queue import (
     JoinQueueCommand,
@@ -74,6 +87,8 @@ def create_router(
     waitlist_join_executor: JoinWaitlistExecutor,
     waitlist_leave_executor: LeaveWaitlistExecutor,
     waitlist_reader: WaitlistEntryReader,
+    slot_offer_accept_executor: AcceptSlotOfferExecutor,
+    slot_offer_decline_executor: DeclineSlotOfferExecutor,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["queues"])
@@ -230,6 +245,48 @@ def create_router(
         )
         return WaitlistEntryView.from_contract(entry)
 
+    async def accept_offer(
+        slot_offer_id: UUID,
+        body: ResolveSlotOfferBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> AcceptedSlotOfferView:
+        require_capability(actor, "waitlist.accept_offer")
+        accepted = await accept_slot_offer(
+            slot_offer_accept_executor,
+            AcceptSlotOfferCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                slot_offer_id=slot_offer_id,
+                expected_revision=body.expected_revision,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return AcceptedSlotOfferView.from_contract(accepted)
+
+    async def decline_offer(
+        slot_offer_id: UUID,
+        body: ResolveSlotOfferBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> SlotOfferView:
+        require_capability(actor, "waitlist.decline_offer")
+        resolution = await decline_slot_offer(
+            slot_offer_decline_executor,
+            DeclineSlotOfferCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                slot_offer_id=slot_offer_id,
+                expected_revision=body.expected_revision,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        # The internal command may create an offer for the next candidate. Never
+        # expose that candidate's offer identity through this caller's response.
+        return SlotOfferView.from_contract(resolution.offer)
+
     add_capability_route(
         router,
         "/queues",
@@ -295,5 +352,21 @@ def create_router(
         capability="waitlist.leave",
         methods=["POST"],
         response_model=WaitlistEntryView,
+    )
+    add_capability_route(
+        router,
+        "/waitlist/offers/{slot_offer_id}/accept",
+        accept_offer,
+        capability="waitlist.accept_offer",
+        methods=["POST"],
+        response_model=AcceptedSlotOfferView,
+    )
+    add_capability_route(
+        router,
+        "/waitlist/offers/{slot_offer_id}/decline",
+        decline_offer,
+        capability="waitlist.decline_offer",
+        methods=["POST"],
+        response_model=SlotOfferView,
     )
     return router
