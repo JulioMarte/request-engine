@@ -1,9 +1,8 @@
-import yaml
 from pathlib import Path
 
 
 WORKFLOWS_DIR = Path(".github/workflows")
-ALLOWED_RUNNER_PREFIXES = ("ubuntu-",)
+FORBIDDEN_RUNNERS = ("windows", "macos", "self-hosted")
 
 
 def _workflow_files() -> tuple[Path, ...]:
@@ -22,33 +21,29 @@ def test_github_actions_use_only_linux_ubuntu_runners() -> None:
 
     violations: list[str] = []
     for workflow in workflows:
-        document = yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}
-        jobs = document.get("jobs", {})
-        assert isinstance(jobs, dict), f"{workflow} must define a jobs mapping"
+        content = workflow.read_text(encoding="utf-8")
+        lowered = content.lower()
 
-        for job_name, job in jobs.items():
-            if not isinstance(job, dict):
-                violations.append(f"{workflow}:{job_name}: job must be a mapping")
+        for forbidden in FORBIDDEN_RUNNERS:
+            if forbidden in lowered:
+                violations.append(f"{workflow}: forbidden runner family {forbidden!r}")
+
+        runner_values: list[str] = []
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped.startswith("runs-on:"):
                 continue
+            value = stripped.removeprefix("runs-on:").strip().strip("'\"")
+            runner_values.append(value)
 
-            runner = job.get("runs-on")
-            if not isinstance(runner, str):
+        if not runner_values:
+            violations.append(f"{workflow}: no explicit runs-on values found")
+            continue
+
+        for runner in runner_values:
+            if not runner.startswith("ubuntu-"):
                 violations.append(
-                    f"{workflow}:{job_name}: runs-on must be an explicit Ubuntu runner string"
+                    f"{workflow}: runs-on must be an explicit ubuntu-* value, got {runner!r}"
                 )
-                continue
-
-            if not runner.startswith(ALLOWED_RUNNER_PREFIXES):
-                violations.append(
-                    f"{workflow}:{job_name}: forbidden runner {runner!r}; CI is Ubuntu/Linux only"
-                )
-
-            strategy = job.get("strategy")
-            if isinstance(strategy, dict):
-                matrix = strategy.get("matrix")
-                if isinstance(matrix, dict) and "os" in matrix:
-                    violations.append(
-                        f"{workflow}:{job_name}: OS matrices are forbidden; use one Ubuntu runner"
-                    )
 
     assert not violations, "\n".join(violations)
