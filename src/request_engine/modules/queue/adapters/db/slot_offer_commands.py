@@ -839,6 +839,13 @@ async def _select_candidate(
                       AND NOT (w.id = ANY(CAST(:skipped AS uuid[])))
                       AND NOT EXISTS (
                           SELECT 1
+                          FROM request_engine.slot_offers prior_offer
+                          WHERE prior_offer.organization_id = w.organization_id
+                            AND prior_offer.slot_opportunity_id = :slot_opportunity_id
+                            AND prior_offer.waitlist_entry_id = w.id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
                           FROM request_engine.slot_offers active_offer
                           WHERE active_offer.organization_id = w.organization_id
                             AND active_offer.waitlist_entry_id = w.id
@@ -854,6 +861,7 @@ async def _select_candidate(
                     "offering_version_id": opportunity["offering_version_id"],
                     "location_id": opportunity["location_id"],
                     "start_at": opportunity["start_at"],
+                    "slot_opportunity_id": opportunity["id"],
                     "skipped": [str(value) for value in sorted(skipped, key=str)],
                 },
             )
