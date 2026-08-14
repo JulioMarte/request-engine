@@ -10,6 +10,7 @@ REQUIRED_RELEASE_DOCS = {
     "v3-race-matrix.md",
     "v3-6a-baseline.md",
     "v3-bootstrap-proof.md",
+    "v3-schema-fingerprint.md",
 }
 EXPECTED_GATES = [f"G{number:02d}" for number in range(1, 21)]
 EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
@@ -46,3 +47,15 @@ def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
     assert script.is_file()
     assert "postgres-v3-bootstrap-proof:" in workflow
     assert "scripts/db/prove_v3_candidate_bootstrap.sh" in workflow
+
+
+def test_phase6_schema_fingerprint_and_catalog_audit_are_wired_to_ci() -> None:
+    fingerprint = ROOT / "scripts" / "db" / "v3_schema_fingerprint.py"
+    audit = ROOT / "scripts" / "db" / "audit_v3_catalog.py"
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert fingerprint.is_file()
+    assert audit.is_file()
+    assert "scripts/db/v3_schema_fingerprint.py" in workflow
+    assert "scripts/db/audit_v3_catalog.py" in workflow
+    assert "v3-candidate-release-proof" in workflow

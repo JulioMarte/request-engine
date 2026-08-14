@@ -135,6 +135,17 @@ jobs:
         run: bash scripts/db/apply_v3_candidate.sh
       - name: Resolve test environment
         run: uv sync --all-groups
+      - name: Generate V3 schema fingerprint
+        run: |
+          mkdir -p .phase6
+          uv run python scripts/db/v3_schema_fingerprint.py \
+            --json-output .phase6/v3-schema.json \
+            --sha-output .phase6/v3-schema.sha256
+          cat .phase6/v3-schema.sha256
+      - name: Audit V3 PostgreSQL catalog
+        run: >-
+          uv run python scripts/db/audit_v3_catalog.py
+          --json-output .phase6/v3-catalog-audit.json
       - name: V3 PostgreSQL invariant, race, and vertical tests
         run: >-
           uv run pytest
@@ -147,3 +158,10 @@ jobs:
           tests/integration/v3_worker_runtime
           -q
           -m postgres
+      - name: Upload V3 candidate release proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-candidate-release-proof
+          path: .phase6/
+          if-no-files-found: warn
