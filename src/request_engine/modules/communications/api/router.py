@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, status
@@ -35,9 +35,13 @@ IdempotencyKey = Annotated[
 REMINDER_SUBJECT_OVERRIDE = "reminders.subject_override"
 
 
+class ReminderPlanCommands(CreateReminderPlanHandler, CancelReminderPlanHandler, Protocol):
+    """Combined command surface required by the HTTP adapter."""
+
+
 def create_router(
     *,
-    commands: CreateReminderPlanHandler & CancelReminderPlanHandler,
+    commands: ReminderPlanCommands,
     reader: ReminderPlanReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
