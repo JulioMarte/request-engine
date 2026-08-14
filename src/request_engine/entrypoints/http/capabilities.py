@@ -26,6 +26,7 @@ class CapabilityView(BaseModel):
     party_scope: str | None
     override_capability: str | None
     product_supported: bool
+    runtime_available: bool
     tenant_enabled: bool
     actor_granted: bool
     context_executable: None = None
@@ -44,6 +45,7 @@ class CapabilityView(BaseModel):
             party_scope=definition.party_scope,
             override_capability=definition.override_capability,
             product_supported=item.product_supported,
+            runtime_available=definition.runtime_available,
             tenant_enabled=item.tenant_enabled,
             actor_granted=item.actor_granted,
         )
@@ -80,5 +82,6 @@ def create_capability_router(
         methods=["GET"],
         response_model=CapabilityCatalogView,
         operation_id="capabilities_list",
+        openapi_extra={"x-request-engine-discovery": True},
     )
     return router
