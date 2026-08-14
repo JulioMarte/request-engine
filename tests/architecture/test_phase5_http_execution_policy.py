@@ -51,9 +51,7 @@ def test_discovery_keeps_actor_grant_separate_from_tenant_enablement() -> None:
         response = client.get("/v1/capabilities")
         assert response.status_code == 200
         business = next(
-            item
-            for item in response.json()["capabilities"]
-            if item["key"] == "business.get_info"
+            item for item in response.json()["capabilities"] if item["key"] == "business.get_info"
         )
         assert business["product_supported"] is True
         assert business["actor_granted"] is True
@@ -70,6 +68,22 @@ def test_tenant_disabled_capability_cannot_execute_even_when_actor_has_grant() -
         capabilities=frozenset({"business.get_info"}),
     )
     client, engine = _client(actor=actor, enabled=frozenset())
+    try:
+        response = client.get("/v1/business")
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "capability_required"
+    finally:
+        client.close()
+        asyncio.run(engine.dispose())
+
+
+def test_tenant_enabled_capability_cannot_execute_without_actor_grant() -> None:
+    actor = ActorContext(
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        capabilities=frozenset(),
+    )
+    client, engine = _client(actor=actor, enabled=frozenset({"business.get_info"}))
     try:
         response = client.get("/v1/business")
         assert response.status_code == 403
