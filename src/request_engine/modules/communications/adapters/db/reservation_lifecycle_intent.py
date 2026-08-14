@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import cast
 from uuid import UUID
@@ -15,6 +16,16 @@ from request_engine.platform.db.session import SessionFactory, tenant_transactio
 from request_engine.platform.scheduling.store import schedule_action
 
 
+@dataclass(frozen=True, slots=True)
+class _DesiredCommunication:
+    purpose: str
+    template_key: str
+    dedupe_key: str
+    render_context: dict[str, object]
+    not_before: datetime | None
+    expires_at: datetime
+
+
 class PostgresReservationLifecycleNotificationIntent:
     """Materialize reservation communications after Booking has committed."""
 
@@ -30,13 +41,20 @@ class PostgresReservationLifecycleNotificationIntent:
         del source_event_id
         plan = snapshot.notification_plan
         async with tenant_transaction(self._session_factory, snapshot.organization_id) as session:
-            await _cancel_pending_for_reservation(
-                session, snapshot.organization_id, snapshot.reservation_id
+            db_now = cast(
+                datetime,
+                (await session.execute(text("SELECT clock_timestamp()"))).scalar_one(),
             )
-            if snapshot.status != "confirmed":
+            desired = _desired_communications(snapshot, db_now)
+            await _cancel_stale_pending_for_reservation(
+                session,
+                snapshot.organization_id,
+                snapshot.reservation_id,
+                keep_dedupe_keys=tuple(item.dedupe_key for item in desired),
+            )
+            if snapshot.status != "confirmed" or not desired:
                 return
-            channel_policy = plan.channel_policy
-            raw_channels = channel_policy.get("channels")
+            raw_channels = plan.channel_policy.get("channels")
             if not isinstance(raw_channels, list) or not raw_channels:
                 return
             await validate_recipient_and_contact_point(
@@ -45,67 +63,14 @@ class PostgresReservationLifecycleNotificationIntent:
                 recipient_party_id=snapshot.subject_party_id,
                 contact_point_id=None,
             )
-            db_now = cast(
-                datetime,
-                (await session.execute(text("SELECT clock_timestamp()"))).scalar_one(),
-            )
-            context = {
-                "reservation_id": str(snapshot.reservation_id),
-                "start_at": snapshot.start_at.isoformat(),
-                "end_at": snapshot.end_at.isoformat(),
-                "location_id": str(snapshot.location_id) if snapshot.location_id else None,
-            }
-            if plan.confirmation and snapshot.start_at > db_now:
+            for item in desired:
                 await _materialize(
                     session,
                     snapshot=snapshot,
-                    purpose="appointment_confirmation",
-                    template_key="appointment_confirmation",
-                    dedupe_key=(
-                        f"reservation:{snapshot.reservation_id}:confirmation:"
-                        f"{snapshot.start_at.isoformat()}:v1"
-                    ),
-                    channel_policy=channel_policy,
-                    render_context=context,
-                    not_before=db_now,
-                    expires_at=snapshot.start_at,
+                    desired=item,
+                    channel_policy=plan.channel_policy,
+                    dispatch_at=item.not_before or db_now,
                 )
-            for offset in plan.reminders_before_minutes:
-                not_before = snapshot.start_at - timedelta(minutes=offset)
-                if not_before <= db_now or not_before >= snapshot.start_at:
-                    continue
-                await _materialize(
-                    session,
-                    snapshot=snapshot,
-                    purpose="appointment_reminder",
-                    template_key="appointment_reminder",
-                    dedupe_key=(
-                        f"reservation:{snapshot.reservation_id}:reminder:{offset}:"
-                        f"{snapshot.start_at.isoformat()}:v1"
-                    ),
-                    channel_policy=channel_policy,
-                    render_context={**context, "minutes_before": offset},
-                    not_before=not_before,
-                    expires_at=snapshot.start_at,
-                )
-            request_offset = plan.attendance_request_before_minutes
-            if plan.attendance_confirmation_required and request_offset is not None:
-                not_before = snapshot.start_at - timedelta(minutes=request_offset)
-                if db_now < not_before < snapshot.start_at:
-                    await _materialize(
-                        session,
-                        snapshot=snapshot,
-                        purpose="attendance_confirmation_request",
-                        template_key="attendance_confirmation_request",
-                        dedupe_key=(
-                            f"reservation:{snapshot.reservation_id}:attendance-request:"
-                            f"{snapshot.start_at.isoformat()}:v1"
-                        ),
-                        channel_policy=channel_policy,
-                        render_context=context,
-                        not_before=not_before,
-                        expires_at=snapshot.start_at,
-                    )
 
     async def cancel_reservation_notifications(
         self,
@@ -113,20 +78,88 @@ class PostgresReservationLifecycleNotificationIntent:
         reservation_id: UUID,
     ) -> None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
-            await _cancel_pending_for_reservation(session, organization_id, reservation_id)
+            await _cancel_stale_pending_for_reservation(
+                session,
+                organization_id,
+                reservation_id,
+                keep_dedupe_keys=(),
+            )
+
+
+def _desired_communications(
+    snapshot: ReservationLifecycleSnapshot,
+    db_now: datetime,
+) -> tuple[_DesiredCommunication, ...]:
+    if snapshot.status != "confirmed" or snapshot.start_at <= db_now:
+        return ()
+    plan = snapshot.notification_plan
+    raw_channels = plan.channel_policy.get("channels")
+    if not isinstance(raw_channels, list) or not raw_channels:
+        return ()
+    context = {
+        "reservation_id": str(snapshot.reservation_id),
+        "start_at": snapshot.start_at.isoformat(),
+        "end_at": snapshot.end_at.isoformat(),
+        "location_id": str(snapshot.location_id) if snapshot.location_id else None,
+    }
+    result: list[_DesiredCommunication] = []
+    if plan.confirmation:
+        result.append(
+            _DesiredCommunication(
+                purpose="appointment_confirmation",
+                template_key="appointment_confirmation",
+                dedupe_key=(
+                    f"reservation:{snapshot.reservation_id}:confirmation:"
+                    f"{snapshot.start_at.isoformat()}:v1"
+                ),
+                render_context=context,
+                not_before=None,
+                expires_at=snapshot.start_at,
+            )
+        )
+    for offset in plan.reminders_before_minutes:
+        not_before = snapshot.start_at - timedelta(minutes=offset)
+        if db_now < not_before < snapshot.start_at:
+            result.append(
+                _DesiredCommunication(
+                    purpose="appointment_reminder",
+                    template_key="appointment_reminder",
+                    dedupe_key=(
+                        f"reservation:{snapshot.reservation_id}:reminder:{offset}:"
+                        f"{snapshot.start_at.isoformat()}:v1"
+                    ),
+                    render_context={**context, "minutes_before": offset},
+                    not_before=not_before,
+                    expires_at=snapshot.start_at,
+                )
+            )
+    request_offset = plan.attendance_request_before_minutes
+    if plan.attendance_confirmation_required and request_offset is not None:
+        not_before = snapshot.start_at - timedelta(minutes=request_offset)
+        if db_now < not_before < snapshot.start_at:
+            result.append(
+                _DesiredCommunication(
+                    purpose="attendance_confirmation_request",
+                    template_key="attendance_confirmation_request",
+                    dedupe_key=(
+                        f"reservation:{snapshot.reservation_id}:attendance-request:"
+                        f"{snapshot.start_at.isoformat()}:v1"
+                    ),
+                    render_context=context,
+                    not_before=not_before,
+                    expires_at=snapshot.start_at,
+                )
+            )
+    return tuple(result)
 
 
 async def _materialize(
     session: AsyncSession,
     *,
     snapshot: ReservationLifecycleSnapshot,
-    purpose: str,
-    template_key: str,
-    dedupe_key: str,
+    desired: _DesiredCommunication,
     channel_policy: dict[str, object],
-    render_context: dict[str, object],
-    not_before: datetime,
-    expires_at: datetime,
+    dispatch_at: datetime,
 ) -> None:
     task, created = await insert_or_reuse_communication_task(
         session,
@@ -134,16 +167,16 @@ async def _materialize(
             organization_id=snapshot.organization_id,
             recipient_party_id=snapshot.subject_party_id,
             contact_point_id=None,
-            purpose=purpose,
+            purpose=desired.purpose,
             source_kind="Reservation",
             source_id=snapshot.reservation_id,
             channel_policy=channel_policy,
-            template_key=template_key,
+            template_key=desired.template_key,
             template_version=1,
-            render_context=render_context,
-            dedupe_key=dedupe_key,
-            not_before=not_before,
-            expires_at=expires_at,
+            render_context=desired.render_context,
+            dedupe_key=desired.dedupe_key,
+            not_before=desired.not_before,
+            expires_at=desired.expires_at,
         ),
     )
     if not created:
@@ -157,16 +190,18 @@ async def _materialize(
         subject_kind="CommunicationTask",
         subject_id=task.id,
         dedupe_key=f"communications:dispatch:{task.id}:v1",
-        execute_at=not_before,
+        execute_at=dispatch_at,
         payload={"communication_task_id": str(task.id)},
         max_attempts=8,
     )
 
 
-async def _cancel_pending_for_reservation(
+async def _cancel_stale_pending_for_reservation(
     session: AsyncSession,
     organization_id: UUID,
     reservation_id: UUID,
+    *,
+    keep_dedupe_keys: tuple[str, ...],
 ) -> None:
     task_rows = (
         await session.execute(
@@ -178,11 +213,19 @@ async def _cancel_pending_for_reservation(
                   AND source_kind = 'Reservation'
                   AND source_id = :reservation_id
                   AND status = 'pending'
+                  AND (
+                      cardinality(CAST(:keep_dedupe_keys AS text[])) = 0
+                      OR dedupe_key <> ALL(CAST(:keep_dedupe_keys AS text[]))
+                  )
                 ORDER BY id
                 FOR UPDATE
                 """
             ),
-            {"organization_id": organization_id, "reservation_id": reservation_id},
+            {
+                "organization_id": organization_id,
+                "reservation_id": reservation_id,
+                "keep_dedupe_keys": list(keep_dedupe_keys),
+            },
         )
     ).all()
     task_ids = tuple(cast(UUID, row[0]) for row in task_rows)
