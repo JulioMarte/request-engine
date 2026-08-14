@@ -2,7 +2,7 @@ from uuid import UUID
 
 
 class QueueError(Exception):
-    """Base class for semantic service-queue errors."""
+    """Base class for semantic service-queue and waitlist errors."""
 
 
 class SubjectAuthorityRequired(QueueError):
@@ -64,3 +64,50 @@ class QueueEntryNotCancellable(QueueError):
         super().__init__(f"QueueEntry {entry_id} cannot be cancelled from status {status}")
         self.entry_id = entry_id
         self.status = status
+
+
+class OfferingNotAvailableForWaitlist(QueueError):
+    def __init__(self, offering_id: UUID) -> None:
+        super().__init__(f"Offering {offering_id} is not available for waitlist")
+        self.offering_id = offering_id
+
+
+class AlreadyOnWaitlist(QueueError):
+    def __init__(self, offering_id: UUID, subject_party_id: UUID) -> None:
+        super().__init__(
+            f"Party {subject_party_id} already has an active waitlist entry "
+            f"for Offering {offering_id}"
+        )
+        self.offering_id = offering_id
+        self.subject_party_id = subject_party_id
+
+
+class WaitlistEntryNotFound(QueueError):
+    def __init__(self, entry_id: UUID) -> None:
+        super().__init__(f"WaitlistEntry {entry_id} was not found")
+        self.entry_id = entry_id
+
+
+class WaitlistEntryRevisionConflict(QueueError):
+    def __init__(self, entry_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"WaitlistEntry {entry_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.entry_id = entry_id
+        self.expected = expected
+        self.actual = actual
+
+
+class WaitlistEntryNotCancellable(QueueError):
+    def __init__(self, entry_id: UUID, status: str) -> None:
+        super().__init__(f"WaitlistEntry {entry_id} cannot be cancelled from status {status}")
+        self.entry_id = entry_id
+        self.status = status
+
+
+class SlotOpportunitySourceConflict(QueueError):
+    def __init__(self, source_event_id: UUID) -> None:
+        super().__init__(
+            f"source event {source_event_id} is already bound to a different SlotOpportunity"
+        )
+        self.source_event_id = source_event_id
