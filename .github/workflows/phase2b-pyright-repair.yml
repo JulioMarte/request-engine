@@ -1,4 +1,4 @@
-name: Phase 2B Pyright repair
+name: Phase 2B correctness repair
 
 on:
   push:
@@ -19,22 +19,51 @@ jobs:
         run: python -m pip install --disable-pip-version-check uv
       - name: Resolve development environment
         run: uv sync --all-groups
-      - name: Apply strict typing repair
+      - name: Prevent re-offering same opportunity to same candidate
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("src/request_engine/modules/queue/adapters/db/slot_offer_commands.py")
           text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              "_resolution_from_json(cast(dict[str, object], replay))",
-              "_resolution_from_json(replay)",
-          )
-          path.write_text(text, encoding="utf-8")
-
-          path = Path("src/request_engine/modules/queue/adapters/worker/slot_offer_expiry.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace("expected_revision=cast(int, raw_revision)", "expected_revision=raw_revision")
+          old = '''                      AND NOT (w.id = ANY(CAST(:skipped AS uuid[])))
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM request_engine.slot_offers active_offer
+                          WHERE active_offer.organization_id = w.organization_id
+                            AND active_offer.waitlist_entry_id = w.id
+                            AND active_offer.status = 'offered'
+                      )
+'''
+          new = '''                      AND NOT (w.id = ANY(CAST(:skipped AS uuid[])))
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM request_engine.slot_offers prior_offer
+                          WHERE prior_offer.organization_id = w.organization_id
+                            AND prior_offer.slot_opportunity_id = :slot_opportunity_id
+                            AND prior_offer.waitlist_entry_id = w.id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM request_engine.slot_offers active_offer
+                          WHERE active_offer.organization_id = w.organization_id
+                            AND active_offer.waitlist_entry_id = w.id
+                            AND active_offer.status = 'offered'
+                      )
+'''
+          if old not in text:
+              raise SystemExit("candidate selection block not found")
+          text = text.replace(old, new, 1)
+          old_bind = '''                    "start_at": opportunity["start_at"],
+                    "skipped": [str(value) for value in sorted(skipped, key=str)],
+'''
+          new_bind = '''                    "start_at": opportunity["start_at"],
+                    "slot_opportunity_id": opportunity["id"],
+                    "skipped": [str(value) for value in sorted(skipped, key=str)],
+'''
+          if old_bind not in text:
+              raise SystemExit("candidate bind block not found")
+          text = text.replace(old_bind, new_bind, 1)
           path.write_text(text, encoding="utf-8")
           PY
           uv run ruff check . --fix
@@ -50,5 +79,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add --all
-          git commit -m "Fix Phase 2B strict typing"
+          git commit -m "Prevent repeated SlotOffer candidate selection"
           git push origin HEAD:phase-2b-slot-offers
