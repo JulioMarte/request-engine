@@ -35,7 +35,7 @@ def _client(*, actor: ActorContext, enabled: frozenset[str]) -> tuple[AsyncClien
     app = create_app(
         session_factory=create_session_factory(engine),
         actor_resolver=StaticActorResolver(actor),
-        appointment_option_signing_key=b"phase-5-http-policy-test-key",
+        appointment_option_signing_key=b"0123456789abcdef0123456789abcdef",
         tenant_capability_policy=StaticTenantPolicy(enabled),
     )
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test"), engine
