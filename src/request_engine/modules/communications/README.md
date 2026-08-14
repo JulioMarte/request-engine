@@ -64,6 +64,24 @@ The initial `channel_policy` surface is intentionally small:
 
 `channels` is ordered. `sms` and `voice` resolve against a `phone` ContactPoint; `email` and `whatsapp` resolve against matching endpoint types. An explicit ContactPoint must still match the policy and remain active. Automatic endpoint selection only uses active, verified ContactPoints.
 
+## Reservation-relative communications
+
+Appointment communications are derived from a committed Booking lifecycle snapshot. They are not `ReminderPlan` recurrences.
+
+The initial reservation purposes are:
+
+```text
+appointment_confirmation
+appointment_reminder
+attendance_confirmation_request
+```
+
+Their semantic dedupe keys include the Reservation and its scheduled start. A reschedule therefore creates a new generation while pending work from the old start becomes cancelled. Replaying the same Reservation lifecycle event reconciles a desired set and reuses the existing generation instead of cancelling and recreating it.
+
+A cancellation cancels pending Reservation communication intents and their pending dispatch actions. A delivery already in provider reconciliation remains governed by normal delivery reconciliation; Communications does not claim exactly-once external delivery.
+
+Booking owns Reservation and attendance state. Communications may translate an authenticated provider response into Booking's public attendance command contract, but it must never update Booking tables directly.
+
 ## ReminderPlan baseline
 
 The initial recurrence type is deliberately narrow:
@@ -84,7 +102,5 @@ The initial recurrence type is deliberately narrow:
 - The scheduler lease is completed only after that transaction commits. If the worker crashes before lease completion, deterministic dedupe keys make replay safe.
 - Reprocessing an older leased occurrence first checks whether a later occurrence was already scheduled, so a delayed replay does not fork the recurrence chain.
 - Cancelling a ReminderPlan cancels its pending future reminder ScheduledActions. A concurrently leased occurrence rechecks plan status under the ReminderPlan lock and becomes a no-op if the plan is no longer active.
-
-Reservation state and attendance consequences remain owned by booking. The communications module may ingest a provider response and invoke booking's supported command contract; it must not mutate booking state directly.
 
 Medication reminders execute an already-authorized ReminderPlan. This module does not infer dosage, alter treatment, or make clinical decisions.
