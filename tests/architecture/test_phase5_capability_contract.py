@@ -40,6 +40,7 @@ def test_caller_selected_mutations_declare_expected_revision() -> None:
         "waitlist.leave",
         "waitlist.accept_offer",
         "waitlist.decline_offer",
+        "reminders.cancel_plan",
         "requests.cancel",
         "requests.record_result",
         "requests.complete",
@@ -51,6 +52,7 @@ def test_caller_selected_mutations_declare_expected_revision() -> None:
     assert by_key["appointments.book"].revision is RevisionPolicy.NONE
     assert by_key["queue.join"].revision is RevisionPolicy.NONE
     assert by_key["waitlist.join"].revision is RevisionPolicy.NONE
+    assert by_key["reminders.create_plan"].revision is RevisionPolicy.NONE
     assert by_key["requests.submit"].revision is RevisionPolicy.NONE
 
 
@@ -70,7 +72,7 @@ def test_discovery_hides_internal_and_ungranted_operator_capabilities() -> None:
     assert by_key["appointments.book"].actor_granted is True
     assert by_key["appointments.cancel"].actor_granted is False
     assert by_key["appointments.cancel"].tenant_enabled is True
-    assert by_key["appointments.cancel"].context_executable is None
+    assert not hasattr(by_key["appointments.cancel"], "context_executable")
 
 
 def test_discovery_shows_only_granted_operator_capabilities() -> None:
@@ -95,6 +97,7 @@ def test_permission_only_capabilities_are_not_claimed_as_runtime_operations() ->
         "appointments.subject_override",
         "queue.subject_override",
         "waitlist.subject_override",
+        "reminders.subject_override",
         "requests.party_override",
     ):
         assert by_key[key].runtime_available is False
