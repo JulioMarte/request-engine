@@ -36,6 +36,11 @@ def add_capability_route(
             "x-request-engine-exposure": definition.exposure.value,
         }
     )
+    if definition.party_scope is not None:
+        extra["x-request-engine-party-scope"] = definition.party_scope
+    if definition.override_capability is not None:
+        extra["x-request-engine-override-capability"] = definition.override_capability
+
     router.add_api_route(
         path,
         endpoint,
