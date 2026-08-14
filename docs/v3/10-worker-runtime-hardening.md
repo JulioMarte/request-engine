@@ -44,7 +44,13 @@ A runtime never claims more work than it can execute concurrently.
 
 `claim_batch_size` is capped by `max_concurrency`. This avoids creating leased backlog inside one process while other workers could execute it.
 
-The baseline runtime uses deterministic exponential retry backoff. Retry instants are calculated from PostgreSQL `clock_timestamp()`, not a worker host clock.
+Every claimed item also has a finite `processing_timeout`. A live task cannot renew one lease indefinitely merely because its handler or an external dependency stopped making progress. Timeout cancellation is classified as retryable `processing_timeout` work.
+
+Processors must be cancellation-safe. Provider and network client timeouts must be shorter than the worker processing timeout so cancellation can complete at the runtime boundary.
+
+The baseline runtime uses bounded exponential retry backoff with deterministic jitter derived from work identity and attempt count. The same work attempt receives the same delay, while unrelated work is distributed across the retry window to avoid synchronized retry storms.
+
+Retry instants are materialized by PostgreSQL from `clock_timestamp()`, not from a worker host clock.
 
 ## Tenant fairness
 
@@ -60,6 +66,8 @@ then tenant_rank 3
 Within each tenant rank, older due work remains first.
 
 This is bounded-batch fairness, not a weighted scheduling or SLA system.
+
+The ranking query must be benchmarked against production-scale due backlogs before the V3 release freeze. Correctness does not imply acceptable query cost at high cardinality.
 
 ## Crash recovery
 
@@ -124,6 +132,8 @@ Replay requires organization, operator Principal, non-empty reason, and an expli
 Replay never resets `attempt_count`. It increases `max_attempts`, increments `replay_count`, stores `last_replayed_at`, and appends an audit record.
 
 The ordinary `request_engine_worker` role cannot invoke replay functions.
+
+The current Phase 4 replay contract treats `actor_principal_id` as an authenticated operator assertion supplied by the trusted admin boundary. The database validates tenant identity and referential integrity, but database credentials alone do not prove which human operator supplied that assertion. The authenticated actor-binding contract must be completed with the Phase 5 API/authentication boundary before the V3 release freeze.
 
 ## Operational visibility
 
