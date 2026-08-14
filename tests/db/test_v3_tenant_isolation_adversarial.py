@@ -207,9 +207,9 @@ def test_app_role_fails_closed_and_cannot_read_or_mutate_foreign_tenant_rows(
         assert no_context.execute(
             "SELECT count(*) FROM request_engine.organizations"
         ).fetchone() == (0,)
-        assert no_context.execute(
-            "SELECT count(*) FROM request_engine.principals"
-        ).fetchone() == (0,)
+        assert no_context.execute("SELECT count(*) FROM request_engine.principals").fetchone() == (
+            0,
+        )
         assert no_context.execute("SELECT count(*) FROM request_engine.parties").fetchone() == (0,)
         assert no_context.execute(
             "SELECT count(*) FROM request_engine.representations"
@@ -308,14 +308,17 @@ def test_security_invoker_read_surface_does_not_bypass_tenant_rls(
             """
         ).fetchall()
         assert business_rows == [(tenant_a.organization_id,)]
-        assert app_a.execute(
-            """
-            SELECT organization_id
-            FROM request_read.business_info_v1
-            WHERE organization_id = %s
-            """,
-            (tenant_b.organization_id,),
-        ).fetchall() == []
+        assert (
+            app_a.execute(
+                """
+                SELECT organization_id
+                FROM request_read.business_info_v1
+                WHERE organization_id = %s
+                """,
+                (tenant_b.organization_id,),
+            ).fetchall()
+            == []
+        )
     finally:
         app_a.close()
 
@@ -477,9 +480,7 @@ def test_inactive_authority_endpoint_invalidates_representation(
     tenant = _create_tenant_fixture(admin_conn)
     app_conn = _app_connection(pg_conninfo, tenant.organization_id)
     try:
-        assert _resolve_authority(app_conn, tenant) == [
-            (tenant.representation_id, "guardian")
-        ]
+        assert _resolve_authority(app_conn, tenant) == [(tenant.representation_id, "guardian")]
         if endpoint == "principal":
             assert (
                 app_conn.execute(
