@@ -7,6 +7,7 @@ import pytest
 
 from request_engine.platform.worker.runtime import (
     FencedWorkerRuntime,
+    LeaseLostWorkError,
     PermanentWorkError,
     RetryableWorkError,
     WorkerItemState,
@@ -60,6 +61,13 @@ class FakeStore:
         return self.renew_result
 
 
+class RaisingRenewStore(FakeStore):
+    async def renew(self, lease: FakeLease, *, extension: timedelta) -> bool:
+        del extension
+        self.renewed.append(lease.id)
+        raise RuntimeError("database unavailable during heartbeat")
+
+
 class SuccessProcessor:
     async def process(self, lease: FakeLease) -> None:
         del lease
@@ -75,6 +83,12 @@ class PermanentProcessor:
     async def process(self, lease: FakeLease) -> None:
         del lease
         raise PermanentWorkError("invalid_work")
+
+
+class LeaseLostProcessor:
+    async def process(self, lease: FakeLease) -> None:
+        del lease
+        raise LeaseLostWorkError("authoritative fence lost")
 
 
 class SlowProcessor:
@@ -155,6 +169,42 @@ async def test_heartbeat_loss_fences_late_worker_from_finalization() -> None:
 
     assert outcome.state is WorkerItemState.STALE
     assert store.renewed == [lease.id]
+    assert store.completed == []
+    assert store.retried == []
+    assert store.dead == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_heartbeat_database_failure_is_treated_as_uncertain_ownership() -> None:
+    lease = FakeLease(uuid4(), 1)
+    store = RaisingRenewStore((lease,))
+    runtime = FencedWorkerRuntime(
+        store,
+        SlowProcessor(),
+        config=_config(max_concurrency=1),
+    )
+
+    outcome = (await runtime.run_once())[0]
+
+    assert outcome.state is WorkerItemState.STALE
+    assert store.renewed == [lease.id]
+    assert store.completed == []
+    assert store.retried == []
+    assert store.dead == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_processor_signaled_lease_loss_never_mutates_work_state() -> None:
+    lease = FakeLease(uuid4(), 1)
+    store = FakeStore((lease,))
+    runtime = FencedWorkerRuntime(store, LeaseLostProcessor(), config=_config())
+
+    outcome = (await runtime.run_once())[0]
+
+    assert outcome.state is WorkerItemState.STALE
+    assert outcome.detail == "lease_lost"
     assert store.completed == []
     assert store.retried == []
     assert store.dead == []
