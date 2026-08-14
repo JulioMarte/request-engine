@@ -10,6 +10,11 @@ from psycopg import Connection
 
 from request_engine.entrypoints.http.app import create_app
 from request_engine.entrypoints.http.security import AuthenticationRequired
+from request_engine.modules.requests.adapters.db.request_commands import PostgresRequestCommands
+from request_engine.modules.requests.application.commands.complete_request import (
+    CompleteRequestCommand,
+    complete_request,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 
@@ -293,7 +298,7 @@ async def test_http_submit_resolves_latest_version_and_replays_idempotently(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_http_explicit_definition_version_and_semantic_completion(
+async def test_http_explicit_definition_version_and_internal_semantic_completion(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -322,25 +327,37 @@ async def test_http_explicit_definition_version_and_semantic_completion(
         created = created_response.json()
         assert created["definition_version"] == 1
         assert created["request"]["request_definition_version_id"] == str(fixture.version_1_id)
-        request_id = created["request"]["id"]
+        request_id = UUID(created["request"]["id"])
 
-        completed_response = await client.post(
+        hidden = await client.post(
             f"/v1/requests/{request_id}/complete",
             headers={
                 "Authorization": "Bearer agent",
-                "Idempotency-Key": f"complete-{uuid4().hex}",
+                "Idempotency-Key": f"must-not-route-{uuid4().hex}",
             },
             json={
                 "expected_revision": 1,
                 "result_payload": {"quote_total": 250.0},
             },
         )
-        assert completed_response.status_code == 200
-        completed = completed_response.json()
-        assert completed["status"] == "completed"
-        assert completed["revision"] == 2
-        assert completed["result_payload"] == {"quote_total": 250.0}
+        assert hidden.status_code == 404
 
+    completed = await complete_request(
+        PostgresRequestCommands(session_factory),
+        CompleteRequestCommand(
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            request_id=request_id,
+            expected_revision=1,
+            result_payload={"quote_total": 250.0},
+            idempotency_key=f"complete-{uuid4().hex}",
+        ),
+    )
+    assert completed.status.value == "completed"
+    assert completed.revision == 2
+    assert completed.result_payload == {"quote_total": 250.0}
+
+    async with _client(session_factory, actors) as client:
         conflict = await client.post(
             f"/v1/requests/{request_id}/cancel",
             headers={
