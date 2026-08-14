@@ -1,7 +1,9 @@
+import asyncio
 from uuid import UUID, uuid4
 
 from fastapi import Request
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from request_engine.entrypoints.http.app import create_app
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
@@ -27,7 +29,7 @@ class StaticTenantPolicy(TenantCapabilityPolicy):
         return self._enabled
 
 
-def _client(*, actor: ActorContext, enabled: frozenset[str]) -> tuple[TestClient, object]:
+def _client(*, actor: ActorContext, enabled: frozenset[str]) -> tuple[TestClient, AsyncEngine]:
     engine = create_postgres_engine("postgresql+asyncpg://user:pass@127.0.0.1/request_engine")
     app = create_app(
         session_factory=create_session_factory(engine),
@@ -58,8 +60,6 @@ def test_discovery_keeps_actor_grant_separate_from_tenant_enablement() -> None:
         assert business["tenant_enabled"] is False
     finally:
         client.close()
-        import asyncio
-
         asyncio.run(engine.dispose())
 
 
@@ -76,8 +76,6 @@ def test_tenant_disabled_capability_cannot_execute_even_when_actor_has_grant() -
         assert response.json()["error"]["code"] == "capability_required"
     finally:
         client.close()
-        import asyncio
-
         asyncio.run(engine.dispose())
 
 
@@ -102,6 +100,4 @@ def test_server_generates_distinct_request_correlation_and_ignores_caller_value(
         assert first_id != second_id
     finally:
         client.close()
-        import asyncio
-
         asyncio.run(engine.dispose())
