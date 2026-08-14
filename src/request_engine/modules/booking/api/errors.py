@@ -2,6 +2,8 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.booking.application.errors import (
+    AppointmentOptionExpired,
+    AppointmentOptionInvalid,
     AppointmentUnavailable,
     BookingConfigurationError,
     BookingError,
@@ -28,6 +30,20 @@ async def booking_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, AppointmentOptionInvalid):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="appointment_option_invalid",
+            message="the appointment option is invalid for this request",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={},
+        )
+    if isinstance(exc, AppointmentOptionExpired):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="appointment_option_expired",
+            message="the appointment option has expired",
+            resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
+            details={},
+        )
     if isinstance(exc, OfferingVersionNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
             code="offering_version_not_found",
