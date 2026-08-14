@@ -1,0 +1,54 @@
+name: Phase 2B Pyright repair
+
+on:
+  push:
+    branches: [phase-2b-slot-offers]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: python -m pip install --disable-pip-version-check uv
+      - name: Resolve development environment
+        run: uv sync --all-groups
+      - name: Apply strict typing repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/request_engine/modules/queue/adapters/db/slot_offer_commands.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              "_resolution_from_json(cast(dict[str, object], replay))",
+              "_resolution_from_json(replay)",
+          )
+          path.write_text(text, encoding="utf-8")
+
+          path = Path("src/request_engine/modules/queue/adapters/worker/slot_offer_expiry.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("expected_revision=cast(int, raw_revision)", "expected_revision=raw_revision")
+          path.write_text(text, encoding="utf-8")
+          PY
+          uv run ruff check . --fix
+          uv run ruff format .
+          uv run ruff check .
+          uv run pyright
+      - name: Commit repair
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "Fix Phase 2B strict typing"
+          git push origin HEAD:phase-2b-slot-offers
