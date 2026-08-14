@@ -33,6 +33,12 @@ Status values describe baseline proof breadth, not whether the implementation is
 | R23 | authority/revocation change vs material command | material command revalidates authority in its authoritative transaction | PARTIAL | 6I |
 | R24 | tenant A request vs guessed tenant B aggregate ID | no cross-tenant read/write or existence oracle through protected surfaces | PARTIAL | 6I |
 
+## Current Phase 6I tenant evidence
+
+R23 now has two independent evidence layers. `tests/db/test_v3_tenant_isolation_adversarial.py` proves both winner orders between Representation revocation and `lock_current_party_authority()` with independent PostgreSQL connections. `tests/integration/v3_first_vertical/test_http_request_authority_race.py` then proves a material Request submission already holding Representation authority cannot have that authority revoked before its transaction commits; after revocation commits, the same represented actor is rejected with `party_authority_required`. R23 remains `PARTIAL` until the remaining subject-scoped material mutation families receive equivalent deterministic barriers.
+
+R24 now has direct app-role and HTTP evidence. The DB suite proves fail-closed RLS behavior, foreign-row invisibility, foreign-write rejection, `security_invoker` read isolation, and foreign-versus-nonexistent authority lookups. HTTP adversarial suites exercise Booking, Requests, Queue, and Waitlist using valid Tenant B identifiers from Tenant A and compare them with nonexistent controls. The tests also assert final Tenant B state and absence of cross-tenant rows. R24 remains `PARTIAL` until the application vertical runs through a real least-privileged production login and the remaining protected worker/admin/function surfaces are exhaustively classified and attacked.
+
 ## Test construction rules
 
 Release race tests must use independent PostgreSQL connections or sessions and deliberate barriers so the conflicting transactions overlap. Do not replace database races with mocks, threads that never overlap database transactions, or retry loops that hide the underlying interleaving.
