@@ -29,6 +29,7 @@ class CapabilityView(BaseModel):
     runtime_available: bool
     tenant_enabled: bool
     actor_granted: bool
+    openapi_operation_id: str | None
     context_executable: None = None
 
     @classmethod
@@ -48,6 +49,9 @@ class CapabilityView(BaseModel):
             runtime_available=definition.runtime_available,
             tenant_enabled=item.tenant_enabled,
             actor_granted=item.actor_granted,
+            openapi_operation_id=(
+                definition.key.replace(".", "_") if definition.runtime_available else None
+            ),
         )
 
 
