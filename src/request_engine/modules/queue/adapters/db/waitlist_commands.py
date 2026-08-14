@@ -7,6 +7,10 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
+from request_engine.modules.queue.adapters.db.tenant_references import (
+    require_active_subject_party,
+    require_tenant_reference,
+)
 from request_engine.modules.queue.application.authority import (
     JOIN_WAITLIST_SCOPE,
     MANAGE_WAITLIST_SCOPE,
@@ -70,6 +74,25 @@ class PostgresWaitlistCommands:
             if replay is not None:
                 return _entry_from_json(cast(dict[str, object], replay["entry"]))
 
+            await require_active_subject_party(
+                session,
+                organization_id=command.organization_id,
+                subject_party_id=command.subject_party_id,
+            )
+            await require_tenant_reference(
+                session,
+                organization_id=command.organization_id,
+                table_name="locations",
+                reference_kind="location_id",
+                reference_id=command.location_id,
+            )
+            await require_tenant_reference(
+                session,
+                organization_id=command.organization_id,
+                table_name="resources",
+                reference_kind="preferred_resource_id",
+                reference_id=command.preferred_resource_id,
+            )
             authority = await require_subject_authority(
                 session,
                 organization_id=command.organization_id,
