@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,7 +18,7 @@ EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
 
 def test_phase6_release_inventory_is_present() -> None:
     present = {path.name for path in RELEASE_DIR.glob("*.md")}
-    assert REQUIRED_RELEASE_DOCS <= present
+    assert present >= REQUIRED_RELEASE_DOCS
 
 
 def test_phase6_gate_registry_declares_all_release_gates_once() -> None:
