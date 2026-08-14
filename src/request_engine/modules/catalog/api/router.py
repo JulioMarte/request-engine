@@ -13,6 +13,7 @@ from request_engine.modules.catalog.application.queries.search_offerings import 
     get_offering_details,
     search_offerings,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -69,21 +70,27 @@ def create_router(
             raise HTTPException(status_code=404, detail="Offering not found")
         return OfferingView.from_contract(offering)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/business",
         business_info,
+        capability="business.get_info",
         methods=["GET"],
         response_model=BusinessInfoView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/catalog/offerings",
         offerings,
+        capability="catalog.search_offerings",
         methods=["GET"],
         response_model=tuple[OfferingView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/catalog/offerings/{offering_key}",
         offering_details,
+        capability="catalog.get_offering_details",
         methods=["GET"],
         response_model=OfferingView,
     )
