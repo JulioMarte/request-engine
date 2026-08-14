@@ -25,6 +25,7 @@ EXPECTED_V3_CANDIDATE = [
     "018-retry-finalization-fence.sql",
     "019-trusted-execution-provenance.sql",
     "020-durable-correlation.sql",
+    "021-release-privilege-hardening.sql",
 ]
 
 
