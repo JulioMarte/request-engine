@@ -25,46 +25,27 @@ jobs:
           from pathlib import Path
 
           path = Path("src/request_engine/modules/queue/adapters/db/slot_offer_commands.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''                      AND NOT (w.id = ANY(CAST(:skipped AS uuid[])))
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM request_engine.slot_offers active_offer
-                          WHERE active_offer.organization_id = w.organization_id
-                            AND active_offer.waitlist_entry_id = w.id
-                            AND active_offer.status = 'offered'
-                      )
-'''
-          new = '''                      AND NOT (w.id = ANY(CAST(:skipped AS uuid[])))
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM request_engine.slot_offers prior_offer
-                          WHERE prior_offer.organization_id = w.organization_id
-                            AND prior_offer.slot_opportunity_id = :slot_opportunity_id
-                            AND prior_offer.waitlist_entry_id = w.id
-                      )
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM request_engine.slot_offers active_offer
-                          WHERE active_offer.organization_id = w.organization_id
-                            AND active_offer.waitlist_entry_id = w.id
-                            AND active_offer.status = 'offered'
-                      )
-'''
-          if old not in text:
-              raise SystemExit("candidate selection block not found")
-          text = text.replace(old, new, 1)
-          old_bind = '''                    "start_at": opportunity["start_at"],
-                    "skipped": [str(value) for value in sorted(skipped, key=str)],
-'''
-          new_bind = '''                    "start_at": opportunity["start_at"],
-                    "slot_opportunity_id": opportunity["id"],
-                    "skipped": [str(value) for value in sorted(skipped, key=str)],
-'''
-          if old_bind not in text:
-              raise SystemExit("candidate bind block not found")
-          text = text.replace(old_bind, new_bind, 1)
-          path.write_text(text, encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          marker = "                          FROM request_engine.slot_offers active_offer"
+          marker_index = lines.index(marker)
+          block_start = marker_index - 2
+          prior_block = [
+              "                      AND NOT EXISTS (",
+              "                          SELECT 1",
+              "                          FROM request_engine.slot_offers prior_offer",
+              "                          WHERE prior_offer.organization_id = w.organization_id",
+              "                            AND prior_offer.slot_opportunity_id = :slot_opportunity_id",
+              "                            AND prior_offer.waitlist_entry_id = w.id",
+              "                      )",
+          ]
+          if "                          FROM request_engine.slot_offers prior_offer" not in lines:
+              lines[block_start:block_start] = prior_block
+          bind_marker = '                    "start_at": opportunity["start_at"],'
+          bind_index = lines.index(bind_marker)
+          bind_line = '                    "slot_opportunity_id": opportunity["id"],'
+          if bind_line not in lines:
+              lines.insert(bind_index + 1, bind_line)
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
           uv run ruff check . --fix
           uv run ruff format .
