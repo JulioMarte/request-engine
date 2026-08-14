@@ -97,19 +97,29 @@ class SlowProcessor:
         await asyncio.sleep(0.03)
 
 
+class HangingProcessor:
+    async def process(self, lease: FakeLease) -> None:
+        del lease
+        await asyncio.sleep(60)
+
+
 def _config(
     *,
     max_concurrency: int = 2,
     claim_batch_size: int = 10,
+    processing_timeout: timedelta = timedelta(seconds=1),
+    retry_jitter_fraction: float = 0.0,
 ) -> WorkerRuntimeConfig:
     return WorkerRuntimeConfig(
         max_concurrency=max_concurrency,
         claim_batch_size=claim_batch_size,
         lease_duration=timedelta(milliseconds=50),
         heartbeat_interval=timedelta(milliseconds=5),
+        processing_timeout=processing_timeout,
         idle_sleep=timedelta(0),
         retry_base=timedelta(seconds=3),
         retry_cap=timedelta(seconds=30),
+        retry_jitter_fraction=retry_jitter_fraction,
     )
 
 
@@ -138,6 +148,50 @@ async def test_retryable_failure_uses_deterministic_backoff() -> None:
     assert outcome.state is WorkerItemState.RETRY
     assert store.retried == [(lease.id, timedelta(seconds=6), "temporary_dependency")]
     assert store.completed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_retry_jitter_is_stable_and_bounded_for_work_identity() -> None:
+    lease = FakeLease(UUID("11111111-2222-3333-4444-555555555555"), 2)
+    config = _config(retry_jitter_fraction=0.2)
+    first_store = FakeStore((lease,))
+    second_store = FakeStore((lease,))
+
+    first = FencedWorkerRuntime(first_store, RetryProcessor(), config=config)
+    second = FencedWorkerRuntime(second_store, RetryProcessor(), config=config)
+
+    await first.run_once()
+    await second.run_once()
+
+    first_delay = first_store.retried[0][1]
+    second_delay = second_store.retried[0][1]
+    assert first_delay == second_delay
+    assert timedelta(seconds=4.8) <= first_delay <= timedelta(seconds=7.2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_processing_timeout_retries_instead_of_renewing_forever() -> None:
+    lease = FakeLease(uuid4(), 1)
+    store = FakeStore((lease,))
+    runtime = FencedWorkerRuntime(
+        store,
+        HangingProcessor(),
+        config=_config(
+            max_concurrency=1,
+            processing_timeout=timedelta(milliseconds=15),
+        ),
+    )
+
+    outcome = (await runtime.run_once())[0]
+
+    assert outcome.state is WorkerItemState.RETRY
+    assert store.retried[0][0] == lease.id
+    assert store.retried[0][2] == "processing_timeout"
+    assert store.completed == []
+    assert store.dead == []
+    assert store.renewed
 
 
 @pytest.mark.asyncio
