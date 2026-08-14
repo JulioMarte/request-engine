@@ -52,6 +52,7 @@ from request_engine.modules.queue.application.queries.list_service_queues import
     ServiceQueueCatalogReader,
     list_service_queues,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -229,53 +230,69 @@ def create_router(
         )
         return WaitlistEntryView.from_contract(entry)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues",
         queues,
+        capability="queue.list",
         methods=["GET"],
         response_model=tuple[ServiceQueueView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/join",
         join,
+        capability="queue.join",
         methods=["POST"],
         response_model=QueueEntryView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/status",
         queue_status,
+        capability="queue.status",
         methods=["GET"],
         response_model=QueueStatusView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/entries/{queue_entry_id}/leave",
         leave,
+        capability="queue.leave",
         methods=["POST"],
         response_model=QueueEntryView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/queues/{queue_id}/call-next",
         call_next_entry,
+        capability="queue.call_next",
         methods=["POST"],
         response_model=QueueEntryView | None,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist",
         join_waitlist_entry,
+        capability="waitlist.join",
         methods=["POST"],
         response_model=WaitlistEntryView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist/{waitlist_entry_id}",
         waitlist_entry_status,
+        capability="waitlist.read",
         methods=["GET"],
         response_model=WaitlistEntryView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/waitlist/{waitlist_entry_id}/leave",
         leave_waitlist_entry,
+        capability="waitlist.leave",
         methods=["POST"],
         response_model=WaitlistEntryView,
     )
