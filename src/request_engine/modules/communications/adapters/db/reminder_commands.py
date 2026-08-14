@@ -7,6 +7,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.adapters.db.reminder_authority import (
+    require_reminder_subject_authority,
+)
 from request_engine.modules.communications.adapters.db.task_store import (
     validate_recipient_and_contact_point,
 )
@@ -19,6 +22,7 @@ from request_engine.modules.communications.application.commands.create_reminder_
 from request_engine.modules.communications.application.errors import (
     ReminderPlanNotActive,
     ReminderPlanNotFound,
+    ReminderPlanRevisionConflict,
 )
 from request_engine.modules.communications.contracts.reminders import (
     DailyReminderSchedule,
@@ -44,7 +48,7 @@ REMINDER_ACTION_VERSION = 1
 
 
 class PostgresReminderCommands:
-    """Durable ReminderPlan lifecycle commands."""
+    """Durable ReminderPlan lifecycle commands with transactional Party authority."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
@@ -52,7 +56,7 @@ class PostgresReminderCommands:
     async def create_reminder_plan(self, command: CreateReminderPlanCommand) -> ReminderPlan:
         daily_times = normalize_daily_times(command.daily_times)
         fingerprint = command_fingerprint(
-            "communications.create_reminder_plan",
+            "reminders.create_plan",
             {
                 "subject_party_id": command.subject_party_id,
                 "purpose": command.purpose,
@@ -70,13 +74,20 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability="communications.create_reminder_plan",
+                capability="reminders.create_plan",
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
             if replay is not None:
                 return reminder_plan_from_json(cast(dict[str, object], replay["reminder_plan"]))
 
+            authority = await require_reminder_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                allow_operator_override=command.allow_subject_override,
+            )
             await validate_recipient_and_contact_point(
                 session,
                 organization_id=command.organization_id,
@@ -147,7 +158,7 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name="communications.create_reminder_plan",
+                command_name="reminders.create_plan",
                 aggregate_kind="ReminderPlan",
                 aggregate_id=plan.id,
                 idempotency_id=idempotency_id,
@@ -155,6 +166,7 @@ class PostgresReminderCommands:
                     "purpose": plan.purpose,
                     "timezone": plan.timezone,
                     "first_occurrence_at": first_occurrence.isoformat(),
+                    "authority": authority.audit_details(),
                 },
             )
             await append_outbox(
@@ -179,9 +191,10 @@ class PostgresReminderCommands:
 
     async def cancel_reminder_plan(self, command: CancelReminderPlanCommand) -> ReminderPlan:
         fingerprint = command_fingerprint(
-            "communications.cancel_reminder_plan",
+            "reminders.cancel_plan",
             {
                 "reminder_plan_id": command.reminder_plan_id,
+                "expected_revision": command.expected_revision,
                 "reason": command.reason,
             },
         )
@@ -190,7 +203,7 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability="communications.cancel_reminder_plan",
+                capability="reminders.cancel_plan",
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
@@ -202,9 +215,25 @@ class PostgresReminderCommands:
                 organization_id=command.organization_id,
                 reminder_plan_id=command.reminder_plan_id,
             )
-            status = ReminderPlanStatus(cast(str, row["status"]))
+            subject_party_id = cast(UUID, row["subject_party_id"])
+            authority = await require_reminder_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                allow_operator_override=command.allow_subject_override,
+            )
+            actual_revision = cast(int, row["revision"])
+            if actual_revision != command.expected_revision:
+                raise ReminderPlanRevisionConflict(
+                    command.reminder_plan_id,
+                    command.expected_revision,
+                    actual_revision,
+                )
+
+            plan_status = ReminderPlanStatus(cast(str, row["status"]))
             changed = False
-            if status is ReminderPlanStatus.ACTIVE:
+            if plan_status is ReminderPlanStatus.ACTIVE:
                 row = (
                     (
                         await session.execute(
@@ -216,12 +245,14 @@ class PostgresReminderCommands:
                                     updated_at = clock_timestamp()
                                 WHERE organization_id = :organization_id
                                   AND id = :reminder_plan_id
+                                  AND revision = :expected_revision
                                 RETURNING *
                                 """
                             ),
                             {
                                 "organization_id": command.organization_id,
                                 "reminder_plan_id": command.reminder_plan_id,
+                                "expected_revision": command.expected_revision,
                             },
                         )
                     )
@@ -249,19 +280,23 @@ class PostgresReminderCommands:
                         "reminder_plan_id": command.reminder_plan_id,
                     },
                 )
-            elif status is ReminderPlanStatus.COMPLETED:
-                raise ReminderPlanNotActive(command.reminder_plan_id, status.value)
+            elif plan_status is ReminderPlanStatus.COMPLETED:
+                raise ReminderPlanNotActive(command.reminder_plan_id, plan_status.value)
 
             plan = reminder_plan_from_row(row)
             await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name="communications.cancel_reminder_plan",
+                command_name="reminders.cancel_plan",
                 aggregate_kind="ReminderPlan",
                 aggregate_id=plan.id,
                 idempotency_id=idempotency_id,
-                details={"reason": command.reason, "already_cancelled": not changed},
+                details={
+                    "reason": command.reason,
+                    "already_cancelled": not changed,
+                    "authority": authority.audit_details(),
+                },
             )
             if changed:
                 await append_outbox(
