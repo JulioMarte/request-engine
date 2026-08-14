@@ -8,19 +8,19 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 
 | Invariant | Canonical owner class | Baseline evidence family | Baseline | Release proof phase |
 |---|---|---|---|---|
-| V3-I01 | DB | tenant authority + candidate DB tests | PARTIAL | 6C/6I |
-| V3-I02 | APP | HTTP/request/queue authority tests | PARTIAL | 6I/6K |
-| V3-I03 | APP | authority application/HTTP tests | PARTIAL | 6I/6K |
+| V3-I01 | DB | tenant authority + adversarial app-role DB/HTTP tests | PARTIAL | 6C/6I |
+| V3-I02 | APP | adversarial HTTP Request/Booking/Queue/Waitlist authority tests | PARTIAL | 6I/6K |
+| V3-I03 | APP | material Request authority/revocation race + authority HTTP tests | PARTIAL | 6I/6K |
 | V3-I04 | DB/ops | worker role and migration role definitions | PARTIAL | 6I |
-| V3-I05 | DB | tenant/RLS candidate tests | PARTIAL | 6I |
+| V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PARTIAL | 6I |
 | V3-I06 | BOTH | trusted execution provenance DB test | PARTIAL | 6I/6J |
 | V3-I07 | BOTH | candidate catalog/version references | PARTIAL | 6C/6K |
-| V3-I08 | DB | candidate relational tenant keys | PARTIAL | 6C/6I |
+| V3-I08 | DB | relational tenant keys + foreign-reference adversarial tests | PARTIAL | 6C/6I |
 | V3-I09 | BOTH | booking availability/resource adapters | PARTIAL | 6D/6E |
 | V3-I10 | APP+DB reference | requests core + schema validation tests | PARTIAL | 6D/6K |
 | V3-I11 | BOTH | requests core tests | PARTIAL | 6D/6E |
 | V3-I12 | BOTH | idempotency error-contract tests | PARTIAL | 6E |
-| V3-I13 | APP | authority/security/provider boundaries | PARTIAL | 6I/6J |
+| V3-I13 | APP | adversarial authority/operator-override/security boundaries | PARTIAL | 6I/6J |
 | V3-I14 | APP | request cancellation implementation | PARTIAL | 6D/6K |
 | V3-I15 | DB | booking commitment/candidate DB tests | PARTIAL | 6D/6L |
 | V3-I16 | DB | capacity hardening + commitment tests | PARTIAL | 6D |
@@ -69,6 +69,12 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I59 | DB | trusted execution provenance DB test | PARTIAL | 6I/6J |
 | V3-I60 | BOTH | idempotency contract tests | PARTIAL | 6E |
 | V3-I61 | BOTH | idempotency PostgreSQL implementation/contracts | PARTIAL | 6E/6I |
+
+## Current Phase 6I evidence
+
+CI `#462` on commit `63d2d5004cd74800cb41d08f293e6aa5523f0a70` materially strengthens V3-I01, V3-I02, V3-I03, V3-I05, V3-I08, and V3-I13. The added evidence directly exercises PostgreSQL RLS as `request_engine_app`, verifies fail-closed behavior without tenant context, compares foreign identifiers with nonexistent controls, attacks public Booking/Request/Queue/Waitlist surfaces, keeps operator subject override tenant-bound, and deterministically overlaps a material Request command with Representation revocation.
+
+Those rows remain `PARTIAL`. The current HTTP integration harness does not yet connect through a production login restricted to `request_engine_app`, and the same deterministic material-command race proof is not yet complete for every subject-scoped mutation family. Keeping these rows `PARTIAL` prevents the release registry from claiming more isolation or authority coverage than the executable evidence provides.
 
 ## Release-proof rule
 
