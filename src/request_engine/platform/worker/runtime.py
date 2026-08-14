@@ -51,6 +51,10 @@ class PermanentWorkError(RuntimeError):
         super().__init__(message or error_class)
 
 
+class LeaseLostWorkError(RuntimeError):
+    """Signal that processing lost its fencing token and must not finalize work."""
+
+
 class WorkerItemState(StrEnum):
     COMPLETED = "completed"
     RETRY = "retry"
@@ -146,7 +150,7 @@ class FencedWorkerRuntime(Generic[TLease]):
             stop_heartbeat.set()
             await heartbeat
 
-        if lost_lease.is_set():
+        if lost_lease.is_set() or isinstance(failure, LeaseLostWorkError):
             return WorkerItemOutcome(lease.id, WorkerItemState.STALE, "lease_lost")
 
         if failure is None:
@@ -194,10 +198,16 @@ class FencedWorkerRuntime(Generic[TLease]):
                 await asyncio.wait_for(stop_heartbeat.wait(), timeout=interval)
                 return
             except TimeoutError:
-                renewed = await self._store.renew(
-                    lease,
-                    extension=self._config.lease_duration,
-                )
+                try:
+                    renewed = await self._store.renew(
+                        lease,
+                        extension=self._config.lease_duration,
+                    )
+                except Exception:
+                    # If the runtime cannot prove lease ownership, it must stop
+                    # finalization and let the durable lease expire/reclaim.
+                    lost_lease.set()
+                    return
                 if not renewed:
                     lost_lease.set()
                     return
