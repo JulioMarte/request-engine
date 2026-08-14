@@ -1,3 +1,4 @@
+from request_engine.entrypoints.worker.scheduled_router import ScheduledActionRouter
 from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
     NO_SHOW_ACTION_TYPE,
     NO_SHOW_ACTION_VERSION,
@@ -24,7 +25,6 @@ from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SLOT_OFFER_EXPIRY_ACTION_VERSION,
     SlotOfferExpiryScheduledHandler,
 )
-from request_engine.entrypoints.worker.scheduled_router import ScheduledActionRouter
 
 
 def build_scheduled_action_router(
