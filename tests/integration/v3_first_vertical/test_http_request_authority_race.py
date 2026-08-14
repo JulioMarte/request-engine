@@ -160,7 +160,6 @@ async def test_request_submit_holds_representation_authority_until_material_comm
     blocker = _connect()
     revoker = _connect()
     try:
-        blocker.execute("BEGIN")
         blocker.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (correlation_identity,),
@@ -202,7 +201,6 @@ async def test_request_submit_holds_representation_authority_until_material_comm
 
             await _wait_until_request_is_blocked_after_authority_lock(admin_conn)
 
-            revoker.execute("BEGIN")
             revoker.execute("SET LOCAL lock_timeout = '250ms'")
             with pytest.raises(LockNotAvailable):
                 revoker.execute(
@@ -220,7 +218,6 @@ async def test_request_submit_holds_representation_authority_until_material_comm
             assert submitted.status_code == 201
             request_id = UUID(submitted.json()["request"]["id"])
 
-            revoker.execute("BEGIN")
             updated = revoker.execute(
                 """
                 UPDATE request_engine.representations
