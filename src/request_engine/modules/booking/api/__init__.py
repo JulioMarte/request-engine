@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
@@ -24,15 +25,18 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     party_authority_reader: PartyAuthorityReader,
+    appointment_option_signing_key: bytes,
 ) -> None:
     """Connect the Booking module to the HTTP process through its owned surface."""
 
     reservation_commands = PostgresReservationCommands(session_factory)
     commitment_commands = PostgresBookingCommitmentCommands(session_factory)
+    option_codec = SignedAppointmentOptionCodec(appointment_option_signing_key)
     app.add_exception_handler(BookingError, booking_error_handler)
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
+            option_codec=option_codec,
             book_handler=reservation_commands,
             cancel_handler=reservation_commands,
             reschedule_handler=commitment_commands,
