@@ -50,9 +50,8 @@ class CommunicationDeliveryScheduledHandler:
         self._session_factory = session_factory
         self._scheduler = scheduler
         self._providers = providers
-        if (
-            finalization_lease_extension <= timedelta(0)
-            or finalization_lease_extension > timedelta(minutes=15)
+        if finalization_lease_extension <= timedelta(0) or finalization_lease_extension > timedelta(
+            minutes=15
         ):
             raise ValueError("finalization_lease_extension must be > 0 and <= 15 minutes")
         self._finalization_lease_extension = finalization_lease_extension
