@@ -32,16 +32,27 @@ def _organization(conn: PgConnection) -> UUID:
 
 
 def _expire(conn: PgConnection, table: str, work_id: UUID) -> None:
-    if table not in {"scheduled_actions", "outbox_messages", "provider_events"}:
+    if table == "scheduled_actions":
+        sql: LiteralString = """
+            UPDATE request_engine.scheduled_actions
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+        """
+    elif table == "outbox_messages":
+        sql = """
+            UPDATE request_engine.outbox_messages
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+        """
+    elif table == "provider_events":
+        sql = """
+            UPDATE request_engine.provider_events
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+        """
+    else:
         raise ValueError("unsupported worker table")
-    conn.execute(
-        f"""
-        UPDATE request_engine.{table}
-        SET lease_until = clock_timestamp() - interval '1 second'
-        WHERE id = %s
-        """,  # noqa: S608 - table is selected from a fixed local allowlist.
-        (work_id,),
-    )
+    conn.execute(sql, (work_id,))
 
 
 @pytest.mark.postgres
