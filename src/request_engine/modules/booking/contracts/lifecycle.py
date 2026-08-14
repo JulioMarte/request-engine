@@ -5,6 +5,15 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
+class ReservationNotificationPlan:
+    confirmation: bool
+    reminders_before_minutes: tuple[int, ...]
+    attendance_confirmation_required: bool
+    attendance_request_before_minutes: int | None
+    channel_policy: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
 class ReservationLifecycleSnapshot:
     organization_id: UUID
     reservation_id: UUID
@@ -15,7 +24,8 @@ class ReservationLifecycleSnapshot:
     end_at: datetime
     status: str
     revision: int
-    booking_policy_snapshot: dict[str, object]
+    no_show_after_minutes: int | None
+    notification_plan: ReservationNotificationPlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +36,8 @@ class ReleasedReservationSlot:
     location_id: UUID | None
     start_at: datetime
     end_at: datetime
-    booking_policy_snapshot: dict[str, object]
+    recovery_enabled: bool
+    minimum_lead_minutes: int
 
 
 class ReservationLifecycleReader(Protocol):
