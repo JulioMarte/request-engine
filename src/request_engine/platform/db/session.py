@@ -10,17 +10,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from request_engine.platform.security.context import ActorContext
+
 SessionFactory = async_sessionmaker[AsyncSession]
 
 
 def create_postgres_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
     """Create the process-level async PostgreSQL engine."""
 
-    return create_async_engine(
-        database_url,
-        echo=echo,
-        pool_pre_ping=True,
-    )
+    return create_async_engine(database_url, echo=echo, pool_pre_ping=True)
 
 
 def create_session_factory(engine: AsyncEngine) -> SessionFactory:
@@ -43,6 +41,32 @@ async def set_tenant_context(session: AsyncSession, organization_id: UUID) -> No
     )
 
 
+async def set_actor_context(session: AsyncSession, actor: ActorContext) -> None:
+    """Bind authenticated execution provenance to the current DB transaction."""
+
+    await session.execute(
+        text(
+            """
+            SELECT
+                set_config('request_engine.organization_id', :organization_id, true),
+                set_config('request_engine.authenticated_principal_id', :principal_id, true),
+                set_config('request_engine.principal_kind', :principal_kind, true),
+                set_config('request_engine.authentication_method', :authentication_method, true),
+                set_config('request_engine.correlation_id', :correlation_id, true),
+                set_config('request_engine.credential_id', :credential_id, true)
+            """
+        ),
+        {
+            "organization_id": str(actor.organization_id),
+            "principal_id": str(actor.principal_id),
+            "principal_kind": actor.principal_kind.value,
+            "authentication_method": actor.authentication_method,
+            "correlation_id": str(actor.correlation_id),
+            "credential_id": actor.credential_id or "",
+        },
+    )
+
+
 @asynccontextmanager
 async def tenant_transaction(
     session_factory: SessionFactory,
@@ -52,4 +76,16 @@ async def tenant_transaction(
 
     async with session_factory() as session, session.begin():
         await set_tenant_context(session, organization_id)
+        yield session
+
+
+@asynccontextmanager
+async def actor_transaction(
+    session_factory: SessionFactory,
+    actor: ActorContext,
+) -> AsyncGenerator[AsyncSession]:
+    """Open a transaction bound to trusted tenant and Principal provenance."""
+
+    async with session_factory() as session, session.begin():
+        await set_actor_context(session, actor)
         yield session
