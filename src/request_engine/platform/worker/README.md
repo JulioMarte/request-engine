@@ -27,7 +27,11 @@ stale
 
 `stale` is not a business failure. It means this process can no longer prove that it owns the work. The runtime leaves durable state for the current or next authoritative worker.
 
-Unexpected processor exceptions are retryable by default and receive bounded exponential backoff. Explicit `PermanentWorkError` moves the current lease to dead-letter state. Explicit `LeaseLostWorkError` prevents any lease mutation.
+Unexpected processor exceptions are retryable by default. Explicit `PermanentWorkError` moves the current lease to dead-letter state. Explicit `LeaseLostWorkError` prevents any lease mutation.
+
+Every processor also has a finite `processing_timeout`. Timeout cancellation becomes a retryable `processing_timeout` failure instead of allowing a live but hung task to renew one lease forever. Processors must be cancellation-safe. Provider and network client timeouts must be shorter than the worker processing timeout.
+
+Retries use bounded exponential backoff plus deterministic jitter derived from work identity and attempt count. The same work attempt receives the same delay, while unrelated work is spread across the retry window. This avoids synchronized retry storms after a shared dependency outage.
 
 ## Process supervision
 
@@ -67,11 +71,12 @@ Phase 4 guarantees:
 ```text
 fair tenant claiming
 bounded in-process concurrency
+bounded processor execution
 lease heartbeat and renewal
 PostgreSQL-clock ownership fencing
 expired-token rejection
 post-provider-I/O finalization fencing
-bounded retries
+bounded retries with deterministic jitter
 terminal dead-letter state
 privileged audited replay
 structured process supervision
