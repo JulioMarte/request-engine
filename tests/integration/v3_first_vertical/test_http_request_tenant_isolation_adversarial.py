@@ -169,14 +169,14 @@ def _submit_body(
 @pytest.mark.postgres
 async def test_foreign_request_and_definition_ids_do_not_create_existence_oracles(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     tenant_a = _fixture(admin_conn, "a")
     tenant_b = _fixture(admin_conn, "b")
     headers_a = {"Authorization": "Bearer tenant-a"}
     headers_b = {"Authorization": "Bearer tenant-b"}
 
-    async with _client(session_factory, tenant_a, tenant_b) as client:
+    async with _client(app_session_factory, tenant_a, tenant_b) as client:
         submitted_b = await client.post(
             f"/v1/requests/definitions/{tenant_b.request_key}/submit",
             json=_submit_body(tenant_b.requester_party_id, tenant_b.recipient_party_id),
@@ -243,12 +243,12 @@ async def test_foreign_request_and_definition_ids_do_not_create_existence_oracle
 @pytest.mark.postgres
 async def test_request_party_override_cannot_import_parties_from_another_tenant(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     tenant_a = _fixture(admin_conn, "a-party")
     tenant_b = _fixture(admin_conn, "b-party")
 
-    async with _client(session_factory, tenant_a, tenant_b) as client:
+    async with _client(app_session_factory, tenant_a, tenant_b) as client:
         foreign_requester = await client.post(
             f"/v1/requests/definitions/{tenant_a.request_key}/submit",
             json=_submit_body(tenant_b.requester_party_id, tenant_a.recipient_party_id),
