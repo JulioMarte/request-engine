@@ -35,7 +35,7 @@ BEGIN
     IF TG_TABLE_NAME = 'slot_offers' THEN
         offer_row := NEW;
     ELSE
-        SELECT so
+        SELECT so.*
           INTO offer_row
           FROM request_engine.slot_offers so
          WHERE so.organization_id = NEW.organization_id
@@ -46,13 +46,13 @@ BEGIN
         END IF;
     END IF;
 
-    SELECT h
+    SELECT h.*
       INTO STRICT hold_row
       FROM request_engine.capacity_holds h
      WHERE h.organization_id = offer_row.organization_id
        AND h.id = offer_row.capacity_hold_id;
 
-    SELECT o
+    SELECT o.*
       INTO STRICT opportunity_row
       FROM request_engine.slot_opportunities o
      WHERE o.organization_id = offer_row.organization_id
@@ -64,7 +64,7 @@ BEGIN
      WHERE ov.organization_id = opportunity_row.organization_id
        AND ov.id = opportunity_row.offering_version_id;
 
-    SELECT w
+    SELECT w.*
       INTO STRICT waitlist_row
       FROM request_engine.waitlist_entries w
      WHERE w.organization_id = offer_row.organization_id
