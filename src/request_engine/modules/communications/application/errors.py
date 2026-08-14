@@ -75,8 +75,7 @@ class ReminderPlanRevisionConflict(CommunicationsError):
 class ReminderSubjectAuthorityRequired(CommunicationsError):
     def __init__(self, subject_party_id: UUID, scope_key: str) -> None:
         super().__init__(
-            f"Principal is not authorized to act for Party {subject_party_id} "
-            f"in scope {scope_key}"
+            f"Principal is not authorized to act for Party {subject_party_id} in scope {scope_key}"
         )
         self.subject_party_id = subject_party_id
         self.scope_key = scope_key
