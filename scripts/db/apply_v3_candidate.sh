@@ -19,6 +19,7 @@ files=(
   "012-waitlist-foundation.sql"
   "013-slot-offer-recovery.sql"
   "014-reservation-lifecycle.sql"
+  "015-worker-runtime-hardening.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
