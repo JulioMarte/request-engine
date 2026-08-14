@@ -39,6 +39,7 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
 )
 from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
@@ -178,34 +179,44 @@ def create_router(
         )
         return ReservationView.from_contract(reservation)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/slots",
         slots,
+        capability="appointments.find_slots",
         methods=["GET"],
         response_model=tuple[AppointmentSlotView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "",
         book,
+        capability="appointments.book",
         methods=["POST"],
         response_model=ReservationView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}",
         reservation_status,
+        capability="appointments.read",
         methods=["GET"],
         response_model=ReservationView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}/cancel",
         cancel,
+        capability="appointments.cancel",
         methods=["POST"],
         response_model=ReservationView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}/reschedule",
         reschedule,
+        capability="appointments.reschedule",
         methods=["POST"],
         response_model=ReservationView,
     )
