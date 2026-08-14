@@ -124,14 +124,10 @@ async def test_cancel_and_reschedule_serialize_to_one_reservation_revision(
     )
 
     successes = [
-        result
-        for result in (cancel_result, reschedule_result)
-        if isinstance(result, Reservation)
+        result for result in (cancel_result, reschedule_result) if isinstance(result, Reservation)
     ]
     failures = [
-        result
-        for result in (cancel_result, reschedule_result)
-        if isinstance(result, BaseException)
+        result for result in (cancel_result, reschedule_result) if isinstance(result, BaseException)
     ]
     assert len(successes) == 1
     assert len(failures) == 1
