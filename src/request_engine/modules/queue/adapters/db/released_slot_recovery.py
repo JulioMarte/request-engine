@@ -13,7 +13,9 @@ from request_engine.modules.queue.application.commands.offer_next_waitlist_candi
     OfferNextWaitlistCandidateCommand,
     offer_next_waitlist_candidate,
 )
-from request_engine.modules.queue.application.slot_offer_notifications import SlotOfferNotificationPort
+from request_engine.modules.queue.application.slot_offer_notifications import (
+    SlotOfferNotificationPort,
+)
 from request_engine.modules.queue.contracts.waitlist import SlotOffer, SlotOpportunity
 from request_engine.platform.db.session import SessionFactory
 

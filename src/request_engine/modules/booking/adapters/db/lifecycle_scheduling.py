@@ -34,8 +34,7 @@ class PostgresReservationLifecycleScheduling:
                 )
                 return
             dedupe_key = (
-                f"booking:no-show:{snapshot.reservation_id}:"
-                f"{snapshot.start_at.isoformat()}:v1"
+                f"booking:no-show:{snapshot.reservation_id}:{snapshot.start_at.isoformat()}:v1"
             )
             await _cancel_pending(
                 session,
@@ -43,9 +42,7 @@ class PostgresReservationLifecycleScheduling:
                 snapshot.reservation_id,
                 keep_dedupe_key=dedupe_key,
             )
-            execute_at = snapshot.start_at + timedelta(
-                minutes=snapshot.no_show_after_minutes
-            )
+            execute_at = snapshot.start_at + timedelta(minutes=snapshot.no_show_after_minutes)
             db_now = cast(
                 datetime,
                 (await session.execute(text("SELECT clock_timestamp()"))).scalar_one(),

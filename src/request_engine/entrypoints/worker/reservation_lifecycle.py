@@ -35,23 +35,17 @@ async def handle_reservation_lifecycle_event(
     notifications: ReservationLifecycleNotificationPort,
     recovery: ReleasedSlotRecoveryPort,
 ) -> None:
-    snapshot = await reader.get_lifecycle_snapshot(
-        event.organization_id, event.reservation_id
-    )
+    snapshot = await reader.get_lifecycle_snapshot(event.organization_id, event.reservation_id)
     if snapshot is None:
         return
 
     if event.event_type == "reservation.cancelled.v1":
-        await scheduling.cancel_reservation_schedule(
-            event.organization_id, event.reservation_id
-        )
+        await scheduling.cancel_reservation_schedule(event.organization_id, event.reservation_id)
         await notifications.cancel_reservation_notifications(
             event.organization_id, event.reservation_id
         )
     else:
-        await scheduling.reconcile_reservation_schedule(
-            snapshot, source_event_id=event.event_id
-        )
+        await scheduling.reconcile_reservation_schedule(snapshot, source_event_id=event.event_id)
         await notifications.reconcile_reservation_notifications(
             snapshot, source_event_id=event.event_id
         )

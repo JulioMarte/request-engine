@@ -126,7 +126,9 @@ class PostgresAttendanceCommands:
             policy = reservation_lifecycle_policy(
                 cast(dict[str, object], reservation["booking_policy_snapshot"])
             )
-            cancelled = command.response == "declined" and policy.attendance.decline_action == "cancel"
+            cancelled = (
+                command.response == "declined" and policy.attendance.decline_action == "cancel"
+            )
             if cancelled:
                 resource_ids = await _active_resource_ids(
                     session, command.organization_id, command.reservation_id
@@ -227,9 +229,7 @@ class PostgresAttendanceCommands:
                     },
                 )
 
-            state = await _read_state(
-                session, command.organization_id, command.reservation_id
-            )
+            state = await _read_state(session, command.organization_id, command.reservation_id)
             await complete_idempotency(
                 session,
                 idempotency_id,
@@ -350,9 +350,7 @@ class PostgresAttendanceCommands:
                     "already_checked_in": current is AttendanceOutcomeStatus.CHECKED_IN,
                 },
             )
-            state = await _read_state(
-                session, command.organization_id, command.reservation_id
-            )
+            state = await _read_state(session, command.organization_id, command.reservation_id)
             await complete_idempotency(
                 session, idempotency_id, {"attendance": _state_to_json(state)}
             )
@@ -385,9 +383,7 @@ class PostgresAttendanceCommands:
                 session, command.organization_id, command.reservation_id
             )
             if cast(str, reservation["status"]) != "confirmed":
-                state = await _read_state(
-                    session, command.organization_id, command.reservation_id
-                )
+                state = await _read_state(session, command.organization_id, command.reservation_id)
                 await complete_idempotency(
                     session, idempotency_id, {"attendance": _state_to_json(state)}
                 )
@@ -398,9 +394,7 @@ class PostgresAttendanceCommands:
             )
             no_show_after = policy.attendance.no_show_after_minutes
             if no_show_after is None:
-                state = await _read_state(
-                    session, command.organization_id, command.reservation_id
-                )
+                state = await _read_state(session, command.organization_id, command.reservation_id)
                 await complete_idempotency(
                     session, idempotency_id, {"attendance": _state_to_json(state)}
                 )
@@ -410,9 +404,7 @@ class PostgresAttendanceCommands:
                 datetime,
                 (await session.execute(text("SELECT clock_timestamp()"))).scalar_one(),
             )
-            cutoff = cast(datetime, reservation["start_at"]) + timedelta(
-                minutes=no_show_after
-            )
+            cutoff = cast(datetime, reservation["start_at"]) + timedelta(minutes=no_show_after)
             if db_now < cutoff:
                 raise NoShowEvaluationTooEarly(command.reservation_id)
 
@@ -475,16 +467,16 @@ class PostgresAttendanceCommands:
                     "outcome_before": current.value,
                 },
             )
-            state = await _read_state(
-                session, command.organization_id, command.reservation_id
-            )
+            state = await _read_state(session, command.organization_id, command.reservation_id)
             await complete_idempotency(
                 session, idempotency_id, {"attendance": _state_to_json(state)}
             )
             return state
 
 
-async def _lock_reservation(session: object, organization_id: UUID, reservation_id: UUID) -> RowMapping:
+async def _lock_reservation(
+    session: object, organization_id: UUID, reservation_id: UUID
+) -> RowMapping:
     row = (
         (
             await cast(object, session).execute(  # type: ignore[attr-defined]
@@ -511,7 +503,9 @@ async def _lock_reservation(session: object, organization_id: UUID, reservation_
     return row
 
 
-async def _ensure_attendance_projection(session: object, organization_id: UUID, reservation_id: UUID) -> None:
+async def _ensure_attendance_projection(
+    session: object, organization_id: UUID, reservation_id: UUID
+) -> None:
     await cast(object, session).execute(  # type: ignore[attr-defined]
         text(
             """
@@ -524,7 +518,9 @@ async def _ensure_attendance_projection(session: object, organization_id: UUID, 
     )
 
 
-async def _lock_attendance(session: object, organization_id: UUID, reservation_id: UUID) -> RowMapping:
+async def _lock_attendance(
+    session: object, organization_id: UUID, reservation_id: UUID
+) -> RowMapping:
     return (
         (
             await cast(object, session).execute(  # type: ignore[attr-defined]
@@ -543,7 +539,9 @@ async def _lock_attendance(session: object, organization_id: UUID, reservation_i
     )
 
 
-async def _active_resource_ids(session: object, organization_id: UUID, reservation_id: UUID) -> tuple[UUID, ...]:
+async def _active_resource_ids(
+    session: object, organization_id: UUID, reservation_id: UUID
+) -> tuple[UUID, ...]:
     rows = (
         await cast(object, session).execute(  # type: ignore[attr-defined]
             text(
@@ -583,7 +581,9 @@ async def _cancel_booking_lifecycle_actions(
     )
 
 
-async def _read_state(session: object, organization_id: UUID, reservation_id: UUID) -> ReservationAttendanceState:
+async def _read_state(
+    session: object, organization_id: UUID, reservation_id: UUID
+) -> ReservationAttendanceState:
     row = (
         (
             await cast(object, session).execute(  # type: ignore[attr-defined]

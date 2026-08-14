@@ -35,9 +35,7 @@ class ReservationLifecyclePolicy:
 
 def reservation_lifecycle_policy(policy: dict[str, object]) -> ReservationLifecyclePolicy:
     attendance_raw = _object(policy.get("attendance"), "booking_policy.attendance")
-    communications_raw = _object(
-        policy.get("communications"), "booking_policy.communications"
-    )
+    communications_raw = _object(policy.get("communications"), "booking_policy.communications")
     recovery_raw = _object(policy.get("slot_recovery"), "booking_policy.slot_recovery")
 
     decline_action = attendance_raw.get("decline_action", "keep")
