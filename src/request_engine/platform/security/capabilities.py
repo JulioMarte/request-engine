@@ -36,6 +36,7 @@ class CapabilityDefinition:
     party_scope: str | None = None
     override_capability: str | None = None
     legacy_aliases: frozenset[str] = frozenset()
+    runtime_available: bool = True
 
     @property
     def discoverable(self) -> bool:
@@ -50,6 +51,7 @@ def _query(
     party_scope: str | None = None,
     override_capability: str | None = None,
     legacy_aliases: frozenset[str] = frozenset(),
+    runtime_available: bool = True,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -61,6 +63,7 @@ def _query(
         party_scope=party_scope,
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,
+        runtime_available=runtime_available,
     )
 
 
@@ -73,6 +76,7 @@ def _command(
     party_scope: str | None = None,
     override_capability: str | None = None,
     legacy_aliases: frozenset[str] = frozenset(),
+    runtime_available: bool = True,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -84,6 +88,7 @@ def _command(
         party_scope=party_scope,
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,
+        runtime_available=runtime_available,
     )
 
 
@@ -95,6 +100,7 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.PUBLIC,
         "Read structured public/operational business information.",
         legacy_aliases=frozenset({"business.read"}),
+        runtime_available=False,
     ),
     _query(
         "catalog.search_offerings",
@@ -151,8 +157,9 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _command(
         "appointments.subject_override",
         CapabilityExposure.OPERATOR,
-        "Operate on appointment subjects without delegated Party authority.",
+        "Permission to operate on appointment subjects without delegated Party authority.",
         legacy_aliases=frozenset({"booking.subject_override"}),
+        runtime_available=False,
     ),
     _query(
         "queue.list",
@@ -192,7 +199,8 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _command(
         "queue.subject_override",
         CapabilityExposure.OPERATOR,
-        "Operate on queue subjects without delegated Party authority.",
+        "Permission to operate on queue subjects without delegated Party authority.",
+        runtime_available=False,
     ),
     _command(
         "waitlist.join",
@@ -219,7 +227,8 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _command(
         "waitlist.subject_override",
         CapabilityExposure.OPERATOR,
-        "Operate on waitlist subjects without delegated Party authority.",
+        "Permission to operate on waitlist subjects without delegated Party authority.",
+        runtime_available=False,
     ),
     _command(
         "waitlist.create_opportunity",
@@ -269,7 +278,8 @@ CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _command(
         "requests.party_override",
         CapabilityExposure.OPERATOR,
-        "Operate on Requests without requester Party authority.",
+        "Permission to operate on Requests without requester Party authority.",
+        runtime_available=False,
     ),
 )
 
