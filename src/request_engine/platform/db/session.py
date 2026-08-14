@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.execution_context import current_actor_context
 
 SessionFactory = async_sessionmaker[AsyncSession]
 
@@ -72,10 +73,16 @@ async def tenant_transaction(
     session_factory: SessionFactory,
     organization_id: UUID,
 ) -> AsyncGenerator[AsyncSession]:
-    """Open one task-local session and one explicit tenant-scoped transaction."""
+    """Open one tenant transaction and inherit trusted request provenance when present."""
 
     async with session_factory() as session, session.begin():
-        await set_tenant_context(session, organization_id)
+        actor = current_actor_context()
+        if actor is not None:
+            if actor.organization_id != organization_id:
+                raise RuntimeError("task-local actor tenant does not match transaction tenant")
+            await set_actor_context(session, actor)
+        else:
+            await set_tenant_context(session, organization_id)
         yield session
 
 
