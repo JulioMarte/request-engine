@@ -34,7 +34,6 @@ class CapabilityAvailability:
     product_supported: bool
     tenant_enabled: bool
     actor_granted: bool
-    context_executable: None = None
 
 
 def _visible_to_actor(definition: CapabilityDefinition, actor: ActorContext) -> bool:
@@ -49,7 +48,7 @@ async def discover_capabilities(
     actor: ActorContext,
     policy: TenantCapabilityPolicy,
 ) -> tuple[CapabilityAvailability, ...]:
-    """Return discovery facts without pretending they are execution authority."""
+    """Return stable discovery facts; domain executability is checked at execution time."""
 
     enabled = await policy.enabled_capabilities(actor.organization_id)
     return tuple(
