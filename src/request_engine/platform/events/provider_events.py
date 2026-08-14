@@ -42,12 +42,7 @@ async def record_provider_event(
     provider_event_id: str,
     payload: dict[str, object],
 ) -> ProviderEventReceipt:
-    """Persist one inbound provider event before any business interpretation.
-
-    The provider identity is the dedupe boundary. Reusing it with a different
-    canonical payload is a hard conflict rather than silently accepting a
-    provider mutation under the same event identity.
-    """
+    """Persist one inbound provider event before any business interpretation."""
 
     if not provider_key or not connection_key or not provider_event_id:
         raise ValueError("provider_key, connection_key and provider_event_id are required")
@@ -172,7 +167,18 @@ class PostgresProviderEventWorker:
         )
 
     async def dead_letter(self, lease: ProviderEventLease, *, error_class: str) -> bool:
-        return await self.reject(lease, error_class=error_class)
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                bool,
+                (
+                    await session.execute(
+                        text(
+                            "SELECT request_cmd.dead_letter_provider_event(:id, :token, :error_class)"
+                        ),
+                        {"id": lease.id, "token": lease.claim_token, "error_class": error_class},
+                    )
+                ).scalar_one(),
+            )
 
     async def reject(self, lease: ProviderEventLease, *, error_class: str) -> bool:
         async with self._session_factory() as session, session.begin():

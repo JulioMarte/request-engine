@@ -1,11 +1,16 @@
 from uuid import UUID
 
+from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
+    NO_SHOW_ACTION_TYPE,
+    NO_SHOW_ACTION_VERSION,
+)
 from request_engine.modules.booking.application.commands.evaluate_no_show import (
     EvaluateNoShowCommand,
     EvaluateNoShowHandler,
     evaluate_no_show,
 )
 from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
+from request_engine.platform.scheduling.postgres import ScheduledActionLease
 
 
 async def handle_no_show_action(
@@ -25,3 +30,37 @@ async def handle_no_show_action(
             idempotency_key=f"scheduled:no-show:{reservation_id}:{lifecycle_key}",
         ),
     )
+
+
+class NoShowScheduledHandler:
+    """Validate one Booking ScheduledAction before invoking no-show authority."""
+
+    def __init__(self, handler: EvaluateNoShowHandler, *, worker_principal_id: UUID) -> None:
+        self._handler = handler
+        self._worker_principal_id = worker_principal_id
+
+    async def handle(self, lease: ScheduledActionLease) -> ReservationAttendanceState:
+        if (
+            lease.owner_module != "booking"
+            or lease.action_type != NO_SHOW_ACTION_TYPE
+            or lease.action_version != NO_SHOW_ACTION_VERSION
+            or lease.subject_kind != "Reservation"
+            or lease.subject_id is None
+        ):
+            raise ValueError("unsupported Booking ScheduledAction")
+
+        raw_reservation_id = lease.payload.get("reservation_id")
+        lifecycle_key = lease.payload.get("lifecycle_key")
+        if not isinstance(raw_reservation_id, str) or not isinstance(lifecycle_key, str):
+            raise ValueError("no-show ScheduledAction payload is malformed")
+        reservation_id = UUID(raw_reservation_id)
+        if reservation_id != lease.subject_id:
+            raise ValueError("no-show ScheduledAction subject does not match payload")
+
+        return await handle_no_show_action(
+            self._handler,
+            organization_id=lease.organization_id,
+            worker_principal_id=self._worker_principal_id,
+            reservation_id=reservation_id,
+            lifecycle_key=lifecycle_key,
+        )

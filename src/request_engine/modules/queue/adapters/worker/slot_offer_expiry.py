@@ -8,8 +8,8 @@ from request_engine.modules.queue.application.commands.expire_slot_offer import 
 from request_engine.modules.queue.contracts.waitlist import SlotOfferResolution
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
 
-_ACTION_TYPE = "waitlist.expire_slot_offer"
-_ACTION_VERSION = 1
+SLOT_OFFER_EXPIRY_ACTION_TYPE = "waitlist.expire_slot_offer"
+SLOT_OFFER_EXPIRY_ACTION_VERSION = 1
 
 
 class SlotOfferExpiryScheduledHandler:
@@ -21,7 +21,10 @@ class SlotOfferExpiryScheduledHandler:
     async def handle(self, lease: ScheduledActionLease) -> SlotOfferResolution:
         if lease.owner_module != "queue":
             raise ValueError("ScheduledAction is not owned by queue")
-        if lease.action_type != _ACTION_TYPE or lease.action_version != _ACTION_VERSION:
+        if (
+            lease.action_type != SLOT_OFFER_EXPIRY_ACTION_TYPE
+            or lease.action_version != SLOT_OFFER_EXPIRY_ACTION_VERSION
+        ):
             raise ValueError("unsupported queue ScheduledAction")
         raw_offer_id = lease.payload.get("slot_offer_id")
         raw_revision = lease.payload.get("expected_revision")

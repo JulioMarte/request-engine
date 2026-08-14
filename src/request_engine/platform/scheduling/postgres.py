@@ -127,6 +127,7 @@ class PostgresScheduledActionWorker:
         next_attempt_at: datetime,
         error_class: str,
     ) -> str:
+        """Compatibility wrapper for callers that already own an absolute retry instant."""
         async with self._session_factory() as session, session.begin():
             return cast(
                 str,
@@ -147,6 +148,73 @@ class PostgresScheduledActionWorker:
                             "claim_token": lease.claim_token,
                             "next_attempt_at": next_attempt_at,
                             "error_class": error_class,
+                        },
+                    )
+                ).scalar_one(),
+            )
+
+    async def retry_after(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        delay: timedelta,
+        error_class: str,
+    ) -> str:
+        seconds = delay.total_seconds()
+        if seconds < 0 or seconds > 86400:
+            raise ValueError("retry delay must be between 0 and 24 hours")
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                str,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.retry_scheduled_action_after(
+                                :action_id,
+                                :claim_token,
+                                make_interval(secs => :seconds),
+                                :error_class
+                            )
+                            """
+                        ),
+                        {
+                            "action_id": lease.id,
+                            "claim_token": lease.claim_token,
+                            "seconds": seconds,
+                            "error_class": error_class,
+                        },
+                    )
+                ).scalar_one(),
+            )
+
+    async def renew(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        extension: timedelta,
+    ) -> bool:
+        seconds = extension.total_seconds()
+        if seconds <= 0 or seconds > 900:
+            raise ValueError("lease extension must be > 0 and <= 15 minutes")
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                bool,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.renew_scheduled_action_lease(
+                                :action_id,
+                                :claim_token,
+                                make_interval(secs => :seconds)
+                            )
+                            """
+                        ),
+                        {
+                            "action_id": lease.id,
+                            "claim_token": lease.claim_token,
+                            "seconds": seconds,
                         },
                     )
                 ).scalar_one(),
