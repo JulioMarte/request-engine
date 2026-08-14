@@ -31,18 +31,27 @@ CREATE TRIGGER reservation_attendance_revision_step
 BEFORE UPDATE ON request_engine.reservation_attendance
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_exact_revision_step();
 
+CREATE TRIGGER reservation_attendance_touch
+BEFORE UPDATE ON request_engine.reservation_attendance
+FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
+
 CREATE INDEX reservation_attendance_status_idx
     ON request_engine.reservation_attendance (organization_id, status, reservation_id);
 
--- Current response history is append-oriented. This index keeps the current
--- projection deterministic and makes response/no-show races cheap to inspect.
-CREATE INDEX attendance_responses_reservation_current_idx
-    ON request_engine.attendance_responses (
-        organization_id,
-        reservation_id,
-        responded_at DESC,
-        id DESC
-    );
+ALTER TABLE request_engine.reservation_attendance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY reservation_attendance_tenant_isolation
+    ON request_engine.reservation_attendance
+    USING (organization_id = request_engine.current_organization_id())
+    WITH CHECK (organization_id = request_engine.current_organization_id());
 
 RESET ROLE;
+
+-- 005-read-access ran before this pre-baseline table existed, so grant the
+-- same runtime surface explicitly here. DELETE remains deliberately absent.
+REVOKE ALL ON request_engine.reservation_attendance FROM PUBLIC;
+GRANT SELECT, INSERT, UPDATE ON request_engine.reservation_attendance
+    TO request_engine_app, request_engine_worker;
+GRANT ALL PRIVILEGES ON request_engine.reservation_attendance
+    TO request_engine_admin;
+
 COMMIT;
