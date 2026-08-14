@@ -309,13 +309,11 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
         slots = slots_response.json()
         assert len(slots) == 6
         first = slots[0]
+        assert set(first) == {"option_id", "start_at", "end_at", "location_id"}
         booking_key = f"http-book-{uuid4().hex}"
         booking_body = {
-            "offering_version_id": str(fixture.offering_version_id),
+            "option_id": first["option_id"],
             "subject_party_id": str(fixture.subject_party_id),
-            "location_id": str(fixture.location_id),
-            "start_at": first["start_at"],
-            "resources": first["resources"],
         }
         booked = await client.post(
             "/v1/appointments",
