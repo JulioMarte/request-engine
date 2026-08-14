@@ -455,9 +455,7 @@ async def test_lifecycle_replay_keeps_one_generation_of_notifications_and_no_sho
     reader = PostgresReservationLifecycleReader(session_factory)
     scheduling = PostgresReservationLifecycleScheduling(session_factory)
     notifications = PostgresReservationLifecycleNotificationIntent(session_factory)
-    snapshot = await reader.get_lifecycle_snapshot(
-        fixture.organization_id, fixture.reservation_id
-    )
+    snapshot = await reader.get_lifecycle_snapshot(fixture.organization_id, fixture.reservation_id)
     assert snapshot is not None
 
     await scheduling.reconcile_reservation_schedule(snapshot, source_event_id=uuid4())
