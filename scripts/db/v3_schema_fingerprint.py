@@ -119,7 +119,8 @@ QUERIES = {
                t.typtype AS type_kind,
                pg_get_userbyid(t.typowner) AS owner,
                CASE
-                   WHEN t.typtype = 'd' THEN pg_catalog.format_type(t.typbasetype, t.typtypmod)
+                   WHEN t.typtype = 'd' THEN
+                       pg_catalog.format_type(t.typbasetype, t.typtypmod)
                    ELSE NULL
                END AS domain_base_type,
                t.typnotnull AS domain_not_null,
@@ -227,7 +228,11 @@ QUERIES = {
                tablename AS relation_name,
                policyname AS policy_name,
                permissive,
-               ARRAY(SELECT role_name FROM unnest(roles) AS role_name ORDER BY role_name) AS roles,
+               ARRAY(
+                   SELECT role_name
+                     FROM unnest(roles) AS role_name
+                    ORDER BY role_name
+               ) AS roles,
                cmd,
                qual,
                with_check
@@ -248,24 +253,38 @@ QUERIES = {
     "schema_acl": f"""
         SELECT n.nspname AS object_identity,
                pg_get_userbyid(a.grantor) AS grantor,
-               CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+               CASE
+                   WHEN a.grantee = 0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(a.grantee)
+               END AS grantee,
                a.privilege_type,
                a.is_grantable
           FROM pg_namespace n
-          CROSS JOIN LATERAL aclexplode(COALESCE(n.nspacl, acldefault('n', n.nspowner))) a
+          CROSS JOIN LATERAL aclexplode(
+              COALESCE(n.nspacl, acldefault('n', n.nspowner))
+          ) a
          WHERE n.nspname IN {SCHEMA_FILTER}
          ORDER BY object_identity, grantor, grantee, privilege_type, is_grantable
     """,
     "relation_acl": f"""
         SELECT format('%I.%I', n.nspname, c.relname) AS object_identity,
                pg_get_userbyid(a.grantor) AS grantor,
-               CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+               CASE
+                   WHEN a.grantee = 0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(a.grantee)
+               END AS grantee,
                a.privilege_type,
                a.is_grantable
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
           CROSS JOIN LATERAL aclexplode(
-              COALESCE(c.relacl, acldefault(CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END, c.relowner))
+              COALESCE(
+                  c.relacl,
+                  acldefault(
+                      (CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END)::"char",
+                      c.relowner
+                  )
+              )
           ) a
          WHERE n.nspname IN {SCHEMA_FILTER}
            AND c.relkind IN ('r', 'p', 'v', 'm', 'S')
@@ -279,24 +298,34 @@ QUERIES = {
                    pg_get_function_identity_arguments(p.oid)
                ) AS object_identity,
                pg_get_userbyid(a.grantor) AS grantor,
-               CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+               CASE
+                   WHEN a.grantee = 0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(a.grantee)
+               END AS grantee,
                a.privilege_type,
                a.is_grantable
           FROM pg_proc p
           JOIN pg_namespace n ON n.oid = p.pronamespace
-          CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+          CROSS JOIN LATERAL aclexplode(
+              COALESCE(p.proacl, acldefault('f', p.proowner))
+          ) a
          WHERE n.nspname IN {SCHEMA_FILTER}
          ORDER BY object_identity, grantor, grantee, privilege_type, is_grantable
     """,
     "type_acl": f"""
         SELECT format('%I.%I', n.nspname, t.typname) AS object_identity,
                pg_get_userbyid(a.grantor) AS grantor,
-               CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+               CASE
+                   WHEN a.grantee = 0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(a.grantee)
+               END AS grantee,
                a.privilege_type,
                a.is_grantable
           FROM pg_type t
           JOIN pg_namespace n ON n.oid = t.typnamespace
-          CROSS JOIN LATERAL aclexplode(COALESCE(t.typacl, acldefault('T', t.typowner))) a
+          CROSS JOIN LATERAL aclexplode(
+              COALESCE(t.typacl, acldefault('T', t.typowner))
+          ) a
          WHERE n.nspname IN {SCHEMA_FILTER}
            AND t.typtype IN ('d', 'e')
          ORDER BY object_identity, grantor, grantee, privilege_type, is_grantable
@@ -309,7 +338,10 @@ QUERIES = {
                END AS schema_name,
                d.defaclobjtype AS object_type,
                pg_get_userbyid(a.grantor) AS grantor,
-               CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+               CASE
+                   WHEN a.grantee = 0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(a.grantee)
+               END AS grantee,
                a.privilege_type,
                a.is_grantable
           FROM pg_default_acl d
@@ -338,7 +370,9 @@ def build_fingerprint_payload(connection: psycopg.Connection[Any]) -> dict[str, 
         "postgres_major": server_version_num // 10000,
         "application_schemas": list(APPLICATION_SCHEMAS),
         "fingerprint_roles": list(FINGERPRINT_ROLES),
-        "catalog": {name: _fetch_rows(connection, query) for name, query in QUERIES.items()},
+        "catalog": {
+            name: _fetch_rows(connection, query) for name, query in QUERIES.items()
+        },
     }
 
 
@@ -352,10 +386,23 @@ def canonical_bytes(payload: dict[str, Any]) -> bytes:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate the normalized Request Engine V3 schema fingerprint")
-    parser.add_argument("--database", help="Database name. Libpq PG* environment variables provide other connection settings.")
-    parser.add_argument("--json-output", type=Path, help="Write normalized catalog JSON to this path.")
-    parser.add_argument("--sha-output", type=Path, help="Write the SHA-256 fingerprint to this path.")
+    parser = argparse.ArgumentParser(
+        description="Generate the normalized Request Engine V3 schema fingerprint"
+    )
+    parser.add_argument(
+        "--database",
+        help="Database name. Libpq PG* environment variables provide other connection settings.",
+    )
+    parser.add_argument(
+        "--json-output",
+        type=Path,
+        help="Write normalized catalog JSON to this path.",
+    )
+    parser.add_argument(
+        "--sha-output",
+        type=Path,
+        help="Write the SHA-256 fingerprint to this path.",
+    )
     return parser.parse_args()
 
 
