@@ -9,7 +9,11 @@ from psycopg.rows import dict_row
 
 SCHEMA_FILTER = "('request_engine', 'request_read', 'request_cmd', 'request_admin')"
 EXPECTED_ROLE_ATTRIBUTES = {
-    "request_engine_schema_owner": {"can_login": False, "superuser": False, "bypass_rls": False},
+    "request_engine_schema_owner": {
+        "can_login": False,
+        "superuser": False,
+        "bypass_rls": False,
+    },
     "request_engine_app": {"can_login": False, "superuser": False, "bypass_rls": False},
     "request_engine_worker": {"can_login": False, "superuser": False, "bypass_rls": False},
     "request_engine_admin": {"can_login": False, "superuser": False, "bypass_rls": True},
@@ -99,7 +103,10 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
          ORDER BY n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)
         """,
     )
-    errors.extend({"kind": "security_definer_without_pinned_search_path", **row} for row in unsafe_definers)
+    errors.extend(
+        {"kind": "security_definer_without_pinned_search_path", **row}
+        for row in unsafe_definers
+    )
 
     public_privileges = fetch_rows(
         connection,
@@ -109,7 +116,9 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
                    n.nspname::text AS object_identity,
                    a.privilege_type
               FROM pg_namespace n
-              CROSS JOIN LATERAL aclexplode(COALESCE(n.nspacl, acldefault('n', n.nspowner))) a
+              CROSS JOIN LATERAL aclexplode(
+                  COALESCE(n.nspacl, acldefault('n', n.nspowner))
+              ) a
              WHERE n.nspname IN {SCHEMA_FILTER}
                AND a.grantee = 0
         ), public_relation_acl AS (
@@ -121,7 +130,10 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
               CROSS JOIN LATERAL aclexplode(
                   COALESCE(
                       c.relacl,
-                      acldefault(CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END, c.relowner)
+                      acldefault(
+                          (CASE WHEN c.relkind = 'S' THEN 's' ELSE 'r' END)::"char",
+                          c.relowner
+                      )
                   )
               ) a
              WHERE n.nspname IN {SCHEMA_FILTER}
@@ -138,7 +150,9 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
                    a.privilege_type
               FROM pg_proc p
               JOIN pg_namespace n ON n.oid = p.pronamespace
-              CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+              CROSS JOIN LATERAL aclexplode(
+                  COALESCE(p.proacl, acldefault('f', p.proowner))
+              ) a
              WHERE n.nspname IN {SCHEMA_FILTER}
                AND a.grantee = 0
         )
@@ -217,7 +231,9 @@ def collect_warnings(connection: psycopg.Connection[Any]) -> list[dict[str, Any]
          ORDER BY n.nspname, c.relname
         """,
     )
-    warnings.extend({"kind": "tenant_relation_without_policy", **row} for row in tenant_without_policy)
+    warnings.extend(
+        {"kind": "tenant_relation_without_policy", **row} for row in tenant_without_policy
+    )
 
     fk_without_prefix_index = fetch_rows(
         connection,
@@ -245,7 +261,10 @@ def collect_warnings(connection: psycopg.Connection[Any]) -> list[dict[str, Any]
          ORDER BY n.nspname, c.relname, con.conname
         """,
     )
-    warnings.extend({"kind": "foreign_key_without_prefix_index", **row} for row in fk_without_prefix_index)
+    warnings.extend(
+        {"kind": "foreign_key_without_prefix_index", **row}
+        for row in fk_without_prefix_index
+    )
 
     duplicate_indexes = fetch_rows(
         connection,
@@ -281,8 +300,15 @@ def collect_warnings(connection: psycopg.Connection[Any]) -> list[dict[str, Any]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit the Request Engine V3 PostgreSQL catalog")
-    parser.add_argument("--database", help="Database name. Libpq PG* environment variables provide other connection settings.")
-    parser.add_argument("--json-output", type=Path, help="Write the audit report to this path.")
+    parser.add_argument(
+        "--database",
+        help="Database name. Libpq PG* environment variables provide other connection settings.",
+    )
+    parser.add_argument(
+        "--json-output",
+        type=Path,
+        help="Write the audit report to this path.",
+    )
     return parser.parse_args()
 
 
