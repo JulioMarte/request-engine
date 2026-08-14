@@ -204,9 +204,9 @@ def test_app_role_fails_closed_and_cannot_read_or_mutate_foreign_tenant_rows(
     no_context: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
         _set_app_context(no_context, None)
-        assert no_context.execute("SELECT count(*) FROM request_engine.organizations").fetchone() == (
-            0,
-        )
+        assert no_context.execute(
+            "SELECT count(*) FROM request_engine.organizations"
+        ).fetchone() == (0,)
         assert no_context.execute(
             "SELECT count(*) FROM request_engine.principals"
         ).fetchone() == (0,)
