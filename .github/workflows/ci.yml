@@ -52,7 +52,6 @@ jobs:
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGDATABASE: request_engine
       PGUSER: request_engine
       PGPASSWORD: request_engine
     steps:
@@ -62,7 +61,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
       - name: Apply historical V2 design chain
+        env:
+          PGDATABASE: request_engine
         run: scripts/db/apply_design_chain.sh
+
+  postgres-v3-bootstrap-proof:
+    name: PostgreSQL 18 V3 repeated bootstrap proof
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_v3
+          POSTGRES_USER: request_engine
+          POSTGRES_PASSWORD: request_engine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U request_engine -d request_engine_v3"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: request_engine
+      PGPASSWORD: request_engine
+      PGMAINTENANCE_DB: postgres
+      V3_PROOF_DATABASE_PREFIX: request_engine_v3_phase6
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Prove repeated clean V3 candidate bootstrap
+        run: scripts/db/prove_v3_candidate_bootstrap.sh
 
   postgres-v3-candidate:
     name: PostgreSQL 18 V3 candidate and verticals

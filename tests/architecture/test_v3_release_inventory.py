@@ -10,6 +10,7 @@ REQUIRED_RELEASE_DOCS = {
     "v3-invariant-matrix.md",
     "v3-race-matrix.md",
     "v3-6a-baseline.md",
+    "v3-bootstrap-proof.md",
 }
 EXPECTED_GATES = [f"G{number:02d}" for number in range(1, 21)]
 EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
@@ -37,3 +38,12 @@ def test_phase6_scope_keeps_initial_migration_blocked_until_proof() -> None:
     assert "Do not create or bless `0001_initial` before" in text
     assert "Do not freeze indexes before" in text
     assert "Do not remove the V3 candidate chain until" in text
+
+
+def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
+    script = ROOT / "scripts" / "db" / "prove_v3_candidate_bootstrap.sh"
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert script.is_file()
+    assert "postgres-v3-bootstrap-proof:" in workflow
+    assert "scripts/db/prove_v3_candidate_bootstrap.sh" in workflow
