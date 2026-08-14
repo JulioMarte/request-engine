@@ -501,25 +501,54 @@ def test_database_rejects_offer_hold_graph_mismatch(admin_conn: PgConnection) ->
             fixture.end_at,
         ),
     )
-    expires_at = datetime.now(UTC) + timedelta(minutes=5)
-    hold_id = _uuid_row(
+    requirement_id = _uuid_row(
         admin_conn,
         """
-        INSERT INTO request_engine.capacity_holds (
-            organization_id, offering_version_id, subject_party_id,
-            location_id, during, expires_at
-        ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)'), %s) RETURNING id
+        SELECT id
+        FROM request_engine.offering_resource_requirements
+        WHERE organization_id = %s
+          AND offering_version_id = %s
+          AND ordinal = 1
         """,
-        (
-            fixture.organization_id,
-            fixture.offering_version_id,
-            wrong_subject,
-            fixture.location_id,
-            fixture.start_at,
-            fixture.end_at,
-            expires_at,
-        ),
+        (fixture.organization_id, fixture.offering_version_id),
     )
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    with admin_conn.transaction():
+        hold_id = _uuid_row(
+            admin_conn,
+            """
+            INSERT INTO request_engine.capacity_holds (
+                organization_id, offering_version_id, subject_party_id,
+                location_id, during, expires_at
+            ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)'), %s) RETURNING id
+            """,
+            (
+                fixture.organization_id,
+                fixture.offering_version_id,
+                wrong_subject,
+                fixture.location_id,
+                fixture.start_at,
+                fixture.end_at,
+                expires_at,
+            ),
+        )
+        admin_conn.execute(
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id, resource_id, requirement_id, hold_id,
+                during, quantity
+            ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)'), 1)
+            """,
+            (
+                fixture.organization_id,
+                fixture.resource_id,
+                requirement_id,
+                hold_id,
+                fixture.start_at,
+                fixture.end_at,
+            ),
+        )
+
     with (
         pytest.raises(CheckViolation, match="Hold subject does not match"),
         admin_conn.transaction(),
