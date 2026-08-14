@@ -11,6 +11,7 @@ class RescheduleReservationCommand:
     organization_id: UUID
     principal_id: UUID
     reservation_id: UUID
+    option_offering_version_id: UUID
     start_at: datetime
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
