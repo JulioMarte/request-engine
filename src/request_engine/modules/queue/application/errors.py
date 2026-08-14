@@ -75,7 +75,8 @@ class OfferingNotAvailableForWaitlist(QueueError):
 class AlreadyOnWaitlist(QueueError):
     def __init__(self, offering_id: UUID, subject_party_id: UUID) -> None:
         super().__init__(
-            f"Party {subject_party_id} already has an active waitlist entry for Offering {offering_id}"
+            f"Party {subject_party_id} already has an active waitlist entry "
+            f"for Offering {offering_id}"
         )
         self.offering_id = offering_id
         self.subject_party_id = subject_party_id
