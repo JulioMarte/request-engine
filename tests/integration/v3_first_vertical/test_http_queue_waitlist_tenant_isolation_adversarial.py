@@ -217,12 +217,12 @@ async def test_foreign_queue_ids_behave_like_nonexistent_ids_and_cannot_be_mutat
 
         foreign_status = await client.get(
             f"/v1/queues/{tenant_b.queue_id}/status",
-            params={"subject_party_id": str(tenant_b.subject_party_id)},
+            params={"subject_party_id": str(tenant_a.subject_party_id)},
             headers=headers_a,
         )
         nonexistent_status = await client.get(
             f"/v1/queues/{uuid4()}/status",
-            params={"subject_party_id": str(uuid4())},
+            params={"subject_party_id": str(tenant_a.subject_party_id)},
             headers=headers_a,
         )
         assert _error_shape(foreign_status) == _error_shape(nonexistent_status)
