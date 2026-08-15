@@ -303,7 +303,7 @@ def _seed_practice(conn: PgConnection, *, people_count: int = 8) -> Practice:
             """
             INSERT INTO request_engine.principals (
                 organization_id, principal_kind, external_subject
-            ) VALUES (%s, 'customer', %s)
+            ) VALUES (%s, 'human', %s)
             RETURNING id
             """,
             (organization_id, f"patient-{index + 1}-{suffix}"),
@@ -489,8 +489,8 @@ async def test_e2e_two_tenants_cannot_observe_or_mutate_each_other(
         )
         assert business_a.status_code == 200
         assert business_b.status_code == 200
-        assert business_a.json()["id"] == str(practice_a.organization_id)
-        assert business_b.json()["id"] == str(practice_b.organization_id)
+        assert business_a.json()["organization_id"] == str(practice_a.organization_id)
+        assert business_b.json()["organization_id"] == str(practice_b.organization_id)
 
         catalog_a = await client.get(
             "/v1/catalog/offerings",
