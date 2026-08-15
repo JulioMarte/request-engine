@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from fastapi import Request
 
@@ -41,17 +43,18 @@ class RejectAllResolver:
 
 
 def _public_operations(openapi: dict[str, object]) -> frozenset[tuple[str, str]]:
-    paths = openapi.get("paths")
-    assert isinstance(paths, dict)
+    paths_value = openapi.get("paths")
+    assert isinstance(paths_value, dict)
+    paths = cast(dict[str, object], paths_value)
 
     operations: set[tuple[str, str]] = set()
-    for path, path_item in paths.items():
-        assert isinstance(path, str)
-        assert isinstance(path_item, dict)
+    for path, path_item_value in paths.items():
+        assert isinstance(path_item_value, dict)
+        path_item = cast(dict[str, object], path_item_value)
         if not path.startswith("/v1/"):
             continue
         for method in path_item:
-            if isinstance(method, str) and method.lower() in _HTTP_METHODS:
+            if method.lower() in _HTTP_METHODS:
                 operations.add((method.upper(), path))
     return frozenset(operations)
 
