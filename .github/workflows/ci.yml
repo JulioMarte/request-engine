@@ -101,12 +101,13 @@ jobs:
         run: bash scripts/db/apply_v3_candidate.sh
       - name: Resolve test environment
         run: uv sync --all-groups
-      - name: V3 PostgreSQL invariant, race, and vertical tests
+      - name: V3 PostgreSQL invariant, race, vertical, and E2E tests
         run: >-
           uv run pytest
           tests/db
           tests/integration/v3_first_vertical
           tests/integration/v3_booking_core
           tests/integration/v3_booking_commitments
+          tests/e2e
           -q
           -m postgres
