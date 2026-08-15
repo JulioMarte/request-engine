@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-INVARIANT_DOC = ROOT / "docs/release/v3-invariant-test-matrix.md"
+INVARIANT_DOC = ROOT / "docs/release/v3-invariant-matrix.md"
 RACE_DOC = ROOT / "docs/release/v3-race-matrix.md"
 GATE_DOC = ROOT / "docs/release/v3-release-gates.md"
 
@@ -44,6 +44,14 @@ def _assert_complete(actual: list[str], expected: list[str], label: str) -> None
         raise SystemExit(f"{label} registry is incomplete: missing {', '.join(missing)}")
 
 
+def _tracked_tree_dirty() -> bool:
+    return subprocess.run(
+        ["git", "diff", "--quiet", "HEAD", "--"],
+        cwd=ROOT,
+        check=False,
+    ).returncode != 0
+
+
 def build_manifest() -> dict[str, Any]:
     invariants = _ids(INVARIANT_DOC, r"\bV3-I\d{2}\b")
     races = _ids(RACE_DOC, r"\bR\d{2}\b")
@@ -57,13 +65,12 @@ def build_manifest() -> dict[str, Any]:
     catalog_json = ROOT / ".phase6/v3-catalog-audit.json"
 
     commit = os.environ.get("PHASE6_COMMIT_SHA") or _git("rev-parse", "HEAD")
-    dirty = bool(_git("status", "--porcelain"))
 
     return {
         "schema_version": 1,
         "commit_sha": commit,
         "tree_sha": _git("rev-parse", "HEAD^{tree}"),
-        "working_tree_dirty": dirty,
+        "working_tree_dirty": _tracked_tree_dirty(),
         "runtime": {
             "python": platform.python_version(),
             "postgres_target": "18",
