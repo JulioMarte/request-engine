@@ -28,6 +28,7 @@ files=(
   "021-release-privilege-hardening.sql"
   "022-runtime-table-privilege-contract.sql"
   "023-scheduled-action-cancellation-fence.sql"
+  "024-runtime-function-privilege-contract.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
