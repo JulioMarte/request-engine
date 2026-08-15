@@ -92,7 +92,5 @@ async def test_every_public_operation_requires_its_declared_capability_without_m
         response = await _request(client, operation)
 
     assert response.status_code == 403, (operation.name, response.text)
-    assert response.json() == {
-        "detail": f"capability {operation.capability!r} is required"
-    }
+    assert response.json() == {"detail": f"capability {operation.capability!r} is required"}
     assert durable_snapshot(e2e_admin_conn) == before

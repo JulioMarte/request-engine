@@ -317,9 +317,7 @@ async def test_delivered_send_completes_task_action_and_outbox(
     assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
-    assert provider.send_calls[0].provider_idempotency_key == (
-        f"communication:{task_id}:attempt:1"
-    )
+    assert provider.send_calls[0].provider_idempotency_key == (f"communication:{task_id}:attempt:1")
     assert _task_status(e2e_admin_conn, task_id) == "completed"
     assert _action_status(e2e_admin_conn, action_id) == "completed"
     assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1

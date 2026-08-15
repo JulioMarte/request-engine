@@ -108,9 +108,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
                 "subject_party_id": PROBE_UUID_2,
                 "location_id": PROBE_UUID_3,
                 "start_at": "2030-01-07T13:00:00+00:00",
-                "resources": [
-                    {"requirement_id": PROBE_UUID_3, "resource_id": PROBE_UUID_4}
-                ],
+                "resources": [{"requirement_id": PROBE_UUID_3, "resource_id": PROBE_UUID_4}],
             },
         ),
     ),
@@ -150,9 +148,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             body={
                 "start_at": "2030-01-07T14:00:00+00:00",
                 "location_id": PROBE_UUID_2,
-                "resources": [
-                    {"requirement_id": PROBE_UUID_3, "resource_id": PROBE_UUID_4}
-                ],
+                "resources": [{"requirement_id": PROBE_UUID_3, "resource_id": PROBE_UUID_4}],
             },
         ),
     ),
