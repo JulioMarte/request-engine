@@ -125,8 +125,7 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
 
     unexpected = completed_ids - action_ids
     assert not unexpected, (
-        "workers completed actions outside the soak fixture: "
-        f"{sorted(unexpected)[:10]}"
+        f"workers completed actions outside the soak fixture: {sorted(unexpected)[:10]}"
     )
 
     states = admin_conn.execute(
