@@ -11,6 +11,6 @@ RUN apt-get update \
         git \
         postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
-    && python -m pip install uv
+    && python -m pip install uv==0.12.5
 
 WORKDIR /workspace
