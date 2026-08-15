@@ -206,9 +206,7 @@ def _failure_excerpt(lines: Sequence[str]) -> list[str]:
         return ["(step produced no output)"]
 
     summaries = [
-        line
-        for line in cleaned
-        if line.lstrip().startswith(("FAILED ", "ERROR ", "E   "))
+        line for line in cleaned if line.lstrip().startswith(("FAILED ", "ERROR ", "E   "))
     ][-_FAILURE_SUMMARY_LINES:]
     marker_indexes = [
         index
