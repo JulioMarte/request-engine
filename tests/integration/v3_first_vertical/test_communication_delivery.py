@@ -229,7 +229,7 @@ async def test_delivery_provider_io_runs_after_authoritative_transaction_commit(
         lock_probe=assert_task_is_not_locked,
     )
     worker = CommunicationDeliveryWorker(
-        worker_session_factory,
+        session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -282,7 +282,7 @@ async def test_ambiguous_send_reconciles_without_blind_resend(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        worker_session_factory,
+        session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -342,7 +342,7 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        worker_session_factory,
+        session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -415,7 +415,7 @@ async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        worker_session_factory,
+        session_factory,
         scheduler,
         {"fake": provider},
     )

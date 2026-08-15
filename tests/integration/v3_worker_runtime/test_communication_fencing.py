@@ -172,10 +172,11 @@ class LeaseStealingProvider:
 @pytest.mark.postgres
 async def test_poison_dispatch_fails_task_before_fenced_dead_letter(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _fixture(admin_conn)
-    task_id = await _create_task(fixture, session_factory)
+    task_id = await _create_task(fixture, app_session_factory)
     admin_conn.execute(
         """
         UPDATE request_engine.scheduled_actions
@@ -186,9 +187,9 @@ async def test_poison_dispatch_fails_task_before_fenced_dead_letter(
         """,
         (uuid4(), fixture.organization_id, task_id),
     )
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     lease = await _claim_for_subject(scheduler, task_id)
-    handler = CommunicationDeliveryScheduledHandler(session_factory, scheduler, {})
+    handler = CommunicationDeliveryScheduledHandler(app_session_factory, scheduler, {})
 
     with pytest.raises(PermanentWorkError) as exc_info:
         await handler.handle(lease)
@@ -229,11 +230,12 @@ async def test_poison_dispatch_fails_task_before_fenced_dead_letter(
 @pytest.mark.concurrency
 async def test_worker_that_loses_lease_during_provider_io_cannot_finalize_delivery(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _fixture(admin_conn)
-    task_id = await _create_task(fixture, session_factory)
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    task_id = await _create_task(fixture, app_session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     original_lease = await _claim_for_subject(scheduler, task_id)
     provider = LeaseStealingProvider(
         admin_conn=admin_conn,
@@ -241,7 +243,7 @@ async def test_worker_that_loses_lease_during_provider_io_cannot_finalize_delive
         action_id=original_lease.id,
     )
     handler = CommunicationDeliveryScheduledHandler(
-        session_factory,
+        app_session_factory,
         scheduler,
         {"stealing-provider": provider},
     )

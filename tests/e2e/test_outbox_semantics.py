@@ -40,7 +40,7 @@ def test_outbox_claim_argument_bounds_are_enforced(
                 conn.execute(query).fetchall()
 
 
-def test_worker_direct_outbox_read_is_rls_scoped_but_claim_discovers_work(
+def test_worker_direct_outbox_read_is_denied_but_claim_discovers_work(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
@@ -52,11 +52,11 @@ def test_worker_direct_outbox_read_is_rls_scoped_but_claim_discovers_work(
     )
 
     with support.runtime_conn(worker_runtime_credentials) as conn:
-        direct = conn.execute(
-            "SELECT count(*) FROM request_engine.outbox_messages WHERE id = %s",
-            (message_id,),
-        ).fetchone()
-        assert direct == (0,)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute(
+                "SELECT count(*) FROM request_engine.outbox_messages WHERE id = %s",
+                (message_id,),
+            ).fetchone()
 
         claimed = support.claim_outbox(conn, 1)
         assert len(claimed) == 1

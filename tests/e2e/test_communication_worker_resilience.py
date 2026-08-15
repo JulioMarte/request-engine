@@ -102,7 +102,12 @@ async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
     providers: Mapping[str, CommunicationDeliveryProvider],
 ) -> AsyncGenerator[
-    tuple[SessionFactory, PostgresScheduledActionWorker, CommunicationDeliveryWorker],
+    tuple[
+        SessionFactory,
+        SessionFactory,
+        PostgresScheduledActionWorker,
+        CommunicationDeliveryWorker,
+    ],
 ]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
     assert domain_database_url is not None, "delivery work requires separate app credentials"
@@ -114,6 +119,7 @@ async def _worker_stack(
     try:
         yield (
             domain_factory,
+            worker_factory,
             scheduler,
             CommunicationDeliveryWorker(domain_factory, scheduler, providers),
         )
@@ -320,7 +326,7 @@ async def test_delivered_send_completes_task_action_and_outbox(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "delivered"
@@ -343,7 +349,7 @@ async def test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend(
     provider = ScriptedProvider(send=TimeoutError("provider response lost"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "ambiguous"
@@ -399,7 +405,7 @@ async def test_reconciliation_delivered_uses_lookup_without_second_send(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "delivered"
@@ -423,7 +429,7 @@ async def test_lookup_exception_retries_same_action_without_resend(
     provider = ScriptedProvider(lookup=ConnectionError("provider unavailable"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.state is DeliveryWorkerState.DEFERRED
@@ -457,12 +463,12 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "failed"
-    assert _task_status(e2e_admin_conn, task_id) == "failed"
-    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
+    assert _task_status(e2e_admin_conn, task_id) == "pending"
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 0
     assert _action_status(e2e_admin_conn, original_id) == "completed"
     retries = e2e_admin_conn.execute(
         """
@@ -495,7 +501,7 @@ async def test_non_retryable_failure_is_terminal_and_emits_failure_event(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         await _claim_and_process(scheduler, worker)
 
     assert _task_status(e2e_admin_conn, task_id) == "failed"
@@ -513,7 +519,7 @@ async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
     action_id = _dispatch(e2e_admin_conn, org, task_id)
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(DeliveryProviderNotConfigured):
@@ -557,7 +563,7 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
     )
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(UnsupportedScheduledAction):
@@ -568,7 +574,8 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
         (action_id,),
     ).fetchone()
     assert row == ("dead", "unsupported_scheduled_action")
-    assert _task_status(e2e_admin_conn, task_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
 
 
 @pytest.mark.asyncio
@@ -581,7 +588,7 @@ async def test_payload_identity_mismatch_dead_letters_action_and_fails_orphaned_
     action_id = _dispatch(e2e_admin_conn, org, task_id, payload_task_id=uuid4())
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, scheduler, worker = stack
+        _, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(ValueError, match="does not match subject identity"):
@@ -616,7 +623,7 @@ async def test_crash_after_provider_finalize_before_action_ack_reclaims_without_
     provider = UniqueDeliveredProvider()
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        factory, scheduler, worker = stack
+        factory, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -690,7 +697,7 @@ async def test_crash_after_prepare_reconciles_existing_attempt_before_any_resend
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        factory, scheduler, worker = stack
+        factory, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -739,10 +746,10 @@ async def test_three_delivery_workers_claim_disjoint_work_and_each_task_sends_on
     provider = UniqueDeliveredProvider()
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        factory, _, _ = stack
-        schedulers = tuple(PostgresScheduledActionWorker(factory) for _ in range(3))
+        domain_factory, worker_factory, _, _ = stack
+        schedulers = tuple(PostgresScheduledActionWorker(worker_factory) for _ in range(3))
         workers = tuple(
-            CommunicationDeliveryWorker(factory, scheduler, {"provider-a": provider})
+            CommunicationDeliveryWorker(domain_factory, scheduler, {"provider-a": provider})
             for scheduler in schedulers
         )
         claimed_groups = await asyncio.gather(
