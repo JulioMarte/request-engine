@@ -35,7 +35,7 @@ async def test_provider_duplicate_replay_is_exact_and_payload_mutation_conflicts
 ) -> None:
     organization_id = _organization(admin_conn, "dedupe")
     provider_event_id = f"evt-{uuid4().hex}"
-    payload = {"status": "delivered", "message_id": str(uuid4())}
+    payload: dict[str, object] = {"status": "delivered", "message_id": str(uuid4())}
 
     async with tenant_transaction(app_session_factory, organization_id) as session:
         first = await record_provider_event(
