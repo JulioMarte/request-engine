@@ -73,20 +73,20 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_DB: request_engine_v3
-          POSTGRES_USER: request_engine
-          POSTGRES_PASSWORD: request_engine
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U request_engine -d request_engine_v3"
+          --health-cmd "pg_isready -U postgres -d request_engine_v3"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGUSER: request_engine
-      PGPASSWORD: request_engine
+      PGUSER: postgres
+      PGPASSWORD: postgres
       PGMAINTENANCE_DB: postgres
       V3_PROOF_DATABASE_PREFIX: request_engine_v3_phase6
     steps:
@@ -106,12 +106,12 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_DB: request_engine_v3
-          POSTGRES_USER: request_engine
-          POSTGRES_PASSWORD: request_engine
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U request_engine -d request_engine_v3"
+          --health-cmd "pg_isready -U postgres -d request_engine_v3"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -119,8 +119,8 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
       PGDATABASE: request_engine_v3
-      PGUSER: request_engine
-      PGPASSWORD: request_engine
+      PGUSER: postgres
+      PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -131,7 +131,7 @@ jobs:
           python -m pip install --disable-pip-version-check uv
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-      - name: Apply clean V3 candidate
+      - name: Apply clean V3 candidate as bootstrap principal
         run: bash scripts/db/apply_v3_candidate.sh
       - name: Resolve test environment
         run: uv sync --all-groups
@@ -158,6 +158,13 @@ jobs:
           tests/integration/v3_worker_runtime
           -q
           -m postgres
+      - name: Generate executable release evidence manifest
+        if: always()
+        env:
+          PHASE6_COMMIT_SHA: ${{ github.sha }}
+        run: >-
+          uv run python scripts/release/build_v3_evidence_manifest.py
+          --output .phase6/v3-evidence-manifest.json
       - name: Upload V3 candidate release proof
         if: always()
         uses: actions/upload-artifact@v4
