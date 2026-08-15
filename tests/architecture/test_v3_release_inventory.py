@@ -70,3 +70,17 @@ def test_phase6_schema_fingerprint_and_catalog_audit_are_wired_to_ci() -> None:
     assert "scripts/db/v3_schema_fingerprint.py" in jobs
     assert "scripts/db/audit_v3_catalog.py" in jobs
     assert "v3-candidate-release-proof" in workflow
+
+
+def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
+    quality = ROOT / "scripts" / "release" / "audit_v3_test_quality.py"
+    stability = ROOT / "scripts" / "release" / "prove_v3_concurrency_stability.py"
+    _, jobs = _ci_sources()
+
+    assert quality.is_file()
+    assert stability.is_file()
+    assert "audit_v3_test_quality.py" in jobs
+    assert "v3-test-quality.json" in jobs
+    assert "v3-tests-junit.xml" in jobs
+    assert "prove_v3_concurrency_stability.py" in jobs
+    assert "v3-concurrency-stability.json" in jobs
