@@ -45,9 +45,7 @@ PROBES = (
 def run_probe(probe: MutationProbe) -> None:
     source = probe.path.read_text(encoding="utf-8")
     if source.count(probe.original) != 1:
-        raise SystemExit(
-            f"mutation probe {probe.name} expected exactly one guard occurrence"
-        )
+        raise SystemExit(f"mutation probe {probe.name} expected exactly one guard occurrence")
 
     probe.path.write_text(source.replace(probe.original, probe.mutant), encoding="utf-8")
     try:
@@ -60,9 +58,7 @@ def run_probe(probe: MutationProbe) -> None:
         probe.path.write_text(source, encoding="utf-8")
 
     if result.returncode == 0:
-        raise SystemExit(
-            f"mutation survived: {probe.name}; the regression suite did not detect it"
-        )
+        raise SystemExit(f"mutation survived: {probe.name}; the regression suite did not detect it")
     print(f"mutation killed: {probe.name}")
 
 
