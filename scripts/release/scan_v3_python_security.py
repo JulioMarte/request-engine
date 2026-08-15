@@ -28,9 +28,12 @@ class SecurityVisitor(ast.NodeVisitor):
 
         if name in {"run", "Popen", "call", "check_call", "check_output"}:
             for keyword in node.keywords:
-                if keyword.arg == "shell" and isinstance(keyword.value, ast.Constant):
-                    if keyword.value.value is True:
-                        self._report(node, "subprocess-shell-true")
+                if (
+                    keyword.arg == "shell"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True
+                ):
+                    self._report(node, "subprocess-shell-true")
 
         if name in {"loads", "load"} and isinstance(node.func, ast.Attribute):
             owner = node.func.value
