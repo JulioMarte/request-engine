@@ -2,6 +2,12 @@
 
 This directory is Request Engine's production-like evidence layer. E2E scenarios cross the same HTTP, PostgreSQL, RLS, transaction, idempotency, worker-role, lease, fencing, and crash boundaries used by runtime code.
 
+The HTTP tests inject a deterministic `ActorResolver`; they prove the behavior
+after the deployment authentication adapter accepts or rejects a credential.
+They do not prove any particular JWT/OIDC/API-key adapter. Each deployment
+adapter requires its own signature, issuer, audience, expiry and key-rotation
+tests before production use.
+
 The extension contract and definition-of-done checklist live in [`docs/e2e-evidence-framework.md`](../../docs/e2e-evidence-framework.md).
 
 ## Non-negotiable rules
@@ -21,7 +27,7 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 - `test_http_security_matrix.py` proves authentication for all 24 operations, capability `403` for every capability-gated operation, and the special authenticated-but-not-capability-gated contract for `/v1/capabilities`.
 - `tenant_sandbox.py` creates two real organizations with catalog, capacity, queues, requests, principals, parties, and signed appointment options.
 - `test_http_tenant_isolation_matrix.py` exercises the production tenant/Party boundary using real foreign resources and verifies `200` filtering/context, `403` Party authority, or non-disclosure `404` as appropriate, always with a durable before/after snapshot.
-- `evidence.py` snapshots reservations, claims, holds, queues, waitlists, slot offers, requests, ReminderPlans, outbox, scheduling, communication deliveries, and provider events. Add every new durable mutation surface here.
+- `evidence.py` discovers and fingerprints every authoritative table, including full row content, so new tables enter negative mutation proofs automatically.
 - `test_multi_user_journeys.py` proves exclusive-slot contention/recovery, tenant isolation, FIFO queue replay, and the **public** Request submit/read/cancel lifecycle. Internal Request processing commands belong to trusted integration tests, not public E2E.
 - `test_communication_worker_resilience.py` proves provider ambiguity, poison work, reclaim/fencing, crash-after-prepare, crash-after-finalize-before-ack, and multi-worker contention.
 - `test_worker_scheduling_semantics.py` and `test_outbox_semantics.py` prove `SKIP LOCKED`, lease reclaim, token fencing, retry exhaustion, and runtime privilege boundaries.
@@ -29,6 +35,6 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 
 ## Adding a feature
 
-A feature PR that adds a public endpoint must update `PUBLIC_HTTP_OPERATIONS` in the same PR. If the OpenAPI surface changes without classification, CI fails. A new mutating table must extend `DurableSnapshot`. A new external side effect must add crash-window evidence. A new worker must prove claim disjointness, stale-token fencing, retry/dead-letter behavior, and reclaim after lease expiry.
+A feature PR that adds a public endpoint must update `PUBLIC_HTTP_OPERATIONS` in the same PR. If the OpenAPI surface changes without classification, CI fails. `DurableSnapshot` fingerprints every authoritative table automatically, so rejected operations must preserve row content as well as cardinality. A new external side effect must add crash-window evidence. A new worker must prove claim disjointness, stale-token fencing, retry/dead-letter behavior, and reclaim after lease expiry.
 
 Do not weaken these guards to make a new feature pass; extend the evidence framework.

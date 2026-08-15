@@ -2,44 +2,45 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from psycopg import sql
+
 from . import operational_support as support
 
 
 @dataclass(frozen=True, slots=True)
 class DurableSnapshot:
-    reservations: int
-    capacity_claims: int
-    capacity_holds: int
-    queue_entries: int
-    waitlist_entries: int
-    slot_offers: int
-    requests: int
-    reminder_plans: int
-    outbox_messages: int
-    scheduled_actions: int
-    communication_tasks: int
-    communication_deliveries: int
-    provider_events: int
+    """Content fingerprints for every authoritative table, not merely row counts."""
+
+    tables: tuple[tuple[str, int, str], ...]
 
 
 def durable_snapshot(conn: support.PgConnection) -> DurableSnapshot:
-    row = conn.execute(
+    rows = conn.execute(
         """
-        SELECT
-            (SELECT count(*) FROM request_engine.reservations),
-            (SELECT count(*) FROM request_engine.capacity_claims),
-            (SELECT count(*) FROM request_engine.capacity_holds),
-            (SELECT count(*) FROM request_engine.queue_entries),
-            (SELECT count(*) FROM request_engine.waitlist_entries),
-            (SELECT count(*) FROM request_engine.slot_offers),
-            (SELECT count(*) FROM request_engine.requests),
-            (SELECT count(*) FROM request_engine.reminder_plans),
-            (SELECT count(*) FROM request_engine.outbox_messages),
-            (SELECT count(*) FROM request_engine.scheduled_actions),
-            (SELECT count(*) FROM request_engine.communication_tasks),
-            (SELECT count(*) FROM request_engine.communication_deliveries),
-            (SELECT count(*) FROM request_engine.provider_events)
+        SELECT c.relname
+        FROM pg_catalog.pg_class AS c
+        JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'request_engine'
+          AND c.relkind IN ('r', 'p')
+        ORDER BY c.relname
         """
-    ).fetchone()
-    assert row is not None
-    return DurableSnapshot(*row)
+    ).fetchall()
+    fingerprints: list[tuple[str, int, str]] = []
+    for (raw_table_name,) in rows:
+        table_name = str(raw_table_name)
+        row = conn.execute(
+            sql.SQL(
+                """
+                SELECT count(*)::bigint,
+                       md5(COALESCE(
+                           jsonb_agg(to_jsonb(snapshot_row)
+                               ORDER BY to_jsonb(snapshot_row)::text)::text,
+                           '[]'
+                       ))
+                FROM {} AS snapshot_row
+                """
+            ).format(sql.Identifier("request_engine", table_name))
+        ).fetchone()
+        assert row is not None
+        fingerprints.append((table_name, int(row[0]), str(row[1])))
+    return DurableSnapshot(tuple(fingerprints))

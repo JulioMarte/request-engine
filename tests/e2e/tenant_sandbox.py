@@ -19,8 +19,9 @@ from . import operational_support as support
 _SIGNING_KEY = b"request-engine-e2e-tenant-signing-key"
 ALL_PUBLIC_CAPABILITIES = frozenset(
     {
-        "business.read",
-        "catalog.read",
+        "business.get_info",
+        "catalog.search_offerings",
+        "catalog.get_offering_details",
         "appointments.find_slots",
         "appointments.book",
         "appointments.read",

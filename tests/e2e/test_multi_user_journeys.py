@@ -31,8 +31,9 @@ _BOOKING_CAPABILITIES = frozenset(
 _QUEUE_CAPABILITIES = frozenset({"queue.list", "queue.status", "queue.join", "queue.leave"})
 _STAFF_CAPABILITIES = frozenset(
     {
-        "business.read",
-        "catalog.read",
+        "business.get_info",
+        "catalog.search_offerings",
+        "catalog.get_offering_details",
         "appointments.find_slots",
         "appointments.book",
         "appointments.read",

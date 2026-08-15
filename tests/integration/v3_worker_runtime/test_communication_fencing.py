@@ -26,7 +26,7 @@ from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
     ScheduledActionLease,
 )
-from request_engine.platform.worker.runtime import LeaseLostWorkError
+from request_engine.platform.worker.runtime import LeaseLostWorkError, PermanentWorkError
 
 PgConnection = Connection[Any]
 
@@ -165,6 +165,62 @@ class LeaseStealingProvider:
             status=ProviderDeliveryStatus.DELIVERED,
             provider_message_id="provider-message-1",
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+async def test_poison_dispatch_fails_task_before_fenced_dead_letter(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _fixture(admin_conn)
+    task_id = await _create_task(fixture, session_factory)
+    admin_conn.execute(
+        """
+        UPDATE request_engine.scheduled_actions
+        SET payload = jsonb_build_object('communication_task_id', %s::text)
+        WHERE organization_id = %s
+          AND subject_kind = 'CommunicationTask'
+          AND subject_id = %s
+        """,
+        (uuid4(), fixture.organization_id, task_id),
+    )
+    scheduler = PostgresScheduledActionWorker(session_factory)
+    lease = await _claim_for_subject(scheduler, task_id)
+    handler = CommunicationDeliveryScheduledHandler(session_factory, scheduler, {})
+
+    with pytest.raises(PermanentWorkError) as exc_info:
+        await handler.handle(lease)
+    assert exc_info.value.error_class == "scheduled_action_payload_mismatch"
+    assert await scheduler.dead_letter(lease, error_class=exc_info.value.error_class) is True
+
+    assert admin_conn.execute(
+        """
+        SELECT status
+        FROM request_engine.communication_tasks
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, task_id),
+    ).fetchone() == ("failed",)
+    assert admin_conn.execute(
+        """
+        SELECT status, last_error_class
+        FROM request_engine.scheduled_actions
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, lease.id),
+    ).fetchone() == ("dead", "scheduled_action_payload_mismatch")
+    assert admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.outbox_messages
+        WHERE organization_id = %s
+          AND event_type = 'communication.task_failed.v1'
+          AND aggregate_id = %s
+        """,
+        (fixture.organization_id, task_id),
+    ).fetchone() == (1,)
 
 
 @pytest.mark.asyncio

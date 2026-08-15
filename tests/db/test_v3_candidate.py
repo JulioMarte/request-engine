@@ -1,4 +1,3 @@
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from threading import Event
@@ -200,8 +199,9 @@ def _attempt_concurrent_booking(
     setup: BookingFixture,
     during: str,
     ready: Event,
+    application_name: str,
 ) -> str:
-    conn: PgConnection = psycopg.connect(conninfo)
+    conn: PgConnection = psycopg.connect(conninfo, application_name=application_name)
     try:
         _insert_reservation(conn, setup, during)
         ready.set()
@@ -226,6 +226,23 @@ def _attempt_concurrent_booking(
         return exc.sqlstate or "postgres-error"
     finally:
         conn.close()
+
+
+def _wait_until_session_blocks(observer: PgConnection, application_name: str) -> None:
+    for _ in range(200):
+        row = observer.execute(
+            """
+            SELECT wait_event_type
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND application_name = %s
+            """,
+            (application_name,),
+        ).fetchone()
+        if row is not None and row[0] == "Lock":
+            return
+        Event().wait(0.01)
+    pytest.fail(f"{application_name} never reached the database lock barrier")
 
 
 @pytest.mark.postgres
@@ -301,6 +318,7 @@ def test_concurrent_exclusive_booking_cannot_double_book(
         _insert_claim(first, setup, first_reservation, during)
 
         ready = Event()
+        application_name = f"exclusive-booking-race-{uuid4().hex}"
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 _attempt_concurrent_booking,
@@ -308,9 +326,10 @@ def test_concurrent_exclusive_booking_cannot_double_book(
                 setup,
                 during,
                 ready,
+                application_name,
             )
             assert ready.wait(timeout=5)
-            time.sleep(0.05)
+            _wait_until_session_blocks(admin_conn, application_name)
             first.commit()
             assert future.result(timeout=5) == "23P01"
     finally:
@@ -334,6 +353,7 @@ def test_concurrent_units_booking_cannot_oversell(
         _insert_claim(second, setup, second_reservation, during)
 
         ready = Event()
+        application_name = f"units-booking-race-{uuid4().hex}"
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 _attempt_concurrent_booking,
@@ -341,9 +361,10 @@ def test_concurrent_units_booking_cannot_oversell(
                 setup,
                 during,
                 ready,
+                application_name,
             )
             assert ready.wait(timeout=5)
-            time.sleep(0.05)
+            _wait_until_session_blocks(admin_conn, application_name)
             second.commit()
             assert future.result(timeout=5) == "23P01"
     finally:
@@ -616,4 +637,4 @@ def test_worker_roles_do_not_bypass_rls_and_claim_function_pins_search_path(
         """
     ).fetchone()
     assert config_row is not None
-    assert "search_path=pg_catalog, request_engine" in cast(list[str], config_row[0])
+    assert "search_path=pg_catalog, request_engine, pg_temp" in cast(list[str], config_row[0])

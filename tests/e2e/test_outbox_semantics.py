@@ -114,14 +114,14 @@ def test_two_workers_claim_disjoint_outbox_batches_under_contention(
 
     def claim_batch() -> list[tuple[Any, ...]]:
         with support.runtime_conn(worker_runtime_credentials) as conn:
-            barrier.wait()
+            barrier.wait(timeout=10)
             return support.claim_outbox(conn, 10)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(claim_batch)
         second_future = executor.submit(claim_batch)
-        first = first_future.result()
-        second = second_future.result()
+        first = first_future.result(timeout=10)
+        second = second_future.result(timeout=10)
 
     first_ids = {cast(UUID, row[0]) for row in first}
     second_ids = {cast(UUID, row[0]) for row in second}

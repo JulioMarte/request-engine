@@ -78,6 +78,7 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     stability = ROOT / "scripts" / "release" / "prove_v3_concurrency_stability.py"
     order = ROOT / "scripts" / "release" / "prove_v3_test_order_independence.py"
     mutation = ROOT / "scripts" / "release" / "run_v3_mutation_probes.py"
+    scratch_database = ROOT / "scripts" / "release" / "v3_scratch_database.py"
     _, jobs = _ci_sources()
 
     assert quality.is_file()
@@ -85,6 +86,7 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     assert stability.is_file()
     assert order.is_file()
     assert mutation.is_file()
+    assert scratch_database.is_file()
     assert "tests/e2e" in jobs
     assert "audit_v3_test_quality.py" in jobs
     assert "v3-test-quality.json" in jobs
@@ -98,11 +100,39 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     assert "v3-mutation-probes.json" in jobs
 
 
-def test_phase6_evidence_manifest_has_a_final_completeness_gate() -> None:
+def test_phase6_repeated_test_proofs_use_fresh_v3_databases() -> None:
+    release_scripts = ROOT / "scripts" / "release"
+    isolated_proofs = (
+        release_scripts / "prove_v3_concurrency_stability.py",
+        release_scripts / "prove_v3_test_order_independence.py",
+        release_scripts / "run_v3_mutation_probes.py",
+    )
+
+    for proof in isolated_proofs:
+        source = proof.read_text(encoding="utf-8")
+        assert "fresh_v3_database" in source, f"{proof.name} reuses a dirty database"
+        assert re.search(r"env=(?:scratch_env|env)", source), (
+            f"{proof.name} does not bind pytest to its scratch DB"
+        )
+
+
+def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
+    conftest = (ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+
+    assert "isolate_postgres_test_data" in conftest
+    assert 'get_closest_marker("postgres")' in conftest
+    assert "TRUNCATE TABLE {} RESTART IDENTITY CASCADE" in conftest
+
+
+def test_phase6_evidence_manifest_validates_bundle_without_claiming_release_ready() -> None:
     manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
     _, jobs = _ci_sources()
 
     assert manifest.is_file()
     assert "evidence-manifest" in jobs
-    assert "evidence-completeness" in jobs
-    assert "--require-complete" in jobs
+    assert "evidence-bundle-validation" in jobs
+    assert "--require-valid-bundle" in jobs
+    source = manifest.read_text(encoding="utf-8")
+    assert '"release_status": "READY" if release_ready else "INCOMPLETE"' in source
+    assert "_validate_junit" in source
+    assert "artifact_validation_errors" in source

@@ -74,7 +74,7 @@ def test_worker_security_definer_functions_pin_trusted_search_path(
     for _, security_definer, config in rows:
         assert security_definer is True
         assert config is not None
-        assert "search_path=pg_catalog, request_engine" in config
+        assert "search_path=pg_catalog, request_engine, pg_temp" in config
 
     invoker = e2e_admin_conn.execute(
         """
@@ -88,7 +88,7 @@ def test_worker_security_definer_functions_pin_trusted_search_path(
     assert invoker == (False,)
 
 
-def test_worker_direct_read_is_rls_scoped_but_claim_discovers_tenant_work(
+def test_worker_direct_read_is_denied_but_claim_discovers_tenant_work(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
@@ -100,11 +100,11 @@ def test_worker_direct_read_is_rls_scoped_but_claim_discovers_tenant_work(
     )
 
     with support.runtime_conn(worker_runtime_credentials) as conn:
-        direct = conn.execute(
-            "SELECT count(*) FROM request_engine.scheduled_actions WHERE id = %s",
-            (action_id,),
-        ).fetchone()
-        assert direct == (0,)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute(
+                "SELECT count(*) FROM request_engine.scheduled_actions WHERE id = %s",
+                (action_id,),
+            ).fetchone()
 
         claimed = support.claim_scheduled(conn, 1)
         assert len(claimed) == 1
@@ -162,14 +162,14 @@ def test_two_workers_claim_disjoint_scheduled_batches_under_contention(
 
     def claim_batch() -> list[tuple[Any, ...]]:
         with support.runtime_conn(worker_runtime_credentials) as conn:
-            barrier.wait()
+            barrier.wait(timeout=10)
             return support.claim_scheduled(conn, 8)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(claim_batch)
         second_future = executor.submit(claim_batch)
-        first = first_future.result()
-        second = second_future.result()
+        first = first_future.result(timeout=10)
+        second = second_future.result(timeout=10)
 
     first_ids = {cast(UUID, row[0]) for row in first}
     second_ids = {cast(UUID, row[0]) for row in second}

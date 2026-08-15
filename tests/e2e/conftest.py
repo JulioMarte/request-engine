@@ -21,27 +21,12 @@ from request_engine.platform.db.session import (
 PgConnection = Connection[Any]
 
 
-def _truncate_runtime_tables(conn: PgConnection) -> None:
-    rows = conn.execute(
-        """
-        SELECT tablename
-        FROM pg_catalog.pg_tables
-        WHERE schemaname = 'request_engine'
-        ORDER BY tablename
-        """
-    ).fetchall()
-    tables = [sql.Identifier("request_engine", str(row[0])) for row in rows]
-    assert tables
-    conn.execute(
-        sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(sql.SQL(", ").join(tables))
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class RuntimeCredentials:
     role_name: str
     password: str
     database_url: str
+    domain_database_url: str | None = None
 
 
 def _pg_values() -> tuple[str, str, str, str, str]:
@@ -65,17 +50,6 @@ def e2e_admin_conn() -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
-
-
-@pytest.fixture(autouse=True)
-def isolated_e2e_database(e2e_admin_conn: PgConnection) -> Iterator[None]:
-    """Prevent durable work from one E2E proof influencing another proof."""
-
-    _truncate_runtime_tables(e2e_admin_conn)
-    try:
-        yield
-    finally:
-        _truncate_runtime_tables(e2e_admin_conn)
 
 
 def _runtime_credentials(
@@ -125,13 +99,19 @@ def app_runtime_credentials(
 @pytest.fixture(scope="session")
 def worker_runtime_credentials(
     e2e_admin_conn: PgConnection,
+    app_runtime_credentials: RuntimeCredentials,
 ) -> Iterator[RuntimeCredentials]:
     credentials = _runtime_credentials(
         e2e_admin_conn,
         parent_role="request_engine_worker",
     )
     try:
-        yield credentials
+        yield RuntimeCredentials(
+            role_name=credentials.role_name,
+            password=credentials.password,
+            database_url=credentials.database_url,
+            domain_database_url=app_runtime_credentials.database_url,
+        )
     finally:
         _drop_runtime_role(e2e_admin_conn, credentials)
 

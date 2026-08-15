@@ -59,6 +59,52 @@ class FinalizedDelivery:
     task_terminal: bool
 
 
+async def fail_poisoned_communication_task(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    communication_task_id: UUID,
+    scheduled_action_id: UUID,
+    reason: str,
+) -> bool:
+    """Terminalize a task whose only executable dispatch intent is poison work."""
+
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT status
+                FROM request_engine.communication_tasks
+                WHERE organization_id = :organization_id
+                  AND id = :communication_task_id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "communication_task_id": communication_task_id,
+            },
+        )
+    ).one_or_none()
+    if row is None or cast(str, row[0]) in {"completed", "cancelled", "failed"}:
+        return False
+
+    await _mark_task_failed(session, organization_id, communication_task_id)
+    await append_outbox(
+        session,
+        organization_id=organization_id,
+        event_type="communication.task_failed.v1",
+        aggregate_kind="CommunicationTask",
+        aggregate_id=communication_task_id,
+        payload={
+            "communication_task_id": str(communication_task_id),
+            "scheduled_action_id": str(scheduled_action_id),
+            "reason": reason,
+        },
+    )
+    return True
+
+
 async def prepare_dispatch(
     session: AsyncSession,
     *,

@@ -80,7 +80,7 @@ def _run_reverse(node_ids: list[str]) -> dict[str, object]:
     except ScratchDatabaseError as exc:
         return {
             "status": "FAIL",
-            "returncode": 1,
+            "returncode": 2,
             "seconds": round(time.monotonic() - started, 3),
             "output_tail": str(exc).splitlines()[-100:],
         }

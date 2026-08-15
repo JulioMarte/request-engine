@@ -53,7 +53,7 @@ def _run_round(round_number: int) -> dict[str, object]:
         return {
             "round": round_number,
             "status": "FAIL",
-            "returncode": 1,
+            "returncode": 2,
             "seconds": round(time.monotonic() - started, 3),
             "output_tail": str(exc).splitlines()[-80:],
         }

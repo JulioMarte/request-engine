@@ -450,7 +450,27 @@ async def test_expiry_releases_hold_and_advances_candidate(
         ),
     )
     assert offer is not None and offer.waitlist_entry_id == first_entry_id
-    await asyncio.sleep(1.1)
+    admin_conn.execute(
+        """
+        UPDATE request_engine.capacity_holds
+        SET expires_at = clock_timestamp() - interval '1 second'
+        WHERE organization_id = %s
+          AND id = (
+              SELECT capacity_hold_id
+              FROM request_engine.slot_offers
+              WHERE organization_id = %s AND id = %s
+          )
+        """,
+        (fixture.organization_id, fixture.organization_id, offer.id),
+    )
+    admin_conn.execute(
+        """
+        UPDATE request_engine.slot_offers
+        SET expires_at = clock_timestamp() - interval '1 second'
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, offer.id),
+    )
     result = await expire_slot_offer(
         commands,
         ExpireSlotOfferCommand(

@@ -104,13 +104,22 @@ async def _worker_stack(
 ) -> AsyncGenerator[
     tuple[SessionFactory, PostgresScheduledActionWorker, CommunicationDeliveryWorker],
 ]:
-    engine = create_postgres_engine(credentials.database_url)
-    factory: SessionFactory = create_session_factory(engine)
-    scheduler = PostgresScheduledActionWorker(factory)
+    domain_database_url = getattr(credentials, "domain_database_url", None)
+    assert domain_database_url is not None, "delivery work requires separate app credentials"
+    worker_engine = create_postgres_engine(credentials.database_url)
+    domain_engine = create_postgres_engine(domain_database_url)
+    worker_factory: SessionFactory = create_session_factory(worker_engine)
+    domain_factory: SessionFactory = create_session_factory(domain_engine)
+    scheduler = PostgresScheduledActionWorker(worker_factory)
     try:
-        yield factory, scheduler, CommunicationDeliveryWorker(factory, scheduler, providers)
+        yield (
+            domain_factory,
+            scheduler,
+            CommunicationDeliveryWorker(domain_factory, scheduler, providers),
+        )
     finally:
-        await engine.dispose()
+        await domain_engine.dispose()
+        await worker_engine.dispose()
 
 
 def _task(
@@ -452,7 +461,8 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
         outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "failed"
-    assert _task_status(e2e_admin_conn, task_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
     assert _action_status(e2e_admin_conn, original_id) == "completed"
     retries = e2e_admin_conn.execute(
         """
@@ -562,7 +572,7 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
 
 
 @pytest.mark.asyncio
-async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
+async def test_payload_identity_mismatch_dead_letters_action_and_fails_orphaned_task(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
@@ -582,7 +592,8 @@ async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
         (action_id,),
     ).fetchone()
     assert row == ("dead", "invalid_scheduled_action")
-    assert _task_status(e2e_admin_conn, task_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
     delivery_count = e2e_admin_conn.execute(
         """
         SELECT count(*) FROM request_engine.communication_deliveries

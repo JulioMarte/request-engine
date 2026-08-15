@@ -80,7 +80,7 @@ REVOKE ALL ON FUNCTION request_cmd.lock_scheduled_action_claim(uuid, uuid) FROM 
 GRANT EXECUTE ON FUNCTION request_cmd.cancel_scheduled_action(uuid, uuid)
     TO request_engine_app, request_engine_admin;
 GRANT EXECUTE ON FUNCTION request_cmd.lock_scheduled_action_claim(uuid, uuid)
-    TO request_engine_worker;
+    TO request_engine_app, request_engine_worker;
 
 RESET ROLE;
 COMMIT;

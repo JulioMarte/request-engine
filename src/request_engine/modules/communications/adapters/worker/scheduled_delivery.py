@@ -9,6 +9,7 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     RECONCILE_ACTION_VERSION,
     DeliveryWorkKind,
     PreparedDeliveryWork,
+    fail_poisoned_communication_task,
     finalize_provider_result,
     prepare_dispatch,
     prepare_reconciliation,
@@ -23,6 +24,7 @@ from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
     ScheduledActionLease,
 )
+from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import (
     LeaseLostWorkError,
     PermanentWorkError,
@@ -57,7 +59,11 @@ class CommunicationDeliveryScheduledHandler:
         self._finalization_lease_extension = finalization_lease_extension
 
     async def handle(self, lease: ScheduledActionLease) -> None:
-        work = await self._prepare(lease)
+        try:
+            work = await self._prepare(lease)
+        except PermanentWorkError as exc:
+            await self._fail_poisoned_task(lease, reason=exc.error_class)
+            raise
         if work.kind is DeliveryWorkKind.SKIP:
             return
 
@@ -113,6 +119,28 @@ class CommunicationDeliveryScheduledHandler:
                 result=provider_result,
             )
 
+    async def _fail_poisoned_task(self, lease: ScheduledActionLease, *, reason: str) -> None:
+        if (
+            lease.owner_module != "communications"
+            or lease.subject_kind != "CommunicationTask"
+            or lease.subject_id is None
+        ):
+            return
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("poison_task_failure_fence_lost")
+            await fail_poisoned_communication_task(
+                session,
+                organization_id=lease.organization_id,
+                communication_task_id=lease.subject_id,
+                scheduled_action_id=lease.id,
+                reason=reason,
+            )
+
     async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
         if (
             lease.owner_module == "communications"
@@ -130,6 +158,12 @@ class CommunicationDeliveryScheduledHandler:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("delivery_prepare_fence_lost")
                 return await prepare_dispatch(
                     session,
                     organization_id=lease.organization_id,
@@ -152,6 +186,12 @@ class CommunicationDeliveryScheduledHandler:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("reconciliation_prepare_fence_lost")
                 return await prepare_reconciliation(
                     session,
                     organization_id=lease.organization_id,
