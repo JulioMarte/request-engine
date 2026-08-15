@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 import os
@@ -12,7 +13,6 @@ import selectors
 import subprocess
 import sys
 import time
-from typing import Mapping, Sequence
 
 
 @dataclass(frozen=True)
