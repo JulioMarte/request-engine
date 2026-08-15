@@ -78,9 +78,7 @@ def _runtime_credentials(
 
 
 def _drop_runtime_role(conn: PgConnection, credentials: RuntimeCredentials) -> None:
-    conn.execute(
-        sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(credentials.role_name))
-    )
+    conn.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(credentials.role_name)))
 
 
 @pytest.fixture(scope="session")

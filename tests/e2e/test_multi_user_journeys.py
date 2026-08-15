@@ -423,9 +423,7 @@ async def test_e2e_many_patients_race_for_one_slot_then_capacity_recovers(
 
         results = await asyncio.gather(*(attempt(person) for person in practice.people))
         winners = [
-            (person, response)
-            for person, response in results
-            if response.status_code == 201
+            (person, response) for person, response in results if response.status_code == 201
         ]
         losers = [(person, response) for person, response in results if response.status_code != 201]
 
@@ -513,8 +511,7 @@ async def test_e2e_two_tenants_cannot_observe_or_mutate_each_other(
             },
             headers=_auth(practice_a.staff_token),
         )
-        assert foreign_slots.status_code == 200
-        assert foreign_slots.json() == []
+        assert foreign_slots.status_code == 404
 
         foreign_queue = await client.post(
             f"/v1/queues/{practice_b.queue_id}/join",

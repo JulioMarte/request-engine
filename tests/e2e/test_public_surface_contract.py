@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi import Request
-from fastapi.routing import APIRoute
 
 from request_engine.entrypoints.http.app import create_app
 from request_engine.entrypoints.http.security import AuthenticationRequired
@@ -40,6 +41,18 @@ class RejectAllResolver:
         raise AuthenticationRequired
 
 
+def _public_operations(routes: list[Any]) -> frozenset[tuple[str, str]]:
+    operations: set[tuple[str, str]] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        if not isinstance(path, str) or not path.startswith("/v1") or methods is None:
+            continue
+        for method in methods:
+            operations.add((str(method), path))
+    return frozenset(operations)
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
@@ -50,11 +63,5 @@ async def test_public_http_surface_cannot_grow_without_e2e_classification(
         session_factory=e2e_session_factory,
         actor_resolver=RejectAllResolver(),
     )
-    actual = frozenset(
-        (method, route.path)
-        for route in app.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/v1/")
-        for method in route.methods
-    )
 
-    assert actual == _EXPECTED_PUBLIC_OPERATIONS
+    assert _public_operations(app.routes) == _EXPECTED_PUBLIC_OPERATIONS
