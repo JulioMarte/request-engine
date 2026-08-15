@@ -98,7 +98,10 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
     organization_ids, action_ids = _seed(admin_conn)
     start = Barrier(WORKER_COUNT)
     with ThreadPoolExecutor(max_workers=WORKER_COUNT) as executor:
-        futures = [executor.submit(_drain, worker_number, action_ids, start) for worker_number in range(8)]
+        futures = [
+            executor.submit(_drain, worker_number, action_ids, start)
+            for worker_number in range(WORKER_COUNT)
+        ]
         worker_results = [future.result(timeout=120) for future in futures]
 
     owners: defaultdict[UUID, list[int]] = defaultdict(list)
@@ -121,7 +124,10 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
     )
 
     unexpected = completed_ids - action_ids
-    assert not unexpected, f"workers completed actions outside the soak fixture: {sorted(unexpected)[:10]}"
+    assert not unexpected, (
+        "workers completed actions outside the soak fixture: "
+        f"{sorted(unexpected)[:10]}"
+    )
 
     states = admin_conn.execute(
         """
