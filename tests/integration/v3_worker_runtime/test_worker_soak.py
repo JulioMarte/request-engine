@@ -69,7 +69,11 @@ def _drain(target_ids: set[UUID]) -> set[UUID]:
                 FROM request_cmd.claim_scheduled_actions(25, interval '30 seconds')
                 """
             ).fetchall()
-            ours = [(cast(UUID, row[0]), cast(UUID, row[1])) for row in rows if row[0] in target_ids]
+            ours = [
+                (cast(UUID, row[0]), cast(UUID, row[1]))
+                for row in rows
+                if row[0] in target_ids
+            ]
             for action_id, token in ours:
                 if worker.execute(
                     "SELECT request_cmd.complete_scheduled_action(%s, %s)",
