@@ -24,7 +24,7 @@ def _runtime_login(
     admin_conn: PgConnection,
     pg_conninfo: str,
     group_role: str,
-) -> Generator[PgConnection, None, None]:
+) -> Generator[PgConnection]:
     role_name = f"{group_role}_acl_{uuid4().hex[:16]}"
     password = uuid4().hex
     admin_conn.execute(
