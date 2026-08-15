@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+# A PR can receive several commits while an implementation is in progress.
+# Only the newest revision has evidentiary value, so cancel obsolete runs instead
+# of consuming runners and external service/API quotas for stale commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python-quality:
     name: Python quality and architecture
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -25,7 +33,9 @@ jobs:
 
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
+    needs: python-quality
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
@@ -60,7 +70,9 @@ jobs:
 
   postgres-v3-bootstrap-proof:
     name: PostgreSQL 18 V3 repeated bootstrap proof
+    needs: python-quality
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
@@ -96,7 +108,11 @@ jobs:
 
   postgres-v3-candidate:
     name: PostgreSQL 18 V3 candidate and verticals
+    needs:
+      - python-quality
+      - postgres-v3-bootstrap-proof
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18
