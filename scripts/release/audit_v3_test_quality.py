@@ -56,9 +56,16 @@ def _module_markers(tree: ast.Module) -> set[str]:
     for statement in tree.body:
         if not isinstance(statement, ast.Assign):
             continue
-        if not any(isinstance(target, ast.Name) and target.id == "pytestmark" for target in statement.targets):
+        has_pytestmark = any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in statement.targets
+        )
+        if not has_pytestmark:
             continue
-        values = statement.value.elts if isinstance(statement.value, (ast.List, ast.Tuple)) else [statement.value]
+        if isinstance(statement.value, ast.List | ast.Tuple):
+            values = statement.value.elts
+        else:
+            values = [statement.value]
         for value in values:
             marker = _marker_name(value)
             if marker:
@@ -70,7 +77,8 @@ def _test_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctio
     return [
         node
         for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name.startswith("test_")
     ]
 
 
@@ -93,7 +101,9 @@ def _audit_test_function(
 ) -> list[Finding]:
     findings: list[Finding] = []
     markers = inherited_markers | {
-        marker for decorator in node.decorator_list if (marker := _marker_name(decorator)) is not None
+        marker
+        for decorator in node.decorator_list
+        if (marker := _marker_name(decorator)) is not None
     }
 
     if relative.startswith("tests/integration/v3_"):
@@ -110,14 +120,15 @@ def _audit_test_function(
                 )
 
     lower_name = node.name.lower()
-    if any(token in lower_name for token in CONCURRENCY_NAME_TOKENS) and "concurrency" not in markers:
+    is_concurrency_named = any(token in lower_name for token in CONCURRENCY_NAME_TOKENS)
+    if is_concurrency_named and "concurrency" not in markers:
         findings.append(
             Finding(
                 "error",
                 relative,
                 node.lineno,
                 "missing-concurrency-marker",
-                f"{node.name} describes a race/concurrency proof but lacks @pytest.mark.concurrency",
+                f"{node.name} describes a race/concurrency proof but lacks concurrency marker",
             )
         )
 
@@ -128,12 +139,17 @@ def _audit_test_function(
                 relative,
                 node.lineno,
                 "no-local-assertion",
-                f"{node.name} has no local assert/pytest.raises; verify it delegates a real oracle",
+                f"{node.name} has no local assert/pytest.raises; verify its delegated oracle",
             )
         )
 
     for child in ast.walk(node):
-        if isinstance(child, ast.Assert) and isinstance(child.test, ast.Constant) and child.test.value is False:
+        is_bare_false = (
+            isinstance(child, ast.Assert)
+            and isinstance(child.test, ast.Constant)
+            and child.test.value is False
+        )
+        if is_bare_false:
             findings.append(
                 Finding(
                     "error",
@@ -144,56 +160,61 @@ def _audit_test_function(
                 )
             )
 
-        if isinstance(child, ast.Call):
-            call_name = _dotted_name(child.func)
-            if call_name in {"pytest.skip", "pytest.xfail"}:
+        if not isinstance(child, ast.Call):
+            continue
+
+        call_name = _dotted_name(child.func)
+        if call_name in {"pytest.skip", "pytest.xfail"}:
+            findings.append(
+                Finding(
+                    "error",
+                    relative,
+                    child.lineno,
+                    "runtime-skip-or-xfail",
+                    "Release-proof tests must not silently skip or xfail at runtime",
+                )
+            )
+        if call_name == "pytest.raises" and child.args:
+            raised = _dotted_name(child.args[0])
+            if raised in {"Exception", "BaseException"}:
                 findings.append(
                     Finding(
                         "error",
                         relative,
                         child.lineno,
-                        "runtime-skip-or-xfail",
-                        "Release-proof tests must not silently skip or xfail at runtime",
+                        "broad-exception-oracle",
+                        "Assert the exact exception class or database error contract",
                     )
                 )
-            if call_name == "pytest.raises" and child.args:
-                raised = _dotted_name(child.args[0])
-                if raised in {"Exception", "BaseException"}:
-                    findings.append(
-                        Finding(
-                            "error",
-                            relative,
-                            child.lineno,
-                            "broad-exception-oracle",
-                            "Assert the exact exception class or database error contract",
-                        )
+        if call_name in {"time.sleep", "asyncio.sleep"} and child.args:
+            duration = child.args[0]
+            if isinstance(duration, ast.Constant) and isinstance(duration.value, int | float):
+                seconds = float(duration.value)
+                severity = "error" if seconds > 2.0 else "warning"
+                findings.append(
+                    Finding(
+                        severity,
+                        relative,
+                        child.lineno,
+                        "wall-clock-synchronization",
+                        (
+                            f"{call_name}({seconds:g}) makes concurrency evidence timing-dependent; "
+                            "prefer a DB barrier or lock observation"
+                        ),
                     )
-            if call_name in {"time.sleep", "asyncio.sleep"} and child.args:
-                duration = child.args[0]
-                if isinstance(duration, ast.Constant) and isinstance(duration.value, (int, float)):
-                    seconds = float(duration.value)
-                    severity = "error" if seconds > 2.0 else "warning"
-                    findings.append(
-                        Finding(
-                            severity,
-                            relative,
-                            child.lineno,
-                            "wall-clock-synchronization",
-                            f"{call_name}({seconds:g}) makes concurrency evidence timing-dependent; prefer a DB barrier/lock observation",
-                        )
+                )
+        if call_name and call_name.endswith(".result"):
+            has_timeout = any(keyword.arg == "timeout" for keyword in child.keywords)
+            if not has_timeout:
+                findings.append(
+                    Finding(
+                        "warning",
+                        relative,
+                        child.lineno,
+                        "unbounded-future-wait",
+                        "Future.result() needs a timeout so deadlocks become bounded failures",
                     )
-            if call_name and call_name.endswith(".result"):
-                has_timeout = any(keyword.arg == "timeout" for keyword in child.keywords)
-                if not has_timeout:
-                    findings.append(
-                        Finding(
-                            "warning",
-                            relative,
-                            child.lineno,
-                            "unbounded-future-wait",
-                            "Future.result() should have a timeout so a deadlock becomes a bounded test failure",
-                        )
-                    )
+                )
 
     for decorator in node.decorator_list:
         marker = _marker_name(decorator)
