@@ -85,6 +85,10 @@ def _drain(target_ids: set[UUID]) -> set[UUID]:
     return completed
 
 
+def _drain_worker(_: int, target_ids: set[UUID]) -> set[UUID]:
+    return _drain(target_ids)
+
+
 @pytest.mark.integration
 @pytest.mark.postgres
 @pytest.mark.concurrency
@@ -95,9 +99,13 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
 
     organization_ids, action_ids = _seed(admin_conn)
     with ThreadPoolExecutor(max_workers=8) as executor:
-        completed_sets = list(executor.map(lambda _: _drain(action_ids), range(8)))
+        futures = [executor.submit(_drain_worker, worker_number, action_ids) for worker_number in range(8)]
+        completed_sets: list[set[UUID]] = [future.result() for future in futures]
 
-    all_completed = set().union(*completed_sets)
+    all_completed: set[UUID] = set()
+    for completed in completed_sets:
+        all_completed.update(completed)
+
     assert all_completed == action_ids
     assert sum(len(values) for values in completed_sets) == len(action_ids)
 
