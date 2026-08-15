@@ -38,6 +38,41 @@ def _public_operations(openapi: dict[str, object]) -> frozenset[tuple[str, str]]
     return frozenset(operations)
 
 
+def _operation_contract(
+    openapi: dict[str, object],
+    *,
+    path: str,
+    method: str,
+) -> dict[str, object]:
+    paths_value = openapi.get("paths")
+    assert isinstance(paths_value, dict)
+    paths = cast(dict[str, object], paths_value)
+    path_value = paths[path]
+    assert isinstance(path_value, dict)
+    path_item = cast(dict[str, object], path_value)
+    operation_value = path_item[method.lower()]
+    assert isinstance(operation_value, dict)
+    return cast(dict[str, object], operation_value)
+
+
+def _header_parameters(operation_contract: dict[str, object]) -> dict[str, bool]:
+    parameters_value = operation_contract.get("parameters", [])
+    assert isinstance(parameters_value, list)
+    parameters = cast(list[object], parameters_value)
+    headers: dict[str, bool] = {}
+    for parameter_value in parameters:
+        assert isinstance(parameter_value, dict)
+        parameter = cast(dict[str, object], parameter_value)
+        if parameter.get("in") != "header":
+            continue
+        name = parameter.get("name")
+        required = parameter.get("required", False)
+        assert isinstance(name, str)
+        assert isinstance(required, bool)
+        headers[name.lower()] = required
+    return headers
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
@@ -50,6 +85,31 @@ async def test_public_http_surface_cannot_grow_without_e2e_classification(
     )
 
     assert _public_operations(app.openapi()) == operation_keys()
+
+
+@pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.postgres
+async def test_idempotency_registry_matches_required_openapi_headers(
+    e2e_session_factory: SessionFactory,
+) -> None:
+    app = create_app(
+        session_factory=e2e_session_factory,
+        actor_resolver=RejectAllResolver(),
+    )
+    openapi = cast(dict[str, object], app.openapi())
+
+    for operation in PUBLIC_HTTP_OPERATIONS:
+        contract = _operation_contract(
+            openapi,
+            path=operation.path_template,
+            method=operation.method,
+        )
+        headers = _header_parameters(contract)
+        if operation.idempotency_required:
+            assert headers.get("idempotency-key") is True, operation.name
+        else:
+            assert "idempotency-key" not in headers, operation.name
 
 
 def test_public_http_operation_registry_has_complete_test_metadata() -> None:
