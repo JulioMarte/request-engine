@@ -195,7 +195,8 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
             json=body,
         )
         assert denied_submit.status_code == 403
-        assert denied_submit.json()["error"]["code"] == "request_party_authority_required"
+        assert denied_submit.json()["error"]["code"] == "party_authority_required"
+        assert denied_submit.json()["error"]["resolution"] == "request_authority"
         assert denied_submit.json()["error"]["details"]["scope_key"] == "requests.submit"
 
         submit_representation_id = _grant(
@@ -235,6 +236,7 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
         readable = await client.get(f"/v1/requests/{request_id}", headers=delegated)
         assert readable.status_code == 200
         assert readable.json()["requester_party_id"] == str(fixture.requester_party_id)
+        current_revision = cast(int, readable.json()["revision"])
 
         admin_conn.execute(
             """
@@ -248,17 +250,18 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
         revoked_cancel = await client.post(
             f"/v1/requests/{request_id}/cancel",
             headers={**delegated, "Idempotency-Key": f"revoked-cancel-{uuid4().hex}"},
-            json={"reason": "should be denied"},
+            json={"reason": "should be denied", "expected_revision": current_revision},
         )
         assert revoked_read.status_code == 403
         assert revoked_cancel.status_code == 403
 
         operator_read = await client.get(f"/v1/requests/{request_id}", headers=operator)
         assert operator_read.status_code == 200
+        operator_revision = cast(int, operator_read.json()["revision"])
         cancelled = await client.post(
             f"/v1/requests/{request_id}/cancel",
             headers={**operator, "Idempotency-Key": f"operator-cancel-{uuid4().hex}"},
-            json={"reason": "operator decision"},
+            json={"reason": "operator decision", "expected_revision": operator_revision},
         )
         assert cancelled.status_code == 200
         assert cancelled.json()["status"] == "cancelled"
@@ -331,7 +334,9 @@ async def test_unattributed_request_can_be_submitted_but_is_operator_managed(
             headers={"Authorization": "Bearer submitter"},
         )
         assert denied.status_code == 403
-        assert denied.json()["error"]["details"]["requester_party_id"] is None
+        assert denied.json()["error"]["code"] == "party_authority_required"
+        assert denied.json()["error"]["resolution"] == "request_authority"
+        assert denied.json()["error"]["details"]["party_id"] is None
 
         operator_read = await client.get(
             f"/v1/requests/{request_id}",

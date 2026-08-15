@@ -5,6 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.queue.application.queries.list_service_queues import ServiceQueueSummary
 from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueStatus
+from request_engine.modules.queue.contracts.waitlist import (
+    AcceptedSlotOffer,
+    SlotOffer,
+    WaitlistEntry,
+)
 
 
 class ServiceQueueView(BaseModel):
@@ -80,5 +85,88 @@ class JoinQueueBody(BaseModel):
 
 class LeaveQueueBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    subject_party_id: UUID
+    expected_revision: int = Field(gt=0)
     reason: str | None = Field(default=None, max_length=1000)
+
+
+class JoinWaitlistBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    offering_id: UUID
+    subject_party_id: UUID
+    location_id: UUID | None = None
+    preferred_resource_id: UUID | None = None
+    earliest_start: datetime | None = None
+    latest_start: datetime | None = None
+
+
+class LeaveWaitlistBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class WaitlistEntryView(BaseModel):
+    id: UUID
+    offering_id: UUID
+    subject_party_id: UUID
+    location_id: UUID | None
+    preferred_resource_id: UUID | None
+    earliest_start: datetime | None
+    latest_start: datetime | None
+    status: str
+    revision: int
+    created_at: datetime
+
+    @classmethod
+    def from_contract(cls, entry: WaitlistEntry) -> "WaitlistEntryView":
+        return cls(
+            id=entry.id,
+            offering_id=entry.offering_id,
+            subject_party_id=entry.subject_party_id,
+            location_id=entry.location_id,
+            preferred_resource_id=entry.preferred_resource_id,
+            earliest_start=entry.earliest_start,
+            latest_start=entry.latest_start,
+            status=entry.status.value,
+            revision=entry.revision,
+            created_at=entry.created_at,
+        )
+
+
+class ResolveSlotOfferBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
+
+
+class SlotOfferView(BaseModel):
+    """Public offer state. CapacityHold and next-candidate identities stay private."""
+
+    id: UUID
+    waitlist_entry_id: UUID
+    expires_at: datetime
+    status: str
+    revision: int
+
+    @classmethod
+    def from_contract(cls, offer: SlotOffer) -> "SlotOfferView":
+        return cls(
+            id=offer.id,
+            waitlist_entry_id=offer.waitlist_entry_id,
+            expires_at=offer.expires_at,
+            status=offer.status.value,
+            revision=offer.revision,
+        )
+
+
+class AcceptedSlotOfferView(BaseModel):
+    offer: SlotOfferView
+    reservation_id: UUID
+    reservation_revision: int
+
+    @classmethod
+    def from_contract(cls, accepted: AcceptedSlotOffer) -> "AcceptedSlotOfferView":
+        return cls(
+            offer=SlotOfferView.from_contract(accepted.offer),
+            reservation_id=accepted.reservation.id,
+            reservation_revision=accepted.reservation.revision,
+        )

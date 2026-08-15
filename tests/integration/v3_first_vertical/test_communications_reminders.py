@@ -91,6 +91,18 @@ def _create_fixture(conn: PgConnection) -> CommunicationFixture:
         """,
         (organization_id, f"Patient {suffix}"),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.representations (
+            organization_id,
+            principal_id,
+            represented_party_id,
+            scope_key,
+            authority_kind
+        ) VALUES (%s, %s, %s, 'reminders.manage', 'self')
+        """,
+        (organization_id, principal_id, party_id),
+    )
     contact_point_id = _uuid_row(
         conn,
         """
@@ -260,6 +272,7 @@ async def test_reminder_plan_creation_and_cancellation_own_future_schedule(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
             reminder_plan_id=plan.id,
+            expected_revision=plan.revision,
             reason="plan no longer needed",
             idempotency_key=f"cancel-reminder-{uuid4().hex}",
         ),

@@ -1,40 +1,73 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.queue.api.models import (
+    AcceptedSlotOfferView,
     JoinQueueBody,
+    JoinWaitlistBody,
     LeaveQueueBody,
+    LeaveWaitlistBody,
     QueueEntryView,
     QueueStatusView,
+    ResolveSlotOfferBody,
     ServiceQueueView,
+    SlotOfferView,
+    WaitlistEntryView,
+)
+from request_engine.modules.queue.application.authority import WAITLIST_SUBJECT_OVERRIDE_PERMISSION
+from request_engine.modules.queue.application.commands.accept_slot_offer import (
+    AcceptSlotOfferCommand,
+    AcceptSlotOfferExecutor,
+    accept_slot_offer,
 )
 from request_engine.modules.queue.application.commands.call_next import (
     CallNextCommand,
     CallNextExecutor,
     call_next,
 )
+from request_engine.modules.queue.application.commands.decline_slot_offer import (
+    DeclineSlotOfferCommand,
+    DeclineSlotOfferExecutor,
+    decline_slot_offer,
+)
 from request_engine.modules.queue.application.commands.join_queue import (
     JoinQueueCommand,
     JoinQueueExecutor,
     join_queue,
+)
+from request_engine.modules.queue.application.commands.join_waitlist import (
+    JoinWaitlistCommand,
+    JoinWaitlistExecutor,
+    join_waitlist,
 )
 from request_engine.modules.queue.application.commands.leave_queue import (
     LeaveQueueCommand,
     LeaveQueueExecutor,
     leave_queue,
 )
+from request_engine.modules.queue.application.commands.leave_waitlist import (
+    LeaveWaitlistCommand,
+    LeaveWaitlistExecutor,
+    leave_waitlist,
+)
+from request_engine.modules.queue.application.errors import WaitlistEntryNotFound
 from request_engine.modules.queue.application.queries.get_queue_status import (
     QueueStatusReader,
     get_queue_status,
+)
+from request_engine.modules.queue.application.queries.get_waitlist_entry import (
+    WaitlistEntryReader,
+    get_waitlist_entry,
 )
 from request_engine.modules.queue.application.queries.list_service_queues import (
     ServiceQueueCatalogReader,
     list_service_queues,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -51,23 +84,22 @@ def create_router(
     leave_executor: LeaveQueueExecutor,
     reader: QueueStatusReader,
     catalog_reader: ServiceQueueCatalogReader,
+    waitlist_join_executor: JoinWaitlistExecutor,
+    waitlist_leave_executor: LeaveWaitlistExecutor,
+    waitlist_reader: WaitlistEntryReader,
     actor_resolver: ActorResolver,
+    slot_offer_accept_executor: AcceptSlotOfferExecutor | None = None,
+    slot_offer_decline_executor: DeclineSlotOfferExecutor | None = None,
 ) -> APIRouter:
-    router = APIRouter(prefix="/v1/queues", tags=["queues"])
+    router = APIRouter(prefix="/v1", tags=["queues"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
-        try:
-            return await actor_resolver.resolve_actor(request)
-        except AuthenticationRequired as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="authentication required",
-            ) from exc
+        return await actor_resolver.resolve_actor(request)
 
     async def queues(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> tuple[ServiceQueueView, ...]:
-        _require(actor, "queue.read")
+        require_capability(actor, "queue.list")
         result = await list_service_queues(
             catalog_reader,
             organization_id=actor.organization_id,
@@ -81,7 +113,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView:
-        _require(actor, "queue.join")
+        require_capability(actor, "queue.join")
         entry = await join_queue(
             join_executor,
             JoinQueueCommand(
@@ -102,7 +134,7 @@ def create_router(
         subject_party_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> QueueStatusView:
-        _require(actor, "queue.read")
+        require_capability(actor, "queue.status")
         result = await get_queue_status(
             reader,
             organization_id=actor.organization_id,
@@ -115,18 +147,20 @@ def create_router(
 
     async def leave(
         queue_id: UUID,
+        queue_entry_id: UUID,
         body: LeaveQueueBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView:
-        _require(actor, "queue.leave")
+        require_capability(actor, "queue.leave")
         entry = await leave_queue(
             leave_executor,
             LeaveQueueCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 queue_id=queue_id,
-                subject_party_id=body.subject_party_id,
+                queue_entry_id=queue_entry_id,
+                expected_revision=body.expected_revision,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
@@ -139,7 +173,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> QueueEntryView | None:
-        _require(actor, "queue.call_next")
+        require_capability(actor, "queue.call_next")
         entry = await call_next(
             call_next_executor,
             CallNextCommand(
@@ -151,43 +185,192 @@ def create_router(
         )
         return QueueEntryView.from_contract(entry) if entry is not None else None
 
-    router.add_api_route(
-        "",
+    async def join_waitlist_entry(
+        body: JoinWaitlistBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.join")
+        entry = await join_waitlist(
+            waitlist_join_executor,
+            JoinWaitlistCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                offering_id=body.offering_id,
+                subject_party_id=body.subject_party_id,
+                location_id=body.location_id,
+                preferred_resource_id=body.preferred_resource_id,
+                earliest_start=body.earliest_start,
+                latest_start=body.latest_start,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return WaitlistEntryView.from_contract(entry)
+
+    async def waitlist_entry_status(
+        waitlist_entry_id: UUID,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.read")
+        entry = await get_waitlist_entry(
+            waitlist_reader,
+            organization_id=actor.organization_id,
+            principal_id=actor.principal_id,
+            waitlist_entry_id=waitlist_entry_id,
+            allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+        )
+        if entry is None:
+            raise WaitlistEntryNotFound(waitlist_entry_id)
+        return WaitlistEntryView.from_contract(entry)
+
+    async def leave_waitlist_entry(
+        waitlist_entry_id: UUID,
+        body: LeaveWaitlistBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> WaitlistEntryView:
+        require_capability(actor, "waitlist.leave")
+        entry = await leave_waitlist(
+            waitlist_leave_executor,
+            LeaveWaitlistCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                waitlist_entry_id=waitlist_entry_id,
+                expected_revision=body.expected_revision,
+                reason=body.reason,
+                idempotency_key=idempotency_key,
+                allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return WaitlistEntryView.from_contract(entry)
+
+    add_capability_route(
+        router,
+        "/queues",
         queues,
+        capability="queue.list",
         methods=["GET"],
         response_model=tuple[ServiceQueueView, ...],
     )
-    router.add_api_route(
-        "/{queue_id}/join",
+    add_capability_route(
+        router,
+        "/queues/{queue_id}/join",
         join,
+        capability="queue.join",
         methods=["POST"],
         response_model=QueueEntryView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
-        "/{queue_id}/status",
+    add_capability_route(
+        router,
+        "/queues/{queue_id}/status",
         queue_status,
+        capability="queue.status",
         methods=["GET"],
         response_model=QueueStatusView,
     )
-    router.add_api_route(
-        "/{queue_id}/leave",
+    add_capability_route(
+        router,
+        "/queues/{queue_id}/entries/{queue_entry_id}/leave",
         leave,
+        capability="queue.leave",
         methods=["POST"],
         response_model=QueueEntryView,
     )
-    router.add_api_route(
-        "/{queue_id}/call-next",
+    add_capability_route(
+        router,
+        "/queues/{queue_id}/call-next",
         call_next_entry,
+        capability="queue.call_next",
         methods=["POST"],
         response_model=QueueEntryView | None,
     )
-    return router
+    add_capability_route(
+        router,
+        "/waitlist",
+        join_waitlist_entry,
+        capability="waitlist.join",
+        methods=["POST"],
+        response_model=WaitlistEntryView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    add_capability_route(
+        router,
+        "/waitlist/{waitlist_entry_id}",
+        waitlist_entry_status,
+        capability="waitlist.read",
+        methods=["GET"],
+        response_model=WaitlistEntryView,
+    )
+    add_capability_route(
+        router,
+        "/waitlist/{waitlist_entry_id}/leave",
+        leave_waitlist_entry,
+        capability="waitlist.leave",
+        methods=["POST"],
+        response_model=WaitlistEntryView,
+    )
 
+    if slot_offer_accept_executor is not None and slot_offer_decline_executor is not None:
+        accept_executor = slot_offer_accept_executor
+        decline_executor = slot_offer_decline_executor
 
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
+        async def accept_offer(
+            slot_offer_id: UUID,
+            body: ResolveSlotOfferBody,
+            actor: Annotated[ActorContext, Depends(authenticated_actor)],
+            idempotency_key: IdempotencyKey,
+        ) -> AcceptedSlotOfferView:
+            require_capability(actor, "waitlist.accept_offer")
+            accepted = await accept_slot_offer(
+                accept_executor,
+                AcceptSlotOfferCommand(
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    slot_offer_id=slot_offer_id,
+                    expected_revision=body.expected_revision,
+                    idempotency_key=idempotency_key,
+                    allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+                ),
+            )
+            return AcceptedSlotOfferView.from_contract(accepted)
+
+        async def decline_offer(
+            slot_offer_id: UUID,
+            body: ResolveSlotOfferBody,
+            actor: Annotated[ActorContext, Depends(authenticated_actor)],
+            idempotency_key: IdempotencyKey,
+        ) -> SlotOfferView:
+            require_capability(actor, "waitlist.decline_offer")
+            resolution = await decline_slot_offer(
+                decline_executor,
+                DeclineSlotOfferCommand(
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    slot_offer_id=slot_offer_id,
+                    expected_revision=body.expected_revision,
+                    idempotency_key=idempotency_key,
+                    allow_subject_override=actor.allows(WAITLIST_SUBJECT_OVERRIDE_PERMISSION),
+                ),
+            )
+            return SlotOfferView.from_contract(resolution.offer)
+
+        add_capability_route(
+            router,
+            "/waitlist/offers/{slot_offer_id}/accept",
+            accept_offer,
+            capability="waitlist.accept_offer",
+            methods=["POST"],
+            response_model=AcceptedSlotOfferView,
         )
+        add_capability_route(
+            router,
+            "/waitlist/offers/{slot_offer_id}/decline",
+            decline_offer,
+            capability="waitlist.decline_offer",
+            methods=["POST"],
+            response_model=SlotOfferView,
+        )
+
+    return router

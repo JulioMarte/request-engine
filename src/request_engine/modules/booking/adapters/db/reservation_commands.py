@@ -34,6 +34,7 @@ from request_engine.modules.booking.application.errors import (
     OfferingVersionNotFound,
     ReservationNotCancellable,
     ReservationNotFound,
+    ReservationRevisionConflict,
 )
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 from request_engine.modules.booking.domain.availability import (
@@ -295,6 +296,7 @@ class PostgresReservationCommands:
             "booking.cancel_reservation",
             {
                 "reservation_id": command.reservation_id,
+                "expected_revision": command.expected_revision,
                 "reason": command.reason,
             },
         )
@@ -315,7 +317,7 @@ class PostgresReservationCommands:
                     await session.execute(
                         text(
                             """
-                            SELECT id, status, subject_party_id
+                            SELECT id, status, subject_party_id, revision
                             FROM request_engine.reservations
                             WHERE organization_id = :organization_id
                               AND id = :reservation_id
@@ -342,6 +344,7 @@ class PostgresReservationCommands:
                 scope_key=MANAGE_APPOINTMENT_SCOPE,
                 allow_operator_override=command.allow_subject_override,
             )
+            ensure_reservation_revision(locked, command.reservation_id, command.expected_revision)
             status = cast(str, locked["status"])
             if status != "confirmed":
                 raise ReservationNotCancellable(command.reservation_id, status)
@@ -416,6 +419,7 @@ class PostgresReservationCommands:
                     "reason": command.reason,
                     "subject_party_id": str(subject_party_id),
                     "subject_authority": authority.audit_details(),
+                    "expected_revision": command.expected_revision,
                 },
             )
             await append_outbox(
@@ -822,6 +826,20 @@ def revalidate_exact_slot(
             required_quantity=total_quantity,
         ):
             raise AppointmentUnavailable(f"Resource {resource_id} no longer has capacity")
+
+
+def ensure_reservation_revision(
+    row: RowMapping,
+    reservation_id: UUID,
+    expected_revision: int,
+) -> None:
+    current_revision = cast(int, row["revision"])
+    if current_revision != expected_revision:
+        raise ReservationRevisionConflict(
+            reservation_id,
+            expected_revision,
+            current_revision,
+        )
 
 
 async def read_reservation(

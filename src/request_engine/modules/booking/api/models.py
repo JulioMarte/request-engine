@@ -1,68 +1,74 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from request_engine.modules.booking.contracts.appointments import (
-    AppointmentSlot,
-    Reservation,
-    ResourceChoice,
-)
-
-
-class ResourceChoiceModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    requirement_id: UUID
-    resource_id: UUID
-
-    def to_contract(self) -> ResourceChoice:
-        return ResourceChoice(requirement_id=self.requirement_id, resource_id=self.resource_id)
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
+from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
 
 
 class AppointmentSlotView(BaseModel):
-    offering_version_id: UUID
+    option_id: str
     start_at: datetime
     end_at: datetime
     location_id: UUID | None
-    resources: tuple[ResourceChoiceModel, ...]
 
     @classmethod
-    def from_contract(cls, slot: AppointmentSlot) -> "AppointmentSlotView":
+    def from_contract(cls, slot: AppointmentSlot, *, option_id: str) -> "AppointmentSlotView":
         return cls(
-            offering_version_id=slot.offering_version_id,
+            option_id=option_id,
             start_at=slot.start_at,
             end_at=slot.end_at,
             location_id=slot.location_id,
-            resources=tuple(
-                ResourceChoiceModel(
-                    requirement_id=item.requirement_id,
-                    resource_id=item.resource_id,
-                )
-                for item in slot.resources
-            ),
         )
 
 
 class BookAppointmentBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    offering_version_id: UUID
+    option_id: str = Field(min_length=1, max_length=8192)
     subject_party_id: UUID
-    start_at: datetime
-    resources: tuple[ResourceChoiceModel, ...] = Field(min_length=1, max_length=20)
-    location_id: UUID | None = None
     origin_request_id: UUID | None = None
 
 
 class CancelReservationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
     reason: str | None = Field(default=None, max_length=1000)
 
 
 class RescheduleReservationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    start_at: datetime
-    resources: tuple[ResourceChoiceModel, ...] = Field(min_length=1, max_length=20)
-    location_id: UUID | None = None
+    option_id: str = Field(min_length=1, max_length=8192)
+    expected_revision: int = Field(gt=0)
+
+
+class AttendanceResponseBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    response: Literal["accepted", "declined"]
+    expected_revision: int = Field(gt=0)
+
+
+class AttendanceStateView(BaseModel):
+    reservation_id: UUID
+    reservation_revision: int
+    response_status: str
+    outcome_status: str
+    responded_at: datetime | None
+    checked_in_at: datetime | None
+    no_show_at: datetime | None
+
+    @classmethod
+    def from_contract(cls, state: ReservationAttendanceState) -> "AttendanceStateView":
+        return cls(
+            reservation_id=state.reservation_id,
+            reservation_revision=state.reservation_revision,
+            response_status=state.response_status.value,
+            outcome_status=state.outcome_status.value,
+            responded_at=state.responded_at,
+            checked_in_at=state.checked_in_at,
+            no_show_at=state.no_show_at,
+        )
 
 
 class ReservationView(BaseModel):

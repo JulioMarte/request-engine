@@ -14,6 +14,17 @@ EXPECTED_V3_CANDIDATE = [
     "007-contract-convergence.sql",
     "008-tenant-party-authority.sql",
     "009-party-authority-resolution.sql",
+    "010-party-authority-linearization.sql",
+    "011-idempotency-error-contract.sql",
+    "012-waitlist-foundation.sql",
+    "013-slot-offer-recovery.sql",
+    "014-reservation-lifecycle.sql",
+    "015-worker-runtime-hardening.sql",
+    "016-provider-event-dead-letter.sql",
+    "017-expired-lease-finalization-fence.sql",
+    "018-retry-finalization-fence.sql",
+    "019-trusted-execution-provenance.sql",
+    "020-durable-correlation.sql",
 ]
 
 

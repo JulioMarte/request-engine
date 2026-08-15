@@ -32,6 +32,8 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
 from request_engine.modules.booking.application.errors import (
     AppointmentUnavailable,
     CapacityHoldExpired,
+    CapacityHoldRevisionConflict,
+    SubjectAuthorityRequired,
 )
 from request_engine.modules.booking.contracts.appointments import (
     ReservationStatus,
@@ -218,6 +220,26 @@ def _book_command(
     )
 
 
+def _hold_command(
+    fixture: BookingFixture,
+    *,
+    start_at: datetime,
+    allow_subject_override: bool,
+) -> AcquireCapacityHoldCommand:
+    return AcquireCapacityHoldCommand(
+        organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
+        offering_version_id=fixture.offering_version_id,
+        subject_party_id=fixture.subject_party_id,
+        location_id=fixture.location_id,
+        start_at=start_at,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        resources=_choice(fixture),
+        idempotency_key=f"hold-{uuid4().hex}",
+        allow_subject_override=allow_subject_override,
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -230,16 +252,10 @@ async def test_hold_blocks_competitor_and_confirmation_promotes_same_claims(
     reservations = PostgresReservationCommands(session_factory)
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
 
-    hold_command = AcquireCapacityHoldCommand(
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        offering_version_id=fixture.offering_version_id,
-        subject_party_id=fixture.subject_party_id,
-        location_id=fixture.location_id,
+    hold_command = _hold_command(
+        fixture,
         start_at=start_at,
-        expires_at=datetime.now(UTC) + timedelta(minutes=10),
-        resources=_choice(fixture),
-        idempotency_key=f"hold-{uuid4().hex}",
+        allow_subject_override=True,
     )
     hold = await acquire_capacity_hold(commitments, hold_command)
     replay = await acquire_capacity_hold(commitments, hold_command)
@@ -272,7 +288,9 @@ async def test_hold_blocks_competitor_and_confirmation_promotes_same_claims(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
         hold_id=hold.id,
+        expected_revision=hold.revision,
         idempotency_key=f"confirm-{uuid4().hex}",
+        allow_subject_override=True,
     )
     reservation = await confirm_capacity_hold(commitments, confirm_command)
     confirm_replay = await confirm_capacity_hold(commitments, confirm_command)
@@ -294,15 +312,127 @@ async def test_hold_blocks_competitor_and_confirmation_promotes_same_claims(
     assert all(row[1] == hold.id for row in promoted)
     assert all(row[2] == reservation.id for row in promoted)
 
+    live_claim_count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.capacity_claims
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND status = 'active'
+          AND during && tstzrange(%s, %s, '[)')
+        """,
+        (fixture.organization_id, fixture.resource_id, reservation.start_at, reservation.end_at),
+    ).fetchone()
+    assert live_claim_count == (1,)
+
     hold_status = admin_conn.execute(
         """
-        SELECT status
+        SELECT status, revision
         FROM request_engine.capacity_holds
         WHERE organization_id = %s AND id = %s
         """,
         (fixture.organization_id, hold.id),
     ).fetchone()
-    assert hold_status == ("consumed",)
+    assert hold_status == ("consumed", hold.revision + 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+async def test_hold_requires_subject_authority_and_stale_confirm_does_not_mutate(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _create_fixture(admin_conn)
+    commitments = PostgresBookingCommitmentCommands(session_factory)
+    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+
+    with pytest.raises(SubjectAuthorityRequired):
+        await acquire_capacity_hold(
+            commitments,
+            _hold_command(fixture, start_at=start_at, allow_subject_override=False),
+        )
+
+    representation_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.representations (
+            organization_id,
+            principal_id,
+            represented_party_id,
+            authority_kind,
+            scope_key,
+            valid_until
+        ) VALUES (%s, %s, %s, 'authorized_contact', 'appointments.book',
+                  clock_timestamp() + interval '1 day')
+        RETURNING id
+        """,
+        (fixture.organization_id, fixture.principal_id, fixture.subject_party_id),
+    )
+    delegated_hold = await acquire_capacity_hold(
+        commitments,
+        _hold_command(fixture, start_at=start_at, allow_subject_override=False),
+    )
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.representations
+        SET status = 'revoked', revision = revision + 1
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, representation_id),
+    )
+    with pytest.raises(SubjectAuthorityRequired):
+        await confirm_capacity_hold(
+            commitments,
+            ConfirmCapacityHoldCommand(
+                organization_id=fixture.organization_id,
+                principal_id=fixture.principal_id,
+                hold_id=delegated_hold.id,
+                expected_revision=delegated_hold.revision,
+                idempotency_key=f"confirm-revoked-{uuid4().hex}",
+            ),
+        )
+
+    admin_conn.execute(
+        """
+        UPDATE request_engine.capacity_holds
+        SET revision = revision + 1, updated_at = clock_timestamp()
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, delegated_hold.id),
+    )
+    with pytest.raises(CapacityHoldRevisionConflict):
+        await confirm_capacity_hold(
+            commitments,
+            ConfirmCapacityHoldCommand(
+                organization_id=fixture.organization_id,
+                principal_id=fixture.principal_id,
+                hold_id=delegated_hold.id,
+                expected_revision=delegated_hold.revision,
+                idempotency_key=f"confirm-stale-{uuid4().hex}",
+                allow_subject_override=True,
+            ),
+        )
+
+    state = admin_conn.execute(
+        """
+        SELECT status,
+               (SELECT count(*) FROM request_engine.reservations r
+                WHERE r.organization_id = h.organization_id
+                  AND r.subject_party_id = h.subject_party_id
+                  AND r.during = h.during),
+               (SELECT count(*) FROM request_engine.capacity_claims c
+                WHERE c.organization_id = h.organization_id
+                  AND c.hold_id = h.id
+                  AND c.reservation_id IS NULL
+                  AND c.status = 'active')
+        FROM request_engine.capacity_holds h
+        WHERE h.organization_id = %s AND h.id = %s
+        """,
+        (fixture.organization_id, delegated_hold.id),
+    ).fetchone()
+    assert state == ("active", 0, 1)
 
 
 @pytest.mark.asyncio
@@ -347,7 +477,9 @@ async def test_expired_hold_is_rejected_using_database_wall_clock(
                 organization_id=fixture.organization_id,
                 principal_id=fixture.principal_id,
                 hold_id=hold_id,
+                expected_revision=1,
                 idempotency_key=f"confirm-expired-{uuid4().hex}",
+                allow_subject_override=True,
             ),
         )
 
@@ -392,6 +524,7 @@ async def test_self_overlap_reschedule_replaces_claim_without_self_conflict(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
             reservation_id=reservation.id,
+            expected_revision=reservation.revision,
             location_id=fixture.location_id,
             start_at=new_start,
             resources=_choice(fixture),
@@ -453,6 +586,7 @@ async def test_failed_reschedule_rolls_back_original_reservation_and_claim(
                 organization_id=fixture.organization_id,
                 principal_id=fixture.principal_id,
                 reservation_id=first.id,
+                expected_revision=first.revision,
                 location_id=fixture.location_id,
                 start_at=blocked_start,
                 resources=_choice(fixture),

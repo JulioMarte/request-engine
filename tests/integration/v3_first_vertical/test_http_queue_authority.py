@@ -152,7 +152,8 @@ async def test_queue_requires_current_subject_authority_and_records_provenance(
             headers={**delegated, "Idempotency-Key": f"denied-{uuid4().hex}"},
         )
         assert denied.status_code == 403
-        assert denied.json()["error"]["code"] == "subject_authority_required"
+        assert denied.json()["error"]["code"] == "party_authority_required"
+        assert denied.json()["error"]["resolution"] == "request_authority"
         assert denied.json()["error"]["details"]["scope_key"] == "queue.join"
 
         join_representation_id = _grant(admin_conn, fixture, "queue.join")
@@ -163,6 +164,9 @@ async def test_queue_requires_current_subject_authority_and_records_provenance(
             headers={**delegated, "Idempotency-Key": f"join-{uuid4().hex}"},
         )
         assert joined.status_code == 201
+        entry_id = joined.json()["id"]
+        entry_revision = cast(int, joined.json()["revision"])
+        leave_url = f"/v1/queues/{fixture.queue_id}/entries/{entry_id}/leave"
 
         readable = await client.get(
             f"/v1/queues/{fixture.queue_id}/status",
@@ -170,7 +174,7 @@ async def test_queue_requires_current_subject_authority_and_records_provenance(
             headers=delegated,
         )
         assert readable.status_code == 200
-        assert readable.json()["entry"]["id"] == joined.json()["id"]
+        assert readable.json()["entry"]["id"] == entry_id
 
         admin_conn.execute(
             """
@@ -187,8 +191,8 @@ async def test_queue_requires_current_subject_authority_and_records_provenance(
             headers=delegated,
         )
         leave_after_revoke = await client.post(
-            f"/v1/queues/{fixture.queue_id}/leave",
-            json={"subject_party_id": str(fixture.subject_party_id), "reason": "denied"},
+            leave_url,
+            json={"expected_revision": entry_revision, "reason": "denied"},
             headers={**delegated, "Idempotency-Key": f"leave-denied-{uuid4().hex}"},
         )
         assert read_after_revoke.status_code == 403
@@ -200,10 +204,11 @@ async def test_queue_requires_current_subject_authority_and_records_provenance(
             headers=operator,
         )
         assert operator_read.status_code == 200
+        operator_revision = cast(int, operator_read.json()["entry"]["revision"])
 
         operator_leave = await client.post(
-            f"/v1/queues/{fixture.queue_id}/leave",
-            json={"subject_party_id": str(fixture.subject_party_id), "reason": "staff removal"},
+            leave_url,
+            json={"expected_revision": operator_revision, "reason": "staff removal"},
             headers={**operator, "Idempotency-Key": f"leave-{uuid4().hex}"},
         )
         assert operator_leave.status_code == 200

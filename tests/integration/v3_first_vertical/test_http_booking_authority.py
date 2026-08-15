@@ -254,12 +254,10 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
         )
         assert slots_response.status_code == 200
         slot = slots_response.json()[0]
+        assert set(slot) == {"option_id", "start_at", "end_at", "location_id"}
         booking_body = {
-            "offering_version_id": str(fixture.offering_version_id),
+            "option_id": slot["option_id"],
             "subject_party_id": str(fixture.subject_party_id),
-            "location_id": str(fixture.location_id),
-            "start_at": slot["start_at"],
-            "resources": slot["resources"],
         }
 
         denied = await client.post(
@@ -268,7 +266,8 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers={**delegated, "Idempotency-Key": f"denied-{uuid4().hex}"},
         )
         assert denied.status_code == 403
-        assert denied.json()["error"]["code"] == "subject_authority_required"
+        assert denied.json()["error"]["code"] == "party_authority_required"
+        assert denied.json()["error"]["resolution"] == "request_authority"
         assert denied.json()["error"]["details"]["scope_key"] == "appointments.book"
 
         book_representation_id = _grant(admin_conn, fixture, "appointments.book")
@@ -286,6 +285,7 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers=delegated,
         )
         assert readable.status_code == 200
+        current_revision = cast(int, readable.json()["revision"])
 
         admin_conn.execute(
             """
@@ -301,7 +301,10 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
         )
         cancel_after_revoke = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "should not be authorized"},
+            json={
+                "reason": "should not be authorized",
+                "expected_revision": current_revision,
+            },
             headers={**delegated, "Idempotency-Key": f"cancel-denied-{uuid4().hex}"},
         )
         assert read_after_revoke.status_code == 403
@@ -312,9 +315,13 @@ async def test_booking_requires_current_subject_authority_and_records_provenance
             headers=operator,
         )
         assert operator_read.status_code == 200
+        operator_revision = cast(int, operator_read.json()["revision"])
         operator_cancel = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "staff cancellation"},
+            json={
+                "reason": "staff cancellation",
+                "expected_revision": operator_revision,
+            },
             headers={**operator, "Idempotency-Key": f"cancel-{uuid4().hex}"},
         )
         assert operator_cancel.status_code == 200

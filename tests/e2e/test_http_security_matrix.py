@@ -16,6 +16,7 @@ from .evidence import durable_snapshot
 from .http_surface import PUBLIC_HTTP_OPERATIONS, PublicHttpOperation
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
+_SIGNING_KEY = b"request-engine-e2e-security-signing-key"
 
 
 class SecurityProbeResolver:
@@ -60,19 +61,23 @@ async def test_every_public_operation_rejects_unauthenticated_requests_without_m
     app = create_app(
         session_factory=e2e_session_factory,
         actor_resolver=SecurityProbeResolver(None),
+        appointment_option_signing_key=_SIGNING_KEY,
     )
-
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _request(client, operation)
-
     assert response.status_code == 401, (operation.name, response.text)
     assert response.json() == {"detail": "authentication required"}
     assert durable_snapshot(e2e_admin_conn) == before
 
 
+_CAPABILITY_OPERATIONS = tuple(
+    operation for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is not None
+)
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", PUBLIC_HTTP_OPERATIONS, ids=_test_id)
-async def test_every_public_operation_requires_its_declared_capability_without_mutation(
+@pytest.mark.parametrize("operation", _CAPABILITY_OPERATIONS, ids=_test_id)
+async def test_every_capability_gated_operation_rejects_missing_grant_without_mutation(
     operation: PublicHttpOperation,
     e2e_admin_conn: support.PgConnection,
     e2e_session_factory: SessionFactory,
@@ -86,11 +91,34 @@ async def test_every_public_operation_requires_its_declared_capability_without_m
     app = create_app(
         session_factory=e2e_session_factory,
         actor_resolver=SecurityProbeResolver(actor),
+        appointment_option_signing_key=_SIGNING_KEY,
     )
-
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _request(client, operation)
-
+    assert operation.capability is not None
     assert response.status_code == 403, (operation.name, response.text)
     assert response.json() == {"detail": f"capability {operation.capability!r} is required"}
+    assert durable_snapshot(e2e_admin_conn) == before
+
+
+@pytest.mark.asyncio
+async def test_capability_discovery_is_authenticated_but_not_capability_gated(
+    e2e_admin_conn: support.PgConnection,
+    e2e_session_factory: SessionFactory,
+) -> None:
+    actor = ActorContext(
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        capabilities=frozenset(),
+    )
+    before = durable_snapshot(e2e_admin_conn)
+    app = create_app(
+        session_factory=e2e_session_factory,
+        actor_resolver=SecurityProbeResolver(actor),
+        appointment_option_signing_key=_SIGNING_KEY,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/capabilities")
+    assert response.status_code == 200, response.text
+    assert isinstance(response.json().get("capabilities"), list)
     assert durable_snapshot(e2e_admin_conn) == before

@@ -12,7 +12,8 @@ ScheduleException
 CapacityClaim
 CapacityHold
 Reservation
-AttendanceResponse history / attendance policy consequences
+AttendanceResponse history
+ReservationAttendance execution outcome
 ```
 
 Catalog owns `ResourceCapability` vocabulary and immutable `OfferingVersion` mandatory resource requirements; booking resolves those requirements to concrete Resources.
@@ -36,6 +37,8 @@ RescheduleReservation
 GetReservationStatus
 ConfirmAttendance
 DeclineAttendance
+CheckInReservation
+EvaluateNoShow
 ChangeResourceAvailability
 ChangeScheduleException
 ```
@@ -59,7 +62,27 @@ Reschedule is self-overlap safe: lock the Reservation, then the union of old/new
 
 Routine schedule changes do not silently rewrite already-committed Reservations. New booking/hold acquisition revalidates schedule under Resource locks; administrative invalidation of an existing Hold/Reservation must be an explicit semantic command.
 
-Reservation confirmation and customer/patient attendance confirmation are distinct. Attendance responses are history-preserving facts/current projection; no-response or decline changes Reservation/capacity only through explicit versioned policy.
+## Reservation lifecycle and attendance
+
+Reservation commitment and attendance execution are deliberately orthogonal:
+
+```text
+Reservation.status
+confirmed | cancelled
+
+ReservationAttendance.status
+pending | checked_in | no_show
+```
+
+`AttendanceResponse` is append-only response history (`accepted|declined`). The newest response is the current response projection. A response changes Reservation concurrency state by advancing `Reservation.revision`.
+
+`ReservationAttendance` records what happened operationally. Check-in and no-show serialize on the Reservation before mutating the one-per-Reservation execution projection.
+
+A no-show is **not** a cancellation. It does not release capacity retroactively and it never creates a `SlotOpportunity`; the reserved interval has already occurred. A decline may cancel a future Reservation only when the immutable `booking_policy_snapshot` explicitly selects `decline_action=cancel`.
+
+Lifecycle automation reads only the Reservation's policy snapshot. It does not reinterpret the current mutable Offering policy after booking.
+
+Cancellation and reschedule may expose future capacity for recovery. That recovery begins only after the Booking transaction commits and then enters Queue through its public contract and the Phase 2B `SlotOpportunity -> SlotOffer` state machine.
 
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts.
 

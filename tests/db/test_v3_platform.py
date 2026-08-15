@@ -124,7 +124,7 @@ def test_idempotency_replays_same_fingerprint_and_rejects_key_reuse(
                     "fingerprint-different",
                 ),
             ).fetchall()
-        assert exc_info.value.sqlstate == "23505"
+        assert exc_info.value.sqlstate == "P1001"
     finally:
         app_conn.close()
 

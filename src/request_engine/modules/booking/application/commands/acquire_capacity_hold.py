@@ -18,6 +18,7 @@ class AcquireCapacityHoldCommand:
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
     location_id: UUID | None = None
+    allow_subject_override: bool = False
 
 
 class AcquireCapacityHoldHandler(Protocol):
