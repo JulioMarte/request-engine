@@ -115,6 +115,7 @@ async def _start_behind_hold_lock(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_concurrent_conflicting_holds_commit_exactly_one_capacity_owner(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
@@ -203,6 +204,7 @@ async def test_concurrent_conflicting_holds_commit_exactly_one_capacity_owner(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_concurrent_hold_confirmation_creates_exactly_one_reservation(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
