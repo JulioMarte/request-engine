@@ -11,9 +11,7 @@ PgConnection = Connection[Any]
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
     parts = pg_conninfo.split()
     filtered = [
-        part
-        for part in parts
-        if not part.startswith("user=") and not part.startswith("password=")
+        part for part in parts if not part.startswith("user=") and not part.startswith("password=")
     ]
     return " ".join([*filtered, f"user={role_name}", f"password={password}"])
 
@@ -221,15 +219,11 @@ def test_real_application_login_has_only_the_runtime_table_contract(
         admin_conn.execute("SET ROLE request_engine_schema_owner")
         try:
             admin_conn.execute(
-                sql.SQL("DROP TABLE IF EXISTS request_engine.{}").format(
-                    sql.Identifier(probe_name)
-                )
+                sql.SQL("DROP TABLE IF EXISTS request_engine.{}").format(sql.Identifier(probe_name))
             )
         finally:
             admin_conn.execute("RESET ROLE")
-        admin_conn.execute(
-            sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name))
-        )
+        admin_conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
         admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
 
 
