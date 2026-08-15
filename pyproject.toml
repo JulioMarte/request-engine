@@ -53,6 +53,7 @@ markers = [
     "unit: pure or isolated unit tests",
     "postgres: requires PostgreSQL",
     "integration: crosses component boundaries",
+    "e2e: exercises a production-like user journey across public/runtime boundaries",
     "concurrency: proves transactional race behavior",
     "slow: intentionally slower validation",
 ]
