@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import selectors
 import subprocess
 import sys
 import time
@@ -128,6 +129,13 @@ def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "-_" else "-" for char in value)
 
 
+def _emit(line: str, handle: object | None) -> None:
+    print(line, end="", flush=True)
+    if handle is not None:
+        handle.write(line)
+        handle.flush()
+
+
 def _run_step(
     step: Step,
     *,
@@ -137,11 +145,8 @@ def _run_step(
     started = time.monotonic()
     log_path = log_dir / f"{_safe_name(step.key)}.log" if log_dir else None
     handle = log_path.open("w", encoding="utf-8", newline="\n") if log_path else None
-    print(f"\n--- {step.name} [{step.key}] ---", flush=True)
-    print(f"$ {step.command}", flush=True)
-    if handle:
-        handle.write(f"$ {step.command}\n")
-        handle.flush()
+    _emit(f"\n--- {step.name} [{step.key}] ---\n", handle)
+    _emit(f"$ {step.command}\n", handle)
 
     process = subprocess.Popen(
         ["bash", "-lc", f"set -o pipefail; {step.command}"],
@@ -151,29 +156,31 @@ def _run_step(
         encoding="utf-8",
         errors="replace",
         env=dict(env),
+        bufsize=1,
     )
     timed_out = False
+    selector = selectors.DefaultSelector()
     try:
         assert process.stdout is not None
+        selector.register(process.stdout, selectors.EVENT_READ)
         deadline = time.monotonic() + step.timeout_seconds
-        while True:
-            if time.monotonic() > deadline:
+        while process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 timed_out = True
                 process.kill()
                 break
-            line = process.stdout.readline()
-            if line:
-                print(line, end="", flush=True)
-                if handle:
-                    handle.write(line)
-                    handle.flush()
-                continue
-            if process.poll() is not None:
-                break
-            time.sleep(0.05)
+            for key, _ in selector.select(timeout=min(0.25, remaining)):
+                line = key.fileobj.readline()
+                if line:
+                    _emit(line, handle)
+        if process.stdout is not None:
+            for line in process.stdout:
+                _emit(line, handle)
         returncode = process.wait()
     finally:
-        if handle:
+        selector.close()
+        if handle is not None:
             handle.close()
 
     elapsed = round(time.monotonic() - started, 3)
@@ -239,16 +246,23 @@ def execute_job(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("job", choices=sorted(JOBS))
+    parser.add_argument("job", nargs="?", choices=sorted(JOBS))
     parser.add_argument("--step", action="append", dest="steps")
     parser.add_argument("--log-dir", type=Path)
     parser.add_argument("--summary-output", type=Path)
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--list-jobs", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.list_jobs:
+        for job in JOBS:
+            print(job)
+        return 0
+    if args.job is None:
+        raise SystemExit("job is required unless --list-jobs is used")
     if args.list:
         for step in JOBS[args.job]:
             print(f"{step.key}\t{step.name}")
