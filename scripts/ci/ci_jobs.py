@@ -24,6 +24,12 @@ class Step:
     timeout_seconds: int = 900
 
 
+NORMALIZE_SHELL = Step(
+    "normalize-shell-line-endings",
+    "Normalize shell line endings",
+    "python scripts/ci/normalize_ci_line_endings.py",
+)
+
 JOBS: dict[str, tuple[Step, ...]] = {
     "python-quality": (
         Step("uv-sync", "Resolve development environment", "uv sync --all-groups"),
@@ -50,6 +56,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step("modules", "Module unit tests", "uv run pytest tests/modules -q"),
     ),
     "postgres-v2-history": (
+        NORMALIZE_SHELL,
         Step(
             "v2-design-chain",
             "Apply historical V2 design chain",
@@ -57,6 +64,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
         ),
     ),
     "postgres-v3-bootstrap-proof": (
+        NORMALIZE_SHELL,
         Step(
             "v3-bootstrap-proof",
             "Prove repeated clean V3 candidate bootstrap",
@@ -65,6 +73,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
         ),
     ),
     "postgres-v3-candidate": (
+        NORMALIZE_SHELL,
         Step(
             "v3-bootstrap",
             "Apply clean V3 candidate as bootstrap principal",
