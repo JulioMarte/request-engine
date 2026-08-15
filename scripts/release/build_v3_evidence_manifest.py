@@ -64,13 +64,21 @@ def build_manifest() -> dict[str, Any]:
     _assert_complete(races, [f"R{i:02d}" for i in range(1, 25)], "Race")
     _assert_complete(gates, [f"G{i:02d}" for i in range(1, 21)], "Gate")
 
-    schema_json = ROOT / ".phase6/v3-schema.json"
-    catalog_json = ROOT / ".phase6/v3-catalog-audit.json"
+    artifacts = {
+        "schema_fingerprint": ROOT / ".phase6/v3-schema.json",
+        "catalog_audit": ROOT / ".phase6/v3-catalog-audit.json",
+        "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
+        "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
+        "test_quality": ROOT / ".phase6/v3-test-quality.json",
+        "test_junit": ROOT / ".phase6/v3-tests-junit.xml",
+        "concurrency_stability": ROOT / ".phase6/v3-concurrency-stability.json",
+        "mutation_probes": ROOT / ".phase6/v3-mutation-probes.json",
+    }
 
     commit = os.environ.get("PHASE6_COMMIT_SHA") or _git("rev-parse", "HEAD")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "commit_sha": commit,
         "tree_sha": _git("rev-parse", "HEAD^{tree}"),
         "working_tree_dirty": _tracked_tree_dirty(),
@@ -89,8 +97,7 @@ def build_manifest() -> dict[str, Any]:
         },
         "tests": _test_inventory(),
         "artifacts": {
-            "schema_fingerprint_sha256": _sha256(schema_json),
-            "catalog_audit_sha256": _sha256(catalog_json),
+            **{f"{name}_sha256": _sha256(path) for name, path in artifacts.items()},
             "invariant_registry_sha256": _sha256(INVARIANT_DOC),
             "race_registry_sha256": _sha256(RACE_DOC),
             "gate_registry_sha256": _sha256(GATE_DOC),
