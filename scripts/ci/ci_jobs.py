@@ -154,6 +154,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "--output .phase6/v3-evidence-manifest.json",
             always=True,
         ),
+        Step(
+            "evidence-completeness",
+            "Require complete V3 release evidence",
+            "uv run python scripts/release/build_v3_evidence_manifest.py "
+            "--output .phase6/v3-evidence-manifest.json --require-complete",
+        ),
     ),
 }
 
