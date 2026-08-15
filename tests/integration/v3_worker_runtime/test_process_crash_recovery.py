@@ -73,7 +73,6 @@ import json
 import os
 import signal
 import sys
-from uuid import UUID
 
 import psycopg
 
@@ -112,7 +111,7 @@ os.kill(os.getpid(), signal.SIGKILL)
         """,
         (organization_id, action_id),
     ).fetchone()
-    assert claimed_state == ("processing", True, True)
+    assert claimed_state == ("leased", True, True)
 
     # Advance only the lease boundary. This keeps the test deterministic without sleeping.
     admin_conn.execute(
