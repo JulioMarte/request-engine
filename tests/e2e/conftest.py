@@ -21,6 +21,22 @@ from request_engine.platform.db.session import (
 PgConnection = Connection[Any]
 
 
+def _truncate_runtime_tables(conn: PgConnection) -> None:
+    rows = conn.execute(
+        """
+        SELECT tablename
+        FROM pg_catalog.pg_tables
+        WHERE schemaname = 'request_engine'
+        ORDER BY tablename
+        """
+    ).fetchall()
+    tables = [sql.Identifier("request_engine", str(row[0])) for row in rows]
+    assert tables
+    conn.execute(
+        sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(sql.SQL(", ").join(tables))
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeCredentials:
     role_name: str
@@ -49,6 +65,17 @@ def e2e_admin_conn() -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture(autouse=True)
+def isolated_e2e_database(e2e_admin_conn: PgConnection) -> Iterator[None]:
+    """Prevent durable work from one E2E proof influencing another proof."""
+
+    _truncate_runtime_tables(e2e_admin_conn)
+    try:
+        yield
+    finally:
+        _truncate_runtime_tables(e2e_admin_conn)
 
 
 def _runtime_credentials(

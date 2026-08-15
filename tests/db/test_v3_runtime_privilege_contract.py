@@ -257,3 +257,25 @@ def test_application_group_role_has_idempotency_permissions(
         """
     ).fetchone()
     assert cast(tuple[bool, bool, bool, bool], row) == (True, True, True, False)
+
+
+@pytest.mark.postgres
+def test_worker_group_role_cannot_delete_authoritative_runtime_rows(
+    admin_conn: PgConnection,
+) -> None:
+    row = admin_conn.execute(
+        """
+        SELECT
+            has_table_privilege(
+                'request_engine_worker',
+                'request_engine.scheduled_actions',
+                'DELETE'
+            ),
+            has_table_privilege(
+                'request_engine_worker',
+                'request_engine.outbox_messages',
+                'DELETE'
+            )
+        """
+    ).fetchone()
+    assert cast(tuple[bool, bool], row) == (False, False)

@@ -146,7 +146,7 @@ def _foreign_request(
             "/v1/appointments",
             {},
             {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)},
-            403,
+            422,
         )
     if name == "appointments.read":
         return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
@@ -181,7 +181,7 @@ def _foreign_request(
             f"/v1/queues/{actor.queue_id}/join",
             {},
             {"subject_party_id": str(foreign.party_id), "offering_id": str(actor.offering_id)},
-            403,
+            422,
         )
     if name == "queue.status":
         return (
@@ -204,7 +204,7 @@ def _foreign_request(
             "/v1/waitlist",
             {},
             {"offering_id": str(actor.offering_id), "subject_party_id": str(foreign.party_id)},
-            403,
+            422,
         )
     if name == "waitlist.read":
         return f"/v1/waitlist/{objects.waitlist_entry_id}", {}, None, 404

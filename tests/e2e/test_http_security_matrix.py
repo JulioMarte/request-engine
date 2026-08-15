@@ -108,6 +108,7 @@ async def test_every_capability_gated_operation_rejects_missing_grant_without_mu
         "error": {
             "code": "capability_required",
             "message": "the authenticated actor lacks a required capability",
+            "retryable": False,
             "resolution": "request_authority",
             "details": {"capability": operation.capability},
         }

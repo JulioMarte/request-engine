@@ -131,6 +131,26 @@ def seed_tenant_sandbox(conn: support.PgConnection, prefix: str) -> TenantSandbo
         """,
         (organization_id, f"Subject {suffix[:8]}"),
     )
+    for scope_key in (
+        "appointments.book",
+        "appointments.manage",
+        "queue.join",
+        "queue.manage",
+        "waitlist.join",
+        "waitlist.manage",
+        "requests.submit",
+        "requests.manage",
+        "reminders.manage",
+    ):
+        conn.execute(
+            """
+            INSERT INTO request_engine.representations (
+                organization_id, principal_id, represented_party_id,
+                authority_kind, scope_key, valid_until
+            ) VALUES (%s, %s, %s, 'self', %s, clock_timestamp() + interval '1 day')
+            """,
+            (organization_id, principal_id, party_id, scope_key),
+        )
     location_id = _uuid_row(
         conn,
         """
