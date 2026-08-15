@@ -135,7 +135,8 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step(
             "mutation-probes",
             "Kill critical mutations",
-            "uv run python scripts/release/run_v3_mutation_probes.py",
+            "uv run python scripts/release/run_v3_mutation_probes.py "
+            "--output .phase6/v3-mutation-probes.json",
             timeout_seconds=1800,
         ),
         Step(
@@ -209,7 +210,13 @@ def _failure_excerpt(lines: Sequence[str]) -> list[str]:
     return excerpt[-(_FAILURE_TAIL_LINES + _FAILURE_SUMMARY_LINES + 2) :]
 
 
-def _print_failure(step: Step, *, status: str, lines: Sequence[str], log_path: Path | None) -> None:
+def _print_failure(
+    step: Step,
+    *,
+    status: str,
+    lines: Sequence[str],
+    log_path: Path | None,
+) -> None:
     print(f"[{status}] {step.name} [{step.key}]", flush=True)
     print(f"  command: {step.command}", flush=True)
     print("  problem:", flush=True)
@@ -340,7 +347,8 @@ def execute_job(
             json.dumps({"job": job, "steps": results}, indent=2) + "\n",
             encoding="utf-8",
         )
-    return 1 if any(item["status"] in {"FAIL", "TIMEOUT"} for item in results) else 0
+    has_failure = any(item["status"] in {"FAIL", "TIMEOUT"} for item in results)
+    return 1 if has_failure else 0
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
