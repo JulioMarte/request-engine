@@ -40,7 +40,7 @@ class SecurityVisitor(ast.NodeVisitor):
             if isinstance(owner, ast.Name) and owner.id == "pickle":
                 self._report(node, "unsafe-pickle-deserialization")
 
-        super().visit_Call(node)
+        self.generic_visit(node)
 
 
 def main() -> int:
