@@ -54,9 +54,7 @@ def _runtime_environment(args: argparse.Namespace) -> dict[str, str]:
     resource_attributes = [f"service.version={args.service_version}"]
     deployment_environment = env.get("REQUEST_ENGINE_ENV")
     if deployment_environment:
-        resource_attributes.append(
-            f"deployment.environment.name={deployment_environment}"
-        )
+        resource_attributes.append(f"deployment.environment.name={deployment_environment}")
 
     defaults = {
         "OTEL_SERVICE_NAME": args.service_name,
