@@ -117,11 +117,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
         ),
         Step(
             "v3-tests",
-            "V3 PostgreSQL invariant, race, and vertical tests",
-            "mkdir -p .phase6 && uv run pytest tests/db tests/integration/v3_first_vertical "
-            "tests/integration/v3_booking_core tests/integration/v3_booking_commitments "
-            "tests/integration/v3_slot_offer_recovery tests/integration/v3_reservation_lifecycle "
-            "tests/integration/v3_worker_runtime -q -m postgres --tb=short --durations=20 "
+            "V3 PostgreSQL invariant, E2E, race, and vertical tests",
+            "mkdir -p .phase6 && uv run pytest tests/db tests/e2e "
+            "tests/integration/v3_first_vertical tests/integration/v3_booking_core "
+            "tests/integration/v3_booking_commitments tests/integration/v3_slot_offer_recovery "
+            "tests/integration/v3_reservation_lifecycle tests/integration/v3_worker_runtime "
+            "-q -m postgres --tb=short --durations=20 "
             "--junitxml=.phase6/v3-tests-junit.xml",
             timeout_seconds=2400,
         ),
@@ -130,6 +131,13 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "Repeat critical V3 concurrency proofs",
             "uv run python scripts/release/prove_v3_concurrency_stability.py "
             "--rounds 3 --output .phase6/v3-concurrency-stability.json",
+            timeout_seconds=2400,
+        ),
+        Step(
+            "test-order-independence",
+            "Prove V3 PostgreSQL tests are order independent",
+            "uv run python scripts/release/prove_v3_test_order_independence.py "
+            "--output .phase6/v3-test-order-independence.json",
             timeout_seconds=2400,
         ),
         Step(
