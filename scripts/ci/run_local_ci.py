@@ -109,6 +109,11 @@ def ensure_clean_worktree(root: Path) -> None:
     )
 
 
+def clear_console() -> None:
+    command = ["cmd", "/c", "cls"] if os.name == "nt" else ["clear"]
+    subprocess.run(command, check=False)
+
+
 def sync_branch(root: Path, branch: str, log: Logger) -> str:
     log.write("=== Git sync ===")
     ensure_clean_worktree(root)
@@ -124,6 +129,7 @@ def sync_branch(root: Path, branch: str, log: Logger) -> str:
     if log.run(switch, cwd=root) != 0:
         raise LocalCIError(f"Could not switch to {branch}")
 
+    clear_console()
     if log.run(["git", "pull", "--ff-only", "origin", branch], cwd=root) != 0:
         raise LocalCIError("Local branch diverged from origin. Resolve it before local CI.")
 
