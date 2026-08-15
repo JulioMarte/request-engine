@@ -82,6 +82,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
         ),
         Step("uv-sync", "Resolve test environment", "uv sync --all-groups"),
         Step(
+            "test-quality-audit",
+            "Audit V3 test quality",
+            "mkdir -p .phase6 && uv run python scripts/release/audit_v3_test_quality.py "
+            "--output .phase6/v3-test-quality.json",
+        ),
+        Step(
             "schema-fingerprint",
             "Generate V3 schema fingerprint",
             "mkdir -p .phase6 && uv run python scripts/db/v3_schema_fingerprint.py "
@@ -112,10 +118,18 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step(
             "v3-tests",
             "V3 PostgreSQL invariant, race, and vertical tests",
-            "uv run pytest tests/db tests/integration/v3_first_vertical "
+            "mkdir -p .phase6 && uv run pytest tests/db tests/integration/v3_first_vertical "
             "tests/integration/v3_booking_core tests/integration/v3_booking_commitments "
             "tests/integration/v3_slot_offer_recovery tests/integration/v3_reservation_lifecycle "
-            "tests/integration/v3_worker_runtime -q -m postgres",
+            "tests/integration/v3_worker_runtime -q -m postgres --tb=short --durations=20 "
+            "--junitxml=.phase6/v3-tests-junit.xml",
+            timeout_seconds=2400,
+        ),
+        Step(
+            "concurrency-stability",
+            "Repeat critical V3 concurrency proofs",
+            "uv run python scripts/release/prove_v3_concurrency_stability.py "
+            "--rounds 3 --output .phase6/v3-concurrency-stability.json",
             timeout_seconds=2400,
         ),
         Step(
@@ -150,7 +164,8 @@ _FAILURE_MARKERS = (
     "violates",
 )
 _FAILURE_CONTEXT_LINES = 6
-_FAILURE_TAIL_LINES = 40
+_FAILURE_TAIL_LINES = 60
+_FAILURE_SUMMARY_LINES = 25
 
 
 def _safe_name(value: str) -> str:
@@ -169,6 +184,11 @@ def _failure_excerpt(lines: Sequence[str]) -> list[str]:
     if not cleaned:
         return ["(step produced no output)"]
 
+    summaries = [
+        line
+        for line in cleaned
+        if line.lstrip().startswith(("FAILED ", "ERROR ", "E   "))
+    ][-_FAILURE_SUMMARY_LINES:]
     marker_indexes = [
         index
         for index, line in enumerate(cleaned)
@@ -176,13 +196,17 @@ def _failure_excerpt(lines: Sequence[str]) -> list[str]:
     ]
     if marker_indexes:
         start = max(0, marker_indexes[-1] - _FAILURE_CONTEXT_LINES)
-        excerpt = cleaned[start:]
+        context = cleaned[start:]
     else:
-        excerpt = cleaned[-_FAILURE_TAIL_LINES:]
+        context = cleaned[-_FAILURE_TAIL_LINES:]
 
-    if len(excerpt) > _FAILURE_TAIL_LINES:
-        excerpt = excerpt[-_FAILURE_TAIL_LINES:]
-    return excerpt
+    excerpt: list[str] = []
+    if summaries:
+        excerpt.append("failure summary:")
+        excerpt.extend(summaries)
+        excerpt.append("last error context:")
+    excerpt.extend(context[-_FAILURE_TAIL_LINES:])
+    return excerpt[-(_FAILURE_TAIL_LINES + _FAILURE_SUMMARY_LINES + 2) :]
 
 
 def _print_failure(step: Step, *, status: str, lines: Sequence[str], log_path: Path | None) -> None:
@@ -205,7 +229,7 @@ def _run_step(
     started = time.monotonic()
     log_path = log_dir / f"{_safe_name(step.key)}.log" if log_dir else None
     handle = log_path.open("w", encoding="utf-8", newline="\n") if log_path else None
-    tail: deque[str] = deque(maxlen=200)
+    tail: deque[str] = deque(maxlen=300)
 
     _write_log(handle, f"--- {step.name} [{step.key}] ---\n")
     _write_log(handle, f"$ {step.command}\n")
