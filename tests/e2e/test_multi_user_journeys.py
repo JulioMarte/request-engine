@@ -422,7 +422,11 @@ async def test_e2e_many_patients_race_for_one_slot_then_capacity_recovers(
             return person, response
 
         results = await asyncio.gather(*(attempt(person) for person in practice.people))
-        winners = [(person, response) for person, response in results if response.status_code == 201]
+        winners = [
+            (person, response)
+            for person, response in results
+            if response.status_code == 201
+        ]
         losers = [(person, response) for person, response in results if response.status_code != 201]
 
         assert len(winners) == 1

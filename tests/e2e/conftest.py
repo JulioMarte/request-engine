@@ -111,7 +111,7 @@ def worker_runtime_credentials(
         _drop_runtime_role(e2e_admin_conn, credentials)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def e2e_session_factory(
     app_runtime_credentials: RuntimeCredentials,
 ) -> AsyncIterator[SessionFactory]:
