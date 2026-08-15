@@ -46,9 +46,7 @@ async def _assert_set_role_forbidden(factory: SessionFactory, target_role: str) 
 async def test_application_login_has_only_application_runtime_membership(
     app_session_factory: SessionFactory,
 ) -> None:
-    current_user, session_user, app, worker, admin, superuser = await _identity(
-        app_session_factory
-    )
+    current_user, session_user, app, worker, admin, superuser = await _identity(app_session_factory)
     assert current_user == session_user
     assert current_user.startswith("request_engine_app_test_")
     assert (app, worker, admin, superuser) == (True, False, False, False)
@@ -91,6 +89,4 @@ async def test_admin_login_does_not_inherit_schema_ownership_or_runtime_roles(
 
     await _assert_set_role_forbidden(runtime_admin_session_factory, "request_engine_app")
     await _assert_set_role_forbidden(runtime_admin_session_factory, "request_engine_worker")
-    await _assert_set_role_forbidden(
-        runtime_admin_session_factory, "request_engine_schema_owner"
-    )
+    await _assert_set_role_forbidden(runtime_admin_session_factory, "request_engine_schema_owner")
