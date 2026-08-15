@@ -105,13 +105,9 @@ def _cancel_in_thread(
         connection.close()
 
 
-def _claim_in_thread(
-    action_id: UUID,
-    backend_queue: queue.Queue[int],
-) -> UUID | None:
+def _claim_in_thread(action_id: UUID) -> UUID | None:
     connection = _worker_connection(autocommit=True)
     try:
-        backend_queue.put(connection.info.backend_pid)
         rows = connection.execute(
             """
             SELECT action_id, claim_token
@@ -139,12 +135,12 @@ def test_r15_cancel_wins_row_lock_and_claim_cannot_resurrect_action(
         ).fetchone()
         assert cancelled == ("cancelled",)
 
-        backend_queue: queue.Queue[int] = queue.Queue()
+        # The uncommitted cancellation owns the row lock. Worker discovery uses SKIP LOCKED,
+        # so a concurrent claimer must skip this row rather than wait and resurrect it later.
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_claim_in_thread, action_id, backend_queue)
-            _wait_until_lock_blocked(admin_conn, backend_queue.get(timeout=2))
-            app.commit()
+            future = executor.submit(_claim_in_thread, action_id)
             assert future.result(timeout=5) is None
+        app.commit()
     finally:
         app.close()
 
