@@ -54,9 +54,9 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
     role_password = uuid4().hex
     suffix = uuid4().hex
     location_key = f"e2e-office-{suffix}"
-
-    engine = None
+    organization_id: UUID | None = None
     role_created = False
+
     try:
         organization_row = admin.execute(
             """
@@ -111,41 +111,44 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
         engine = create_postgres_engine(
             f"postgresql+asyncpg://{role_name}:{role_password}@{host}:{port}/{database}"
         )
-        session_factory = create_session_factory(engine)
-        actor = ActorContext(
-            organization_id=organization_id,
-            principal_id=principal_id,
-            capabilities=frozenset({"business.read"}),
-        )
-        app = create_app(
-            session_factory=session_factory,
-            actor_resolver=_ActorResolver(actor),
-            appointment_option_signing_key=b"phase6-e2e-runtime-login-signing-key",
-        )
-
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-        ) as client:
-            response = await client.get(
-                "/v1/business",
-                headers={"Authorization": "Bearer e2e"},
+        try:
+            session_factory = create_session_factory(engine)
+            actor = ActorContext(
+                organization_id=organization_id,
+                principal_id=principal_id,
+                capabilities=frozenset({"business.read"}),
+            )
+            app = create_app(
+                session_factory=session_factory,
+                actor_resolver=_ActorResolver(actor),
+                appointment_option_signing_key=b"phase6-e2e-runtime-login-signing-key",
             )
 
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["organization_id"] == str(organization_id)
-        assert payload["organization_key"] == f"e2e-{suffix}"
-        assert payload["display_name"] == "E2E Clinic"
-        assert payload["public_profile"] == {"summary": "runtime login proof"}
-        assert len(payload["locations"]) == 1
-        location = payload["locations"][0]
-        assert UUID(location["id"])
-        assert location["location_key"] == location_key
-        assert location["display_name"] == "E2E Office"
-        assert location["timezone"] == "America/Santo_Domingo"
-        assert location["public_data"] == {"address": "Puerto Plata"}
-        assert UUID(response.headers["X-Correlation-ID"])
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.get(
+                    "/v1/business",
+                    headers={"Authorization": "Bearer e2e"},
+                )
+
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["organization_id"] == str(organization_id)
+            assert payload["organization_key"] == f"e2e-{suffix}"
+            assert payload["display_name"] == "E2E Clinic"
+            assert payload["public_profile"] == {"summary": "runtime login proof"}
+            assert len(payload["locations"]) == 1
+            location = payload["locations"][0]
+            assert UUID(location["id"])
+            assert location["location_key"] == location_key
+            assert location["display_name"] == "E2E Office"
+            assert location["timezone"] == "America/Santo_Domingo"
+            assert location["public_data"] == {"address": "Puerto Plata"}
+            assert UUID(response.headers["X-Correlation-ID"])
+        finally:
+            await engine.dispose()
 
         login: PgConnection = psycopg.connect(
             (
@@ -176,9 +179,20 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
         finally:
             login.close()
     finally:
-        if engine is not None:
-            await engine.dispose()
         if role_created:
             admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+        if organization_id is not None:
+            admin.execute(
+                "DELETE FROM request_engine.locations WHERE organization_id = %s",
+                (organization_id,),
+            )
+            admin.execute(
+                "DELETE FROM request_engine.principals WHERE organization_id = %s",
+                (organization_id,),
+            )
+            admin.execute(
+                "DELETE FROM request_engine.organizations WHERE id = %s",
+                (organization_id,),
+            )
         admin.close()
