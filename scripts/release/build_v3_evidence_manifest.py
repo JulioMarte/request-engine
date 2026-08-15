@@ -70,6 +70,7 @@ def build_manifest() -> dict[str, Any]:
         "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
         "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
+        "test_collection": ROOT / ".phase6/v3-test-collection.json",
         "test_junit": ROOT / ".phase6/v3-tests-junit.xml",
         "concurrency_stability": ROOT / ".phase6/v3-concurrency-stability.json",
         "test_order_independence": ROOT / ".phase6/v3-test-order-independence.json",
