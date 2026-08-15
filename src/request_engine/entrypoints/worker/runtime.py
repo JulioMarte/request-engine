@@ -89,9 +89,7 @@ class ScheduledActionBatchRunner:
                 error_class=f"unsupported_owner_module:{lease.owner_module}",
             )
             return (
-                ScheduledActionDisposition.DEAD
-                if finalized
-                else ScheduledActionDisposition.STALE
+                ScheduledActionDisposition.DEAD if finalized else ScheduledActionDisposition.STALE
             )
 
         try:
@@ -161,7 +159,5 @@ class OutboxBatchRunner:
 
         finalized = await self._outbox.complete(lease)
         return (
-            ScheduledActionDisposition.COMPLETED
-            if finalized
-            else ScheduledActionDisposition.STALE
+            ScheduledActionDisposition.COMPLETED if finalized else ScheduledActionDisposition.STALE
         )
