@@ -11,6 +11,8 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+.local-ci/
+.phase6/
 
 # Environment / secrets
 .env
