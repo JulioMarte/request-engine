@@ -45,11 +45,14 @@ def _assert_complete(actual: list[str], expected: list[str], label: str) -> None
 
 
 def _tracked_tree_dirty() -> bool:
-    return subprocess.run(
-        ["git", "diff", "--quiet", "HEAD", "--"],
-        cwd=ROOT,
-        check=False,
-    ).returncode != 0
+    return (
+        subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--"],
+            cwd=ROOT,
+            check=False,
+        ).returncode
+        != 0
+    )
 
 
 def build_manifest() -> dict[str, Any]:
