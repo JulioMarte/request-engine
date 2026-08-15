@@ -10,29 +10,8 @@ from request_engine.entrypoints.http.security import AuthenticationRequired
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 
-_EXPECTED_PUBLIC_OPERATIONS = frozenset(
-    {
-        ("GET", "/v1/business"),
-        ("GET", "/v1/catalog/offerings"),
-        ("GET", "/v1/catalog/offerings/{offering_key}"),
-        ("GET", "/v1/appointments/slots"),
-        ("POST", "/v1/appointments"),
-        ("GET", "/v1/appointments/{reservation_id}"),
-        ("POST", "/v1/appointments/{reservation_id}/cancel"),
-        ("POST", "/v1/appointments/{reservation_id}/reschedule"),
-        ("GET", "/v1/queues"),
-        ("POST", "/v1/queues/{queue_id}/join"),
-        ("GET", "/v1/queues/{queue_id}/status"),
-        ("POST", "/v1/queues/{queue_id}/leave"),
-        ("POST", "/v1/queues/{queue_id}/call-next"),
-        ("POST", "/v1/requests/definitions/{request_key}/submit"),
-        ("GET", "/v1/requests/{request_id}"),
-        ("POST", "/v1/requests/{request_id}/result"),
-        ("POST", "/v1/requests/{request_id}/complete"),
-        ("POST", "/v1/requests/{request_id}/cancel"),
-        ("POST", "/v1/requests/{request_id}/fail"),
-    }
-)
+from .http_surface import PUBLIC_HTTP_OPERATIONS, operation_keys
+
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 
 
@@ -70,4 +49,24 @@ async def test_public_http_surface_cannot_grow_without_e2e_classification(
         actor_resolver=RejectAllResolver(),
     )
 
-    assert _public_operations(app.openapi()) == _EXPECTED_PUBLIC_OPERATIONS
+    assert _public_operations(app.openapi()) == operation_keys()
+
+
+def test_public_http_operation_registry_has_complete_test_metadata() -> None:
+    names = [operation.name for operation in PUBLIC_HTTP_OPERATIONS]
+    keys = [operation.operation_key for operation in PUBLIC_HTTP_OPERATIONS]
+
+    assert len(names) == len(set(names))
+    assert len(keys) == len(set(keys))
+    assert len(PUBLIC_HTTP_OPERATIONS) == 19
+
+    for operation in PUBLIC_HTTP_OPERATIONS:
+        assert operation.capability
+        assert operation.probe.path.startswith("/v1/")
+        if operation.method == "POST":
+            assert operation.mutates
+            assert operation.idempotency_required
+        else:
+            assert operation.method == "GET"
+            assert not operation.mutates
+            assert not operation.idempotency_required

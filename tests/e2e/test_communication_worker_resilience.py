@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import json
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.modules.communications.adapters.db.delivery_store import (
+    finalize_provider_result,
+    prepare_dispatch,
+)
 from request_engine.modules.communications.adapters.worker.delivery_worker import (
     CommunicationDeliveryWorker,
     DeliveryWorkerOutcome,
@@ -29,6 +34,7 @@ from request_engine.platform.db.session import (
     SessionFactory,
     create_postgres_engine,
     create_session_factory,
+    tenant_transaction,
 )
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 
@@ -74,16 +80,35 @@ class ScriptedProvider(CommunicationDeliveryProvider):
         return self.lookup_result
 
 
+class UniqueDeliveredProvider(CommunicationDeliveryProvider):
+    def __init__(self) -> None:
+        self.send_calls: list[ProviderSendRequest] = []
+        self.lookup_calls: list[ProviderLookupRequest] = []
+
+    async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult:
+        self.send_calls.append(request)
+        return ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"msg-{request.delivery_id}",
+        )
+
+    async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult:
+        self.lookup_calls.append(request)
+        raise AssertionError("contention scenario must not reconcile")
+
+
 @asynccontextmanager
 async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
     providers: Mapping[str, CommunicationDeliveryProvider],
-) -> AsyncIterator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryWorker]]:
+) -> AsyncGenerator[
+    tuple[SessionFactory, PostgresScheduledActionWorker, CommunicationDeliveryWorker],
+]:
     engine = create_postgres_engine(credentials.database_url)
     factory: SessionFactory = create_session_factory(engine)
     scheduler = PostgresScheduledActionWorker(factory)
     try:
-        yield scheduler, CommunicationDeliveryWorker(factory, scheduler, providers)
+        yield factory, scheduler, CommunicationDeliveryWorker(factory, scheduler, providers)
     finally:
         await engine.dispose()
 
@@ -216,15 +241,27 @@ def _reconcile(
     )
 
 
-def _status(conn: support.PgConnection, table: str, row_id: UUID) -> str:
-    allowed = {
-        "communication_tasks",
-        "communication_deliveries",
-        "scheduled_actions",
-    }
-    assert table in allowed
+def _task_status(conn: support.PgConnection, row_id: UUID) -> str:
     row = conn.execute(
-        f"SELECT status FROM request_engine.{table} WHERE id = %s",  # noqa: S608
+        "SELECT status FROM request_engine.communication_tasks WHERE id = %s",
+        (row_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _delivery_status(conn: support.PgConnection, row_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.communication_deliveries WHERE id = %s",
+        (row_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _action_status(conn: support.PgConnection, row_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.scheduled_actions WHERE id = %s",
         (row_id,),
     ).fetchone()
     assert row is not None
@@ -274,17 +311,18 @@ async def test_delivered_send_completes_task_action_and_outbox(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        outcome = await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
-    expected_key = f"communication:{task_id}:attempt:1"
-    assert provider.send_calls[0].provider_idempotency_key == expected_key
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "completed"
-    assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
-    event_count = _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id)
-    assert event_count == 1
+    assert provider.send_calls[0].provider_idempotency_key == (
+        f"communication:{task_id}:attempt:1"
+    )
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
 
 
 @pytest.mark.asyncio
@@ -298,12 +336,13 @@ async def test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend(
     provider = ScriptedProvider(send=TimeoutError("provider response lost"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        outcome = await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "ambiguous"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
-    assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
     delivery = e2e_admin_conn.execute(
         """
         SELECT id, status, result_data->>'error_phase'
@@ -353,15 +392,16 @@ async def test_reconciliation_delivered_uses_lookup_without_second_send(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        outcome = await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "delivered"
     assert provider.send_calls == []
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == delivery_id
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "completed"
-    assert _status(e2e_admin_conn, "communication_deliveries", delivery_id) == "delivered"
-    assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
 
 
 @pytest.mark.asyncio
@@ -376,7 +416,8 @@ async def test_lookup_exception_retries_same_action_without_resend(
     provider = ScriptedProvider(lookup=ConnectionError("provider unavailable"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        outcome = await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.state is DeliveryWorkerState.DEFERRED
     assert outcome.detail == "lookup_pending"
@@ -389,7 +430,7 @@ async def test_lookup_exception_retries_same_action_without_resend(
         (action_id,),
     ).fetchone()
     assert action == ("pending", None, None, 1, "lookup_ConnectionError")
-    assert _status(e2e_admin_conn, "communication_deliveries", delivery_id) == "accepted"
+    assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
 
 
 @pytest.mark.asyncio
@@ -409,11 +450,12 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        outcome = await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        outcome = await _claim_and_process(scheduler, worker)
 
     assert outcome.detail == "failed"
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
-    assert _status(e2e_admin_conn, "scheduled_actions", original_id) == "completed"
+    assert _task_status(e2e_admin_conn, task_id) == "pending"
+    assert _action_status(e2e_admin_conn, original_id) == "completed"
     retries = e2e_admin_conn.execute(
         """
         SELECT status, subject_id
@@ -425,8 +467,7 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
         (org, original_id),
     ).fetchall()
     assert retries == [("pending", task_id)]
-    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
-    assert event_count == 0
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 0
 
 
 @pytest.mark.asyncio
@@ -446,12 +487,12 @@ async def test_non_retryable_failure_is_terminal_and_emits_failure_event(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        await _claim_and_process(*stack)
+        _, scheduler, worker = stack
+        await _claim_and_process(scheduler, worker)
 
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "failed"
-    assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
-    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
-    assert event_count == 1
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
 
 
 @pytest.mark.asyncio
@@ -463,7 +504,8 @@ async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
     task_id = _task(e2e_admin_conn, org)
     action_id = _dispatch(e2e_admin_conn, org, task_id)
 
-    async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, {}) as stack:
+        _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(DeliveryProviderNotConfigured):
@@ -477,7 +519,7 @@ async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
         (action_id,),
     ).fetchone()
     assert action == ("dead", None, None, "provider_not_configured")
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "failed"
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
     delivery = e2e_admin_conn.execute(
         """
         SELECT status, result_data->>'error_class', result_data->>'error_phase'
@@ -487,8 +529,7 @@ async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
         (task_id,),
     ).fetchone()
     assert delivery == ("failed", "provider_not_configured", "provider_resolution")
-    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
-    assert event_count == 1
+    assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
 
 
 @pytest.mark.asyncio
@@ -507,7 +548,8 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
         payload={},
     )
 
-    async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, {}) as stack:
+        _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(UnsupportedScheduledAction):
@@ -518,7 +560,7 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
         (action_id,),
     ).fetchone()
     assert row == ("dead", "unsupported_scheduled_action")
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "pending"
 
 
 @pytest.mark.asyncio
@@ -528,14 +570,10 @@ async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
 ) -> None:
     org = support.new_org(e2e_admin_conn, "delivery-poison-payload")
     task_id = _task(e2e_admin_conn, org)
-    action_id = _dispatch(
-        e2e_admin_conn,
-        org,
-        task_id,
-        payload_task_id=uuid4(),
-    )
+    action_id = _dispatch(e2e_admin_conn, org, task_id, payload_task_id=uuid4())
 
-    async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, {}) as stack:
+        _, scheduler, worker = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         with pytest.raises(ValueError, match="does not match subject identity"):
@@ -546,7 +584,7 @@ async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
         (action_id,),
     ).fetchone()
     assert row == ("dead", "invalid_scheduled_action")
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "pending"
     delivery_count = e2e_admin_conn.execute(
         """
         SELECT count(*) FROM request_engine.communication_deliveries
@@ -555,3 +593,170 @@ async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
         (task_id,),
     ).fetchone()
     assert delivery_count == (0,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_crash_after_provider_finalize_before_action_ack_reclaims_without_second_send(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    org = support.new_org(e2e_admin_conn, "delivery-crash-after-finalize")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
+    provider = UniqueDeliveredProvider()
+
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        factory, scheduler, worker = stack
+        leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
+        assert len(leases) == 1
+        first_lease = leases[0]
+        assert first_lease.id == action_id
+
+        async with tenant_transaction(factory, org) as session:
+            prepared = await prepare_dispatch(
+                session,
+                organization_id=org,
+                communication_task_id=task_id,
+            )
+        assert prepared.send_request is not None
+        provider_result = await provider.send(prepared.send_request)
+        assert prepared.delivery_id is not None
+        async with tenant_transaction(factory, org) as session:
+            finalized = await finalize_provider_result(
+                session,
+                organization_id=org,
+                delivery_id=prepared.delivery_id,
+                result=provider_result,
+            )
+        assert finalized.status is ProviderDeliveryStatus.DELIVERED
+        assert _task_status(e2e_admin_conn, task_id) == "completed"
+        assert _action_status(e2e_admin_conn, action_id) != "completed"
+
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+            """,
+            (action_id,),
+        )
+        reclaimed = await scheduler.claim(limit=1)
+        assert len(reclaimed) == 1
+        assert reclaimed[0].id == action_id
+        assert reclaimed[0].claim_token != first_lease.claim_token
+
+        replay = await worker.process(reclaimed[0])
+        assert replay.detail in {"already_delivered", "task_completed"}
+        assert await scheduler.complete(first_lease) is False
+
+    assert len(provider.send_calls) == 1
+    assert provider.lookup_calls == []
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    delivery_count = e2e_admin_conn.execute(
+        """
+        SELECT count(*) FROM request_engine.communication_deliveries
+        WHERE communication_task_id = %s
+        """,
+        (task_id,),
+    ).fetchone()
+    assert delivery_count == (1,)
+    assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_crash_after_prepare_reconciles_existing_attempt_before_any_resend(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    org = support.new_org(e2e_admin_conn, "delivery-crash-after-prepare")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
+    provider = ScriptedProvider(
+        lookup=ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"reconciled-{uuid4().hex}",
+        )
+    )
+
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        factory, scheduler, worker = stack
+        leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
+        assert len(leases) == 1
+        first_lease = leases[0]
+
+        async with tenant_transaction(factory, org) as session:
+            prepared = await prepare_dispatch(
+                session,
+                organization_id=org,
+                communication_task_id=task_id,
+            )
+        assert prepared.delivery_id is not None
+        assert prepared.send_request is not None
+
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+            """,
+            (action_id,),
+        )
+        reclaimed = await scheduler.claim(limit=1)
+        assert len(reclaimed) == 1
+        assert reclaimed[0].claim_token != first_lease.claim_token
+        outcome = await worker.process(reclaimed[0])
+
+    assert outcome.detail == "delivered"
+    assert provider.send_calls == []
+    assert len(provider.lookup_calls) == 1
+    assert provider.lookup_calls[0].delivery_id == prepared.delivery_id
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _delivery_status(e2e_admin_conn, prepared.delivery_id) == "delivered"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_three_delivery_workers_claim_disjoint_work_and_each_task_sends_once(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    org = support.new_org(e2e_admin_conn, "delivery-contention")
+    task_ids = tuple(_task(e2e_admin_conn, org) for _ in range(12))
+    action_ids = tuple(_dispatch(e2e_admin_conn, org, task_id) for task_id in task_ids)
+    provider = UniqueDeliveredProvider()
+
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        factory, _, _ = stack
+        schedulers = tuple(PostgresScheduledActionWorker(factory) for _ in range(3))
+        workers = tuple(
+            CommunicationDeliveryWorker(factory, scheduler, {"provider-a": provider})
+            for scheduler in schedulers
+        )
+        claimed_groups = await asyncio.gather(
+            *(scheduler.claim(limit=4) for scheduler in schedulers)
+        )
+        claimed = tuple(lease for group in claimed_groups for lease in group)
+        assert len(claimed) == 12
+        assert {lease.id for lease in claimed} == set(action_ids)
+        assert len({lease.claim_token for lease in claimed}) == 12
+
+        await asyncio.gather(
+            *(
+                worker.process(lease)
+                for worker, group in zip(workers, claimed_groups, strict=True)
+                for lease in group
+            )
+        )
+
+    assert len(provider.send_calls) == 12
+    assert provider.lookup_calls == []
+    assert len({call.provider_idempotency_key for call in provider.send_calls}) == 12
+    for task_id in task_ids:
+        assert _task_status(e2e_admin_conn, task_id) == "completed"
+        assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
+    for action_id in action_ids:
+        assert _action_status(e2e_admin_conn, action_id) == "completed"
