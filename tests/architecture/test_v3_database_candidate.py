@@ -29,6 +29,7 @@ EXPECTED_V3_CANDIDATE = [
     "022-runtime-table-privilege-contract.sql",
     "023-scheduled-action-cancellation-fence.sql",
     "024-runtime-function-privilege-contract.sql",
+    "025-worker-claim-stale-snapshot-fence.sql",
 ]
 
 
