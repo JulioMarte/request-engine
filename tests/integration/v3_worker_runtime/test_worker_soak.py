@@ -1,5 +1,7 @@
 import os
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -8,6 +10,7 @@ import pytest
 from psycopg import Connection
 
 PgConnection = Connection[Any]
+WORKER_COUNT = 8
 
 
 def _conninfo() -> str:
@@ -57,11 +60,12 @@ def _seed(admin_conn: PgConnection) -> tuple[set[UUID], set[UUID]]:
     return organization_ids, action_ids
 
 
-def _drain(target_ids: set[UUID]) -> set[UUID]:
-    completed: set[UUID] = set()
+def _drain(worker_number: int, target_ids: set[UUID], start: Barrier) -> tuple[int, list[UUID]]:
+    completed: list[UUID] = []
     worker: PgConnection = psycopg.connect(_conninfo(), autocommit=True)
     try:
         worker.execute("SET ROLE request_engine_worker")
+        start.wait(timeout=10)
         for _ in range(100):
             rows = worker.execute(
                 """
@@ -77,16 +81,10 @@ def _drain(target_ids: set[UUID]) -> set[UUID]:
                     "SELECT request_cmd.complete_scheduled_action(%s, %s)",
                     (action_id, token),
                 ).fetchone() == (True,):
-                    completed.add(action_id)
-            if len(completed) == len(target_ids):
-                break
+                    completed.append(action_id)
     finally:
         worker.close()
-    return completed
-
-
-def _drain_worker(_: int, target_ids: set[UUID]) -> set[UUID]:
-    return _drain(target_ids)
+    return worker_number, completed
 
 
 @pytest.mark.integration
@@ -95,27 +93,35 @@ def _drain_worker(_: int, target_ids: set[UUID]) -> set[UUID]:
 def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_ownership(
     admin_conn: PgConnection,
 ) -> None:
-    """Run eight real claimers against 360 actions and verify exact terminal cardinality."""
+    """Synchronize eight claimers against 360 actions and prove exactly-once ownership."""
 
     organization_ids, action_ids = _seed(admin_conn)
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(_drain_worker, worker_number, action_ids) for worker_number in range(8)
-        ]
-        completed_sets: list[set[UUID]] = [future.result() for future in futures]
+    start = Barrier(WORKER_COUNT)
+    with ThreadPoolExecutor(max_workers=WORKER_COUNT) as executor:
+        futures = [executor.submit(_drain, worker_number, action_ids, start) for worker_number in range(8)]
+        worker_results = [future.result(timeout=120) for future in futures]
 
-    all_completed: set[UUID] = set()
-    for completed in completed_sets:
-        all_completed.update(completed)
+    owners: defaultdict[UUID, list[int]] = defaultdict(list)
+    for worker_number, completed in worker_results:
+        for action_id in completed:
+            owners[action_id].append(worker_number)
 
-    missing = action_ids - all_completed
+    completed_ids = set(owners)
+    missing = action_ids - completed_ids
     assert not missing, f"{len(missing)} soak actions were never completed: {sorted(missing)[:10]}"
 
-    completion_count = sum(len(values) for values in completed_sets)
-    assert completion_count == len(action_ids), (
-        "one or more soak actions completed under multiple workers: "
-        f"unique={len(action_ids)} worker-completions={completion_count}"
+    duplicate_owners = {
+        action_id: worker_numbers
+        for action_id, worker_numbers in owners.items()
+        if len(worker_numbers) != 1
+    }
+    assert not duplicate_owners, (
+        "one or more soak actions completed more than once; "
+        f"duplicates={dict(list(sorted(duplicate_owners.items()))[:20])}"
     )
+
+    unexpected = completed_ids - action_ids
+    assert not unexpected, f"workers completed actions outside the soak fixture: {sorted(unexpected)[:10]}"
 
     states = admin_conn.execute(
         """
