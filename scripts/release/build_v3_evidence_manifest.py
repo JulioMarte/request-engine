@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import re
+import subprocess
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+INVARIANT_DOC = ROOT / "docs/release/v3-invariant-test-matrix.md"
+RACE_DOC = ROOT / "docs/release/v3-race-matrix.md"
+GATE_DOC = ROOT / "docs/release/v3-release-gates.md"
+
+
+def _git(*args: str) -> str:
+    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
+
+def _ids(path: Path, pattern: str) -> list[str]:
+    return sorted(set(re.findall(pattern, path.read_text(encoding="utf-8"))))
+
+
+def _sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _test_inventory() -> list[str]:
+    return sorted(
+        str(path.relative_to(ROOT))
+        for path in (ROOT / "tests").rglob("test_*.py")
+        if path.is_file()
+    )
+
+
+def _assert_complete(actual: list[str], expected: list[str], label: str) -> None:
+    missing = sorted(set(expected) - set(actual))
+    if missing:
+        raise SystemExit(f"{label} registry is incomplete: missing {', '.join(missing)}")
+
+
+def build_manifest() -> dict[str, Any]:
+    invariants = _ids(INVARIANT_DOC, r"\bV3-I\d{2}\b")
+    races = _ids(RACE_DOC, r"\bR\d{2}\b")
+    gates = _ids(GATE_DOC, r"\bG\d{2}\b")
+
+    _assert_complete(invariants, [f"V3-I{i:02d}" for i in range(1, 62)], "Invariant")
+    _assert_complete(races, [f"R{i:02d}" for i in range(1, 25)], "Race")
+    _assert_complete(gates, [f"G{i:02d}" for i in range(1, 21)], "Gate")
+
+    schema_json = ROOT / ".phase6/v3-schema.json"
+    catalog_json = ROOT / ".phase6/v3-catalog-audit.json"
+
+    commit = os.environ.get("PHASE6_COMMIT_SHA") or _git("rev-parse", "HEAD")
+    dirty = bool(_git("status", "--porcelain"))
+
+    return {
+        "schema_version": 1,
+        "commit_sha": commit,
+        "tree_sha": _git("rev-parse", "HEAD^{tree}"),
+        "working_tree_dirty": dirty,
+        "runtime": {
+            "python": platform.python_version(),
+            "postgres_target": "18",
+            "bootstrap_role": os.environ.get("PGUSER", "unknown"),
+            "application_role": "request_engine_app",
+            "worker_role": "request_engine_worker",
+            "admin_role": "request_engine_admin",
+        },
+        "registries": {
+            "invariants": invariants,
+            "races": races,
+            "gates": gates,
+        },
+        "tests": _test_inventory(),
+        "artifacts": {
+            "schema_fingerprint_sha256": _sha256(schema_json),
+            "catalog_audit_sha256": _sha256(catalog_json),
+            "invariant_registry_sha256": _sha256(INVARIANT_DOC),
+            "race_registry_sha256": _sha256(RACE_DOC),
+            "gate_registry_sha256": _sha256(GATE_DOC),
+        },
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+
+    manifest = build_manifest()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(args.output)
+
+
+if __name__ == "__main__":
+    main()
