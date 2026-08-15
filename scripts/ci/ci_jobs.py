@@ -4,15 +4,15 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
 import selectors
 import subprocess
 import sys
 import time
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
