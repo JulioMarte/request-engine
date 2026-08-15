@@ -51,10 +51,16 @@ def _runtime_environment(args: argparse.Namespace) -> dict[str, str]:
     endpoint = args.collector_endpoint or env.get(
         "OTEL_EXPORTER_OTLP_ENDPOINT", DEFAULT_COLLECTOR_ENDPOINT
     )
+    resource_attributes = [f"service.version={args.service_version}"]
+    deployment_environment = env.get("REQUEST_ENGINE_ENV")
+    if deployment_environment:
+        resource_attributes.append(
+            f"deployment.environment.name={deployment_environment}"
+        )
 
     defaults = {
         "OTEL_SERVICE_NAME": args.service_name,
-        "OTEL_SERVICE_VERSION": args.service_version,
+        "OTEL_RESOURCE_ATTRIBUTES": ",".join(resource_attributes),
         "OTEL_EXPORTER_OTLP_ENDPOINT": endpoint,
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
         "OTEL_TRACES_EXPORTER": "otlp",

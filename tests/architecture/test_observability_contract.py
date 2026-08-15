@@ -68,10 +68,14 @@ def test_zero_code_launcher_has_safe_release_defaults() -> None:
         '"OTEL_TRACES_SAMPLER": "parentbased_traceidratio"',
         '"OTEL_PYTHON_LOG_CORRELATION": "true"',
         '"OTEL_PYTHON_LOG_AUTO_INSTRUMENTATION": "false"',
+        '"OTEL_RESOURCE_ATTRIBUTES": ",".join(resource_attributes)',
+        'f"service.version={args.service_version}"',
+        'f"deployment.environment.name={deployment_environment}"',
     )
     for fragment in required_fragments:
         assert fragment in launcher
 
+    assert "OTEL_SERVICE_VERSION" not in launcher
     assert "shell=True" not in launcher
 
 
@@ -87,6 +91,8 @@ def test_business_modules_do_not_depend_on_opentelemetry_sdk() -> None:
 def test_example_environment_exposes_local_otel_defaults() -> None:
     env_example = _read(REPO_ROOT / ".env.example")
     required = (
+        "OTEL_SERVICE_NAME=request-engine-api",
+        "OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=development,service.version=0.1.0",
         "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318",
         "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf",
         "OTEL_TRACES_EXPORTER=otlp",

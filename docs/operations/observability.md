@@ -68,6 +68,7 @@ Use the cross-platform launcher for every API or worker process:
 ```bash
 python scripts/observability/run_with_otel.py \
   --service-name request-engine-api \
+  --service-version <immutable-release-version> \
   -- <request-engine-api-command>
 ```
 
@@ -76,11 +77,13 @@ For a worker:
 ```bash
 python scripts/observability/run_with_otel.py \
   --service-name request-engine-worker \
+  --service-version <immutable-release-version> \
   -- <request-engine-worker-command>
 ```
 
 The wrapper uses zero-code instrumentation and defaults to OTLP/HTTP at
 `http://127.0.0.1:4318`. Existing environment variables always win over wrapper defaults.
+It maps `--service-version` to the standard `service.version` resource attribute.
 
 The default signals are:
 
@@ -117,8 +120,7 @@ Recommended baseline:
 
 ```text
 OTEL_SERVICE_NAME=request-engine-api
-OTEL_SERVICE_VERSION=<immutable-release-version>
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=<immutable-release-version>
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_EXPORTER=otlp
