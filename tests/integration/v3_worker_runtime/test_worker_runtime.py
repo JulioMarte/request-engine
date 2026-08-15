@@ -82,6 +82,7 @@ def _single_worker_config() -> WorkerRuntimeConfig:
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_outbox_replays_idempotent_local_effect_after_publish_crash(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
