@@ -48,7 +48,8 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
 markers = [
     "unit: pure or isolated unit tests",
     "postgres: requires PostgreSQL",
