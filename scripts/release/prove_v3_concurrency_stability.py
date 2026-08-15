@@ -74,8 +74,10 @@ def main() -> int:
         if result["status"] != "PASS":
             break
 
+    completed_all_rounds = len(rounds) == args.rounds
+    all_passed = all(result["status"] == "PASS" for result in rounds)
     payload = {
-        "status": "PASS" if len(rounds) == args.rounds and all(r["status"] == "PASS" for r in rounds) else "FAIL",
+        "status": "PASS" if completed_all_rounds and all_passed else "FAIL",
         "requested_rounds": args.rounds,
         "completed_rounds": len(rounds),
         "selector": "postgres and concurrency",
@@ -88,7 +90,10 @@ def main() -> int:
 
     if payload["status"] == "PASS":
         total_seconds = sum(float(result["seconds"]) for result in rounds)
-        print(f"V3 concurrency stability passed {args.rounds}/{args.rounds} rounds ({total_seconds:.3f}s).")
+        print(
+            f"V3 concurrency stability passed {args.rounds}/{args.rounds} rounds "
+            f"({total_seconds:.3f}s)."
+        )
         return 0
 
     failed = rounds[-1]
