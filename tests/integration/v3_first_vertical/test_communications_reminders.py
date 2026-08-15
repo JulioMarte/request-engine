@@ -297,6 +297,7 @@ async def test_reminder_plan_creation_and_cancellation_own_future_schedule(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_reminder_occurrence_materialization_is_crash_replay_safe(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
