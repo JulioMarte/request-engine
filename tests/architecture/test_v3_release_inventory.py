@@ -114,6 +114,14 @@ def test_phase6_repeated_test_proofs_use_fresh_v3_databases() -> None:
         assert "env=scratch_env" in source, f"{proof.name} does not bind pytest to scratch DB"
 
 
+def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
+    conftest = (ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+
+    assert "isolate_postgres_test_data" in conftest
+    assert 'get_closest_marker("postgres")' in conftest
+    assert "TRUNCATE TABLE {} RESTART IDENTITY CASCADE" in conftest
+
+
 def test_phase6_evidence_manifest_has_a_final_completeness_gate() -> None:
     manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
     _, jobs = _ci_sources()
