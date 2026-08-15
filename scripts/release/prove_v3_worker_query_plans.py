@@ -17,11 +17,7 @@ def _walk(node: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _index_names(plan: dict[str, Any]) -> set[str]:
-    return {
-        str(node["Index Name"])
-        for node in _walk(plan)
-        if node.get("Index Name") is not None
-    }
+    return {str(node["Index Name"]) for node in _walk(plan) if node.get("Index Name") is not None}
 
 
 def _explain(cursor: psycopg.Cursor[Any], sql: str) -> dict[str, Any]:
@@ -109,9 +105,7 @@ def main() -> int:
             }
         )
         if "provider_events_due_idx" not in due_indexes:
-            raise SystemExit(
-                "provider_events_due_idx was not selected by the measured query plan"
-            )
+            raise SystemExit("provider_events_due_idx was not selected by the measured query plan")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
