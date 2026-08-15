@@ -74,18 +74,22 @@ def test_phase6_schema_fingerprint_and_catalog_audit_are_wired_to_ci() -> None:
 
 def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     quality = ROOT / "scripts" / "release" / "audit_v3_test_quality.py"
+    collection = ROOT / "scripts" / "release" / "prove_v3_test_collection.py"
     stability = ROOT / "scripts" / "release" / "prove_v3_concurrency_stability.py"
     order = ROOT / "scripts" / "release" / "prove_v3_test_order_independence.py"
     mutation = ROOT / "scripts" / "release" / "run_v3_mutation_probes.py"
     _, jobs = _ci_sources()
 
     assert quality.is_file()
+    assert collection.is_file()
     assert stability.is_file()
     assert order.is_file()
     assert mutation.is_file()
     assert "tests/e2e" in jobs
     assert "audit_v3_test_quality.py" in jobs
     assert "v3-test-quality.json" in jobs
+    assert "prove_v3_test_collection.py" in jobs
+    assert "v3-test-collection.json" in jobs
     assert "v3-tests-junit.xml" in jobs
     assert "prove_v3_concurrency_stability.py" in jobs
     assert "v3-concurrency-stability.json" in jobs
