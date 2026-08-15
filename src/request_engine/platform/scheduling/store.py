@@ -166,3 +166,33 @@ async def cancel_action(
             )
         ).scalar_one(),
     )
+
+
+async def lock_action_claim(
+    session: AsyncSession,
+    *,
+    action_id: UUID,
+    claim_token: UUID,
+) -> bool:
+    """Fence authoritative handler work inside the caller's open transaction.
+
+    Keep the transaction open while the handler writes authoritative DB state.
+    A concurrent cancellation must then serialize before or after that work.
+    """
+
+    return cast(
+        bool,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT request_cmd.lock_scheduled_action_claim(
+                        :action_id,
+                        :claim_token
+                    )
+                    """
+                ),
+                {"action_id": action_id, "claim_token": claim_token},
+            )
+        ).scalar_one(),
+    )
