@@ -14,7 +14,9 @@ PgConnection = Connection[Any]
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
     parts = pg_conninfo.split()
     filtered = [
-        part for part in parts if not part.startswith("user=") and not part.startswith("password=")
+        part
+        for part in parts
+        if not part.startswith("user=") and not part.startswith("password=")
     ]
     return " ".join([*filtered, f"user={role_name}", f"password={password}"])
 
