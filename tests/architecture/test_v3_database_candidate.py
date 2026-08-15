@@ -28,6 +28,7 @@ EXPECTED_V3_CANDIDATE = [
     "021-release-privilege-hardening.sql",
     "022-runtime-table-privilege-contract.sql",
     "023-scheduled-action-cancellation-fence.sql",
+    "024-runtime-function-privilege-contract.sql",
 ]
 
 
