@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
-"""Run the repository GitHub Actions checks locally.
+"""Run Request Engine CI locally with Git sync, isolation, and diagnostics.
 
-The runner syncs the Phase 6 branch first. It then executes the same CI commands inside
-Linux containers and uses fresh PostgreSQL 18 containers for every PostgreSQL job.
-
-Host requirements:
-- Git
-- Docker Desktop or Docker Engine
-- Python 3.10+
-
-Run:
-    python scripts/ci/run_local_ci.py
-
-Complete output is stored under .local-ci/<timestamp>/.
+This script keeps its stable public name while delegating job definitions to
+scripts/ci/ci_jobs.py, which GitHub Actions also executes.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
+import sys
 import time
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping, Sequence
 
 DEFAULT_BRANCH = "phase-6-v3-freeze-release-proof"
-CI_IMAGE = "request-engine-local-ci:py313-pg18"
+POSTGRES_IMAGE = "postgres:18"
 CACHE_VOLUME = "request-engine-local-ci-uv-cache"
+IMAGE_INPUTS = (
+    "scripts/ci/Dockerfile.local-ci",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+)
 
 
 class LocalCIError(RuntimeError):
@@ -50,11 +49,18 @@ class Logger:
         self._handle.write(message + "\n")
         self._handle.flush()
 
-    def run(self, command: Sequence[str], *, cwd: Path | None = None) -> int:
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        cwd: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> int:
         self.write(f"$ {' '.join(command)}")
         process = subprocess.Popen(
             list(command),
             cwd=str(cwd) if cwd else None,
+            env=dict(env) if env else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -76,10 +82,10 @@ def require_program(name: str) -> None:
         raise LocalCIError(f"Required executable not found on PATH: {name}")
 
 
-def capture(command: Sequence[str], cwd: Path) -> str:
+def capture(command: Sequence[str], cwd: Path | None = None) -> str:
     result = subprocess.run(
         list(command),
-        cwd=cwd,
+        cwd=str(cwd) if cwd else None,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -88,6 +94,10 @@ def capture(command: Sequence[str], cwd: Path) -> str:
         errors="replace",
     )
     return result.stdout.strip()
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def find_repo_root() -> Path:
@@ -100,13 +110,12 @@ def find_repo_root() -> Path:
 
 def ensure_clean_worktree(root: Path) -> None:
     status = capture(["git", "status", "--porcelain", "--untracked-files=all"], root)
-    if not status:
-        return
-    raise LocalCIError(
-        "Git worktree is not clean. Commit, stash, or remove local changes first.\n"
-        "The runner will never discard local work automatically.\n\n"
-        f"{status}"
-    )
+    if status:
+        raise LocalCIError(
+            "Git worktree is not clean. Commit, stash, or remove local changes first.\n"
+            "The runner never discards local work automatically.\n\n"
+            f"{status}"
+        )
 
 
 def clear_console() -> None:
@@ -117,14 +126,12 @@ def clear_console() -> None:
 def sync_branch(root: Path, branch: str, log: Logger) -> str:
     log.write("=== Git sync ===")
     ensure_clean_worktree(root)
-
     if log.run(["git", "fetch", "--prune", "origin", branch], cwd=root) != 0:
         raise LocalCIError("git fetch failed")
 
     branches = capture(["git", "branch", "--format=%(refname:short)"], root).splitlines()
-    if branch in branches:
-        switch = ["git", "switch", branch]
-    else:
+    switch = ["git", "switch", branch]
+    if branch not in branches:
         switch = ["git", "switch", "--track", "-c", branch, f"origin/{branch}"]
     if log.run(switch, cwd=root) != 0:
         raise LocalCIError(f"Could not switch to {branch}")
@@ -136,14 +143,31 @@ def sync_branch(root: Path, branch: str, log: Logger) -> str:
     head = capture(["git", "rev-parse", "HEAD"], root)
     remote = capture(["git", "rev-parse", f"origin/{branch}"], root)
     if head != remote:
-        raise LocalCIError(
-            f"HEAD {head} does not exactly match origin/{branch} {remote}. "
-            "Reconcile or push local commits before using this run as evidence."
-        )
-
+        raise LocalCIError(f"HEAD {head} does not match origin/{branch} {remote}.")
     ensure_clean_worktree(root)
     log.write(f"Synced commit: {head}")
     return head
+
+
+def maybe_reexec_after_sync(script_before: str, root: Path, log: Logger) -> None:
+    script_path = root / "scripts/ci/run_local_ci.py"
+    script_after = file_sha256(script_path)
+    if script_after == script_before or os.environ.get("REQUEST_ENGINE_LOCAL_CI_REEXEC") == "1":
+        return
+    log.write("Local CI runner changed during git pull; restarting with the synced version.")
+    log.close()
+    env = os.environ.copy()
+    env["REQUEST_ENGINE_LOCAL_CI_REEXEC"] = "1"
+    os.execve(sys.executable, [sys.executable, str(script_path), *sys.argv[1:]], env)
+
+
+def docker_exists(kind: str, name: str) -> bool:
+    return subprocess.run(
+        ["docker", kind, "inspect", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
 
 
 def remove_container(name: str) -> None:
@@ -170,29 +194,102 @@ def ensure_docker(log: Logger) -> None:
         raise LocalCIError("Docker is unavailable. Start Docker Desktop or Docker Engine.")
 
 
-def build_runner_image(root: Path, log: Logger, force: bool) -> None:
-    exists = subprocess.run(
-        ["docker", "image", "inspect", CI_IMAGE],
+def image_fingerprint(root: Path) -> str:
+    digest = hashlib.sha256()
+    for relative in IMAGE_INPUTS:
+        path = root / relative
+        if not path.exists():
+            raise LocalCIError(f"Missing local CI image input: {relative}")
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def prepare_images(
+    root: Path,
+    log: Logger,
+    *,
+    rebuild: bool,
+    offline: bool,
+) -> tuple[str, str]:
+    fingerprint = image_fingerprint(root)
+    runner_image = f"request-engine-local-ci:{fingerprint[:16]}"
+
+    if not offline:
+        if log.run(["docker", "pull", POSTGRES_IMAGE]) != 0:
+            raise LocalCIError(f"Could not refresh {POSTGRES_IMAGE}")
+
+    if rebuild or not docker_exists("image", runner_image):
+        command = [
+            "docker",
+            "build",
+            "--pull" if not offline else "--no-cache",
+            "-f",
+            "scripts/ci/Dockerfile.local-ci",
+            "-t",
+            runner_image,
+            ".",
+        ]
+        if log.run(command, cwd=root) != 0:
+            raise LocalCIError("Failed to build the fingerprinted local CI image.")
+    else:
+        log.write(f"Using fingerprinted runner image: {runner_image}")
+
+    return runner_image, fingerprint
+
+
+def list_jobs(root: Path) -> list[str]:
+    output = capture([sys.executable, "scripts/ci/ci_jobs.py", "--list-jobs"], root)
+    jobs = [line.strip() for line in output.splitlines() if line.strip()]
+    if not jobs:
+        raise LocalCIError("Canonical CI job registry is empty.")
+    return jobs
+
+
+def list_steps(root: Path, job: str) -> list[str]:
+    output = capture([sys.executable, "scripts/ci/ci_jobs.py", job, "--list"], root)
+    return [line.split("\t", 1)[0] for line in output.splitlines() if line.strip()]
+
+
+def resolve_selected_steps(root: Path, job: str, requested: list[str]) -> list[str]:
+    available = list_steps(root, job)
+    unknown = sorted(set(requested) - set(available))
+    if unknown:
+        raise LocalCIError(f"Unknown step(s) for {job}: {', '.join(unknown)}")
+
+    selected = set(requested)
+    if job == "python-quality" and "uv-sync" not in selected:
+        selected.add("uv-sync")
+    if job == "postgres-v3-candidate":
+        if selected != {"v3-bootstrap"}:
+            selected.add("v3-bootstrap")
+        after_sync = set(available[2:])
+        if selected & after_sync:
+            selected.add("uv-sync")
+    return [step for step in available if step in selected]
+
+
+def create_isolated_worktree(root: Path, run_id: str, log: Logger) -> Path:
+    workspace_root = root.parent / ".request-engine-local-ci"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    workspace = workspace_root / run_id
+    if workspace.exists():
+        shutil.rmtree(workspace, ignore_errors=True)
+    if log.run(["git", "worktree", "add", "--detach", str(workspace), "HEAD"], cwd=root) != 0:
+        raise LocalCIError("Could not create isolated git worktree for local CI.")
+    return workspace
+
+
+def remove_worktree(root: Path, workspace: Path) -> None:
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(workspace)],
+        cwd=root,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
-    ).returncode == 0
-    if exists and not force:
-        log.write(f"Using cached runner image: {CI_IMAGE}")
-        return
-
-    command = [
-        "docker",
-        "build",
-        "--pull",
-        "-f",
-        "scripts/ci/Dockerfile.local-ci",
-        "-t",
-        CI_IMAGE,
-        ".",
-    ]
-    if log.run(command, cwd=root) != 0:
-        raise LocalCIError("Failed to build the local CI runner image.")
+    )
 
 
 def start_postgres(
@@ -219,24 +316,23 @@ def start_postgres(
         f"POSTGRES_USER={user}",
         "-e",
         f"POSTGRES_PASSWORD={password}",
-        "postgres:18",
+        POSTGRES_IMAGE,
     ]
     if log.run(command) != 0:
         raise LocalCIError(f"Could not start PostgreSQL container {name}")
 
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        result = subprocess.run(
+        ready = subprocess.run(
             ["docker", "exec", name, "pg_isready", "-U", user, "-d", database],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        if result.returncode == 0:
+        if ready.returncode == 0:
             log.write(f"PostgreSQL ready: {name} ({database}, user={user})")
             return
         time.sleep(1)
-
     log.run(["docker", "logs", name])
     raise LocalCIError(f"PostgreSQL did not become healthy: {name}")
 
@@ -245,11 +341,14 @@ def start_runner(
     *,
     name: str,
     network: str,
-    root: Path,
+    workspace: Path,
+    job_log_dir: Path,
+    runner_image: str,
     env: Mapping[str, str],
     log: Logger,
 ) -> None:
     remove_container(name)
+    job_log_dir.mkdir(parents=True, exist_ok=True)
     command = [
         "docker",
         "run",
@@ -259,7 +358,9 @@ def start_runner(
         "--network",
         network,
         "-v",
-        f"{root}:/workspace",
+        f"{workspace}:/workspace",
+        "-v",
+        f"{job_log_dir}:/ci-logs",
         "-v",
         f"{CACHE_VOLUME}:/uv-cache",
         "-w",
@@ -271,377 +372,292 @@ def start_runner(
     ]
     for key, value in env.items():
         command.extend(["-e", f"{key}={value}"])
-    command.extend([CI_IMAGE, "sleep", "infinity"])
-    if log.run(command, cwd=root) != 0:
+    command.extend([runner_image, "sleep", "infinity"])
+    if log.run(command) != 0:
         raise LocalCIError(f"Could not start runner container {name}")
 
 
-def exec_runner(
-    runner: str,
-    shell_command: str,
-    log: Logger,
+def postgres_job_config(job: str, commit_sha: str) -> tuple[str, str, str, dict[str, str]] | None:
+    if job == "postgres-v2-history":
+        return (
+            "request_engine",
+            "request_engine",
+            "request_engine",
+            {
+                "PGUSER": "request_engine",
+                "PGPASSWORD": "request_engine",
+                "PGDATABASE": "request_engine",
+            },
+        )
+    if job == "postgres-v3-bootstrap-proof":
+        return (
+            "request_engine_v3",
+            "postgres",
+            "postgres",
+            {
+                "PGUSER": "postgres",
+                "PGPASSWORD": "postgres",
+                "PGMAINTENANCE_DB": "postgres",
+                "V3_PROOF_DATABASE_PREFIX": "request_engine_v3_phase6",
+            },
+        )
+    if job == "postgres-v3-candidate":
+        return (
+            "request_engine_v3",
+            "postgres",
+            "postgres",
+            {
+                "PGUSER": "postgres",
+                "PGPASSWORD": "postgres",
+                "PGDATABASE": "request_engine_v3",
+                "PHASE6_COMMIT_SHA": commit_sha,
+            },
+        )
+    return None
+
+
+def write_command_output(path: Path, command: Sequence[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        subprocess.run(
+            list(command),
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+
+
+def collect_postgres_diagnostics(
     *,
-    extra_env: Mapping[str, str] | None = None,
-) -> int:
-    command = ["docker", "exec"]
-    for key, value in (extra_env or {}).items():
-        command.extend(["-e", f"{key}={value}"])
-    command.extend([runner, "bash", "-lc", f"set -o pipefail; {shell_command}"])
-    return log.run(command)
+    container: str,
+    database: str,
+    user: str,
+    output_dir: Path,
+) -> None:
+    write_command_output(output_dir / "docker-logs.txt", ["docker", "logs", container])
+    write_command_output(output_dir / "docker-inspect.json", ["docker", "inspect", container])
+    queries = (
+        "SELECT version();",
+        "SELECT pid, usename, datname, state, wait_event_type, wait_event, query "
+        "FROM pg_stat_activity ORDER BY pid;",
+        "SELECT locktype, database, relation, page, tuple, virtualxid, transactionid, "
+        "classid, objid, objsubid, virtualtransaction, pid, mode, granted, fastpath "
+        "FROM pg_locks ORDER BY pid, locktype, mode;",
+    )
+    for index, query in enumerate(queries, start=1):
+        write_command_output(
+            output_dir / f"postgres-{index}.txt",
+            ["docker", "exec", container, "psql", "-X", "-U", user, "-d", database, "-c", query],
+        )
 
 
-def run_step(
+def run_canonical_job(
     *,
     job: str,
-    name: str,
-    runner: str,
-    command: str,
-    log: Logger,
-    results: list[dict[str, object]],
-    extra_env: Mapping[str, str] | None = None,
-) -> bool:
-    log.write()
-    log.write(f"--- {job} :: {name} ---")
-    started = time.monotonic()
-    returncode = exec_runner(runner, command, log, extra_env=extra_env)
-    seconds = round(time.monotonic() - started, 3)
-    status = "PASS" if returncode == 0 else "FAIL"
-    results.append(
-        {
-            "job": job,
-            "step": name,
-            "command": command,
-            "returncode": returncode,
-            "seconds": seconds,
-            "status": status,
-        }
-    )
-    log.write(f"[{status}] {job} :: {name} ({seconds}s)")
-    return returncode == 0
-
-
-def skip_step(
-    *,
-    job: str,
-    name: str,
-    command: str,
-    reason: str,
-    log: Logger,
-    results: list[dict[str, object]],
-) -> None:
-    results.append(
-        {
-            "job": job,
-            "step": name,
-            "command": command,
-            "returncode": None,
-            "seconds": 0,
-            "status": "SKIP",
-            "reason": reason,
-        }
-    )
-    log.write(f"[SKIP] {job} :: {name} ({reason})")
-
-
-def run_python_quality(
+    selected_steps: list[str] | None,
+    workspace: Path,
+    run_dir: Path,
     network: str,
-    root: Path,
-    log: Logger,
-    results: list[dict[str, object]],
-) -> None:
-    job = "python-quality"
-    runner = f"re-local-{os.getpid()}-quality"
-    start_runner(name=runner, network=network, root=root, env={}, log=log)
-    try:
-        commands = [
-            ("Resolve development environment", "uv sync --all-groups"),
-            ("Lockfile consistency", "uv lock --check"),
-            ("Ruff lint", "uv run ruff check ."),
-            ("Ruff format check", "uv run ruff format --diff ."),
-            ("Pyright", "uv run pyright"),
-            ("High-confidence secret scan", "uv run python scripts/release/scan_v3_secrets.py"),
-            ("Python security static analysis", "uv run python scripts/release/scan_v3_python_security.py"),
-            ("Dependency vulnerability audit", "uv run --with pip-audit==2.10.1 pip-audit --local"),
-            ("Architecture tests", "uv run pytest tests/architecture -q"),
-            ("Module unit tests", "uv run pytest tests/modules -q"),
-        ]
-        environment_ready = True
-        for name, command in commands:
-            if command.startswith("uv run") and not environment_ready:
-                skip_step(
-                    job=job,
-                    name=name,
-                    command=command,
-                    reason="uv sync failed",
-                    log=log,
-                    results=results,
-                )
-                continue
-            passed = run_step(
-                job=job,
-                name=name,
-                runner=runner,
-                command=command,
-                log=log,
-                results=results,
-            )
-            if name == "Resolve development environment" and not passed:
-                environment_ready = False
-    finally:
-        remove_container(runner)
-
-
-def run_v2_history(
-    network: str,
-    root: Path,
-    log: Logger,
-    results: list[dict[str, object]],
-) -> None:
-    job = "postgres-v2-history"
-    database = f"re-local-{os.getpid()}-pg-v2"
-    runner = f"re-local-{os.getpid()}-v2"
-    start_postgres(
-        name=database,
-        network=network,
-        database="request_engine",
-        user="request_engine",
-        password="request_engine",
-        log=log,
-    )
-    env = {
-        "PGHOST": database,
-        "PGPORT": "5432",
-        "PGUSER": "request_engine",
-        "PGPASSWORD": "request_engine",
-        "PGDATABASE": "request_engine",
-    }
-    start_runner(name=runner, network=network, root=root, env=env, log=log)
-    try:
-        run_step(
-            job=job,
-            name="Apply historical V2 design chain",
-            runner=runner,
-            command="bash scripts/db/apply_design_chain.sh",
-            log=log,
-            results=results,
-        )
-    finally:
-        remove_container(runner)
-        remove_container(database)
-
-
-def run_v3_bootstrap(
-    network: str,
-    root: Path,
-    log: Logger,
-    results: list[dict[str, object]],
-) -> None:
-    job = "postgres-v3-bootstrap-proof"
-    database = f"re-local-{os.getpid()}-pg-bootstrap"
-    runner = f"re-local-{os.getpid()}-bootstrap"
-    start_postgres(
-        name=database,
-        network=network,
-        database="request_engine_v3",
-        user="postgres",
-        password="postgres",
-        log=log,
-    )
-    env = {
-        "PGHOST": database,
-        "PGPORT": "5432",
-        "PGUSER": "postgres",
-        "PGPASSWORD": "postgres",
-        "PGMAINTENANCE_DB": "postgres",
-        "V3_PROOF_DATABASE_PREFIX": "request_engine_v3_phase6",
-    }
-    start_runner(name=runner, network=network, root=root, env=env, log=log)
-    try:
-        run_step(
-            job=job,
-            name="Prove repeated clean V3 candidate bootstrap",
-            runner=runner,
-            command="bash scripts/db/prove_v3_candidate_bootstrap.sh",
-            log=log,
-            results=results,
-        )
-    finally:
-        remove_container(runner)
-        remove_container(database)
-
-
-def v3_dependent_steps() -> list[tuple[str, str]]:
-    return [
-        (
-            "Generate V3 schema fingerprint",
-            "mkdir -p .phase6 && uv run python scripts/db/v3_schema_fingerprint.py "
-            "--json-output .phase6/v3-schema.json --sha-output .phase6/v3-schema.sha256 "
-            "&& cat .phase6/v3-schema.sha256",
-        ),
-        (
-            "Audit V3 PostgreSQL catalog",
-            "uv run python scripts/db/audit_v3_catalog.py "
-            "--json-output .phase6/v3-catalog-audit.json",
-        ),
-        (
-            "Prove measured worker query plans",
-            "uv run python scripts/release/prove_v3_worker_query_plans.py "
-            "--output .phase6/v3-worker-query-plans.json",
-        ),
-        (
-            "Generate and prove 0001 initial candidate equivalence",
-            "uv run python scripts/db/build_v3_initial_candidate.py "
-            "--output .phase6/0001_initial.candidate.sql "
-            "&& uv run bash scripts/db/prove_v3_initial_equivalence.sh "
-            "| tee .phase6/v3-initial-equivalence.txt",
-        ),
-        (
-            "V3 PostgreSQL invariant, race, and vertical tests",
-            "uv run pytest tests/db tests/integration/v3_first_vertical "
-            "tests/integration/v3_booking_core tests/integration/v3_booking_commitments "
-            "tests/integration/v3_slot_offer_recovery tests/integration/v3_reservation_lifecycle "
-            "tests/integration/v3_worker_runtime -q -m postgres",
-        ),
-        (
-            "Kill critical mutations",
-            "uv run python scripts/release/run_v3_mutation_probes.py",
-        ),
-    ]
-
-
-def run_v3_candidate(
-    network: str,
-    root: Path,
+    runner_image: str,
     commit_sha: str,
     log: Logger,
-    results: list[dict[str, object]],
-) -> None:
-    job = "postgres-v3-candidate"
-    database = f"re-local-{os.getpid()}-pg-v3"
-    runner = f"re-local-{os.getpid()}-v3"
-    start_postgres(
-        name=database,
+    keep_on_failure: bool,
+    preserved: list[str],
+) -> dict[str, object]:
+    token = f"{os.getpid()}-{job.replace('_', '-')}"
+    runner = f"re-local-{token}-runner"
+    postgres = f"re-local-{token}-pg"
+    job_log_dir = run_dir / "steps" / job
+    env: dict[str, str] = {}
+    database: str | None = None
+    user: str | None = None
+
+    pg_config = postgres_job_config(job, commit_sha)
+    if pg_config is not None:
+        database, user, password, pg_env = pg_config
+        start_postgres(
+            name=postgres,
+            network=network,
+            database=database,
+            user=user,
+            password=password,
+            log=log,
+        )
+        env.update(pg_env)
+        env.update({"PGHOST": postgres, "PGPORT": "5432"})
+
+    start_runner(
+        name=runner,
         network=network,
-        database="request_engine_v3",
-        user="postgres",
-        password="postgres",
+        workspace=workspace,
+        job_log_dir=job_log_dir,
+        runner_image=runner_image,
+        env=env,
         log=log,
     )
-    env = {
-        "PGHOST": database,
-        "PGPORT": "5432",
-        "PGDATABASE": "request_engine_v3",
-        "PGUSER": "postgres",
-        "PGPASSWORD": "postgres",
-    }
-    start_runner(name=runner, network=network, root=root, env=env, log=log)
-    try:
-        setup_ok = run_step(
-            job=job,
-            name="Apply clean V3 candidate as bootstrap principal",
-            runner=runner,
-            command="bash scripts/db/apply_v3_candidate.sh",
-            log=log,
-            results=results,
+
+    command = [
+        "docker",
+        "exec",
+        runner,
+        "python",
+        "scripts/ci/ci_jobs.py",
+        job,
+        "--log-dir",
+        "/ci-logs",
+        "--summary-output",
+        "/ci-logs/job-summary.json",
+    ]
+    for step in selected_steps or []:
+        command.extend(["--step", step])
+
+    started = time.monotonic()
+    returncode = log.run(command)
+    elapsed = round(time.monotonic() - started, 3)
+    status = "PASS" if returncode == 0 else "FAIL"
+
+    summary_path = job_log_dir / "job-summary.json"
+    step_results: list[dict[str, object]] = []
+    if summary_path.exists():
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        step_results = list(payload.get("steps", []))
+
+    if returncode != 0 and database and user:
+        collect_postgres_diagnostics(
+            container=postgres,
+            database=database,
+            user=user,
+            output_dir=run_dir / "diagnostics" / job,
         )
-        environment_ok = False
-        if setup_ok:
-            environment_ok = run_step(
-                job=job,
-                name="Resolve test environment",
-                runner=runner,
-                command="uv sync --all-groups",
-                log=log,
-                results=results,
-            )
 
-        if setup_ok and environment_ok:
-            for name, command in v3_dependent_steps():
-                run_step(
-                    job=job,
-                    name=name,
-                    runner=runner,
-                    command=command,
-                    log=log,
-                    results=results,
-                )
-        else:
-            reason = "candidate bootstrap failed" if not setup_ok else "uv sync failed"
-            for name, command in v3_dependent_steps():
-                skip_step(
-                    job=job,
-                    name=name,
-                    command=command,
-                    reason=reason,
-                    log=log,
-                    results=results,
-                )
-
-        if environment_ok:
-            run_step(
-                job=job,
-                name="Generate executable release evidence manifest",
-                runner=runner,
-                command=(
-                    "uv run python scripts/release/build_v3_evidence_manifest.py "
-                    "--output .phase6/v3-evidence-manifest.json"
-                ),
-                log=log,
-                results=results,
-                extra_env={"PHASE6_COMMIT_SHA": commit_sha},
-            )
-    finally:
+    if returncode != 0 and keep_on_failure:
+        preserved.extend([runner, postgres] if pg_config else [runner])
+        log.write(f"Preserved failed job containers: {', '.join(preserved)}")
+    else:
         remove_container(runner)
-        remove_container(database)
+        if pg_config is not None:
+            remove_container(postgres)
+
+    return {
+        "job": job,
+        "status": status,
+        "returncode": returncode,
+        "seconds": elapsed,
+        "steps": step_results,
+    }
 
 
-def fix_phase6_ownership(root: Path) -> None:
-    if os.name == "nt" or not hasattr(os, "getuid") or not (root / ".phase6").exists():
+def inspect_value(command: Sequence[str]) -> str:
+    try:
+        return capture(command)
+    except subprocess.CalledProcessError as exc:
+        return f"ERROR({exc.returncode})"
+
+
+def build_environment_manifest(
+    *,
+    branch: str,
+    commit_sha: str,
+    runner_image: str,
+    image_fingerprint_value: str,
+) -> dict[str, object]:
+    return {
+        "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "branch": branch,
+        "commit_sha": commit_sha,
+        "host": {
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+        },
+        "docker": {
+            "server": inspect_value(["docker", "version", "--format", "{{.Server.Version}}"]),
+            "runner_image": runner_image,
+            "runner_image_id": inspect_value(
+                ["docker", "image", "inspect", runner_image, "--format", "{{.Id}}"]
+            ),
+            "runner_fingerprint": image_fingerprint_value,
+            "postgres_image": POSTGRES_IMAGE,
+            "postgres_image_id": inspect_value(
+                ["docker", "image", "inspect", POSTGRES_IMAGE, "--format", "{{.Id}}"]
+            ),
+            "postgres_repo_digests": inspect_value(
+                [
+                    "docker",
+                    "image",
+                    "inspect",
+                    POSTGRES_IMAGE,
+                    "--format",
+                    "{{json .RepoDigests}}",
+                ]
+            ),
+        },
+        "runtime": {
+            "runner_python": inspect_value(["docker", "run", "--rm", runner_image, "python", "--version"]),
+            "uv": inspect_value(["docker", "run", "--rm", runner_image, "uv", "--version"]),
+            "postgres": inspect_value(
+                ["docker", "run", "--rm", POSTGRES_IMAGE, "postgres", "--version"]
+            ),
+        },
+    }
+
+
+def previous_failed_jobs(root: Path) -> list[str]:
+    latest = root / ".local-ci/latest.json"
+    if not latest.exists():
+        raise LocalCIError("No previous local CI run exists for --rerun-failed.")
+    pointer = json.loads(latest.read_text(encoding="utf-8"))
+    summary_path = Path(pointer["summary"])
+    if not summary_path.exists():
+        raise LocalCIError(f"Previous summary does not exist: {summary_path}")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    failed = [item["job"] for item in summary.get("jobs", []) if item.get("status") != "PASS"]
+    if not failed:
+        raise LocalCIError("The previous local CI run has no failed jobs.")
+    return failed
+
+
+def copy_phase6_artifacts(workspace: Path, run_dir: Path) -> None:
+    source = workspace / ".phase6"
+    if not source.exists():
+        return
+    target = run_dir / "phase6"
+    if target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    shutil.copytree(source, target)
+
+
+def fix_ownership(root: Path, paths: Sequence[Path]) -> None:
+    if os.name == "nt" or not hasattr(os, "getuid"):
         return
     uid = os.getuid()
     gid = os.getgid()
-    subprocess.run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{root}:/workspace",
-            "alpine:3.22",
-            "chown",
-            "-R",
-            f"{uid}:{gid}",
-            "/workspace/.phase6",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    existing = [path for path in paths if path.exists()]
+    if not existing:
+        return
+    command = ["docker", "run", "--rm"]
+    for index, path in enumerate(existing):
+        command.extend(["-v", f"{path}:/target-{index}"])
+    command.extend(["alpine:3.22", "sh", "-lc"])
+    targets = " ".join(f"/target-{index}" for index in range(len(existing)))
+    command.append(f"chown -R {uid}:{gid} {targets}")
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
-def write_summary(
-    path: Path,
-    branch: str,
-    commit_sha: str,
-    results: Iterable[dict[str, object]],
-) -> None:
-    items = list(results)
-    payload = {
-        "branch": branch,
-        "commit_sha": commit_sha,
-        "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "passed": sum(item["status"] == "PASS" for item in items),
-        "failed": sum(item["status"] == "FAIL" for item in items),
-        "skipped": sum(item["status"] == "SKIP" for item in items),
-        "steps": items,
-    }
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--branch", default=DEFAULT_BRANCH)
+    parser.add_argument("--job", action="append", help="Run only this canonical CI job; repeatable.")
+    parser.add_argument("--step", action="append", help="Debug one or more steps; requires one --job.")
+    parser.add_argument("--rerun-failed", action="store_true")
+    parser.add_argument("--keep-on-failure", action="store_true")
     parser.add_argument("--rebuild-image", action="store_true")
+    parser.add_argument("--offline", action="store_true", help="Do not docker pull fresh images.")
     parser.add_argument(
         "--skip-sync",
         action="store_true",
@@ -654,12 +670,18 @@ def main() -> int:
     args = parse_args()
     require_program("git")
     root = find_repo_root()
-    timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_dir = root / ".local-ci" / timestamp
+    script_before = file_sha256(Path(__file__).resolve())
+    run_id = f"{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    run_dir = root / ".local-ci" / run_id
     log = Logger(run_dir / "run.log")
-    results: list[dict[str, object]] = []
-    commit_sha = "UNKNOWN"
+    workspace: Path | None = None
     network = f"re-local-ci-{os.getpid()}"
+    preserved: list[str] = []
+    commit_sha = "UNKNOWN"
+    runner_image = "UNKNOWN"
+    fingerprint = "UNKNOWN"
+    job_results: list[dict[str, object]] = []
+    interrupted = False
 
     try:
         if args.skip_sync:
@@ -667,63 +689,141 @@ def main() -> int:
             commit_sha = capture(["git", "rev-parse", "HEAD"], root)
         else:
             commit_sha = sync_branch(root, args.branch, log)
+            maybe_reexec_after_sync(script_before, root, log)
 
         ensure_docker(log)
-        build_runner_image(root, log, args.rebuild_image)
+        runner_image, fingerprint = prepare_images(
+            root,
+            log,
+            rebuild=args.rebuild_image,
+            offline=args.offline,
+        )
+
+        canonical_jobs = list_jobs(root)
+        if args.rerun_failed and args.job:
+            raise LocalCIError("Use either --rerun-failed or --job, not both.")
+        if args.rerun_failed:
+            selected_jobs = previous_failed_jobs(root)
+        elif args.job:
+            unknown_jobs = sorted(set(args.job) - set(canonical_jobs))
+            if unknown_jobs:
+                raise LocalCIError(f"Unknown CI job(s): {', '.join(unknown_jobs)}")
+            selected_jobs = args.job
+        else:
+            selected_jobs = canonical_jobs
+
+        if args.step and len(selected_jobs) != 1:
+            raise LocalCIError("--step requires exactly one selected --job.")
+        selected_steps = None
+        if args.step:
+            selected_steps = resolve_selected_steps(root, selected_jobs[0], args.step)
+
+        environment = build_environment_manifest(
+            branch=args.branch,
+            commit_sha=commit_sha,
+            runner_image=runner_image,
+            image_fingerprint_value=fingerprint,
+        )
+        write_json(run_dir / "environment.json", environment)
+
+        log.write()
+        log.write("=== REQUEST ENGINE LOCAL CI ===")
+        log.write(f"Branch:       {args.branch}")
+        log.write(f"Commit:       {commit_sha}")
+        log.write(f"Host:         {environment['host']['platform']}")
+        log.write(f"Docker:       {environment['docker']['server']}")
+        log.write(f"Runner image: {runner_image}")
+        log.write(f"PostgreSQL:   {environment['runtime']['postgres']}")
+        log.write(f"Jobs:         {', '.join(selected_jobs)}")
+
+        workspace = create_isolated_worktree(root, run_id, log)
         remove_network(network)
         if log.run(["docker", "network", "create", network]) != 0:
-            raise LocalCIError("Could not create the isolated Docker network.")
+            raise LocalCIError("Could not create isolated Docker network.")
 
-        log.write()
-        log.write("=== GitHub Actions parity run ===")
-        log.write(f"Branch: {args.branch}")
-        log.write(f"Commit: {commit_sha}")
-        log.write("PostgreSQL server: postgres:18")
-        log.write("Python runner: 3.13 Linux container")
+        for job in selected_jobs:
+            log.write()
+            log.write(f"=== JOB: {job} ===")
+            job_results.append(
+                run_canonical_job(
+                    job=job,
+                    selected_steps=selected_steps if job == selected_jobs[0] else None,
+                    workspace=workspace,
+                    run_dir=run_dir,
+                    network=network,
+                    runner_image=runner_image,
+                    commit_sha=commit_sha,
+                    log=log,
+                    keep_on_failure=args.keep_on_failure,
+                    preserved=preserved,
+                )
+            )
 
-        run_python_quality(network, root, log, results)
-        run_v2_history(network, root, log, results)
-        run_v3_bootstrap(network, root, log, results)
-        run_v3_candidate(network, root, commit_sha, log, results)
+        copy_phase6_artifacts(workspace, run_dir)
+        dirty = capture(["git", "status", "--porcelain", "--untracked-files=no"], workspace)
+        workspace_clean = not dirty
+        if dirty:
+            log.write("Isolated CI worktree ended dirty:")
+            log.write(dirty)
 
-        fix_phase6_ownership(root)
-        write_summary(run_dir / "summary.json", args.branch, commit_sha, results)
+        failed = [item for item in job_results if item["status"] != "PASS"]
+        if not workspace_clean:
+            failed.append({"job": "worktree-integrity", "status": "FAIL"})
 
-        failed = [item for item in results if item["status"] == "FAIL"]
-        skipped = [item for item in results if item["status"] == "SKIP"]
+        summary = {
+            "branch": args.branch,
+            "commit_sha": commit_sha,
+            "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "runner_image": runner_image,
+            "runner_fingerprint": fingerprint,
+            "jobs": job_results,
+            "workspace_clean": workspace_clean,
+            "preserved_containers": preserved,
+            "status": "PASS" if not failed else "FAIL",
+        }
+        write_json(run_dir / "summary.json", summary)
+        write_json(
+            root / ".local-ci/latest.json",
+            {
+                "run_dir": str(run_dir),
+                "summary": str(run_dir / "summary.json"),
+                "log": str(run_dir / "run.log"),
+            },
+        )
+
         log.write()
         log.write("=== LOCAL CI SUMMARY ===")
-        log.write(f"PASS: {sum(item['status'] == 'PASS' for item in results)}")
-        log.write(f"FAIL: {len(failed)}")
-        log.write(f"SKIP: {len(skipped)}")
+        log.write(f"PASS: {sum(item['status'] == 'PASS' for item in job_results)}")
+        log.write(f"FAIL: {sum(item['status'] != 'PASS' for item in job_results)}")
+        log.write(f"Worktree clean: {workspace_clean}")
         log.write(f"Full log: {run_dir / 'run.log'}")
         log.write(f"Summary:  {run_dir / 'summary.json'}")
-        if failed:
-            log.write("Failed steps:")
-            for item in failed:
-                log.write(f"  - {item['job']} :: {item['step']}")
-            return 1
-        if skipped:
-            log.write("Dependent steps were skipped. Treat this run as failed.")
-            return 1
-        log.write("All executable CI checks passed locally.")
-        return 0
+        log.write(f"Environment: {run_dir / 'environment.json'}")
+        if preserved:
+            log.write(f"Preserved containers: {', '.join(preserved)}")
+            log.write(f"Preserved worktree: {workspace}")
+        return 1 if failed else 0
+    except KeyboardInterrupt:
+        interrupted = True
+        log.write()
+        log.write("LOCAL CI INTERRUPTED BY USER")
+        return 130
     except LocalCIError as exc:
         log.write()
         log.write(f"LOCAL CI ORCHESTRATION ERROR: {exc}")
         return 2
     finally:
-        for suffix in (
-            "quality",
-            "v2",
-            "bootstrap",
-            "v3",
-            "pg-v2",
-            "pg-bootstrap",
-            "pg-v3",
-        ):
-            remove_container(f"re-local-{os.getpid()}-{suffix}")
-        remove_network(network)
+        preserve_workspace = bool(preserved) and args.keep_on_failure and not interrupted
+        if not preserve_workspace:
+            for name in preserved:
+                remove_container(name)
+            remove_network(network)
+            if workspace is not None:
+                fix_ownership(root, [workspace, run_dir])
+                remove_worktree(root, workspace)
+        else:
+            log.write("Docker network and isolated worktree preserved for failure debugging.")
+        fix_ownership(root, [run_dir])
         log.close()
 
 
