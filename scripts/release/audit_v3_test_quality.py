@@ -206,8 +206,8 @@ def _audit_test_function(
                         child.lineno,
                         "wall-clock-synchronization",
                         (
-                            f"{call_name}({seconds:g}) makes concurrency evidence timing-dependent; "
-                            "prefer a DB barrier or lock observation"
+                            f"{call_name}({seconds:g}) makes concurrency evidence "
+                            "timing-dependent; prefer a DB barrier or lock observation"
                         ),
                     )
                 )
