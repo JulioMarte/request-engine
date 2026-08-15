@@ -152,7 +152,7 @@ async def test_booking_holds_representation_authority_until_material_command_com
         """,
         (organization_id, f"physician-{suffix}"),
     )
-    requirement_id = _uuid_row(
+    _uuid_row(
         admin_conn,
         """
         INSERT INTO request_engine.offering_resource_requirements (
