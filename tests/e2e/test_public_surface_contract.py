@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from fastapi import Request
 
@@ -33,6 +31,7 @@ _EXPECTED_PUBLIC_OPERATIONS = frozenset(
         ("POST", "/v1/requests/{request_id}/fail"),
     }
 )
+_HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 
 
 class RejectAllResolver:
@@ -41,15 +40,19 @@ class RejectAllResolver:
         raise AuthenticationRequired
 
 
-def _public_operations(routes: list[Any]) -> frozenset[tuple[str, str]]:
+def _public_operations(openapi: dict[str, object]) -> frozenset[tuple[str, str]]:
+    paths = openapi.get("paths")
+    assert isinstance(paths, dict)
+
     operations: set[tuple[str, str]] = set()
-    for route in routes:
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", None)
-        if not isinstance(path, str) or not path.startswith("/v1") or methods is None:
+    for path, path_item in paths.items():
+        assert isinstance(path, str)
+        assert isinstance(path_item, dict)
+        if not path.startswith("/v1/"):
             continue
-        for method in methods:
-            operations.add((str(method), path))
+        for method in path_item:
+            if isinstance(method, str) and method.lower() in _HTTP_METHODS:
+                operations.add((method.upper(), path))
     return frozenset(operations)
 
 
@@ -64,4 +67,4 @@ async def test_public_http_surface_cannot_grow_without_e2e_classification(
         actor_resolver=RejectAllResolver(),
     )
 
-    assert _public_operations(app.routes) == _EXPECTED_PUBLIC_OPERATIONS
+    assert _public_operations(app.openapi()) == _EXPECTED_PUBLIC_OPERATIONS
