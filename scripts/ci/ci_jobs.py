@@ -88,6 +88,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "--output .phase6/v3-test-quality.json",
         ),
         Step(
+            "test-collection-integrity",
+            "Prove V3 pytest collection integrity",
+            "uv run python scripts/release/prove_v3_test_collection.py "
+            "--output .phase6/v3-test-collection.json",
+        ),
+        Step(
             "schema-fingerprint",
             "Generate V3 schema fingerprint",
             "mkdir -p .phase6 && uv run python scripts/db/v3_schema_fingerprint.py "
