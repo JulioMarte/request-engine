@@ -68,7 +68,7 @@ def test_sigkill_after_claim_is_recoverable_and_stale_worker_is_fenced(
 
     organization_id, action_id = _fixture(admin_conn)
     result_path = tmp_path / "claimed.json"
-    child = r"""
+    child = r'''
 import json
 import os
 import signal
@@ -91,7 +91,7 @@ with open(result_path, "w", encoding="utf-8") as handle:
     handle.flush()
     os.fsync(handle.fileno())
 os.kill(os.getpid(), signal.SIGKILL)
-"""
+'''
     process = subprocess.run(
         [sys.executable, "-c", child, _conninfo(), str(action_id), str(result_path)],
         check=False,
