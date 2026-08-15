@@ -590,9 +590,7 @@ def build_environment_manifest(
             "python": platform.python_version(),
         },
         "docker": {
-            "server": inspect_value(
-                ["docker", "version", "--format", "{{.Server.Version}}"]
-            ),
+            "server": inspect_value(["docker", "version", "--format", "{{.Server.Version}}"]),
             "runner_image": runner_image,
             "runner_image_id": inspect_value(
                 ["docker", "image", "inspect", runner_image, "--format", "{{.Id}}"]
@@ -630,11 +628,7 @@ def previous_failed_jobs(root: Path) -> list[str]:
     if not summary_path.exists():
         raise LocalCIError(f"Previous summary does not exist: {summary_path}")
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    failed = [
-        item["job"]
-        for item in summary.get("jobs", [])
-        if item.get("status") != "PASS"
-    ]
+    failed = [item["job"] for item in summary.get("jobs", []) if item.get("status") != "PASS"]
     if not failed:
         raise LocalCIError("The previous local CI run has no failed jobs.")
     return failed
