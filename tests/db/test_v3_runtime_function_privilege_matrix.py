@@ -54,14 +54,30 @@ def _runtime_login(
         admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
 
 
+def _function_identity(signature: str) -> tuple[str, str, str]:
+    qualified_name, raw_arguments = signature.split("(", 1)
+    schema_name, function_name = qualified_name.split(".", 1)
+    argument_types = raw_arguments.removesuffix(")")
+    return schema_name, function_name, argument_types
+
+
 def _function_matrix(conn: PgConnection, signatures: list[str]) -> dict[str, bool]:
     matrix: dict[str, bool] = {}
     for signature in signatures:
+        schema_name, function_name, argument_types = _function_identity(signature)
         row = conn.execute(
-            "SELECT has_function_privilege(current_user, %s, 'EXECUTE')",
-            (signature,),
+            """
+            SELECT has_schema_privilege(current_user, n.oid, 'USAGE')
+                   AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = %s
+              AND p.proname = %s
+              AND oidvectortypes(p.proargtypes) = %s
+            """,
+            (schema_name, function_name, argument_types),
         ).fetchone()
-        assert row is not None
+        assert row is not None, f"function signature not found in catalog: {signature}"
         matrix[signature] = bool(row[0])
     return matrix
 
@@ -78,33 +94,33 @@ def test_real_worker_login_has_exact_worker_function_surface(
     pg_conninfo: str,
 ) -> None:
     allowed = [
-        "request_cmd.claim_scheduled_actions(integer,interval)",
-        "request_cmd.complete_scheduled_action(uuid,uuid)",
-        "request_cmd.retry_scheduled_action(uuid,uuid,timestamptz,text)",
-        "request_cmd.dead_letter_scheduled_action(uuid,uuid,text)",
-        "request_cmd.renew_scheduled_action_lease(uuid,uuid,interval)",
-        "request_cmd.retry_scheduled_action_after(uuid,uuid,interval,text)",
-        "request_cmd.lock_scheduled_action_claim(uuid,uuid)",
-        "request_cmd.claim_outbox_messages(integer,interval)",
-        "request_cmd.complete_outbox_message(uuid,uuid)",
-        "request_cmd.retry_outbox_message(uuid,uuid,timestamptz,text)",
-        "request_cmd.dead_letter_outbox_message(uuid,uuid,text)",
-        "request_cmd.renew_outbox_message_lease(uuid,uuid,interval)",
-        "request_cmd.retry_outbox_message_after(uuid,uuid,interval,text)",
-        "request_cmd.claim_provider_events(integer,interval)",
-        "request_cmd.renew_provider_event_lease(uuid,uuid,interval)",
-        "request_cmd.complete_provider_event(uuid,uuid)",
-        "request_cmd.retry_provider_event_after(uuid,uuid,interval,text)",
-        "request_cmd.reject_provider_event(uuid,uuid,text)",
-        "request_cmd.dead_letter_provider_event(uuid,uuid,text)",
+        "request_cmd.claim_scheduled_actions(integer, interval)",
+        "request_cmd.complete_scheduled_action(uuid, uuid)",
+        "request_cmd.retry_scheduled_action(uuid, uuid, timestamp with time zone, text)",
+        "request_cmd.dead_letter_scheduled_action(uuid, uuid, text)",
+        "request_cmd.renew_scheduled_action_lease(uuid, uuid, interval)",
+        "request_cmd.retry_scheduled_action_after(uuid, uuid, interval, text)",
+        "request_cmd.lock_scheduled_action_claim(uuid, uuid)",
+        "request_cmd.claim_outbox_messages(integer, interval)",
+        "request_cmd.complete_outbox_message(uuid, uuid)",
+        "request_cmd.retry_outbox_message(uuid, uuid, timestamp with time zone, text)",
+        "request_cmd.dead_letter_outbox_message(uuid, uuid, text)",
+        "request_cmd.renew_outbox_message_lease(uuid, uuid, interval)",
+        "request_cmd.retry_outbox_message_after(uuid, uuid, interval, text)",
+        "request_cmd.claim_provider_events(integer, interval)",
+        "request_cmd.renew_provider_event_lease(uuid, uuid, interval)",
+        "request_cmd.complete_provider_event(uuid, uuid)",
+        "request_cmd.retry_provider_event_after(uuid, uuid, interval, text)",
+        "request_cmd.reject_provider_event(uuid, uuid, text)",
+        "request_cmd.dead_letter_provider_event(uuid, uuid, text)",
     ]
     denied = [
-        "request_cmd.cancel_scheduled_action(uuid,uuid)",
-        "request_engine.assert_hold_claim_completeness(uuid,uuid)",
-        "request_engine.assert_reservation_claim_completeness(uuid,uuid)",
+        "request_cmd.cancel_scheduled_action(uuid, uuid)",
+        "request_engine.assert_hold_claim_completeness(uuid, uuid)",
+        "request_engine.assert_reservation_claim_completeness(uuid, uuid)",
         "request_engine.check_capacity_owner_completeness()",
         "request_engine.guard_capacity_claim()",
-        "request_admin.replay_dead_scheduled_action(uuid,uuid,uuid,integer,text)",
+        "request_admin.replay_dead_scheduled_action(uuid, uuid, integer, text)",
     ]
 
     with _runtime_login(admin_conn, pg_conninfo, "request_engine_worker") as worker:
@@ -149,16 +165,16 @@ def test_real_admin_login_can_operate_but_cannot_become_schema_owner(
     pg_conninfo: str,
 ) -> None:
     allowed = [
-        "request_cmd.claim_scheduled_actions(integer,interval)",
-        "request_cmd.complete_scheduled_action(uuid,uuid)",
-        "request_cmd.cancel_scheduled_action(uuid,uuid)",
-        "request_cmd.claim_outbox_messages(integer,interval)",
-        "request_cmd.claim_provider_events(integer,interval)",
-        "request_admin.replay_dead_scheduled_action(uuid,uuid,uuid,integer,text)",
+        "request_cmd.claim_scheduled_actions(integer, interval)",
+        "request_cmd.complete_scheduled_action(uuid, uuid)",
+        "request_cmd.cancel_scheduled_action(uuid, uuid)",
+        "request_cmd.claim_outbox_messages(integer, interval)",
+        "request_cmd.claim_provider_events(integer, interval)",
+        "request_admin.replay_dead_scheduled_action(uuid, uuid, integer, text)",
     ]
     denied = [
-        "request_engine.assert_hold_claim_completeness(uuid,uuid)",
-        "request_engine.assert_reservation_claim_completeness(uuid,uuid)",
+        "request_engine.assert_hold_claim_completeness(uuid, uuid)",
+        "request_engine.assert_reservation_claim_completeness(uuid, uuid)",
         "request_engine.check_capacity_owner_completeness()",
         "request_engine.guard_capacity_claim()",
     ]
