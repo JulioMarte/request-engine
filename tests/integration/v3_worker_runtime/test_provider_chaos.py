@@ -1,3 +1,4 @@
+import os
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -109,8 +110,6 @@ def test_terminal_provider_event_cannot_be_reopened_by_stale_worker(
 
     # This test intentionally uses SET ROLE after bootstrap authentication. Runtime-role login
     # equivalence is tested independently by the shared F0 harness.
-    import os
-
     conninfo = " ".join(
         (
             f"host={os.environ.get('PGHOST', '127.0.0.1')}",
