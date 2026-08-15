@@ -140,3 +140,29 @@ async def schedule_action(
     if actual != expected:
         raise ScheduledActionDedupeConflict(dedupe_key)
     return cast(UUID, existing["id"])
+
+
+async def cancel_action(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    action_id: UUID,
+) -> str:
+    """Cancel pending or leased work and fence any claim token that lost the race."""
+
+    return cast(
+        str,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT request_cmd.cancel_scheduled_action(
+                        :organization_id,
+                        :action_id
+                    )
+                    """
+                ),
+                {"organization_id": organization_id, "action_id": action_id},
+            )
+        ).scalar_one(),
+    )
