@@ -60,7 +60,21 @@ class CommunicationDeliveryWorker:
         self._providers = providers
 
     async def process(self, lease: ScheduledActionLease) -> DeliveryWorkerOutcome:
-        work = await self._prepare(lease)
+        try:
+            work = await self._prepare(lease)
+        except UnsupportedScheduledAction:
+            await self._scheduler.dead_letter(
+                lease,
+                error_class="unsupported_scheduled_action",
+            )
+            raise
+        except ValueError:
+            await self._scheduler.dead_letter(
+                lease,
+                error_class="invalid_scheduled_action",
+            )
+            raise
+
         if work.kind is DeliveryWorkKind.SKIP:
             await self._scheduler.complete(lease)
             return DeliveryWorkerOutcome(
@@ -82,8 +96,16 @@ class CommunicationDeliveryWorker:
             raise RuntimeError("prepared delivery work has no provider request")
         provider = self._providers.get(provider_key)
         if provider is None:
-            await self._scheduler.dead_letter(lease, error_class="provider_not_configured")
-            raise DeliveryProviderNotConfigured(provider_key)
+            await self._fail_unconfigured_provider(
+                lease,
+                work,
+                provider_key=provider_key,
+            )
+            await self._scheduler.dead_letter(
+                lease,
+                error_class="provider_not_configured",
+            )
+            raise DeliveryProviderNotConfigured(provider_key) from None
 
         if work.kind is DeliveryWorkKind.SEND:
             assert work.send_request is not None
@@ -138,6 +160,31 @@ class CommunicationDeliveryWorker:
             state=DeliveryWorkerState.COMPLETED,
             detail=finalized.status.value,
         )
+
+    async def _fail_unconfigured_provider(
+        self,
+        lease: ScheduledActionLease,
+        work: PreparedDeliveryWork,
+        *,
+        provider_key: str,
+    ) -> None:
+        if work.delivery_id is None:
+            raise RuntimeError("provider work is missing delivery identity")
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            await finalize_provider_result(
+                session,
+                organization_id=lease.organization_id,
+                delivery_id=work.delivery_id,
+                result=ProviderDeliveryResult(
+                    status=ProviderDeliveryStatus.FAILED,
+                    retryable=False,
+                    result_data={
+                        "error_class": "provider_not_configured",
+                        "error_phase": "provider_resolution",
+                        "provider_key": provider_key,
+                    },
+                ),
+            )
 
     async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
         if (
