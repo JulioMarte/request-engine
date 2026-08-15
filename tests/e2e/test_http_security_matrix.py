@@ -70,6 +70,7 @@ async def test_every_public_operation_rejects_unauthenticated_requests_without_m
         "error": {
             "code": "authentication_required",
             "message": "authentication is required",
+            "retryable": False,
             "resolution": "reauthenticate",
             "details": {},
         }
