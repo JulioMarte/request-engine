@@ -151,3 +151,35 @@ class PostgresScheduledActionWorker:
                     )
                 ).scalar_one(),
             )
+
+    async def replay(
+        self,
+        action_id: UUID,
+        *,
+        next_attempt_at: datetime,
+        reason: str,
+    ) -> bool:
+        """Admin-only manual replay of a terminal ScheduledAction."""
+
+        if not reason.strip():
+            raise ValueError("reason is required for auditable replay")
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                bool,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.replay_scheduled_action(
+                                :action_id, :next_attempt_at, :reason
+                            )
+                            """
+                        ),
+                        {
+                            "action_id": action_id,
+                            "next_attempt_at": next_attempt_at,
+                            "reason": reason,
+                        },
+                    )
+                ).scalar_one(),
+            )

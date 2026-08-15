@@ -195,6 +195,8 @@ GRANT EXECUTE ON FUNCTION request_cmd.retry_scheduled_action(uuid, uuid, timesta
     TO request_engine_worker, request_engine_admin;
 GRANT EXECUTE ON FUNCTION request_cmd.dead_letter_scheduled_action(uuid, uuid, text)
     TO request_engine_worker, request_engine_admin;
+GRANT EXECUTE ON FUNCTION request_cmd.replay_scheduled_action(uuid, timestamptz, text)
+    TO request_engine_admin;
 
 GRANT EXECUTE ON FUNCTION request_cmd.claim_outbox_messages(integer, interval)
     TO request_engine_worker, request_engine_admin;
@@ -204,5 +206,7 @@ GRANT EXECUTE ON FUNCTION request_cmd.retry_outbox_message(uuid, uuid, timestamp
     TO request_engine_worker, request_engine_admin;
 GRANT EXECUTE ON FUNCTION request_cmd.dead_letter_outbox_message(uuid, uuid, text)
     TO request_engine_worker, request_engine_admin;
+GRANT EXECUTE ON FUNCTION request_cmd.replay_outbox_message(uuid, timestamptz, text)
+    TO request_engine_admin;
 
 COMMIT;

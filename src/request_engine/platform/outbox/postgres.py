@@ -197,3 +197,35 @@ class PostgresOutboxWorker:
                     )
                 ).scalar_one(),
             )
+
+    async def replay(
+        self,
+        message_id: UUID,
+        *,
+        next_attempt_at: datetime,
+        reason: str,
+    ) -> bool:
+        """Admin-only manual replay of a terminal outbox message."""
+
+        if not reason.strip():
+            raise ValueError("reason is required for auditable replay")
+        async with self._session_factory() as session, session.begin():
+            return cast(
+                bool,
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_cmd.replay_outbox_message(
+                                :message_id, :next_attempt_at, :reason
+                            )
+                            """
+                        ),
+                        {
+                            "message_id": message_id,
+                            "next_attempt_at": next_attempt_at,
+                            "reason": reason,
+                        },
+                    )
+                ).scalar_one(),
+            )

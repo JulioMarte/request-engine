@@ -276,6 +276,77 @@ BEGIN
 END
 $function$;
 
+-- Manual replay is an administrative recovery operation, never part of the
+-- automatic worker retry loop. Only terminal dead-letter work can be revived,
+-- and every successful replay writes an audit fact with the supplied reason.
+CREATE FUNCTION request_cmd.replay_scheduled_action(
+    p_action_id uuid,
+    p_next_attempt_at timestamptz,
+    p_reason text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_organization_id uuid;
+    v_previous_attempt_count integer;
+BEGIN
+    IF p_next_attempt_at IS NULL THEN
+        RAISE EXCEPTION 'next attempt time is required'
+            USING ERRCODE = '22023';
+    END IF;
+    IF p_reason IS NULL OR btrim(p_reason) = '' THEN
+        RAISE EXCEPTION 'replay reason is required'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT organization_id, attempt_count
+      INTO v_organization_id, v_previous_attempt_count
+      FROM request_engine.scheduled_actions
+     WHERE id = p_action_id
+       AND status = 'dead'
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    UPDATE request_engine.scheduled_actions
+       SET status = 'pending',
+           claim_token = NULL,
+           lease_until = NULL,
+           attempt_count = 0,
+           next_attempt_at = p_next_attempt_at,
+           last_error_class = NULL,
+           completed_at = NULL,
+           updated_at = clock_timestamp()
+     WHERE id = p_action_id
+       AND status = 'dead';
+
+    INSERT INTO request_engine.audit_records (
+        organization_id,
+        command_name,
+        aggregate_kind,
+        aggregate_id,
+        details
+    ) VALUES (
+        v_organization_id,
+        'worker.replay_scheduled_action',
+        'ScheduledAction',
+        p_action_id,
+        jsonb_build_object(
+            'reason', p_reason,
+            'previous_attempt_count', v_previous_attempt_count,
+            'next_attempt_at', p_next_attempt_at
+        )
+    );
+
+    RETURN true;
+END
+$function$;
+
 CREATE FUNCTION request_cmd.claim_outbox_messages(
     p_limit integer,
     p_lease interval DEFAULT interval '60 seconds'
@@ -455,6 +526,74 @@ BEGIN
 
     GET DIAGNOSTICS v_updated = ROW_COUNT;
     RETURN v_updated = 1;
+END
+$function$;
+
+CREATE FUNCTION request_cmd.replay_outbox_message(
+    p_message_id uuid,
+    p_next_attempt_at timestamptz,
+    p_reason text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_organization_id uuid;
+    v_previous_attempt_count integer;
+BEGIN
+    IF p_next_attempt_at IS NULL THEN
+        RAISE EXCEPTION 'next attempt time is required'
+            USING ERRCODE = '22023';
+    END IF;
+    IF p_reason IS NULL OR btrim(p_reason) = '' THEN
+        RAISE EXCEPTION 'replay reason is required'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT organization_id, attempt_count
+      INTO v_organization_id, v_previous_attempt_count
+      FROM request_engine.outbox_messages
+     WHERE id = p_message_id
+       AND status = 'dead'
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    UPDATE request_engine.outbox_messages
+       SET status = 'pending',
+           claim_token = NULL,
+           lease_until = NULL,
+           attempt_count = 0,
+           next_attempt_at = p_next_attempt_at,
+           last_error_class = NULL,
+           delivered_at = NULL,
+           updated_at = clock_timestamp()
+     WHERE id = p_message_id
+       AND status = 'dead';
+
+    INSERT INTO request_engine.audit_records (
+        organization_id,
+        command_name,
+        aggregate_kind,
+        aggregate_id,
+        details
+    ) VALUES (
+        v_organization_id,
+        'worker.replay_outbox_message',
+        'OutboxMessage',
+        p_message_id,
+        jsonb_build_object(
+            'reason', p_reason,
+            'previous_attempt_count', v_previous_attempt_count,
+            'next_attempt_at', p_next_attempt_at
+        )
+    );
+
+    RETURN true;
 END
 $function$;
 

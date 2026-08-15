@@ -124,11 +124,7 @@ class CommunicationScheduledActionWorker:
     ) -> ScheduledActionProcessResult:
         finalized = await self._scheduler.dead_letter(lease, error_class=error_class)
         return ScheduledActionProcessResult(
-            (
-                ScheduledActionDisposition.DEAD
-                if finalized
-                else ScheduledActionDisposition.STALE
-            ),
+            ScheduledActionDisposition.DEAD if finalized else ScheduledActionDisposition.STALE,
             error_class,
         )
 

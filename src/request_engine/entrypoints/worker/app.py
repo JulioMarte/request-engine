@@ -30,6 +30,7 @@ class RequestEngineWorker:
         *,
         communication_providers: Mapping[str, CommunicationDeliveryProvider],
         outbox_publisher: OutboxPublisher,
+        max_concurrency: int = 10,
     ) -> None:
         scheduler = PostgresScheduledActionWorker(session_factory)
         communications = build_scheduled_action_worker(
@@ -40,15 +41,19 @@ class RequestEngineWorker:
         self._scheduled_actions = ScheduledActionBatchRunner(
             scheduler,
             {"communications": communications},
+            max_concurrency=max_concurrency,
         )
         self._outbox = OutboxBatchRunner(
             PostgresOutboxWorker(session_factory),
             outbox_publisher,
+            max_concurrency=max_concurrency,
         )
 
     async def run_once(self, *, batch_size: int = 50) -> RequestEngineWorkerReport:
-        scheduled_report = await self._scheduled_actions.run_once(limit=batch_size)
-        outbox_report = await self._outbox.run_once(limit=batch_size)
+        scheduled_report, outbox_report = await asyncio.gather(
+            self._scheduled_actions.run_once(limit=batch_size),
+            self._outbox.run_once(limit=batch_size),
+        )
         return RequestEngineWorkerReport(
             scheduled_actions=scheduled_report,
             outbox=outbox_report,
@@ -69,8 +74,5 @@ class RequestEngineWorker:
         stop = stop_event or asyncio.Event()
         while not stop.is_set():
             report = await self.run_once(batch_size=batch_size)
-            if (
-                report.scheduled_actions.claimed == 0
-                and report.outbox.claimed == 0
-            ):
+            if report.scheduled_actions.claimed == 0 and report.outbox.claimed == 0:
                 await asyncio.sleep(poll_interval_seconds)
