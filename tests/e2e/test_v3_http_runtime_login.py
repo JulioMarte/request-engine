@@ -44,10 +44,7 @@ class _ActorResolver:
 async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot_escalate() -> None:
     host, port, database, admin_user, admin_password = _pg_values()
     admin: PgConnection = psycopg.connect(
-        (
-            f"host={host} port={port} dbname={database} "
-            f"user={admin_user} password={admin_password}"
-        ),
+        (f"host={host} port={port} dbname={database} user={admin_user} password={admin_password}"),
         autocommit=True,
     )
     role_name = f"request_engine_app_e2e_{uuid4().hex[:16]}"
@@ -173,9 +170,7 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
                 "request_engine_schema_owner",
             ):
                 with pytest.raises(InsufficientPrivilege):
-                    login.execute(
-                        sql.SQL("SET ROLE {}").format(sql.Identifier(forbidden_role))
-                    )
+                    login.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(forbidden_role)))
         finally:
             login.close()
     finally:
