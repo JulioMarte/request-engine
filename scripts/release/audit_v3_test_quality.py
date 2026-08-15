@@ -306,9 +306,7 @@ def main() -> int:
 
     print(f"V3 test quality audit failed with {result['error_count']} blocking finding(s):")
     for finding in result["errors"]:
-        print(
-            f"- {finding['path']}:{finding['line']} [{finding['rule']}] {finding['message']}"
-        )
+        print(f"- {finding['path']}:{finding['line']} [{finding['rule']}] {finding['message']}")
     return 1
 
 
