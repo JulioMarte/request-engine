@@ -50,10 +50,10 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         HttpProbe("/v1/capabilities"),
     ),
     PublicHttpOperation(
-        "business.get_info",
+        "business.read",
         "GET",
         "/v1/business",
-        "business.read",
+        "business.get_info",
         False,
         False,
         TenantIsolationMode.FILTERED,
