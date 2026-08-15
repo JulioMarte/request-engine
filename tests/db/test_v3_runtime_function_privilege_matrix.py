@@ -55,15 +55,15 @@ def _runtime_login(
 
 
 def _function_matrix(conn: PgConnection, signatures: list[str]) -> dict[str, bool]:
-    return {
-        signature: bool(
-            conn.execute(
-                "SELECT has_function_privilege(current_user, %s, 'EXECUTE')",
-                (signature,),
-            ).fetchone()[0]
-        )
-        for signature in signatures
-    }
+    matrix: dict[str, bool] = {}
+    for signature in signatures:
+        row = conn.execute(
+            "SELECT has_function_privilege(current_user, %s, 'EXECUTE')",
+            (signature,),
+        ).fetchone()
+        assert row is not None
+        matrix[signature] = bool(row[0])
+    return matrix
 
 
 def _assert_cannot_set_role(conn: PgConnection, roles: tuple[str, ...]) -> None:
