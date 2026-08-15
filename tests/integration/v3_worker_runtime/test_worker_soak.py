@@ -70,9 +70,7 @@ def _drain(target_ids: set[UUID]) -> set[UUID]:
                 """
             ).fetchall()
             ours = [
-                (cast(UUID, row[0]), cast(UUID, row[1]))
-                for row in rows
-                if row[0] in target_ids
+                (cast(UUID, row[0]), cast(UUID, row[1])) for row in rows if row[0] in target_ids
             ]
             for action_id, token in ours:
                 if worker.execute(
