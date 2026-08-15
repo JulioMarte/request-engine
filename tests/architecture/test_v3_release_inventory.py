@@ -13,6 +13,7 @@ REQUIRED_RELEASE_DOCS = {
     "v3-6a-baseline.md",
     "v3-bootstrap-proof.md",
     "v3-schema-fingerprint.md",
+    "v3-test-isolation.md",
 }
 EXPECTED_GATES = [f"G{number:02d}" for number in range(1, 21)]
 EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
@@ -122,11 +123,11 @@ def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
     assert "TRUNCATE TABLE {} RESTART IDENTITY CASCADE" in conftest
 
 
-def test_phase6_evidence_manifest_has_a_final_completeness_gate() -> None:
+def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
     manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
     _, jobs = _ci_sources()
 
     assert manifest.is_file()
     assert "evidence-manifest" in jobs
-    assert "evidence-completeness" in jobs
-    assert "--require-complete" in jobs
+    assert "evidence-validity" in jobs
+    assert "--require-valid" in jobs

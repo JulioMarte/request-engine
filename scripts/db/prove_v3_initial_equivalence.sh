@@ -6,23 +6,65 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${PGPORT:=5432}"
 : "${PGUSER:=postgres}"
 : "${PGMAINTENANCE_DB:=postgres}"
+: "${PGCONNECT_TIMEOUT:=5}"
 : "${V3_EQUIVALENCE_PREFIX:=request_engine_v3_equivalence}"
-export PGHOST PGPORT PGUSER
+export PGHOST PGPORT PGUSER PGCONNECT_TIMEOUT
+
+if [[ ! "${V3_EQUIVALENCE_PREFIX}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "V3_EQUIVALENCE_PREFIX must be a simple PostgreSQL identifier" >&2
+  exit 2
+fi
+if (( ${#V3_EQUIVALENCE_PREFIX} > 53 )); then
+  echo "V3_EQUIVALENCE_PREFIX must be at most 53 characters" >&2
+  exit 2
+fi
 
 candidate_db="${V3_EQUIVALENCE_PREFIX}_candidate"
 initial_db="${V3_EQUIVALENCE_PREFIX}_initial"
+if [[ "${candidate_db}" == "${PGMAINTENANCE_DB}" || "${initial_db}" == "${PGMAINTENANCE_DB}" ]]; then
+  echo "equivalence databases must not equal the maintenance database" >&2
+  exit 2
+fi
 work_dir="$(mktemp -d)"
 initial_sql="${work_dir}/0001_initial.sql"
 
 cleanup() {
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${candidate_db}" >/dev/null 2>&1 || true
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${initial_db}" >/dev/null 2>&1 || true
-  rm -rf "${work_dir}"
+  local original_status=$?
+  local cleanup_status=0
+  local database_name
+  local remaining
+
+  trap - EXIT
+  set +e
+  for database_name in "${candidate_db}" "${initial_db}"; do
+    if ! dropdb --if-exists --force --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}"; then
+      echo "failed to drop V3 equivalence database ${database_name}" >&2
+      cleanup_status=1
+      continue
+    fi
+    remaining="$(psql --dbname="${PGMAINTENANCE_DB}" --set=ON_ERROR_STOP=1 \
+      --tuples-only --no-align --command="
+        SELECT count(*) FROM pg_database WHERE datname = '${database_name}';
+      ")"
+    if [[ $? -ne 0 || "${remaining}" != "0" ]]; then
+      echo "could not verify removal of V3 equivalence database ${database_name}" >&2
+      cleanup_status=1
+    fi
+  done
+  if ! rm -rf -- "${work_dir}"; then
+    echo "failed to remove V3 equivalence work directory ${work_dir}" >&2
+    cleanup_status=1
+  fi
+
+  if (( original_status != 0 )); then
+    exit "${original_status}"
+  fi
+  exit "${cleanup_status}"
 }
 trap cleanup EXIT
 
 for database_name in "${candidate_db}" "${initial_db}"; do
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}" >/dev/null
+  dropdb --if-exists --force --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}" >/dev/null
   createdb --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}"
 done
 

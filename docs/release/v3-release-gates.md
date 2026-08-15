@@ -62,6 +62,17 @@ Phase 6I adversarial tenant work is additionally green in CI `#462` on commit `6
 
 A gate changes to `PASS` only in the same change set that identifies its proof artifact. If a proof is later weakened, removed, skipped, or no longer runs in release CI, the gate must return to `PARTIAL` or `BLOCKED`.
 
+## Candidate evidence versus release readiness
+
+The Phase 6 candidate manifest validates the contents of every required CI artifact;
+file presence alone is not success. Its `VALID` state is deliberately scoped to the
+candidate CI artifact set and does not promote unfinished gates. Overall
+`release_status` remains `NOT_READY` until every G01-G20 row above is `PASS`.
+
+The required V3 candidate GitHub check also fails explicitly when any prerequisite
+job fails, is cancelled or is skipped. `v3-test-isolation.md` owns the executable
+isolation, evidence and aggregate-gate contract.
+
 ## Blocking severity
 
 - `P0`: can violate tenant isolation, authoritative state, capacity correctness, idempotency, fencing, durable intent or release reproducibility. V3 cannot freeze.
