@@ -20,26 +20,8 @@ jobs:
           python-version: "3.13"
       - name: Install uv
         run: python -m pip install --disable-pip-version-check uv
-      - name: Resolve development environment
-        run: uv sync --all-groups
-      - name: Lockfile consistency
-        run: uv lock --check
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Ruff format check
-        run: uv run ruff format --diff .
-      - name: Pyright
-        run: uv run pyright
-      - name: High-confidence secret scan
-        run: uv run python scripts/release/scan_v3_secrets.py
-      - name: Python security static analysis
-        run: uv run python scripts/release/scan_v3_python_security.py
-      - name: Dependency vulnerability audit
-        run: uv run --with pip-audit==2.10.1 pip-audit --local
-      - name: Architecture tests
-        run: uv run pytest tests/architecture -q
-      - name: Module unit tests
-        run: uv run pytest tests/modules -q
+      - name: Run canonical Python quality job
+        run: python scripts/ci/ci_jobs.py python-quality
 
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
@@ -63,16 +45,18 @@ jobs:
       PGPORT: "5432"
       PGUSER: request_engine
       PGPASSWORD: request_engine
+      PGDATABASE: request_engine
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-      - name: Apply historical V2 design chain
-        env:
-          PGDATABASE: request_engine
-        run: scripts/db/apply_design_chain.sh
+      - name: Run canonical V2 history job
+        run: python scripts/ci/ci_jobs.py postgres-v2-history
 
   postgres-v3-bootstrap-proof:
     name: PostgreSQL 18 V3 repeated bootstrap proof
@@ -100,12 +84,15 @@ jobs:
       V3_PROOF_DATABASE_PREFIX: request_engine_v3_phase6
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
       - name: Install PostgreSQL client
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-      - name: Prove repeated clean V3 candidate bootstrap
-        run: scripts/db/prove_v3_candidate_bootstrap.sh
+      - name: Run canonical V3 bootstrap proof job
+        run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
   postgres-v3-candidate:
     name: PostgreSQL 18 V3 candidate and verticals
@@ -130,6 +117,7 @@ jobs:
       PGDATABASE: request_engine_v3
       PGUSER: postgres
       PGPASSWORD: postgres
+      PHASE6_COMMIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -140,52 +128,8 @@ jobs:
           python -m pip install --disable-pip-version-check uv
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-      - name: Apply clean V3 candidate as bootstrap principal
-        run: bash scripts/db/apply_v3_candidate.sh
-      - name: Resolve test environment
-        run: uv sync --all-groups
-      - name: Generate V3 schema fingerprint
-        run: |
-          mkdir -p .phase6
-          uv run python scripts/db/v3_schema_fingerprint.py \
-            --json-output .phase6/v3-schema.json \
-            --sha-output .phase6/v3-schema.sha256
-          cat .phase6/v3-schema.sha256
-      - name: Audit V3 PostgreSQL catalog
-        run: >-
-          uv run python scripts/db/audit_v3_catalog.py
-          --json-output .phase6/v3-catalog-audit.json
-      - name: Prove measured worker query plans
-        run: >-
-          uv run python scripts/release/prove_v3_worker_query_plans.py
-          --output .phase6/v3-worker-query-plans.json
-      - name: Generate and prove 0001 initial candidate equivalence
-        run: |
-          uv run python scripts/db/build_v3_initial_candidate.py \
-            --output .phase6/0001_initial.candidate.sql
-          uv run bash scripts/db/prove_v3_initial_equivalence.sh \
-            | tee .phase6/v3-initial-equivalence.txt
-      - name: V3 PostgreSQL invariant, race, and vertical tests
-        run: >-
-          uv run pytest
-          tests/db
-          tests/integration/v3_first_vertical
-          tests/integration/v3_booking_core
-          tests/integration/v3_booking_commitments
-          tests/integration/v3_slot_offer_recovery
-          tests/integration/v3_reservation_lifecycle
-          tests/integration/v3_worker_runtime
-          -q
-          -m postgres
-      - name: Kill critical mutations
-        run: uv run python scripts/release/run_v3_mutation_probes.py
-      - name: Generate executable release evidence manifest
-        if: always()
-        env:
-          PHASE6_COMMIT_SHA: ${{ github.sha }}
-        run: >-
-          uv run python scripts/release/build_v3_evidence_manifest.py
-          --output .phase6/v3-evidence-manifest.json
+      - name: Run canonical V3 candidate job
+        run: python scripts/ci/ci_jobs.py postgres-v3-candidate
       - name: Upload V3 candidate release proof
         if: always()
         uses: actions/upload-artifact@v4
