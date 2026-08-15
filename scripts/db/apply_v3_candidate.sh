@@ -26,6 +26,7 @@ files=(
   "019-trusted-execution-provenance.sql"
   "020-durable-correlation.sql"
   "021-release-privilege-hardening.sql"
+  "022-runtime-table-privilege-contract.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
