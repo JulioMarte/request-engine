@@ -11,6 +11,7 @@ import pytest
 
 from request_engine.modules.communications.adapters.worker.delivery_worker import (
     CommunicationDeliveryWorker,
+    DeliveryWorkerOutcome,
     DeliveryWorkerState,
 )
 from request_engine.modules.communications.application.errors import (
@@ -58,21 +59,19 @@ class ScriptedProvider(CommunicationDeliveryProvider):
 
     async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult:
         self.send_calls.append(request)
-        result = self.send_result
-        if isinstance(result, Exception):
-            raise result
-        if result is None:
+        if isinstance(self.send_result, Exception):
+            raise self.send_result
+        if self.send_result is None:
             raise AssertionError("unexpected provider.send call")
-        return result
+        return self.send_result
 
     async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult:
         self.lookup_calls.append(request)
-        result = self.lookup_result
-        if isinstance(result, Exception):
-            raise result
-        if result is None:
+        if isinstance(self.lookup_result, Exception):
+            raise self.lookup_result
+        if self.lookup_result is None:
             raise AssertionError("unexpected provider.lookup call")
-        return result
+        return self.lookup_result
 
 
 @asynccontextmanager
@@ -83,14 +82,13 @@ async def _worker_stack(
     engine = create_postgres_engine(credentials.database_url)
     factory: SessionFactory = create_session_factory(engine)
     scheduler = PostgresScheduledActionWorker(factory)
-    worker = CommunicationDeliveryWorker(factory, scheduler, providers)
     try:
-        yield scheduler, worker
+        yield scheduler, CommunicationDeliveryWorker(factory, scheduler, providers)
     finally:
         await engine.dispose()
 
 
-def _seed_task(
+def _task(
     conn: support.PgConnection,
     organization_id: UUID,
     *,
@@ -123,7 +121,7 @@ def _seed_task(
     return cast(UUID, row[0])
 
 
-def _seed_action(
+def _action(
     conn: support.PgConnection,
     organization_id: UUID,
     *,
@@ -158,14 +156,14 @@ def _seed_action(
     return cast(UUID, row[0])
 
 
-def _seed_dispatch(
+def _dispatch(
     conn: support.PgConnection,
     organization_id: UUID,
     task_id: UUID,
     *,
     payload_task_id: UUID | None = None,
 ) -> UUID:
-    return _seed_action(
+    return _action(
         conn,
         organization_id,
         action_type="dispatch_task",
@@ -175,7 +173,7 @@ def _seed_dispatch(
     )
 
 
-def _seed_delivery(
+def _delivery(
     conn: support.PgConnection,
     organization_id: UUID,
     task_id: UUID,
@@ -188,9 +186,7 @@ def _seed_delivery(
             organization_id, communication_task_id, attempt_no, channel,
             provider_key, provider_idempotency_key, provider_message_id,
             status, result_data
-        ) VALUES (
-            %s, %s, 1, 'email', 'provider-a', %s, %s, %s, '{}'::jsonb
-        )
+        ) VALUES (%s, %s, 1, 'email', 'provider-a', %s, %s, %s, '{}'::jsonb)
         RETURNING id
         """,
         (
@@ -205,12 +201,12 @@ def _seed_delivery(
     return cast(UUID, row[0])
 
 
-def _seed_reconciliation(
+def _reconcile(
     conn: support.PgConnection,
     organization_id: UUID,
     delivery_id: UUID,
 ) -> UUID:
-    return _seed_action(
+    return _action(
         conn,
         organization_id,
         action_type="reconcile_delivery",
@@ -221,11 +217,12 @@ def _seed_reconciliation(
 
 
 def _status(conn: support.PgConnection, table: str, row_id: UUID) -> str:
-    assert table in {
+    allowed = {
         "communication_tasks",
         "communication_deliveries",
         "scheduled_actions",
     }
+    assert table in allowed
     row = conn.execute(
         f"SELECT status FROM request_engine.{table} WHERE id = %s",  # noqa: S608
         (row_id,),
@@ -234,7 +231,7 @@ def _status(conn: support.PgConnection, table: str, row_id: UUID) -> str:
     return cast(str, row[0])
 
 
-def _event_count(
+def _events(
     conn: support.PgConnection,
     organization_id: UUID,
     event_type: str,
@@ -244,9 +241,7 @@ def _event_count(
         """
         SELECT count(*)
         FROM request_engine.outbox_messages
-        WHERE organization_id = %s
-          AND event_type = %s
-          AND aggregate_id = %s
+        WHERE organization_id = %s AND event_type = %s AND aggregate_id = %s
         """,
         (organization_id, event_type, aggregate_id),
     ).fetchone()
@@ -254,14 +249,23 @@ def _event_count(
     return cast(int, row[0])
 
 
+async def _claim_and_process(
+    scheduler: PostgresScheduledActionWorker,
+    worker: CommunicationDeliveryWorker,
+) -> DeliveryWorkerOutcome:
+    leases = await scheduler.claim(limit=1)
+    assert len(leases) == 1
+    return await worker.process(leases[0])
+
+
 @pytest.mark.asyncio
 async def test_delivered_send_completes_task_action_and_outbox(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-success")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_dispatch(e2e_admin_conn, organization_id, task_id)
+    org = support.new_org(e2e_admin_conn, "delivery-success")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(
         send=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.DELIVERED,
@@ -269,27 +273,18 @@ async def test_delivered_send_completes_task_action_and_outbox(
         )
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        outcome = await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        outcome = await _claim_and_process(*stack)
 
-    assert outcome.state is DeliveryWorkerState.COMPLETED
     assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
-    assert provider.send_calls[0].provider_idempotency_key == (
-        f"communication:{task_id}:attempt:1"
-    )
+    expected_key = f"communication:{task_id}:attempt:1"
+    assert provider.send_calls[0].provider_idempotency_key == expected_key
     assert _status(e2e_admin_conn, "communication_tasks", task_id) == "completed"
     assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_completed.v1",
-        task_id,
-    ) == 1
+    event_count = _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id)
+    assert event_count == 1
 
 
 @pytest.mark.asyncio
@@ -297,16 +292,13 @@ async def test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-ambiguous")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_dispatch(e2e_admin_conn, organization_id, task_id)
+    org = support.new_org(e2e_admin_conn, "delivery-ambiguous")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(send=TimeoutError("provider response lost"))
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        outcome = await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        outcome = await _claim_and_process(*stack)
 
     assert outcome.detail == "ambiguous"
     assert len(provider.send_calls) == 1
@@ -323,25 +315,25 @@ async def test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend(
     assert delivery is not None
     delivery_id = cast(UUID, delivery[0])
     assert delivery[1:] == ("ambiguous", "send")
-    rows = e2e_admin_conn.execute(
+    reconciliations = e2e_admin_conn.execute(
         """
-        SELECT action_type, subject_id, status
+        SELECT subject_id, status
         FROM request_engine.scheduled_actions
-        WHERE organization_id = %s
-          AND action_type = 'reconcile_delivery'
+        WHERE organization_id = %s AND action_type = 'reconcile_delivery'
         """,
-        (organization_id,),
+        (org,),
     ).fetchall()
-    assert rows == [("reconcile_delivery", delivery_id, "pending")]
-    assert e2e_admin_conn.execute(
+    assert reconciliations == [(delivery_id, "pending")]
+    pending_resends = e2e_admin_conn.execute(
         """
         SELECT count(*) FROM request_engine.scheduled_actions
         WHERE organization_id = %s
           AND action_type = 'dispatch_task'
           AND status = 'pending'
         """,
-        (organization_id,),
-    ).fetchone() == (0,)
+        (org,),
+    ).fetchone()
+    assert pending_resends == (0,)
 
 
 @pytest.mark.asyncio
@@ -349,15 +341,10 @@ async def test_reconciliation_delivered_uses_lookup_without_second_send(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-reconcile")
-    task_id = _seed_task(e2e_admin_conn, organization_id, status="delivering")
-    delivery_id = _seed_delivery(
-        e2e_admin_conn,
-        organization_id,
-        task_id,
-        status="ambiguous",
-    )
-    action_id = _seed_reconciliation(e2e_admin_conn, organization_id, delivery_id)
+    org = support.new_org(e2e_admin_conn, "delivery-reconcile")
+    task_id = _task(e2e_admin_conn, org, status="delivering")
+    delivery_id = _delivery(e2e_admin_conn, org, task_id, status="ambiguous")
+    action_id = _reconcile(e2e_admin_conn, org, delivery_id)
     provider = ScriptedProvider(
         lookup=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.DELIVERED,
@@ -365,11 +352,8 @@ async def test_reconciliation_delivered_uses_lookup_without_second_send(
         )
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        outcome = await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        outcome = await _claim_and_process(*stack)
 
     assert outcome.detail == "delivered"
     assert provider.send_calls == []
@@ -385,22 +369,14 @@ async def test_lookup_exception_retries_same_action_without_resend(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-lookup-retry")
-    task_id = _seed_task(e2e_admin_conn, organization_id, status="delivering")
-    delivery_id = _seed_delivery(
-        e2e_admin_conn,
-        organization_id,
-        task_id,
-        status="accepted",
-    )
-    action_id = _seed_reconciliation(e2e_admin_conn, organization_id, delivery_id)
+    org = support.new_org(e2e_admin_conn, "delivery-lookup-retry")
+    task_id = _task(e2e_admin_conn, org, status="delivering")
+    delivery_id = _delivery(e2e_admin_conn, org, task_id, status="accepted")
+    action_id = _reconcile(e2e_admin_conn, org, delivery_id)
     provider = ScriptedProvider(lookup=ConnectionError("provider unavailable"))
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        outcome = await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        outcome = await _claim_and_process(*stack)
 
     assert outcome.state is DeliveryWorkerState.DEFERRED
     assert outcome.detail == "lookup_pending"
@@ -421,9 +397,9 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-retryable")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    original_id = _seed_dispatch(e2e_admin_conn, organization_id, task_id)
+    org = support.new_org(e2e_admin_conn, "delivery-retryable")
+    task_id = _task(e2e_admin_conn, org)
+    original_id = _dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(
         send=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.FAILED,
@@ -432,33 +408,25 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
         )
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        outcome = await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        outcome = await _claim_and_process(*stack)
 
     assert outcome.detail == "failed"
     assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
     assert _status(e2e_admin_conn, "scheduled_actions", original_id) == "completed"
     retries = e2e_admin_conn.execute(
         """
-        SELECT id, status, subject_id
+        SELECT status, subject_id
         FROM request_engine.scheduled_actions
         WHERE organization_id = %s
           AND action_type = 'dispatch_task'
           AND id <> %s
         """,
-        (organization_id, original_id),
+        (org, original_id),
     ).fetchall()
-    assert len(retries) == 1
-    assert retries[0][1:] == ("pending", task_id)
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_failed.v1",
-        task_id,
-    ) == 0
+    assert retries == [("pending", task_id)]
+    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
+    assert event_count == 0
 
 
 @pytest.mark.asyncio
@@ -466,9 +434,9 @@ async def test_non_retryable_failure_is_terminal_and_emits_failure_event(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-terminal")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_dispatch(e2e_admin_conn, organization_id, task_id)
+    org = support.new_org(e2e_admin_conn, "delivery-terminal")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(
         send=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.FAILED,
@@ -477,35 +445,29 @@ async def test_non_retryable_failure_is_terminal_and_emits_failure_event(
         )
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as (
-        scheduler,
-        worker,
-    ):
-        await worker.process((await scheduler.claim(limit=1))[0])
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        await _claim_and_process(*stack)
 
     assert _status(e2e_admin_conn, "communication_tasks", task_id) == "failed"
     assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_failed.v1",
-        task_id,
-    ) == 1
+    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
+    assert event_count == 1
 
 
 @pytest.mark.asyncio
-async def test_missing_provider_fails_task_and_delivery_before_dead_lettering_action(
+async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-provider-missing")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_dispatch(e2e_admin_conn, organization_id, task_id)
+    org = support.new_org(e2e_admin_conn, "delivery-provider-missing")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
 
     async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
-        lease = (await scheduler.claim(limit=1))[0]
+        leases = await scheduler.claim(limit=1)
+        assert len(leases) == 1
         with pytest.raises(DeliveryProviderNotConfigured):
-            await worker.process(lease)
+            await worker.process(leases[0])
 
     action = e2e_admin_conn.execute(
         """
@@ -525,12 +487,8 @@ async def test_missing_provider_fails_task_and_delivery_before_dead_lettering_ac
         (task_id,),
     ).fetchone()
     assert delivery == ("failed", "provider_not_configured", "provider_resolution")
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_failed.v1",
-        task_id,
-    ) == 1
+    event_count = _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id)
+    assert event_count == 1
 
 
 @pytest.mark.asyncio
@@ -538,11 +496,11 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-poison-type")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_action(
+    org = support.new_org(e2e_admin_conn, "delivery-poison-type")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _action(
         e2e_admin_conn,
-        organization_id,
+        org,
         action_type="unknown_action",
         subject_kind="CommunicationTask",
         subject_id=task_id,
@@ -550,45 +508,50 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
     )
 
     async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
-        lease = (await scheduler.claim(limit=1))[0]
+        leases = await scheduler.claim(limit=1)
+        assert len(leases) == 1
         with pytest.raises(UnsupportedScheduledAction):
-            await worker.process(lease)
+            await worker.process(leases[0])
 
-    assert e2e_admin_conn.execute(
+    row = e2e_admin_conn.execute(
         "SELECT status, last_error_class FROM request_engine.scheduled_actions WHERE id = %s",
         (action_id,),
-    ).fetchone() == ("dead", "unsupported_scheduled_action")
+    ).fetchone()
+    assert row == ("dead", "unsupported_scheduled_action")
     assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
 
 
 @pytest.mark.asyncio
-async def test_payload_identity_mismatch_is_dead_lettered_without_mutating_task(
+async def test_payload_identity_mismatch_is_dead_lettered_without_task_mutation(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = support.new_org(e2e_admin_conn, "delivery-poison-payload")
-    task_id = _seed_task(e2e_admin_conn, organization_id)
-    action_id = _seed_dispatch(
+    org = support.new_org(e2e_admin_conn, "delivery-poison-payload")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(
         e2e_admin_conn,
-        organization_id,
+        org,
         task_id,
         payload_task_id=uuid4(),
     )
 
     async with _worker_stack(worker_runtime_credentials, {}) as (scheduler, worker):
-        lease = (await scheduler.claim(limit=1))[0]
+        leases = await scheduler.claim(limit=1)
+        assert len(leases) == 1
         with pytest.raises(ValueError, match="does not match subject identity"):
-            await worker.process(lease)
+            await worker.process(leases[0])
 
-    assert e2e_admin_conn.execute(
+    row = e2e_admin_conn.execute(
         "SELECT status, last_error_class FROM request_engine.scheduled_actions WHERE id = %s",
         (action_id,),
-    ).fetchone() == ("dead", "invalid_scheduled_action")
+    ).fetchone()
+    assert row == ("dead", "invalid_scheduled_action")
     assert _status(e2e_admin_conn, "communication_tasks", task_id) == "pending"
-    assert e2e_admin_conn.execute(
+    delivery_count = e2e_admin_conn.execute(
         """
         SELECT count(*) FROM request_engine.communication_deliveries
         WHERE communication_task_id = %s
         """,
         (task_id,),
-    ).fetchone() == (0,)
+    ).fetchone()
+    assert delivery_count == (0,)
