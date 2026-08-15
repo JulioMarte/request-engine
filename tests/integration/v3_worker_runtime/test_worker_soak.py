@@ -100,8 +100,7 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
     organization_ids, action_ids = _seed(admin_conn)
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
-            executor.submit(_drain_worker, worker_number, action_ids)
-            for worker_number in range(8)
+            executor.submit(_drain_worker, worker_number, action_ids) for worker_number in range(8)
         ]
         completed_sets: list[set[UUID]] = [future.result() for future in futures]
 
@@ -109,8 +108,14 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
     for completed in completed_sets:
         all_completed.update(completed)
 
-    assert all_completed == action_ids
-    assert sum(len(values) for values in completed_sets) == len(action_ids)
+    missing = action_ids - all_completed
+    assert not missing, f"{len(missing)} soak actions were never completed: {sorted(missing)[:10]}"
+
+    completion_count = sum(len(values) for values in completed_sets)
+    assert completion_count == len(action_ids), (
+        "one or more soak actions completed under multiple workers: "
+        f"unique={len(action_ids)} worker-completions={completion_count}"
+    )
 
     states = admin_conn.execute(
         """
@@ -120,8 +125,23 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
         FROM request_engine.scheduled_actions
         WHERE id = ANY(%s)
         GROUP BY organization_id
+        ORDER BY organization_id
         """,
         (list(action_ids),),
     ).fetchall()
-    assert {cast(UUID, row[0]) for row in states} == organization_ids
-    assert all(row[1:] == (30, 0, 1) for row in states)
+    observed_organizations = {cast(UUID, row[0]) for row in states}
+    assert observed_organizations == organization_ids, (
+        "soak tenant set mismatch: "
+        f"missing={sorted(organization_ids - observed_organizations)} "
+        f"unexpected={sorted(observed_organizations - organization_ids)}"
+    )
+
+    invalid_states = [
+        (cast(UUID, row[0]), cast(int, row[1]), cast(int, row[2]), cast(int, row[3]))
+        for row in states
+        if row[1:] != (30, 0, 1)
+    ]
+    assert not invalid_states, (
+        "soak tenant terminal cardinality or claim-attempt invariant failed; "
+        f"expected=(completed=30, non_completed=0, max_attempt_count=1), observed={invalid_states}"
+    )
