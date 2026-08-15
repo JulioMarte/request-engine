@@ -15,6 +15,7 @@ PgConnection = Connection[Any]
 class RuntimeCredentialsLike(Protocol):
     role_name: str
     password: str
+    database_url: str
 
 
 def runtime_dsn(credentials: RuntimeCredentialsLike) -> str:
