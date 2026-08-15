@@ -200,10 +200,11 @@ def _force_action_due(
 async def test_delivery_provider_io_runs_after_authoritative_transaction_commit(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     task_id = await _create_due_task(fixture, session_factory)
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
 
     def assert_task_is_not_locked(communication_task_id: UUID) -> None:
@@ -228,7 +229,7 @@ async def test_delivery_provider_io_runs_after_authoritative_transaction_commit(
         lock_probe=assert_task_is_not_locked,
     )
     worker = CommunicationDeliveryWorker(
-        session_factory,
+        worker_session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -265,10 +266,11 @@ async def test_delivery_provider_io_runs_after_authoritative_transaction_commit(
 async def test_ambiguous_send_reconciles_without_blind_resend(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     task_id = await _create_due_task(fixture, session_factory)
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     dispatch_lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
     provider = FakeProvider(
         send_results=[TimeoutError("provider timeout after request write")],
@@ -280,7 +282,7 @@ async def test_ambiguous_send_reconciles_without_blind_resend(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        session_factory,
+        worker_session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -316,10 +318,11 @@ async def test_ambiguous_send_reconciles_without_blind_resend(
 async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     task_id = await _create_due_task(fixture, session_factory)
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     provider = FakeProvider(
         send_results=[
             ProviderDeliveryResult(
@@ -339,7 +342,7 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        session_factory,
+        worker_session_factory,
         scheduler,
         {"fake": provider},
     )
@@ -397,10 +400,11 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
 async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     task_id = await _create_due_task(fixture, session_factory, retry_after_seconds=300)
-    scheduler = PostgresScheduledActionWorker(session_factory)
+    scheduler = PostgresScheduledActionWorker(worker_session_factory)
     provider = FakeProvider(
         send_results=[
             ProviderDeliveryResult(
@@ -411,7 +415,7 @@ async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
         ],
     )
     worker = CommunicationDeliveryWorker(
-        session_factory,
+        worker_session_factory,
         scheduler,
         {"fake": provider},
     )
