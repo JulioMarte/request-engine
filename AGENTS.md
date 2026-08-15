@@ -2,6 +2,24 @@
 
 These instructions apply repository-wide. A nearer `AGENTS.md` may add stricter path-specific rules.
 
+## Branch workflow — mandatory
+
+`development` is the canonical integration branch. `main` is release-only.
+
+For ordinary feature, fix, refactor, test, documentation, or agent work:
+
+1. fetch the remote and resolve the current `origin/development` HEAD;
+2. create the work branch from that current `development` HEAD;
+3. open the pull request against `development`;
+4. reconcile long-lived work with the latest `development` before declaring it merge-ready;
+5. never infer the development base from GitHub's default branch.
+
+The only normal pull request allowed to target `main` is the release promotion `development -> main` after the integrated `development` state has passed the required release proof again.
+
+Do not avoid conflicts by targeting a feature branch at `main` or by silently stacking it on another unmerged feature branch. If work genuinely depends on unmerged work, keep that dependency explicit and rebuild/rebase it onto `development` after the dependency is integrated before treating it as independently merge-ready.
+
+See `CONTRIBUTING.md` for the canonical contributor workflow. The architecture tests enforce this PR topology in GitHub Actions.
+
 ## Start here
 
 Before editing, identify the primary owner and read only the canonical material needed for the task:
