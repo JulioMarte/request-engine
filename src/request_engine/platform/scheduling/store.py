@@ -140,3 +140,59 @@ async def schedule_action(
     if actual != expected:
         raise ScheduledActionDedupeConflict(dedupe_key)
     return cast(UUID, existing["id"])
+
+
+async def cancel_action(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    action_id: UUID,
+) -> str:
+    """Cancel pending or leased work and fence any claim token that lost the race."""
+
+    return cast(
+        str,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT request_cmd.cancel_scheduled_action(
+                        :organization_id,
+                        :action_id
+                    )
+                    """
+                ),
+                {"organization_id": organization_id, "action_id": action_id},
+            )
+        ).scalar_one(),
+    )
+
+
+async def lock_action_claim(
+    session: AsyncSession,
+    *,
+    action_id: UUID,
+    claim_token: UUID,
+) -> bool:
+    """Fence authoritative handler work inside the caller's open transaction.
+
+    Keep the transaction open while the handler writes authoritative DB state.
+    A concurrent cancellation must then serialize before or after that work.
+    """
+
+    return cast(
+        bool,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT request_cmd.lock_scheduled_action_claim(
+                        :action_id,
+                        :claim_token
+                    )
+                    """
+                ),
+                {"action_id": action_id, "claim_token": claim_token},
+            )
+        ).scalar_one(),
+    )

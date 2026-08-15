@@ -1,0 +1,8 @@
+# Request Engine production observability runtime.
+# Keep direct OpenTelemetry versions aligned across the stable SDK and contrib release train.
+opentelemetry-distro==0.65b0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-instrumentation-fastapi==0.65b0
+opentelemetry-instrumentation-sqlalchemy==0.65b0
+opentelemetry-instrumentation-logging==0.65b0

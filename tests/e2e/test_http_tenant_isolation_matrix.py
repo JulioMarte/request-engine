@@ -11,7 +11,14 @@ from request_engine.platform.db.session import SessionFactory
 from . import operational_support as support
 from .evidence import durable_snapshot
 from .http_surface import PUBLIC_HTTP_OPERATIONS, PublicHttpOperation, TenantIsolationMode
-from .tenant_sandbox import TenantSandbox, actor_for, auth, client_with_actors, first_slot, seed_tenant_sandbox
+from .tenant_sandbox import (
+    TenantSandbox,
+    actor_for,
+    auth,
+    client_with_actors,
+    first_slot,
+    seed_tenant_sandbox,
+)
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
@@ -41,29 +48,43 @@ async def _seed_foreign_objects(
     foreign_slot = await first_slot(client, foreign_tenant)
     booked = await client.post(
         "/v1/appointments",
-        json={"option_id": foreign_slot["option_id"], "subject_party_id": str(foreign_tenant.party_id)},
+        json={
+            "option_id": foreign_slot["option_id"],
+            "subject_party_id": str(foreign_tenant.party_id),
+        },
         headers=auth(foreign_tenant, idempotency_key=f"foreign-book-{uuid4().hex}"),
     )
     assert booked.status_code == 201, booked.text
     joined = await client.post(
         f"/v1/queues/{foreign_tenant.queue_id}/join",
-        json={"subject_party_id": str(foreign_tenant.party_id), "offering_id": str(foreign_tenant.offering_id)},
+        json={
+            "subject_party_id": str(foreign_tenant.party_id),
+            "offering_id": str(foreign_tenant.offering_id),
+        },
         headers=auth(foreign_tenant, idempotency_key=f"foreign-queue-{uuid4().hex}"),
     )
     assert joined.status_code == 201, joined.text
     waitlisted = await client.post(
         "/v1/waitlist",
-        json={"offering_id": str(foreign_tenant.offering_id), "subject_party_id": str(foreign_tenant.party_id)},
+        json={
+            "offering_id": str(foreign_tenant.offering_id),
+            "subject_party_id": str(foreign_tenant.party_id),
+        },
         headers=auth(foreign_tenant, idempotency_key=f"foreign-waitlist-{uuid4().hex}"),
     )
     assert waitlisted.status_code == 201, waitlisted.text
     submitted = await client.post(
         f"/v1/requests/definitions/{foreign_tenant.request_key}/submit",
-        json={"payload": {"message": "foreign request"}, "requester_party_id": str(foreign_tenant.party_id)},
+        json={
+            "payload": {"message": "foreign request"},
+            "requester_party_id": str(foreign_tenant.party_id),
+        },
         headers=auth(foreign_tenant, idempotency_key=f"foreign-request-{uuid4().hex}"),
     )
     assert submitted.status_code == 201, submitted.text
-    support.new_contact_point(admin, foreign_tenant.organization_id, foreign_tenant.party_id, "reminder")
+    support.new_contact_point(
+        admin, foreign_tenant.organization_id, foreign_tenant.party_id, "reminder"
+    )
     reminder = await client.post(
         "/v1/reminders",
         json={
@@ -110,52 +131,150 @@ def _foreign_request(
     if name == "catalog.offerings.read":
         return f"/v1/catalog/offerings/{foreign.offering_key}", {}, None, 404
     if name == "appointments.find_slots":
-        return "/v1/appointments/slots", {"offering_version_id": str(foreign.offering_version_id), "window_start": "2030-01-07T13:00:00+00:00", "window_end": "2030-01-07T16:00:00+00:00"}, None, 404
+        return (
+            "/v1/appointments/slots",
+            {
+                "offering_version_id": str(foreign.offering_version_id),
+                "window_start": "2030-01-07T13:00:00+00:00",
+                "window_end": "2030-01-07T16:00:00+00:00",
+            },
+            None,
+            404,
+        )
     if name == "appointments.book":
-        return "/v1/appointments", {}, {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)}, 403
+        return (
+            "/v1/appointments",
+            {},
+            {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)},
+            403,
+        )
     if name == "appointments.read":
         return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
     if name == "appointments.cancel":
-        return f"/v1/appointments/{objects.reservation_id}/cancel", {}, {"expected_revision": objects.reservation_revision, "reason": "cross tenant"}, 404
+        return (
+            f"/v1/appointments/{objects.reservation_id}/cancel",
+            {},
+            {"expected_revision": objects.reservation_revision, "reason": "cross tenant"},
+            404,
+        )
     if name == "appointments.reschedule":
-        return f"/v1/appointments/{objects.reservation_id}/reschedule", {}, {"option_id": objects.actor_option_id, "expected_revision": objects.reservation_revision}, 404
+        return (
+            f"/v1/appointments/{objects.reservation_id}/reschedule",
+            {},
+            {
+                "option_id": objects.actor_option_id,
+                "expected_revision": objects.reservation_revision,
+            },
+            404,
+        )
     if name == "appointments.attendance":
-        return f"/v1/appointments/{objects.reservation_id}/attendance", {}, {"response": "accepted", "expected_revision": objects.reservation_revision}, 404
+        return (
+            f"/v1/appointments/{objects.reservation_id}/attendance",
+            {},
+            {"response": "accepted", "expected_revision": objects.reservation_revision},
+            404,
+        )
     if name == "queue.list":
         return "/v1/queues", {}, None, 200
     if name == "queue.join":
-        return f"/v1/queues/{actor.queue_id}/join", {}, {"subject_party_id": str(foreign.party_id), "offering_id": str(actor.offering_id)}, 403
+        return (
+            f"/v1/queues/{actor.queue_id}/join",
+            {},
+            {"subject_party_id": str(foreign.party_id), "offering_id": str(actor.offering_id)},
+            403,
+        )
     if name == "queue.status":
-        return f"/v1/queues/{foreign.queue_id}/status", {"subject_party_id": str(actor.party_id)}, None, 404
+        return (
+            f"/v1/queues/{foreign.queue_id}/status",
+            {"subject_party_id": str(actor.party_id)},
+            None,
+            404,
+        )
     if name == "queue.leave":
-        return f"/v1/queues/{foreign.queue_id}/entries/{objects.queue_entry_id}/leave", {}, {"expected_revision": objects.queue_entry_revision, "reason": "cross tenant"}, 404
+        return (
+            f"/v1/queues/{foreign.queue_id}/entries/{objects.queue_entry_id}/leave",
+            {},
+            {"expected_revision": objects.queue_entry_revision, "reason": "cross tenant"},
+            404,
+        )
     if name == "queue.call_next":
         return f"/v1/queues/{foreign.queue_id}/call-next", {}, None, 404
     if name == "waitlist.join":
-        return "/v1/waitlist", {}, {"offering_id": str(actor.offering_id), "subject_party_id": str(foreign.party_id)}, 403
+        return (
+            "/v1/waitlist",
+            {},
+            {"offering_id": str(actor.offering_id), "subject_party_id": str(foreign.party_id)},
+            403,
+        )
     if name == "waitlist.read":
         return f"/v1/waitlist/{objects.waitlist_entry_id}", {}, None, 404
     if name == "waitlist.leave":
-        return f"/v1/waitlist/{objects.waitlist_entry_id}/leave", {}, {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"}, 404
+        return (
+            f"/v1/waitlist/{objects.waitlist_entry_id}/leave",
+            {},
+            {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"},
+            404,
+        )
     if name == "requests.submit":
-        return f"/v1/requests/definitions/{foreign.request_key}/submit", {}, {"payload": {"message": "cross tenant"}}, 404
+        return (
+            f"/v1/requests/definitions/{foreign.request_key}/submit",
+            {},
+            {"payload": {"message": "cross tenant"}},
+            404,
+        )
     if name == "requests.read":
         return f"/v1/requests/{objects.request_id}", {}, None, 404
     if name == "requests.cancel":
-        return f"/v1/requests/{objects.request_id}/cancel", {}, {"reason": "cross tenant", "expected_revision": objects.request_revision}, 404
+        return (
+            f"/v1/requests/{objects.request_id}/cancel",
+            {},
+            {"reason": "cross tenant", "expected_revision": objects.request_revision},
+            404,
+        )
     if name == "reminders.create":
-        return "/v1/reminders", {}, {"subject_party_id": str(foreign.party_id), "purpose": "medication_reminder", "timezone": "America/Santo_Domingo", "daily_times": ["08:00:00"], "channel_policy": {"channels": ["email"]}, "template_key": "medication-reminder", "template_version": 1}, 403
+        return (
+            "/v1/reminders",
+            {},
+            {
+                "subject_party_id": str(foreign.party_id),
+                "purpose": "medication_reminder",
+                "timezone": "America/Santo_Domingo",
+                "daily_times": ["08:00:00"],
+                "channel_policy": {"channels": ["email"]},
+                "template_key": "medication-reminder",
+                "template_version": 1,
+            },
+            403,
+        )
     if name == "reminders.read":
         return f"/v1/reminders/{objects.reminder_plan_id}", {}, None, 404
     if name == "reminders.cancel":
-        return f"/v1/reminders/{objects.reminder_plan_id}/cancel", {}, {"expected_revision": objects.reminder_revision, "reason": "cross tenant"}, 404
+        return (
+            f"/v1/reminders/{objects.reminder_plan_id}/cancel",
+            {},
+            {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
+            404,
+        )
     raise AssertionError(f"missing tenant probe for {name}")
 
 
-async def _invoke(client: AsyncClient, operation: PublicHttpOperation, actor: TenantSandbox, foreign: TenantSandbox, objects: ForeignObjects) -> tuple[Response, int]:
+async def _invoke(
+    client: AsyncClient,
+    operation: PublicHttpOperation,
+    actor: TenantSandbox,
+    foreign: TenantSandbox,
+    objects: ForeignObjects,
+) -> tuple[Response, int]:
     path, query, body, expected = _foreign_request(operation, actor, foreign, objects)
-    headers = auth(actor, idempotency_key=f"cross-{operation.name}-{uuid4().hex}" if operation.idempotency_required else None)
-    response = await client.request(operation.method, path, params=query, json=body, headers=headers)
+    headers = auth(
+        actor,
+        idempotency_key=f"cross-{operation.name}-{uuid4().hex}"
+        if operation.idempotency_required
+        else None,
+    )
+    response = await client.request(
+        operation.method, path, params=query, json=body, headers=headers
+    )
     return response, expected
 
 

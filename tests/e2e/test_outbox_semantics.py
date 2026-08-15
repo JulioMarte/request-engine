@@ -216,6 +216,7 @@ def test_outbox_retry_exhaustion_and_stale_token_semantics(
     ).fetchone() == ("dead", 2, "provider_503")
 
 
+@pytest.mark.concurrency
 def test_expired_outbox_lease_is_reclaimed_after_simulated_worker_crash(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,

@@ -66,7 +66,14 @@ async def test_every_public_operation_rejects_unauthenticated_requests_without_m
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await _request(client, operation)
     assert response.status_code == 401, (operation.name, response.text)
-    assert response.json() == {"detail": "authentication required"}
+    assert response.json() == {
+        "error": {
+            "code": "authentication_required",
+            "message": "authentication is required",
+            "resolution": "reauthenticate",
+            "details": {},
+        }
+    }
     assert durable_snapshot(e2e_admin_conn) == before
 
 
@@ -97,7 +104,14 @@ async def test_every_capability_gated_operation_rejects_missing_grant_without_mu
         response = await _request(client, operation)
     assert operation.capability is not None
     assert response.status_code == 403, (operation.name, response.text)
-    assert response.json() == {"detail": f"capability {operation.capability!r} is required"}
+    assert response.json() == {
+        "error": {
+            "code": "capability_required",
+            "message": "the authenticated actor lacks a required capability",
+            "resolution": "request_authority",
+            "details": {"capability": operation.capability},
+        }
+    }
     assert durable_snapshot(e2e_admin_conn) == before
 
 

@@ -25,6 +25,11 @@ files=(
   "018-retry-finalization-fence.sql"
   "019-trusted-execution-provenance.sql"
   "020-durable-correlation.sql"
+  "021-release-privilege-hardening.sql"
+  "022-runtime-table-privilege-contract.sql"
+  "023-scheduled-action-cancellation-fence.sql"
+  "024-runtime-function-privilege-contract.sql"
+  "025-worker-claim-stale-snapshot-fence.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"

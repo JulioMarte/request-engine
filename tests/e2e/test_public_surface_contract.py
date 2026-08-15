@@ -91,7 +91,9 @@ async def test_idempotency_registry_matches_required_openapi_headers(
 ) -> None:
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
     for operation in PUBLIC_HTTP_OPERATIONS:
-        contract = _operation_contract(openapi, path=operation.path_template, method=operation.method)
+        contract = _operation_contract(
+            openapi, path=operation.path_template, method=operation.method
+        )
         headers = _header_parameters(contract)
         if operation.idempotency_required:
             assert headers.get("idempotency-key") is True, operation.name
@@ -99,6 +101,8 @@ async def test_idempotency_registry_matches_required_openapi_headers(
             assert "idempotency-key" not in headers, operation.name
 
 
+@pytest.mark.e2e
+@pytest.mark.postgres
 def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     names = [operation.name for operation in PUBLIC_HTTP_OPERATIONS]
     keys = [operation.operation_key for operation in PUBLIC_HTTP_OPERATIONS]

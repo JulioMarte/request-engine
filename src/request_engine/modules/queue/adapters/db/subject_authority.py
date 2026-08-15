@@ -4,7 +4,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.queue.application.errors import SubjectAuthorityRequired
+from request_engine.modules.queue.application.errors import (
+    SubjectAuthorityRequired,
+    TenantReferenceNotUsable,
+)
 from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 
 
@@ -39,6 +42,24 @@ async def require_subject_authority(
     lock_authority: bool = True,
 ) -> SubjectAuthorityEvidence:
     if allow_operator_override:
+        subject_exists = (
+            await session.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM request_engine.parties
+                    WHERE organization_id = :organization_id
+                      AND id = :subject_party_id
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "subject_party_id": subject_party_id,
+                },
+            )
+        ).scalar_one_or_none()
+        if subject_exists is None:
+            raise TenantReferenceNotUsable("subject_party_id", subject_party_id)
         return SubjectAuthorityEvidence(mode="operator", scope_key=scope_key)
 
     function_name = (

@@ -223,6 +223,7 @@ def test_scheduled_claim_token_is_single_use_and_stale_safe(
     ).fetchone() == ("completed", None, None, True)
 
 
+@pytest.mark.concurrency
 def test_scheduled_retry_exhaustion_becomes_dead_and_cannot_be_reclaimed(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
@@ -261,6 +262,7 @@ def test_scheduled_retry_exhaustion_becomes_dead_and_cannot_be_reclaimed(
     ).fetchone() == ("dead", 2, "still_broken")
 
 
+@pytest.mark.concurrency
 def test_expired_scheduled_lease_is_reclaimed_after_simulated_worker_crash(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,

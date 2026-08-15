@@ -531,7 +531,7 @@ def test_scheduled_action_fencing_rejects_stale_worker(
             '{}'::jsonb,
             %s,
             clock_timestamp(),
-            clock_timestamp()
+            '-infinity'::timestamptz
         )
         RETURNING id
         """,
@@ -553,7 +553,11 @@ def test_scheduled_action_fencing_rejects_stale_worker(
         admin_conn.execute(
             """
             UPDATE request_engine.scheduled_actions
-               SET lease_until = clock_timestamp() - interval '1 second'
+               -- This database-level test shares a candidate database with other
+               -- tests that may leave legitimate due work behind. Make this row
+               -- deterministically first without claiming or mutating unrelated
+               -- tenants' work.
+               SET lease_until = '-infinity'::timestamptz
              WHERE id = %s
             """,
             (action_id,),
