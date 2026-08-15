@@ -71,9 +71,7 @@ async def app_session_factory() -> AsyncIterator[SessionFactory]:
             "NOCREATEDB NOCREATEROLE PASSWORD {}"
         ).format(sql.Identifier(role_name), sql.Literal(password))
     )
-    admin.execute(
-        sql.SQL("GRANT request_engine_app TO {}").format(sql.Identifier(role_name))
-    )
+    admin.execute(sql.SQL("GRANT request_engine_app TO {}").format(sql.Identifier(role_name)))
     admin.close()
 
     engine = create_postgres_engine(
@@ -90,9 +88,7 @@ async def app_session_factory() -> AsyncIterator[SessionFactory]:
                     sql.Identifier(role_name)
                 )
             )
-            admin.execute(
-                sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name))
-            )
+            admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
         finally:
             admin.close()
