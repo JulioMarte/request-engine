@@ -34,6 +34,7 @@ def _uuid_row(
 
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 def test_mutation_authority_lock_serializes_concurrent_revocation(
     admin_conn: PgConnection,
 ) -> None:
