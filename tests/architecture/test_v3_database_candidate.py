@@ -27,6 +27,7 @@ EXPECTED_V3_CANDIDATE = [
     "020-durable-correlation.sql",
     "021-release-privilege-hardening.sql",
     "022-runtime-table-privilege-contract.sql",
+    "023-scheduled-action-cancellation-fence.sql",
 ]
 
 
