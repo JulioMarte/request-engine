@@ -53,8 +53,10 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
     role_name = f"request_engine_app_e2e_{uuid4().hex[:16]}"
     role_password = uuid4().hex
     suffix = uuid4().hex
+    location_key = f"e2e-office-{suffix}"
 
     engine = None
+    role_created = False
     try:
         organization_row = admin.execute(
             """
@@ -88,7 +90,7 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
             """,
             (
                 organization_id,
-                f"e2e-office-{suffix}",
+                location_key,
                 json.dumps({"address": "Puerto Plata"}),
             ),
         )
@@ -99,6 +101,7 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
                 "NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}"
             ).format(sql.Identifier(role_name), sql.Literal(role_password))
         )
+        role_created = True
         admin.execute(
             sql.SQL("GRANT request_engine_app TO {} WITH INHERIT TRUE").format(
                 sql.Identifier(role_name)
@@ -132,16 +135,16 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
         assert response.status_code == 200
         payload = response.json()
         assert payload["organization_id"] == str(organization_id)
+        assert payload["organization_key"] == f"e2e-{suffix}"
         assert payload["display_name"] == "E2E Clinic"
         assert payload["public_profile"] == {"summary": "runtime login proof"}
-        assert payload["locations"] == [
-            {
-                "id": payload["locations"][0]["id"],
-                "display_name": "E2E Office",
-                "timezone": "America/Santo_Domingo",
-                "public_data": {"address": "Puerto Plata"},
-            }
-        ]
+        assert len(payload["locations"]) == 1
+        location = payload["locations"][0]
+        assert UUID(location["id"])
+        assert location["location_key"] == location_key
+        assert location["display_name"] == "E2E Office"
+        assert location["timezone"] == "America/Santo_Domingo"
+        assert location["public_data"] == {"address": "Puerto Plata"}
         assert UUID(response.headers["X-Correlation-ID"])
 
         login: PgConnection = psycopg.connect(
@@ -175,6 +178,7 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
     finally:
         if engine is not None:
             await engine.dispose()
-        admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
-        admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role_name)))
+        if role_created:
+            admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+            admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
         admin.close()
