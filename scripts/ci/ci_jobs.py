@@ -10,6 +10,7 @@ import selectors
 import subprocess
 import sys
 import time
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,16 +134,65 @@ JOBS: dict[str, tuple[Step, ...]] = {
     ),
 }
 
+_FAILURE_MARKERS = (
+    "error:",
+    "error ",
+    "fatal:",
+    "failed",
+    "failure",
+    "traceback",
+    "assertionerror",
+    "exception:",
+    "timeout",
+    "permission denied",
+    "syntax error",
+    "does not exist",
+    "violates",
+)
+_FAILURE_CONTEXT_LINES = 6
+_FAILURE_TAIL_LINES = 40
+
 
 def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "-_" else "-" for char in value)
 
 
-def _emit(line: str, handle: object | None) -> None:
-    print(line, end="", flush=True)
-    if handle is not None:
-        handle.write(line)
-        handle.flush()
+def _write_log(handle: object | None, line: str) -> None:
+    if handle is None:
+        return
+    handle.write(line)
+    handle.flush()
+
+
+def _failure_excerpt(lines: Sequence[str]) -> list[str]:
+    cleaned = [line.rstrip("\n") for line in lines if line.strip()]
+    if not cleaned:
+        return ["(step produced no output)"]
+
+    marker_indexes = [
+        index
+        for index, line in enumerate(cleaned)
+        if any(marker in line.lower() for marker in _FAILURE_MARKERS)
+    ]
+    if marker_indexes:
+        start = max(0, marker_indexes[-1] - _FAILURE_CONTEXT_LINES)
+        excerpt = cleaned[start:]
+    else:
+        excerpt = cleaned[-_FAILURE_TAIL_LINES:]
+
+    if len(excerpt) > _FAILURE_TAIL_LINES:
+        excerpt = excerpt[-_FAILURE_TAIL_LINES:]
+    return excerpt
+
+
+def _print_failure(step: Step, *, status: str, lines: Sequence[str], log_path: Path | None) -> None:
+    print(f"[{status}] {step.name} [{step.key}]", flush=True)
+    print(f"  command: {step.command}", flush=True)
+    print("  problem:", flush=True)
+    for line in _failure_excerpt(lines):
+        print(f"    {line}", flush=True)
+    if log_path is not None:
+        print(f"  full log: {log_path}", flush=True)
 
 
 def _run_step(
@@ -150,12 +200,18 @@ def _run_step(
     *,
     env: Mapping[str, str],
     log_dir: Path | None,
+    verbose: bool,
 ) -> dict[str, object]:
     started = time.monotonic()
     log_path = log_dir / f"{_safe_name(step.key)}.log" if log_dir else None
     handle = log_path.open("w", encoding="utf-8", newline="\n") if log_path else None
-    _emit(f"\n--- {step.name} [{step.key}] ---\n", handle)
-    _emit(f"$ {step.command}\n", handle)
+    tail: deque[str] = deque(maxlen=200)
+
+    _write_log(handle, f"--- {step.name} [{step.key}] ---\n")
+    _write_log(handle, f"$ {step.command}\n")
+    if verbose:
+        print(f"\n--- {step.name} [{step.key}] ---", flush=True)
+        print(f"$ {step.command}", flush=True)
 
     process = subprocess.Popen(
         ["bash", "-lc", f"set -o pipefail; {step.command}"],
@@ -182,10 +238,16 @@ def _run_step(
             for key, _ in selector.select(timeout=min(0.25, remaining)):
                 line = key.fileobj.readline()
                 if line:
-                    _emit(line, handle)
+                    tail.append(line)
+                    _write_log(handle, line)
+                    if verbose:
+                        print(line, end="", flush=True)
         if process.stdout is not None:
             for line in process.stdout:
-                _emit(line, handle)
+                tail.append(line)
+                _write_log(handle, line)
+                if verbose:
+                    print(line, end="", flush=True)
         returncode = process.wait()
     finally:
         selector.close()
@@ -194,7 +256,10 @@ def _run_step(
 
     elapsed = round(time.monotonic() - started, 3)
     status = "TIMEOUT" if timed_out else ("PASS" if returncode == 0 else "FAIL")
-    print(f"[{status}] {step.name} ({elapsed}s)", flush=True)
+    if status == "PASS":
+        print(f"[PASS] {step.name} ({elapsed}s)", flush=True)
+    else:
+        _print_failure(step, status=status, lines=list(tail), log_path=log_path)
     return {
         "key": step.key,
         "name": step.name,
@@ -213,6 +278,7 @@ def execute_job(
     only_steps: set[str] | None = None,
     log_dir: Path | None = None,
     summary_output: Path | None = None,
+    verbose: bool = False,
 ) -> int:
     if job not in JOBS:
         raise ValueError(f"Unknown CI job: {job}")
@@ -239,7 +305,7 @@ def execute_job(
                 }
             )
             continue
-        result = _run_step(step, env=env, log_dir=log_dir)
+        result = _run_step(step, env=env, log_dir=log_dir, verbose=verbose)
         results.append(result)
         if result["status"] != "PASS" and not step.always:
             failed = True
@@ -259,6 +325,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--step", action="append", dest="steps")
     parser.add_argument("--log-dir", type=Path)
     parser.add_argument("--summary-output", type=Path)
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Stream complete step output. Compact failure-focused output is the default.",
+    )
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--list-jobs", action="store_true")
     return parser.parse_args(argv)
@@ -282,6 +353,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             only_steps=set(args.steps) if args.steps else None,
             log_dir=args.log_dir,
             summary_output=args.summary_output,
+            verbose=args.verbose,
         )
     except KeyboardInterrupt:
         print("CI job interrupted.", file=sys.stderr)
