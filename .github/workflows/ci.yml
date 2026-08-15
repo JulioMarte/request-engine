@@ -41,16 +41,17 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install pinned OpenTelemetry runtime
-        run: >-
-          python -m pip install --disable-pip-version-check
-          -r deploy/observability/requirements.txt
+      - name: Install project and pinned OpenTelemetry runtime
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.12.5
+          uv sync --frozen --no-dev
+          uv pip install -r deploy/observability/requirements.txt
       - name: Validate zero-code launcher
         run: >-
-          python scripts/observability/run_with_otel.py
+          uv run --no-sync python scripts/observability/run_with_otel.py
           --service-name request-engine-ci --check
-      - name: Run OpenTelemetry SDK and exporter smoke test
-        run: python scripts/observability/smoke_otel.py
+      - name: Run OpenTelemetry compatibility, SDK, and exporter smoke test
+        run: uv run --no-sync python scripts/observability/smoke_otel.py
 
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
