@@ -4,17 +4,17 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping, Sequence
 import datetime as dt
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 DEFAULT_BRANCH = "phase-6-v3-freeze-release-proof"
 POSTGRES_IMAGE = "postgres:18"
