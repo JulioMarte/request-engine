@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from v3_scratch_database import fresh_v3_database
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -106,15 +108,17 @@ def _completed_result(
 
 
 def _run_python_probe(probe: MutationProbe, started: float) -> MutationResult:
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", probe.pytest_target, "-q", "--tb=short"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    with fresh_v3_database("request_engine_mutation_python") as scratch_env:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", probe.pytest_target, "-q", "--tb=short"],
+            cwd=ROOT,
+            env=scratch_env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
     output = (result.stdout + result.stderr).strip().splitlines()
     return _completed_result(
         probe,

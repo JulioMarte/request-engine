@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Final
 
+from v3_scratch_database import ScratchDatabaseError, fresh_v3_database
+
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 TARGETS: Final = (
     "tests/db",
@@ -35,15 +37,27 @@ def _run_round(round_number: int) -> dict[str, object]:
         "--maxfail=1",
     ]
     started = time.monotonic()
-    result = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    try:
+        with fresh_v3_database("request_engine_concurrency") as scratch_env:
+            result = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                env=scratch_env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+    except ScratchDatabaseError as exc:
+        elapsed = round(time.monotonic() - started, 3)
+        return {
+            "round": round_number,
+            "status": "FAIL",
+            "returncode": 2,
+            "seconds": elapsed,
+            "output_tail": str(exc).splitlines()[-80:],
+        }
     elapsed = round(time.monotonic() - started, 3)
     output = (result.stdout + result.stderr).strip().splitlines()
     return {

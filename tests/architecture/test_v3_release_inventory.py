@@ -78,6 +78,7 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     stability = ROOT / "scripts" / "release" / "prove_v3_concurrency_stability.py"
     order = ROOT / "scripts" / "release" / "prove_v3_test_order_independence.py"
     mutation = ROOT / "scripts" / "release" / "run_v3_mutation_probes.py"
+    scratch_database = ROOT / "scripts" / "release" / "v3_scratch_database.py"
     _, jobs = _ci_sources()
 
     assert quality.is_file()
@@ -85,6 +86,7 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     assert stability.is_file()
     assert order.is_file()
     assert mutation.is_file()
+    assert scratch_database.is_file()
     assert "tests/e2e" in jobs
     assert "audit_v3_test_quality.py" in jobs
     assert "v3-test-quality.json" in jobs
@@ -96,6 +98,20 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     assert "prove_v3_test_order_independence.py" in jobs
     assert "v3-test-order-independence.json" in jobs
     assert "v3-mutation-probes.json" in jobs
+
+
+def test_phase6_repeated_test_proofs_use_fresh_v3_databases() -> None:
+    release_scripts = ROOT / "scripts" / "release"
+    isolated_proofs = (
+        release_scripts / "prove_v3_concurrency_stability.py",
+        release_scripts / "prove_v3_test_order_independence.py",
+        release_scripts / "run_v3_mutation_probes.py",
+    )
+
+    for proof in isolated_proofs:
+        source = proof.read_text(encoding="utf-8")
+        assert "fresh_v3_database" in source, f"{proof.name} reuses a dirty database"
+        assert "env=scratch_env" in source, f"{proof.name} does not bind pytest to scratch DB"
 
 
 def test_phase6_evidence_manifest_has_a_final_completeness_gate() -> None:
