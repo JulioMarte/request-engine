@@ -99,7 +99,10 @@ def test_multi_worker_soak_completes_hot_and_cold_tenants_without_duplicate_owne
 
     organization_ids, action_ids = _seed(admin_conn)
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(_drain_worker, worker_number, action_ids) for worker_number in range(8)]
+        futures = [
+            executor.submit(_drain_worker, worker_number, action_ids)
+            for worker_number in range(8)
+        ]
         completed_sets: list[set[UUID]] = [future.result() for future in futures]
 
     all_completed: set[UUID] = set()
