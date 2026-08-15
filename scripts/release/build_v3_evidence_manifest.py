@@ -64,7 +64,7 @@ def build_manifest() -> dict[str, Any]:
     _assert_complete(races, [f"R{i:02d}" for i in range(1, 25)], "Race")
     _assert_complete(gates, [f"G{i:02d}" for i in range(1, 21)], "Gate")
 
-    artifacts = {
+    evidence_paths = {
         "schema_fingerprint": ROOT / ".phase6/v3-schema.json",
         "catalog_audit": ROOT / ".phase6/v3-catalog-audit.json",
         "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
@@ -72,13 +72,18 @@ def build_manifest() -> dict[str, Any]:
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
         "test_junit": ROOT / ".phase6/v3-tests-junit.xml",
         "concurrency_stability": ROOT / ".phase6/v3-concurrency-stability.json",
+        "test_order_independence": ROOT / ".phase6/v3-test-order-independence.json",
         "mutation_probes": ROOT / ".phase6/v3-mutation-probes.json",
     }
+    evidence_hashes = {name: _sha256(path) for name, path in evidence_paths.items()}
+    missing_artifacts = sorted(name for name, digest in evidence_hashes.items() if digest is None)
 
     commit = os.environ.get("PHASE6_COMMIT_SHA") or _git("rev-parse", "HEAD")
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "evidence_status": "COMPLETE" if not missing_artifacts else "INCOMPLETE",
+        "missing_artifacts": missing_artifacts,
         "commit_sha": commit,
         "tree_sha": _git("rev-parse", "HEAD^{tree}"),
         "working_tree_dirty": _tracked_tree_dirty(),
@@ -97,7 +102,7 @@ def build_manifest() -> dict[str, Any]:
         },
         "tests": _test_inventory(),
         "artifacts": {
-            **{f"{name}_sha256": _sha256(path) for name, path in artifacts.items()},
+            **{f"{name}_sha256": digest for name, digest in evidence_hashes.items()},
             "invariant_registry_sha256": _sha256(INVARIANT_DOC),
             "race_registry_sha256": _sha256(RACE_DOC),
             "gate_registry_sha256": _sha256(GATE_DOC),
@@ -105,16 +110,30 @@ def build_manifest() -> dict[str, Any]:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--require-complete", action="store_true")
+    return parser.parse_args()
 
+
+def main() -> int:
+    args = parse_args()
     manifest = build_manifest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(args.output)
+
+    missing = manifest["missing_artifacts"]
+    if args.require_complete and missing:
+        print(f"V3 release evidence incomplete: missing {', '.join(missing)}")
+        return 1
+
+    if missing:
+        print(f"V3 release evidence manifest generated INCOMPLETE: missing {', '.join(missing)}")
+    else:
+        print("V3 release evidence manifest generated COMPLETE.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
