@@ -13,6 +13,7 @@ from typing import Final
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 RELEASE_ROOTS: Final = (
     REPO_ROOT / "tests" / "db",
+    REPO_ROOT / "tests" / "e2e",
     REPO_ROOT / "tests" / "integration" / "v3_first_vertical",
     REPO_ROOT / "tests" / "integration" / "v3_booking_core",
     REPO_ROOT / "tests" / "integration" / "v3_booking_commitments",
@@ -94,6 +95,14 @@ def _contains_assertion(node: ast.AST) -> bool:
     return False
 
 
+def _required_markers(relative: str) -> tuple[str, ...]:
+    if relative.startswith("tests/integration/v3_"):
+        return ("integration", "postgres")
+    if relative.startswith("tests/e2e/"):
+        return ("e2e", "postgres")
+    return ()
+
+
 def _audit_test_function(
     relative: str,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -106,18 +115,17 @@ def _audit_test_function(
         if (marker := _marker_name(decorator)) is not None
     }
 
-    if relative.startswith("tests/integration/v3_"):
-        for required in ("integration", "postgres"):
-            if required not in markers:
-                findings.append(
-                    Finding(
-                        "error",
-                        relative,
-                        node.lineno,
-                        f"missing-{required}-marker",
-                        f"{node.name} must carry the {required} release marker",
-                    )
+    for required in _required_markers(relative):
+        if required not in markers:
+            findings.append(
+                Finding(
+                    "error",
+                    relative,
+                    node.lineno,
+                    f"missing-{required}-marker",
+                    f"{node.name} must carry the {required} release marker",
                 )
+            )
 
     lower_name = node.name.lower()
     is_concurrency_named = any(token in lower_name for token in CONCURRENCY_NAME_TOKENS)
@@ -243,7 +251,24 @@ def audit() -> dict[str, object]:
         inherited_markers = _module_markers(tree)
         functions = _test_functions(tree)
         test_count += len(functions)
+
+        names: dict[str, int] = {}
         for function in functions:
+            if function.name in names:
+                findings.append(
+                    Finding(
+                        "error",
+                        relative,
+                        function.lineno,
+                        "duplicate-test-name",
+                        (
+                            f"{function.name} duplicates a test first declared on line "
+                            f"{names[function.name]}"
+                        ),
+                    )
+                )
+            else:
+                names[function.name] = function.lineno
             findings.extend(_audit_test_function(relative, function, inherited_markers))
 
     errors = [finding for finding in findings if finding.severity == "error"]
