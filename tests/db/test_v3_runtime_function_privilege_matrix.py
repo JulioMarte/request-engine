@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
@@ -24,7 +24,7 @@ def _runtime_login(
     admin_conn: PgConnection,
     pg_conninfo: str,
     group_role: str,
-) -> Iterator[PgConnection]:
+) -> Generator[PgConnection, None, None]:
     role_name = f"{group_role}_acl_{uuid4().hex[:16]}"
     password = uuid4().hex
     admin_conn.execute(
