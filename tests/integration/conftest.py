@@ -76,9 +76,7 @@ async def _runtime_factory(group_role: str) -> AsyncIterator[SessionFactory]:
             ).format(sql.Identifier(role_name), sql.Literal(password))
         )
         admin.execute(
-            sql.SQL("GRANT {} TO {}").format(
-                sql.Identifier(group_role), sql.Identifier(role_name)
-            )
+            sql.SQL("GRANT {} TO {}").format(sql.Identifier(group_role), sql.Identifier(role_name))
         )
     finally:
         admin.close()
