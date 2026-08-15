@@ -7,17 +7,16 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
-from tests.e2e.operational_support import (
-    PgConnection,
-    new_contact_point,
-    new_org,
-    new_party,
-)
+from . import operational_support as support
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
 
-def _new_task(conn: PgConnection, organization_id: UUID, party_id: UUID) -> UUID:
+def _new_task(
+    conn: support.PgConnection,
+    organization_id: UUID,
+    party_id: UUID,
+) -> UUID:
     row = conn.execute(
         """
         INSERT INTO request_engine.communication_tasks (
@@ -33,14 +32,14 @@ def _new_task(conn: PgConnection, organization_id: UUID, party_id: UUID) -> UUID
 
 
 def test_communication_task_dedupe_is_tenant_scoped_and_contact_fk_is_tenant_safe(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    org_a = new_org(e2e_admin_conn, "communication-a")
-    org_b = new_org(e2e_admin_conn, "communication-b")
-    party_a = new_party(e2e_admin_conn, org_a, "Recipient A")
-    party_b = new_party(e2e_admin_conn, org_b, "Recipient B")
-    contact_a = new_contact_point(e2e_admin_conn, org_a, party_a, "a")
-    contact_b = new_contact_point(e2e_admin_conn, org_b, party_b, "b")
+    org_a = support.new_org(e2e_admin_conn, "communication-a")
+    org_b = support.new_org(e2e_admin_conn, "communication-b")
+    party_a = support.new_party(e2e_admin_conn, org_a, "Recipient A")
+    party_b = support.new_party(e2e_admin_conn, org_b, "Recipient B")
+    contact_a = support.new_contact_point(e2e_admin_conn, org_a, party_a, "a")
+    contact_b = support.new_contact_point(e2e_admin_conn, org_b, party_b, "b")
     dedupe = f"appointment-reminder:{uuid4().hex}"
 
     e2e_admin_conn.execute(
@@ -87,10 +86,10 @@ def test_communication_task_dedupe_is_tenant_scoped_and_contact_fk_is_tenant_saf
 
 
 def test_communication_delivery_attempt_number_is_unique_per_task(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "delivery-attempt")
-    party_id = new_party(e2e_admin_conn, organization_id, "Recipient")
+    organization_id = support.new_org(e2e_admin_conn, "delivery-attempt")
+    party_id = support.new_party(e2e_admin_conn, organization_id, "Recipient")
     task_id = _new_task(e2e_admin_conn, organization_id, party_id)
 
     e2e_admin_conn.execute(
@@ -116,12 +115,12 @@ def test_communication_delivery_attempt_number_is_unique_per_task(
 
 
 def test_delivery_provider_idempotency_and_message_id_are_unique_per_tenant_provider(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    org_a = new_org(e2e_admin_conn, "delivery-dedupe-a")
-    org_b = new_org(e2e_admin_conn, "delivery-dedupe-b")
-    party_a = new_party(e2e_admin_conn, org_a, "Recipient A")
-    party_b = new_party(e2e_admin_conn, org_b, "Recipient B")
+    org_a = support.new_org(e2e_admin_conn, "delivery-dedupe-a")
+    org_b = support.new_org(e2e_admin_conn, "delivery-dedupe-b")
+    party_a = support.new_party(e2e_admin_conn, org_a, "Recipient A")
+    party_b = support.new_party(e2e_admin_conn, org_b, "Recipient B")
     task_a1 = _new_task(e2e_admin_conn, org_a, party_a)
     task_a2 = _new_task(e2e_admin_conn, org_a, party_a)
     task_b = _new_task(e2e_admin_conn, org_b, party_b)
@@ -179,10 +178,10 @@ def test_delivery_provider_idempotency_and_message_id_are_unique_per_tenant_prov
 
 
 def test_delivery_attempt_number_must_be_positive(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "delivery-attempt-check")
-    party_id = new_party(e2e_admin_conn, organization_id, "Recipient")
+    organization_id = support.new_org(e2e_admin_conn, "delivery-attempt-check")
+    party_id = support.new_party(e2e_admin_conn, organization_id, "Recipient")
     task_id = _new_task(e2e_admin_conn, organization_id, party_id)
 
     with pytest.raises(psycopg.errors.CheckViolation):
@@ -198,10 +197,10 @@ def test_delivery_attempt_number_must_be_positive(
 
 
 def test_provider_event_deduplication_scopes_connection_and_tenant(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    org_a = new_org(e2e_admin_conn, "provider-event-a")
-    org_b = new_org(e2e_admin_conn, "provider-event-b")
+    org_a = support.new_org(e2e_admin_conn, "provider-event-a")
+    org_b = support.new_org(e2e_admin_conn, "provider-event-b")
     event_id = f"evt-{uuid4().hex}"
 
     def insert_event(org: UUID, connection: str, payload_hash: str) -> None:
@@ -224,9 +223,9 @@ def test_provider_event_deduplication_scopes_connection_and_tenant(
 
 
 def test_provider_events_accept_out_of_order_distinct_ids_without_collapsing_history(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "provider-out-of-order")
+    organization_id = support.new_org(e2e_admin_conn, "provider-out-of-order")
     first_id = f"evt-001-{uuid4().hex}"
     second_id = f"evt-002-{uuid4().hex}"
 
@@ -261,10 +260,10 @@ def test_provider_events_accept_out_of_order_distinct_ids_without_collapsing_his
 
 
 def test_reminder_acknowledgement_is_idempotent_per_occurrence_and_subject(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "reminder-ack")
-    party_id = new_party(e2e_admin_conn, organization_id, "Patient")
+    organization_id = support.new_org(e2e_admin_conn, "reminder-ack")
+    party_id = support.new_party(e2e_admin_conn, organization_id, "Patient")
     plan_row = e2e_admin_conn.execute(
         """
         INSERT INTO request_engine.reminder_plans (
@@ -306,10 +305,10 @@ def test_reminder_acknowledgement_is_idempotent_per_occurrence_and_subject(
 
 
 def test_reminder_plan_rejects_unknown_schedule_type(
-    e2e_admin_conn: PgConnection,
+    e2e_admin_conn: support.PgConnection,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "reminder-schedule-check")
-    party_id = new_party(e2e_admin_conn, organization_id, "Patient")
+    organization_id = support.new_org(e2e_admin_conn, "reminder-schedule-check")
+    party_id = support.new_party(e2e_admin_conn, organization_id, "Patient")
 
     with pytest.raises(psycopg.errors.CheckViolation):
         e2e_admin_conn.execute(

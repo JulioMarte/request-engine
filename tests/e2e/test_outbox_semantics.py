@@ -9,32 +9,27 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
-from tests.e2e.operational_support import (
-    PgConnection,
-    RuntimeCredentialsLike,
-    claim_outbox,
-    insert_outbox_message,
-    new_org,
-    runtime_conn,
-)
+from . import operational_support as support
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
 
 def test_app_runtime_cannot_execute_outbox_claim_surface(
-    app_runtime_credentials: RuntimeCredentialsLike,
+    app_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    with runtime_conn(app_runtime_credentials) as conn:
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            conn.execute(
-                "SELECT * FROM request_cmd.claim_outbox_messages(1, interval '30 seconds')"
-            ).fetchall()
+    with (
+        support.runtime_conn(app_runtime_credentials) as conn,
+        pytest.raises(psycopg.errors.InsufficientPrivilege),
+    ):
+        conn.execute(
+            "SELECT * FROM request_cmd.claim_outbox_messages(1, interval '30 seconds')"
+        ).fetchall()
 
 
 def test_outbox_claim_argument_bounds_are_enforced(
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    with runtime_conn(worker_runtime_credentials) as conn:
+    with support.runtime_conn(worker_runtime_credentials) as conn:
         for query in (
             "SELECT * FROM request_cmd.claim_outbox_messages(0, interval '30 seconds')",
             "SELECT * FROM request_cmd.claim_outbox_messages(501, interval '30 seconds')",
@@ -46,24 +41,24 @@ def test_outbox_claim_argument_bounds_are_enforced(
 
 
 def test_worker_direct_outbox_read_is_rls_scoped_but_claim_discovers_work(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-rls")
-    message_id = insert_outbox_message(
+    organization_id = support.new_org(e2e_admin_conn, "outbox-rls")
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1910, 1, 1, tzinfo=UTC),
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
+    with support.runtime_conn(worker_runtime_credentials) as conn:
         direct = conn.execute(
             "SELECT count(*) FROM request_engine.outbox_messages WHERE id = %s",
             (message_id,),
         ).fetchone()
         assert direct == (0,)
 
-        claimed = claim_outbox(conn, 1)
+        claimed = support.claim_outbox(conn, 1)
         assert len(claimed) == 1
         assert claimed[0][0] == message_id
         assert claimed[0][1] == organization_id
@@ -75,21 +70,21 @@ def test_worker_direct_outbox_read_is_rls_scoped_but_claim_discovers_work(
 
 
 def test_outbox_claims_due_work_across_tenants_and_ignores_future_work(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    org_a = new_org(e2e_admin_conn, "outbox-a")
-    org_b = new_org(e2e_admin_conn, "outbox-b")
+    org_a = support.new_org(e2e_admin_conn, "outbox-a")
+    org_b = support.new_org(e2e_admin_conn, "outbox-b")
     due_at = datetime(1900, 1, 1, tzinfo=UTC)
     future_at = datetime(2099, 1, 1, tzinfo=UTC)
     due_ids = {
-        insert_outbox_message(e2e_admin_conn, org_a, when=due_at),
-        insert_outbox_message(e2e_admin_conn, org_b, when=due_at),
+        support.insert_outbox_message(e2e_admin_conn, org_a, when=due_at),
+        support.insert_outbox_message(e2e_admin_conn, org_b, when=due_at),
     }
-    future_id = insert_outbox_message(e2e_admin_conn, org_a, when=future_at)
+    future_id = support.insert_outbox_message(e2e_admin_conn, org_a, when=future_at)
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        claimed = claim_outbox(conn, 2)
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        claimed = support.claim_outbox(conn, 2)
         assert {cast(UUID, row[0]) for row in claimed} == due_ids
         assert {cast(UUID, row[1]) for row in claimed} == {org_a, org_b}
         assert all(row[8] == 1 for row in claimed)
@@ -106,21 +101,21 @@ def test_outbox_claims_due_work_across_tenants_and_ignores_future_work(
 
 
 def test_two_workers_claim_disjoint_outbox_batches_under_contention(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-race")
+    organization_id = support.new_org(e2e_admin_conn, "outbox-race")
     due_at = datetime(1890, 1, 1, tzinfo=UTC)
     expected = {
-        insert_outbox_message(e2e_admin_conn, organization_id, when=due_at)
+        support.insert_outbox_message(e2e_admin_conn, organization_id, when=due_at)
         for _ in range(20)
     }
     barrier = threading.Barrier(2)
 
     def claim_batch() -> list[tuple[Any, ...]]:
-        with runtime_conn(worker_runtime_credentials) as conn:
+        with support.runtime_conn(worker_runtime_credentials) as conn:
             barrier.wait()
-            return claim_outbox(conn, 10)
+            return support.claim_outbox(conn, 10)
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(claim_batch)
@@ -135,7 +130,7 @@ def test_two_workers_claim_disjoint_outbox_batches_under_contention(
     assert first_ids.isdisjoint(second_ids)
     assert first_ids | second_ids == expected
 
-    with runtime_conn(worker_runtime_credentials) as conn:
+    with support.runtime_conn(worker_runtime_credentials) as conn:
         for row in first + second:
             assert conn.execute(
                 "SELECT request_cmd.complete_outbox_message(%s, %s)",
@@ -144,18 +139,18 @@ def test_two_workers_claim_disjoint_outbox_batches_under_contention(
 
 
 def test_outbox_claim_token_is_single_use_and_delivery_is_terminal(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-token")
-    message_id = insert_outbox_message(
+    organization_id = support.new_org(e2e_admin_conn, "outbox-token")
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1880, 1, 1, tzinfo=UTC),
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        claimed = claim_outbox(conn, 1)[0]
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        claimed = support.claim_outbox(conn, 1)[0]
         real_token = cast(UUID, claimed[2])
         assert conn.execute(
             "SELECT request_cmd.complete_outbox_message(%s, %s)",
@@ -181,19 +176,19 @@ def test_outbox_claim_token_is_single_use_and_delivery_is_terminal(
 
 
 def test_outbox_retry_exhaustion_and_stale_token_semantics(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-retry")
-    message_id = insert_outbox_message(
+    organization_id = support.new_org(e2e_admin_conn, "outbox-retry")
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1870, 1, 1, tzinfo=UTC),
         max_attempts=2,
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        first = claim_outbox(conn, 1)[0]
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        first = support.claim_outbox(conn, 1)[0]
         assert first[8] == 1
         assert conn.execute(
             "SELECT request_cmd.retry_outbox_message(%s, %s, %s, %s)",
@@ -204,7 +199,7 @@ def test_outbox_retry_exhaustion_and_stale_token_semantics(
             (message_id, first[2], datetime(1869, 1, 1, tzinfo=UTC), "provider_503"),
         ).fetchone() == ("pending",)
 
-        second = claim_outbox(conn, 1)[0]
+        second = support.claim_outbox(conn, 1)[0]
         assert second[8] == 2
         assert conn.execute(
             "SELECT request_cmd.retry_outbox_message(%s, %s, %s, %s)",
@@ -222,12 +217,12 @@ def test_outbox_retry_exhaustion_and_stale_token_semantics(
 
 
 def test_expired_outbox_lease_is_reclaimed_after_simulated_worker_crash(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-crash")
+    organization_id = support.new_org(e2e_admin_conn, "outbox-crash")
     stale_token = uuid4()
-    message_id = insert_outbox_message(
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1860, 1, 1, tzinfo=UTC),
@@ -237,8 +232,8 @@ def test_expired_outbox_lease_is_reclaimed_after_simulated_worker_crash(
         attempt_count=3,
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        reclaimed = claim_outbox(conn, 1)[0]
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        reclaimed = support.claim_outbox(conn, 1)[0]
         assert reclaimed[0] == message_id
         assert reclaimed[2] != stale_token
         assert reclaimed[8] == 4
@@ -253,18 +248,18 @@ def test_expired_outbox_lease_is_reclaimed_after_simulated_worker_crash(
 
 
 def test_outbox_dead_letter_is_terminal_and_token_guarded(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-dead-letter")
-    message_id = insert_outbox_message(
+    organization_id = support.new_org(e2e_admin_conn, "outbox-dead-letter")
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1850, 1, 1, tzinfo=UTC),
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        claimed = claim_outbox(conn, 1)[0]
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        claimed = support.claim_outbox(conn, 1)[0]
         assert conn.execute(
             "SELECT request_cmd.dead_letter_outbox_message(%s, %s, %s)",
             (message_id, uuid4(), "wrong_token"),
@@ -285,11 +280,11 @@ def test_outbox_dead_letter_is_terminal_and_token_guarded(
 
 
 def test_due_pre_exhausted_outbox_message_is_auto_dead_before_claim(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-pre-exhausted")
-    message_id = insert_outbox_message(
+    organization_id = support.new_org(e2e_admin_conn, "outbox-pre-exhausted")
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1840, 1, 1, tzinfo=UTC),
@@ -297,8 +292,8 @@ def test_due_pre_exhausted_outbox_message_is_auto_dead_before_claim(
         max_attempts=5,
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        assert all(row[0] != message_id for row in claim_outbox(conn, 1))
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        assert all(row[0] != message_id for row in support.claim_outbox(conn, 1))
 
     assert e2e_admin_conn.execute(
         """
@@ -311,12 +306,12 @@ def test_due_pre_exhausted_outbox_message_is_auto_dead_before_claim(
 
 
 def test_expired_pre_exhausted_outbox_lease_is_auto_dead_and_unfenced(
-    e2e_admin_conn: PgConnection,
-    worker_runtime_credentials: RuntimeCredentialsLike,
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
-    organization_id = new_org(e2e_admin_conn, "outbox-exhausted-lease")
+    organization_id = support.new_org(e2e_admin_conn, "outbox-exhausted-lease")
     stale_token = uuid4()
-    message_id = insert_outbox_message(
+    message_id = support.insert_outbox_message(
         e2e_admin_conn,
         organization_id,
         when=datetime(1830, 1, 1, tzinfo=UTC),
@@ -327,8 +322,8 @@ def test_expired_pre_exhausted_outbox_lease_is_auto_dead_and_unfenced(
         max_attempts=6,
     )
 
-    with runtime_conn(worker_runtime_credentials) as conn:
-        assert all(row[0] != message_id for row in claim_outbox(conn, 1))
+    with support.runtime_conn(worker_runtime_credentials) as conn:
+        assert all(row[0] != message_id for row in support.claim_outbox(conn, 1))
         assert conn.execute(
             "SELECT request_cmd.complete_outbox_message(%s, %s)",
             (message_id, stale_token),
