@@ -48,6 +48,16 @@ class _ProviderStore:
         return True
 
 
+def _worker_store(factory: SessionFactory) -> object:
+    del factory
+    return object()
+
+
+def _provider_store(factory: SessionFactory) -> _ProviderStore:
+    del factory
+    return _ProviderStore()
+
+
 @pytest.mark.unit
 def test_reservation_lifecycle_factory_receives_only_domain_session_factory(
     monkeypatch: pytest.MonkeyPatch,
@@ -56,11 +66,9 @@ def test_reservation_lifecycle_factory_receives_only_domain_session_factory(
     domain_factory = cast(SessionFactory, object())
     lifecycle_factories_seen: list[SessionFactory] = []
 
-    monkeypatch.setattr(worker_bootstrap, "PostgresScheduledActionWorker", lambda factory: object())
-    monkeypatch.setattr(worker_bootstrap, "PostgresOutboxWorker", lambda factory: object())
-    monkeypatch.setattr(
-        worker_bootstrap, "PostgresProviderEventWorker", lambda factory: _ProviderStore()
-    )
+    monkeypatch.setattr(worker_bootstrap, "PostgresScheduledActionWorker", _worker_store)
+    monkeypatch.setattr(worker_bootstrap, "PostgresOutboxWorker", _worker_store)
+    monkeypatch.setattr(worker_bootstrap, "PostgresProviderEventWorker", _provider_store)
     monkeypatch.setattr(worker_bootstrap, "FencedWorkerRuntime", _CapturedRuntime)
 
     def lifecycle_factory(factory: SessionFactory) -> ReservationLifecycleOutboxHandler:
