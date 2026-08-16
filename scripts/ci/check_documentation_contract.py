@@ -129,8 +129,33 @@ def _git(*args: str) -> str:
     return result.stdout.strip()
 
 
+def _ref_exists(ref: str) -> bool:
+    try:
+        _git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def ensure_base_available(base: str) -> str:
+    if _ref_exists(base):
+        return base
+
+    if base.startswith("origin/"):
+        remote_ref = base.removeprefix("origin/")
+        _git("fetch", "--no-tags", "--depth=1", "origin", remote_ref)
+        return "FETCH_HEAD"
+
+    if len(base) == 40 and all(char in "0123456789abcdefABCDEF" for char in base):
+        _git("fetch", "--no-tags", "--depth=1", "origin", base)
+        return "FETCH_HEAD"
+
+    raise ValueError(f"documentation contract base ref is unavailable: {base}")
+
+
 def changed_files(base: str, head: str) -> set[str]:
-    output = _git("diff", "--name-only", f"{base}...{head}")
+    available_base = ensure_base_available(base)
+    output = _git("diff", "--name-only", f"{available_base}...{head}")
     return {_normalize(line) for line in output.splitlines() if line.strip()}
 
 
@@ -188,8 +213,8 @@ def main() -> int:
 
     try:
         changed = changed_files(base, head)
-    except subprocess.CalledProcessError as exc:
-        detail = exc.stderr.strip() or str(exc)
+    except (subprocess.CalledProcessError, ValueError) as exc:
+        detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
         print(f"documentation contract diff failed: {detail}", file=sys.stderr)
         return 2
 
