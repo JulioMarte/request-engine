@@ -2,6 +2,8 @@ from collections.abc import Mapping
 from datetime import timedelta
 from uuid import UUID
 
+from sqlalchemy import text
+
 from request_engine.modules.communications.adapters.db.delivery_store import (
     DISPATCH_ACTION_TYPE,
     DISPATCH_ACTION_VERSION,
@@ -133,6 +135,62 @@ class CommunicationDeliveryScheduledHandler:
                 claim_token=lease.claim_token,
             ):
                 raise LeaseLostWorkError("poison_task_failure_fence_lost")
+
+            # Serialize against legitimate task state changes and retry scheduling.
+            # A malformed duplicate ScheduledAction must never terminalize a task
+            # while another executable dispatch intent for that task still exists.
+            task_exists = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT 1
+                        FROM request_engine.communication_tasks
+                        WHERE organization_id = :organization_id
+                          AND id = :communication_task_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {
+                        "organization_id": lease.organization_id,
+                        "communication_task_id": lease.subject_id,
+                    },
+                )
+            ).scalar_one_or_none()
+            if task_exists is None:
+                return
+
+            sibling_dispatch_exists = bool(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM request_engine.scheduled_actions
+                                WHERE organization_id = :organization_id
+                                  AND owner_module = 'communications'
+                                  AND action_type = :action_type
+                                  AND action_version = :action_version
+                                  AND subject_kind = 'CommunicationTask'
+                                  AND subject_id = :communication_task_id
+                                  AND id <> :scheduled_action_id
+                                  AND status IN ('pending', 'leased')
+                            )
+                            """
+                        ),
+                        {
+                            "organization_id": lease.organization_id,
+                            "action_type": DISPATCH_ACTION_TYPE,
+                            "action_version": DISPATCH_ACTION_VERSION,
+                            "communication_task_id": lease.subject_id,
+                            "scheduled_action_id": lease.id,
+                        },
+                    )
+                ).scalar_one()
+            )
+            if sibling_dispatch_exists:
+                return
+
             await fail_poisoned_communication_task(
                 session,
                 organization_id=lease.organization_id,
