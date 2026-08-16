@@ -20,7 +20,6 @@ from request_engine.modules.queue.contracts.released_slot_recovery import Releas
 from request_engine.platform.outbox.worker import OutboxLease
 from request_engine.platform.worker.runtime import PermanentWorkError
 
-
 RESERVATION_LIFECYCLE_EVENT_TYPES = frozenset(
     {
         "reservation.created.v1",

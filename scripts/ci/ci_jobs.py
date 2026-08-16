@@ -35,7 +35,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
     "python-quality": (
         Step("uv-sync", "Resolve development environment", "uv sync --all-groups"),
         Step("lockfile", "Lockfile consistency", "uv lock --check"),
-        Step("ruff-lint", "Ruff lint", "uv run ruff check . --diff"),
+        Step("ruff-lint", "Ruff lint", "uv run ruff check ."),
         Step("ruff-format", "Ruff format check", "uv run ruff format --diff ."),
         Step("pyright", "Pyright", "uv run pyright"),
         Step(
