@@ -35,77 +35,41 @@ def _fixture(conn: PgConnection, label: str) -> AuthorityRaceFixture:
     suffix = f"{label}-{uuid4().hex}"
     organization_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.organizations (organization_key, display_name)
-        VALUES (%s, %s)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.organizations (organization_key, display_name) VALUES (%s, %s) RETURNING id",
         (suffix, suffix),
     )
     party_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.parties (organization_id, party_kind, display_name)
-        VALUES (%s, 'person', %s)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.parties (organization_id, party_kind, display_name) VALUES (%s, 'person', %s) RETURNING id",
         (organization_id, f"Party {suffix}"),
     )
     offering_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.offerings (organization_id, offering_key, display_name)
-        VALUES (%s, %s, %s)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.offerings (organization_id, offering_key, display_name) VALUES (%s, %s, %s) RETURNING id",
         (organization_id, f"offering-{suffix}", f"Offering {suffix}"),
     )
     offering_version_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.offering_versions (
-            organization_id, offering_id, version, duration_minutes, bookable
-        ) VALUES (%s, %s, 1, 30, true)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.offering_versions (organization_id, offering_id, version, duration_minutes, bookable) VALUES (%s, %s, 1, 30, true) RETURNING id",
         (organization_id, offering_id),
     )
     capability_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.resource_capabilities (
-            organization_id, capability_key, display_name
-        ) VALUES (%s, %s, %s)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.resource_capabilities (organization_id, capability_key, display_name) VALUES (%s, %s, %s) RETURNING id",
         (organization_id, f"cap-{suffix}", f"Capability {suffix}"),
     )
     requirement_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.offering_resource_requirements (
-            organization_id, offering_version_id, capability_id, ordinal, quantity
-        ) VALUES (%s, %s, %s, 1, 1)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.offering_resource_requirements (organization_id, offering_version_id, capability_id, ordinal, quantity) VALUES (%s, %s, %s, 1, 1) RETURNING id",
         (organization_id, offering_version_id, capability_id),
     )
     resource_id = _uuid_row(
         conn,
-        """
-        INSERT INTO request_engine.resources (
-            organization_id, resource_key, display_name, capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, 'exclusive', 1)
-        RETURNING id
-        """,
+        "INSERT INTO request_engine.resources (organization_id, resource_key, display_name, capacity_model, capacity_units) VALUES (%s, %s, %s, 'exclusive', 1) RETURNING id",
         (organization_id, f"resource-{suffix}", f"Resource {suffix}"),
     )
     conn.execute(
-        """
-        INSERT INTO request_engine.resource_capability_assignments (
-            organization_id, resource_id, capability_id
-        ) VALUES (%s, %s, %s)
-        """,
+        "INSERT INTO request_engine.resource_capability_assignments (organization_id, resource_id, capability_id) VALUES (%s, %s, %s)",
         (organization_id, resource_id, capability_id),
     )
     return AuthorityRaceFixture(
@@ -153,8 +117,7 @@ def _hold(conn: PgConnection, fixture: AuthorityRaceFixture, start: str, end: st
         ) VALUES (
             %s, %s, %s, tstzrange(%s::timestamptz, %s::timestamptz, '[)'),
             clock_timestamp() + interval '1 hour'
-        )
-        RETURNING id
+        ) RETURNING id
         """,
         (fixture.organization_id, fixture.offering_version_id, fixture.party_id, start, end),
     )
@@ -174,8 +137,7 @@ def _claim(
             organization_id, resource_id, requirement_id, hold_id, during, quantity
         ) VALUES (
             %s, %s, %s, %s, tstzrange(%s::timestamptz, %s::timestamptz, '[)'), 1
-        )
-        RETURNING id
+        ) RETURNING id
         """,
         (
             fixture.organization_id,
@@ -198,7 +160,6 @@ def test_binding_activation_racing_with_claim_captures_existing_live_commitment(
     root_id = _root(admin_conn, "activation")
     start = "2030-03-01T14:00:00+00:00"
     end = "2030-03-01T14:30:00+00:00"
-    hold_id = _hold(admin_conn, fixture, start, end)
     barrier = threading.Barrier(2)
     outcomes: list[str] = []
     claim_ids: list[UUID] = []
@@ -210,13 +171,10 @@ def test_binding_activation_racing_with_claim_captures_existing_live_commitment(
         try:
             conn.execute("SET LOCAL lock_timeout = '5s'")
             conn.execute(
-                """
-                SELECT id FROM request_engine.resources
-                WHERE organization_id = %s AND id = %s
-                FOR UPDATE
-                """,
+                "SELECT id FROM request_engine.resources WHERE organization_id = %s AND id = %s FOR UPDATE",
                 (fixture.organization_id, fixture.resource_id),
             ).fetchone()
+            hold_id = _hold(conn, fixture, start, end)
             barrier.wait(timeout=5)
             claim_id = _claim(conn, fixture, hold_id, start, end)
             conn.commit()
@@ -261,11 +219,7 @@ def test_binding_activation_racing_with_claim_captures_existing_live_commitment(
     assert sorted(outcomes) == ["binding-activated", "claim-committed"]
     assert len(claim_ids) == 1
     assert admin_conn.execute(
-        """
-        SELECT shared_capacity_identity_id
-        FROM request_engine.shared_capacity_claim_links
-        WHERE capacity_claim_id = %s
-        """,
+        "SELECT shared_capacity_identity_id FROM request_engine.shared_capacity_claim_links WHERE capacity_claim_id = %s",
         (claim_ids[0],),
     ).fetchone() == (root_id,)
 
@@ -281,7 +235,6 @@ def test_binding_revocation_racing_with_claim_preserves_historical_serialization
     binding_id = _bind(admin_conn, fixture, root_id)
     start = "2030-03-02T14:00:00+00:00"
     end = "2030-03-02T14:30:00+00:00"
-    hold_id = _hold(admin_conn, fixture, start, end)
     barrier = threading.Barrier(2)
     outcomes: list[str] = []
     claim_ids: list[UUID] = []
@@ -293,13 +246,10 @@ def test_binding_revocation_racing_with_claim_preserves_historical_serialization
         try:
             conn.execute("SET LOCAL lock_timeout = '5s'")
             conn.execute(
-                """
-                SELECT id FROM request_engine.resources
-                WHERE organization_id = %s AND id = %s
-                FOR UPDATE
-                """,
+                "SELECT id FROM request_engine.resources WHERE organization_id = %s AND id = %s FOR UPDATE",
                 (fixture.organization_id, fixture.resource_id),
             ).fetchone()
+            hold_id = _hold(conn, fixture, start, end)
             barrier.wait(timeout=5)
             claim_id = _claim(conn, fixture, hold_id, start, end)
             conn.commit()
@@ -350,8 +300,7 @@ def test_binding_revocation_racing_with_claim_preserves_historical_serialization
         """
         SELECT b.status, link.shared_capacity_identity_id
         FROM request_engine.shared_capacity_bindings b
-        JOIN request_engine.shared_capacity_claim_links link
-          ON link.capacity_claim_id = %s
+        JOIN request_engine.shared_capacity_claim_links link ON link.capacity_claim_id = %s
         WHERE b.id = %s
         """,
         (claim_ids[0], binding_id),
@@ -369,8 +318,9 @@ def test_live_linked_commitment_blocks_rebinding_to_different_shared_root(
     binding_id = _bind(admin_conn, fixture, first_root)
     start = "2030-03-03T14:00:00+00:00"
     end = "2030-03-03T14:30:00+00:00"
-    hold_id = _hold(admin_conn, fixture, start, end)
-    claim_id = _claim(admin_conn, fixture, hold_id, start, end)
+    with admin_conn.transaction():
+        hold_id = _hold(admin_conn, fixture, start, end)
+        claim_id = _claim(admin_conn, fixture, hold_id, start, end)
 
     admin_conn.execute(
         "SELECT request_admin.revoke_shared_capacity_binding(%s, %s, %s)",
@@ -382,10 +332,6 @@ def test_live_linked_commitment_blocks_rebinding_to_different_shared_root(
     assert "live commitments bound to another shared capacity root" in str(rejected.value)
 
     assert admin_conn.execute(
-        """
-        SELECT shared_capacity_identity_id
-        FROM request_engine.shared_capacity_claim_links
-        WHERE capacity_claim_id = %s
-        """,
+        "SELECT shared_capacity_identity_id FROM request_engine.shared_capacity_claim_links WHERE capacity_claim_id = %s",
         (claim_id,),
     ).fetchone() == (first_root,)
