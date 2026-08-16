@@ -40,7 +40,7 @@ from request_engine.platform.db.session import SessionFactory
 
 
 class CapacitySafeReservationCommands:
-    """Reservation command adapter with the public capacity-conflict contract."""
+    """Reservation adapter with opaque errors only for true capacity acquisition."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._delegate = PostgresReservationCommands(session_factory)
@@ -52,14 +52,13 @@ class CapacitySafeReservationCommands:
             normalize_capacity_integrity_error(exc)
 
     async def cancel_reservation(self, command: CancelReservationCommand) -> Reservation:
-        try:
-            return await self._delegate.cancel_reservation(command)
-        except IntegrityError as exc:
-            normalize_capacity_integrity_error(exc)
+        # Cancellation only releases capacity. A 23P01 here is not ordinary
+        # contention and must remain visible as an invariant failure.
+        return await self._delegate.cancel_reservation(command)
 
 
 class CapacitySafeBookingCommitmentCommands:
-    """Hold/reschedule adapter with the same opaque capacity-conflict contract."""
+    """Commitment adapter with opaque errors only when consuming new capacity."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._delegate = PostgresBookingCommitmentCommands(session_factory)
@@ -71,10 +70,9 @@ class CapacitySafeBookingCommitmentCommands:
             normalize_capacity_integrity_error(exc)
 
     async def confirm_capacity_hold(self, command: ConfirmCapacityHoldCommand) -> Reservation:
-        try:
-            return await self._delegate.confirm_capacity_hold(command)
-        except IntegrityError as exc:
-            normalize_capacity_integrity_error(exc)
+        # Confirmation promotes an already-serialized Hold claim. Capacity loss
+        # at this stage would indicate corruption/race invariant failure.
+        return await self._delegate.confirm_capacity_hold(command)
 
     async def reschedule_reservation(self, command: RescheduleReservationCommand) -> Reservation:
         try:
@@ -111,20 +109,16 @@ class CapacitySafeSlotOfferCapacity:
         transaction: object,
         request: ConsumeSlotOfferHold,
     ) -> Reservation:
-        try:
-            return await self._delegate.consume_slot_offer_hold(transaction, request)
-        except IntegrityError as exc:
-            _raise_slot_offer_capacity_unavailable(exc)
+        # Acceptance promotes capacity already owned by the Hold. Do not hide an
+        # impossible exclusion failure as normal SlotOffer capacity contention.
+        return await self._delegate.consume_slot_offer_hold(transaction, request)
 
     async def release_slot_offer_hold(
         self,
         transaction: object,
         request: ReleaseSlotOfferHold,
     ) -> CapacityHold:
-        try:
-            return await self._delegate.release_slot_offer_hold(transaction, request)
-        except IntegrityError as exc:
-            _raise_slot_offer_capacity_unavailable(exc)
+        return await self._delegate.release_slot_offer_hold(transaction, request)
 
 
 def _async_session(transaction: object) -> AsyncSession:
