@@ -59,10 +59,17 @@ class CommunicationDeliveryWorker:
         session_factory: SessionFactory,
         scheduler: PostgresScheduledActionWorker,
         providers: Mapping[str, CommunicationDeliveryProvider],
+        *,
+        finalization_lease_extension: timedelta = timedelta(seconds=60),
     ) -> None:
         self._session_factory = session_factory
         self._scheduler = scheduler
         self._providers = providers
+        if finalization_lease_extension <= timedelta(0) or finalization_lease_extension > timedelta(
+            minutes=15
+        ):
+            raise ValueError("finalization_lease_extension must be > 0 and <= 15 minutes")
+        self._finalization_lease_extension = finalization_lease_extension
 
     async def process(self, lease: ScheduledActionLease) -> DeliveryWorkerOutcome:
         try:
@@ -83,7 +90,8 @@ class CommunicationDeliveryWorker:
             raise
 
         if work.kind is DeliveryWorkKind.SKIP:
-            await self._scheduler.complete(lease)
+            if not await self._scheduler.complete(lease):
+                raise LeaseLostWorkError("delivery_completion_fence_lost")
             return DeliveryWorkerOutcome(
                 action_id=lease.id,
                 communication_task_id=work.communication_task_id,
@@ -103,6 +111,7 @@ class CommunicationDeliveryWorker:
             raise RuntimeError("prepared delivery work has no provider request")
         provider = self._providers.get(provider_key)
         if provider is None:
+            await self._require_finalization_lease(lease)
             await self._fail_unconfigured_provider(
                 lease,
                 work,
@@ -151,6 +160,7 @@ class CommunicationDeliveryWorker:
 
         if work.delivery_id is None:
             raise RuntimeError("provider work is missing delivery identity")
+        await self._require_finalization_lease(lease)
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
             finalized = await finalize_provider_result(
                 session,
@@ -159,7 +169,8 @@ class CommunicationDeliveryWorker:
                 result=provider_result,
             )
 
-        await self._scheduler.complete(lease)
+        if not await self._scheduler.complete(lease):
+            raise LeaseLostWorkError("delivery_completion_fence_lost")
         return DeliveryWorkerOutcome(
             action_id=lease.id,
             communication_task_id=finalized.communication_task_id,
@@ -167,6 +178,13 @@ class CommunicationDeliveryWorker:
             state=DeliveryWorkerState.COMPLETED,
             detail=finalized.status.value,
         )
+
+    async def _require_finalization_lease(self, lease: ScheduledActionLease) -> None:
+        if not await self._scheduler.renew(
+            lease,
+            extension=self._finalization_lease_extension,
+        ):
+            raise LeaseLostWorkError("provider_result_finalization_fence_lost")
 
     async def _fail_poisoned_task(self, lease: ScheduledActionLease, *, reason: str) -> None:
         if (
