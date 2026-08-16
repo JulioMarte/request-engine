@@ -56,12 +56,8 @@ def test_reservation_lifecycle_factory_receives_only_domain_session_factory(
     domain_factory = cast(SessionFactory, object())
     lifecycle_factories_seen: list[SessionFactory] = []
 
-    monkeypatch.setattr(
-        worker_bootstrap, "PostgresScheduledActionWorker", lambda factory: object()
-    )
-    monkeypatch.setattr(
-        worker_bootstrap, "PostgresOutboxWorker", lambda factory: object()
-    )
+    monkeypatch.setattr(worker_bootstrap, "PostgresScheduledActionWorker", lambda factory: object())
+    monkeypatch.setattr(worker_bootstrap, "PostgresOutboxWorker", lambda factory: object())
     monkeypatch.setattr(
         worker_bootstrap, "PostgresProviderEventWorker", lambda factory: _ProviderStore()
     )

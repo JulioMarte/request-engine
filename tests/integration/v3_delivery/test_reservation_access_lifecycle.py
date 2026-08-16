@@ -43,10 +43,7 @@ def _rows(
         """,
         (fixture.organization_id, fixture.reservation_id),
     ).fetchall()
-    return [
-        (cast(int, row[0]), cast(str, row[1]), cast(str, row[2]))
-        for row in rows
-    ]
+    return [(cast(int, row[0]), cast(str, row[1]), cast(str, row[2])) for row in rows]
 
 
 @pytest.mark.asyncio
@@ -92,9 +89,7 @@ async def test_retry_recovers_pending_after_provider_failure(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider(provision_failures=1)
     source = source_from_db(admin_conn, fixture)
@@ -124,9 +119,7 @@ async def test_worker_cannot_read_or_mutate_reservation_access_but_app_can(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider()
     source = source_from_db(admin_conn, fixture)
@@ -136,9 +129,7 @@ async def test_worker_cannot_read_or_mutate_reservation_access_but_app_can(
     access_id = ready[0].id
 
     with pytest.raises(DBAPIError):
-        async with tenant_transaction(
-            worker_session_factory, fixture.organization_id
-        ) as session:
+        async with tenant_transaction(worker_session_factory, fixture.organization_id) as session:
             await session.execute(
                 text(
                     """
@@ -154,9 +145,7 @@ async def test_worker_cannot_read_or_mutate_reservation_access_but_app_can(
             )
 
     with pytest.raises(DBAPIError):
-        async with tenant_transaction(
-            worker_session_factory, fixture.organization_id
-        ) as session:
+        async with tenant_transaction(worker_session_factory, fixture.organization_id) as session:
             await session.execute(
                 text(
                     """
@@ -168,9 +157,7 @@ async def test_worker_cannot_read_or_mutate_reservation_access_but_app_can(
                 {"organization_id": fixture.organization_id},
             )
 
-    async with tenant_transaction(
-        delivery_session_factory, fixture.organization_id
-    ) as session:
+    async with tenant_transaction(delivery_session_factory, fixture.organization_id) as session:
         result = await session.execute(
             text(
                 """

@@ -194,13 +194,8 @@ class ReservationAccessService:
         return provider
 
     @staticmethod
-    def _materialization_key(
-        source: ReservationAccessSource, policy: AccessPolicy
-    ) -> str:
-        return (
-            f"reservation-access:{source.reservation_id}:"
-            f"{policy.access_key}:r{source.revision}"
-        )
+    def _materialization_key(source: ReservationAccessSource, policy: AccessPolicy) -> str:
+        return f"reservation-access:{source.reservation_id}:{policy.access_key}:r{source.revision}"
 
     @staticmethod
     def _revoke_request(

@@ -57,9 +57,7 @@ class PostgresDeliveryPolicyReader:
                     access_key=str(entry["key"]),
                     kind=AccessKind(str(entry["kind"])),
                     provider_key=str(entry["provider"]) if entry.get("provider") else None,
-                    provisioning_mode=ProvisioningMode(
-                        str(entry.get("provisioning", "immediate"))
-                    ),
+                    provisioning_mode=ProvisioningMode(str(entry.get("provisioning", "immediate"))),
                     public_data=dict(
                         cast(dict[str, object], entry["public_data"])
                         if entry.get("public_data")
@@ -145,8 +143,7 @@ class PostgresReservationAccessRepository:
         work_claim: DeliveryWorkClaim,
     ) -> ReservationAccess | None:
         materialization_key = (
-            f"reservation-access:{source.reservation_id}:"
-            f"{policy.access_key}:r{source.revision}"
+            f"reservation-access:{source.reservation_id}:{policy.access_key}:r{source.revision}"
         )
         async with tenant_transaction(self._session_factory, source.organization_id) as session:
             await self._lock_work_claim(session, work_claim)
@@ -476,9 +473,7 @@ class PostgresReservationAccessRepository:
         return _from_row(row)
 
     @staticmethod
-    async def _lock_work_claim(
-        session: AsyncSession, work_claim: DeliveryWorkClaim
-    ) -> None:
+    async def _lock_work_claim(session: AsyncSession, work_claim: DeliveryWorkClaim) -> None:
         locked = (
             await session.execute(
                 text(

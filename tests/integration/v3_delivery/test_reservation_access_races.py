@@ -75,9 +75,7 @@ async def test_concurrent_reconcile_creates_one_semantic_provider_resource(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider()
     service = _service(delivery_session_factory, provider)
@@ -105,18 +103,14 @@ async def test_lost_outbox_lease_cannot_publish_but_replay_reuses_provider_evide
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RacingProvider()
     service = _service(delivery_session_factory, provider)
     source = source_from_db(admin_conn, fixture)
     first_claim = make_work_claim(admin_conn, fixture)
 
-    task = asyncio.create_task(
-        service.reconcile_reservation_access(source, work_claim=first_claim)
-    )
+    task = asyncio.create_task(service.reconcile_reservation_access(source, work_claim=first_claim))
     await asyncio.wait_for(provider.provision_started.wait(), timeout=10)
     replacement = replace_work_claim(admin_conn, first_claim)
     provider.release_provision.set()
@@ -147,9 +141,7 @@ async def test_reschedule_revokes_old_revision_before_new_revision_is_ready(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider()
     service = _service(delivery_session_factory, provider)
@@ -161,9 +153,7 @@ async def test_reschedule_revokes_old_revision_before_new_revision_is_ready(
 
     bump_reservation_revision(admin_conn, fixture)
     source_v2 = source_from_db(admin_conn, fixture)
-    claim_v2 = make_work_claim(
-        admin_conn, fixture, event_type="reservation.rescheduled.v1"
-    )
+    claim_v2 = make_work_claim(admin_conn, fixture, event_type="reservation.rescheduled.v1")
     ready_v2 = await service.reconcile_reservation_access(source_v2, work_claim=claim_v2)
 
     rows = _rows(admin_conn, fixture)
@@ -183,9 +173,7 @@ async def test_cancel_racing_provider_materialization_never_publishes_ready_acce
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RacingProvider()
     service = _service(delivery_session_factory, provider)
@@ -218,9 +206,7 @@ async def test_stale_reservation_revision_cannot_revoke_current_ready_access(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider()
     service = _service(delivery_session_factory, provider)
@@ -228,18 +214,12 @@ async def test_stale_reservation_revision_cannot_revoke_current_ready_access(
     stale_source = source_from_db(admin_conn, fixture)
     bump_reservation_revision(admin_conn, fixture)
     current_source = source_from_db(admin_conn, fixture)
-    current_claim = make_work_claim(
-        admin_conn, fixture, event_type="reservation.rescheduled.v1"
-    )
-    ready = await service.reconcile_reservation_access(
-        current_source, work_claim=current_claim
-    )
+    current_claim = make_work_claim(admin_conn, fixture, event_type="reservation.rescheduled.v1")
+    ready = await service.reconcile_reservation_access(current_source, work_claim=current_claim)
     current_key = ready[0].materialization_key
 
     stale_claim = make_work_claim(admin_conn, fixture)
-    stale_result = await service.reconcile_reservation_access(
-        stale_source, work_claim=stale_claim
-    )
+    stale_result = await service.reconcile_reservation_access(stale_source, work_claim=stale_claim)
 
     assert stale_result == ()
     assert _rows(admin_conn, fixture) == [(2, "video", "ready", current_key)]
@@ -256,9 +236,7 @@ async def test_cancel_recovers_provider_success_that_crashed_before_db_evidence(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider()
     repository = PostgresReservationAccessRepository(delivery_session_factory)
@@ -286,9 +264,7 @@ async def test_cancel_recovers_provider_success_that_crashed_before_db_evidence(
     assert materialized.external_ref is not None
 
     cancel_reservation(admin_conn, fixture)
-    cancel_claim = make_work_claim(
-        admin_conn, fixture, event_type="reservation.cancelled.v1"
-    )
+    cancel_claim = make_work_claim(admin_conn, fixture, event_type="reservation.cancelled.v1")
     service = _service(delivery_session_factory, provider)
     revoked = await service.revoke_reservation_access(
         fixture.organization_id,
@@ -312,9 +288,7 @@ async def test_provider_revoke_failure_leaves_local_access_retryable(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "meeting"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "meeting"}],
     )
     provider = RecordingProvider(revoke_failures=1)
     service = _service(delivery_session_factory, provider)
@@ -323,9 +297,7 @@ async def test_provider_revoke_failure_leaves_local_access_retryable(
         source, work_claim=make_work_claim(admin_conn, fixture)
     )
     cancel_reservation(admin_conn, fixture)
-    cancel_claim = make_work_claim(
-        admin_conn, fixture, event_type="reservation.cancelled.v1"
-    )
+    cancel_claim = make_work_claim(admin_conn, fixture, event_type="reservation.cancelled.v1")
 
     with pytest.raises(RuntimeError, match="revocation unavailable"):
         await service.revoke_reservation_access(
