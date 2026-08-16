@@ -15,7 +15,7 @@ from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
 # capacity-safe boundaries, so make the integration package exercise that exact
 # contract without changing the underlying delegates used by the wrappers.
 cast(Any, reservation_commands).PostgresReservationCommands = CapacitySafeReservationCommands
-cast(Any, commitment_commands).PostgresBookingCommitmentCommands = (
-    CapacitySafeBookingCommitmentCommands
-)
+cast(
+    Any, commitment_commands
+).PostgresBookingCommitmentCommands = CapacitySafeBookingCommitmentCommands
 cast(Any, slot_offer_capacity).PostgresSlotOfferCapacity = CapacitySafeSlotOfferCapacity
