@@ -22,8 +22,10 @@ async def fail_poisoned_communication_task_if_orphaned(
 
     Locking the task first serializes this decision with normal delivery state
     transitions and retry scheduling, both of which also lock the task before
-    mutating it. A malformed duplicate action may therefore be dead-lettered
-    without incorrectly terminalizing a task that still has valid work.
+    mutating it. Initial dispatch creation occurs in the same transaction as
+    task creation, so it is not visible independently. A malformed duplicate
+    action may therefore be dead-lettered without incorrectly terminalizing a
+    task that still has valid work.
     """
 
     task_status = (
@@ -60,6 +62,7 @@ async def fail_poisoned_communication_task_if_orphaned(
                           AND action_version = :action_version
                           AND subject_kind = 'CommunicationTask'
                           AND subject_id = :communication_task_id
+                          AND payload ->> 'communication_task_id' = :communication_task_id_text
                           AND id <> :scheduled_action_id
                           AND status IN ('pending', 'leased')
                     )
@@ -70,6 +73,7 @@ async def fail_poisoned_communication_task_if_orphaned(
                     "action_type": DISPATCH_ACTION_TYPE,
                     "action_version": DISPATCH_ACTION_VERSION,
                     "communication_task_id": communication_task_id,
+                    "communication_task_id_text": str(communication_task_id),
                     "scheduled_action_id": scheduled_action_id,
                 },
             )
