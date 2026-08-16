@@ -1,12 +1,12 @@
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import cast, Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
 from request_engine.entrypoints.worker.reservation_lifecycle import (
-    handle_reservation_lifecycle_event,
     ReservationEventType,
     ReservationLifecycleEvent,
+    handle_reservation_lifecycle_event,
 )
 from request_engine.modules.booking.contracts.lifecycle import (
     ReservationLifecycleReader,
@@ -15,10 +15,7 @@ from request_engine.modules.booking.contracts.lifecycle import (
 from request_engine.modules.communications.contracts.reservation_lifecycle import (
     ReservationLifecycleNotificationPort,
 )
-from request_engine.modules.delivery.contracts.access import (
-    DeliveryWorkClaim,
-    ReservationAccessLifecyclePort,
-)
+from request_engine.modules.delivery.contracts import access as delivery_access
 from request_engine.modules.queue.contracts.released_slot_recovery import ReleasedSlotRecoveryPort
 from request_engine.platform.outbox.worker import OutboxLease
 from request_engine.platform.worker.runtime import PermanentWorkError
@@ -108,7 +105,7 @@ class ReservationLifecycleOutboxHandler:
         scheduling: ReservationLifecycleSchedulingPort,
         notifications: ReservationLifecycleNotificationPort,
         recovery: ReleasedSlotRecoveryPort,
-        reservation_access: ReservationAccessLifecyclePort | None = None,
+        reservation_access: delivery_access.ReservationAccessLifecyclePort | None = None,
     ) -> None:
         self._worker_principal_id = worker_principal_id
         self._reader = reader
@@ -148,7 +145,7 @@ class ReservationLifecycleOutboxHandler:
             notifications=self._notifications,
             recovery=self._recovery,
             reservation_access=self._reservation_access,
-            delivery_work_claim=DeliveryWorkClaim(
+            delivery_work_claim=delivery_access.DeliveryWorkClaim(
                 organization_id=event.organization_id,
                 message_id=event.id,
                 claim_token=claim_token,
