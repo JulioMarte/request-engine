@@ -251,6 +251,5 @@ def test_worker_group_role_has_no_direct_authoritative_table_privileges(
     ).fetchall()
     assert rows
     assert all(
-        cast(tuple[bool, bool, bool, bool], privileges) == (False,) * 4
-        for privileges in rows
+        cast(tuple[bool, bool, bool, bool], privileges) == (False,) * 4 for privileges in rows
     )
