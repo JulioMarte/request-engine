@@ -64,9 +64,8 @@ def _create_capacity_fixture(conn: PgConnection, label: str) -> CapacityFixture:
     offering_id = _uuid_row(
         conn,
         """
-        INSERT INTO request_engine.offerings (
-            organization_id, offering_key, display_name
-        ) VALUES (%s, %s, %s)
+        INSERT INTO request_engine.offerings (organization_id, offering_key, display_name)
+        VALUES (%s, %s, %s)
         RETURNING id
         """,
         (organization_id, f"visit-{suffix}", f"Visit {suffix}"),
@@ -134,9 +133,7 @@ def _create_shared_root(conn: PgConnection) -> UUID:
 def _bind(conn: PgConnection, fixture: CapacityFixture, shared_root_id: UUID) -> UUID:
     return _uuid_row(
         conn,
-        """
-        SELECT request_admin.activate_shared_capacity_binding(%s, %s, %s, %s, %s)
-        """,
+        "SELECT request_admin.activate_shared_capacity_binding(%s, %s, %s, %s, %s)",
         (
             fixture.organization_id,
             fixture.resource_id,
@@ -158,11 +155,7 @@ def _create_hold(
         conn,
         """
         INSERT INTO request_engine.capacity_holds (
-            organization_id,
-            offering_version_id,
-            subject_party_id,
-            during,
-            expires_at
+            organization_id, offering_version_id, subject_party_id, during, expires_at
         ) VALUES (
             %s, %s, %s, tstzrange(%s::timestamptz, %s::timestamptz, '[)'),
             clock_timestamp() + interval '1 hour'
@@ -191,16 +184,10 @@ def _insert_claim(
         conn,
         """
         INSERT INTO request_engine.capacity_claims (
-            organization_id,
-            resource_id,
-            requirement_id,
-            hold_id,
-            during,
-            quantity
+            organization_id, resource_id, requirement_id, hold_id, during, quantity
         ) VALUES (
             %s, %s, %s, %s,
-            tstzrange(%s::timestamptz, %s::timestamptz, '[)'),
-            1
+            tstzrange(%s::timestamptz, %s::timestamptz, '[)'), 1
         )
         RETURNING id
         """,
@@ -213,6 +200,25 @@ def _insert_claim(
             end_at,
         ),
     )
+
+
+def _create_live_hold_claim(
+    conn: PgConnection,
+    fixture: CapacityFixture,
+    *,
+    start_at: str,
+    end_at: str,
+) -> tuple[UUID, UUID]:
+    with conn.transaction():
+        hold_id = _create_hold(conn, fixture, start_at=start_at, end_at=end_at)
+        claim_id = _insert_claim(
+            conn,
+            fixture,
+            hold_id,
+            start_at=start_at,
+            end_at=end_at,
+        )
+    return hold_id, claim_id
 
 
 def _set_app_context(conn: PgConnection, organization_id: UUID) -> None:
@@ -254,8 +260,6 @@ def test_shared_capacity_global_state_is_not_tenant_enumerable(
             )
         assert control_plane_denied.value.sqlstate == "42501"
 
-        # Knowledge of a foreign Resource UUID is not a capability to reach its
-        # shared root through the protected runtime lock surface.
         with pytest.raises(Error) as foreign_resource_denied:
             app_conn.execute(
                 "SELECT request_cmd.lock_shared_capacity_roots(%s, ARRAY[%s]::uuid[])",
@@ -278,22 +282,26 @@ def test_cross_tenant_overlap_collapses_to_generic_capacity_unavailable(
 
     start_at = "2030-01-01T14:00:00+00:00"
     end_at = "2030-01-01T14:30:00+00:00"
-    hold_a = _create_hold(admin_conn, tenant_a, start_at=start_at, end_at=end_at)
-    claim_a = _insert_claim(admin_conn, tenant_a, hold_a, start_at=start_at, end_at=end_at)
+    _, claim_a = _create_live_hold_claim(
+        admin_conn,
+        tenant_a,
+        start_at=start_at,
+        end_at=end_at,
+    )
 
-    linked_root = admin_conn.execute(
+    assert admin_conn.execute(
         """
         SELECT shared_capacity_identity_id
         FROM request_engine.shared_capacity_claim_links
         WHERE capacity_claim_id = %s
         """,
         (claim_a,),
-    ).fetchone()
-    assert linked_root == (shared_root_id,)
+    ).fetchone() == (shared_root_id,)
 
-    hold_b = _create_hold(admin_conn, tenant_b, start_at=start_at, end_at=end_at)
     with pytest.raises(Error) as conflict:
-        _insert_claim(admin_conn, tenant_b, hold_b, start_at=start_at, end_at=end_at)
+        with admin_conn.transaction():
+            hold_b = _create_hold(admin_conn, tenant_b, start_at=start_at, end_at=end_at)
+            _insert_claim(admin_conn, tenant_b, hold_b, start_at=start_at, end_at=end_at)
 
     assert conflict.value.sqlstate == "23P01"
     message = str(conflict.value)
@@ -307,21 +315,11 @@ def test_cross_tenant_overlap_collapses_to_generic_capacity_unavailable(
     ):
         assert secret not in message
 
-    # The same foreign tenant can consume the same root at a non-overlapping
-    # half-open interval, proving this is overlap serialization rather than a
-    # blanket cross-tenant denial.
     later_start = "2030-01-01T14:30:00+00:00"
     later_end = "2030-01-01T15:00:00+00:00"
-    later_hold = _create_hold(
+    _create_live_hold_claim(
         admin_conn,
         tenant_b,
-        start_at=later_start,
-        end_at=later_end,
-    )
-    _insert_claim(
-        admin_conn,
-        tenant_b,
-        later_hold,
         start_at=later_start,
         end_at=later_end,
     )
@@ -340,19 +338,18 @@ def test_simultaneous_cross_tenant_claims_have_exactly_one_winner(
 
     start_at = "2030-02-01T14:00:00+00:00"
     end_at = "2030-02-01T14:30:00+00:00"
-    hold_a = _create_hold(admin_conn, tenant_a, start_at=start_at, end_at=end_at)
-    hold_b = _create_hold(admin_conn, tenant_b, start_at=start_at, end_at=end_at)
     barrier = threading.Barrier(2)
     results: list[str] = []
     results_lock = threading.Lock()
 
-    def contender(fixture: CapacityFixture, hold_id: UUID) -> None:
+    def contender(fixture: CapacityFixture) -> None:
         conn: PgConnection = psycopg.connect(pg_conninfo)
         outcome = "unexpected"
         try:
             _set_app_context(conn, fixture.organization_id)
             conn.commit()
             conn.execute("SET LOCAL lock_timeout = '5s'")
+            hold_id = _create_hold(conn, fixture, start_at=start_at, end_at=end_at)
             conn.execute(
                 """
                 SELECT id
@@ -385,8 +382,8 @@ def test_simultaneous_cross_tenant_claims_have_exactly_one_winner(
                 results.append(outcome)
 
     threads = [
-        threading.Thread(target=contender, args=(tenant_a, hold_a), daemon=True),
-        threading.Thread(target=contender, args=(tenant_b, hold_b), daemon=True),
+        threading.Thread(target=contender, args=(tenant_a,), daemon=True),
+        threading.Thread(target=contender, args=(tenant_b,), daemon=True),
     ]
     for thread in threads:
         thread.start()
@@ -396,7 +393,7 @@ def test_simultaneous_cross_tenant_claims_have_exactly_one_winner(
     assert all(not thread.is_alive() for thread in threads), "shared-capacity race deadlocked"
     assert sorted(results) == ["unavailable", "won"]
 
-    live_linked_claims = admin_conn.execute(
+    assert admin_conn.execute(
         """
         SELECT count(*)
         FROM request_engine.shared_capacity_claim_links link
@@ -411,5 +408,4 @@ def test_simultaneous_cross_tenant_claims_have_exactly_one_winner(
           AND hold.expires_at > clock_timestamp()
         """,
         (shared_root_id, start_at, end_at),
-    ).fetchone()
-    assert live_linked_claims == (1,)
+    ).fetchone() == (1,)
