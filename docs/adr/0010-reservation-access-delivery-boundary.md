@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposed — implementation and release evidence are being reconciled on PR #49. Promote this ADR to
-Accepted only after the exact final PR SHA passes the PostgreSQL, architecture, race, privilege,
-test-quality, and release gates.
+Accepted — PR #49 demonstrated the PostgreSQL, architecture, race, privilege, test-quality, and
+release gates required for this boundary. Merge remains governed by CI on the exact PR head.
 
 ## Context
 
