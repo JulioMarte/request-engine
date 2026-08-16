@@ -20,6 +20,7 @@ TARGETS: Final = (
     "tests/integration/v3_slot_offer_recovery",
     "tests/integration/v3_reservation_lifecycle",
     "tests/integration/v3_worker_runtime",
+    "tests/integration/v3_delivery",
 )
 
 

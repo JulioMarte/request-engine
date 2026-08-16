@@ -20,6 +20,7 @@ RELEASE_ROOTS: Final = (
     REPO_ROOT / "tests" / "integration" / "v3_slot_offer_recovery",
     REPO_ROOT / "tests" / "integration" / "v3_reservation_lifecycle",
     REPO_ROOT / "tests" / "integration" / "v3_worker_runtime",
+    REPO_ROOT / "tests" / "integration" / "v3_delivery",
 )
 CONCURRENCY_NAME_TOKENS: Final = ("race", "concurrent", "soak", "crash", "reclaim")
 

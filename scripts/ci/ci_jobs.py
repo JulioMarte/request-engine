@@ -128,6 +128,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "tests/integration/v3_first_vertical tests/integration/v3_booking_core "
             "tests/integration/v3_booking_commitments tests/integration/v3_slot_offer_recovery "
             "tests/integration/v3_reservation_lifecycle tests/integration/v3_worker_runtime "
+            "tests/integration/v3_delivery "
             "-q -m postgres --tb=short --durations=20 "
             "--junitxml=.phase6/v3-tests-junit.xml",
             timeout_seconds=2400,
