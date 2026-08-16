@@ -21,9 +21,7 @@ def test_capacity_integrity_conflict_is_opaque_appointment_unavailable() -> None
     original = _SqlStateError("23P01", f"capacity unavailable: {foreign_secret}")
     error = IntegrityError("INSERT capacity claim", {}, original)
 
-    response = asyncio.run(
-        integrity_error_handler(cast(Request, object()), error)
-    )
+    response = asyncio.run(integrity_error_handler(cast(Request, object()), error))
 
     assert response.status_code == 409
     payload = json.loads(response.body)
