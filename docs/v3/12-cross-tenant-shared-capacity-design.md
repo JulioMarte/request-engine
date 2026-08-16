@@ -11,16 +11,19 @@ Allow one real-world capacity (for example a doctor, consultant, stylist or tech
 - `Organization` remains the tenant security and administrative boundary.
 - `Party` remains tenant-local and does not become a globally readable profile.
 - `Resource` remains tenant-local and continues to carry Organization-specific booking configuration.
+- `CapacityClaim` remains the sole authoritative capacity-consumption ledger. Shared-capacity state serializes and validates claims; it does not create a second reservation ledger.
 - Cross-tenant identity correlation never grants cross-tenant read authority.
 - A shared-capacity conflict exposes only the minimum booking fact required by the caller, normally availability/unavailability.
 - Government identifiers, email addresses, phone numbers and provider account IDs are not public or primary identifiers.
 - Existing V3 tenant-local capacity behavior must remain unchanged for Resources that are not explicitly bound to shared capacity.
 
-## Proposed concepts
+## Implemented concepts
 
 ### GlobalIdentity
 
 Opaque internal identity for a real-world person or organization. It is not a public capability identifier and does not itself grant access to tenant data.
+
+The V3 candidate stores no tenant-readable PII in this table. `evidence_ref`, when present, is an opaque control-plane reference to verification evidence rather than a public identity attribute.
 
 ### SharedCapacityIdentity
 
@@ -30,38 +33,72 @@ Opaque serialization root representing one physical/logical capacity that may be
 
 Explicit, auditable authorization linking a tenant-local Resource to a SharedCapacityIdentity.
 
-Minimum conceptual state:
+Implemented state includes:
 
-- `shared_capacity_identity_id`
-- `organization_id`
-- `resource_id`
-- `status`
-- `valid_from`
-- optional `valid_until`
-- authorization provenance
-- immutable creation provenance
-- revocation provenance
+- `shared_capacity_identity_id`;
+- `organization_id`;
+- `resource_id`;
+- `status`;
+- `valid_from`;
+- optional `valid_until`;
+- authorization provenance;
+- immutable creation provenance;
+- revocation provenance;
+- monotonic revision.
 
-A binding must never be inferred merely from matching identity attributes.
+A binding is never inferred merely from matching identity attributes. The first implementation accepts only `exclusive` Resources because `SharedCapacityIdentity` currently represents indivisible capacity: one physical/logical actor cannot satisfy two overlapping commitments.
+
+### SharedCapacityClaimLink
+
+Private serialization provenance connecting an authoritative `CapacityClaim` to the `SharedCapacityIdentity` it consumed when the claim was created or when a binding was activated around an already-live claim.
+
+The link deliberately stores no interval, quantity, Reservation identifier visible to tenants, Party, Offering or Organization. It is not a second capacity ledger. The interval, lifecycle and quantity remain authoritative only on `CapacityClaim`.
+
+Links survive binding revocation so revoking administrative authority cannot retroactively make an already-committed interval disappear from shared-capacity serialization. Rebinding a Resource to a different shared root is rejected while live claims still carry provenance for the previous root.
+
+## Binding and identity authority
+
+The implemented authority is the trusted Request Engine control plane represented at the database boundary by `request_engine_admin`. Ordinary `request_engine_app` and `request_engine_worker` sessions cannot create, discover or mutate global identity or binding state.
+
+The privileged control-plane functions are:
+
+- `request_admin.create_global_identity(...)`;
+- `request_admin.create_shared_capacity_identity(...)`;
+- `request_admin.activate_shared_capacity_binding(...)`;
+- `request_admin.revoke_shared_capacity_binding(...)`.
+
+Every creation, activation and revocation requires a non-empty trusted `authority_ref` and reason and appends an immutable authority event. Knowing a `GlobalIdentity`, `SharedCapacityIdentity` or foreign `Resource` UUID conveys no binding authority.
+
+Identity merge/split mistakes are intentionally **not** implemented as silent row rewrites. Until a dedicated merge/split protocol is designed and race-tested, remediation is: revoke incorrect bindings, preserve their audit history and create/authorize the corrected identity/root relationship. Direct mutation that would rewrite historical claim provenance is forbidden.
 
 ## Booking transaction model
 
-The tenant-local Resource remains a capacity root. When a Resource has an active shared-capacity binding, Booking must also serialize overlapping capacity commitments against the SharedCapacityIdentity.
+The tenant-local Resource remains a capacity root. When a Resource has an active shared-capacity binding, Booking also serializes overlapping capacity commitments against the SharedCapacityIdentity.
 
-Every operation that can change capacity must acquire all relevant lock roots in one deterministic global order before authoritative availability validation and mutation.
+The canonical lock topology is:
 
-The design must cover:
+1. collect every tenant-local Resource that the operation may release or consume;
+2. deduplicate and lock those Resource rows in UUID order;
+3. resolve active bindings only through the protected runtime surface;
+4. deduplicate and lock every corresponding `SharedCapacityIdentity` row in UUID order;
+5. only after all roots are held, perform authoritative availability validation and mutate `CapacityClaim` state.
+
+For reschedule, step 1 includes the union of old and new Resources before either old claims are released or new claims are created. For multiple mandatory requirements, all local Resources are locked before any shared root, and all roots use deterministic UUID ordering.
+
+The runtime function `request_cmd.lock_shared_capacity_roots(organization_id, resource_ids)` returns no shared identifiers. It verifies that every supplied Resource belongs to the current tenant context and then acquires the hidden shared-root locks.
+
+`guard_capacity_claim()` remains the final database invariant. It is permitted to inspect private cross-tenant claim links under `SECURITY DEFINER`, but a cross-tenant overlap raises only the generic `capacity unavailable` conflict and never includes a foreign identifier or tenant detail.
+
+The transaction model covers:
 
 - initial booking;
 - CapacityHold acquisition/confirmation/release;
-- SlotOffer promotion;
+- SlotOffer promotion through the existing CapacityHold path;
 - cancellation;
 - reschedule old/new Resource combinations;
 - multiple mandatory Resource requirements;
 - shared and non-shared Resources in the same request;
 - binding activation/revocation racing with booking.
-
-The canonical ordering must be deterministic across tenant-local Resource and shared-capacity roots so independent Organizations cannot deadlock each other through inconsistent lock order.
 
 ## Privacy model
 
@@ -74,21 +111,7 @@ A tenant must never learn:
 - private schedule metadata;
 - identity-linking evidence.
 
-Cross-tenant conflicts must collapse into the same public availability/unavailability semantics used for ordinary capacity contention.
-
-## Binding authority
-
-Creating or revoking a SharedCapacityBinding is privileged control-plane behavior. Normal tenant booking APIs cannot self-bind to a shared identity by presenting an identifier.
-
-Before implementation is accepted, the branch must define the exact authority responsible for:
-
-1. creating GlobalIdentity records;
-2. verifying sensitive identity evidence when applicable;
-3. creating SharedCapacityIdentity records;
-4. approving Resource bindings;
-5. revoking bindings;
-6. resolving identity merge/split mistakes;
-7. auditing every privileged transition.
+Cross-tenant conflicts must collapse into the same public availability/unavailability semantics used for ordinary capacity contention. The normal app and worker roles have no table-level read grants on `global_identities`, `shared_capacity_identities`, `shared_capacity_bindings`, `shared_capacity_claim_links` or `shared_capacity_authority_events`.
 
 ## Required PostgreSQL properties
 
@@ -136,11 +159,24 @@ The implementation must prove:
 - existing booking, waitlist, SlotOffer, lifecycle and ReservationAccess verticals remain green;
 - no existing public capability requires a breaking request/response change merely to support shared capacity.
 
+## Current evidence on this branch
+
+The branch currently contains PostgreSQL-backed adversarial evidence for:
+
+- ordinary tenant roles being unable to enumerate global identities, shared roots, bindings, claim links or authority events;
+- an app tenant being unable to use a foreign Resource UUID as a capability to reach a shared root;
+- sequential overlapping commitments across two Organizations collapsing to SQLSTATE `23P01` with the generic `capacity unavailable` message and no foreign identifiers;
+- adjacent half-open intervals remaining independently bookable;
+- two concurrent Organizations racing for the same shared interval producing exactly one winner without deadlock;
+- clean PostgreSQL 18 candidate bootstrap and catalog privilege/index fitness for the new schema.
+
+These results are necessary but not sufficient for ADR acceptance. The remaining race matrix in this document, public error equivalence and Phase 6 evidence integration must still pass before the status changes.
+
 ## Documentation and fitness contract
 
 This capability is architecture-sensitive. Any production change under the shared-capacity implementation surface must update this document or a more specific accepted successor document in the same PR.
 
-The branch must add a documentation-contract registry rule before production implementation is considered complete. The gate itself requires positive and negative tests, following the existing worker-runtime documentation fitness pattern.
+`docs/architecture/documentation-contracts.toml` contains the `cross-tenant-shared-capacity` rule protecting the shared-capacity migrations, booking persistence adapters and adversarial DB test surface. Positive and negative architecture tests prove that an unaccompanied protected change fails the documentation checker and the same change accompanied by this normative document passes.
 
 ## Delivery sequence
 
