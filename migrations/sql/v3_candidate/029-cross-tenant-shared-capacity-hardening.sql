@@ -136,20 +136,24 @@ CREATE TRIGGER capacity_claims_00_guard_tenant_context
 BEFORE INSERT OR UPDATE ON request_engine.capacity_claims
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_tenant_context();
 
--- CapacityClaim inactive states are historical terminal facts. Allowing a
--- released/replaced claim to become active again can resurrect stale ownership
--- and, for shared capacity, revive provenance captured under an obsolete
--- binding. Promotion from an active Hold to a Reservation does not change the
--- claim status and remains valid.
+-- CapacityClaim history is monotonic. A released claim may still advance to
+-- replaced when Reschedule wires its replacement claim, but inactive history
+-- must never become active again and a replaced claim is fully terminal.
 CREATE FUNCTION request_engine.guard_capacity_claim_terminal_transition()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF OLD.status IN ('released', 'replaced') AND NEW.status <> OLD.status THEN
-        RAISE EXCEPTION 'terminal CapacityClaim % cannot transition from % to %',
-            OLD.id, OLD.status, NEW.status
+    IF OLD.status = 'replaced' AND NEW.status <> 'replaced' THEN
+        RAISE EXCEPTION 'replaced CapacityClaim % is terminal', OLD.id
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF OLD.status = 'released'
+       AND NEW.status NOT IN ('released', 'replaced')
+    THEN
+        RAISE EXCEPTION 'released CapacityClaim % cannot transition to %', OLD.id, NEW.status
             USING ERRCODE = '23514';
     END IF;
 
