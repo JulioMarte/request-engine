@@ -13,9 +13,9 @@ from request_engine.modules.delivery.contracts.access import (
     AccessStatus,
     DeliveryWorkClaim,
     ProvisionedAccess,
-    ProvisioningMode,
     ReservationAccess,
     ReservationAccessSource,
+    parse_delivery_policy,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.worker.runtime import LeaseLostWorkError
@@ -33,7 +33,7 @@ class PostgresDeliveryPolicyReader:
                 await session.execute(
                     text(
                         """
-                        SELECT delivery_policy -> 'access'
+                        SELECT delivery_policy
                         FROM request_engine.offering_versions
                         WHERE organization_id = :organization_id
                           AND id = :offering_version_id
@@ -44,28 +44,8 @@ class PostgresDeliveryPolicyReader:
                         "offering_version_id": offering_version_id,
                     },
                 )
-            ).scalar_one_or_none()
-        if not isinstance(raw, list):
-            return ()
-        policies: list[AccessPolicy] = []
-        for item in cast(list[object], raw):
-            if not isinstance(item, dict):
-                continue
-            entry = cast(dict[str, object], item)
-            policies.append(
-                AccessPolicy(
-                    access_key=str(entry["key"]),
-                    kind=AccessKind(str(entry["kind"])),
-                    provider_key=str(entry["provider"]) if entry.get("provider") else None,
-                    provisioning_mode=ProvisioningMode(str(entry.get("provisioning", "immediate"))),
-                    public_data=dict(
-                        cast(dict[str, object], entry["public_data"])
-                        if entry.get("public_data")
-                        else {}
-                    ),
-                )
-            )
-        return tuple(policies)
+            ).scalar_one()
+        return parse_delivery_policy(raw)
 
 
 class PostgresReservationAccessRepository:
