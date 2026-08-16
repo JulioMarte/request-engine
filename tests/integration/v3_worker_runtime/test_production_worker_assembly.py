@@ -17,8 +17,15 @@ from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
-from request_engine.platform.events.provider_events import ProviderEventLease, record_provider_event
-from request_engine.platform.worker.runtime import RejectedWorkError, WorkerItemState, WorkerRuntimeConfig
+from request_engine.platform.events.provider_events import (
+    ProviderEventLease,
+    record_provider_event,
+)
+from request_engine.platform.worker.runtime import (
+    RejectedWorkError,
+    WorkerItemState,
+    WorkerRuntimeConfig,
+)
 
 PgConnection = Connection[Any]
 
