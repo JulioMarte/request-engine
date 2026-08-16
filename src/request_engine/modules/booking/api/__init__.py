@@ -9,11 +9,9 @@ from request_engine.modules.booking.adapters.db.appointment_availability_reader 
 from request_engine.modules.booking.adapters.db.attendance_commands import (
     PostgresAttendanceCommands,
 )
-from request_engine.modules.booking.adapters.db.commitment_commands import (
-    PostgresBookingCommitmentCommands,
-)
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeBookingCommitmentCommands,
+    CapacitySafeReservationCommands,
 )
 from request_engine.modules.booking.adapters.db.reservation_reader import (
     PostgresReservationReader,
@@ -36,8 +34,8 @@ def install_http(
 ) -> None:
     """Connect the Booking module to the HTTP process through its owned surface."""
 
-    reservation_commands = PostgresReservationCommands(session_factory)
-    commitment_commands = PostgresBookingCommitmentCommands(session_factory)
+    reservation_commands = CapacitySafeReservationCommands(session_factory)
+    commitment_commands = CapacitySafeBookingCommitmentCommands(session_factory)
     option_codec = SignedAppointmentOptionCodec(appointment_option_signing_key)
     app.add_exception_handler(BookingError, booking_error_handler)
     app.include_router(
