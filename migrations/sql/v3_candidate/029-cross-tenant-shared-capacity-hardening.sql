@@ -2,10 +2,21 @@ BEGIN;
 SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
+-- Catalog fitness requires every foreign key to have a matching prefix index.
+-- These global control-plane relations are expected to remain small initially,
+-- but indexed FK lookups also keep deletes/retirement checks bounded as the
+-- authority history grows.
+CREATE INDEX shared_capacity_identities_global_identity_idx
+    ON request_engine.shared_capacity_identities (global_identity_id);
+CREATE INDEX shared_capacity_authority_events_global_identity_idx
+    ON request_engine.shared_capacity_authority_events (global_identity_id);
+CREATE INDEX shared_capacity_authority_events_shared_capacity_idx
+    ON request_engine.shared_capacity_authority_events (shared_capacity_identity_id);
+
 -- A Resource may be re-authorized after revocation, including back to the same
--- SharedCapacityIdentity.  It may not, however, be moved to a different shared
+-- SharedCapacityIdentity. It may not, however, be moved to a different shared
 -- root while a live CapacityClaim still carries historical serialization
--- provenance for the old root.  That would make one physical commitment stop
+-- provenance for the old root. That would make one physical commitment stop
 -- consuming the old root and ambiguously start consuming another.
 CREATE FUNCTION request_engine.guard_shared_capacity_rebinding()
 RETURNS trigger
