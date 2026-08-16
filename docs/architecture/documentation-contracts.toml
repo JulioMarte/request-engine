@@ -18,3 +18,15 @@ triggers = [
 ]
 required_docs = ["docs/v3/10-worker-runtime-hardening.md"]
 required_docs_mode = "all"
+
+[[rules]]
+id = "cross-tenant-shared-capacity"
+description = "Cross-tenant shared-capacity identity, authority, serialization, privacy, and booking integration"
+triggers = [
+  "migrations/sql/v3_candidate/*cross-tenant-shared-capacity*.sql",
+  "src/request_engine/modules/booking/adapters/db/reservation_commands.py",
+  "src/request_engine/modules/booking/adapters/db/commitment_commands.py",
+  "tests/db/test_v3_cross_tenant_shared_capacity.py",
+]
+required_docs = ["docs/v3/12-cross-tenant-shared-capacity-design.md"]
+required_docs_mode = "all"
