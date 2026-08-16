@@ -47,11 +47,16 @@ SECURITY DEFINER
 SET search_path = pg_catalog, request_engine, pg_temp
 AS $function$
 DECLARE
+    v_context_organization_id uuid;
     v_requested bigint;
     v_local bigint := 0;
     v_resource_id uuid;
 BEGIN
-    IF p_organization_id IS DISTINCT FROM request_engine.current_organization_id() THEN
+    v_context_organization_id := request_engine.current_organization_id();
+    IF v_context_organization_id IS NULL
+       OR p_organization_id IS NULL
+       OR p_organization_id <> v_context_organization_id
+    THEN
         RAISE EXCEPTION 'organization context mismatch'
             USING ERRCODE = '42501';
     END IF;
@@ -96,6 +101,40 @@ BEGIN
      FOR UPDATE OF s;
 END
 $function$;
+
+-- RLS WITH CHECK is evaluated after BEFORE ROW triggers. guard_capacity_claim()
+-- is SECURITY DEFINER so it can see private cross-tenant provenance; therefore
+-- a request_engine_app statement must be rejected on tenant context before that
+-- privileged trigger is allowed to inspect any referenced Resource/Hold/etc.
+-- The numeric prefix intentionally makes this trigger run before the existing
+-- capacity_claims_guard_capacity trigger.
+CREATE FUNCTION request_engine.guard_capacity_claim_tenant_context()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_context_organization_id uuid;
+BEGIN
+    IF current_user = 'request_engine_app'
+       OR pg_catalog.pg_has_role(current_user, 'request_engine_app', 'MEMBER')
+    THEN
+        v_context_organization_id := request_engine.current_organization_id();
+        IF v_context_organization_id IS NULL
+           OR NEW.organization_id IS DISTINCT FROM v_context_organization_id
+        THEN
+            RAISE EXCEPTION 'capacity claim organization context mismatch'
+                USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+CREATE TRIGGER capacity_claims_00_guard_tenant_context
+BEFORE INSERT OR UPDATE ON request_engine.capacity_claims
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_tenant_context();
 
 -- CapacityClaim inactive states are historical terminal facts. Allowing a
 -- released/replaced claim to become active again can resurrect stale ownership
@@ -233,6 +272,7 @@ FOR EACH ROW EXECUTE FUNCTION request_engine.guard_shared_capacity_rebinding();
 -- hardening is present; restate the deny explicitly for reviewability.
 REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_binding() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_rebinding() FROM PUBLIC;
+REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_tenant_context() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_terminal_transition() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_linked_capacity_claim_provenance() FROM PUBLIC;
 
