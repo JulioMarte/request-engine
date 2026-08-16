@@ -138,23 +138,41 @@ FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_tenant_context
 
 -- CapacityClaim history is monotonic. A released claim may still advance to
 -- replaced when Reschedule wires its replacement claim, but inactive history
--- must never become active again and a replaced claim is fully terminal.
+-- must never become active again. Once release/replacement provenance exists,
+-- its timestamp and replacement edge cannot be rewritten later.
 CREATE FUNCTION request_engine.guard_capacity_claim_terminal_transition()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF OLD.status = 'replaced' AND NEW.status <> 'replaced' THEN
-        RAISE EXCEPTION 'replaced CapacityClaim % is terminal', OLD.id
-            USING ERRCODE = '23514';
+    IF OLD.status = 'replaced' THEN
+        IF NEW.status <> 'replaced'
+           OR NEW.released_at IS DISTINCT FROM OLD.released_at
+           OR NEW.replaced_by_claim_id IS DISTINCT FROM OLD.replaced_by_claim_id
+        THEN
+            RAISE EXCEPTION 'terminal CapacityClaim % cannot be rewritten', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
     END IF;
 
-    IF OLD.status = 'released'
-       AND NEW.status NOT IN ('released', 'replaced')
-    THEN
-        RAISE EXCEPTION 'released CapacityClaim % cannot transition to %', OLD.id, NEW.status
-            USING ERRCODE = '23514';
+    IF OLD.status = 'released' THEN
+        IF NEW.status NOT IN ('released', 'replaced') THEN
+            RAISE EXCEPTION 'terminal CapacityClaim % cannot reactivate from released to %',
+                OLD.id, NEW.status
+                USING ERRCODE = '23514';
+        END IF;
+        IF NEW.released_at IS DISTINCT FROM OLD.released_at THEN
+            RAISE EXCEPTION 'released CapacityClaim % release timestamp is immutable', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status = 'released'
+           AND NEW.replaced_by_claim_id IS DISTINCT FROM OLD.replaced_by_claim_id
+        THEN
+            RAISE EXCEPTION 'released CapacityClaim % replacement edge requires replaced status', OLD.id
+                USING ERRCODE = '23514';
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -162,8 +180,55 @@ END
 $function$;
 
 CREATE TRIGGER capacity_claims_guard_terminal_transition
-BEFORE UPDATE OF status ON request_engine.capacity_claims
+BEFORE UPDATE OF status, released_at, replaced_by_claim_id ON request_engine.capacity_claims
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_terminal_transition();
+
+-- A promoted claim retains its Hold id as provenance. That provenance is only
+-- meaningful if the Hold and Reservation describe the same subject, offering,
+-- location and interval; otherwise raw SQL could attribute one subject's held
+-- capacity to another Reservation while satisfying aggregate claim counts.
+CREATE FUNCTION request_engine.guard_promoted_capacity_claim_owner()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_matches boolean;
+BEGIN
+    IF NEW.status <> 'active'
+       OR NEW.hold_id IS NULL
+       OR NEW.reservation_id IS NULL
+    THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+          FROM request_engine.capacity_holds h
+          JOIN request_engine.reservations r
+            ON r.organization_id = h.organization_id
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id
+           AND r.id = NEW.reservation_id
+           AND h.offering_version_id = r.offering_version_id
+           AND h.subject_party_id = r.subject_party_id
+           AND h.location_id IS NOT DISTINCT FROM r.location_id
+           AND h.during = r.during
+    ) INTO v_matches;
+
+    IF NOT v_matches THEN
+        RAISE EXCEPTION 'promoted CapacityClaim Hold/Reservation provenance mismatch'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+CREATE TRIGGER capacity_claims_guard_promoted_owner
+BEFORE INSERT OR UPDATE OF hold_id, reservation_id, status
+ON request_engine.capacity_claims
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_promoted_capacity_claim_owner();
 
 -- SharedCapacityClaimLink is append-only, so the material claim facts it
 -- explains must not be rewritable underneath it. Lifecycle fields may advance,
@@ -278,6 +343,7 @@ REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_binding() FROM PUBLI
 REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_rebinding() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_tenant_context() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_terminal_transition() FROM PUBLIC;
+REVOKE ALL ON FUNCTION request_engine.guard_promoted_capacity_claim_owner() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_linked_capacity_claim_provenance() FROM PUBLIC;
 
 RESET search_path;
