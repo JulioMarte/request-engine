@@ -284,6 +284,68 @@ def test_runtime_root_lock_surface_locks_local_resource_itself(
 
 
 @pytest.mark.postgres
+def test_runtime_root_lock_surface_fails_closed_without_tenant_context(
+    pg_conninfo: str,
+) -> None:
+    app_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
+    try:
+        app_conn.execute("SET ROLE request_engine_app")
+        with pytest.raises(Error) as denied:
+            app_conn.execute(
+                "SELECT request_cmd.lock_shared_capacity_roots(NULL, ARRAY[]::uuid[])"
+            ).fetchone()
+        assert denied.value.sqlstate == "42501"
+    finally:
+        app_conn.close()
+
+
+@pytest.mark.postgres
+def test_capacity_claim_definer_guard_cannot_oracle_foreign_rows(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> None:
+    tenant_a = _fixture(admin_conn, "oracle-a")
+    tenant_b = _fixture(admin_conn, "oracle-b")
+    hold_id, _ = _live_hold_claim(admin_conn, tenant_b)
+
+    app_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
+    try:
+        app_conn.execute("SET ROLE request_engine_app")
+        app_conn.execute(
+            "SELECT set_config('request_engine.organization_id', %s, false)",
+            (str(tenant_a.organization_id),),
+        ).fetchone()
+
+        outcomes: list[tuple[str | None, str]] = []
+        for resource_id in (tenant_b.resource_id, uuid4()):
+            with pytest.raises(Error) as denied:
+                app_conn.execute(
+                    """
+                    INSERT INTO request_engine.capacity_claims (
+                        organization_id, resource_id, requirement_id,
+                        hold_id, during, quantity
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        tstzrange('2030-06-01T14:00:00+00'::timestamptz,
+                                  '2030-06-01T14:30:00+00'::timestamptz, '[)'), 1
+                    )
+                    """,
+                    (
+                        tenant_b.organization_id,
+                        resource_id,
+                        tenant_b.requirement_id,
+                        hold_id,
+                    ),
+                )
+            outcomes.append((denied.value.sqlstate, str(denied.value)))
+
+        assert [sqlstate for sqlstate, _ in outcomes] == ["42501", "42501"]
+        assert all("capacity claim organization context mismatch" in message for _, message in outcomes)
+    finally:
+        app_conn.close()
+
+
+@pytest.mark.postgres
 def test_linked_claim_cannot_resurrect_or_rewrite_historical_provenance(
     admin_conn: PgConnection,
 ) -> None:
