@@ -8,7 +8,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from v3_scratch_database import ScratchDatabaseError, fresh_v3_database
 
@@ -38,11 +38,11 @@ def _run_round(round_number: int) -> dict[str, object]:
     ]
     started = time.monotonic()
     try:
-        with fresh_v3_database("request_engine_concurrency") as scratch_env:
+        with fresh_v3_database("request_engine_v3_concurrency") as env:
             result = subprocess.run(
                 command,
                 cwd=REPO_ROOT,
-                env=scratch_env,
+                env=env,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -50,12 +50,11 @@ def _run_round(round_number: int) -> dict[str, object]:
                 check=False,
             )
     except ScratchDatabaseError as exc:
-        elapsed = round(time.monotonic() - started, 3)
         return {
             "round": round_number,
             "status": "FAIL",
             "returncode": 2,
-            "seconds": elapsed,
+            "seconds": round(time.monotonic() - started, 3),
             "output_tail": str(exc).splitlines()[-80:],
         }
     elapsed = round(time.monotonic() - started, 3)
@@ -103,7 +102,7 @@ def main() -> int:
         args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
     if payload["status"] == "PASS":
-        total_seconds = sum(float(result["seconds"]) for result in rounds)
+        total_seconds = sum(cast(float, result["seconds"]) for result in rounds)
         print(
             f"V3 concurrency stability passed {args.rounds}/{args.rounds} rounds "
             f"({total_seconds:.3f}s)."
@@ -115,7 +114,7 @@ def main() -> int:
         "V3 concurrency stability failed: "
         f"round {failed['round']}/{args.rounds}, returncode={failed['returncode']}"
     )
-    for line in failed["output_tail"]:
+    for line in cast(list[str], failed["output_tail"]):
         print(line)
     return 1
 

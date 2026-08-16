@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from enum import StrEnum
 from uuid import UUID
 
@@ -10,10 +10,14 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     RECONCILE_ACTION_TYPE,
     RECONCILE_ACTION_VERSION,
     DeliveryWorkKind,
+    FinalizedDelivery,
     PreparedDeliveryWork,
     finalize_provider_result,
     prepare_dispatch,
     prepare_reconciliation,
+)
+from request_engine.modules.communications.adapters.db.poisoned_task import (
+    fail_poisoned_communication_task_if_orphaned,
 )
 from request_engine.modules.communications.application.errors import (
     DeliveryProviderNotConfigured,
@@ -29,6 +33,8 @@ from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
     ScheduledActionLease,
 )
+from request_engine.platform.scheduling.store import lock_action_claim
+from request_engine.platform.worker.runtime import LeaseLostWorkError
 
 
 class DeliveryWorkerState(StrEnum):
@@ -54,15 +60,41 @@ class CommunicationDeliveryWorker:
         session_factory: SessionFactory,
         scheduler: PostgresScheduledActionWorker,
         providers: Mapping[str, CommunicationDeliveryProvider],
+        *,
+        finalization_lease_extension: timedelta = timedelta(seconds=60),
     ) -> None:
         self._session_factory = session_factory
         self._scheduler = scheduler
         self._providers = providers
+        if finalization_lease_extension <= timedelta(0) or finalization_lease_extension > timedelta(
+            minutes=15
+        ):
+            raise ValueError("finalization_lease_extension must be > 0 and <= 15 minutes")
+        self._finalization_lease_extension = finalization_lease_extension
 
     async def process(self, lease: ScheduledActionLease) -> DeliveryWorkerOutcome:
-        work = await self._prepare(lease)
+        try:
+            work = await self._prepare(lease)
+        except UnsupportedScheduledAction as exc:
+            await self._fail_poisoned_task(lease, reason="unsupported_scheduled_action")
+            if not await self._scheduler.dead_letter(
+                lease,
+                error_class="unsupported_scheduled_action",
+            ):
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost") from exc
+            raise
+        except ValueError as exc:
+            await self._fail_poisoned_task(lease, reason="invalid_scheduled_action")
+            if not await self._scheduler.dead_letter(
+                lease,
+                error_class="invalid_scheduled_action",
+            ):
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost") from exc
+            raise
+
         if work.kind is DeliveryWorkKind.SKIP:
-            await self._scheduler.complete(lease)
+            if not await self._scheduler.complete(lease):
+                raise LeaseLostWorkError("delivery_completion_fence_lost")
             return DeliveryWorkerOutcome(
                 action_id=lease.id,
                 communication_task_id=work.communication_task_id,
@@ -82,8 +114,18 @@ class CommunicationDeliveryWorker:
             raise RuntimeError("prepared delivery work has no provider request")
         provider = self._providers.get(provider_key)
         if provider is None:
-            await self._scheduler.dead_letter(lease, error_class="provider_not_configured")
-            raise DeliveryProviderNotConfigured(provider_key)
+            await self._require_finalization_lease(lease)
+            await self._fail_unconfigured_provider(
+                lease,
+                work,
+                provider_key=provider_key,
+            )
+            if not await self._scheduler.dead_letter(
+                lease,
+                error_class="provider_not_configured",
+            ):
+                raise LeaseLostWorkError("provider_dead_letter_fence_lost")
+            raise DeliveryProviderNotConfigured(provider_key) from None
 
         if work.kind is DeliveryWorkKind.SEND:
             assert work.send_request is not None
@@ -103,11 +145,13 @@ class CommunicationDeliveryWorker:
             try:
                 provider_result = await provider.lookup(work.lookup_request)
             except Exception as exc:
-                retry_state = await self._scheduler.retry(
+                retry_state = await self._scheduler.retry_after(
                     lease,
-                    next_attempt_at=datetime.now(UTC) + timedelta(seconds=60),
+                    delay=timedelta(seconds=60),
                     error_class=f"lookup_{type(exc).__name__}",
                 )
+                if retry_state == "stale":
+                    raise LeaseLostWorkError("lookup_retry_fence_lost") from exc
                 return DeliveryWorkerOutcome(
                     action_id=lease.id,
                     communication_task_id=work.communication_task_id,
@@ -122,21 +166,94 @@ class CommunicationDeliveryWorker:
 
         if work.delivery_id is None:
             raise RuntimeError("provider work is missing delivery identity")
-        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
-            finalized = await finalize_provider_result(
-                session,
-                organization_id=lease.organization_id,
-                delivery_id=work.delivery_id,
-                result=provider_result,
-            )
+        await self._require_finalization_lease(lease)
+        finalized = await self._finalize_owned_provider_result(
+            lease,
+            delivery_id=work.delivery_id,
+            result=provider_result,
+        )
 
-        await self._scheduler.complete(lease)
+        if not await self._scheduler.complete(lease):
+            raise LeaseLostWorkError("delivery_completion_fence_lost")
         return DeliveryWorkerOutcome(
             action_id=lease.id,
             communication_task_id=finalized.communication_task_id,
             delivery_id=finalized.delivery_id,
             state=DeliveryWorkerState.COMPLETED,
             detail=finalized.status.value,
+        )
+
+    async def _require_finalization_lease(self, lease: ScheduledActionLease) -> None:
+        if not await self._scheduler.renew(
+            lease,
+            extension=self._finalization_lease_extension,
+        ):
+            raise LeaseLostWorkError("provider_result_finalization_fence_lost")
+
+    async def _finalize_owned_provider_result(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        delivery_id: UUID,
+        result: ProviderDeliveryResult,
+    ) -> FinalizedDelivery:
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("provider_result_finalization_fence_lost")
+            return await finalize_provider_result(
+                session,
+                organization_id=lease.organization_id,
+                delivery_id=delivery_id,
+                result=result,
+            )
+
+    async def _fail_poisoned_task(self, lease: ScheduledActionLease, *, reason: str) -> None:
+        if (
+            lease.owner_module != "communications"
+            or lease.subject_kind != "CommunicationTask"
+            or lease.subject_id is None
+        ):
+            return
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("poison_task_failure_fence_lost")
+            await fail_poisoned_communication_task_if_orphaned(
+                session,
+                organization_id=lease.organization_id,
+                communication_task_id=lease.subject_id,
+                scheduled_action_id=lease.id,
+                reason=reason,
+            )
+
+    async def _fail_unconfigured_provider(
+        self,
+        lease: ScheduledActionLease,
+        work: PreparedDeliveryWork,
+        *,
+        provider_key: str,
+    ) -> None:
+        if work.delivery_id is None:
+            raise RuntimeError("provider work is missing delivery identity")
+        await self._finalize_owned_provider_result(
+            lease,
+            delivery_id=work.delivery_id,
+            result=ProviderDeliveryResult(
+                status=ProviderDeliveryStatus.FAILED,
+                retryable=False,
+                result_data={
+                    "error_class": "provider_not_configured",
+                    "error_phase": "provider_resolution",
+                    "provider_key": provider_key,
+                },
+            ),
         )
 
     async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
@@ -156,6 +273,12 @@ class CommunicationDeliveryWorker:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("delivery_prepare_fence_lost")
                 return await prepare_dispatch(
                     session,
                     organization_id=lease.organization_id,
@@ -178,6 +301,12 @@ class CommunicationDeliveryWorker:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("reconciliation_prepare_fence_lost")
                 return await prepare_reconciliation(
                     session,
                     organization_id=lease.organization_id,

@@ -1,0 +1,20 @@
+schema_version = 1
+
+# Contract-sensitive production surfaces. When a pull request changes one of
+# these paths it must also change the normative documentation listed for the
+# rule. Keep this registry narrow: it protects architectural/operational
+# contracts, not every implementation detail.
+
+[[rules]]
+id = "worker-runtime"
+description = "Durable worker execution, fencing, process assembly, and worker/domain credential boundaries"
+triggers = [
+  "src/request_engine/platform/worker/**",
+  "src/request_engine/platform/scheduling/**",
+  "src/request_engine/platform/outbox/**",
+  "src/request_engine/platform/events/provider_events.py",
+  "src/request_engine/bootstrap/worker.py",
+  "src/request_engine/entrypoints/worker/**",
+]
+required_docs = ["docs/v3/10-worker-runtime-hardening.md"]
+required_docs_mode = "all"

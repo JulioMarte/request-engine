@@ -112,7 +112,9 @@ def test_phase6_repeated_test_proofs_use_fresh_v3_databases() -> None:
     for proof in isolated_proofs:
         source = proof.read_text(encoding="utf-8")
         assert "fresh_v3_database" in source, f"{proof.name} reuses a dirty database"
-        assert "env=scratch_env" in source, f"{proof.name} does not bind pytest to scratch DB"
+        assert re.search(r"env=(?:scratch_env|env)", source), (
+            f"{proof.name} does not bind pytest to its scratch DB"
+        )
 
 
 def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
@@ -125,9 +127,20 @@ def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
 
 def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
     manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
-    _, jobs = _ci_sources()
+    workflow, jobs = _ci_sources()
 
     assert manifest.is_file()
     assert "evidence-manifest" in jobs
     assert "evidence-validity" in jobs
     assert "--require-valid" in jobs
+    source = manifest.read_text(encoding="utf-8")
+    assert '"evidence_status": candidate_status' in source
+    assert '"release_status": "READY" if release_ready else "NOT_READY"' in source
+    assert '"head_sha": head_sha' in source
+    assert '"tested_sha": tested_sha' in source
+    assert "_validate_junit" in source
+    assert "artifact_validation" in source
+
+    assert "postgres-v3-candidate-proof:" in workflow
+    assert "if: ${{ always() }}" in workflow
+    assert "scripts/ci/require_successful_needs.py" in workflow

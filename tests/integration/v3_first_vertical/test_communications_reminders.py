@@ -375,7 +375,7 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
     worker = PostgresScheduledActionWorker(worker_session_factory)
     leases = await worker.claim(limit=500)
     lease = next(item for item in leases if item.id == action_id)
-    materializer = PostgresReminderOccurrenceCommands(worker_session_factory)
+    materializer = PostgresReminderOccurrenceCommands(session_factory)
 
     first = await materializer.materialize(lease)
     second = await materializer.materialize(lease)
@@ -506,7 +506,7 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
 
     worker = PostgresScheduledActionWorker(worker_session_factory)
     lease = next(item for item in await worker.claim(limit=500) if item.id == action_id)
-    result = await PostgresReminderOccurrenceCommands(worker_session_factory).materialize(lease)
+    result = await PostgresReminderOccurrenceCommands(session_factory).materialize(lease)
 
     assert result.communication_task_id is None
     assert result.skipped_reason == "occurrence_too_late"

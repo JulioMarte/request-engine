@@ -38,6 +38,8 @@ A stale worker cannot finalize a row after another worker reclaimed it.
 
 Lease renewal is valid only while the current lease is still unexpired. A late heartbeat cannot resurrect ownership after the fencing boundary passed.
 
+Authoritative business writes made after provider/network I/O must not rely on lease renewal alone. The tenant-scoped transaction that persists the business result must also lock and validate the same current `claim_token` before changing authoritative state. This closes the renewal-to-write race in which another worker could reclaim the action after renewal but before the domain write commits.
+
 ## Bounded concurrency and backpressure
 
 A runtime never claims more work than it can execute concurrently.
@@ -127,13 +129,15 @@ Provider payload is never business authority by itself.
 
 Dead ScheduledActions and OutboxMessages, and dead/rejected ProviderEvents, can be replayed only through `request_admin` functions.
 
-Replay requires organization, operator Principal, non-empty reason, and an explicit additional attempt budget.
+Replay requires organization-scoped trusted actor context, a non-empty reason, and an explicit additional attempt budget. The current V3 admin functions do **not** accept an arbitrary actor Principal as a replay argument. They obtain the authenticated operator from the trusted execution context established for the transaction, including `request_engine.organization_id`, `request_engine.authenticated_principal_id`, principal kind, authentication method, and correlation identity.
+
+The database validates that the trusted actor context is present and tenant-consistent before the admin mutation and records that actor plus correlation provenance in the audit row. Callers must establish this context transaction-locally; pooled connections must not retain actor or tenant context after the transaction ends.
 
 Replay never resets `attempt_count`. It increases `max_attempts`, increments `replay_count`, stores `last_replayed_at`, and appends an audit record.
 
 The ordinary `request_engine_worker` role cannot invoke replay functions.
 
-The current Phase 4 replay contract treats `actor_principal_id` as an authenticated operator assertion supplied by the trusted admin boundary. The database validates tenant identity and referential integrity, but database credentials alone do not prove which human operator supplied that assertion. The authenticated actor-binding contract must be completed with the Phase 5 API/authentication boundary before the V3 release freeze.
+A deployment authentication adapter still owns credential validation before establishing trusted actor context. Database credentials alone do not prove issuer, audience, signature, expiry, rotation, or the human identity behind a credential; those properties remain part of the deployment/API authentication proof.
 
 ## Operational visibility
 
@@ -155,12 +159,18 @@ communications / dispatch_task
 communications / reconcile_delivery
 ```
 
-Unknown action types are permanent configuration errors and become dead letters instead of retrying forever.
+Unknown action types are permanent configuration errors and become dead letters instead of retrying forever. When poison communications work has a tenant-bound `CommunicationTask` subject, the handler first fences the current lease and terminalizes that task as `failed` only when no other executable dispatch intent remains.
+
+For this decision, a sibling dispatch is executable only when its owner/type/version/subject match the communications dispatch contract, its payload contains the same semantically valid UUID identity, its state is `pending` or `leased`, and `attempt_count < max_attempts`. Malformed, stale-version, exhausted, dead, completed, or unrelated ScheduledActions cannot keep a poisoned task artificially non-terminal.
+
+The same executable-work rule applies when Communications decides whether a future retry or reconciliation already exists. A malformed or exhausted action must not suppress creation or execution of valid recovery work.
 
 ## Database roles
 
-`request_engine_worker` remains `NOBYPASSRLS` and receives cross-tenant visibility only through claim/finalization functions.
+`request_engine_worker` remains `NOBYPASSRLS`, has no direct authoritative-table privileges, and receives cross-tenant visibility only through claim/finalization functions.
 
-After claim, business handlers open ordinary tenant-scoped transactions and set tenant context for RLS.
+After claim, business handlers use a separate `request_engine_app` credential to open ordinary tenant-scoped transactions and set tenant context for RLS. Authoritative handler writes first lock and validate the current action claim through the narrow fencing function. A worker-control credential must never be reused as the domain session merely because it can set the tenant GUC.
+
+Production assembly must therefore receive independent worker-control and tenant-domain database factories or pools. A worker process constructor that accepts one database `SessionFactory` and reuses it both for `PostgresScheduledActionWorker` and authoritative module handlers violates this boundary: the worker credential is intentionally unable to perform those domain writes, while the app credential must not receive cross-tenant worker authority.
 
 `request_engine_admin` owns explicit replay/health operations. Production workers do not connect as schema owner or superuser.

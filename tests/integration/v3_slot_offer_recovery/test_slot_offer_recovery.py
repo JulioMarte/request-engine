@@ -450,7 +450,16 @@ async def test_expiry_releases_hold_and_advances_candidate(
         ),
     )
     assert offer is not None and offer.waitlist_entry_id == first_entry_id
-    await asyncio.sleep(1.1)
+    # Wait on the database clock used by the expiry invariant. pg_sleep_until
+    # cannot wake before the stored deadline and this session holds no row locks.
+    admin_conn.execute(
+        """
+        SELECT pg_catalog.pg_sleep_until(expires_at)
+        FROM request_engine.slot_offers
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, offer.id),
+    ).fetchone()
     result = await expire_slot_offer(
         commands,
         ExpireSlotOfferCommand(

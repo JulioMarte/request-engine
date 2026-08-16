@@ -935,9 +935,14 @@ Workers do not receive blanket tenant-table visibility merely to discover work.
 
 Use narrow `SECURITY DEFINER` claim primitives (or equivalent controlled technical surfaces) to claim cross-tenant outbox/ScheduledAction rows. The primitive returns the organization identity required for subsequent tenant-scoped execution.
 
-The worker then executes business work under normal tenant context/RLS.
+The worker-control connection has no direct privileges on authoritative tables.
+After a narrow claim primitive returns the tenant identity, business processing
+uses a separate `request_app` connection and a transaction-local tenant context.
+This credential split prevents a compromised global worker connection from
+turning an arbitrary tenant GUC into direct table authority.
 
-Security-definer functions must pin `search_path`, have a non-login owner and grant only minimal EXECUTE permission.
+Security-definer functions must pin `search_path` to trusted schemas with
+`pg_temp` last, have a non-login owner and grant only minimal EXECUTE permission.
 
 ---
 

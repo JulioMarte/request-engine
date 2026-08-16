@@ -8,7 +8,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from v3_scratch_database import ScratchDatabaseError, fresh_v3_database
 
@@ -66,11 +66,11 @@ def _run_reverse(node_ids: list[str]) -> dict[str, object]:
     ]
     started = time.monotonic()
     try:
-        with fresh_v3_database("request_engine_reverse_order") as scratch_env:
+        with fresh_v3_database("request_engine_v3_reverse") as env:
             result = subprocess.run(
                 command,
                 cwd=REPO_ROOT,
-                env=scratch_env,
+                env=env,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -78,11 +78,10 @@ def _run_reverse(node_ids: list[str]) -> dict[str, object]:
                 check=False,
             )
     except ScratchDatabaseError as exc:
-        elapsed = round(time.monotonic() - started, 3)
         return {
             "status": "FAIL",
             "returncode": 2,
-            "seconds": elapsed,
+            "seconds": round(time.monotonic() - started, 3),
             "output_tail": str(exc).splitlines()[-100:],
         }
     elapsed = round(time.monotonic() - started, 3)
@@ -144,7 +143,7 @@ def main() -> int:
         "V3 test order independence failed during reverse execution: "
         f"{len(node_ids)} collected tests."
     )
-    for line in reverse["output_tail"]:
+    for line in cast(list[str], reverse["output_tail"]):
         print(line)
     return 1
 

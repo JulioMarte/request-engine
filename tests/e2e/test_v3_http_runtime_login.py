@@ -113,7 +113,7 @@ async def test_real_app_login_serves_tenant_scoped_business_over_http_and_cannot
             actor = ActorContext(
                 organization_id=organization_id,
                 principal_id=principal_id,
-                capabilities=frozenset({"business.read"}),
+                capabilities=frozenset({"business.get_info"}),
             )
             app = create_app(
                 session_factory=session_factory,

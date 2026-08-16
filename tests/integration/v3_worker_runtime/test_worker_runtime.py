@@ -148,10 +148,10 @@ async def test_outbox_replays_idempotent_local_effect_after_publish_crash(
 @pytest.mark.postgres
 async def test_provider_event_identity_dedupes_canonical_payload_and_rejects_mutation(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     organization_id = _organization(admin_conn)
-    async with tenant_transaction(session_factory, organization_id) as session:
+    async with tenant_transaction(app_session_factory, organization_id) as session:
         first = await record_provider_event(
             session,
             organization_id=organization_id,
@@ -160,7 +160,7 @@ async def test_provider_event_identity_dedupes_canonical_payload_and_rejects_mut
             provider_event_id="event-1",
             payload={"a": 1, "b": 2},
         )
-    async with tenant_transaction(session_factory, organization_id) as session:
+    async with tenant_transaction(app_session_factory, organization_id) as session:
         replay = await record_provider_event(
             session,
             organization_id=organization_id,
@@ -173,7 +173,7 @@ async def test_provider_event_identity_dedupes_canonical_payload_and_rejects_mut
     assert replay.id == first.id
     assert replay.replay is True
     with pytest.raises(ProviderEventDedupeConflict):
-        async with tenant_transaction(session_factory, organization_id) as session:
+        async with tenant_transaction(app_session_factory, organization_id) as session:
             await record_provider_event(
                 session,
                 organization_id=organization_id,
@@ -190,9 +190,10 @@ async def test_provider_event_identity_dedupes_canonical_payload_and_rejects_mut
 async def test_provider_event_router_runs_under_generic_fenced_runtime(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     organization_id = _organization(admin_conn)
-    async with tenant_transaction(session_factory, organization_id) as session:
+    async with tenant_transaction(app_session_factory, organization_id) as session:
         receipt = await record_provider_event(
             session,
             organization_id=organization_id,

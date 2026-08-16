@@ -41,38 +41,45 @@ def postgres_test_conninfo() -> str:
 
 @pytest.fixture(autouse=True)
 def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
-    """Give every PostgreSQL proof a clean data state, including reordered runs."""
+    """Give every PostgreSQL proof a clean data state and fail fast on leaked locks."""
 
     if request.node.get_closest_marker("postgres") is None:
         yield
         return
 
-    conn: PgConnection = psycopg.connect(postgres_test_conninfo(), autocommit=True)
-    try:
-        conn.execute("SET lock_timeout = '5s'")
-        conn.execute("SET statement_timeout = '30s'")
-        tables = conn.execute(
-            """
-            SELECT n.nspname, c.relname
-            FROM pg_catalog.pg_class AS c
-            JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-            WHERE n.nspname::text = ANY (%s)
-              AND c.relkind IN ('r', 'p')
-              AND NOT c.relispartition
-            ORDER BY n.nspname, c.relname
-            """,
-            (list(APPLICATION_SCHEMAS),),
-        ).fetchall()
-        if tables:
-            conn.execute(
-                sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
-                    sql.SQL(", ").join(
-                        sql.Identifier(schema_name, table_name)
-                        for schema_name, table_name in tables
+    def truncate() -> None:
+        conn: PgConnection = psycopg.connect(postgres_test_conninfo(), autocommit=True)
+        try:
+            conn.execute("SET lock_timeout = '5s'")
+            conn.execute("SET statement_timeout = '30s'")
+            tables = conn.execute(
+                """
+                SELECT n.nspname, c.relname
+                FROM pg_catalog.pg_class AS c
+                JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+                WHERE n.nspname::text = ANY (%s)
+                  AND c.relkind IN ('r', 'p')
+                  AND NOT c.relispartition
+                ORDER BY n.nspname, c.relname
+                """,
+                (list(APPLICATION_SCHEMAS),),
+            ).fetchall()
+            if tables:
+                conn.execute(
+                    sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE").format(
+                        sql.SQL(", ").join(
+                            sql.Identifier(schema_name, table_name)
+                            for schema_name, table_name in tables
+                        )
                     )
                 )
-            )
-    finally:
-        conn.close()
+        finally:
+            conn.close()
 
-    yield
+    truncate()
+    try:
+        yield
+    finally:
+        # The second reset is intentional. It proves a test cannot silently leave
+        # authoritative rows or an open lock behind for the next proof.
+        truncate()
