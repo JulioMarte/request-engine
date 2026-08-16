@@ -372,13 +372,24 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
         assert _completion_events(e2e_admin_conn, organization_id, task_id) == 0
 
         actor_id = _principal(e2e_admin_conn, organization_id)
+        correlation_id = uuid4()
+        settings = {
+            "request_engine.organization_id": str(organization_id),
+            "request_engine.authenticated_principal_id": str(actor_id),
+            "request_engine.principal_kind": "human",
+            "request_engine.authentication_method": "e2e_test_adapter",
+            "request_engine.correlation_id": str(correlation_id),
+        }
+        for key, value in settings.items():
+            e2e_admin_conn.execute("SELECT set_config(%s, %s, false)", (key, value))
+
         replayed = e2e_admin_conn.execute(
             """
             SELECT request_admin.replay_dead_scheduled_action(
-                %s, %s, %s, 1, 'recover ambiguous provider attempt'
+                %s, %s, 1, 'recover ambiguous provider attempt'
             )
             """,
-            (organization_id, action_id, actor_id),
+            (organization_id, action_id),
         ).fetchone()
         assert replayed == (True,)
 
@@ -409,7 +420,12 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
     assert replay_state == (2, 2, 1, True)
     audit = e2e_admin_conn.execute(
         """
-        SELECT command_name, actor_principal_id, details->>'reason'
+        SELECT command_name,
+               actor_principal_id,
+               details->>'reason',
+               correlation_data->>'correlation_id',
+               correlation_data->>'principal_kind',
+               correlation_data->>'authentication_method'
         FROM request_engine.audit_records
         WHERE organization_id = %s
           AND aggregate_kind = 'ScheduledAction'
@@ -423,4 +439,7 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
         "admin.replay_scheduled_action",
         actor_id,
         "recover ambiguous provider attempt",
+        str(correlation_id),
+        "human",
+        "e2e_test_adapter",
     )
