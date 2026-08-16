@@ -180,6 +180,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base", help="base commit/ref for the change comparison")
     parser.add_argument("--head", help="head commit/ref; defaults to PR candidate tree or HEAD")
     parser.add_argument(
+        "--changed-file",
+        action="append",
+        dest="changed_files",
+        help="evaluate an explicit changed path instead of reading a git diff; repeatable",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="validate the contract registry without evaluating a git diff",
@@ -199,21 +205,23 @@ def main() -> int:
         print(f"documentation contract registry valid ({len(rules)} rules)")
         return 0
 
-    base = resolve_base(args.base)
-    if base is None:
-        print(
-            "documentation contract registry valid; no base ref available, "
-            "so change-impact enforcement was not evaluated"
-        )
-        return 0
-    head = resolve_head(args.head)
-
-    try:
-        changed = changed_files(base, head)
-    except (subprocess.CalledProcessError, ValueError) as exc:
-        detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
-        print(f"documentation contract diff failed: {detail}", file=sys.stderr)
-        return 2
+    if args.changed_files:
+        changed = {_normalize(path) for path in args.changed_files}
+    else:
+        base = resolve_base(args.base)
+        if base is None:
+            print(
+                "documentation contract registry valid; no base ref available, "
+                "so change-impact enforcement was not evaluated"
+            )
+            return 0
+        head = resolve_head(args.head)
+        try:
+            changed = changed_files(base, head)
+        except (subprocess.CalledProcessError, ValueError) as exc:
+            detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+            print(f"documentation contract diff failed: {detail}", file=sys.stderr)
+            return 2
 
     violations = evaluate_changes(changed, rules)
     if violations:
