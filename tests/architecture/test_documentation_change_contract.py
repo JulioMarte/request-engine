@@ -17,8 +17,7 @@ def _run_checker(*args: str, env: dict[str, str] | None = None) -> subprocess.Co
         cwd=REPO_ROOT,
         env=env,
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         encoding="utf-8",
     )

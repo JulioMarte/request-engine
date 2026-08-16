@@ -121,8 +121,7 @@ def _git(*args: str) -> str:
         ["git", *args],
         cwd=REPO_ROOT,
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         encoding="utf-8",
     )
