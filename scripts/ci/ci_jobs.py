@@ -161,10 +161,10 @@ JOBS: dict[str, tuple[Step, ...]] = {
             always=True,
         ),
         Step(
-            "evidence-bundle-validation",
-            "Validate the V3 evidence bundle semantically",
+            "evidence-validity",
+            "Require valid V3 candidate evidence",
             "uv run python scripts/release/build_v3_evidence_manifest.py "
-            "--output .phase6/v3-evidence-manifest.json --require-valid-bundle",
+            "--output .phase6/v3-evidence-manifest.json --require-valid",
         ),
     ),
 }
