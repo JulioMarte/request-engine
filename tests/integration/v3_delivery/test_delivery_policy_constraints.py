@@ -83,9 +83,8 @@ def test_postgres_rejects_malformed_delivery_policy(
         ],
     )
 
-    with pytest.raises(CheckViolation):
-        with admin_conn.transaction():
-            _insert_delivery_policy(admin_conn, fixture, policy)
+    with pytest.raises(CheckViolation), admin_conn.transaction():
+        _insert_delivery_policy(admin_conn, fixture, policy)
 
 
 @pytest.mark.integration
