@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -10,10 +9,6 @@ assert SPEC is not None and SPEC.loader is not None
 manifest: ModuleType = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = manifest
 SPEC.loader.exec_module(manifest)
-
-
-def _write_json(path: Path, payload: object) -> None:
-    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_schema_validator_requires_postgres18_application_schemas_and_catalog() -> None:
@@ -98,7 +93,10 @@ def test_equivalence_validator_requires_success_marker_and_fingerprint(tmp_path:
     assert manifest._validate_equivalence(proof) == []
 
     proof.write_text("catalog-equivalent to the V3 candidate chain", encoding="utf-8")
-    assert "catalog-equivalence success marker is missing" in manifest._validate_equivalence(proof)
+    assert (
+        "catalog-equivalence success marker is missing"
+        in manifest._validate_equivalence(proof)
+    )
 
 
 def test_release_gate_registry_is_not_release_ready() -> None:
