@@ -163,4 +163,4 @@ def test_reversed_cross_tenant_multi_root_requests_do_not_deadlock(
         thread.join(timeout=10)
 
     assert all(not thread.is_alive() for thread in threads), "multi-root lock topology deadlocked"
-    assert outcomes == ["committed", "committed"] or outcomes == ["committed", "committed"]
+    assert sorted(outcomes) == ["committed", "committed"]
