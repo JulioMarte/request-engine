@@ -35,6 +35,7 @@ EXPECTED_V3_CANDIDATE = [
     "028-cross-tenant-shared-capacity.sql",
     "029-cross-tenant-shared-capacity-hardening.sql",
     "030-cross-tenant-slot-offer-integrity-hardening.sql",
+    "031-cross-tenant-provenance-hardening.sql",
 ]
 
 
