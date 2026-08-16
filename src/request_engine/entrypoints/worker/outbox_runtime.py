@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import cast, Protocol
 from uuid import UUID
 
 from request_engine.entrypoints.worker.reservation_lifecycle import (
