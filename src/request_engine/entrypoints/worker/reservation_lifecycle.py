@@ -9,6 +9,11 @@ from request_engine.modules.booking.contracts.lifecycle import (
 from request_engine.modules.communications.contracts.reservation_lifecycle import (
     ReservationLifecycleNotificationPort,
 )
+from request_engine.modules.delivery.contracts.access import (
+    DeliveryWorkClaim,
+    ReservationAccessLifecyclePort,
+    ReservationAccessSource,
+)
 from request_engine.modules.queue.contracts.released_slot_recovery import ReleasedSlotRecoveryPort
 
 ReservationEventType = Literal[
@@ -34,7 +39,12 @@ async def handle_reservation_lifecycle_event(
     scheduling: ReservationLifecycleSchedulingPort,
     notifications: ReservationLifecycleNotificationPort,
     recovery: ReleasedSlotRecoveryPort,
+    reservation_access: ReservationAccessLifecyclePort | None = None,
+    delivery_work_claim: DeliveryWorkClaim | None = None,
 ) -> None:
+    if reservation_access is not None and delivery_work_claim is None:
+        raise ValueError("Delivery lifecycle writes require the current Outbox claim")
+
     snapshot = await reader.get_lifecycle_snapshot(event.organization_id, event.reservation_id)
     if snapshot is None:
         return
@@ -44,11 +54,34 @@ async def handle_reservation_lifecycle_event(
         await notifications.cancel_reservation_notifications(
             event.organization_id, event.reservation_id
         )
+        if reservation_access is not None:
+            assert delivery_work_claim is not None
+            await reservation_access.revoke_reservation_access(
+                event.organization_id,
+                event.reservation_id,
+                work_claim=delivery_work_claim,
+            )
     else:
         await scheduling.reconcile_reservation_schedule(snapshot, source_event_id=event.event_id)
         await notifications.reconcile_reservation_notifications(
             snapshot, source_event_id=event.event_id
         )
+        if reservation_access is not None:
+            assert delivery_work_claim is not None
+            await reservation_access.reconcile_reservation_access(
+                ReservationAccessSource(
+                    organization_id=snapshot.organization_id,
+                    reservation_id=snapshot.reservation_id,
+                    offering_version_id=snapshot.offering_version_id,
+                    subject_party_id=snapshot.subject_party_id,
+                    location_id=snapshot.location_id,
+                    start_at=snapshot.start_at,
+                    end_at=snapshot.end_at,
+                    status=snapshot.status,
+                    revision=snapshot.revision,
+                ),
+                work_claim=delivery_work_claim,
+            )
 
     if event.event_type in {"reservation.cancelled.v1", "reservation.rescheduled.v1"}:
         slot = await reader.get_released_slot(

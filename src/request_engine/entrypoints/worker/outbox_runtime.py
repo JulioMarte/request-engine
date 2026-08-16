@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import UUID
 
+import request_engine.modules.delivery.contracts.access as delivery_access
 from request_engine.entrypoints.worker.reservation_lifecycle import (
     ReservationEventType,
     ReservationLifecycleEvent,
@@ -18,6 +19,14 @@ from request_engine.modules.communications.contracts.reservation_lifecycle impor
 from request_engine.modules.queue.contracts.released_slot_recovery import ReleasedSlotRecoveryPort
 from request_engine.platform.outbox.worker import OutboxLease
 from request_engine.platform.worker.runtime import PermanentWorkError
+
+RESERVATION_LIFECYCLE_EVENT_TYPES = frozenset(
+    {
+        "reservation.created.v1",
+        "reservation.rescheduled.v1",
+        "reservation.cancelled.v1",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,14 +45,15 @@ class OutboxPublisher(Protocol):
 
 
 OutboxInternalHandler = Callable[[OutboxEvent], Awaitable[None]]
+FencedOutboxInternalHandler = Callable[[OutboxEvent, UUID], Awaitable[None]]
 
 
 class OutboxPipelineProcessor:
-    """Run idempotent local consequences, then publish the durable event.
+    """Run local consequences, then publish a capability-token-free event.
 
-    The Outbox lease is completed only after both phases succeed. If the process
-    crashes between them, the local handler is replayed and therefore must use
-    the OutboxMessage id as its idempotency/source-event identity.
+    Technical Outbox claim tokens are passed only to handlers that explicitly
+    request a fenced local execution surface. They are never placed on
+    ``OutboxEvent`` and therefore cannot leak to integration publishers.
     """
 
     def __init__(
@@ -51,9 +61,15 @@ class OutboxPipelineProcessor:
         *,
         publisher: OutboxPublisher,
         internal_handlers: Mapping[str, OutboxInternalHandler] | None = None,
+        fenced_internal_handlers: Mapping[str, FencedOutboxInternalHandler] | None = None,
     ) -> None:
         self._publisher = publisher
         self._internal_handlers = dict(internal_handlers or {})
+        self._fenced_internal_handlers = dict(fenced_internal_handlers or {})
+        overlap = self._internal_handlers.keys() & self._fenced_internal_handlers.keys()
+        if overlap:
+            names = ", ".join(sorted(overlap))
+            raise ValueError(f"Outbox event types registered twice: {names}")
 
     async def process(self, lease: OutboxLease) -> None:
         event = OutboxEvent(
@@ -65,20 +81,20 @@ class OutboxPipelineProcessor:
             aggregate_id=lease.aggregate_id,
             payload=lease.payload,
         )
-        handler = self._internal_handlers.get(event.event_type)
-        if handler is not None:
-            await handler(event)
+        fenced_handler = self._fenced_internal_handlers.get(event.event_type)
+        if fenced_handler is not None:
+            await fenced_handler(event, lease.claim_token)
+        else:
+            handler = self._internal_handlers.get(event.event_type)
+            if handler is not None:
+                await handler(event)
         await self._publisher.publish(event)
 
 
 class ReservationLifecycleOutboxHandler:
-    """Bridge Reservation outbox facts into the Phase 3 idempotent lifecycle composition."""
+    """Bridge Reservation facts into lifecycle composition under one Outbox claim."""
 
-    _EVENT_TYPES = {
-        "reservation.created.v1",
-        "reservation.rescheduled.v1",
-        "reservation.cancelled.v1",
-    }
+    _EVENT_TYPES = RESERVATION_LIFECYCLE_EVENT_TYPES
 
     def __init__(
         self,
@@ -88,14 +104,16 @@ class ReservationLifecycleOutboxHandler:
         scheduling: ReservationLifecycleSchedulingPort,
         notifications: ReservationLifecycleNotificationPort,
         recovery: ReleasedSlotRecoveryPort,
+        reservation_access: delivery_access.ReservationAccessLifecyclePort | None = None,
     ) -> None:
         self._worker_principal_id = worker_principal_id
         self._reader = reader
         self._scheduling = scheduling
         self._notifications = notifications
         self._recovery = recovery
+        self._reservation_access = reservation_access
 
-    async def handle(self, event: OutboxEvent) -> None:
+    async def handle(self, event: OutboxEvent, claim_token: UUID) -> None:
         if event.event_type not in self._EVENT_TYPES:
             raise PermanentWorkError("unsupported_reservation_lifecycle_event")
         if event.schema_version != 1:
@@ -125,7 +143,13 @@ class ReservationLifecycleOutboxHandler:
             scheduling=self._scheduling,
             notifications=self._notifications,
             recovery=self._recovery,
+            reservation_access=self._reservation_access,
+            delivery_work_claim=delivery_access.DeliveryWorkClaim(
+                organization_id=event.organization_id,
+                message_id=event.id,
+                claim_token=claim_token,
+            ),
         )
 
-    def handlers(self) -> dict[str, OutboxInternalHandler]:
+    def handlers(self) -> dict[str, FencedOutboxInternalHandler]:
         return {event_type: self.handle for event_type in self._EVENT_TYPES}

@@ -3,9 +3,12 @@ from dataclasses import dataclass, field
 
 from request_engine.entrypoints.worker.app import WorkerProcess
 from request_engine.entrypoints.worker.outbox_runtime import (
+    RESERVATION_LIFECYCLE_EVENT_TYPES,
+    FencedOutboxInternalHandler,
     OutboxInternalHandler,
     OutboxPipelineProcessor,
     OutboxPublisher,
+    ReservationLifecycleOutboxHandler,
 )
 from request_engine.entrypoints.worker.provider_event_router import (
     ProviderEventHandler,
@@ -48,6 +51,7 @@ from request_engine.platform.worker.runtime import FencedWorkerRuntime, WorkerRu
 
 NoShowHandlerFactory = Callable[[SessionFactory], NoShowScheduledHandler]
 SlotOfferExpiryHandlerFactory = Callable[[SessionFactory], SlotOfferExpiryScheduledHandler]
+ReservationLifecycleHandlerFactory = Callable[[SessionFactory], ReservationLifecycleOutboxHandler]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,13 +107,22 @@ def build_worker_process(
     outbox_publisher: OutboxPublisher,
     outbox_internal_handlers: Mapping[str, OutboxInternalHandler],
     provider_event_handlers: Mapping[ProviderEventKey, ProviderEventHandler],
+    reservation_lifecycle_factory: ReservationLifecycleHandlerFactory | None = None,
     config: WorkerProcessConfig | None = None,
 ) -> WorkerProcess:
-    """Assemble the production worker without crossing runtime credential boundaries."""
+    """Assemble production workers without crossing runtime credential boundaries."""
 
     if worker_session_factory is domain_session_factory:
         raise ValueError(
             "worker_session_factory and domain_session_factory must be distinct factories"
+        )
+
+    reserved = RESERVATION_LIFECYCLE_EVENT_TYPES & outbox_internal_handlers.keys()
+    if reserved:
+        names = ", ".join(sorted(reserved))
+        raise ValueError(
+            "Reservation lifecycle handlers must be assembled through "
+            f"reservation_lifecycle_factory/domain_session_factory: {names}"
         )
 
     runtime_config = config or WorkerProcessConfig()
@@ -133,6 +146,11 @@ def build_worker_process(
         communication_delivery=communication_delivery,
     )
 
+    fenced_internal_handlers: dict[str, FencedOutboxInternalHandler] = {}
+    if reservation_lifecycle_factory is not None:
+        lifecycle = reservation_lifecycle_factory(domain_session_factory)
+        fenced_internal_handlers.update(lifecycle.handlers())
+
     return WorkerProcess(
         scheduled_actions=FencedWorkerRuntime(
             scheduled_store,
@@ -144,6 +162,7 @@ def build_worker_process(
             OutboxPipelineProcessor(
                 publisher=outbox_publisher,
                 internal_handlers=outbox_internal_handlers,
+                fenced_internal_handlers=fenced_internal_handlers,
             ),
             config=runtime_config.outbox_messages,
         ),

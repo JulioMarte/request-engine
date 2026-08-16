@@ -82,6 +82,7 @@ Examples:
 - SlotOffer expiry uses ScheduledAction identity as command idempotency.
 - Reservation lifecycle uses OutboxMessage identity as source-event identity.
 - communication provider sends use deterministic provider idempotency keys and reconciliation after ambiguity.
+- ReservationAccess provider artifacts use a stable `(reservation, access_key, reservation revision)` materialization key. A later claimant reuses recorded provider evidence or performs a non-creating provider lookup before deciding whether provisioning or revocation is still required.
 
 Exactly-once execution outside PostgreSQL is not promised.
 
@@ -102,6 +103,12 @@ If the process crashes after the internal consequence but before publish, the in
 An OutboxMessage is not marked delivered merely because an internal handler ran. The configured publisher must also succeed.
 
 The runtime does not silently discard events. A deployment must provide an explicit publisher implementation, even when that publisher targets an in-process or self-hosted transport.
+
+A technical Outbox `claim_token` is capability material and is not part of the integration event. `OutboxPipelineProcessor` therefore supports an explicit fenced-internal-handler surface that receives `(OutboxEvent, claim_token)` while the publisher receives only the capability-token-free `OutboxEvent`. Event types registered on the fenced surface cannot also be registered on the generic internal-handler surface.
+
+Reservation lifecycle events are reserved for composition through `reservation_lifecycle_factory`. The production composition root supplies only `domain_session_factory` to that factory. This prevents a deployment from accidentally constructing ReservationAccess or another reservation-lifecycle authoritative adapter with `request_engine_worker` credentials.
+
+For ReservationAccess, provider I/O remains outside authoritative transactions. Provider evidence may be recorded on a non-authoritative `pending` row after lease loss so crash recovery can converge without blind duplicate provisioning. Publishing `ready` or `revoked` must instead validate and lock the exact current Outbox claim inside the same `request_engine_app` transaction as the authoritative state transition.
 
 ## ProviderEvent
 
@@ -171,7 +178,9 @@ The same executable-work rule applies when Communications decides whether a futu
 
 After claim, business handlers use a separate `request_engine_app` credential to open ordinary tenant-scoped transactions and set tenant context for RLS. Authoritative handler writes first lock and validate the current action claim through the narrow fencing function. A worker-control credential must never be reused as the domain session merely because it can set the tenant GUC.
 
-Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. The composition root rejects reuse of the same factory object for both roles.
+The same rule applies to Outbox-derived authoritative writes. When an app transaction must validate a worker-control fact, it uses a narrow `SECURITY DEFINER` fence rather than granting the app broad Outbox access or granting the worker business-table DML. `request_cmd.lock_outbox_message_claim(...)` requires tenant-context equality plus the exact current, unexpired Outbox token and locks that row for the duration of the app transaction. `PUBLIC` cannot execute it and its `search_path` is pinned.
+
+Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. Reservation lifecycle composition also receives only `domain_session_factory`; reserved lifecycle event names cannot bypass that factory through generic Outbox handler registration. The composition root rejects reuse of the same factory object for both roles.
 
 The factory-identity check is a guardrail, not the entire security proof. PostgreSQL integration evidence must also demonstrate that the worker factory authenticates through the `request_engine_worker` role boundary and the domain factory through `request_engine_app`; distinct Python wrappers around one privileged credential do not satisfy this contract.
 
