@@ -433,7 +433,7 @@ def test_promoted_claim_cannot_cross_hold_and_reservation_subjects(
     fixture = _fixture(admin_conn, "promotion-owner")
     root_id = _root(admin_conn, "promotion-owner")
     _bind(admin_conn, fixture, root_id)
-    hold_id, claim_id = _live_hold_claim(admin_conn, fixture)
+    _, claim_id = _live_hold_claim(admin_conn, fixture)
     other_party_id = _uuid(
         admin_conn,
         """
