@@ -128,8 +128,8 @@ jobs:
       - name: Run canonical V3 bootstrap proof job
         run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
-  postgres-v3-candidate:
-    name: PostgreSQL 18 V3 candidate and verticals
+  postgres-v3-candidate-proof:
+    name: PostgreSQL 18 V3 candidate proof
     needs:
       - python-quality
       - observability-contract
@@ -156,7 +156,9 @@ jobs:
       PGDATABASE: request_engine_v3
       PGUSER: postgres
       PGPASSWORD: postgres
-      PHASE6_COMMIT_SHA: ${{ github.sha }}
+      PHASE6_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PHASE6_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      PHASE6_TESTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -177,3 +179,23 @@ jobs:
           path: .phase6/
           include-hidden-files: true
           if-no-files-found: warn
+
+  # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
+  # conditional, then always run this lightweight aggregate so a failed/skipped
+  # prerequisite can never become a non-blocking skipped required check.
+  postgres-v3-candidate:
+    name: PostgreSQL 18 V3 candidate and verticals
+    needs:
+      - python-quality
+      - observability-contract
+      - postgres-v3-bootstrap-proof
+      - postgres-v3-candidate-proof
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      REQUIRED_NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require successful prerequisite jobs
+        run: python scripts/ci/require_successful_needs.py
