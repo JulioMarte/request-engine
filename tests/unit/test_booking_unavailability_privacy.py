@@ -9,11 +9,17 @@ from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.application.errors import AppointmentUnavailable
 
 
+def _body_text(body: str | bytes | memoryview) -> str:
+    if isinstance(body, str):
+        return body
+    return bytes(body).decode("utf-8")
+
+
 def _response(reason: str) -> tuple[int, dict[str, object], str]:
     response = asyncio.run(
         booking_error_handler(cast(Request, object()), AppointmentUnavailable(reason))
     )
-    raw = response.body.decode("utf-8")
+    raw = _body_text(response.body)
     return response.status_code, cast(dict[str, object], json.loads(raw)), raw
 
 
