@@ -33,6 +33,7 @@ files=(
   "026-security-definer-search-path-hardening.sql"
   "027-reservation-access-delivery.sql"
   "028-cross-tenant-shared-capacity.sql"
+  "029-cross-tenant-shared-capacity-hardening.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
