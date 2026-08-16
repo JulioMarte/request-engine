@@ -152,7 +152,7 @@ def ensure_base_available(base: str) -> str:
 
 def changed_files(base: str, head: str) -> set[str]:
     available_base = ensure_base_available(base)
-    output = _git("diff", "--name-only", f"{available_base}...{head}")
+    output = _git("diff", "--name-only", available_base, head)
     return {_normalize(line) for line in output.splitlines() if line.strip()}
 
 
@@ -177,8 +177,8 @@ def resolve_head(explicit: str | None) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", help="base commit/ref for the three-dot change comparison")
-    parser.add_argument("--head", help="head commit/ref; defaults to PR head SHA or HEAD")
+    parser.add_argument("--base", help="base commit/ref for the change comparison")
+    parser.add_argument("--head", help="head commit/ref; defaults to PR candidate tree or HEAD")
     parser.add_argument(
         "--validate-only",
         action="store_true",

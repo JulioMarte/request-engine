@@ -22,7 +22,7 @@ uv run pytest tests/architecture -q
 uv run python scripts/ci/check_documentation_contract.py --base <base-ref>
 ```
 
-On GitHub pull requests the checker uses `GITHUB_BASE_REF`; if the shallow checkout does not contain that ref it fetches only the required base ref before evaluating the complete three-dot PR diff. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
+On GitHub pull requests the checker uses `GITHUB_BASE_REF`; if the shallow checkout does not contain that ref it fetches only the required base ref, then compares the base tree directly with the checked-out PR candidate tree. This does not require a merge-base and works with the default shallow `actions/checkout` behavior. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
 
 ## Design constraints
 
