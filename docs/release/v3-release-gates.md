@@ -4,6 +4,12 @@ Status: Phase 6 release gate registry.
 
 This file records release proof, not design intent. Canonical semantics remain in the owning V3 docs and ADRs.
 
+The generated evidence manifest distinguishes a **valid candidate evidence bundle** from a
+**release-ready baseline**. Artifact presence, hashes, semantic PASS results,
+JUnit outcomes and source/tree binding can make candidate evidence `VALID`; the release
+remains `NOT_READY` until every gate below is `PASS`. CI must never describe
+artifact completeness as complete V3 release evidence.
+
 ## Status semantics
 
 - `PASS`: current-branch executable evidence satisfies the gate.

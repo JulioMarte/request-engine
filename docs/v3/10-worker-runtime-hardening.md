@@ -155,12 +155,12 @@ communications / dispatch_task
 communications / reconcile_delivery
 ```
 
-Unknown action types are permanent configuration errors and become dead letters instead of retrying forever.
+Unknown action types are permanent configuration errors and become dead letters instead of retrying forever. When poison communications work has a tenant-bound `CommunicationTask` subject, the handler first fences the current lease and terminalizes that task as `failed` with an outbox failure fact; it must not leave a pending task whose only executable action is dead.
 
 ## Database roles
 
-`request_engine_worker` remains `NOBYPASSRLS` and receives cross-tenant visibility only through claim/finalization functions.
+`request_engine_worker` remains `NOBYPASSRLS`, has no direct authoritative-table privileges, and receives cross-tenant visibility only through claim/finalization functions.
 
-After claim, business handlers open ordinary tenant-scoped transactions and set tenant context for RLS.
+After claim, business handlers use a separate `request_engine_app` credential to open ordinary tenant-scoped transactions and set tenant context for RLS. Authoritative handler writes first lock and validate the current action claim through the narrow fencing function. A worker-control credential must never be reused as the domain session merely because it can set the tenant GUC.
 
 `request_engine_admin` owns explicit replay/health operations. Production workers do not connect as schema owner or superuser.

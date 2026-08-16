@@ -145,7 +145,11 @@ def test_real_worker_login_has_exact_worker_function_surface(
             WHERE n.nspname = 'request_engine'
               AND c.relkind IN ('r', 'p')
               AND (
-                  has_table_privilege(current_user, c.oid, 'TRUNCATE')
+                  has_table_privilege(current_user, c.oid, 'SELECT')
+                  OR has_table_privilege(current_user, c.oid, 'INSERT')
+                  OR has_table_privilege(current_user, c.oid, 'UPDATE')
+                  OR has_table_privilege(current_user, c.oid, 'DELETE')
+                  OR has_table_privilege(current_user, c.oid, 'TRUNCATE')
                   OR has_table_privilege(current_user, c.oid, 'REFERENCES')
                   OR has_table_privilege(current_user, c.oid, 'TRIGGER')
               )
@@ -153,6 +157,22 @@ def test_real_worker_login_has_exact_worker_function_surface(
             """
         ).fetchall()
         assert table_overreach == []
+
+        worker.execute(
+            "SELECT set_config('request_engine.organization_id', %s, false)",
+            (str(uuid4()),),
+        )
+        forbidden_sql = (
+            "SELECT * FROM request_engine.scheduled_actions LIMIT 0",
+            "INSERT INTO request_engine.organizations (organization_key, display_name) "
+            "VALUES ('worker-attack', 'worker-attack')",
+            "UPDATE request_engine.scheduled_actions SET status = status WHERE false",
+            "DELETE FROM request_engine.scheduled_actions WHERE false",
+        )
+        for statement in forbidden_sql:
+            with pytest.raises(InsufficientPrivilege):
+                worker.execute(statement)
+
         _assert_cannot_set_role(
             worker,
             ("request_engine_app", "request_engine_admin", "request_engine_schema_owner"),

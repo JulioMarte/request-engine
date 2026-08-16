@@ -257,3 +257,27 @@ def test_application_group_role_has_idempotency_permissions(
         """
     ).fetchone()
     assert cast(tuple[bool, bool, bool, bool], row) == (True, True, True, False)
+
+
+@pytest.mark.postgres
+def test_worker_group_role_has_no_direct_authoritative_table_privileges(
+    admin_conn: PgConnection,
+) -> None:
+    row = admin_conn.execute(
+        """
+        SELECT
+            has_table_privilege('request_engine_worker', c.oid, 'SELECT'),
+            has_table_privilege('request_engine_worker', c.oid, 'INSERT'),
+            has_table_privilege('request_engine_worker', c.oid, 'UPDATE'),
+            has_table_privilege('request_engine_worker', c.oid, 'DELETE')
+        FROM pg_class AS c
+        JOIN pg_namespace AS n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'request_engine'
+          AND c.relkind IN ('r', 'p')
+        ORDER BY c.relname
+        """
+    ).fetchall()
+    assert row
+    assert all(
+        cast(tuple[bool, bool, bool, bool], privileges) == (False,) * 4 for privileges in row
+    )

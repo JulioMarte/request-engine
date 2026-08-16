@@ -121,15 +121,18 @@ def test_worker_role_can_use_cross_tenant_worker_claim_surfaces(pg_conninfo: str
     worker_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
         worker_conn.execute("SET ROLE request_engine_worker")
-        worker_conn.execute(
+        scheduled = worker_conn.execute(
             "SELECT * FROM request_cmd.claim_scheduled_actions(1, interval '30 seconds')"
         ).fetchall()
-        worker_conn.execute(
+        outbox = worker_conn.execute(
             "SELECT * FROM request_cmd.claim_outbox_messages(1, interval '30 seconds')"
         ).fetchall()
-        worker_conn.execute(
+        provider = worker_conn.execute(
             "SELECT * FROM request_cmd.claim_provider_events(1, interval '30 seconds')"
         ).fetchall()
+        assert scheduled == []
+        assert outbox == []
+        assert provider == []
     finally:
         worker_conn.close()
 

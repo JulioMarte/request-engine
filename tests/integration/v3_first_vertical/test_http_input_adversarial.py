@@ -166,4 +166,5 @@ async def test_http_validation_does_not_accept_oversized_booking_option(
             headers=auth,
         )
 
+    assert response.status_code == 422
     _assert_validation_failure(response)

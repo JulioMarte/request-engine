@@ -98,13 +98,13 @@ def collect_errors(connection: psycopg.Connection[Any]) -> list[dict[str, Any]]:
            AND NOT EXISTS (
                SELECT 1
                  FROM unnest(COALESCE(p.proconfig, ARRAY[]::text[])) AS setting
-                WHERE setting LIKE 'search_path=%'
+                WHERE setting = 'search_path=pg_catalog, request_engine, pg_temp'
            )
          ORDER BY n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)
         """,
     )
     errors.extend(
-        {"kind": "security_definer_without_pinned_search_path", **row} for row in unsafe_definers
+        {"kind": "security_definer_without_safe_search_path", **row} for row in unsafe_definers
     )
 
     public_privileges = fetch_rows(

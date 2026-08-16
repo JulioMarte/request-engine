@@ -13,6 +13,9 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     prepare_dispatch,
     prepare_reconciliation,
 )
+from request_engine.modules.communications.adapters.db.poisoned_task import (
+    fail_poisoned_communication_task_if_orphaned,
+)
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
     ProviderDeliveryResult,
@@ -23,6 +26,7 @@ from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
     ScheduledActionLease,
 )
+from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import (
     LeaseLostWorkError,
     PermanentWorkError,
@@ -34,9 +38,10 @@ class CommunicationDeliveryScheduledHandler:
     """Execute provider work while the generic runtime owns lease finalization.
 
     Provider I/O is intentionally outside tenant transactions. Before writing
-    its result, the handler renews the same claim token. A stale worker can
-    therefore make an idempotent provider request but cannot authoritatively
-    persist its result after another worker owns the ScheduledAction.
+    its result, the handler renews the same claim token and then validates that
+    claim again inside the authoritative tenant transaction. A stale worker can
+    therefore make an idempotent provider request but cannot persist its result
+    after another worker owns the ScheduledAction.
     """
 
     def __init__(
@@ -57,7 +62,11 @@ class CommunicationDeliveryScheduledHandler:
         self._finalization_lease_extension = finalization_lease_extension
 
     async def handle(self, lease: ScheduledActionLease) -> None:
-        work = await self._prepare(lease)
+        try:
+            work = await self._prepare(lease)
+        except PermanentWorkError as exc:
+            await self._fail_poisoned_task(lease, reason=exc.error_class)
+            raise
         if work.kind is DeliveryWorkKind.SKIP:
             return
 
@@ -72,6 +81,22 @@ class CommunicationDeliveryScheduledHandler:
             raise PermanentWorkError("prepared_delivery_missing_provider")
         provider = self._providers.get(provider_key)
         if provider is None:
+            if work.delivery_id is None:
+                raise PermanentWorkError("prepared_delivery_missing_identity")
+            await self._require_finalization_lease(lease)
+            await self._finalize_owned_provider_result(
+                lease,
+                delivery_id=work.delivery_id,
+                result=ProviderDeliveryResult(
+                    status=ProviderDeliveryStatus.FAILED,
+                    retryable=False,
+                    result_data={
+                        "error_class": "provider_not_configured",
+                        "error_phase": "provider_resolution",
+                        "provider_key": provider_key,
+                    },
+                ),
+            )
             raise PermanentWorkError("provider_not_configured", provider_key)
 
         if work.kind is DeliveryWorkKind.SEND:
@@ -98,19 +123,61 @@ class CommunicationDeliveryScheduledHandler:
         if work.delivery_id is None:
             raise PermanentWorkError("prepared_delivery_missing_identity")
 
-        still_owned = await self._scheduler.renew(
+        await self._require_finalization_lease(lease)
+        await self._finalize_owned_provider_result(
+            lease,
+            delivery_id=work.delivery_id,
+            result=provider_result,
+        )
+
+    async def _require_finalization_lease(self, lease: ScheduledActionLease) -> None:
+        if not await self._scheduler.renew(
             lease,
             extension=self._finalization_lease_extension,
-        )
-        if not still_owned:
+        ):
             raise LeaseLostWorkError("provider_result_finalization_fence_lost")
 
+    async def _finalize_owned_provider_result(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        delivery_id: UUID,
+        result: ProviderDeliveryResult,
+    ) -> None:
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("provider_result_finalization_fence_lost")
             await finalize_provider_result(
                 session,
                 organization_id=lease.organization_id,
-                delivery_id=work.delivery_id,
-                result=provider_result,
+                delivery_id=delivery_id,
+                result=result,
+            )
+
+    async def _fail_poisoned_task(self, lease: ScheduledActionLease, *, reason: str) -> None:
+        if (
+            lease.owner_module != "communications"
+            or lease.subject_kind != "CommunicationTask"
+            or lease.subject_id is None
+        ):
+            return
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("poison_task_failure_fence_lost")
+            await fail_poisoned_communication_task_if_orphaned(
+                session,
+                organization_id=lease.organization_id,
+                communication_task_id=lease.subject_id,
+                scheduled_action_id=lease.id,
+                reason=reason,
             )
 
     async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
@@ -130,6 +197,12 @@ class CommunicationDeliveryScheduledHandler:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("delivery_prepare_fence_lost")
                 return await prepare_dispatch(
                     session,
                     organization_id=lease.organization_id,
@@ -152,6 +225,12 @@ class CommunicationDeliveryScheduledHandler:
                 self._session_factory,
                 lease.organization_id,
             ) as session:
+                if not await lock_action_claim(
+                    session,
+                    action_id=lease.id,
+                    claim_token=lease.claim_token,
+                ):
+                    raise LeaseLostWorkError("reconciliation_prepare_fence_lost")
                 return await prepare_reconciliation(
                     session,
                     organization_id=lease.organization_id,

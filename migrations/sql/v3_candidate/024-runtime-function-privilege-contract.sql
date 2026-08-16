@@ -34,7 +34,7 @@ GRANT EXECUTE ON FUNCTION request_cmd.renew_scheduled_action_lease(uuid, uuid, i
 GRANT EXECUTE ON FUNCTION request_cmd.retry_scheduled_action_after(uuid, uuid, interval, text)
     TO request_engine_worker, request_engine_admin;
 GRANT EXECUTE ON FUNCTION request_cmd.lock_scheduled_action_claim(uuid, uuid)
-    TO request_engine_worker;
+    TO request_engine_app, request_engine_worker;
 
 GRANT EXECUTE ON FUNCTION request_cmd.claim_outbox_messages(integer, interval)
     TO request_engine_worker, request_engine_admin;

@@ -145,7 +145,7 @@ def test_outbox_fencing_rejects_stale_worker(
             schema_version,
             payload,
             next_attempt_at
-        ) VALUES (%s, 'request.created.v1', 1, '{}'::jsonb, clock_timestamp())
+        ) VALUES (%s, 'request.created.v1', 1, '{}'::jsonb, '-infinity'::timestamptz)
         RETURNING id
         """,
         (organization_id,),
@@ -168,7 +168,7 @@ def test_outbox_fencing_rejects_stale_worker(
         admin_conn.execute(
             """
             UPDATE request_engine.outbox_messages
-               SET lease_until = clock_timestamp() - interval '1 second'
+               SET lease_until = '-infinity'::timestamptz
              WHERE id = %s
             """,
             (message_id,),
