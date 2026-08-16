@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from psycopg import Connection, Error
+from psycopg import Connection, Error, sql
 
 PgConnection = Connection[Any]
 
@@ -309,11 +309,11 @@ def test_slot_offer_insert_locks_semantic_source_rows_until_commit(
             ("capacity_holds", hold_id),
         )
         for table_name, row_id in probes:
+            statement = sql.SQL(
+                "SELECT id FROM request_engine.{} WHERE id = %s FOR UPDATE NOWAIT"
+            ).format(sql.Identifier(table_name))
             with pytest.raises(Error) as blocked:
-                observer.execute(
-                    f"SELECT id FROM request_engine.{table_name} WHERE id = %s FOR UPDATE NOWAIT",
-                    (row_id,),
-                ).fetchone()
+                observer.execute(statement, (row_id,)).fetchone()
             assert blocked.value.sqlstate == "55P03"
             observer.rollback()
     finally:
