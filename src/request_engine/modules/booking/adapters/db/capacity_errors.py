@@ -1,13 +1,8 @@
-from collections.abc import Awaitable, Callable
-from functools import wraps
-from typing import ParamSpec, Protocol, TypeVar, runtime_checkable
+from typing import Never, Protocol, runtime_checkable
 
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.booking.application.errors import AppointmentUnavailable
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 @runtime_checkable
@@ -15,7 +10,7 @@ class _HasSqlState(Protocol):
     sqlstate: str | None
 
 
-def normalize_capacity_integrity_error(exc: IntegrityError) -> None:
+def normalize_capacity_integrity_error(exc: IntegrityError) -> Never:
     """Translate authoritative PostgreSQL capacity contention into domain unavailability.
 
     PostgreSQL SQLSTATE 23P01 is deliberately used by the local and shared-capacity
@@ -27,19 +22,3 @@ def normalize_capacity_integrity_error(exc: IntegrityError) -> None:
     if sqlstate == "23P01":
         raise AppointmentUnavailable("capacity unavailable") from None
     raise exc
-
-
-def translate_capacity_integrity_errors(
-    function: Callable[P, Awaitable[R]],
-) -> Callable[P, Awaitable[R]]:
-    """Keep PostgreSQL race enforcement behind the Booking domain error contract."""
-
-    @wraps(function)
-    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return await function(*args, **kwargs)
-        except IntegrityError as exc:
-            normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
-
-    return wrapped
