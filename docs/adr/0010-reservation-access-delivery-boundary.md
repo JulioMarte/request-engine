@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on the feature branch for evaluation against V3 freeze evidence.
+Proposed — tentative direction. The boundary decision (access belongs to Delivery, not Booking) still needs to be validated before it is treated as accepted: whether Delivery should own this at all, whether provider/access concerns belong elsewhere, and whether the proposed reconciliation/idempotency model is the right one.
 
 ## Context
 
