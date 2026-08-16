@@ -10,7 +10,7 @@ from request_engine.modules.delivery.contracts.access import (
 pytestmark = pytest.mark.unit
 
 INVALID_POLICY_CASES: tuple[tuple[object, str], ...] = (
-    ({"access": {}}, "access must be an array"),
+    ({"access": dict[str, object]()}, "access must be an array"),
     ({"access": ["bad"]}, r"access\[0\] must be an object"),
     (
         {"access": [{"kind": "video_link", "provider": "meeting"}]},
@@ -48,7 +48,7 @@ INVALID_POLICY_CASES: tuple[tuple[object, str], ...] = (
                 {
                     "key": "address",
                     "kind": "physical_location",
-                    "public_data": [],
+                    "public_data": list[object](),
                 }
             ]
         },

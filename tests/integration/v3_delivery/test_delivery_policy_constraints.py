@@ -10,7 +10,7 @@ from ._fixture import DeliveryFixture, make_delivery_fixture
 PgConnection = Connection[Any]
 
 MALFORMED_DELIVERY_POLICIES: tuple[object, ...] = (
-    {"access": {}},
+    {"access": dict[str, object]()},
     {"access": ["not-an-object"]},
     {"access": [{"kind": "video_link", "provider": "meeting"}]},
     {
@@ -35,7 +35,7 @@ MALFORMED_DELIVERY_POLICIES: tuple[object, ...] = (
             {
                 "key": "address",
                 "kind": "physical_location",
-                "public_data": [],
+                "public_data": list[object](),
             }
         ]
     },
