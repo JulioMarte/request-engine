@@ -29,7 +29,16 @@ jobs:
       - name: Install uv
         run: python -m pip install --disable-pip-version-check uv==0.12.5
       - name: Run canonical Python quality job
-        run: python scripts/ci/ci_jobs.py python-quality
+        run: >-
+          python scripts/ci/ci_jobs.py python-quality
+          --summary-output .ci/python-quality.json
+      - name: Upload Python quality failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-quality-failure-summary
+          path: .ci/python-quality.json
+          if-no-files-found: warn
 
   observability-contract:
     name: Observability runtime contract
