@@ -13,9 +13,7 @@ WORKER_DOC = "docs/v3/10-worker-runtime-hardening.md"
 WORKER_CODE = "src/request_engine/platform/worker/runtime.py"
 SHARED_CAPACITY_DOC = "docs/v3/12-cross-tenant-shared-capacity-design.md"
 SHARED_CAPACITY_MIGRATION = "migrations/sql/v3_candidate/028-cross-tenant-shared-capacity.sql"
-SHARED_CAPACITY_BOOKING = (
-    "src/request_engine/modules/booking/adapters/db/reservation_commands.py"
-)
+SHARED_CAPACITY_BOOKING = "src/request_engine/modules/booking/adapters/db/reservation_commands.py"
 
 
 def _run_checker(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
