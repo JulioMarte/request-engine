@@ -10,13 +10,19 @@ The machine-readable registry is `docs/architecture/documentation-contracts.toml
 - the normative documents that must change with that impact;
 - whether all or any of those documents are required.
 
-The canonical check is:
+The canonical architecture suite executes:
+
+```bash
+uv run pytest tests/architecture -q
+```
+
+`tests/architecture/test_documentation_change_contract.py` runs the documentation checker as part of that required suite. The checker can also be executed directly:
 
 ```bash
 uv run python scripts/ci/check_documentation_contract.py --base <base-ref>
 ```
 
-GitHub Actions supplies the exact pull-request base/head SHAs and checks the complete PR diff. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
+On GitHub pull requests the checker uses `GITHUB_BASE_REF`; if the shallow checkout does not contain that ref it fetches only the required base ref before evaluating the complete three-dot PR diff. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
 
 ## Design constraints
 
