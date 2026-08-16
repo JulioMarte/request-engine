@@ -100,6 +100,8 @@ The transaction model covers:
 - shared and non-shared Resources in the same request;
 - binding activation/revocation racing with booking.
 
+Queue owns the outer SlotOffer issuance transaction. Because a `23P01` raised by the shared-capacity guard aborts the current PostgreSQL transaction, speculative SlotOffer Hold acquisition runs inside a nested transaction/savepoint. A capacity loss rolls back only the speculative Hold/Claim writes, is translated to `SlotOfferCapacityUnavailable`, and allows Queue to close the `SlotOpportunity` in the still-valid outer transaction. The inverse proof asserts no orphan Hold, Claim or false active offer remains.
+
 ## Privacy model
 
 A tenant must never learn:
@@ -112,6 +114,8 @@ A tenant must never learn:
 - identity-linking evidence.
 
 Cross-tenant conflicts must collapse into the same public availability/unavailability semantics used for ordinary capacity contention. The normal app and worker roles have no table-level read grants on `global_identities`, `shared_capacity_identities`, `shared_capacity_bindings`, `shared_capacity_claim_links` or `shared_capacity_authority_events`.
+
+Booking persistence translates the database `23P01` capacity invariant into the Booking-owned `AppointmentUnavailable` contract before the HTTP boundary. The Booking API then returns the same opaque `appointment_unavailable` response for local and shared contention. The global HTTP integrity handler intentionally does **not** classify every PostgreSQL `23P01` as a Booking error; doing so would incorrectly reinterpret unrelated future exclusion constraints.
 
 ## Required PostgreSQL properties
 
@@ -140,7 +144,7 @@ The implementation must prove:
 
 - Org A vs Org B simultaneous booking for the same shared capacity: exactly one overlapping commitment may win;
 - hold vs booking across Organizations;
-- SlotOffer acceptance vs direct booking across Organizations;
+- SlotOffer acquisition/acceptance vs direct booking across Organizations, in both winner orders;
 - reschedule vs booking across Organizations;
 - simultaneous reschedules involving old/new shared roots;
 - binding revocation vs new booking;
@@ -161,22 +165,29 @@ The implementation must prove:
 
 ## Current evidence on this branch
 
-The branch currently contains PostgreSQL-backed adversarial evidence for:
+Executable PostgreSQL and application evidence now covers:
 
-- ordinary tenant roles being unable to enumerate global identities, shared roots, bindings, claim links or authority events;
-- an app tenant being unable to use a foreign Resource UUID as a capability to reach a shared root;
-- sequential overlapping commitments across two Organizations collapsing to SQLSTATE `23P01` with the generic `capacity unavailable` message and no foreign identifiers;
-- adjacent half-open intervals remaining independently bookable;
-- two concurrent Organizations racing for the same shared interval producing exactly one winner without deadlock;
-- clean PostgreSQL 18 candidate bootstrap and catalog privilege/index fitness for the new schema.
+- ordinary tenant roles cannot enumerate global identities, shared roots, bindings, claim links or authority events;
+- guessed foreign Resource UUIDs cannot be used as capabilities to reach hidden shared roots;
+- sequential and simultaneous overlapping commitments across Organizations collapse to generic capacity unavailability, with exactly one winner in the concurrent case;
+- half-open adjacent intervals remain independently bookable;
+- Hold and direct Booking block one another across tenants;
+- SlotOffer Hold first blocks a foreign Booking; the inverse foreign Booking first causes speculative SlotOffer capacity acquisition to roll back to its savepoint, closes the opportunity and leaves no orphan Hold/Claim/offer;
+- SlotOffer acceptance promotes the existing linked claim rather than double-counting capacity;
+- cross-tenant reschedule conflict rolls back and preserves the original Reservation, claim and shared-root provenance;
+- simultaneous reschedules that touch inverse old/new shared roots synchronize before the real protected shared-root lock call and both complete under the canonical Resource-then-shared-root ordering;
+- binding activation and revocation races serialize against claim creation, activation backfills a live claim, revocation preserves historical claim provenance, and unsafe different-root rebinding with a live link is rejected;
+- inverse multi-Resource/multi-root acquisition commits without deadlock under the canonical deterministic ordering;
+- Booking-owned public error mapping is opaque and does not expose the underlying database message;
+- clean PostgreSQL 18 bootstrap, candidate equivalence, catalog audit, full V3 PostgreSQL/vertical suite, three repeated concurrency rounds, test-order independence, mutation probes and evidence validity pass on the pre-contract-update feature head.
 
-These results are necessary but not sufficient for ADR acceptance. The remaining race matrix in this document, public error equivalence and Phase 6 evidence integration must still pass before the status changes.
+The final acceptance run must be repeated after the canonical V3 invariant/race inventory is updated. ADR 0011 therefore remains `Proposed` until that final head is green.
 
 ## Documentation and fitness contract
 
 This capability is architecture-sensitive. Any production change under the shared-capacity implementation surface must update this document or a more specific accepted successor document in the same PR.
 
-`docs/architecture/documentation-contracts.toml` contains the `cross-tenant-shared-capacity` rule protecting the shared-capacity migrations, booking persistence adapters and adversarial DB test surface. Positive and negative architecture tests prove that an unaccompanied protected change fails the documentation checker and the same change accompanied by this normative document passes.
+`docs/architecture/documentation-contracts.toml` protects the shared-capacity migrations, Booking persistence/error boundary, production HTTP composition surfaces and all dedicated DB/integration/privacy tests. Positive and negative architecture tests prove that an unaccompanied protected change fails the documentation checker and the same change accompanied by this normative document passes.
 
 ## Delivery sequence
 
