@@ -373,25 +373,27 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
 
         actor_id = _principal(e2e_admin_conn, organization_id)
         correlation_id = uuid4()
-        settings = {
-            "request_engine.organization_id": str(organization_id),
-            "request_engine.authenticated_principal_id": str(actor_id),
-            "request_engine.principal_kind": "human",
-            "request_engine.authentication_method": "e2e_test_adapter",
-            "request_engine.correlation_id": str(correlation_id),
-        }
-        for key, value in settings.items():
-            e2e_admin_conn.execute("SELECT set_config(%s, %s, false)", (key, value))
-
-        replayed = e2e_admin_conn.execute(
-            """
-            SELECT request_admin.replay_dead_scheduled_action(
-                %s, %s, 1, 'recover ambiguous provider attempt'
+        with e2e_admin_conn.transaction():
+            e2e_admin_conn.execute(
+                """
+                SELECT
+                    set_config('request_engine.organization_id', %s, true),
+                    set_config('request_engine.authenticated_principal_id', %s, true),
+                    set_config('request_engine.principal_kind', 'human', true),
+                    set_config('request_engine.authentication_method', 'e2e_test_adapter', true),
+                    set_config('request_engine.correlation_id', %s, true)
+                """,
+                (str(organization_id), str(actor_id), str(correlation_id)),
             )
-            """,
-            (organization_id, action_id),
-        ).fetchone()
-        assert replayed == (True,)
+            replayed = e2e_admin_conn.execute(
+                """
+                SELECT request_admin.replay_dead_scheduled_action(
+                    %s, %s, 1, 'recover ambiguous provider attempt'
+                )
+                """,
+                (organization_id, action_id),
+            ).fetchone()
+            assert replayed == (True,)
 
         replay_leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(replay_leases) == 1
