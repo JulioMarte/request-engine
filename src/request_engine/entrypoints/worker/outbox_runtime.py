@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import UUID
 
+import request_engine.modules.delivery.contracts.access as delivery_access
 from request_engine.entrypoints.worker.reservation_lifecycle import (
     ReservationEventType,
     ReservationLifecycleEvent,
@@ -15,7 +16,6 @@ from request_engine.modules.booking.contracts.lifecycle import (
 from request_engine.modules.communications.contracts.reservation_lifecycle import (
     ReservationLifecycleNotificationPort,
 )
-from request_engine.modules.delivery.contracts import access as delivery_access
 from request_engine.modules.queue.contracts.released_slot_recovery import ReleasedSlotRecoveryPort
 from request_engine.platform.outbox.worker import OutboxLease
 from request_engine.platform.worker.runtime import PermanentWorkError
