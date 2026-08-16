@@ -664,9 +664,20 @@ async def _future_dispatch_exists(
                         WHERE organization_id = :organization_id
                           AND owner_module = 'communications'
                           AND action_type = :action_type
+                          AND action_version = :action_version
                           AND subject_kind = 'CommunicationTask'
                           AND subject_id = :communication_task_id
+                          AND CASE
+                              WHEN pg_catalog.pg_input_is_valid(
+                                  payload ->> 'communication_task_id',
+                                  'uuid'
+                              )
+                              THEN (payload ->> 'communication_task_id')::uuid
+                                   = :communication_task_id
+                              ELSE false
+                          END
                           AND status IN ('pending', 'leased')
+                          AND attempt_count < max_attempts
                           AND execute_at > :db_now
                     )
                     """
@@ -674,6 +685,7 @@ async def _future_dispatch_exists(
                 {
                     "organization_id": organization_id,
                     "action_type": DISPATCH_ACTION_TYPE,
+                    "action_version": DISPATCH_ACTION_VERSION,
                     "communication_task_id": communication_task_id,
                     "db_now": db_now,
                 },
@@ -702,9 +714,16 @@ async def _ensure_reconciliation(
                         WHERE organization_id = :organization_id
                           AND owner_module = 'communications'
                           AND action_type = :action_type
+                          AND action_version = :action_version
                           AND subject_kind = 'CommunicationDelivery'
                           AND subject_id = :delivery_id
+                          AND CASE
+                              WHEN pg_catalog.pg_input_is_valid(payload ->> 'delivery_id', 'uuid')
+                              THEN (payload ->> 'delivery_id')::uuid = :delivery_id
+                              ELSE false
+                          END
                           AND status IN ('pending', 'leased')
+                          AND attempt_count < max_attempts
                           AND execute_at > :db_now
                     )
                     """
@@ -712,6 +731,7 @@ async def _ensure_reconciliation(
                 {
                     "organization_id": organization_id,
                     "action_type": RECONCILE_ACTION_TYPE,
+                    "action_version": RECONCILE_ACTION_VERSION,
                     "delivery_id": delivery_id,
                     "db_now": db_now,
                 },
