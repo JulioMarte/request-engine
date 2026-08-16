@@ -26,8 +26,14 @@ triggers = [
   "migrations/sql/v3_candidate/*cross-tenant-shared-capacity*.sql",
   "src/request_engine/modules/booking/adapters/db/reservation_commands.py",
   "src/request_engine/modules/booking/adapters/db/commitment_commands.py",
+  "src/request_engine/modules/booking/adapters/db/slot_offer_capacity.py",
+  "src/request_engine/modules/booking/adapters/db/capacity_errors.py",
+  "src/request_engine/modules/booking/api/errors.py",
   "src/request_engine/entrypoints/http/errors.py",
-  "tests/db/test_v3_cross_tenant_shared_capacity.py",
+  "tests/db/test_v3_cross_tenant_shared_capacity*.py",
+  "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity.py",
+  "tests/unit/test_booking_unavailability_privacy.py",
+  "tests/unit/test_http_integrity_errors.py",
 ]
 required_docs = ["docs/v3/12-cross-tenant-shared-capacity-design.md"]
 required_docs_mode = "all"
