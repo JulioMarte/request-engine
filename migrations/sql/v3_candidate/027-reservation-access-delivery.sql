@@ -113,7 +113,7 @@ CREATE FUNCTION request_cmd.lock_outbox_message_claim(
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, request_engine
+SET search_path = pg_catalog, request_engine, pg_temp
 AS $function$
 DECLARE
     v_found boolean;

@@ -103,7 +103,8 @@ receiving direct access to `outbox_messages`. Its threat model is deliberately n
 - caller tenant GUC must equal the supplied organization;
 - message id, organization, status, claim token, and non-expired lease must all match;
 - the matching Outbox row is locked `FOR UPDATE` for the duration of the app transaction;
-- `search_path` is pinned to `pg_catalog, request_engine`;
+- `search_path` is pinned to `pg_catalog, request_engine, pg_temp`, with `pg_temp` last so temporary
+  objects cannot shadow trusted catalog/application objects;
 - `PUBLIC` has no execute privilege;
 - only app/admin receive execute;
 - worker receives no `ReservationAccess` table/view privileges.
