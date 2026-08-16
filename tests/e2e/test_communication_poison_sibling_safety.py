@@ -51,7 +51,7 @@ class DeliveredProvider(CommunicationDeliveryProvider):
 async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
     provider: CommunicationDeliveryProvider,
-) -> AsyncGenerator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryWorker], None]:
+) -> AsyncGenerator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryWorker]]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
     assert domain_database_url is not None, "delivery work requires separate app credentials"
     worker_engine = create_postgres_engine(credentials.database_url)
