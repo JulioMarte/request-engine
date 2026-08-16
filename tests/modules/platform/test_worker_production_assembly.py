@@ -5,15 +5,12 @@ from typing import cast
 import pytest
 
 from request_engine.bootstrap import worker as worker_bootstrap
-from request_engine.entrypoints.worker.outbox_runtime import OutboxEvent, OutboxPublisher
+from request_engine.entrypoints.worker.outbox_runtime import OutboxEvent
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
 )
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.events.provider_events import PostgresProviderEventWorker
-from request_engine.platform.outbox.worker import PostgresOutboxWorker
-from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 from request_engine.platform.worker.runtime import WorkerRuntimeConfig
 
 
@@ -40,6 +37,12 @@ class _CapturedRuntime:
         del stop_event
 
 
+class _ProviderStore:
+    async def reject(self, lease: object, *, error_class: str) -> bool:
+        del lease, error_class
+        return True
+
+
 @pytest.mark.unit
 def test_production_assembly_separates_worker_and_domain_factories(
     monkeypatch: pytest.MonkeyPatch,
@@ -47,6 +50,7 @@ def test_production_assembly_separates_worker_and_domain_factories(
     worker_factory = cast(SessionFactory, object())
     domain_factory = cast(SessionFactory, object())
     handler_factories_seen: list[SessionFactory] = []
+    store_factories_seen: list[tuple[str, SessionFactory]] = []
     runtimes: list[_CapturedRuntime] = []
 
     def no_show_factory(factory: SessionFactory) -> NoShowScheduledHandler:
@@ -57,11 +61,26 @@ def test_production_assembly_separates_worker_and_domain_factories(
         handler_factories_seen.append(factory)
         return cast(SlotOfferExpiryScheduledHandler, _ScheduledHandler())
 
+    def scheduled_store(factory: SessionFactory) -> object:
+        store_factories_seen.append(("scheduled", factory))
+        return object()
+
+    def outbox_store(factory: SessionFactory) -> object:
+        store_factories_seen.append(("outbox", factory))
+        return object()
+
+    def provider_store(factory: SessionFactory) -> _ProviderStore:
+        store_factories_seen.append(("provider", factory))
+        return _ProviderStore()
+
     def capture_runtime(store: object, processor: object, **kwargs: object) -> _CapturedRuntime:
         runtime = _CapturedRuntime(store, processor, **kwargs)
         runtimes.append(runtime)
         return runtime
 
+    monkeypatch.setattr(worker_bootstrap, "PostgresScheduledActionWorker", scheduled_store)
+    monkeypatch.setattr(worker_bootstrap, "PostgresOutboxWorker", outbox_store)
+    monkeypatch.setattr(worker_bootstrap, "PostgresProviderEventWorker", provider_store)
     monkeypatch.setattr(worker_bootstrap, "FencedWorkerRuntime", capture_runtime)
 
     process = worker_bootstrap.build_worker_process(
@@ -70,19 +89,18 @@ def test_production_assembly_separates_worker_and_domain_factories(
         no_show_factory=no_show_factory,
         slot_offer_expiry_factory=slot_offer_factory,
         communication_providers={},
-        outbox_publisher=cast(OutboxPublisher, _Publisher()),
+        outbox_publisher=_Publisher(),
         outbox_internal_handlers={},
         provider_event_handlers={},
     )
 
     assert process.stream_names == ("scheduled_actions", "outbox_messages", "provider_events")
     assert handler_factories_seen == [domain_factory, domain_factory]
-    assert isinstance(runtimes[0].store, PostgresScheduledActionWorker)
-    assert isinstance(runtimes[1].store, PostgresOutboxWorker)
-    assert isinstance(runtimes[2].store, PostgresProviderEventWorker)
-    assert runtimes[0].store._session_factory is worker_factory
-    assert runtimes[1].store._session_factory is worker_factory
-    assert runtimes[2].store._session_factory is worker_factory
+    assert store_factories_seen == [
+        ("scheduled", worker_factory),
+        ("outbox", worker_factory),
+        ("provider", worker_factory),
+    ]
     assert runtimes[2].kwargs["rejecter"] is not None
 
 
@@ -99,7 +117,7 @@ def test_production_assembly_rejects_reused_session_factory() -> None:
                 SlotOfferExpiryScheduledHandler, _ScheduledHandler()
             ),
             communication_providers={},
-            outbox_publisher=cast(OutboxPublisher, _Publisher()),
+            outbox_publisher=_Publisher(),
             outbox_internal_handlers={},
             provider_event_handlers={},
         )
