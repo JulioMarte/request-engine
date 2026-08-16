@@ -1,0 +1,35 @@
+# Documentation change contract
+
+Status: normative CI/architecture policy.
+
+Request Engine treats selected documentation as part of the executable architecture contract. A pull request that changes a contract-sensitive production surface must update the normative document that defines that surface in the same change.
+
+The machine-readable registry is `docs/architecture/documentation-contracts.toml`. Each rule defines:
+
+- production paths that trigger documentation impact;
+- the normative documents that must change with that impact;
+- whether all or any of those documents are required.
+
+The canonical check is:
+
+```bash
+uv run python scripts/ci/check_documentation_contract.py --base <base-ref>
+```
+
+GitHub Actions supplies the exact pull-request base/head SHAs and checks the complete PR diff. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
+
+## Design constraints
+
+This is deliberately not a rule that every source-code edit needs a documentation edit. The registry must stay focused on architectural, security, operational, public-contract and durable-state boundaries. Pure refactors and implementation details should not create meaningless documentation churn.
+
+A rule is appropriate when code and documentation must evolve atomically for reviewers to understand the actual production contract. Examples include worker credential/fencing semantics, production process composition, public API authority, durable data ownership, and release-evidence semantics.
+
+Required normative documents must already exist. CI fails if the registry refers to a missing document, contains duplicate/incomplete rules, or a contract-sensitive code change omits the required documentation update.
+
+## Extending the contract
+
+When a new production domain becomes normative, add or widen a registry rule in the same pull request that introduces that domain. The rule should use the narrowest stable path patterns that represent the contract surface.
+
+Tests, fixtures, generated evidence, and ordinary implementation files should not be added as triggers unless changing them independently would alter an externally meaningful or operationally authoritative contract.
+
+The documentation fitness gate complements, rather than replaces, architecture tests and executable behavioral evidence. Documentation states the intended contract; tests prove the implementation continues to satisfy it.
