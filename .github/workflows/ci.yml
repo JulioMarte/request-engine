@@ -32,12 +32,14 @@ jobs:
         run: >-
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
-      - name: Upload Python quality failure summary
+          --log-dir .ci/logs
+      - name: Upload Python quality failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: python-quality-failure-summary
-          path: .ci/python-quality.json
+          path: .ci/
+          include-hidden-files: true
           if-no-files-found: warn
 
   observability-contract:
