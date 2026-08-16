@@ -5,6 +5,7 @@ from request_engine.modules.delivery.contracts.access import (
     AccessPolicy,
     AccessStatus,
     DeliveryPolicyReader,
+    DeliveryPolicyValidationError,
     DeliveryWorkClaim,
     ProvisionAccessRequest,
     ProvisionedAccess,
@@ -21,13 +22,18 @@ class UnknownAccessProviderError(LookupError):
     pass
 
 
+class InvalidMaterializedAccessError(RuntimeError):
+    pass
+
+
 class ReservationAccessService:
     """Converge provider access to the current Reservation revision.
 
     Provider I/O always occurs outside authoritative DB transactions. A stable
-    materialization key makes provisioning replay-safe; READY/REVOKED authority
-    is published only through repository methods fenced by the current Outbox
-    claim.
+    materialization key makes provisioning replay-safe; ambiguous provider
+    outcomes are reconciled with non-creating lookup before any retry creates
+    work. READY/REVOKED authority is published only through repository methods
+    fenced by the current Outbox claim.
     """
 
     def __init__(
@@ -59,6 +65,7 @@ class ReservationAccessService:
         policies = await self._policy_reader.get_access_policies(
             source.organization_id, source.offering_version_id
         )
+        self._validate_policies(policies)
         desired = {
             policy.access_key: policy
             for policy in policies
@@ -91,7 +98,7 @@ class ReservationAccessService:
 
             recorded = claim
             if claim.provisioned_at is None:
-                materialized = await self._materialize(source, policy)
+                materialized = await self._recover_or_materialize(source, policy, claim)
                 recorded = await self._repository.record_materialized(claim, materialized)
                 if recorded.status is AccessStatus.REVOKED:
                     await self._revoke_materialized_result(recorded, materialized)
@@ -165,27 +172,58 @@ class ReservationAccessService:
         provider = self._provider(access.provider_key)
         await provider.revoke(self._revoke_request(access, materialized))
 
-    async def _materialize(
-        self, source: ReservationAccessSource, policy: AccessPolicy
+    async def _recover_or_materialize(
+        self,
+        source: ReservationAccessSource,
+        policy: AccessPolicy,
+        claim: ReservationAccess,
     ) -> ProvisionedAccess:
-        materialization_key = self._materialization_key(source, policy)
         if policy.provider_key is None:
-            return ProvisionedAccess(None, None, policy.public_data)
+            return self._validated_materialized(
+                ProvisionedAccess(None, None, dict(policy.public_data))
+            )
+
         provider = self._provider(policy.provider_key)
-        result = await provider.provision(
-            ProvisionAccessRequest(
-                source=source,
-                access_key=policy.access_key,
-                kind=policy.kind,
-                public_data=policy.public_data,
-                materialization_key=materialization_key,
+        recovered = await provider.lookup(materialization_key=claim.materialization_key)
+        if recovered is None:
+            recovered = await provider.provision(
+                ProvisionAccessRequest(
+                    source=source,
+                    access_key=policy.access_key,
+                    kind=policy.kind,
+                    public_data=policy.public_data,
+                    materialization_key=claim.materialization_key,
+                )
+            )
+
+        return self._validated_materialized(
+            ProvisionedAccess(
+                recovered.access_uri,
+                recovered.external_ref,
+                {**policy.public_data, **recovered.public_data},
             )
         )
-        return ProvisionedAccess(
-            result.access_uri,
-            result.external_ref,
-            {**policy.public_data, **result.public_data},
-        )
+
+    def _validate_policies(self, policies: tuple[AccessPolicy, ...]) -> None:
+        seen_keys: set[str] = set()
+        for policy in policies:
+            if policy.access_key in seen_keys:
+                raise DeliveryPolicyValidationError(
+                    f"delivery_policy.access contains duplicate key {policy.access_key!r}"
+                )
+            seen_keys.add(policy.access_key)
+
+            if policy.provider_key is not None and policy.provider_key not in self._providers:
+                raise UnknownAccessProviderError(policy.provider_key)
+
+            if (
+                policy.provisioning_mode is ProvisioningMode.IMMEDIATE
+                and policy.provider_key is None
+                and not policy.public_data
+            ):
+                raise DeliveryPolicyValidationError(
+                    f"immediate static access {policy.access_key!r} requires public_data"
+                )
 
     def _provider(self, provider_key: str) -> ReservationAccessProvider:
         provider = self._providers.get(provider_key)
@@ -194,8 +232,16 @@ class ReservationAccessService:
         return provider
 
     @staticmethod
-    def _materialization_key(source: ReservationAccessSource, policy: AccessPolicy) -> str:
-        return f"reservation-access:{source.reservation_id}:{policy.access_key}:r{source.revision}"
+    def _validated_materialized(materialized: ProvisionedAccess) -> ProvisionedAccess:
+        if (
+            materialized.access_uri is None
+            and materialized.external_ref is None
+            and not materialized.public_data
+        ):
+            raise InvalidMaterializedAccessError(
+                "materialized access requires uri, external_ref, or public_data"
+            )
+        return materialized
 
     @staticmethod
     def _revoke_request(

@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted — PR #49 demonstrated the PostgreSQL, architecture, race, privilege, test-quality, and
-release gates required for this boundary. Merge remains governed by CI on the exact PR head.
+Accepted design; implementation remains merge-gated by CI on the exact PR head. The policy
+validation and ambiguous-provider recovery guarantees described here are part of that gate.
 
 ## Context
 
@@ -22,6 +22,11 @@ mutable row across Reservation revisions. That design is rejected: it crosses th
 boundary, can strand a `pending` row after a crash, and can lose the evidence needed to revoke an
 older external artifact during reschedule.
 
+A later audit found two additional boundary defects: malformed immutable `delivery_policy` values
+could survive until Reservation processing, and the materialization retry path could call
+`provision` without first using the documented non-creating provider lookup. This ADR records the
+hardened contract that resolves those defects.
+
 ## Decision
 
 Reactivate Delivery narrowly around `ReservationAccess`.
@@ -37,6 +42,29 @@ Reactivate Delivery narrowly around `ReservationAccess`.
   through the generic unfenced internal-handler map.
 - The technical Outbox `claim_token` is passed to fenced local handlers but never placed on the
   integration `OutboxEvent` published externally.
+
+### Immutable Delivery policy
+
+`delivery_policy` is operational code attached to an immutable OfferingVersion. It must therefore be
+validated when authored/imported, not lazily interpreted as best-effort data during Reservation
+processing.
+
+The canonical Python parser rejects malformed access arrays/items, missing or duplicate access keys,
+unsupported access/provisioning enums, invalid `public_data`, immediate static access without usable
+content, and — when the authoring boundary supplies its provider registry — unknown provider keys.
+
+PostgreSQL independently rejects every provider-independent invalid shape at insert time through the
+`offering_versions` validation trigger in migration `027`. The database deliberately does not encode
+a deployment-specific provider registry: adapter registration is application configuration and can
+differ by deployment. A production authoring/import boundary must therefore call the canonical
+parser with the provider registry before persisting the OfferingVersion.
+
+PR #49 does not introduce a Product/Catalog OfferingVersion CRUD API. Catalog remains query-oriented.
+The absence of a product-facing authoring workflow is an explicit deferred scope item, not evidence
+that raw SQL is an accepted production configuration surface.
+
+The Delivery service repeats the critical provider/duplicate/static checks before any
+`ReservationAccess` mutation as defense against corrupted or bypassed configuration.
 
 ### ReservationAccess identity
 
@@ -55,7 +83,9 @@ Provider materialization uses a stable semantic key:
 reservation-access:{reservation_id}:{access_key}:r{reservation_revision}
 ```
 
-The key is independent of worker attempt or event redelivery.
+The key is independent of worker attempt or event redelivery. Once `ensure_pending` has persisted
+that key, subsequent provider calls use the persisted claim value rather than independently
+recomputing it.
 
 ### Provider protocol
 
@@ -67,7 +97,18 @@ Provider adapters must provide:
 2. non-creating `lookup(materialization_key)` for crash/ambiguous-result reconciliation;
 3. idempotent `revoke(materialization_key, ...)`.
 
-A provider error propagates and remains retryable. An unknown provider is not silently ignored.
+For a provider-backed `pending` row with no recorded provider evidence, the required protocol is:
+
+```text
+lookup(materialization_key)
+    |-- artifact exists -> reuse it
+    `-- absent          -> provision(materialization_key, ...)
+```
+
+A lookup error propagates and does not fall through to provisioning. A provider error remains
+retryable. An unknown provider is not silently ignored. `provision` remains idempotent as a second
+line of defense if a provider's lookup/read path is eventually consistent or another ambiguous
+network outcome occurs.
 
 ### Pending evidence versus published authority
 
@@ -81,8 +122,9 @@ provider succeeds
 process crashes before DB publication
 ```
 
-A later claimant can `lookup` by the same materialization key or reuse already-recorded provider
-evidence instead of blindly provisioning a duplicate.
+A later claimant uses the same persisted materialization key and performs non-creating `lookup`
+before any new `provision`. If the artifact exists, its evidence is reused; only confirmed absence
+permits provisioning. Already-recorded local evidence is reused directly.
 
 Recording provider evidence on an existing `pending` row does not require the Outbox lease because
 it grants no usable access authority. This is the narrow exception that makes crash reconciliation
@@ -128,7 +170,8 @@ current. A current claimant then revokes/reconciles that artifact.
 ### Deferred scope
 
 V2 `ServiceSession`, `Fulfillment`, `OutcomeScope`, execution corrections, queue/admission,
-payments, and generalized delivery orchestration remain deferred.
+payments, generalized delivery orchestration, and a public OfferingVersion authoring API remain
+deferred.
 
 ## Consequences
 
@@ -136,7 +179,8 @@ This supports meeting booking, scheduled calls, physical appointments, and other
 without making Booking provider-aware or giving the worker role business-table authority.
 
 The design accepts at-least-once provider round trips. Exactly-once network calls are not claimed;
-the guarantee is semantic idempotency plus reconciliation and fenced publication.
+the guarantee is lookup-before-provision reconciliation, semantic idempotency, preserved pending
+evidence, and fenced authority publication.
 
 Access URIs can behave like bearer credentials. This ADR does **not** create an unrestricted
 caller-facing HTTP read capability. A future `reservation_access.get` surface must reuse
@@ -162,6 +206,11 @@ makes stale/new provider artifacts harder to distinguish.
 
 Rejected because it violates the database access contract and creates long-lived authoritative
 transactions around network latency/failure.
+
+### Blindly reprovision a pending row without local evidence
+
+Rejected because the provider may already have succeeded before the process crashed. The retry path
+must perform non-creating lookup first and provision only after absence is established.
 
 ### Delete pending rows on retry
 

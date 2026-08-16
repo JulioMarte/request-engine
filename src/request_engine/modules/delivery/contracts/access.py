@@ -1,7 +1,8 @@
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
 
@@ -22,6 +23,10 @@ class AccessStatus(StrEnum):
 class ProvisioningMode(StrEnum):
     IMMEDIATE = "immediate"
     MANUAL = "manual"
+
+
+class DeliveryPolicyValidationError(ValueError):
+    """The immutable OfferingVersion delivery policy is not canonical."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +108,110 @@ class RevokeAccessRequest:
     public_data: dict[str, object]
 
 
+def parse_delivery_policy(
+    raw: object,
+    *,
+    known_provider_keys: Collection[str] | None = None,
+) -> tuple[AccessPolicy, ...]:
+    """Parse and validate the canonical immutable Delivery policy.
+
+    PostgreSQL independently enforces all provider-independent structural
+    invariants so direct SQL/import paths cannot persist malformed policy.
+    Configuration boundaries that know the installed provider registry should
+    pass ``known_provider_keys`` to reject unconfigured providers before the
+    OfferingVersion is persisted.
+    """
+
+    if not isinstance(raw, dict):
+        raise DeliveryPolicyValidationError("delivery_policy must be a JSON object")
+
+    access_raw = cast(dict[object, object], raw).get("access", [])
+    if not isinstance(access_raw, list):
+        raise DeliveryPolicyValidationError("delivery_policy.access must be an array")
+
+    provider_keys = frozenset(known_provider_keys) if known_provider_keys is not None else None
+    policies: list[AccessPolicy] = []
+    seen_keys: set[str] = set()
+
+    for index, raw_item in enumerate(cast(list[object], access_raw)):
+        context = f"delivery_policy.access[{index}]"
+        if not isinstance(raw_item, dict):
+            raise DeliveryPolicyValidationError(f"{context} must be an object")
+        item = cast(dict[object, object], raw_item)
+
+        access_key = _required_policy_string(item, "key", context)
+        if access_key in seen_keys:
+            raise DeliveryPolicyValidationError(
+                f"delivery_policy.access contains duplicate key {access_key!r}"
+            )
+        seen_keys.add(access_key)
+
+        kind_raw = _required_policy_string(item, "kind", context)
+        try:
+            kind = AccessKind(kind_raw)
+        except ValueError as exc:
+            raise DeliveryPolicyValidationError(
+                f"{context}.kind has unsupported value {kind_raw!r}"
+            ) from exc
+
+        provider_key: str | None = None
+        if "provider" in item:
+            provider_key = _required_policy_string(item, "provider", context)
+            if provider_keys is not None and provider_key not in provider_keys:
+                raise DeliveryPolicyValidationError(
+                    f"{context}.provider is not configured: {provider_key!r}"
+                )
+
+        provisioning_raw = item.get("provisioning", ProvisioningMode.IMMEDIATE.value)
+        if not isinstance(provisioning_raw, str):
+            raise DeliveryPolicyValidationError(f"{context}.provisioning must be a string")
+        try:
+            provisioning_mode = ProvisioningMode(provisioning_raw)
+        except ValueError as exc:
+            raise DeliveryPolicyValidationError(
+                f"{context}.provisioning has unsupported value {provisioning_raw!r}"
+            ) from exc
+
+        public_data_raw = item.get("public_data", {})
+        if not isinstance(public_data_raw, dict):
+            raise DeliveryPolicyValidationError(f"{context}.public_data must be an object")
+        public_data = dict(cast(dict[str, object], public_data_raw))
+
+        if (
+            provisioning_mode is ProvisioningMode.IMMEDIATE
+            and provider_key is None
+            and not public_data
+        ):
+            raise DeliveryPolicyValidationError(
+                f"{context} immediate static access requires non-empty public_data"
+            )
+
+        policies.append(
+            AccessPolicy(
+                access_key=access_key,
+                kind=kind,
+                provider_key=provider_key,
+                provisioning_mode=provisioning_mode,
+                public_data=public_data,
+            )
+        )
+
+    return tuple(policies)
+
+
+def _required_policy_string(
+    item: dict[object, object],
+    field: str,
+    context: str,
+) -> str:
+    value = item.get(field)
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise DeliveryPolicyValidationError(
+            f"{context}.{field} must be a non-empty trimmed string"
+        )
+    return value
+
+
 class DeliveryPolicyReader(Protocol):
     async def get_access_policies(
         self, organization_id: UUID, offering_version_id: UUID
@@ -156,7 +265,8 @@ class ReservationAccessRepository(Protocol):
 
 
 class ReservationAccessProvider(Protocol):
-    async def provision(self, request: ProvisionAccessRequest) -> ProvisionedAccess: ...
+    async def provision(self, request: ProvisionAccessRequest) -> ProvisionedAccess:
+        """Create or reuse one artifact idempotently by ``materialization_key``."""
 
     async def lookup(self, *, materialization_key: str) -> ProvisionedAccess | None:
         """Resolve an already-created artifact without creating a new one."""
