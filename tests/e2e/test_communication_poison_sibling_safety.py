@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from typing import cast
+from uuid import UUID, uuid4
+
+import pytest
+
+from request_engine.modules.communications.adapters.worker.delivery_worker import (
+    CommunicationDeliveryWorker,
+)
+from request_engine.modules.communications.application.errors import UnsupportedScheduledAction
+from request_engine.modules.communications.contracts.delivery import (
+    CommunicationDeliveryProvider,
+    ProviderDeliveryResult,
+    ProviderDeliveryStatus,
+    ProviderLookupRequest,
+    ProviderSendRequest,
+)
+from request_engine.platform.db.session import (
+    SessionFactory,
+    create_postgres_engine,
+    create_session_factory,
+)
+from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
+
+from . import operational_support as support
+
+pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
+
+
+class DeliveredProvider(CommunicationDeliveryProvider):
+    def __init__(self) -> None:
+        self.send_calls: list[ProviderSendRequest] = []
+
+    async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult:
+        self.send_calls.append(request)
+        return ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"msg-{request.delivery_id}",
+        )
+
+    async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult:
+        raise AssertionError(f"unexpected provider lookup for {request.delivery_id}")
+
+
+@asynccontextmanager
+async def _worker_stack(
+    credentials: support.RuntimeCredentialsLike,
+    provider: CommunicationDeliveryProvider,
+) -> AsyncGenerator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryWorker], None]:
+    domain_database_url = getattr(credentials, "domain_database_url", None)
+    assert domain_database_url is not None, "delivery work requires separate app credentials"
+    worker_engine = create_postgres_engine(credentials.database_url)
+    domain_engine = create_postgres_engine(domain_database_url)
+    worker_factory: SessionFactory = create_session_factory(worker_engine)
+    domain_factory: SessionFactory = create_session_factory(domain_engine)
+    scheduler = PostgresScheduledActionWorker(worker_factory)
+    try:
+        yield scheduler, CommunicationDeliveryWorker(
+            domain_factory,
+            scheduler,
+            {"provider-a": provider},
+        )
+    finally:
+        await domain_engine.dispose()
+        await worker_engine.dispose()
+
+
+def _task(conn: support.PgConnection, organization_id: UUID) -> UUID:
+    party_id = support.new_party(conn, organization_id, f"Recipient {uuid4().hex[:8]}")
+    contact_id = support.new_contact_point(conn, organization_id, party_id, "poison-sibling")
+    policy = {
+        "channels": ["email"],
+        "provider_key": "provider-a",
+        "reconcile_after_seconds": 30,
+        "retry_after_seconds": 30,
+    }
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.communication_tasks (
+            organization_id, recipient_party_id, contact_point_id,
+            purpose, template_key, template_version, render_context,
+            channel_policy, dedupe_key, status
+        ) VALUES (
+            %s, %s, %s, 'confirmation', 'booking-confirmed', 1,
+            '{}'::jsonb, %s::jsonb, %s, 'pending'
+        )
+        RETURNING id
+        """,
+        (
+            organization_id,
+            party_id,
+            contact_id,
+            json.dumps(policy),
+            f"poison-sibling-task:{uuid4().hex}",
+        ),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
+def _action(
+    conn: support.PgConnection,
+    organization_id: UUID,
+    task_id: UUID,
+    *,
+    action_type: str,
+    payload: dict[str, str],
+    execute_at: datetime,
+) -> UUID:
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.scheduled_actions (
+            organization_id, owner_module, action_type, action_version,
+            subject_kind, subject_id, payload, dedupe_key,
+            execute_at, next_attempt_at
+        ) VALUES (
+            %s, 'communications', %s, 1,
+            'CommunicationTask', %s, %s::jsonb, %s, %s, %s
+        )
+        RETURNING id
+        """,
+        (
+            organization_id,
+            action_type,
+            task_id,
+            json.dumps(payload),
+            f"poison-sibling-action:{uuid4().hex}",
+            execute_at,
+            execute_at,
+        ),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
+def _task_status(conn: support.PgConnection, task_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.communication_tasks WHERE id = %s",
+        (task_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _action_status(conn: support.PgConnection, action_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.scheduled_actions WHERE id = %s",
+        (action_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _event_count(
+    conn: support.PgConnection,
+    organization_id: UUID,
+    event_type: str,
+    task_id: UUID,
+) -> int:
+    row = conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.outbox_messages
+        WHERE organization_id = %s
+          AND event_type = %s
+          AND aggregate_id = %s
+        """,
+        (organization_id, event_type, task_id),
+    ).fetchone()
+    assert row is not None
+    return cast(int, row[0])
+
+
+@pytest.mark.asyncio
+async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibling(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    organization_id = support.new_org(e2e_admin_conn, "delivery-poison-sibling")
+    task_id = _task(e2e_admin_conn, organization_id)
+    poison_id = _action(
+        e2e_admin_conn,
+        organization_id,
+        task_id,
+        action_type="unknown_action",
+        payload={},
+        execute_at=datetime(2000, 1, 1, tzinfo=UTC),
+    )
+    valid_id = _action(
+        e2e_admin_conn,
+        organization_id,
+        task_id,
+        action_type="dispatch_task",
+        payload={"communication_task_id": str(task_id)},
+        execute_at=datetime(2000, 1, 2, tzinfo=UTC),
+    )
+    provider = DeliveredProvider()
+
+    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, worker):
+        leases = await scheduler.claim(limit=1)
+        assert len(leases) == 1
+        assert leases[0].id == poison_id
+        with pytest.raises(UnsupportedScheduledAction):
+            await worker.process(leases[0])
+
+        assert _action_status(e2e_admin_conn, poison_id) == "dead"
+        assert _action_status(e2e_admin_conn, valid_id) == "pending"
+        assert _task_status(e2e_admin_conn, task_id) == "pending"
+        assert _event_count(
+            e2e_admin_conn,
+            organization_id,
+            "communication.task_failed.v1",
+            task_id,
+        ) == 0
+
+        valid_leases = await scheduler.claim(limit=1)
+        assert len(valid_leases) == 1
+        assert valid_leases[0].id == valid_id
+        await worker.process(valid_leases[0])
+
+    assert len(provider.send_calls) == 1
+    assert _action_status(e2e_admin_conn, valid_id) == "completed"
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _event_count(
+        e2e_admin_conn,
+        organization_id,
+        "communication.task_failed.v1",
+        task_id,
+    ) == 0
+    assert _event_count(
+        e2e_admin_conn,
+        organization_id,
+        "communication.task_completed.v1",
+        task_id,
+    ) == 1
