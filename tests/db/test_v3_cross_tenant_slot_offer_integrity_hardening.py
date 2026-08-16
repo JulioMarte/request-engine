@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from psycopg import Connection, Error
 
@@ -190,6 +191,31 @@ def _opportunity(conn: PgConnection, fixture: Fixture) -> UUID:
     )
 
 
+def _offer(
+    conn: PgConnection,
+    fixture: Fixture,
+    opportunity_id: UUID,
+    waitlist_entry_id: UUID,
+    hold_id: UUID,
+) -> UUID:
+    return _uuid(
+        conn,
+        """
+        INSERT INTO request_engine.slot_offers (
+            organization_id, slot_opportunity_id, waitlist_entry_id,
+            capacity_hold_id, expires_at
+        ) VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')
+        RETURNING id
+        """,
+        (
+            fixture.organization_id,
+            opportunity_id,
+            waitlist_entry_id,
+            hold_id,
+        ),
+    )
+
+
 @pytest.mark.postgres
 def test_slot_offer_rejects_waitlist_subject_different_from_hold(
     admin_conn: PgConnection,
@@ -200,20 +226,7 @@ def test_slot_offer_rejects_waitlist_subject_different_from_hold(
     opportunity_id = _opportunity(admin_conn, fixture)
 
     with pytest.raises(Error) as mismatch:
-        admin_conn.execute(
-            """
-            INSERT INTO request_engine.slot_offers (
-                organization_id, slot_opportunity_id, waitlist_entry_id,
-                capacity_hold_id, expires_at
-            ) VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')
-            """,
-            (
-                fixture.organization_id,
-                opportunity_id,
-                wrong_entry_id,
-                hold_id,
-            ),
-        )
+        _offer(admin_conn, fixture, opportunity_id, wrong_entry_id, hold_id)
     assert mismatch.value.sqlstate == "23514"
     assert "provenance mismatch" in str(mismatch.value)
 
@@ -227,22 +240,7 @@ def test_slot_offer_cannot_retarget_booking_provenance_after_creation(
     valid_entry_id = _waitlist_entry(admin_conn, fixture, fixture.subject_party_id)
     other_entry_id = _waitlist_entry(admin_conn, fixture, fixture.other_party_id)
     opportunity_id = _opportunity(admin_conn, fixture)
-    offer_id = _uuid(
-        admin_conn,
-        """
-        INSERT INTO request_engine.slot_offers (
-            organization_id, slot_opportunity_id, waitlist_entry_id,
-            capacity_hold_id, expires_at
-        ) VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')
-        RETURNING id
-        """,
-        (
-            fixture.organization_id,
-            opportunity_id,
-            valid_entry_id,
-            hold_id,
-        ),
-    )
+    offer_id = _offer(admin_conn, fixture, opportunity_id, valid_entry_id, hold_id)
 
     with pytest.raises(Error) as rewritten:
         admin_conn.execute(
@@ -265,3 +263,60 @@ def test_slot_offer_cannot_retarget_booking_provenance_after_creation(
         (fixture.organization_id, offer_id),
     ).fetchone()
     assert stored == (valid_entry_id, hold_id, opportunity_id)
+
+
+@pytest.mark.postgres
+def test_slot_offer_status_transition_requires_revision_advance(
+    admin_conn: PgConnection,
+) -> None:
+    fixture = _fixture(admin_conn)
+    hold_id = _hold_with_claim(admin_conn, fixture)
+    entry_id = _waitlist_entry(admin_conn, fixture, fixture.subject_party_id)
+    opportunity_id = _opportunity(admin_conn, fixture)
+    offer_id = _offer(admin_conn, fixture, opportunity_id, entry_id, hold_id)
+
+    with pytest.raises(Error) as stale_revision:
+        admin_conn.execute(
+            """
+            UPDATE request_engine.slot_offers
+            SET status = 'declined'
+            WHERE organization_id = %s AND id = %s
+            """,
+            (fixture.organization_id, offer_id),
+        )
+    assert stale_revision.value.sqlstate == "23514"
+    assert "revision advance" in str(stale_revision.value)
+
+
+@pytest.mark.postgres
+def test_slot_offer_insert_locks_semantic_source_rows_until_commit(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> None:
+    fixture = _fixture(admin_conn)
+    hold_id = _hold_with_claim(admin_conn, fixture)
+    entry_id = _waitlist_entry(admin_conn, fixture, fixture.subject_party_id)
+    opportunity_id = _opportunity(admin_conn, fixture)
+
+    issuer: PgConnection = psycopg.connect(pg_conninfo)
+    observer: PgConnection = psycopg.connect(pg_conninfo)
+    try:
+        _offer(issuer, fixture, opportunity_id, entry_id, hold_id)
+
+        probes = (
+            ("slot_opportunities", opportunity_id),
+            ("waitlist_entries", entry_id),
+            ("capacity_holds", hold_id),
+        )
+        for table_name, row_id in probes:
+            with pytest.raises(Error) as blocked:
+                observer.execute(
+                    f"SELECT id FROM request_engine.{table_name} WHERE id = %s FOR UPDATE NOWAIT",
+                    (row_id,),
+                ).fetchone()
+            assert blocked.value.sqlstate == "55P03"
+            observer.rollback()
+    finally:
+        issuer.rollback()
+        observer.close()
+        issuer.close()
