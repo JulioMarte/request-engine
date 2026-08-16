@@ -160,10 +160,27 @@ def _task_and_action(
     return task_id, cast(UUID, action_row[0])
 
 
-def _status(conn: support.PgConnection, table: str, row_id: UUID) -> str:
-    assert table in {"communication_tasks", "communication_deliveries", "scheduled_actions"}
+def _task_status(conn: support.PgConnection, row_id: UUID) -> str:
     row = conn.execute(
-        f"SELECT status FROM request_engine.{table} WHERE id = %s",
+        "SELECT status FROM request_engine.communication_tasks WHERE id = %s",
+        (row_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _delivery_status(conn: support.PgConnection, row_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.communication_deliveries WHERE id = %s",
+        (row_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(str, row[0])
+
+
+def _action_status(conn: support.PgConnection, row_id: UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM request_engine.scheduled_actions WHERE id = %s",
         (row_id,),
     ).fetchone()
     assert row is not None
@@ -232,9 +249,9 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
         assert provider.reclaimed.id == action_id
         assert provider.reclaimed.claim_token != first_lease.claim_token
         delivery_id = _delivery_id(e2e_admin_conn, task_id)
-        assert _status(e2e_admin_conn, "communication_tasks", task_id) == "delivering"
-        assert _status(e2e_admin_conn, "communication_deliveries", delivery_id) == "attempting"
-        assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "leased"
+        assert _task_status(e2e_admin_conn, task_id) == "delivering"
+        assert _delivery_status(e2e_admin_conn, delivery_id) == "attempting"
+        assert _action_status(e2e_admin_conn, action_id) == "leased"
         assert _completion_events(e2e_admin_conn, organization_id, task_id) == 0
 
         outcome = await worker.process(provider.reclaimed)
@@ -243,7 +260,7 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
     assert len(provider.send_calls) == 1
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == delivery_id
-    assert _status(e2e_admin_conn, "communication_tasks", task_id) == "completed"
-    assert _status(e2e_admin_conn, "communication_deliveries", delivery_id) == "delivered"
-    assert _status(e2e_admin_conn, "scheduled_actions", action_id) == "completed"
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
     assert _completion_events(e2e_admin_conn, organization_id, task_id) == 1
