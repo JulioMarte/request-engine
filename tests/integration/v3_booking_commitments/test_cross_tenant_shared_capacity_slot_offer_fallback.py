@@ -3,7 +3,6 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from psycopg import Connection
 
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeReservationCommands,
