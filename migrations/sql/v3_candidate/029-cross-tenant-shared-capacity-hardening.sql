@@ -59,6 +59,10 @@ CREATE TRIGGER shared_capacity_bindings_guard_rebinding
 BEFORE INSERT ON request_engine.shared_capacity_bindings
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_shared_capacity_rebinding();
 
+-- Trigger functions are internal implementation details. PostgreSQL grants
+-- EXECUTE on new functions to PUBLIC by default, so close both shared-capacity
+-- trigger surfaces explicitly even though callers never need to invoke them.
+REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_binding() FROM PUBLIC;
 REVOKE ALL ON FUNCTION request_engine.guard_shared_capacity_rebinding() FROM PUBLIC;
 
 RESET search_path;
