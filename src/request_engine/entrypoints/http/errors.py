@@ -108,6 +108,16 @@ async def integrity_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, IntegrityError):
         raise exc
     sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
+    if sqlstate == "23P01":
+        # PostgreSQL uses exclusion/conflict semantics for authoritative capacity
+        # contention. Never expose which local or cross-tenant claim caused the
+        # conflict: externally this is ordinary appointment unavailability.
+        body = ErrorBody(
+            code="appointment_unavailable",
+            message="the requested appointment is unavailable",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+        )
+        return _response(status.HTTP_409_CONFLICT, body)
     if sqlstate == "23505":
         body = ErrorBody(
             code="conflict",
