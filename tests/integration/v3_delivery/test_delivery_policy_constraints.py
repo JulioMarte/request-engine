@@ -9,6 +9,39 @@ from ._fixture import DeliveryFixture, make_delivery_fixture
 
 PgConnection = Connection[Any]
 
+MALFORMED_DELIVERY_POLICIES: tuple[object, ...] = (
+    {"access": {}},
+    {"access": ["not-an-object"]},
+    {"access": [{"kind": "video_link", "provider": "meeting"}]},
+    {
+        "access": [
+            {"key": "video", "kind": "video_link", "provider": "meeting"},
+            {"key": "video", "kind": "phone", "provider": "meeting"},
+        ]
+    },
+    {"access": [{"key": "video", "kind": "unsupported", "provider": "meeting"}]},
+    {
+        "access": [
+            {
+                "key": "video",
+                "kind": "video_link",
+                "provider": "meeting",
+                "provisioning": "eventually",
+            }
+        ]
+    },
+    {
+        "access": [
+            {
+                "key": "address",
+                "kind": "physical_location",
+                "public_data": [],
+            }
+        ]
+    },
+    {"access": [{"key": "address", "kind": "physical_location"}]},
+)
+
 
 def _insert_delivery_policy(
     conn: PgConnection,
@@ -33,41 +66,7 @@ def _insert_delivery_policy(
 
 @pytest.mark.integration
 @pytest.mark.postgres
-@pytest.mark.parametrize(
-    "policy",
-    [
-        {"access": {}},
-        {"access": ["not-an-object"]},
-        {"access": [{"kind": "video_link", "provider": "meeting"}]},
-        {
-            "access": [
-                {"key": "video", "kind": "video_link", "provider": "meeting"},
-                {"key": "video", "kind": "phone", "provider": "meeting"},
-            ]
-        },
-        {"access": [{"key": "video", "kind": "unsupported", "provider": "meeting"}]},
-        {
-            "access": [
-                {
-                    "key": "video",
-                    "kind": "video_link",
-                    "provider": "meeting",
-                    "provisioning": "eventually",
-                }
-            ]
-        },
-        {
-            "access": [
-                {
-                    "key": "address",
-                    "kind": "physical_location",
-                    "public_data": [],
-                }
-            ]
-        },
-        {"access": [{"key": "address", "kind": "physical_location"}]},
-    ],
-)
+@pytest.mark.parametrize("policy", MALFORMED_DELIVERY_POLICIES)
 def test_postgres_rejects_malformed_delivery_policy(
     admin_conn: PgConnection,
     policy: object,

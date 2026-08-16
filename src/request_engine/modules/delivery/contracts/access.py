@@ -265,12 +265,15 @@ class ReservationAccessRepository(Protocol):
 class ReservationAccessProvider(Protocol):
     async def provision(self, request: ProvisionAccessRequest) -> ProvisionedAccess:
         """Create or reuse one artifact idempotently by ``materialization_key``."""
+        ...
 
     async def lookup(self, *, materialization_key: str) -> ProvisionedAccess | None:
         """Resolve an already-created artifact without creating a new one."""
+        ...
 
     async def revoke(self, request: RevokeAccessRequest) -> None:
         """Idempotently revoke the artifact represented by ``materialization_key``."""
+        ...
 
 
 class ReservationAccessLifecyclePort(Protocol):
