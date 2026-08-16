@@ -450,32 +450,16 @@ async def test_expiry_releases_hold_and_advances_candidate(
         ),
     )
     assert offer is not None and offer.waitlist_entry_id == first_entry_id
-    expired_at = datetime.now(UTC) - timedelta(seconds=1)
-    created_at = expired_at - timedelta(seconds=1)
-    with admin_conn.transaction():
-        admin_conn.execute(
-            """
-            UPDATE request_engine.capacity_holds
-            SET created_at = %s,
-                expires_at = %s
-            WHERE organization_id = %s
-              AND id = (
-                  SELECT capacity_hold_id
-                  FROM request_engine.slot_offers
-                  WHERE organization_id = %s AND id = %s
-              )
-            """,
-            (created_at, expired_at, fixture.organization_id, fixture.organization_id, offer.id),
-        )
-        admin_conn.execute(
-            """
-            UPDATE request_engine.slot_offers
-            SET created_at = %s,
-                expires_at = %s
-            WHERE organization_id = %s AND id = %s
-            """,
-            (created_at, expired_at, fixture.organization_id, offer.id),
-        )
+    # Wait on the database clock used by the expiry invariant. pg_sleep_until
+    # cannot wake before the stored deadline and this session holds no row locks.
+    admin_conn.execute(
+        """
+        SELECT pg_catalog.pg_sleep_until(expires_at)
+        FROM request_engine.slot_offers
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, offer.id),
+    ).fetchone()
     result = await expire_slot_offer(
         commands,
         ExpireSlotOfferCommand(

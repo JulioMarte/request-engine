@@ -28,6 +28,7 @@ from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
     ScheduledActionLease,
 )
+from request_engine.platform.worker.runtime import LeaseLostWorkError
 
 PgConnection = Connection[Any]
 
@@ -441,8 +442,8 @@ async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
     assert retry_row is not None
     assert retry_row[1] is True
 
-    # Defensive replay of the old lease object must observe the durable future retry
-    # and must not invoke the provider a second time before that backoff is due.
-    replay_outcome = await worker.process(original_lease)
-    assert replay_outcome.detail == "retry_already_scheduled"
+    # A completed lease is stale authority. The preparation fence must reject its
+    # replay before another provider call, even though the durable retry exists.
+    with pytest.raises(LeaseLostWorkError, match="delivery_prepare_fence_lost"):
+        await worker.process(original_lease)
     assert len(provider.send_requests) == 1
