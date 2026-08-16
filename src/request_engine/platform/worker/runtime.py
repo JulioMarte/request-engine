@@ -38,6 +38,10 @@ class LeaseProcessor[TLease: WorkLease](Protocol):
     async def process(self, lease: TLease) -> None: ...
 
 
+class LeaseRejecter[TLease: WorkLease](Protocol):
+    async def __call__(self, lease: TLease, *, error_class: str) -> bool: ...
+
+
 class RetryableWorkError(RuntimeError):
     def __init__(self, error_class: str, message: str | None = None) -> None:
         self.error_class = error_class
@@ -45,6 +49,14 @@ class RetryableWorkError(RuntimeError):
 
 
 class PermanentWorkError(RuntimeError):
+    def __init__(self, error_class: str, message: str | None = None) -> None:
+        self.error_class = error_class
+        super().__init__(message or error_class)
+
+
+class RejectedWorkError(RuntimeError):
+    """Signal a semantically invalid event that must not consume retry budget."""
+
     def __init__(self, error_class: str, message: str | None = None) -> None:
         self.error_class = error_class
         super().__init__(message or error_class)
@@ -58,6 +70,7 @@ class WorkerItemState(StrEnum):
     COMPLETED = "completed"
     RETRY = "retry"
     DEAD = "dead"
+    REJECTED = "rejected"
     STALE = "stale"
 
 
@@ -81,8 +94,8 @@ class WorkerRuntimeConfig:
     retry_jitter_fraction: float = 0.2
 
     def __post_init__(self) -> None:
-        if self.max_concurrency <= 0:
-            raise ValueError("max_concurrency must be positive")
+        if self.max_concurrency <= 0 or self.max_concurrency > 500:
+            raise ValueError("max_concurrency must be between 1 and 500")
         if self.claim_batch_size <= 0 or self.claim_batch_size > 500:
             raise ValueError("claim_batch_size must be between 1 and 500")
         if self.lease_duration <= timedelta(0) or self.lease_duration > timedelta(minutes=15):
@@ -93,8 +106,8 @@ class WorkerRuntimeConfig:
             raise ValueError("heartbeat_interval must be shorter than lease_duration")
         if self.processing_timeout <= timedelta(0) or self.processing_timeout > timedelta(hours=24):
             raise ValueError("processing_timeout must be > 0 and <= 24 hours")
-        if self.idle_sleep < timedelta(0):
-            raise ValueError("idle_sleep cannot be negative")
+        if self.idle_sleep <= timedelta(0) or self.idle_sleep > timedelta(seconds=60):
+            raise ValueError("idle_sleep must be > 0 and <= 60 seconds")
         if self.retry_base < timedelta(0) or self.retry_cap < self.retry_base:
             raise ValueError("retry bounds are invalid")
         if not 0.0 <= self.retry_jitter_fraction <= 0.5:
@@ -118,10 +131,12 @@ class FencedWorkerRuntime[TLease: WorkLease]:
         store: LeaseStore[TLease],
         processor: LeaseProcessor[TLease],
         *,
+        rejecter: LeaseRejecter[TLease] | None = None,
         config: WorkerRuntimeConfig | None = None,
     ) -> None:
         self._store = store
         self._processor = processor
+        self._rejecter = rejecter
         self._config = config or WorkerRuntimeConfig()
 
     async def run_once(self) -> tuple[WorkerItemOutcome, ...]:
@@ -169,6 +184,16 @@ class FencedWorkerRuntime[TLease: WorkLease]:
                 lease.id,
                 WorkerItemState.COMPLETED if completed else WorkerItemState.STALE,
                 "completed" if completed else "completion_fence_lost",
+            )
+
+        if isinstance(failure, RejectedWorkError):
+            if self._rejecter is None:
+                raise RuntimeError("processor requested rejection without a rejecter") from failure
+            rejected = await self._rejecter(lease, error_class=failure.error_class)
+            return WorkerItemOutcome(
+                lease.id,
+                WorkerItemState.REJECTED if rejected else WorkerItemState.STALE,
+                failure.error_class if rejected else "rejection_fence_lost",
             )
 
         if isinstance(failure, PermanentWorkError):
