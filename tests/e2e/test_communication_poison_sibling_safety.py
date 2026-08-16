@@ -60,10 +60,13 @@ async def _worker_stack(
     domain_factory: SessionFactory = create_session_factory(domain_engine)
     scheduler = PostgresScheduledActionWorker(worker_factory)
     try:
-        yield scheduler, CommunicationDeliveryWorker(
-            domain_factory,
+        yield (
             scheduler,
-            {"provider-a": provider},
+            CommunicationDeliveryWorker(
+                domain_factory,
+                scheduler,
+                {"provider-a": provider},
+            ),
         )
     finally:
         await domain_engine.dispose()
@@ -211,12 +214,15 @@ async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibli
         assert _action_status(e2e_admin_conn, poison_id) == "dead"
         assert _action_status(e2e_admin_conn, valid_id) == "pending"
         assert _task_status(e2e_admin_conn, task_id) == "pending"
-        assert _event_count(
-            e2e_admin_conn,
-            organization_id,
-            "communication.task_failed.v1",
-            task_id,
-        ) == 0
+        assert (
+            _event_count(
+                e2e_admin_conn,
+                organization_id,
+                "communication.task_failed.v1",
+                task_id,
+            )
+            == 0
+        )
 
         valid_leases = await scheduler.claim(limit=1)
         assert len(valid_leases) == 1
@@ -226,15 +232,21 @@ async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibli
     assert len(provider.send_calls) == 1
     assert _action_status(e2e_admin_conn, valid_id) == "completed"
     assert _task_status(e2e_admin_conn, task_id) == "completed"
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_failed.v1",
-        task_id,
-    ) == 0
-    assert _event_count(
-        e2e_admin_conn,
-        organization_id,
-        "communication.task_completed.v1",
-        task_id,
-    ) == 1
+    assert (
+        _event_count(
+            e2e_admin_conn,
+            organization_id,
+            "communication.task_failed.v1",
+            task_id,
+        )
+        == 0
+    )
+    assert (
+        _event_count(
+            e2e_admin_conn,
+            organization_id,
+            "communication.task_completed.v1",
+            task_id,
+        )
+        == 1
+    )
