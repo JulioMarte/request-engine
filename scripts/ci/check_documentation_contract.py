@@ -219,11 +219,10 @@ def main() -> int:
         try:
             changed = changed_files(base, head)
         except (subprocess.CalledProcessError, ValueError) as exc:
-            detail = (
-                exc.stderr.strip()
-                if isinstance(exc, subprocess.CalledProcessError)
-                else str(exc)
-            )
+            if isinstance(exc, subprocess.CalledProcessError):
+                detail = exc.stderr.strip()
+            else:
+                detail = str(exc)
             print(f"documentation contract diff failed: {detail}", file=sys.stderr)
             return 2
 
