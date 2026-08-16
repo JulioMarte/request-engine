@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from enum import StrEnum
 from uuid import UUID
 
@@ -76,17 +76,19 @@ class CommunicationDeliveryWorker:
             work = await self._prepare(lease)
         except UnsupportedScheduledAction:
             await self._fail_poisoned_task(lease, reason="unsupported_scheduled_action")
-            await self._scheduler.dead_letter(
+            if not await self._scheduler.dead_letter(
                 lease,
                 error_class="unsupported_scheduled_action",
-            )
+            ):
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost")
             raise
         except ValueError:
             await self._fail_poisoned_task(lease, reason="invalid_scheduled_action")
-            await self._scheduler.dead_letter(
+            if not await self._scheduler.dead_letter(
                 lease,
                 error_class="invalid_scheduled_action",
-            )
+            ):
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost")
             raise
 
         if work.kind is DeliveryWorkKind.SKIP:
@@ -117,10 +119,11 @@ class CommunicationDeliveryWorker:
                 work,
                 provider_key=provider_key,
             )
-            await self._scheduler.dead_letter(
+            if not await self._scheduler.dead_letter(
                 lease,
                 error_class="provider_not_configured",
-            )
+            ):
+                raise LeaseLostWorkError("provider_dead_letter_fence_lost")
             raise DeliveryProviderNotConfigured(provider_key) from None
 
         if work.kind is DeliveryWorkKind.SEND:
@@ -141,11 +144,13 @@ class CommunicationDeliveryWorker:
             try:
                 provider_result = await provider.lookup(work.lookup_request)
             except Exception as exc:
-                retry_state = await self._scheduler.retry(
+                retry_state = await self._scheduler.retry_after(
                     lease,
-                    next_attempt_at=datetime.now(UTC) + timedelta(seconds=60),
+                    delay=timedelta(seconds=60),
                     error_class=f"lookup_{type(exc).__name__}",
                 )
+                if retry_state == "stale":
+                    raise LeaseLostWorkError("lookup_retry_fence_lost") from exc
                 return DeliveryWorkerOutcome(
                     action_id=lease.id,
                     communication_task_id=work.communication_task_id,
