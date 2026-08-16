@@ -206,9 +206,7 @@ def _required_policy_string(
 ) -> str:
     value = item.get(field)
     if not isinstance(value, str) or not value or value != value.strip():
-        raise DeliveryPolicyValidationError(
-            f"{context}.{field} must be a non-empty trimmed string"
-        )
+        raise DeliveryPolicyValidationError(f"{context}.{field} must be a non-empty trimmed string")
     return value
 
 

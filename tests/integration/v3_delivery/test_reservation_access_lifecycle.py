@@ -213,9 +213,7 @@ async def test_unknown_provider_fails_before_reservation_access_mutation(
 ) -> None:
     fixture = make_delivery_fixture(
         admin_conn,
-        access_policies=[
-            {"key": "video", "kind": "video_link", "provider": "not-configured"}
-        ],
+        access_policies=[{"key": "video", "kind": "video_link", "provider": "not-configured"}],
     )
     provider = RecordingProvider()
     service = _service(delivery_session_factory, provider)
