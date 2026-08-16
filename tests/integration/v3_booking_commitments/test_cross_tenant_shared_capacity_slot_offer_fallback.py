@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -28,13 +28,10 @@ from request_engine.modules.queue.application.commands.offer_next_waitlist_candi
 )
 from request_engine.platform.db.session import SessionFactory
 
-from .test_cross_tenant_shared_capacity import (
-    PgConnection,
-    TenantBookingFixture,
-    _book as make_book_command,  # pyright: ignore[reportPrivateUsage]
-    _fixture as make_tenant_fixture,  # pyright: ignore[reportPrivateUsage]
-    _shared_root as make_shared_root,  # pyright: ignore[reportPrivateUsage]
-)
+from . import test_cross_tenant_shared_capacity as shared_capacity_support
+from .test_cross_tenant_shared_capacity import PgConnection, TenantBookingFixture
+
+support = cast(Any, shared_capacity_support)
 
 
 def _bind_resource(
@@ -109,10 +106,10 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    tenant_a = make_tenant_fixture(admin_conn, "fallback-a")
-    tenant_b = make_tenant_fixture(admin_conn, "fallback-b")
+    tenant_a = support._fixture(admin_conn, "fallback-a")
+    tenant_b = support._fixture(admin_conn, "fallback-b")
     alternate_id = _add_alternate_resource(admin_conn, tenant_a)
-    root_id = make_shared_root(admin_conn)
+    root_id = support._shared_root(admin_conn)
 
     ordered_resources = tuple(
         cast(UUID, row[0])
@@ -149,7 +146,7 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
-    await book_appointment(reservations, make_book_command(tenant_b, start_at))
+    await book_appointment(reservations, support._book(tenant_b, start_at))
     entry = await join_waitlist(
         waitlist,
         JoinWaitlistCommand(
