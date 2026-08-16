@@ -11,8 +11,6 @@ class EvaluateNoShowCommand:
     principal_id: UUID
     reservation_id: UUID
     idempotency_key: str
-    scheduled_action_id: UUID | None = None
-    scheduled_action_claim_token: UUID | None = None
 
 
 class EvaluateNoShowHandler(Protocol):
@@ -28,6 +26,4 @@ async def evaluate_no_show(
 ) -> ReservationAttendanceState:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
-    if (command.scheduled_action_id is None) != (command.scheduled_action_claim_token is None):
-        raise ValueError("scheduled action id and claim token must be supplied together")
     return await handler.evaluate_no_show(command)

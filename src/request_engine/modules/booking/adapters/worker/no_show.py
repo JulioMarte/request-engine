@@ -21,8 +21,6 @@ async def handle_no_show_action(
     worker_principal_id: UUID,
     reservation_id: UUID,
     lifecycle_key: str,
-    scheduled_action_id: UUID | None = None,
-    scheduled_action_claim_token: UUID | None = None,
 ) -> ReservationAttendanceState:
     return await evaluate_no_show(
         handler,
@@ -31,8 +29,6 @@ async def handle_no_show_action(
             principal_id=worker_principal_id,
             reservation_id=reservation_id,
             idempotency_key=f"scheduled:no-show:{reservation_id}:{lifecycle_key}",
-            scheduled_action_id=scheduled_action_id,
-            scheduled_action_claim_token=scheduled_action_claim_token,
         ),
     )
 
@@ -71,6 +67,4 @@ class NoShowScheduledHandler:
             worker_principal_id=self._worker_principal_id,
             reservation_id=reservation_id,
             lifecycle_key=lifecycle_key,
-            scheduled_action_id=lease.id,
-            scheduled_action_claim_token=lease.claim_token,
         )
