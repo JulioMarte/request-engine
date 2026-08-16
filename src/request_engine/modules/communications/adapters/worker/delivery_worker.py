@@ -10,6 +10,7 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     RECONCILE_ACTION_TYPE,
     RECONCILE_ACTION_VERSION,
     DeliveryWorkKind,
+    FinalizedDelivery,
     PreparedDeliveryWork,
     finalize_provider_result,
     prepare_dispatch,
@@ -166,13 +167,11 @@ class CommunicationDeliveryWorker:
         if work.delivery_id is None:
             raise RuntimeError("provider work is missing delivery identity")
         await self._require_finalization_lease(lease)
-        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
-            finalized = await finalize_provider_result(
-                session,
-                organization_id=lease.organization_id,
-                delivery_id=work.delivery_id,
-                result=provider_result,
-            )
+        finalized = await self._finalize_owned_provider_result(
+            lease,
+            delivery_id=work.delivery_id,
+            result=provider_result,
+        )
 
         if not await self._scheduler.complete(lease):
             raise LeaseLostWorkError("delivery_completion_fence_lost")
@@ -190,6 +189,27 @@ class CommunicationDeliveryWorker:
             extension=self._finalization_lease_extension,
         ):
             raise LeaseLostWorkError("provider_result_finalization_fence_lost")
+
+    async def _finalize_owned_provider_result(
+        self,
+        lease: ScheduledActionLease,
+        *,
+        delivery_id: UUID,
+        result: ProviderDeliveryResult,
+    ) -> FinalizedDelivery:
+        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("provider_result_finalization_fence_lost")
+            return await finalize_provider_result(
+                session,
+                organization_id=lease.organization_id,
+                delivery_id=delivery_id,
+                result=result,
+            )
 
     async def _fail_poisoned_task(self, lease: ScheduledActionLease, *, reason: str) -> None:
         if (
@@ -222,21 +242,19 @@ class CommunicationDeliveryWorker:
     ) -> None:
         if work.delivery_id is None:
             raise RuntimeError("provider work is missing delivery identity")
-        async with tenant_transaction(self._session_factory, lease.organization_id) as session:
-            await finalize_provider_result(
-                session,
-                organization_id=lease.organization_id,
-                delivery_id=work.delivery_id,
-                result=ProviderDeliveryResult(
-                    status=ProviderDeliveryStatus.FAILED,
-                    retryable=False,
-                    result_data={
-                        "error_class": "provider_not_configured",
-                        "error_phase": "provider_resolution",
-                        "provider_key": provider_key,
-                    },
-                ),
-            )
+        await self._finalize_owned_provider_result(
+            lease,
+            delivery_id=work.delivery_id,
+            result=ProviderDeliveryResult(
+                status=ProviderDeliveryStatus.FAILED,
+                retryable=False,
+                result_data={
+                    "error_class": "provider_not_configured",
+                    "error_phase": "provider_resolution",
+                    "provider_key": provider_key,
+                },
+            ),
+        )
 
     async def _prepare(self, lease: ScheduledActionLease) -> PreparedDeliveryWork:
         if (
