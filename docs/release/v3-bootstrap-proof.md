@@ -21,6 +21,11 @@ The proof script:
 7. requires both inventories to be byte-identical;
 8. destroys both scratch databases on exit, including failure paths.
 
+The repeated test, order and mutation suites use uniquely named databases through
+the related Python scratch helper. That helper treats a failed `dropdb` or a failed
+post-drop existence check as a proof failure. Per-test data reset, timeout and
+bootstrap-principal rules are owned by `v3-test-isolation.md`.
+
 The proof intentionally does not drop cluster-global Request Engine roles. The first construction in a fresh CI cluster exercises role creation; the second exercises idempotent reuse of those same cluster-global roles while still constructing a new empty database.
 
 ## Safety boundary
