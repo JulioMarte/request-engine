@@ -34,6 +34,7 @@ files=(
   "027-reservation-access-delivery.sql"
   "028-cross-tenant-shared-capacity.sql"
   "029-cross-tenant-shared-capacity-hardening.sql"
+  "030-cross-tenant-slot-offer-integrity-hardening.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
