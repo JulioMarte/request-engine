@@ -91,9 +91,9 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
     if isinstance(exc, AppointmentUnavailable):
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="appointment_unavailable",
-            message=str(exc),
+            message="the requested appointment is unavailable",
             resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
-            details={"reason": exc.reason},
+            details={},
         )
     if isinstance(exc, ReservationNotCancellable):
         return status.HTTP_409_CONFLICT, ErrorBody(
