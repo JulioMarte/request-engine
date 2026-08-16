@@ -37,12 +37,8 @@ def test_authority_event_stamps_database_and_request_actor_context(
         "SELECT set_config('request_engine.correlation_id', %s, false)",
         (str(correlation_id),),
     )
-    admin_conn.execute(
-        "SELECT set_config('request_engine.principal_kind', 'operator', false)"
-    )
-    admin_conn.execute(
-        "SELECT set_config('request_engine.authentication_method', 'oidc', false)"
-    )
+    admin_conn.execute("SELECT set_config('request_engine.principal_kind', 'operator', false)")
+    admin_conn.execute("SELECT set_config('request_engine.authentication_method', 'oidc', false)")
 
     identity_id = _uuid(
         admin_conn,
