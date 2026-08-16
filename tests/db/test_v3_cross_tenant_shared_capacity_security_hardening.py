@@ -423,3 +423,59 @@ def test_linked_claim_cannot_resurrect_or_rewrite_historical_provenance(
     assert str(stored[1]) == "2030-06-01 14:00:00+00:00"
     assert str(stored[2]) == "2030-06-01 14:30:00+00:00"
     assert stored[3] == root_id
+
+
+@pytest.mark.postgres
+def test_promoted_claim_cannot_cross_hold_and_reservation_subjects(
+    admin_conn: PgConnection,
+) -> None:
+    fixture = _fixture(admin_conn, "promotion-owner")
+    root_id = _root(admin_conn, "promotion-owner")
+    _bind(admin_conn, fixture, root_id)
+    hold_id, claim_id = _live_hold_claim(admin_conn, fixture)
+    other_party_id = _uuid(
+        admin_conn,
+        """
+        INSERT INTO request_engine.parties (organization_id, party_kind, display_name)
+        VALUES (%s, 'person', %s) RETURNING id
+        """,
+        (fixture.organization_id, "Different subject"),
+    )
+
+    reservation_id: UUID | None = None
+    with pytest.raises(Error) as mismatch, admin_conn.transaction():
+        reservation_id = _uuid(
+            admin_conn,
+            """
+            INSERT INTO request_engine.reservations (
+                organization_id, offering_version_id, subject_party_id, during
+            ) VALUES (
+                %s, %s, %s,
+                tstzrange('2030-06-01T14:00:00+00'::timestamptz,
+                          '2030-06-01T14:30:00+00'::timestamptz, '[)')
+            ) RETURNING id
+            """,
+            (fixture.organization_id, fixture.offering_version_id, other_party_id),
+        )
+        admin_conn.execute(
+            """
+            UPDATE request_engine.capacity_claims
+            SET reservation_id = %s
+            WHERE id = %s AND status = 'active'
+            """,
+            (reservation_id, claim_id),
+        )
+    assert mismatch.value.sqlstate == "23514"
+    assert "Hold/Reservation provenance mismatch" in str(mismatch.value)
+
+    claim_owner = admin_conn.execute(
+        "SELECT reservation_id FROM request_engine.capacity_claims WHERE id = %s",
+        (claim_id,),
+    ).fetchone()
+    assert claim_owner == (None,)
+    assert reservation_id is not None
+    reservation_count = admin_conn.execute(
+        "SELECT count(*) FROM request_engine.reservations WHERE id = %s",
+        (reservation_id,),
+    ).fetchone()
+    assert reservation_count == (0,)
