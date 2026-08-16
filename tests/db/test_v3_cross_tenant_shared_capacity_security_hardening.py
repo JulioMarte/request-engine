@@ -340,10 +340,8 @@ def test_capacity_claim_definer_guard_cannot_oracle_foreign_rows(
             outcomes.append((denied.value.sqlstate, str(denied.value)))
 
         assert [sqlstate for sqlstate, _ in outcomes] == ["42501", "42501"]
-        assert all(
-            "capacity claim organization context mismatch" in message
-            for _, message in outcomes
-        )
+        denied_message = "capacity claim organization context mismatch"
+        assert all(denied_message in message for _, message in outcomes)
     finally:
         app_conn.close()
 
