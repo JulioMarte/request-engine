@@ -89,9 +89,7 @@ def evaluate_changes(
     violations: list[str] = []
     for rule in rules:
         impacted = sorted(
-            path
-            for path in normalized
-            if any(_matches(path, pattern) for pattern in rule.triggers)
+            path for path in normalized if any(_matches(path, pattern) for pattern in rule.triggers)
         )
         if not impacted:
             continue
