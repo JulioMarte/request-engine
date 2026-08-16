@@ -73,6 +73,7 @@ async def fail_poisoned_communication_task_if_orphaned(
                           END
                           AND id <> :scheduled_action_id
                           AND status IN ('pending', 'leased')
+                          AND attempt_count < max_attempts
                     )
                     """
                 ),

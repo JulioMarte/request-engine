@@ -199,7 +199,7 @@ async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibli
         organization_id,
         task_id,
         action_type="dispatch_task",
-        payload={"communication_task_id": str(task_id)},
+        payload={"communication_task_id": str(task_id).upper()},
         execute_at=datetime(2000, 1, 2, tzinfo=UTC),
     )
     provider = DeliveredProvider()
@@ -287,6 +287,61 @@ async def test_malformed_dispatch_sibling_does_not_mask_orphaned_poison_task(
     assert provider.send_calls == []
     assert _action_status(e2e_admin_conn, poison_id) == "dead"
     assert _action_status(e2e_admin_conn, malformed_sibling_id) == "pending"
+    assert _task_status(e2e_admin_conn, task_id) == "failed"
+    assert (
+        _event_count(
+            e2e_admin_conn,
+            organization_id,
+            "communication.task_failed.v1",
+            task_id,
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_exhausted_dispatch_sibling_does_not_mask_orphaned_poison_task(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    organization_id = support.new_org(e2e_admin_conn, "delivery-exhausted-sibling")
+    task_id = _task(e2e_admin_conn, organization_id)
+    poison_id = _action(
+        e2e_admin_conn,
+        organization_id,
+        task_id,
+        action_type="unknown_action",
+        payload={},
+        execute_at=datetime(2000, 1, 1, tzinfo=UTC),
+    )
+    exhausted_sibling_id = _action(
+        e2e_admin_conn,
+        organization_id,
+        task_id,
+        action_type="dispatch_task",
+        payload={"communication_task_id": str(task_id)},
+        execute_at=datetime(2000, 1, 2, tzinfo=UTC),
+    )
+    e2e_admin_conn.execute(
+        """
+        UPDATE request_engine.scheduled_actions
+        SET attempt_count = max_attempts
+        WHERE id = %s
+        """,
+        (exhausted_sibling_id,),
+    )
+    provider = DeliveredProvider()
+
+    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, worker):
+        leases = await scheduler.claim(limit=1)
+        assert len(leases) == 1
+        assert leases[0].id == poison_id
+        with pytest.raises(UnsupportedScheduledAction):
+            await worker.process(leases[0])
+
+    assert provider.send_calls == []
+    assert _action_status(e2e_admin_conn, poison_id) == "dead"
+    assert _action_status(e2e_admin_conn, exhausted_sibling_id) == "pending"
     assert _task_status(e2e_admin_conn, task_id) == "failed"
     assert (
         _event_count(
