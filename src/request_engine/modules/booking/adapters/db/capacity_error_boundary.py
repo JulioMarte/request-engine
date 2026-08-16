@@ -1,3 +1,5 @@
+from typing import Never
+
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.booking.adapters.db.capacity_errors import (
@@ -47,14 +49,12 @@ class CapacitySafeReservationCommands:
             return await self._delegate.book_appointment(command)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
 
     async def cancel_reservation(self, command: CancelReservationCommand) -> Reservation:
         try:
             return await self._delegate.cancel_reservation(command)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
 
 
 class CapacitySafeBookingCommitmentCommands:
@@ -68,21 +68,18 @@ class CapacitySafeBookingCommitmentCommands:
             return await self._delegate.acquire_capacity_hold(command)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
 
     async def confirm_capacity_hold(self, command: ConfirmCapacityHoldCommand) -> Reservation:
         try:
             return await self._delegate.confirm_capacity_hold(command)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
 
     async def reschedule_reservation(self, command: RescheduleReservationCommand) -> Reservation:
         try:
             return await self._delegate.reschedule_reservation(command)
         except IntegrityError as exc:
             normalize_capacity_integrity_error(exc)
-            raise AssertionError("unreachable")
 
 
 class CapacitySafeSlotOfferCapacity:
@@ -100,7 +97,6 @@ class CapacitySafeSlotOfferCapacity:
             return await self._delegate.acquire_slot_offer_hold(transaction, request)
         except IntegrityError as exc:
             _raise_slot_offer_capacity_unavailable(exc)
-            raise AssertionError("unreachable")
 
     async def consume_slot_offer_hold(
         self,
@@ -111,7 +107,6 @@ class CapacitySafeSlotOfferCapacity:
             return await self._delegate.consume_slot_offer_hold(transaction, request)
         except IntegrityError as exc:
             _raise_slot_offer_capacity_unavailable(exc)
-            raise AssertionError("unreachable")
 
     async def release_slot_offer_hold(
         self,
@@ -122,10 +117,9 @@ class CapacitySafeSlotOfferCapacity:
             return await self._delegate.release_slot_offer_hold(transaction, request)
         except IntegrityError as exc:
             _raise_slot_offer_capacity_unavailable(exc)
-            raise AssertionError("unreachable")
 
 
-def _raise_slot_offer_capacity_unavailable(exc: IntegrityError) -> None:
+def _raise_slot_offer_capacity_unavailable(exc: IntegrityError) -> Never:
     sqlstate = getattr(exc.orig, "sqlstate", None)
     if sqlstate == "23P01":
         raise SlotOfferCapacityUnavailable("capacity unavailable") from None
