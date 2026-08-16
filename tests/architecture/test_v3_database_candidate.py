@@ -32,6 +32,7 @@ EXPECTED_V3_CANDIDATE = [
     "025-worker-claim-stale-snapshot-fence.sql",
     "026-security-definer-search-path-hardening.sql",
     "027-reservation-access-delivery.sql",
+    "028-cross-tenant-shared-capacity.sql",
 ]
 
 
