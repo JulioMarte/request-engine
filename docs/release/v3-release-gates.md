@@ -4,10 +4,10 @@ Status: Phase 6 release gate registry.
 
 This file records release proof, not design intent. Canonical semantics remain in the owning V3 docs and ADRs.
 
-The generated evidence manifest distinguishes a **valid evidence bundle** from a
+The generated evidence manifest distinguishes a **valid candidate evidence bundle** from a
 **release-ready baseline**. Artifact presence, hashes, semantic PASS results,
-JUnit outcomes and commit/tree binding can make the bundle `VALID`; the release
-remains `INCOMPLETE` until every gate below is `PASS`. CI must never describe
+JUnit outcomes and source/tree binding can make candidate evidence `VALID`; the release
+remains `NOT_READY` until every gate below is `PASS`. CI must never describe
 artifact completeness as complete V3 release evidence.
 
 ## Status semantics
@@ -67,6 +67,17 @@ Phase 6I adversarial tenant work is additionally green in CI `#462` on commit `6
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its proof artifact. If a proof is later weakened, removed, skipped, or no longer runs in release CI, the gate must return to `PARTIAL` or `BLOCKED`.
+
+## Candidate evidence versus release readiness
+
+The Phase 6 candidate manifest validates the contents of every required CI artifact;
+file presence alone is not success. Its `VALID` state is deliberately scoped to the
+candidate CI artifact set and does not promote unfinished gates. Overall
+`release_status` remains `NOT_READY` until every G01-G20 row above is `PASS`.
+
+The required V3 candidate GitHub check also fails explicitly when any prerequisite
+job fails, is cancelled or is skipped. `v3-test-isolation.md` owns the executable
+isolation, evidence and aggregate-gate contract.
 
 ## Blocking severity
 
