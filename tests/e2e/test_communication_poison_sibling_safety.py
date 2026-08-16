@@ -341,7 +341,15 @@ async def test_exhausted_dispatch_sibling_does_not_mask_orphaned_poison_task(
 
     assert provider.send_calls == []
     assert _action_status(e2e_admin_conn, poison_id) == "dead"
-    assert _action_status(e2e_admin_conn, exhausted_sibling_id) == "pending"
+    exhausted_state = e2e_admin_conn.execute(
+        """
+        SELECT status, last_error_class
+        FROM request_engine.scheduled_actions
+        WHERE id = %s
+        """,
+        (exhausted_sibling_id,),
+    ).fetchone()
+    assert exhausted_state == ("dead", "max_attempts_exhausted")
     assert _task_status(e2e_admin_conn, task_id) == "failed"
     assert (
         _event_count(
