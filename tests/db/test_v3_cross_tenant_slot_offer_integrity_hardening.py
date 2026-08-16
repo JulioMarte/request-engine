@@ -320,3 +320,37 @@ def test_slot_offer_insert_locks_semantic_source_rows_until_commit(
         issuer.rollback()
         observer.close()
         issuer.close()
+
+
+@pytest.mark.postgres
+def test_offered_slot_offer_rejects_later_waitlist_provenance_rewrite(
+    admin_conn: PgConnection,
+) -> None:
+    fixture = _fixture(admin_conn)
+    hold_id = _hold_with_claim(admin_conn, fixture)
+    entry_id = _waitlist_entry(admin_conn, fixture, fixture.subject_party_id)
+    opportunity_id = _opportunity(admin_conn, fixture)
+    _offer(admin_conn, fixture, opportunity_id, entry_id, hold_id)
+
+    with pytest.raises(Error) as invalidated:
+        admin_conn.execute(
+            """
+            UPDATE request_engine.waitlist_entries
+            SET subject_party_id = %s,
+                revision = revision + 1
+            WHERE organization_id = %s AND id = %s
+            """,
+            (fixture.other_party_id, fixture.organization_id, entry_id),
+        )
+    assert invalidated.value.sqlstate == "23514"
+    assert "source state is no longer valid" in str(invalidated.value)
+
+    stored = admin_conn.execute(
+        """
+        SELECT subject_party_id
+        FROM request_engine.waitlist_entries
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, entry_id),
+    ).fetchone()
+    assert stored == (fixture.subject_party_id,)
