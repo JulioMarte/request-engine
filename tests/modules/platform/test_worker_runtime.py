@@ -9,6 +9,7 @@ from request_engine.platform.worker.runtime import (
     FencedWorkerRuntime,
     LeaseLostWorkError,
     PermanentWorkError,
+    RejectedWorkError,
     RetryableWorkError,
     WorkerItemState,
     WorkerRuntimeConfig,
@@ -29,6 +30,7 @@ class FakeStore:
         self.completed: list[UUID] = []
         self.retried: list[tuple[UUID, timedelta, str]] = []
         self.dead: list[tuple[UUID, str]] = []
+        self.rejected: list[tuple[UUID, str]] = []
         self.renewed: list[UUID] = []
 
     async def claim(self, *, limit: int, lease: timedelta) -> tuple[FakeLease, ...]:
@@ -53,6 +55,10 @@ class FakeStore:
 
     async def dead_letter(self, lease: FakeLease, *, error_class: str) -> bool:
         self.dead.append((lease.id, error_class))
+        return True
+
+    async def reject(self, lease: FakeLease, *, error_class: str) -> bool:
+        self.rejected.append((lease.id, error_class))
         return True
 
     async def renew(self, lease: FakeLease, *, extension: timedelta) -> bool:
@@ -83,6 +89,12 @@ class PermanentProcessor:
     async def process(self, lease: FakeLease) -> None:
         del lease
         raise PermanentWorkError("invalid_work")
+
+
+class RejectedProcessor:
+    async def process(self, lease: FakeLease) -> None:
+        del lease
+        raise RejectedWorkError("unsupported_provider_payload")
 
 
 class LeaseLostProcessor:
@@ -116,7 +128,7 @@ def _config(
         lease_duration=timedelta(milliseconds=50),
         heartbeat_interval=timedelta(milliseconds=5),
         processing_timeout=processing_timeout,
-        idle_sleep=timedelta(0),
+        idle_sleep=timedelta(milliseconds=1),
         retry_base=timedelta(seconds=3),
         retry_cap=timedelta(seconds=30),
         retry_jitter_fraction=retry_jitter_fraction,
@@ -134,6 +146,16 @@ async def test_runtime_never_claims_more_than_concurrency_capacity() -> None:
     assert store.last_claim_limit == 2
     assert len(outcomes) == 2
     assert all(outcome.state is WorkerItemState.COMPLETED for outcome in outcomes)
+
+
+@pytest.mark.unit
+def test_runtime_config_rejects_unbounded_or_spinning_process_settings() -> None:
+    with pytest.raises(ValueError):
+        WorkerRuntimeConfig(max_concurrency=501)
+    with pytest.raises(ValueError):
+        WorkerRuntimeConfig(idle_sleep=timedelta(0))
+    with pytest.raises(ValueError):
+        WorkerRuntimeConfig(idle_sleep=timedelta(seconds=61))
 
 
 @pytest.mark.asyncio
@@ -205,6 +227,43 @@ async def test_permanent_failure_dead_letters_current_lease() -> None:
 
     assert outcome.state is WorkerItemState.DEAD
     assert store.dead == [(lease.id, "invalid_work")]
+    assert store.completed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_semantic_rejection_uses_explicit_rejecter_not_dead_letter() -> None:
+    lease = FakeLease(uuid4(), 1)
+    store = FakeStore((lease,))
+    runtime = FencedWorkerRuntime(
+        store,
+        RejectedProcessor(),
+        rejecter=store.reject,
+        config=_config(),
+    )
+
+    outcome = (await runtime.run_once())[0]
+
+    assert outcome.state is WorkerItemState.REJECTED
+    assert outcome.detail == "unsupported_provider_payload"
+    assert store.rejected == [(lease.id, "unsupported_provider_payload")]
+    assert store.dead == []
+    assert store.retried == []
+    assert store.completed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_semantic_rejection_without_rejecter_fails_loudly() -> None:
+    lease = FakeLease(uuid4(), 1)
+    store = FakeStore((lease,))
+    runtime = FencedWorkerRuntime(store, RejectedProcessor(), config=_config())
+
+    with pytest.raises(RuntimeError, match="rejection without a rejecter"):
+        await runtime.run_once()
+
+    assert store.dead == []
+    assert store.retried == []
     assert store.completed == []
 
 
