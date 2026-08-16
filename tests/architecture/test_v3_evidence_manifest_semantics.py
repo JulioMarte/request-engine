@@ -12,13 +12,16 @@ SPEC.loader.exec_module(manifest)
 
 
 def test_schema_validator_requires_postgres18_application_schemas_and_catalog() -> None:
-    assert manifest._validate_schema(
-        {
-            "postgres_major": 18,
-            "application_schemas": sorted(manifest.APPLICATION_SCHEMAS),
-            "catalog": {"relations": ["request_engine.organizations"]},
-        }
-    ) == []
+    assert (
+        manifest._validate_schema(
+            {
+                "postgres_major": 18,
+                "application_schemas": sorted(manifest.APPLICATION_SCHEMAS),
+                "catalog": {"relations": ["request_engine.organizations"]},
+            }
+        )
+        == []
+    )
 
     errors = manifest._validate_schema(
         {"postgres_major": 17, "application_schemas": ["request_engine"], "catalog": {}}
@@ -29,12 +32,14 @@ def test_schema_validator_requires_postgres18_application_schemas_and_catalog() 
 
 
 def test_semantic_json_validators_reject_shallow_pass_markers() -> None:
-    assert manifest._validate_test_quality(
-        {"status": "PASS", "error_count": 0, "tests_audited": 204}
-    ) == []
-    assert manifest._validate_test_collection(
-        {"status": "PASS", "node_count": 273, "errors": []}
-    ) == []
+    assert (
+        manifest._validate_test_quality({"status": "PASS", "error_count": 0, "tests_audited": 204})
+        == []
+    )
+    assert (
+        manifest._validate_test_collection({"status": "PASS", "node_count": 273, "errors": []})
+        == []
+    )
 
     quality_errors = manifest._validate_test_quality(
         {"status": "PASS", "error_count": 1, "tests_audited": 0}
@@ -44,17 +49,20 @@ def test_semantic_json_validators_reject_shallow_pass_markers() -> None:
 
 
 def test_worker_plan_validator_requires_measured_index_selection() -> None:
-    assert manifest._validate_worker_plans(
-        {
-            "proofs": [
-                {
-                    "name": "scheduled-action-due-claim",
-                    "required_index": "scheduled_actions_due_idx",
-                    "indexes": ["scheduled_actions_due_idx"],
-                }
-            ]
-        }
-    ) == []
+    assert (
+        manifest._validate_worker_plans(
+            {
+                "proofs": [
+                    {
+                        "name": "scheduled-action-due-claim",
+                        "required_index": "scheduled_actions_due_idx",
+                        "indexes": ["scheduled_actions_due_idx"],
+                    }
+                ]
+            }
+        )
+        == []
+    )
 
     errors = manifest._validate_worker_plans(
         {
@@ -93,10 +101,7 @@ def test_equivalence_validator_requires_success_marker_and_fingerprint(tmp_path:
     assert manifest._validate_equivalence(proof) == []
 
     proof.write_text("catalog-equivalent to the V3 candidate chain", encoding="utf-8")
-    assert (
-        "catalog-equivalence success marker is missing"
-        in manifest._validate_equivalence(proof)
-    )
+    assert "catalog-equivalence success marker is missing" in manifest._validate_equivalence(proof)
 
 
 def test_release_gate_registry_is_not_release_ready() -> None:
