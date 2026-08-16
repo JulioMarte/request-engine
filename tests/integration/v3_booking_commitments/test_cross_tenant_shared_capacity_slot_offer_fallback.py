@@ -31,9 +31,9 @@ from request_engine.platform.db.session import SessionFactory
 from .test_cross_tenant_shared_capacity import (
     PgConnection,
     TenantBookingFixture,
-    _book,
-    _fixture,
-    _shared_root,
+    _book as make_book_command,  # pyright: ignore[reportPrivateUsage]
+    _fixture as make_tenant_fixture,  # pyright: ignore[reportPrivateUsage]
+    _shared_root as make_shared_root,  # pyright: ignore[reportPrivateUsage]
 )
 
 
@@ -109,10 +109,10 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    tenant_a = _fixture(admin_conn, "fallback-a")
-    tenant_b = _fixture(admin_conn, "fallback-b")
+    tenant_a = make_tenant_fixture(admin_conn, "fallback-a")
+    tenant_b = make_tenant_fixture(admin_conn, "fallback-b")
     alternate_id = _add_alternate_resource(admin_conn, tenant_a)
-    root_id = _shared_root(admin_conn)
+    root_id = make_shared_root(admin_conn)
 
     ordered_resources = tuple(
         cast(UUID, row[0])
@@ -149,7 +149,7 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
-    await book_appointment(reservations, _book(tenant_b, start_at))
+    await book_appointment(reservations, make_book_command(tenant_b, start_at))
     entry = await join_waitlist(
         waitlist,
         JoinWaitlistCommand(
