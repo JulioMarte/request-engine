@@ -33,6 +33,39 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- Serialize the semantic source state in the same order as Queue issuance:
+    -- Opportunity -> WaitlistEntry -> Hold. FK checks alone do not prevent a
+    -- concurrent status transition after this trigger has observed a live row.
+    PERFORM 1
+      FROM request_engine.slot_opportunities
+     WHERE organization_id = NEW.organization_id
+       AND id = NEW.slot_opportunity_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'SlotOffer references an invalid booking intent'
+            USING ERRCODE = '23514';
+    END IF;
+
+    PERFORM 1
+      FROM request_engine.waitlist_entries
+     WHERE organization_id = NEW.organization_id
+       AND id = NEW.waitlist_entry_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'SlotOffer references an invalid booking intent'
+            USING ERRCODE = '23514';
+    END IF;
+
+    PERFORM 1
+      FROM request_engine.capacity_holds
+     WHERE organization_id = NEW.organization_id
+       AND id = NEW.capacity_hold_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'SlotOffer references an invalid booking intent'
+            USING ERRCODE = '23514';
+    END IF;
+
     SELECT h.status,
            h.expires_at,
            h.offering_version_id,
@@ -138,6 +171,13 @@ BEGIN
 
     IF NEW.revision < OLD.revision THEN
         RAISE EXCEPTION 'SlotOffer revision cannot move backwards'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status
+       AND NEW.revision <= OLD.revision
+    THEN
+        RAISE EXCEPTION 'SlotOffer lifecycle transition requires revision advance'
             USING ERRCODE = '23514';
     END IF;
 
