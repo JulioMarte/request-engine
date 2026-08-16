@@ -13,6 +13,7 @@ REQUIRED_RELEASE_DOCS = {
     "v3-6a-baseline.md",
     "v3-bootstrap-proof.md",
     "v3-schema-fingerprint.md",
+    "v3-test-isolation.md",
 }
 EXPECTED_GATES = [f"G{number:02d}" for number in range(1, 21)]
 EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
@@ -124,15 +125,22 @@ def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
     assert "TRUNCATE TABLE {} RESTART IDENTITY CASCADE" in conftest
 
 
-def test_phase6_evidence_manifest_validates_bundle_without_claiming_release_ready() -> None:
+def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
     manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
-    _, jobs = _ci_sources()
+    workflow, jobs = _ci_sources()
 
     assert manifest.is_file()
     assert "evidence-manifest" in jobs
-    assert "evidence-bundle-validation" in jobs
-    assert "--require-valid-bundle" in jobs
+    assert "evidence-validity" in jobs
+    assert "--require-valid" in jobs
     source = manifest.read_text(encoding="utf-8")
-    assert '"release_status": "READY" if release_ready else "INCOMPLETE"' in source
+    assert '"evidence_status": candidate_status' in source
+    assert '"release_status": "READY" if release_ready else "NOT_READY"' in source
+    assert '"head_sha": head_sha' in source
+    assert '"tested_sha": tested_sha' in source
     assert "_validate_junit" in source
-    assert "artifact_validation_errors" in source
+    assert "artifact_validation" in source
+
+    assert "postgres-v3-candidate-proof:" in workflow
+    assert "if: ${{ always() }}" in workflow
+    assert "scripts/ci/require_successful_needs.py" in workflow
