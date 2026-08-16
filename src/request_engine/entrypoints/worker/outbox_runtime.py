@@ -4,9 +4,9 @@ from typing import Protocol, cast
 from uuid import UUID
 
 from request_engine.entrypoints.worker.reservation_lifecycle import (
+    handle_reservation_lifecycle_event,
     ReservationEventType,
     ReservationLifecycleEvent,
-    handle_reservation_lifecycle_event,
 )
 from request_engine.modules.booking.contracts.lifecycle import (
     ReservationLifecycleReader,
