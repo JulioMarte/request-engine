@@ -102,7 +102,12 @@ async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
     providers: dict[str, CommunicationDeliveryProvider],
 ) -> AsyncGenerator[
-    tuple[SessionFactory, PostgresScheduledActionWorker, CommunicationDeliveryWorker]
+    tuple[
+        SessionFactory,
+        SessionFactory,
+        PostgresScheduledActionWorker,
+        CommunicationDeliveryWorker,
+    ]
 ]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
     assert domain_database_url is not None, "delivery work requires separate app credentials"
@@ -114,6 +119,7 @@ async def _worker_stack(
     try:
         yield (
             domain_factory,
+            worker_factory,
             scheduler,
             CommunicationDeliveryWorker(domain_factory, scheduler, providers),
         )
@@ -268,8 +274,8 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
     providers: dict[str, CommunicationDeliveryProvider] = {}
 
     async with _worker_stack(worker_runtime_credentials, providers) as stack:
-        _, scheduler, worker = stack
-        competitor = PostgresScheduledActionWorker(scheduler._session_factory)
+        _, worker_factory, scheduler, worker = stack
+        competitor = PostgresScheduledActionWorker(worker_factory)
         provider = ReclaimDuringSendProvider(e2e_admin_conn, action_id, competitor)
         providers["provider-a"] = provider
 
@@ -321,7 +327,7 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
     async with _worker_stack(
         worker_runtime_credentials,
         {"provider-a": provider},
-    ) as (domain_factory, scheduler, worker):
+    ) as (domain_factory, _, scheduler, worker):
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
