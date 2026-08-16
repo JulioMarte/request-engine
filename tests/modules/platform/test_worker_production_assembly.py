@@ -1,8 +1,11 @@
+from collections.abc import Callable
+from datetime import timedelta
 from typing import cast
 
 import pytest
 
 from request_engine.bootstrap import worker as worker_bootstrap
+from request_engine.entrypoints.worker.outbox_runtime import OutboxEvent, OutboxPublisher
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SlotOfferExpiryScheduledHandler,
@@ -15,7 +18,7 @@ from request_engine.platform.worker.runtime import WorkerRuntimeConfig
 
 
 class _Publisher:
-    async def publish(self, event: object) -> None:
+    async def publish(self, event: OutboxEvent) -> None:
         del event
 
 
@@ -67,7 +70,7 @@ def test_production_assembly_separates_worker_and_domain_factories(
         no_show_factory=no_show_factory,
         slot_offer_expiry_factory=slot_offer_factory,
         communication_providers={},
-        outbox_publisher=cast(object, _Publisher()),
+        outbox_publisher=cast(OutboxPublisher, _Publisher()),
         outbox_internal_handlers={},
         provider_event_handlers={},
     )
@@ -96,7 +99,7 @@ def test_production_assembly_rejects_reused_session_factory() -> None:
                 SlotOfferExpiryScheduledHandler, _ScheduledHandler()
             ),
             communication_providers={},
-            outbox_publisher=cast(object, _Publisher()),
+            outbox_publisher=cast(OutboxPublisher, _Publisher()),
             outbox_internal_handlers={},
             provider_event_handlers={},
         )
@@ -104,12 +107,14 @@ def test_production_assembly_rejects_reused_session_factory() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "config",
+    "config_factory",
     [
         lambda: WorkerRuntimeConfig(max_concurrency=501),
-        lambda: WorkerRuntimeConfig(idle_sleep=__import__("datetime").timedelta(0)),
+        lambda: WorkerRuntimeConfig(idle_sleep=timedelta(0)),
     ],
 )
-def test_worker_runtime_rejects_unbounded_or_spin_configuration(config: object) -> None:
+def test_worker_runtime_rejects_unbounded_or_spin_configuration(
+    config_factory: Callable[[], WorkerRuntimeConfig],
+) -> None:
     with pytest.raises(ValueError):
-        cast(object, config)()
+        config_factory()
