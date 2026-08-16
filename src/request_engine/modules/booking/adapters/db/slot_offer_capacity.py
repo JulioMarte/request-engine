@@ -298,9 +298,7 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                             )
                         ).scalar_one(),
                     )
-                    for requirement in sorted(
-                        requirements.values(), key=lambda item: item.ordinal
-                    ):
+                    for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
                         choice = choices[requirement.id]
                         await session.execute(
                             text(
