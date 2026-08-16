@@ -32,6 +32,10 @@ Transition support documents:
 - `v3/sql-disposition.md` — V2 SQL disposition inventory; later V3 contracts close previously open `RE_EVALUATE` questions;
 - `migrations/README.md` — active V3 candidate ownership, apply order and baseline-freeze gate.
 
+Phase 6 executable release-proof contracts live under `release/`. In particular,
+`release/v3-test-isolation.md` owns disposable PostgreSQL test isolation, scratch
+database cleanup, evidence-manifest semantics and required CI-gate aggregation.
+
 The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
 
 ## Architecture Decision Records

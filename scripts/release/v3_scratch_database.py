@@ -58,7 +58,10 @@ def _drop_and_verify(
     if if_exists:
         drop_command.append("--if-exists")
     drop_command.append(database)
-    drop = _run(drop_command, env=env)
+    drop = _run(
+        drop_command,
+        env=env,
+    )
     if drop.returncode != 0:
         raise ScratchDatabaseError(
             f"could not drop scratch database {database}:\n{_failure_tail(drop)}"
@@ -109,6 +112,8 @@ def fresh_v3_database(prefix: str) -> Generator[dict[str, str]]:
             f"could not create scratch database {database}:\n{_failure_tail(create)}"
         )
         try:
+            # createdb can have an ambiguous client-side failure after the server
+            # committed creation. The generated name is safe to clean defensively.
             _drop_and_verify(
                 database,
                 maintenance_database=maintenance_database,

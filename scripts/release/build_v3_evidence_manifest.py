@@ -306,6 +306,7 @@ def build_manifest() -> dict[str, Any]:
             "tree_sha": tree_sha,
             "working_tree_dirty": working_tree_dirty,
         },
+        # Kept for consumers of the schema-v3 manifest; source.tested_sha is canonical.
         "commit_sha": tested_sha,
         "tree_sha": tree_sha,
         "working_tree_dirty": working_tree_dirty,

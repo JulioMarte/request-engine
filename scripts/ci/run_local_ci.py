@@ -404,7 +404,8 @@ def postgres_job_config(
                 "PGUSER": "postgres",
                 "PGPASSWORD": "postgres",
                 "PGDATABASE": "request_engine_v3",
-                "PHASE6_COMMIT_SHA": commit_sha,
+                "PHASE6_HEAD_SHA": commit_sha,
+                "PHASE6_TESTED_SHA": commit_sha,
             },
         )
     return None

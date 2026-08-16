@@ -7,12 +7,17 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${PGPORT:=5432}"
 : "${PGUSER:=request_engine}"
 : "${PGMAINTENANCE_DB:=postgres}"
+: "${PGCONNECT_TIMEOUT:=5}"
 : "${V3_PROOF_DATABASE_PREFIX:=request_engine_v3_phase6}"
 
-export PGHOST PGPORT PGUSER
+export PGHOST PGPORT PGUSER PGCONNECT_TIMEOUT
 
 if [[ ! "${V3_PROOF_DATABASE_PREFIX}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "V3_PROOF_DATABASE_PREFIX must be a simple PostgreSQL identifier" >&2
+  exit 2
+fi
+if (( ${#V3_PROOF_DATABASE_PREFIX} > 61 )); then
+  echo "V3_PROOF_DATABASE_PREFIX must be at most 61 characters" >&2
   exit 2
 fi
 
@@ -34,15 +39,43 @@ fi
 work_dir="$(mktemp -d)"
 
 cleanup() {
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${proof_db_a}" >/dev/null 2>&1 || true
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${proof_db_b}" >/dev/null 2>&1 || true
-  rm -rf "${work_dir}"
+  local original_status=$?
+  local cleanup_status=0
+  local database_name
+  local remaining
+
+  trap - EXIT
+  set +e
+  for database_name in "${proof_db_a}" "${proof_db_b}"; do
+    if ! dropdb --if-exists --force --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}"; then
+      echo "failed to drop V3 proof database ${database_name}" >&2
+      cleanup_status=1
+      continue
+    fi
+    remaining="$(psql --dbname="${PGMAINTENANCE_DB}" --set=ON_ERROR_STOP=1 \
+      --tuples-only --no-align --command="
+        SELECT count(*) FROM pg_database WHERE datname = '${database_name}';
+      ")"
+    if [[ $? -ne 0 || "${remaining}" != "0" ]]; then
+      echo "could not verify removal of V3 proof database ${database_name}" >&2
+      cleanup_status=1
+    fi
+  done
+  if ! rm -rf -- "${work_dir}"; then
+    echo "failed to remove V3 proof work directory ${work_dir}" >&2
+    cleanup_status=1
+  fi
+
+  if (( original_status != 0 )); then
+    exit "${original_status}"
+  fi
+  exit "${cleanup_status}"
 }
 trap cleanup EXIT
 
 reset_database() {
   local database_name="$1"
-  dropdb --if-exists --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}" >/dev/null
+  dropdb --if-exists --force --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}" >/dev/null
   createdb --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}"
 }
 
