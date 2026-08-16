@@ -182,3 +182,43 @@ def test_reservation_claim_cannot_replace_itself(admin_conn: PgConnection) -> No
         )
     assert invalid_replacement.value.sqlstate == "23514"
     assert "replacement provenance is invalid" in str(invalid_replacement.value)
+
+
+@pytest.mark.postgres
+def test_person_has_one_active_shared_root_but_organization_can_have_multiple(
+    admin_conn: PgConnection,
+) -> None:
+    person_id = _uuid(
+        admin_conn,
+        "SELECT request_admin.create_global_identity('person', NULL, %s, %s)",
+        ("test.control-plane", "person cardinality"),
+    )
+    first_person_root = _uuid(
+        admin_conn,
+        "SELECT request_admin.create_shared_capacity_identity(%s, %s, %s)",
+        (person_id, "test.control-plane", "first person root"),
+    )
+    assert first_person_root
+
+    with pytest.raises(Error) as duplicate_person_root:
+        admin_conn.execute(
+            "SELECT request_admin.create_shared_capacity_identity(%s, %s, %s)",
+            (person_id, "test.control-plane", "duplicate person root"),
+        ).fetchone()
+    assert duplicate_person_root.value.sqlstate == "23505"
+    assert "already has an active SharedCapacityIdentity" in str(duplicate_person_root.value)
+
+    organization_identity_id = _uuid(
+        admin_conn,
+        "SELECT request_admin.create_global_identity('organization', NULL, %s, %s)",
+        ("test.control-plane", "organization logical capacities"),
+    )
+    organization_roots = {
+        _uuid(
+            admin_conn,
+            "SELECT request_admin.create_shared_capacity_identity(%s, %s, %s)",
+            (organization_identity_id, "test.control-plane", reason),
+        )
+        for reason in ("logical capacity one", "logical capacity two")
+    }
+    assert len(organization_roots) == 2
