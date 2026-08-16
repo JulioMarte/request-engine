@@ -23,8 +23,12 @@ from request_engine.modules.communications.domain.daily_schedule import next_dai
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.outbox.postgres import append_outbox
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
-from request_engine.platform.scheduling.store import schedule_action
-from request_engine.platform.worker.runtime import PermanentWorkError, RetryableWorkError
+from request_engine.platform.scheduling.store import lock_action_claim, schedule_action
+from request_engine.platform.worker.runtime import (
+    LeaseLostWorkError,
+    PermanentWorkError,
+    RetryableWorkError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +50,13 @@ class PostgresReminderOccurrenceCommands:
         reminder_plan_id, occurrence_at = _validate_lease(lease)
 
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("reminder_materialization_fence_lost")
+
             row = await lock_reminder_plan(
                 session,
                 organization_id=lease.organization_id,
