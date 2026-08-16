@@ -14,7 +14,7 @@ def normalize_capacity_integrity_error(exc: IntegrityError) -> None:
     """Translate authoritative PostgreSQL capacity contention into domain unavailability.
 
     PostgreSQL SQLSTATE 23P01 is deliberately used by the local and shared-capacity
-    invariant surfaces for a conflicting live commitment.  The database exception
+    invariant surfaces for a conflicting live commitment. The database exception
     may contain implementation detail, so callers must never expose it directly.
     """
 
