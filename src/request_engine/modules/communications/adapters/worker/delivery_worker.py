@@ -11,10 +11,12 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
     RECONCILE_ACTION_VERSION,
     DeliveryWorkKind,
     PreparedDeliveryWork,
-    fail_poisoned_communication_task,
     finalize_provider_result,
     prepare_dispatch,
     prepare_reconciliation,
+)
+from request_engine.modules.communications.adapters.db.poisoned_task import (
+    fail_poisoned_communication_task_if_orphaned,
 )
 from request_engine.modules.communications.application.errors import (
     DeliveryProviderNotConfigured,
@@ -180,7 +182,7 @@ class CommunicationDeliveryWorker:
                 claim_token=lease.claim_token,
             ):
                 raise LeaseLostWorkError("poison_task_failure_fence_lost")
-            await fail_poisoned_communication_task(
+            await fail_poisoned_communication_task_if_orphaned(
                 session,
                 organization_id=lease.organization_id,
                 communication_task_id=lease.subject_id,
