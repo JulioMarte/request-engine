@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.modules.communications.adapters.db.delivery_store import prepare_dispatch
 from request_engine.modules.communications.adapters.worker.delivery_worker import (
     CommunicationDeliveryWorker,
 )
@@ -23,6 +24,7 @@ from request_engine.platform.db.session import (
     SessionFactory,
     create_postgres_engine,
     create_session_factory,
+    tenant_transaction,
 )
 from request_engine.platform.scheduling.postgres import (
     PostgresScheduledActionWorker,
@@ -75,6 +77,26 @@ class ReclaimDuringSendProvider(CommunicationDeliveryProvider):
         )
 
 
+class ReplayRecoveryProvider(CommunicationDeliveryProvider):
+    def __init__(self) -> None:
+        self.send_calls: list[ProviderSendRequest] = []
+        self.lookup_calls: list[ProviderLookupRequest] = []
+
+    async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult:
+        self.send_calls.append(request)
+        return ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"msg-{request.delivery_id}",
+        )
+
+    async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult:
+        self.lookup_calls.append(request)
+        return ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"msg-{request.delivery_id}",
+        )
+
+
 @asynccontextmanager
 async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
@@ -91,7 +113,7 @@ async def _worker_stack(
     scheduler = PostgresScheduledActionWorker(worker_factory)
     try:
         yield (
-            worker_factory,
+            domain_factory,
             scheduler,
             CommunicationDeliveryWorker(domain_factory, scheduler, providers),
         )
@@ -103,6 +125,8 @@ async def _worker_stack(
 def _task_and_action(
     conn: support.PgConnection,
     organization_id: UUID,
+    *,
+    max_attempts: int = 8,
 ) -> tuple[UUID, UUID]:
     party_id = support.new_party(conn, organization_id, f"Recipient {uuid4().hex[:8]}")
     contact_id = support.new_contact_point(conn, organization_id, party_id, "lease-fence")
@@ -140,10 +164,10 @@ def _task_and_action(
         INSERT INTO request_engine.scheduled_actions (
             organization_id, owner_module, action_type, action_version,
             subject_kind, subject_id, payload, dedupe_key,
-            execute_at, next_attempt_at
+            execute_at, next_attempt_at, max_attempts
         ) VALUES (
             %s, 'communications', 'dispatch_task', 1,
-            'CommunicationTask', %s, %s::jsonb, %s, %s, %s
+            'CommunicationTask', %s, %s::jsonb, %s, %s, %s, %s
         )
         RETURNING id
         """,
@@ -154,10 +178,25 @@ def _task_and_action(
             f"lease-fence-action:{uuid4().hex}",
             execute_at,
             execute_at,
+            max_attempts,
         ),
     ).fetchone()
     assert action_row is not None
     return task_id, cast(UUID, action_row[0])
+
+
+def _principal(conn: support.PgConnection, organization_id: UUID) -> UUID:
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.principals (
+            organization_id, principal_kind, external_subject
+        ) VALUES (%s, 'human', %s)
+        RETURNING id
+        """,
+        (organization_id, f"replay-operator-{uuid4().hex}"),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
 
 
 def _task_status(conn: support.PgConnection, row_id: UUID) -> str:
@@ -229,8 +268,8 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
     providers: dict[str, CommunicationDeliveryProvider] = {}
 
     async with _worker_stack(worker_runtime_credentials, providers) as stack:
-        worker_factory, scheduler, worker = stack
-        competitor = PostgresScheduledActionWorker(worker_factory)
+        _, scheduler, worker = stack
+        competitor = PostgresScheduledActionWorker(scheduler._session_factory)
         provider = ReclaimDuringSendProvider(e2e_admin_conn, action_id, competitor)
         providers["provider-a"] = provider
 
@@ -264,3 +303,118 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
     assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
     assert _action_status(e2e_admin_conn, action_id) == "completed"
     assert _completion_events(e2e_admin_conn, organization_id, task_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    organization_id = support.new_org(e2e_admin_conn, "delivery-exhausted-replay")
+    task_id, action_id = _task_and_action(
+        e2e_admin_conn,
+        organization_id,
+        max_attempts=1,
+    )
+    provider = ReplayRecoveryProvider()
+
+    async with _worker_stack(
+        worker_runtime_credentials,
+        {"provider-a": provider},
+    ) as (domain_factory, scheduler, worker):
+        leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
+        assert len(leases) == 1
+        first_lease = leases[0]
+        assert first_lease.id == action_id
+        assert first_lease.attempt_count == 1
+
+        async with tenant_transaction(domain_factory, organization_id) as session:
+            prepared = await prepare_dispatch(
+                session,
+                organization_id=organization_id,
+                communication_task_id=task_id,
+            )
+        assert prepared.send_request is not None
+        assert prepared.delivery_id is not None
+        provider_result = await provider.send(prepared.send_request)
+        assert provider_result.status is ProviderDeliveryStatus.DELIVERED
+        delivery_id = prepared.delivery_id
+
+        # Simulate a process crash after provider I/O but before result persistence
+        # and before the ScheduledAction acknowledgement.
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+            """,
+            (action_id,),
+        )
+        assert await scheduler.claim(limit=1) == ()
+
+        dead_state = e2e_admin_conn.execute(
+            """
+            SELECT status, attempt_count, max_attempts, last_error_class
+            FROM request_engine.scheduled_actions
+            WHERE id = %s
+            """,
+            (action_id,),
+        ).fetchone()
+        assert dead_state == ("dead", 1, 1, "max_attempts_exhausted")
+        assert _task_status(e2e_admin_conn, task_id) == "delivering"
+        assert _delivery_status(e2e_admin_conn, delivery_id) == "attempting"
+        assert _completion_events(e2e_admin_conn, organization_id, task_id) == 0
+
+        actor_id = _principal(e2e_admin_conn, organization_id)
+        replayed = e2e_admin_conn.execute(
+            """
+            SELECT request_admin.replay_dead_scheduled_action(
+                %s, %s, %s, 1, 'recover ambiguous provider attempt'
+            )
+            """,
+            (organization_id, action_id, actor_id),
+        ).fetchone()
+        assert replayed == (True,)
+
+        replay_leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
+        assert len(replay_leases) == 1
+        assert replay_leases[0].id == action_id
+        assert replay_leases[0].attempt_count == 2
+        outcome = await worker.process(replay_leases[0])
+
+    assert outcome.detail == "delivered"
+    assert len(provider.send_calls) == 1
+    assert len(provider.lookup_calls) == 1
+    assert provider.lookup_calls[0].delivery_id == delivery_id
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert _completion_events(e2e_admin_conn, organization_id, task_id) == 1
+
+    replay_state = e2e_admin_conn.execute(
+        """
+        SELECT attempt_count, max_attempts, replay_count,
+               last_replayed_at IS NOT NULL
+        FROM request_engine.scheduled_actions
+        WHERE id = %s
+        """,
+        (action_id,),
+    ).fetchone()
+    assert replay_state == (2, 2, 1, True)
+    audit = e2e_admin_conn.execute(
+        """
+        SELECT command_name, actor_principal_id, details->>'reason'
+        FROM request_engine.audit_records
+        WHERE organization_id = %s
+          AND aggregate_kind = 'ScheduledAction'
+          AND aggregate_id = %s
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (organization_id, action_id),
+    ).fetchone()
+    assert audit == (
+        "admin.replay_scheduled_action",
+        actor_id,
+        "recover ambiguous provider attempt",
+    )
