@@ -12,6 +12,8 @@ class ExpireSlotOfferCommand:
     slot_offer_id: UUID
     expected_revision: int
     idempotency_key: str
+    scheduled_action_id: UUID | None = None
+    scheduled_action_claim_token: UUID | None = None
 
 
 class ExpireSlotOfferExecutor(Protocol):
@@ -29,4 +31,6 @@ async def expire_slot_offer(
         raise ValueError("expected_revision must be positive")
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    if (command.scheduled_action_id is None) != (command.scheduled_action_claim_token is None):
+        raise ValueError("scheduled action id and claim token must be supplied together")
     return await executor.expire_slot_offer(command)

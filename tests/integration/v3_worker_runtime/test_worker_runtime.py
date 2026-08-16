@@ -73,7 +73,7 @@ def _single_worker_config() -> WorkerRuntimeConfig:
         claim_batch_size=1,
         lease_duration=timedelta(seconds=30),
         heartbeat_interval=timedelta(seconds=10),
-        idle_sleep=timedelta(0),
+        idle_sleep=timedelta(milliseconds=1),
         retry_base=timedelta(0),
         retry_cap=timedelta(0),
     )

@@ -13,6 +13,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
 ]
 
+[project.scripts]
+request-engine-worker = "request_engine.entrypoints.worker.cli:main"
+
 [dependency-groups]
 dev = [
     "pyright[nodejs]>=1.1.411,<1.2",

@@ -41,6 +41,8 @@ from request_engine.platform.idempotency.postgres import (
     complete_idempotency,
 )
 from request_engine.platform.outbox.postgres import append_outbox
+from request_engine.platform.scheduling.store import lock_action_claim
+from request_engine.platform.worker.runtime import LeaseLostWorkError
 
 
 class PostgresAttendanceCommands:
@@ -366,6 +368,16 @@ class PostgresAttendanceCommands:
             {"reservation_id": command.reservation_id},
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            if command.scheduled_action_id is not None:
+                claim_token = command.scheduled_action_claim_token
+                assert claim_token is not None
+                if not await lock_action_claim(
+                    session,
+                    action_id=command.scheduled_action_id,
+                    claim_token=claim_token,
+                ):
+                    raise LeaseLostWorkError("no_show_authoritative_fence_lost")
+
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,

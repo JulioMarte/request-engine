@@ -44,7 +44,7 @@ Authoritative business writes made after provider/network I/O must not rely on l
 
 A runtime never claims more work than it can execute concurrently.
 
-`claim_batch_size` is capped by `max_concurrency`. This avoids creating leased backlog inside one process while other workers could execute it.
+`claim_batch_size` is capped by `max_concurrency`. This avoids creating leased backlog inside one process while other workers could execute it. Both `claim_batch_size` and `max_concurrency` are bounded to at most 500. Continuous-loop `idle_sleep` must be strictly positive and at most 60 seconds, preventing accidental unbounded fan-out and zero-delay empty-queue spinning.
 
 Every claimed item also has a finite `processing_timeout`. A live task cannot renew one lease indefinitely merely because its handler or an external dependency stopped making progress. Timeout cancellation is classified as retryable `processing_timeout` work.
 
@@ -123,7 +123,7 @@ rejected   = explicit semantic/provider payload rejection
 dead       = worker/infrastructure retries exhausted or permanent handler failure
 ```
 
-Provider payload is never business authority by itself.
+Provider payload is never business authority by itself. ProviderEvent handlers raise `RejectedWorkError` for semantic rejection; only the ProviderEvent runtime receives the fenced reject capability. Rejection requested on another runtime is a configuration failure rather than a silent conversion to dead-letter state.
 
 ## Manual replay
 
@@ -171,6 +171,16 @@ The same executable-work rule applies when Communications decides whether a futu
 
 After claim, business handlers use a separate `request_engine_app` credential to open ordinary tenant-scoped transactions and set tenant context for RLS. Authoritative handler writes first lock and validate the current action claim through the narrow fencing function. A worker-control credential must never be reused as the domain session merely because it can set the tenant GUC.
 
-Production assembly must therefore receive independent worker-control and tenant-domain database factories or pools. A worker process constructor that accepts one database `SessionFactory` and reuses it both for `PostgresScheduledActionWorker` and authoritative module handlers violates this boundary: the worker credential is intentionally unable to perform those domain writes, while the app credential must not receive cross-tenant worker authority.
+Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. The composition root rejects reuse of the same factory object for both roles.
+
+The factory-identity check is a guardrail, not the entire security proof. PostgreSQL integration evidence must also demonstrate that the worker factory authenticates through the `request_engine_worker` role boundary and the domain factory through `request_engine_app`; distinct Python wrappers around one privileged credential do not satisfy this contract.
 
 `request_engine_admin` owns explicit replay/health operations. Production workers do not connect as schema owner or superuser.
+
+## Process assembly and deployment
+
+`request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage, and ProviderEvent under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
+
+`WorkerProcess.run_once()` is a bounded operational probe and returns per-stream `WorkerItemOutcome` evidence. `WorkerProcess.run(stop_event)` is the long-lived process boundary.
+
+The installed `request-engine-worker` command loads one trusted zero-argument deployment factory from `--factory module:attribute` or `REQUEST_ENGINE_WORKER_FACTORY`. Provider selection, publisher configuration, and credentials remain explicit deployment concerns; the launcher does not infer transports or install silent no-op adapters. `SIGINT` and `SIGTERM` set the shared graceful-shutdown event.

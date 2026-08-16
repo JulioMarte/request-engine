@@ -11,6 +11,7 @@ from request_engine.modules.booking.application.commands.evaluate_no_show import
 )
 from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
+from request_engine.platform.worker.runtime import PermanentWorkError
 
 
 async def handle_no_show_action(
@@ -20,6 +21,8 @@ async def handle_no_show_action(
     worker_principal_id: UUID,
     reservation_id: UUID,
     lifecycle_key: str,
+    scheduled_action_id: UUID | None = None,
+    scheduled_action_claim_token: UUID | None = None,
 ) -> ReservationAttendanceState:
     return await evaluate_no_show(
         handler,
@@ -28,6 +31,8 @@ async def handle_no_show_action(
             principal_id=worker_principal_id,
             reservation_id=reservation_id,
             idempotency_key=f"scheduled:no-show:{reservation_id}:{lifecycle_key}",
+            scheduled_action_id=scheduled_action_id,
+            scheduled_action_claim_token=scheduled_action_claim_token,
         ),
     )
 
@@ -47,15 +52,18 @@ class NoShowScheduledHandler:
             or lease.subject_kind != "Reservation"
             or lease.subject_id is None
         ):
-            raise ValueError("unsupported Booking ScheduledAction")
+            raise PermanentWorkError("unsupported_booking_scheduled_action")
 
         raw_reservation_id = lease.payload.get("reservation_id")
         lifecycle_key = lease.payload.get("lifecycle_key")
         if not isinstance(raw_reservation_id, str) or not isinstance(lifecycle_key, str):
-            raise ValueError("no-show ScheduledAction payload is malformed")
-        reservation_id = UUID(raw_reservation_id)
+            raise PermanentWorkError("no_show_scheduled_action_payload_invalid")
+        try:
+            reservation_id = UUID(raw_reservation_id)
+        except ValueError as exc:
+            raise PermanentWorkError("no_show_scheduled_action_payload_invalid") from exc
         if reservation_id != lease.subject_id:
-            raise ValueError("no-show ScheduledAction subject does not match payload")
+            raise PermanentWorkError("no_show_scheduled_action_payload_mismatch")
 
         return await handle_no_show_action(
             self._handler,
@@ -63,4 +71,6 @@ class NoShowScheduledHandler:
             worker_principal_id=self._worker_principal_id,
             reservation_id=reservation_id,
             lifecycle_key=lifecycle_key,
+            scheduled_action_id=lease.id,
+            scheduled_action_claim_token=lease.claim_token,
         )
