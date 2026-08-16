@@ -24,6 +24,8 @@ uv run python scripts/ci/check_documentation_contract.py --base <base-ref>
 
 On GitHub pull requests the checker uses `GITHUB_BASE_REF`; if the shallow checkout does not contain that ref it fetches only the required base ref, then compares the base tree directly with the checked-out PR candidate tree. This does not require a merge-base and works with the default shallow `actions/checkout` behavior. Local execution without a base still validates the registry; pass `--base` when you want local change-impact enforcement.
 
+For deterministic fitness tests, `--changed-file <path>` can be repeated to evaluate an explicit synthetic change set. The architecture suite uses this mode to prove both sides of the policy: a worker-runtime code change without its normative document is rejected, while the same code change accompanied by that document is accepted.
+
 ## Design constraints
 
 This is deliberately not a rule that every source-code edit needs a documentation edit. The registry must stay focused on architectural, security, operational, public-contract and durable-state boundaries. Pure refactors and implementation details should not create meaningless documentation churn.
