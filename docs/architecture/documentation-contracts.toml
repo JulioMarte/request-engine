@@ -23,7 +23,7 @@ required_docs_mode = "all"
 id = "cross-tenant-shared-capacity"
 description = "Cross-tenant shared-capacity identity, authority, serialization, privacy, and booking integration"
 triggers = [
-  "migrations/sql/v3_candidate/*cross-tenant-shared-capacity*.sql",
+  "migrations/sql/v3_candidate/*cross-tenant-*.sql",
   "src/request_engine/modules/booking/adapters/db/reservation_commands.py",
   "src/request_engine/modules/booking/adapters/db/commitment_commands.py",
   "src/request_engine/modules/booking/adapters/db/slot_offer_capacity.py",
@@ -32,7 +32,7 @@ triggers = [
   "src/request_engine/modules/booking/api/__init__.py",
   "src/request_engine/modules/booking/api/errors.py",
   "src/request_engine/bootstrap/http.py",
-  "tests/db/test_v3_cross_tenant_shared_capacity*.py",
+  "tests/db/test_v3_cross_tenant_*.py",
   "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity*.py",
   "tests/unit/test_booking_unavailability_privacy.py",
 ]
