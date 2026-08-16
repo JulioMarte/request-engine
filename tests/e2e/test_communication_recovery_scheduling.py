@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -300,7 +299,11 @@ async def test_exhausted_and_malformed_reconciliation_actions_do_not_suppress_re
         (organization_id, delivery_id),
     ).fetchone() == (3,)
     assert e2e_admin_conn.execute(
-        "SELECT status, attempt_count = max_attempts FROM request_engine.scheduled_actions WHERE id = %s",
+        """
+        SELECT status, attempt_count = max_attempts
+        FROM request_engine.scheduled_actions
+        WHERE id = %s
+        """,
         (exhausted_id,),
     ).fetchone() == ("pending", True)
     assert e2e_admin_conn.execute(
