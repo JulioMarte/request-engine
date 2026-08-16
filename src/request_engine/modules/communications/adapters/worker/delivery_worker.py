@@ -74,21 +74,21 @@ class CommunicationDeliveryWorker:
     async def process(self, lease: ScheduledActionLease) -> DeliveryWorkerOutcome:
         try:
             work = await self._prepare(lease)
-        except UnsupportedScheduledAction:
+        except UnsupportedScheduledAction as exc:
             await self._fail_poisoned_task(lease, reason="unsupported_scheduled_action")
             if not await self._scheduler.dead_letter(
                 lease,
                 error_class="unsupported_scheduled_action",
             ):
-                raise LeaseLostWorkError("poison_dead_letter_fence_lost")
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost") from exc
             raise
-        except ValueError:
+        except ValueError as exc:
             await self._fail_poisoned_task(lease, reason="invalid_scheduled_action")
             if not await self._scheduler.dead_letter(
                 lease,
                 error_class="invalid_scheduled_action",
             ):
-                raise LeaseLostWorkError("poison_dead_letter_fence_lost")
+                raise LeaseLostWorkError("poison_dead_letter_fence_lost") from exc
             raise
 
         if work.kind is DeliveryWorkKind.SKIP:
