@@ -7,13 +7,11 @@ from uuid import UUID, uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.commitment_commands import (
-    PostgresBookingCommitmentCommands,
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeBookingCommitmentCommands,
+    CapacitySafeReservationCommands,
+    CapacitySafeSlotOfferCapacity,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
-)
-from request_engine.modules.booking.adapters.db.slot_offer_capacity import PostgresSlotOfferCapacity
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
     AcquireCapacityHoldCommand,
     acquire_capacity_hold,
@@ -274,8 +272,8 @@ async def test_cross_tenant_hold_and_direct_booking_block_each_other(
     session_factory: SessionFactory,
 ) -> None:
     tenant_a, tenant_b, _ = _two_bound_tenants(admin_conn)
-    reservations = PostgresReservationCommands(session_factory)
-    commitments = PostgresBookingCommitmentCommands(session_factory)
+    reservations = CapacitySafeReservationCommands(session_factory)
+    commitments = CapacitySafeBookingCommitmentCommands(session_factory)
 
     first_start = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     await acquire_capacity_hold(commitments, _hold(tenant_a, first_start))
@@ -296,8 +294,8 @@ async def test_cross_tenant_reschedule_conflict_rolls_back_original_commitment(
     session_factory: SessionFactory,
 ) -> None:
     tenant_a, tenant_b, root_id = _two_bound_tenants(admin_conn)
-    reservations = PostgresReservationCommands(session_factory)
-    commitments = PostgresBookingCommitmentCommands(session_factory)
+    reservations = CapacitySafeReservationCommands(session_factory)
+    commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     original_start = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     blocked_start = datetime(2026, 8, 17, 14, 0, tzinfo=UTC)
 
@@ -354,10 +352,10 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
     waitlist = PostgresWaitlistCommands(session_factory)
     slot_commands = PostgresSlotOfferCommands(
         session_factory,
-        capacity=PostgresSlotOfferCapacity(),
+        capacity=CapacitySafeSlotOfferCapacity(),
         notification=PostgresSlotOfferNotificationIntent(),
     )
-    reservations = PostgresReservationCommands(session_factory)
+    reservations = CapacitySafeReservationCommands(session_factory)
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
@@ -445,3 +443,107 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
         (claim_id,),
     ).fetchone()
     assert promoted == (claim_id, accepted.reservation.id, root_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+async def test_foreign_booking_closes_slot_opportunity_without_orphan_hold(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    tenant_a, tenant_b, _ = _two_bound_tenants(admin_conn)
+    waitlist = PostgresWaitlistCommands(session_factory)
+    slot_commands = PostgresSlotOfferCommands(
+        session_factory,
+        capacity=CapacitySafeSlotOfferCapacity(),
+        notification=PostgresSlotOfferNotificationIntent(),
+    )
+    reservations = CapacitySafeReservationCommands(session_factory)
+    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    end_at = start_at + timedelta(minutes=30)
+
+    await join_waitlist(
+        waitlist,
+        JoinWaitlistCommand(
+            organization_id=tenant_a.organization_id,
+            principal_id=tenant_a.principal_id,
+            offering_id=tenant_a.offering_id,
+            subject_party_id=tenant_a.subject_party_id,
+            location_id=tenant_a.location_id,
+            preferred_resource_id=tenant_a.resource_id,
+            earliest_start=None,
+            latest_start=None,
+            idempotency_key=f"join-{uuid4().hex}",
+            allow_subject_override=True,
+        ),
+    )
+    opportunity = await create_slot_opportunity(
+        waitlist,
+        CreateSlotOpportunityCommand(
+            organization_id=tenant_a.organization_id,
+            principal_id=tenant_a.principal_id,
+            offering_version_id=tenant_a.offering_version_id,
+            location_id=tenant_a.location_id,
+            source_event_id=uuid4(),
+            start_at=start_at,
+            end_at=end_at,
+            idempotency_key=f"opportunity-{uuid4().hex}",
+        ),
+    )
+    await book_appointment(reservations, _book(tenant_b, start_at))
+
+    offer = await offer_next_waitlist_candidate(
+        slot_commands,
+        OfferNextWaitlistCandidateCommand(
+            organization_id=tenant_a.organization_id,
+            principal_id=tenant_a.principal_id,
+            slot_opportunity_id=opportunity.id,
+            offer_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+            idempotency_key=f"offer-{uuid4().hex}",
+        ),
+    )
+    assert offer is None
+
+    opportunity_state = admin_conn.execute(
+        """
+        SELECT status
+        FROM request_engine.slot_opportunities
+        WHERE organization_id = %s AND id = %s
+        """,
+        (tenant_a.organization_id, opportunity.id),
+    ).fetchone()
+    assert opportunity_state == ("closed",)
+
+    offer_count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.slot_offers
+        WHERE organization_id = %s AND slot_opportunity_id = %s
+        """,
+        (tenant_a.organization_id, opportunity.id),
+    ).fetchone()
+    assert offer_count == (0,)
+
+    orphan_counts = admin_conn.execute(
+        """
+        SELECT
+            (SELECT count(*)
+               FROM request_engine.capacity_holds
+              WHERE organization_id = %s
+                AND during = tstzrange(%s, %s, '[)')),
+            (SELECT count(*)
+               FROM request_engine.capacity_claims
+              WHERE organization_id = %s
+                AND during = tstzrange(%s, %s, '[)'))
+        """,
+        (
+            tenant_a.organization_id,
+            start_at,
+            end_at,
+            tenant_a.organization_id,
+            start_at,
+            end_at,
+        ),
+    ).fetchone()
+    assert orphan_counts == (0, 0)

@@ -1,6 +1,7 @@
 from typing import Never
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.capacity_errors import (
     normalize_capacity_integrity_error,
@@ -93,8 +94,15 @@ class CapacitySafeSlotOfferCapacity:
         transaction: object,
         request: AcquireSlotOfferHold,
     ) -> CapacityHold:
+        session = _async_session(transaction)
         try:
-            return await self._delegate.acquire_slot_offer_hold(transaction, request)
+            # Queue owns the surrounding transaction and intentionally handles
+            # capacity loss by closing the SlotOpportunity. PostgreSQL marks a
+            # transaction failed after the shared-capacity trigger raises
+            # 23P01, so isolate this speculative Hold acquisition in a savepoint
+            # before translating the error into the Queue-facing port contract.
+            async with session.begin_nested():
+                return await self._delegate.acquire_slot_offer_hold(session, request)
         except IntegrityError as exc:
             _raise_slot_offer_capacity_unavailable(exc)
 
@@ -117,6 +125,12 @@ class CapacitySafeSlotOfferCapacity:
             return await self._delegate.release_slot_offer_hold(transaction, request)
         except IntegrityError as exc:
             _raise_slot_offer_capacity_unavailable(exc)
+
+
+def _async_session(transaction: object) -> AsyncSession:
+    if not isinstance(transaction, AsyncSession):
+        raise TypeError("slot-offer capacity transaction must be an AsyncSession")
+    return transaction
 
 
 def _raise_slot_offer_capacity_unavailable(exc: IntegrityError) -> Never:
