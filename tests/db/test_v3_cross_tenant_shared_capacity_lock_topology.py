@@ -32,7 +32,11 @@ def _tenant_with_two_resources(conn: PgConnection, label: str) -> TenantResource
     suffix = f"{label}-{uuid4().hex}"
     organization_id = _uuid_row(
         conn,
-        "INSERT INTO request_engine.organizations (organization_key, display_name) VALUES (%s, %s) RETURNING id",
+        """
+        INSERT INTO request_engine.organizations (organization_key, display_name)
+        VALUES (%s, %s)
+        RETURNING id
+        """,
         (suffix, suffix),
     )
     resource_ids = tuple(
@@ -100,9 +104,6 @@ def test_reversed_cross_tenant_multi_root_requests_do_not_deadlock(
     root_one = _shared_root(admin_conn, "one")
     root_two = _shared_root(admin_conn, "two")
 
-    # Deliberately reverse the logical root mapping between tenants. If either
-    # operation honored caller order rather than canonical row order, the two
-    # transactions could form root_one -> root_two / root_two -> root_one.
     _bind(admin_conn, tenant_a, tenant_a.resource_ids[0], root_one)
     _bind(admin_conn, tenant_a, tenant_a.resource_ids[1], root_two)
     _bind(admin_conn, tenant_b, tenant_b.resource_ids[0], root_two)
