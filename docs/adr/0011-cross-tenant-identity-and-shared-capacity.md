@@ -1,5 +1,5 @@
 # 0011 — Cross-tenant identity and shared capacity
-Status: Proposed
+Status: Proposed — preserved as pending post-freeze direction. This is a future feature the product wants to keep, but it is deliberately **not** part of the V3 baseline. It stays pending until a dedicated design phase resolves identity trust, shared-capacity serialization and cross-tenant isolation before any implementation is accepted.
 
 ## Context
 
