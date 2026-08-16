@@ -28,3 +28,6 @@ Current records:
 - `0006-durable-transactional-communications.md`
 - `0007-minimal-booking-capacity-model.md`
 - `0008-tenant-rls-runtime-isolation.md`
+- `0009-v3-database-contract-convergence.md`
+- `0010-reservation-access-delivery-boundary.md`
+- `0011-cross-tenant-identity-and-shared-capacity.md` — proposed post-freeze direction for one real-world identity/capacity represented by Resources in multiple Organizations.
