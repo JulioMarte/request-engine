@@ -339,9 +339,7 @@ async def test_simultaneous_cross_tenant_reschedules_acquire_shared_roots_canoni
         """,
         ([original_a.id, original_b.id],),
     ).fetchall()
-    assert {
-        (cast(UUID, row[0]), cast(UUID, row[1]), cast(UUID, row[2])) for row in rows
-    } == {
+    assert {(cast(UUID, row[0]), cast(UUID, row[1]), cast(UUID, row[2])) for row in rows} == {
         (original_a.id, tenant_a.resource_ids[1], root_two),
         (original_b.id, tenant_b.resource_ids[1], root_one),
     }

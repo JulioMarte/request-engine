@@ -47,8 +47,9 @@ ChangeScheduleException
 
 - `1 Reservation = 1 OfferingVersion + 1 subject + 1 interval`.
 - No `ReservationItem` baseline.
-- Concrete `Resource` is the capacity serialization/lock root; no separate one-to-one `CapacityAuthority` baseline.
-- `CapacityClaim` is the common Hold/Reservation capacity-consumption truth.
+- Concrete `Resource` is the baseline tenant-local capacity serialization/lock root; no separate one-to-one `CapacityAuthority` baseline.
+- For an explicitly authorized cross-tenant shared-capacity binding on an `exclusive` Resource, Booking locks the tenant-local Resource first and then the hidden `SharedCapacityIdentity` root. Unbound Resources retain the baseline protocol.
+- `CapacityClaim` is the common Hold/Reservation capacity-consumption truth. Shared-capacity claim links are private serialization provenance, never a second capacity ledger.
 - No `ResourceAllocation` baseline. Add a future `ResourceAssignment` only if execution assignment becomes independently mutable from capacity consumption.
 - No CapacityPool, PlanningRevision, external commitment planning or field-service feasibility baseline.
 
@@ -58,7 +59,7 @@ An OfferingVersion may have multiple mandatory resource requirements. Booking mu
 
 Hold confirmation must promote/associate existing claims with the Reservation without temporary Hold + Reservation double counting.
 
-Reschedule is self-overlap safe: lock the Reservation, then the union of old/new Resources in stable-id order; validate the **final** desired state excluding only this Reservation's claims being replaced; atomically mark old claims replaced and insert new claims. Failure/rollback preserves the original Reservation and claims.
+Reschedule is self-overlap safe: lock the Reservation, then the union of old/new Resources in stable-id order; for bound Resources lock the complete shared-root set in stable-id order only after all local Resources; validate the **final** desired state excluding only this Reservation's claims being replaced; atomically mark old claims replaced and insert new claims. Failure/rollback preserves the original Reservation and claims.
 
 Routine schedule changes do not silently rewrite already-committed Reservations. New booking/hold acquisition revalidates schedule under Resource locks; administrative invalidation of an existing Hold/Reservation must be an explicit semantic command.
 
@@ -86,4 +87,4 @@ Cancellation and reschedule may expose future capacity for recovery. That recove
 
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts.
 
-The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`.
+The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`. The cross-tenant extension design and privacy rationale are documented in `docs/v3/12-cross-tenant-shared-capacity-design.md` and ADR 0011.
