@@ -48,5 +48,7 @@ class SlotOfferExpiryScheduledHandler:
                 slot_offer_id=slot_offer_id,
                 expected_revision=raw_revision,
                 idempotency_key=f"scheduled-action:{lease.id}",
+                scheduled_action_id=lease.id,
+                scheduled_action_claim_token=lease.claim_token,
             ),
         )
