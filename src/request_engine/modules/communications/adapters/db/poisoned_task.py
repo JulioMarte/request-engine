@@ -62,7 +62,15 @@ async def fail_poisoned_communication_task_if_orphaned(
                           AND action_version = :action_version
                           AND subject_kind = 'CommunicationTask'
                           AND subject_id = :communication_task_id
-                          AND payload ->> 'communication_task_id' = :communication_task_id_text
+                          AND CASE
+                              WHEN pg_catalog.pg_input_is_valid(
+                                  payload ->> 'communication_task_id',
+                                  'uuid'
+                              )
+                              THEN (payload ->> 'communication_task_id')::uuid
+                                   = :communication_task_id
+                              ELSE false
+                          END
                           AND id <> :scheduled_action_id
                           AND status IN ('pending', 'leased')
                     )
@@ -73,7 +81,6 @@ async def fail_poisoned_communication_task_if_orphaned(
                     "action_type": DISPATCH_ACTION_TYPE,
                     "action_version": DISPATCH_ACTION_VERSION,
                     "communication_task_id": communication_task_id,
-                    "communication_task_id_text": str(communication_task_id),
                     "scheduled_action_id": scheduled_action_id,
                 },
             )
