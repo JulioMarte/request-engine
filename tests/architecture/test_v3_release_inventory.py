@@ -16,7 +16,8 @@ REQUIRED_RELEASE_DOCS = {
     "v3-test-isolation.md",
 }
 EXPECTED_GATES = [f"G{number:02d}" for number in range(1, 21)]
-EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 62)]
+EXPECTED_INVARIANTS = [f"V3-I{number:02d}" for number in range(1, 67)]
+EXPECTED_RACES = [f"R{number:02d}" for number in range(1, 30)]
 
 
 def test_phase6_release_inventory_is_present() -> None:
@@ -34,6 +35,12 @@ def test_phase6_invariant_inventory_covers_canonical_v3_invariants_once() -> Non
     text = (RELEASE_DIR / "v3-invariant-matrix.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\| (V3-I\d{2}) \|", text, flags=re.MULTILINE)
     assert rows == EXPECTED_INVARIANTS
+
+
+def test_phase6_race_inventory_covers_canonical_v3_races_once() -> None:
+    text = (RELEASE_DIR / "v3-race-matrix.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| (R\d{2}) \|", text, flags=re.MULTILINE)
+    assert rows == EXPECTED_RACES
 
 
 def test_phase6_scope_keeps_initial_migration_blocked_until_proof() -> None:
