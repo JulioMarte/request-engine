@@ -490,9 +490,9 @@ async def _resolve_route_and_contact_point(
                     },
                 )
             )
+            .mappings()
+            .first()
         )
-        .mappings()
-        .first()
         if point is None:
             raise DeliveryConfigurationError("explicit contact point is no longer usable")
         point_channel = cast(str, point["channel"])
