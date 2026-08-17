@@ -110,6 +110,8 @@ Reservation lifecycle events are reserved for composition through `reservation_l
 
 For ReservationAccess, provider I/O remains outside authoritative transactions. Provider evidence may be recorded on a non-authoritative `pending` row after lease loss so crash recovery can converge without blind duplicate provisioning. Publishing `ready` or `revoked` must instead validate and lock the exact current Outbox claim inside the same `request_engine_app` transaction as the authoritative state transition.
 
+Reservation reschedule recovery has an additional historical-fact requirement. `reservation.rescheduled.v1` carries the released slot coordinates (`old_location_id`, `old_start_at`, `old_end_at`) in the durable Outbox fact. A delayed consumer must recover capacity from those event-time coordinates rather than infer the old slot from mutable current Reservation/CapacityClaim state. Current schedule, communications and access reconciliation still converges against the latest Reservation snapshot; only the released-slot recovery consequence is tied to the historical coordinates of the event that caused it.
+
 ## ProviderEvent
 
 Provider callbacks are persisted before business interpretation.
