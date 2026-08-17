@@ -172,9 +172,7 @@ def _offered_graph(conn: PgConnection, fixture: Fixture) -> tuple[UUID, UUID, UU
             ),
         )
 
-    # The offer deliberately expires before its Hold.  This is the supported
-    # policy from migration 030 and is a regression proof against 013's obsolete
-    # exact-expiry equality check.
+    # Offer expiry may be stricter than Hold expiry; it just may not outlive it.
     offer_id = _uuid(
         conn,
         """
@@ -190,6 +188,47 @@ def _offered_graph(conn: PgConnection, fixture: Fixture) -> tuple[UUID, UUID, UU
     return offer_id, hold_id, opportunity_id, waitlist_entry_id
 
 
+def _promote_hold_to_reservation(
+    conn: PgConnection,
+    fixture: Fixture,
+    hold_id: UUID,
+) -> UUID:
+    reservation_id = _uuid(
+        conn,
+        """
+        INSERT INTO request_engine.reservations (
+            organization_id, offering_version_id, subject_party_id, during
+        ) VALUES (
+            %s, %s, %s,
+            tstzrange('2030-08-01T14:00:00+00'::timestamptz,
+                      '2030-08-01T14:30:00+00'::timestamptz, '[)')
+        ) RETURNING id
+        """,
+        (
+            fixture.organization_id,
+            fixture.offering_version_id,
+            fixture.subject_party_id,
+        ),
+    )
+    conn.execute(
+        """
+        UPDATE request_engine.capacity_claims
+        SET reservation_id = %s
+        WHERE organization_id = %s AND hold_id = %s AND status = 'active'
+        """,
+        (reservation_id, fixture.organization_id, hold_id),
+    )
+    conn.execute(
+        """
+        UPDATE request_engine.capacity_holds
+        SET status = 'consumed', revision = revision + 1
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, hold_id),
+    )
+    return reservation_id
+
+
 @pytest.mark.postgres
 def test_accepted_slot_offer_rejects_incomplete_queue_terminal_state(
     admin_conn: PgConnection,
@@ -198,14 +237,7 @@ def test_accepted_slot_offer_rejects_incomplete_queue_terminal_state(
     offer_id, hold_id, _, _ = _offered_graph(admin_conn, fixture)
 
     with pytest.raises(Error) as rejected, admin_conn.transaction():
-        admin_conn.execute(
-            """
-            UPDATE request_engine.capacity_holds
-            SET status = 'consumed', revision = revision + 1
-            WHERE organization_id = %s AND id = %s
-            """,
-            (fixture.organization_id, hold_id),
-        )
+        _promote_hold_to_reservation(admin_conn, fixture, hold_id)
         admin_conn.execute(
             """
             UPDATE request_engine.slot_offers
@@ -240,6 +272,16 @@ def test_accepted_slot_offer_requires_real_hold_to_reservation_promotion(
     offer_id, hold_id, opportunity_id, waitlist_entry_id = _offered_graph(admin_conn, fixture)
 
     with pytest.raises(Error) as rejected, admin_conn.transaction():
+        # Satisfy the pre-existing terminal-Hold invariant without fabricating a
+        # Reservation: retire the Hold claim, then forge the Queue terminal rows.
+        admin_conn.execute(
+            """
+            UPDATE request_engine.capacity_claims
+            SET status = 'released', released_at = clock_timestamp()
+            WHERE organization_id = %s AND hold_id = %s
+            """,
+            (fixture.organization_id, hold_id),
+        )
         admin_conn.execute(
             """
             UPDATE request_engine.capacity_holds
