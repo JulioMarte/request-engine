@@ -24,12 +24,12 @@ Status values describe current proof breadth. `PASS` means the named race has co
 | R14 | late lease renewal vs reclaimed worker | expired owner cannot resurrect ownership | PASS | 6F |
 | R15 | ScheduledAction cancellation vs claim | one deterministic state transition; cancelled work cannot execute as authoritative new work | PASS | 6F/6J |
 | R16 | Outbox completion vs lease reclaim | stale publisher cannot finalize another claim | PASS | 6F |
-| R17 | ProviderEvent duplicate ingestion vs duplicate ingestion | one provider identity; different payload under same identity is conflict | PARTIAL | 6J |
-| R18 | provider callback semantic command vs business cancellation | provider ordering cannot bypass current business authority/lifecycle | PARTIAL | 6J/6L |
+| R17 | ProviderEvent duplicate ingestion vs duplicate ingestion | one provider identity; different payload under same identity is conflict | PASS | 6J |
+| R18 | provider callback semantic command vs business cancellation | provider ordering cannot bypass current business authority/lifecycle | PASS | 6J/6L |
 | R19 | committed command response lost vs same idempotent retry | retry returns same logical effect without duplication | PASS | 6E |
-| R20 | external side effect succeeds then worker crashes before local finalization | retry/reconciliation cannot create an uncontrolled duplicate semantic effect | PARTIAL | 6F/6J |
-| R21 | reminder materialization vs same reminder materialization | occurrence identity dedupes duplicate future action creation | PARTIAL | 6J |
-| R22 | ReminderPlan cancel vs occurrence materialization | obsolete future work cannot survive as valid current-plan work | PARTIAL | 6J |
+| R20 | external side effect succeeds then worker crashes before local finalization | retry/reconciliation cannot create an uncontrolled duplicate semantic effect | PASS | 6F/6J |
+| R21 | reminder materialization vs same reminder materialization | occurrence identity dedupes duplicate future action creation | PASS | 6J |
+| R22 | ReminderPlan cancel vs occurrence materialization | obsolete future work cannot survive as valid current-plan work | PASS | 6J |
 | R23 | authority/revocation change vs material command | material command revalidates authority in its authoritative transaction | PASS | 6I |
 | R24 | tenant A request vs guessed tenant B aggregate ID | no cross-tenant read/write or existence oracle through protected surfaces | PASS | 6I |
 | R25 | tenant A capacity commitment vs tenant B overlapping commitment on one shared root | exactly one incompatible live commitment commits; loser exposes only generic unavailability | PARTIAL | 6D/6I |
@@ -60,7 +60,7 @@ R18 is exercised by `tests/integration/v3_reservation_lifecycle/test_provider_bu
 
 R22 is exercised by `tests/integration/v3_first_vertical/test_reminder_plan_races.py`. A due ReminderPlan occurrence is genuinely leased, both cancellation and materialization are started behind the same ReminderPlan `FOR UPDATE` barrier, and both valid winner orders are enumerated. Cancellation-first makes the leased occurrence no-op as `plan_inactive`; materialization-first may create exactly one current occurrence task before cancellation, but cancellation removes every future pending ReminderPlan occurrence. No mixed state may leave an active plan or obsolete future recurrence after cancellation.
 
-R17/R18/R22 remain `PARTIAL` because their named release claims still participate in unfinished provider/reconciliation and communications-failure families. R08 no longer does: Phase 6K closes the complete Slot Recovery release claim and preserves the duplicate-source proof on the same current branch.
+At that stage R17/R18/R22 remained `PARTIAL` because their surrounding provider/reconciliation and communications-failure family was incomplete. Phase 6G closes that wider family and promotes them below; this historical section is retained as provenance rather than current status authority.
 
 ## Phase 6K Booking lifecycle / Slot Recovery race closure
 
@@ -98,9 +98,25 @@ At that earlier baseline R03/R05/R06 and R15 were conservatively `PARTIAL`. Phas
 
 Canonical CI #946 (`32063335393`) passed on exact implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f`. Artifact `v3-candidate-release-proof` `9299172598` (`sha256:bf954de52a56fc6ace13ea76de4cade8732bb4c9a267cd5900ddf21324408dd7`) is `VALID`, complete and clean-tree; it binds base `cc46234c9e3e1c3109b0aa87484d83cbefe28633`, implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f` and tested merge checkout `8e36d4e62a65df28d0ccb5d12843966da34bbf01`. It collected all 109 expected files, passed 409 tests in reverse order, passed three concurrency-stability rounds of 81 tests, killed all four mutation probes and recorded zero test-quality errors/warnings.
 
-R20 remains `PARTIAL`: Communications and ReservationAccess now prove that a stale worker cannot publish provider success and that replacement work can use provider lookup/evidence instead of blindly duplicating the external effect, but the full provider duplicate/reorder/ambiguous-outcome/reconciliation contract remains G13.
+R20 remained `PARTIAL` at the Phase 6F boundary because Communications and ReservationAccess proved stale-worker/provider-evidence recovery but the full provider duplicate/reorder/ambiguous-outcome/reconciliation contract had not yet been closed. Phase 6G closes that wider contract below.
 
-This registry-only R12-R16 promotion must itself survive canonical exact-head CI before PR #60 is merge-authoritative. Final V3 promotion reruns the full race matrix on the eventual frozen release candidate.
+This registry-only R12-R16 promotion survived canonical exact-head CI before PR #60 integration. Final V3 promotion reruns the full race matrix on the eventual frozen release candidate.
+
+## Phase 6G ProviderEvent / communications reliability race closure
+
+**R17 is `PASS`.** `tests/integration/v3_worker_runtime/test_provider_event_ingest_races.py` deliberately overlaps two independent tenant transactions on one provider identity. Canonically equivalent payloads converge to one ProviderEvent and replay receipt. A different payload under the same identity deterministically raises `ProviderEventDedupeConflict` and preserves the first committed fact. G13 now closes the surrounding ProviderEvent duplicate/recovery family rather than leaving this proof isolated.
+
+**R18 is `PASS`.** `tests/integration/v3_reservation_lifecycle/test_provider_business_race.py` routes a real ProviderEvent handler into Booking's semantic attendance command while Reservation cancellation races behind the authoritative Reservation lock. Provider-command-first leaves cancellation stale on revision; cancellation-first leaves the callback command stale on revision/current lifecycle. Neither ordering permits ProviderEvent infrastructure to bypass Booking authority or retain invalid capacity.
+
+**R20 is `PASS`.** The full external-effect uncertainty claim is now exercised as one family: send exceptions become ambiguous and schedule lookup rather than resend; lookup infrastructure failures retry lookup only; crash after prepare and crash after provider finalization before action acknowledgement both replay through provider correlation; lease loss during provider I/O fences the stale worker; repeated `ACCEPTED` reconciliation reuses one future chain; `NOT_FOUND` becomes retryable failure plus future dispatch; retryable-failure replay cannot bypass backoff; and terminal provider-result ordering is monotonic. `tests/e2e/test_communication_terminal_reconciliation_race.py` additionally runs two reconciliation actions for the same Delivery with two provider lookups already in flight, forces `FAILED(non-retryable)` to finalize first and releases `DELIVERED` second. The second finalizer must remain failed so one CommunicationTask cannot durably emit both failure and completion. Retryable failure remains recoverable from late delivered evidence because it emitted no terminal failure fact.
+
+**R21 is `PASS`.** `tests/integration/v3_first_vertical/test_reminder_occurrence_races.py::test_r21_duplicate_reminder_materialization_serializes_to_one_occurrence_graph` holds two materializers for the same leased Reminder occurrence behind the authoritative ReminderPlan row lock and releases them together. Both calls converge to the same CommunicationTask and next occurrence. Final state requires exactly one Task, one dispatch, one next Reminder occurrence and one task-created Outbox fact; the leased ScheduledAction can be completed only once.
+
+**R22 is `PASS`.** `tests/integration/v3_first_vertical/test_reminder_plan_races.py` deliberately overlaps ReminderPlan cancellation and materialization behind the same ReminderPlan lock and enumerates both valid winner orders. Cancellation-first makes the leased occurrence a no-op. Materialization-first may create one current task, but cancellation removes obsolete future recurrence work. With G13's full communications reliability claim now closed, no unfinished provider/reconciliation dependency remains around this race.
+
+Canonical CI #960 (`32067492021`) passed on exact implementation head `7ca60020608c9e153dcede578767ca9969b2f98f`. Artifact `v3-candidate-release-proof` `9300680212` (`sha256:d8cfb79d89f20dfac34bca906031bba5a6650011d6911b4d66c2befeca554839`) is `VALID`, complete and clean-tree; it binds base `cf98ac7da3b171d6dd42e0f77d91787b4450cc0c`, implementation head `7ca60020608c9e153dcede578767ca9969b2f98f`, tested merge checkout `0e196a52b62e786e3d3200a9301f4be55e922f1d` and tree `d7c89c96a2e45ee4e8aaa6c4a67fa06a0edc3c92`. It collected all 115 expected files, passed 419 tests in reverse order, passed three concurrency-stability rounds of 82 tests, killed all four mutation probes and recorded zero test-quality errors/warnings.
+
+This registry-only R17/R18/R20/R21/R22 promotion must itself survive canonical exact-head CI before PR #61 is merge-authoritative. Final V3 promotion reruns the full race matrix on the eventual frozen release candidate.
 
 ## Cross-tenant shared-capacity concurrency evidence
 
