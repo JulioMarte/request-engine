@@ -110,7 +110,7 @@ def _seed_due_occurrence(
 @pytest.mark.concurrency
 async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_plan_outcome(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
     worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
@@ -123,8 +123,8 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
     lease = next(item for item in await worker.claim(limit=500) if item.id == action_id)
     assert isinstance(lease, ScheduledActionLease)
 
-    cancellation = PostgresReminderCommands(session_factory)
-    materializer = PostgresReminderOccurrenceCommands(session_factory)
+    cancellation = PostgresReminderCommands(app_session_factory)
+    materializer = PostgresReminderOccurrenceCommands(app_session_factory)
     cancel_command = CancelReminderPlanCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
@@ -180,19 +180,18 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
     ).fetchone()
     assert future_plan_actions == (0,)
 
-    task_count = cast(
-        int,
-        admin_conn.execute(
-            """
-            SELECT count(*)
-            FROM request_engine.communication_tasks
-            WHERE organization_id = %s
-              AND source_kind = 'ReminderPlan'
-              AND source_id = %s
-            """,
-            (fixture.organization_id, plan_id),
-        ).fetchone()[0],
-    )
+    task_count_row = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.communication_tasks
+        WHERE organization_id = %s
+          AND source_kind = 'ReminderPlan'
+          AND source_id = %s
+        """,
+        (fixture.organization_id, plan_id),
+    ).fetchone()
+    assert task_count_row is not None
+    task_count = cast(int, task_count_row[0])
     if materialized.skipped_reason == "plan_inactive":
         assert materialized.communication_task_id is None
         assert materialized.next_occurrence_at is None
