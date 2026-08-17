@@ -29,7 +29,7 @@ PgConnection = Connection[Any]
 @pytest.mark.concurrency
 async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     fixture = _fixture(
         admin_conn,
@@ -40,7 +40,7 @@ async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
         start_at=_future_start(),
         add_waitlist=True,
     )
-    attendance = PostgresAttendanceCommands(session_factory)
+    attendance = PostgresAttendanceCommands(app_session_factory)
     await decline_attendance(
         attendance,
         organization_id=fixture.organization_id,
@@ -52,7 +52,7 @@ async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
         allow_subject_override=True,
     )
 
-    reader = PostgresReservationLifecycleReader(session_factory)
+    reader = PostgresReservationLifecycleReader(app_session_factory)
     released = await reader.get_released_slot(
         fixture.organization_id,
         fixture.reservation_id,
@@ -61,7 +61,7 @@ async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
     assert released is not None
 
     recovery = PostgresReleasedSlotRecovery(
-        session_factory,
+        app_session_factory,
         capacity=PostgresSlotOfferCapacity(),
         notification=PostgresSlotOfferNotificationIntent(),
     )
