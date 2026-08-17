@@ -23,6 +23,32 @@ from .test_reservation_lifecycle import _fixture, _future_start
 PgConnection = Connection[Any]
 
 
+async def _wait_for_lock_waiters(
+    admin_conn: PgConnection,
+    *,
+    query_fragment: str,
+    expected: int,
+) -> None:
+    deadline = asyncio.get_running_loop().time() + 5
+    while asyncio.get_running_loop().time() < deadline:
+        row = admin_conn.execute(
+            """
+            SELECT count(*)
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE %s
+            """,
+            (f"%{query_fragment}%",),
+        ).fetchone()
+        if row is not None and int(row[0]) >= expected:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(
+        f"expected at least {expected} PostgreSQL lock waiters matching {query_fragment!r}"
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -111,7 +137,11 @@ async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
                 principal_id=fixture.principal_id,
             )
         )
-        await asyncio.sleep(0.1)
+        await _wait_for_lock_waiters(
+            admin_conn,
+            query_fragment="request_cmd.acquire_idempotency",
+            expected=2,
+        )
         assert not first_task.done()
         assert not second_task.done()
 
