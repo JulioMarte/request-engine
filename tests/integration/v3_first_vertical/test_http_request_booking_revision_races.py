@@ -9,9 +9,9 @@ from request_engine.platform.db.session import SessionFactory
 
 from ._race_support import race_behind_row_lock
 from .test_http_attendance_idempotency_failure import _app as booking_app, _book
+from .test_http_operations import _create_fixture as booking_fixture
 from .test_http_request_idempotency_failure import _app as request_app
 from .test_http_requests import _create_fixture as request_fixture
-from .test_http_operations import _create_fixture as booking_fixture
 from .test_http_reservation_idempotency_failure import _slot_options
 
 PgConnection = Connection[Any]
