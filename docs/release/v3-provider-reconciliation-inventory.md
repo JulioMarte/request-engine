@@ -1,6 +1,6 @@
 # V3 ProviderEvent and communications reconciliation inventory
 
-Status: Phase 6 G13 executable closure inventory. G13 and R17/R18/R20/R21/R22 remain `PARTIAL` until this branch passes canonical exact-head CI and its candidate artifact is inspected.
+Status: Phase 6 G13 executable closure inventory. Exact implementation head `7ca60020608c9e153dcede578767ca9969b2f98f` passed canonical CI #960 with a `VALID` candidate artifact. G13 and R17/R18/R20/R21/R22 are `PASS` in the current registries; this registry-only reconciliation must itself pass canonical exact-head CI before PR integration.
 
 Base for this closure: `development@cf98ac7da3b171d6dd42e0f77d91787b4450cc0c`.
 
@@ -117,16 +117,20 @@ ReminderPlan scheduling is part of Communications reliability rather than provid
 
 Communications scheduled work likewise terminalizes unsupported action types, payload identity mismatch and missing provider configuration instead of retrying poison work forever. Existing E2E tests require domain failure state and failure-event cardinality where appropriate.
 
-## Candidate promotion criteria
+## Exact implementation evidence
 
-G13 may move to `PASS` only when one exact branch head proves all sections A-J through canonical CI and a `VALID` candidate artifact.
+Canonical CI #960 (`32067492021`) passed on exact implementation head `7ca60020608c9e153dcede578767ca9969b2f98f`: Python quality/architecture, observability, PostgreSQL 18 V2 history, repeated V3 bootstrap, V3 candidate proof and candidate-and-verticals all succeeded.
 
-On that same evidence:
+Artifact `v3-candidate-release-proof` `9300680212` (`sha256:d8cfb79d89f20dfac34bca906031bba5a6650011d6911b4d66c2befeca554839`) reports `evidence_status: VALID`, `artifact_set_complete: true`, zero validation errors and a clean tree. It binds base `cf98ac7da3b171d6dd42e0f77d91787b4450cc0c`, head `7ca60020608c9e153dcede578767ca9969b2f98f`, merge checkout/tested SHA `0e196a52b62e786e3d3200a9301f4be55e922f1d` and tree `d7c89c96a2e45ee4e8aaa6c4a67fa06a0edc3c92`.
 
-- R17 may move to `PASS` if duplicate identity/conflicting payload overlap remains deterministic;
-- R18 may move to `PASS` if provider semantic commands remain fenced by current business revision/lifecycle in both winner orders;
-- R20 may move to `PASS` only if ambiguity, lookup-first recovery, stale-worker fencing, crash windows, terminal result ordering and retry backoff all pass together;
-- R21 may move to `PASS` only if deliberately overlapping duplicate occurrence materialization preserves one task/dispatch/next occurrence graph;
-- R22 may move to `PASS` only if cancel/materialize overlap preserves one serialized ReminderPlan outcome.
+All 115 expected test files were collected. The reverse-order run passed all 419 tests. Three concurrency-stability rounds each passed 82 tests. All four mutation probes were killed as expected. Test quality reported zero errors and zero warnings.
+
+The artifact correctly remains `release_status: NOT_READY`; this proof closes the G13 provider/reconciliation and communications reliability family, not unrelated release gates.
+
+## Promotion rule
+
+G13 and R17/R18/R20/R21/R22 are `PASS` in the current registries because one exact implementation head proves all sections A-J through canonical CI and a `VALID` candidate artifact. Any later change that weakens ProviderEvent identity/routing, Communications provider-result ordering, reconciliation-first behavior, retry/backoff, stale-worker fencing, Reminder occurrence serialization or the named proof families invalidates the corresponding PASS until regenerated.
+
+This registry-only reconciliation must itself pass canonical exact-head CI before PR #61 is merge-authoritative. Final promotion to `main` must regenerate the complete G13/race proof on the eventual frozen release candidate.
 
 No promotion here changes global V3 `release_status: NOT_READY`. G05, G15-G20 and any other incomplete gate retain their current status.
