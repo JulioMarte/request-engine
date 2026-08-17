@@ -51,28 +51,26 @@ The manifest intentionally retains the current release gate state:
 
 This document preserves those statuses. Artifact completeness is not release readiness.
 
+The post-merge reconciliation also inspected the previously ambiguous race inventory. R03, R05, R06 and R15 now have concrete overlapping PostgreSQL evidence and are recorded as `PARTIAL`, not `TO VERIFY`. Their final release rerun is still required, but they are no longer part of the unidentified-race backlog.
+
 ## Release-proof debt after feature integration
 
 ### P0 correctness / security proof
 
 1. Finish critical deterministic race coverage still marked `TO VERIFY` or `MISSING` in `v3-race-matrix.md`:
-   - R03 Reservation cancel vs reschedule;
-   - R05 SlotOffer accept vs decline;
-   - R06 SlotOffer decline vs expire;
    - R08 Reservation cancellation vs duplicate SlotOpportunity creation;
-   - R15 ScheduledAction cancellation vs claim;
    - R17 ProviderEvent duplicate ingestion vs duplicate ingestion;
    - R18 provider callback semantic command vs business cancellation;
    - R19 committed command / lost response vs idempotent retry;
    - R22 ReminderPlan cancellation vs occurrence materialization.
 2. Complete timeout-after-commit idempotency proof for material commands, not only duplicate-request behavior while both responses are observed.
 3. Complete real concurrent-writer proof for mutable public aggregates governed by revisions.
-4. Complete runtime-role isolation using true least-privileged production-style logins and negative worker/admin/SECURITY DEFINER surface tests.
+4. Complete the remaining runtime-role isolation inventory. Real least-privileged app/worker/admin LOGIN evidence already exists; the open work is the explicit negative DDL/BYPASSRLS/remaining SECURITY DEFINER execution matrix and final-baseline rerun.
 5. Finish subject-authority revocation races for the material command families not yet covered by deterministic barriers.
 
 ### P1 operational / contract proof
 
-1. Finish Booking and Slot Recovery as release-level end-to-end vertical gates, including lifecycle communications and all SlotOffer terminal race families.
+1. Finish Booking and Slot Recovery as release-level end-to-end vertical gates, including lifecycle communications and the remaining recovery-coordination race inventory.
 2. Prove worker ownership/crash recovery under increasing concurrency and the external-side-effect-success / local-finalization-crash window.
 3. Complete ProviderEvent duplicate/out-of-order/late/unknown/crash processing evidence.
 4. Produce representative hot-path `EXPLAIN (ANALYZE, BUFFERS)` evidence before index freeze. G15 remains MISSING until this exists.
@@ -90,9 +88,9 @@ This document preserves those statuses. Artifact completeness is not release rea
 The canonical execution order from this point is:
 
 1. rebaseline and reconcile proof inventory (this document);
-2. close missing/TO VERIFY deterministic races;
+2. close remaining missing/TO VERIFY deterministic races;
 3. close idempotency and optimistic-concurrency proof;
-4. close tenant/runtime privilege proof;
+4. close the remaining tenant/runtime privilege proof;
 5. close Booking/Slot Recovery vertical proof;
 6. close worker and provider failure/recovery proof;
 7. measure query plans and decide final indexes;
@@ -120,5 +118,5 @@ This rebaseline is complete when:
 - this repository point is recorded from the post-#52 `development` tree;
 - gate/invariant/race registries are interpreted against the current integrated baseline rather than historical pre-merge assumptions;
 - no status is promoted without proof;
-- the next executable work is the deterministic closure of R03/R05/R06/R08/R15/R17/R18/R19/R22;
+- the next executable race work is R08/R17/R18/R19/R22, while R03/R05/R06/R15 retain their identified `PARTIAL` evidence and are rerun as part of final release proof;
 - subsequent feature development is explicitly deferred until the V3 release baseline is stable enough that new scope will not continuously invalidate fingerprints, migration equivalence and release evidence.
