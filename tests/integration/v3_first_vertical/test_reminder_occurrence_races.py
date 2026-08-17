@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false
 
 import asyncio
-from typing import cast
 
 import pytest
 
@@ -16,6 +15,7 @@ from request_engine.platform.scheduling.postgres import (
 
 from .test_communications_reminders import _create_fixture
 from .test_reminder_plan_races import (
+    PgConnection,
     _seed_due_occurrence,
     _ungranted_lock_waiters,
     _wait_for_new_lock_waiters,
@@ -27,7 +27,7 @@ from .test_reminder_plan_races import (
 @pytest.mark.postgres
 @pytest.mark.concurrency
 async def test_r21_duplicate_reminder_materialization_serializes_to_one_occurrence_graph(
-    admin_conn,
+    admin_conn: PgConnection,
     app_session_factory: SessionFactory,
     worker_session_factory: SessionFactory,
 ) -> None:
