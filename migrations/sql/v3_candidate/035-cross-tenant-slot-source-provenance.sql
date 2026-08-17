@@ -3,11 +3,11 @@ SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
 -- SlotOffer keeps stable foreign keys to a Hold, WaitlistEntry and
--- SlotOpportunity.  Those ids are not sufficient historical provenance if the
--- semantic fields underneath them remain rewritable.  Production commands
--- create these booking-intent rows once and subsequently advance only lifecycle
--- state/revision/timestamps, so freeze their material identity at the database
--- boundary as well.
+-- SlotOpportunity. Those ids are not sufficient historical provenance if the
+-- semantic fields underneath them remain rewritable after an offer references
+-- them. Before that boundary these aggregates retain their baseline mutation
+-- semantics; once referenced by any SlotOffer their material booking meaning is
+-- historical evidence and must not be rewritten underneath the offer.
 
 CREATE FUNCTION request_engine.guard_capacity_hold_provenance_update()
 RETURNS trigger
@@ -15,15 +15,21 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
-       OR OLD.offering_version_id IS DISTINCT FROM NEW.offering_version_id
-       OR OLD.subject_party_id IS DISTINCT FROM NEW.subject_party_id
-       OR OLD.location_id IS DISTINCT FROM NEW.location_id
-       OR OLD.during IS DISTINCT FROM NEW.during
-       OR OLD.expires_at IS DISTINCT FROM NEW.expires_at
-       OR OLD.created_at IS DISTINCT FROM NEW.created_at
-    THEN
-        RAISE EXCEPTION 'CapacityHold booking provenance is immutable'
+    IF EXISTS (
+        SELECT 1
+          FROM request_engine.slot_offers
+         WHERE organization_id = OLD.organization_id
+           AND capacity_hold_id = OLD.id
+    ) AND (
+        OLD.organization_id IS DISTINCT FROM NEW.organization_id
+        OR OLD.offering_version_id IS DISTINCT FROM NEW.offering_version_id
+        OR OLD.subject_party_id IS DISTINCT FROM NEW.subject_party_id
+        OR OLD.location_id IS DISTINCT FROM NEW.location_id
+        OR OLD.during IS DISTINCT FROM NEW.during
+        OR OLD.expires_at IS DISTINCT FROM NEW.expires_at
+        OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    ) THEN
+        RAISE EXCEPTION 'CapacityHold booking provenance is immutable after SlotOffer reference'
             USING ERRCODE = '55000';
     END IF;
 
@@ -41,16 +47,22 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
-       OR OLD.offering_id IS DISTINCT FROM NEW.offering_id
-       OR OLD.subject_party_id IS DISTINCT FROM NEW.subject_party_id
-       OR OLD.location_id IS DISTINCT FROM NEW.location_id
-       OR OLD.preferred_resource_id IS DISTINCT FROM NEW.preferred_resource_id
-       OR OLD.earliest_start IS DISTINCT FROM NEW.earliest_start
-       OR OLD.latest_start IS DISTINCT FROM NEW.latest_start
-       OR OLD.created_at IS DISTINCT FROM NEW.created_at
-    THEN
-        RAISE EXCEPTION 'WaitlistEntry booking provenance is immutable'
+    IF EXISTS (
+        SELECT 1
+          FROM request_engine.slot_offers
+         WHERE organization_id = OLD.organization_id
+           AND waitlist_entry_id = OLD.id
+    ) AND (
+        OLD.organization_id IS DISTINCT FROM NEW.organization_id
+        OR OLD.offering_id IS DISTINCT FROM NEW.offering_id
+        OR OLD.subject_party_id IS DISTINCT FROM NEW.subject_party_id
+        OR OLD.location_id IS DISTINCT FROM NEW.location_id
+        OR OLD.preferred_resource_id IS DISTINCT FROM NEW.preferred_resource_id
+        OR OLD.earliest_start IS DISTINCT FROM NEW.earliest_start
+        OR OLD.latest_start IS DISTINCT FROM NEW.latest_start
+        OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    ) THEN
+        RAISE EXCEPTION 'WaitlistEntry booking provenance is immutable after SlotOffer reference'
             USING ERRCODE = '55000';
     END IF;
 
@@ -68,15 +80,21 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
-       OR OLD.offering_version_id IS DISTINCT FROM NEW.offering_version_id
-       OR OLD.location_id IS DISTINCT FROM NEW.location_id
-       OR OLD.source_reservation_id IS DISTINCT FROM NEW.source_reservation_id
-       OR OLD.source_event_id IS DISTINCT FROM NEW.source_event_id
-       OR OLD.during IS DISTINCT FROM NEW.during
-       OR OLD.created_at IS DISTINCT FROM NEW.created_at
-    THEN
-        RAISE EXCEPTION 'SlotOpportunity booking provenance is immutable'
+    IF EXISTS (
+        SELECT 1
+          FROM request_engine.slot_offers
+         WHERE organization_id = OLD.organization_id
+           AND slot_opportunity_id = OLD.id
+    ) AND (
+        OLD.organization_id IS DISTINCT FROM NEW.organization_id
+        OR OLD.offering_version_id IS DISTINCT FROM NEW.offering_version_id
+        OR OLD.location_id IS DISTINCT FROM NEW.location_id
+        OR OLD.source_reservation_id IS DISTINCT FROM NEW.source_reservation_id
+        OR OLD.source_event_id IS DISTINCT FROM NEW.source_event_id
+        OR OLD.during IS DISTINCT FROM NEW.during
+        OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    ) THEN
+        RAISE EXCEPTION 'SlotOpportunity booking provenance is immutable after SlotOffer reference'
             USING ERRCODE = '55000';
     END IF;
 
