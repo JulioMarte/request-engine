@@ -1,6 +1,3 @@
-from request_engine.platform.security.capabilities import CAPABILITIES
-
-
 EXPECTED_PARTY_AUTHORITY_SURFACE = {
     "appointments.book": ("appointments.book", "appointments.subject_override"),
     "appointments.read": ("appointments.manage", "appointments.subject_override"),
@@ -28,6 +25,8 @@ EXPECTED_PARTY_AUTHORITY_SURFACE = {
 
 
 def test_runtime_party_authority_surface_matches_release_inventory() -> None:
+    from request_engine.platform.security.capabilities import CAPABILITIES
+
     actual = {
         definition.key: (definition.party_scope, definition.override_capability)
         for definition in CAPABILITIES
@@ -37,6 +36,8 @@ def test_runtime_party_authority_surface_matches_release_inventory() -> None:
 
 
 def test_party_scoped_runtime_capabilities_have_explicit_override_permissions() -> None:
+    from request_engine.platform.security.capabilities import CAPABILITIES
+
     for definition in CAPABILITIES:
         if not definition.runtime_available or definition.party_scope is None:
             continue

@@ -13,7 +13,10 @@ from request_engine.modules.queue.adapters.db.leave_queue_commands import (
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
-from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand, join_queue
+from request_engine.modules.queue.application.commands.join_queue import (
+    JoinQueueCommand,
+    join_queue,
+)
 from request_engine.modules.queue.application.commands.leave_queue import (
     LeaveQueueCommand,
     leave_queue,
