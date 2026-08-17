@@ -92,7 +92,7 @@ async def test_queue_join_replays_after_committed_response_loss(
     assert admin_conn.execute(
         """
         SELECT count(*)
-        FROM request_engine.audit_events
+        FROM request_engine.audit_records
         WHERE organization_id = %s
           AND command_name = 'queue.join'
           AND aggregate_id = %s
