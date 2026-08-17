@@ -175,7 +175,7 @@ def test_capacity_hold_material_provenance_is_immutable_after_offer_reference(
             """,
             (organization_id, hold_id),
         )
-    assert rejected.value.sqlstate == "55000"
+    assert rejected.value.sqlstate == "23514"
     assert "CapacityHold booking provenance is immutable" in str(rejected.value)
     admin_conn.rollback()
 
@@ -205,7 +205,7 @@ def test_waitlist_entry_material_provenance_is_immutable_after_offer_reference(
             """,
             (organization_id, waitlist_entry_id),
         )
-    assert rejected.value.sqlstate == "55000"
+    assert rejected.value.sqlstate == "23514"
     assert "WaitlistEntry booking provenance is immutable" in str(rejected.value)
     admin_conn.rollback()
 
@@ -235,7 +235,7 @@ def test_slot_opportunity_material_provenance_is_immutable_after_offer_reference
             """,
             (uuid4(), organization_id, opportunity_id),
         )
-    assert rejected.value.sqlstate == "55000"
+    assert rejected.value.sqlstate == "23514"
     assert "SlotOpportunity booking provenance is immutable" in str(rejected.value)
     admin_conn.rollback()
 
