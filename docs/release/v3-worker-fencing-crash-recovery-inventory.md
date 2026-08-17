@@ -58,45 +58,91 @@ Any future runtime control operation added to these families must be classified 
 
 For each work family, two independent `request_engine_worker` sessions must overlap while claiming the same due row. `FOR UPDATE SKIP LOCKED` must make exactly one session the current owner of that row. The row must end with one `claim_token`, one lease and exactly one increment of `attempt_count` for that ownership transition.
 
+Executable evidence: `tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py::test_r12_claim_vs_claim_has_one_current_owner`, parametrized over ScheduledAction, OutboxMessage and ProviderEvent.
+
 ### R13 — stale finalizer vs reclaimed worker
 
-After worker A's lease expires and worker B reclaims the row with a new token, A must be unable to:
+After worker A's lease expires and worker B reclaims the row with a new token, A must be unable to complete, retry, dead-letter, reject ProviderEvent work, or otherwise clear or replace B's ownership. The final row must remain leased by B until B itself performs a valid transition.
 
-- complete;
-- retry;
-- dead-letter;
-- reject ProviderEvent work;
-- otherwise clear or replace B's ownership.
-
-The final row must remain leased by B until B itself performs a valid transition.
+Executable evidence: `test_r13_r14_reclaim_fences_every_stale_transition_and_late_renewal` exercises all three families. `tests/db/test_v3_worker_expired_leases.py` separately proves that an expired token cannot finalize even before another worker has reclaimed the row.
 
 ### R14 — late renewal vs reclaimed worker
 
 An expired owner cannot extend its lease. After reclaim, the old token cannot renew the new owner's lease. Renewal must require the exact current token and an unexpired current lease.
 
+Executable evidence: the same release matrix exercises stale renewal across all three families; `tests/db/test_v3_worker_runtime.py` and `test_v3_worker_expired_leases.py` preserve the lower-level lease-boundary regressions.
+
 ### R15 — ScheduledAction cancellation vs claim
 
 Both serialized orders must remain valid: cancellation-first prevents a new claim; claim-first makes cancellation serialize with ownership and fences obsolete execution. A claimed-but-obsolete handler cannot perform a new authoritative consequence after cancellation wins.
+
+Executable evidence: `tests/integration/v3_worker_runtime/test_scheduled_action_cancel_race.py` deliberately exercises both row-lock orders with real app/worker sessions. Cancellation-first makes worker discovery `SKIP LOCKED`; claim-first makes cancellation block until claim commit, then invalidates both the stale completion token and `lock_scheduled_action_claim` authority.
 
 ### R16 — Outbox completion vs lease reclaim
 
 If completion wins while the lease is current, reclaim cannot subsequently acquire delivered work. If reclaim wins after expiry, the stale publisher/finalizer cannot mark the new owner's row delivered.
 
+Executable evidence: `test_worker_fencing_release_matrix.py` proves both row-lock orders. Completion-first holds the Outbox row lock and a competing claim must skip it. Reclaim-first holds the replacement claim uncommitted while stale completion is observed blocked on the PostgreSQL row lock; after replacement commit, stale completion returns false and the new claimant remains authoritative.
+
 ## G10 crash/recovery claims
 
-The executable crash matrix must cover these boundaries without relying on worker host time:
+### Crash after claim commit
 
-1. **Crash after claim commit:** leased work remains durable and becomes reclaimable after `lease_until` with a new token.
-2. **Crash after idempotent internal consequence:** replay converges without duplicate semantic state.
-3. **Crash after authoritative domain commit but before worker completion:** reclaim/replay observes the committed business result and converges without a second business mutation.
-4. **External effect succeeds but local finalization is missing:** the runtime must not blindly create an uncontrolled duplicate semantic effect. Stable provider identity/evidence and reconciliation are required; provider-specific ambiguity closure remains owned by G13.
-5. **Processing timeout/cancellation:** a hung handler cannot renew forever; timeout becomes retryable `processing_timeout` work and the lease can eventually be reclaimed.
-6. **Process/supervisor failure:** abrupt process death leaves leased rows recoverable; unexpected stream failure cancels siblings without falsely completing unfinished work; graceful shutdown stops new claiming.
-7. **Retry/dead transition:** attempt counts remain monotonic, max-attempt exhaustion is terminal, and admin replay adds budget without resetting lifetime history.
+A process crash after durable claim commit leaves leased work reclaimable after `lease_until`, with a new token and a fenced old owner.
+
+Executable evidence:
+
+- ScheduledAction: `tests/integration/v3_worker_runtime/test_process_crash_recovery.py` starts a real subprocess, claims through `request_engine_worker`, fsyncs the token, then terminates itself with `SIGKILL`; a later worker reclaims and fences the dead process token.
+- OutboxMessage and ProviderEvent: `test_process_crash_recovery_other_families.py` executes the same real-process SIGKILL boundary and requires fresh-token reclaim plus stale-completion rejection for both remaining families.
+
+### Crash after idempotent internal consequence / before Outbox completion
+
+`tests/integration/v3_worker_runtime/test_worker_runtime.py::test_outbox_replays_idempotent_local_effect_after_publish_crash` runs the internal consequence, fails the publisher, retries the same Outbox fact and requires semantic application once while the idempotent internal handler may be invoked again. Final Outbox state is delivered with lifetime `attempt_count = 2`.
+
+Reservation lifecycle composition adds a business-level proof: `tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py` replays durable Reservation facts after independently committed partial scheduling/communications consequences and requires convergence without duplicate downstream state.
+
+### Authoritative post-I/O fencing and external-effect recovery
+
+A provider/network result cannot become authoritative merely because the worker once owned the work item. The app transaction publishing authoritative state must prove the exact current worker claim.
+
+Two real provider-facing families exercise this boundary:
+
+- **Communications:** `tests/integration/v3_worker_runtime/test_communication_fencing.py::test_worker_that_loses_lease_during_provider_io_cannot_finalize_delivery` lets `provider.send()` succeed while another worker reclaims the ScheduledAction. The stale worker raises `LeaseLostWorkError` and cannot mark the delivery delivered. The replacement claimant performs provider `lookup` rather than a second send, so `send_count == 1`, then publishes the recovered provider result under the current claim.
+- **ReservationAccess:** `tests/integration/v3_delivery/test_reservation_access_races.py::test_lost_outbox_lease_cannot_publish_but_replay_reuses_provider_evidence` loses the Outbox lease during provisioning. The stale claimant leaves only non-authoritative pending evidence; the replacement claimant reuses provider evidence and does not create a second provider resource. `test_cancel_recovers_provider_success_that_crashed_before_db_evidence` additionally proves non-creating lookup when provider success occurred before local evidence was durably published.
+
+These tests close the worker/crash ownership boundary. Provider-specific ambiguity, callback ordering and the complete reconciliation/failure matrix remain owned by G13 and are not silently promoted by this branch.
+
+### Processing timeout and heartbeat loss
+
+`tests/unit/test_worker_runtime_failure_boundaries.py` proves the asyncio runtime mechanics directly:
+
+- a handler exceeding `processing_timeout` is cancelled and classified as retryable `processing_timeout` rather than completed/dead;
+- heartbeat renewal failure produces `STALE` and suppresses complete/retry/dead finalization even if the processor later returns.
+
+### Process/supervisor failure
+
+The real SIGKILL tests above prove durable recovery after abrupt worker death. `test_worker_runtime_failure_boundaries.py` separately proves structured concurrency: an unexpected worker-stream failure cancels its sibling stream and propagates through `TaskGroup`; the same graceful-stop event is shared with all streams.
+
+### Retry, exhaustion, replay and history
+
+Existing DB/runtime evidence remains part of the closure:
+
+- `tests/db/test_v3_worker_runtime.py::test_retry_after_uses_database_clock_and_preserves_lifetime_attempt_count` requires DB-clock retry scheduling and monotonic lifetime attempts;
+- `test_admin_replay_is_privileged_preserves_history_and_is_audited` proves the worker cannot replay, trusted admin replay adds attempt budget, preserves `attempt_count`, increments replay history and records actor/correlation audit provenance;
+- terminal ProviderEvent rejected/dead semantics remain distinct;
+- runtime poison/unknown work is dead-lettered instead of retrying forever.
+
+### Bounded concurrency and tenant fairness
+
+`FencedWorkerRuntime.run_once()` claims `min(claim_batch_size, max_concurrency)` and config validation caps both values. Existing DB tests prove rank-round fairness for ScheduledAction and OutboxMessage. `tests/db/test_v3_worker_provider_fairness.py` adds the equivalent ProviderEvent proof: with two due items for one hot tenant and one newer due item for a quiet tenant, claim order must be hot rank-1, quiet rank-1, then hot rank-2.
+
+This closes fairness correctness only. Representative-cardinality query-plan/performance evidence for the ranking queries remains G15.
 
 ## Role boundary
 
-Release evidence must execute worker-control functions through a real `request_engine_worker` role. Business-state writes continue through `request_engine_app`. Admin/setup connections may construct fixtures and inspect final state, but they do not count as fencing proof.
+Release evidence executes worker-control functions through a real `request_engine_worker` role. Business-state writes continue through `request_engine_app`. Admin/setup connections may construct fixtures and inspect final state, but they do not count as fencing proof.
+
+`tests/integration/v3_worker_runtime/test_production_worker_assembly.py` proves that the production composition root receives separate worker/app factories, that the worker credential is a worker member but not an app member, and that Booking/Queue domain handlers receive the app factory while ScheduledAction/Outbox/ProviderEvent control stays on the worker side.
 
 No G09/G10 closure may widen `request_engine_worker` into authoritative business DML or bypass the existing narrow SECURITY DEFINER fences.
 
