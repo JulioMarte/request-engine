@@ -228,9 +228,7 @@ async def test_reminder_subject_override_cannot_import_foreign_party(
             "tenant_reference_not_usable",
             "fix_request",
         )
-        assert foreign_subject.json()["error"]["details"] == {
-            "reference_kind": "subject_party_id"
-        }
+        assert foreign_subject.json()["error"]["details"] == {"reference_kind": "subject_party_id"}
 
     assert admin_conn.execute(
         """

@@ -210,20 +210,26 @@ def test_invalid_party_authority_states_fail_closed_for_read_and_lock_primitives
 
     app_conn = _app_connection(pg_conninfo, case.organization_id)
     try:
-        assert _resolve_rows(
-            app_conn,
-            organization_id=case.organization_id,
-            principal_id=case.principal_id,
-            party_id=lookup_party_id,
-            scope_key=lookup_scope,
-        ) == []
-        assert _lock_rows(
-            app_conn,
-            organization_id=case.organization_id,
-            principal_id=case.principal_id,
-            party_id=lookup_party_id,
-            scope_key=lookup_scope,
-        ) == []
+        assert (
+            _resolve_rows(
+                app_conn,
+                organization_id=case.organization_id,
+                principal_id=case.principal_id,
+                party_id=lookup_party_id,
+                scope_key=lookup_scope,
+            )
+            == []
+        )
+        assert (
+            _lock_rows(
+                app_conn,
+                organization_id=case.organization_id,
+                principal_id=case.principal_id,
+                party_id=lookup_party_id,
+                scope_key=lookup_scope,
+            )
+            == []
+        )
     finally:
         app_conn.close()
 
@@ -237,19 +243,25 @@ def test_current_exact_scope_party_authority_is_visible_to_both_primitives(
     app_conn = _app_connection(pg_conninfo, case.organization_id)
     try:
         expected = [(case.representation_id, "delegated")]
-        assert _resolve_rows(
-            app_conn,
-            organization_id=case.organization_id,
-            principal_id=case.principal_id,
-            party_id=case.party_id,
-            scope_key="appointments.manage",
-        ) == expected
-        assert _lock_rows(
-            app_conn,
-            organization_id=case.organization_id,
-            principal_id=case.principal_id,
-            party_id=case.party_id,
-            scope_key="appointments.manage",
-        ) == expected
+        assert (
+            _resolve_rows(
+                app_conn,
+                organization_id=case.organization_id,
+                principal_id=case.principal_id,
+                party_id=case.party_id,
+                scope_key="appointments.manage",
+            )
+            == expected
+        )
+        assert (
+            _lock_rows(
+                app_conn,
+                organization_id=case.organization_id,
+                principal_id=case.principal_id,
+                party_id=case.party_id,
+                scope_key="appointments.manage",
+            )
+            == expected
+        )
     finally:
         app_conn.close()
