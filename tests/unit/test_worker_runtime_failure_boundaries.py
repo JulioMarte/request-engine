@@ -28,6 +28,7 @@ class _Store:
         self.retry_calls: list[tuple[timedelta, str]] = []
         self.dead_calls = 0
         self.renew_calls = 0
+        self.renewed = asyncio.Event()
 
     async def claim(self, *, limit: int, lease: timedelta) -> tuple[_Lease, ...]:
         assert limit == 1
@@ -63,6 +64,7 @@ class _Store:
         assert lease == self.lease
         assert extension > timedelta(0)
         self.renew_calls += 1
+        self.renewed.set()
         return self.renew_result
 
 
@@ -138,8 +140,7 @@ async def test_lost_heartbeat_prevents_finalization_even_when_handler_returns() 
     )
 
     task = asyncio.create_task(runtime.run_once())
-    while store.renew_calls == 0:
-        await asyncio.sleep(0)
+    await store.renewed.wait()
     release.set()
     outcome = (await task)[0]
 
