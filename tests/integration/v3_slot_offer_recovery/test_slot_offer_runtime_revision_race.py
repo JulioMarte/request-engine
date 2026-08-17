@@ -110,8 +110,9 @@ async def test_slot_offer_accept_vs_decline_same_revision_uses_real_app_runtime(
         decline_task,
         return_exceptions=True,
     )
-    successes = [item for item in (accept_result, decline_result) if not isinstance(item, BaseException)]
-    failures = [item for item in (accept_result, decline_result) if isinstance(item, BaseException)]
+    outcomes = (accept_result, decline_result)
+    successes = [item for item in outcomes if not isinstance(item, BaseException)]
+    failures = [item for item in outcomes if isinstance(item, BaseException)]
     assert len(successes) == 1
     assert len(failures) == 1
     assert isinstance(failures[0], SlotOfferRevisionConflict)
