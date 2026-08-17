@@ -18,7 +18,7 @@ from request_engine.modules.booking.application.errors import SubjectAuthorityRe
 from request_engine.modules.booking.contracts.appointments import ReservationStatus
 from request_engine.platform.db.session import SessionFactory
 
-from tests.integration.v3_first_vertical._authority_race_support import (
+from ._authority_race_support import (
     assert_revoke_blocked,
     begin_revoke,
     connect,
@@ -28,7 +28,6 @@ from tests.integration.v3_first_vertical._authority_race_support import (
     wait_until_audit_blocked,
     wait_until_authority_blocked,
 )
-
 from .test_reservation_lifecycle import _fixture, _future_start
 
 PgConnection = Connection[Any]
@@ -48,7 +47,6 @@ async def _confirmed_reservation(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
         party_id=fixture.subject_id,
-        scope_key="appointments.manage",
     )
     return fixture, PostgresReservationCommands(app_session_factory), representation_id
 
