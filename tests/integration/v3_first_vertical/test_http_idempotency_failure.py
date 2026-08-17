@@ -49,7 +49,7 @@ class _DropFirstBookingResponseTransport(httpx.AsyncBaseTransport):
 @pytest.mark.concurrency
 async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_one_effect(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     actors = {
@@ -60,7 +60,7 @@ async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_o
         )
     }
     app = create_app(
-        session_factory=session_factory,
+        session_factory=app_session_factory,
         actor_resolver=BearerTestActorResolver(actors),
     )
     auth = {"Authorization": "Bearer agent"}
