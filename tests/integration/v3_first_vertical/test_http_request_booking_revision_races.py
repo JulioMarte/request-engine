@@ -6,8 +6,6 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from psycopg import Connection
-
-from request_engine.platform.db.session import SessionFactory
 from tests.integration.v3_first_vertical._race_support import race_behind_row_lock
 from tests.integration.v3_first_vertical.test_http_attendance_idempotency_failure import (
     _app as booking_app,
@@ -27,6 +25,8 @@ from tests.integration.v3_first_vertical.test_http_requests import (
 from tests.integration.v3_first_vertical.test_http_reservation_idempotency_failure import (
     _slot_options,
 )
+
+from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
 
