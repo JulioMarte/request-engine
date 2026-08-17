@@ -133,8 +133,7 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
             assert "x-request-engine-override-capability" not in contract
         else:
             assert (
-                contract["x-request-engine-override-capability"]
-                == definition.override_capability
+                contract["x-request-engine-override-capability"] == definition.override_capability
             )
 
 
