@@ -10,17 +10,29 @@ from psycopg import Connection, sql
 PgConnection = Connection[Any]
 
 _APP_EXECUTE_ALLOWLIST = {
-    "request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, p_capability text, p_idempotency_key text, p_request_fingerprint text)",
+    (
+        "request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, "
+        "p_capability text, p_idempotency_key text, p_request_fingerprint text)"
+    ),
     "request_cmd.cancel_scheduled_action(p_organization_id uuid, p_action_id uuid)",
     "request_cmd.complete_idempotency(p_idempotency_id uuid, p_result_data jsonb)",
-    "request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, p_claim_token uuid)",
+    (
+        "request_cmd.lock_outbox_message_claim(p_organization_id uuid, p_message_id uuid, "
+        "p_claim_token uuid)"
+    ),
     "request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid)",
     "request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[])",
     "request_engine.current_authenticated_principal_id()",
     "request_engine.current_correlation_id()",
     "request_engine.current_organization_id()",
-    "request_engine.lock_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)",
-    "request_engine.resolve_current_party_authority(p_organization_id uuid, p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)",
+    (
+        "request_engine.lock_current_party_authority(p_organization_id uuid, "
+        "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
+    ),
+    (
+        "request_engine.resolve_current_party_authority(p_organization_id uuid, "
+        "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
+    ),
 }
 
 
