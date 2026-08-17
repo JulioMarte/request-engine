@@ -7,14 +7,20 @@ from uuid import uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
-from request_engine.modules.booking.adapters.db.lifecycle_reader import PostgresReservationLifecycleReader
+from request_engine.modules.booking.adapters.db.attendance_commands import (
+    PostgresAttendanceCommands,
+)
+from request_engine.modules.booking.adapters.db.lifecycle_reader import (
+    PostgresReservationLifecycleReader,
+)
 from request_engine.modules.booking.adapters.db.slot_offer_capacity import PostgresSlotOfferCapacity
 from request_engine.modules.booking.application.commands.record_attendance import decline_attendance
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
 )
-from request_engine.modules.queue.adapters.db.released_slot_recovery import PostgresReleasedSlotRecovery
+from request_engine.modules.queue.adapters.db.released_slot_recovery import (
+    PostgresReleasedSlotRecovery,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.postgres import command_fingerprint
 
