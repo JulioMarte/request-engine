@@ -1,8 +1,11 @@
+# pyright: reportPrivateUsage=false
+
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from psycopg import Connection
 
 from request_engine.platform.db.session import SessionFactory
@@ -20,7 +23,7 @@ from .test_http_waitlist_idempotency_failure import _app as waitlist_app
 PgConnection = Connection[Any]
 
 
-def _client(app: object) -> httpx.AsyncClient:
+def _client(app: FastAPI) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",

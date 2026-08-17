@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from typing import Any, cast
 from uuid import UUID, uuid4
 

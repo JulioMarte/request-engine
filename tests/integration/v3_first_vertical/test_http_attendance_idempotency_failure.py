@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
