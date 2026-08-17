@@ -110,7 +110,7 @@ Two real provider-facing families exercise this boundary:
 - **Communications:** `tests/integration/v3_worker_runtime/test_communication_fencing.py::test_worker_that_loses_lease_during_provider_io_cannot_finalize_delivery` lets `provider.send()` succeed while another worker reclaims the ScheduledAction. The stale worker raises `LeaseLostWorkError` and cannot mark the delivery delivered. The replacement claimant performs provider `lookup` rather than a second send, so `send_count == 1`, then publishes the recovered provider result under the current claim.
 - **ReservationAccess:** `tests/integration/v3_delivery/test_reservation_access_races.py::test_lost_outbox_lease_cannot_publish_but_replay_reuses_provider_evidence` loses the Outbox lease during provisioning. The stale claimant leaves only non-authoritative pending evidence; the replacement claimant reuses provider evidence and does not create a second provider resource. `test_cancel_recovers_provider_success_that_crashed_before_db_evidence` additionally proves non-creating lookup when provider success occurred before local evidence was durably published.
 
-These tests close the worker/crash ownership boundary. Provider-specific ambiguity, callback ordering and the complete reconciliation/failure matrix remain owned by G13 and are not silently promoted by this branch.
+These tests close the worker/crash ownership boundary. They do **not** claim the entire R20/G13 provider ambiguity matrix: provider callback reorder, ambiguous provider outcomes, reconciliation policy and communications failure semantics remain owned by G13. This branch may close G10 while R20 remains `PARTIAL` until that wider semantic claim is proven.
 
 ### Processing timeout and heartbeat loss
 
@@ -121,7 +121,7 @@ These tests close the worker/crash ownership boundary. Provider-specific ambigui
 
 ### Process/supervisor failure
 
-The real SIGKILL tests above prove durable recovery after abrupt worker death. `test_worker_runtime_failure_boundaries.py` separately proves structured concurrency: an unexpected worker-stream failure cancels its sibling stream and propagates through `TaskGroup`; the same graceful-stop event is shared with all streams.
+The real SIGKILL tests above prove durable recovery after abrupt worker death. `test_worker_runtime_failure_boundaries.py` separately proves structured concurrency: an unexpected worker-stream failure cancels its sibling stream and propagates the specific stream failure through `TaskGroup`; the same graceful-stop event is shared with all streams.
 
 ### Retry, exhaustion, replay and history
 
