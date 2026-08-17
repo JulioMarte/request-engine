@@ -52,23 +52,34 @@ def _provider_lease(organization_id: UUID, reservation_id: UUID) -> ProviderEven
     )
 
 
-async def _wait_for_app_lock_waiters(admin_conn: PgConnection, *, expected: int) -> None:
+def _ungranted_lock_waiters(admin_conn: PgConnection) -> int:
+    row = admin_conn.execute(
+        """
+        SELECT count(DISTINCT pid)
+        FROM pg_locks
+        WHERE NOT granted
+          AND pid IS NOT NULL
+          AND pid <> pg_backend_pid()
+        """
+    ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+async def _wait_for_new_lock_waiters(
+    admin_conn: PgConnection,
+    *,
+    baseline: int,
+    expected_new: int,
+) -> None:
     deadline = asyncio.get_running_loop().time() + 5
     while asyncio.get_running_loop().time() < deadline:
-        row = admin_conn.execute(
-            """
-            SELECT count(*)
-            FROM pg_stat_activity
-            WHERE pid <> pg_backend_pid()
-              AND usename LIKE 'request_engine_app_test_%'
-              AND state = 'active'
-              AND wait_event_type = 'Lock'
-            """
-        ).fetchone()
-        if row is not None and int(row[0]) >= expected:
+        if _ungranted_lock_waiters(admin_conn) >= baseline + expected_new:
             return
         await asyncio.sleep(0.01)
-    raise AssertionError(f"expected at least {expected} blocked app-runtime sessions")
+    raise AssertionError(
+        f"expected at least {expected_new} new PostgreSQL lock waiters above baseline {baseline}"
+    )
 
 
 @pytest.mark.asyncio
@@ -123,9 +134,14 @@ async def test_r18_provider_semantic_callback_vs_business_cancellation_serialize
             """,
             (fixture.organization_id, fixture.reservation_id),
         ).fetchone()
+        baseline_waiters = _ungranted_lock_waiters(admin_conn)
         provider_task = asyncio.create_task(router.process(lease))
         cancel_task = asyncio.create_task(cancel_reservation(reservations, cancel_command))
-        await _wait_for_app_lock_waiters(admin_conn, expected=2)
+        await _wait_for_new_lock_waiters(
+            admin_conn,
+            baseline=baseline_waiters,
+            expected_new=2,
+        )
         assert not provider_task.done()
         assert not cancel_task.done()
 
