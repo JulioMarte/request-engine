@@ -42,8 +42,6 @@ def test_party_scoped_runtime_capabilities_have_explicit_override_permissions() 
         if not definition.runtime_available or definition.party_scope is None:
             continue
         assert definition.override_capability is not None
-        override = next(
-            item for item in CAPABILITIES if item.key == definition.override_capability
-        )
+        override = next(item for item in CAPABILITIES if item.key == definition.override_capability)
         assert override.runtime_available is False
         assert override.party_scope is None
