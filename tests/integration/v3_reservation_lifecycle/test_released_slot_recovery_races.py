@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false
 
 import asyncio
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -19,7 +20,7 @@ from request_engine.platform.idempotency.postgres import command_fingerprint
 
 from .test_reservation_lifecycle import _fixture, _future_start
 
-PgConnection = Connection[object]
+PgConnection = Connection[Any]
 
 
 @pytest.mark.asyncio
