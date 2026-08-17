@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Coroutine
 from typing import Any
 from uuid import UUID
 
@@ -54,8 +54,8 @@ async def race_behind_row_lock[T](
     table: str,
     organization_id: UUID,
     aggregate_id: UUID,
-    first: Awaitable[T],
-    second: Awaitable[T],
+    first: Coroutine[Any, Any, T],
+    second: Coroutine[Any, Any, T],
 ) -> tuple[T | BaseException, T | BaseException]:
     if table not in _ALLOWED_RACE_ROOTS:
         raise ValueError(f"unsupported race root: {table}")
