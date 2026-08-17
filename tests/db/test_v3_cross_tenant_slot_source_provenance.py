@@ -116,34 +116,41 @@ def _sources(conn: PgConnection) -> tuple[UUID, UUID, UUID, UUID]:
         """,
         (organization_id, offering_version_id, uuid4()),
     )
-    hold_id = _uuid(
-        conn,
-        """
-        INSERT INTO request_engine.capacity_holds (
-            organization_id, offering_version_id, subject_party_id,
-            during, expires_at
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange('2030-09-01T14:00:00+00'::timestamptz,
-                      '2030-09-01T14:30:00+00'::timestamptz, '[)'),
-            clock_timestamp() + interval '1 hour'
-        ) RETURNING id
-        """,
-        (organization_id, offering_version_id, party_id),
-    )
-    conn.execute(
-        """
-        INSERT INTO request_engine.capacity_claims (
-            organization_id, resource_id, requirement_id, hold_id,
-            during, quantity
-        ) VALUES (
-            %s, %s, %s, %s,
-            tstzrange('2030-09-01T14:00:00+00'::timestamptz,
-                      '2030-09-01T14:30:00+00'::timestamptz, '[)'), 1
+    conn.commit()
+
+    # Capacity-owner completeness is a deferred invariant. Construct the Hold
+    # and its mandatory claim as one authoritative unit before adding the Offer,
+    # matching the canonical fixtures/production transaction boundary.
+    with conn.transaction():
+        hold_id = _uuid(
+            conn,
+            """
+            INSERT INTO request_engine.capacity_holds (
+                organization_id, offering_version_id, subject_party_id,
+                during, expires_at
+            ) VALUES (
+                %s, %s, %s,
+                tstzrange('2030-09-01T14:00:00+00'::timestamptz,
+                          '2030-09-01T14:30:00+00'::timestamptz, '[)'),
+                clock_timestamp() + interval '1 hour'
+            ) RETURNING id
+            """,
+            (organization_id, offering_version_id, party_id),
         )
-        """,
-        (organization_id, resource_id, requirement_id, hold_id),
-    )
+        conn.execute(
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id, resource_id, requirement_id, hold_id,
+                during, quantity
+            ) VALUES (
+                %s, %s, %s, %s,
+                tstzrange('2030-09-01T14:00:00+00'::timestamptz,
+                          '2030-09-01T14:30:00+00'::timestamptz, '[)'), 1
+            )
+            """,
+            (organization_id, resource_id, requirement_id, hold_id),
+        )
+
     conn.execute(
         """
         INSERT INTO request_engine.slot_offers (
