@@ -53,6 +53,7 @@ def test_slot_offer_deferred_trigger_is_private_safe_security_definer(
         """
         SELECT p.prosecdef,
                pg_get_userbyid(p.proowner),
+               p.proconfig,
                has_function_privilege(
                    'request_engine_app', p.oid, 'EXECUTE'
                ),
@@ -80,6 +81,7 @@ def test_slot_offer_deferred_trigger_is_private_safe_security_definer(
     assert helper == (
         False,
         "request_engine_schema_owner",
+        ["search_path=pg_catalog, request_engine, pg_temp"],
         False,
         False,
         False,
