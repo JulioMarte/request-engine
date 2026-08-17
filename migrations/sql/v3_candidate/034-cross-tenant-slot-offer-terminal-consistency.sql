@@ -157,17 +157,22 @@ BEGIN
                ),
                count(DISTINCT c.reservation_id) FILTER (
                    WHERE c.status = 'active' AND c.reservation_id IS NOT NULL
-               ),
-               min(c.reservation_id) FILTER (
-                   WHERE c.status = 'active' AND c.reservation_id IS NOT NULL
                )
           INTO v_claim_count,
                v_promoted_claim_count,
-               v_reservation_count,
-               v_reservation_id
+               v_reservation_count
           FROM request_engine.capacity_claims c
          WHERE c.organization_id = offer_row.organization_id
            AND c.hold_id = offer_row.capacity_hold_id;
+
+        SELECT c.reservation_id
+          INTO v_reservation_id
+          FROM request_engine.capacity_claims c
+         WHERE c.organization_id = offer_row.organization_id
+           AND c.hold_id = offer_row.capacity_hold_id
+           AND c.status = 'active'
+           AND c.reservation_id IS NOT NULL
+         LIMIT 1;
 
         IF v_claim_count = 0
            OR v_promoted_claim_count <> v_claim_count
