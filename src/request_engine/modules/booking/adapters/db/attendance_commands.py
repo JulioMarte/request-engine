@@ -55,8 +55,9 @@ class PostgresAttendanceCommands:
         self,
         command: RecordAttendanceResponseCommand,
     ) -> ReservationAttendanceState:
+        capability = "booking.record_attendance_response"
         fingerprint = command_fingerprint(
-            "booking.record_attendance_response",
+            capability,
             {
                 "reservation_id": command.reservation_id,
                 "response": command.response,
@@ -69,7 +70,7 @@ class PostgresAttendanceCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability=f"appointments.attendance.{command.response}",
+                capability=capability,
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
@@ -78,13 +79,6 @@ class PostgresAttendanceCommands:
 
             reservation = await _lock_reservation(
                 session, command.organization_id, command.reservation_id
-            )
-            if cast(str, reservation["status"]) != "confirmed":
-                raise AttendanceReservationNotActive(
-                    command.reservation_id, cast(str, reservation["status"])
-                )
-            ensure_reservation_revision(
-                reservation, command.reservation_id, command.expected_revision
             )
             subject_party_id = cast(UUID, reservation["subject_party_id"])
             authority = await require_subject_authority(
@@ -95,6 +89,13 @@ class PostgresAttendanceCommands:
                 scope_key=MANAGE_APPOINTMENT_SCOPE,
                 allow_operator_override=command.allow_subject_override,
             )
+            ensure_reservation_revision(
+                reservation, command.reservation_id, command.expected_revision
+            )
+            if cast(str, reservation["status"]) != "confirmed":
+                raise AttendanceReservationNotActive(
+                    command.reservation_id, cast(str, reservation["status"])
+                )
             response_row = (
                 (
                     await session.execute(
@@ -192,7 +193,7 @@ class PostgresAttendanceCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name="booking.record_attendance_response",
+                command_name=capability,
                 aggregate_kind="Reservation",
                 aggregate_id=command.reservation_id,
                 idempotency_id=idempotency_id,
