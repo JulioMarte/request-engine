@@ -141,7 +141,7 @@ Later legitimate Reservation cancellation/reschedule is not prohibited; the acce
 
 ### Historical source provenance
 
-A Hold, WaitlistEntry or SlotOpportunity may retain its baseline mutation semantics before any SlotOffer references it. Once referenced by a SlotOffer, material fields that define the meaning of that source become immutable underneath the offer. Lifecycle status/revision changes remain allowed through their normal contracts.
+A Hold, WaitlistEntry or SlotOpportunity may retain its baseline mutation semantics before any SlotOffer references it. Once referenced by a SlotOffer, material fields that define the meaning of that source become immutable underneath the offer. Revision and lifecycle transitions remain governed by their normal contracts **and by the SlotOffer state machine**: while a SlotOffer remains unresolved in `offered` state, its Hold must remain live, its WaitlistEntry active and its SlotOpportunity open.
 
 This boundary prevents a stable SlotOffer id from silently changing historical meaning while avoiding an unnecessary breaking restriction on unrelated pre-offer baseline operations.
 
