@@ -1,21 +1,18 @@
-from datetime import timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from fastapi import Request
+from fastapi import FastAPI, Request
 from psycopg import Connection
 
 from request_engine.bootstrap.http import build_http_app
 from request_engine.entrypoints.http.security import AuthenticationRequired
 from request_engine.modules.queue.application.commands.offer_next_waitlist_candidate import (
-    OfferNextWaitlistCandidateCommand,
     offer_next_waitlist_candidate,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
-
 from tests.integration.v3_first_vertical._response_loss import (
     DropFirstMatchingResponseTransport,
 )
@@ -35,7 +32,11 @@ class SlotOfferBearerResolver:
         return self._actor
 
 
-def _app(session_factory: SessionFactory, organization_id: UUID, principal_id: UUID):
+def _app(
+    session_factory: SessionFactory,
+    organization_id: UUID,
+    principal_id: UUID,
+) -> FastAPI:
     actor = ActorContext(
         organization_id=organization_id,
         principal_id=principal_id,
