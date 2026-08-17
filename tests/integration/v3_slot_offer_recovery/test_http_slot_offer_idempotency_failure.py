@@ -118,7 +118,7 @@ async def test_slot_offer_accept_replays_after_committed_response_loss(
         replay = await client.post(path, json=body, headers=headers)
 
     assert replay.status_code == 200
-    reservation_id = UUID(cast(str, replay.json()["reservation"]["id"]))
+    reservation_id = UUID(cast(str, replay.json()["reservation_id"]))
     state = admin_conn.execute(
         """
         SELECT so.status, h.status, o.status, w.status,
