@@ -78,17 +78,14 @@ async def test_two_reconciliations_cannot_emit_failed_then_completed_for_one_del
     delivery_id = _delivery(e2e_admin_conn, org, task_id, status="accepted")
     first_action_id = _reconcile(e2e_admin_conn, org, delivery_id)
     second_action_id = _reconcile(e2e_admin_conn, org, delivery_id)
+    target_ids = {first_action_id, second_action_id}
     provider = OrderedConflictingLookupProvider()
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
         _, _, scheduler, worker = stack
         leases = await scheduler.claim(limit=500, lease=timedelta(seconds=30))
-        ours = {
-            lease.id: lease
-            for lease in leases
-            if lease.id in {first_action_id, second_action_id}
-        }
-        assert set(ours) == {first_action_id, second_action_id}
+        ours = {lease.id: lease for lease in leases if lease.id in target_ids}
+        assert set(ours) == target_ids
 
         first_process = asyncio.create_task(worker.process(ours[first_action_id]))
         await asyncio.wait_for(provider.first_started.wait(), timeout=10)
