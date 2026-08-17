@@ -207,9 +207,7 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
     start_b = start_a + timedelta(days=7)
     start_c = start_b + timedelta(days=7)
     commands = PostgresBookingCommitmentCommands(session_factory)
-    resource_choice = (
-        ResourceChoice(requirement_id=requirement_id, resource_id=resource_id),
-    )
+    resource_choice = (ResourceChoice(requirement_id=requirement_id, resource_id=resource_id),)
     first = await reschedule_reservation(
         commands,
         RescheduleReservationCommand(
