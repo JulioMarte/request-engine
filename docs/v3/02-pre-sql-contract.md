@@ -1601,3 +1601,93 @@ However `0001_initial` remains blocked until:
 6. only then squash the approved schema into Alembic `0001_initial`.
 
 The schema should be materially smaller than V2.10. That is an architectural objective, not a regression.
+
+---
+
+# 27. Gated V3 extension contract — cross-tenant shared capacity
+
+This section is normative for any V3 candidate that includes the cross-tenant shared-capacity migrations and runtime integration. It extends the baseline without replacing tenant ownership or introducing a generalized CapacityPool.
+
+Statements above that describe `Resource` as the baseline capacity root remain true for every unbound Resource. For an explicitly authorized binding, the local Resource remains the first tenant-local lock root and an opaque `SharedCapacityIdentity` becomes an additional hidden serialization root.
+
+## 27.1 Identity, authority and consumption truth
+
+The extension adds these internal concepts:
+
+```text
+GlobalIdentity
+    opaque control-plane identity for the real-world person/organization
+
+SharedCapacityIdentity
+    opaque serialization identity for one indivisible physical/logical capacity
+
+SharedCapacityBinding
+    explicit trusted authorization from one tenant-local Resource to one shared root
+
+SharedCapacityClaimLink
+    private claim-to-root serialization provenance
+```
+
+`Party` and `Resource` remain tenant-local. No global people directory or global Resource is created. Correlation by email, phone, government identifier, provider identifier or UUID knowledge never grants binding or read authority.
+
+Only the trusted administrative/control-plane authority may create global identities, shared roots or activate/revoke bindings. Ordinary app and worker roles may neither enumerate nor mutate that global state.
+
+`CapacityClaim` remains the **sole authoritative capacity-consumption ledger**. `SharedCapacityClaimLink` stores only private serialization provenance; it does not duplicate interval, quantity, Reservation, Party or Offering truth.
+
+The initial shared-capacity model is restricted to `exclusive` Resources. Generalized unit sharing, CapacityPool semantics or external commitments require a separate contract.
+
+## 27.2 Canonical lock and transaction protocol
+
+For an operation that may consume or release capacity on bound Resources, the baseline lock protocol is extended as follows:
+
+```text
+0. idempotency identity when applicable
+1. existing business root/child rows required by the baseline command
+2. collect the complete set of affected tenant-local Resources
+3. deduplicate and lock all local Resources in stable UUID order
+4. resolve active shared bindings only through the protected runtime surface
+5. deduplicate and lock all corresponding SharedCapacityIdentity rows in stable UUID order
+6. revalidate authoritative final capacity state
+7. mutate CapacityClaim and dependent state
+8. emit audit/outbox consequences
+```
+
+No shared root may be locked before an affected local Resource on a booking path. A command with no active binding has an empty shared-root step and therefore retains baseline behavior.
+
+Reschedule collects `union(old Resource ids, new Resource ids)` before either releasing old claims or creating replacements, locks that whole local set, then locks the union of shared roots. This preserves self-overlap correctness and removes inverse old/new-root acquisition.
+
+Control-plane binding activation/revocation follows `Resource → SharedCapacityIdentity`. Activation under those locks backfills private links for already-live local claims. Revocation does not delete claim links for already-committed live consumption.
+
+The database capacity guard is the final cross-tenant backstop. Shared overlap fails with generic capacity-unavailable semantics and must not include the foreign Organization, Resource, Party, Reservation, Offering, root or claim identifier.
+
+When Queue owns an outer SlotOffer issuance transaction and expected capacity loss must be converted into “close/advance opportunity”, speculative Hold/Claim acquisition executes in a nested transaction/savepoint. A shared-capacity conflict rolls back only those speculative writes before Queue continues its outer transaction. Catching `23P01` without restoring transaction usability is not a valid implementation.
+
+## 27.3 Extension invariants
+
+These invariants augment V3-I01..V3-I61 whenever this extension is present:
+
+| ID | Invariant | Owner |
+|---|---|---|
+| V3-I62 | Global/shared identity and binding authority is explicit trusted control-plane authority; correlation or UUID knowledge grants no tenant binding/read authority | BOTH/ops |
+| V3-I63 | Every live commitment created through an actively bound exclusive Resource serializes through its SharedCapacityIdentity while CapacityClaim remains the sole consumption truth | BOTH |
+| V3-I64 | Tenant runtime cannot enumerate private global/shared state, and local versus foreign shared-capacity contention is externally indistinguishable except for generic availability/unavailability | DB+APP |
+| V3-I65 | Binding activation/revocation/rebinding preserves live serialization provenance: activation backfills under locks, revocation preserves live links, and different-root rebinding is rejected while live provenance exists | BOTH |
+| V3-I66 | Shared-capacity lock topology is deterministic: all affected local Resources stable-id ordered before all shared roots stable-id ordered; control-plane binding mutation uses Resource then shared root | APP protocol + DB primitive |
+
+## 27.4 Extension race requirements
+
+The canonical race inventory is extended by:
+
+49. simultaneous overlapping commitments from two Organizations bound to one shared root → exactly one incompatible commitment commits;
+50. direct Booking versus CapacityHold/SlotOffer across Organizations in both winner orders → one valid capacity owner and no false active offer/orphan Hold/Claim;
+51. reschedule versus foreign shared commitment → conflicting reschedule rolls back completely and preserves the original Reservation/claim state;
+52. binding activation/revocation versus live claim creation → one serial outcome with correct backfill/preserved provenance and no serialization gap;
+53. inverse multi-Resource/multi-root acquisition, including simultaneous real reschedules touching old/new roots → deterministic local-Resource-then-shared-root order, no deadlock, and final claim cardinality/state is valid.
+
+The release-level aliases for these races are `R25..R29` in `docs/release/v3-race-matrix.md`.
+
+## 27.5 Extension construction gate
+
+For a candidate that includes this extension, schema-construction gate item 2 expands from `V3-I01..V3-I61` to `V3-I01..V3-I66`, and the PostgreSQL concurrency gate includes races 49..53 / `R25..R29`.
+
+The capability is not considered accepted merely because migrations apply. It must pass least-privilege privacy tests, cross-tenant booking/Hold/SlotOffer/reschedule evidence, binding-authority races, deterministic multi-root deadlock proof, repeated concurrency proof, test-order independence, mutation probes, bootstrap/equivalence checks and the executable evidence manifest on the final branch head.

@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
@@ -217,128 +218,129 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                 "candidate preferred Resource is not available for this slot"
             )
 
-        selected_choices: dict[UUID, ResourceChoice] | None = None
-        last_unavailable: AppointmentUnavailable | None = None
+        # Every speculative combination owns a SAVEPOINT that includes its
+        # Resource/shared-root locks and its complete Hold/Claim write set.
+        # A losing combination must release those locks before another ordering
+        # is attempted; otherwise retries can accumulate roots and defeat the
+        # canonical lock topology. Shared-capacity conflicts can surface only at
+        # CapacityClaim INSERT, so the write itself belongs inside the attempt.
         for selected in eligible_combinations:
-            choices_tuple = tuple(
-                ResourceChoice(candidate.requirement_id, candidate.resource_id)
-                for candidate in selected
-            )
-            choices = {choice.requirement_id: choice for choice in choices_tuple}
-            resources = await lock_resources(
-                session,
-                organization_id=request.organization_id,
-                resource_ids=tuple(choice.resource_id for choice in choices_tuple),
-            )
-            await validate_resource_capabilities(
-                session,
-                organization_id=request.organization_id,
-                requirements=requirements,
-                choices=choices,
-                resources=resources,
-                location_id=request.location_id,
-            )
-            locked_profiles = await load_locked_profiles(
-                session,
-                organization_id=request.organization_id,
-                resources=resources,
-                start_at=start_at,
-                end_at=end_at,
-            )
             try:
-                revalidate_exact_slot(
-                    requirements=requirements,
-                    choices=choices,
-                    profiles=locked_profiles,
-                    start_at=start_at,
-                    end_at=end_at,
-                    duration_minutes=duration_minutes,
-                    step_minutes=step_minutes,
-                )
-            except AppointmentUnavailable as exc:
-                last_unavailable = exc
-                continue
-            selected_choices = choices
-            break
-
-        if selected_choices is None:
-            reason = (
-                str(last_unavailable)
-                if last_unavailable is not None
-                else "SlotOpportunity no longer has eligible capacity"
-            )
-            raise SlotOfferCapacityUnavailable(reason)
-        choices = selected_choices
-
-        hold_id = cast(
-            UUID,
-            (
-                await session.execute(
-                    text(
-                        """
-                        INSERT INTO request_engine.capacity_holds (
-                            organization_id,
-                            offering_version_id,
-                            subject_party_id,
-                            location_id,
-                            during,
-                            expires_at
-                        ) VALUES (
-                            :organization_id,
-                            :offering_version_id,
-                            :subject_party_id,
-                            :location_id,
-                            tstzrange(:start_at, :end_at, '[)'),
-                            :expires_at
-                        )
-                        RETURNING id
-                        """
-                    ),
-                    {
-                        "organization_id": request.organization_id,
-                        "offering_version_id": request.offering_version_id,
-                        "subject_party_id": request.subject_party_id,
-                        "location_id": request.location_id,
-                        "start_at": start_at,
-                        "end_at": end_at,
-                        "expires_at": expires_at,
-                    },
-                )
-            ).scalar_one(),
-        )
-        for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
-            choice = choices[requirement.id]
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO request_engine.capacity_claims (
-                        organization_id,
-                        resource_id,
-                        requirement_id,
-                        hold_id,
-                        during,
-                        quantity
-                    ) VALUES (
-                        :organization_id,
-                        :resource_id,
-                        :requirement_id,
-                        :hold_id,
-                        tstzrange(:start_at, :end_at, '[)'),
-                        :quantity
+                async with session.begin_nested():
+                    choices_tuple = tuple(
+                        ResourceChoice(candidate.requirement_id, candidate.resource_id)
+                        for candidate in selected
                     )
-                    """
-                ),
-                {
-                    "organization_id": request.organization_id,
-                    "resource_id": choice.resource_id,
-                    "requirement_id": requirement.id,
-                    "hold_id": hold_id,
-                    "start_at": start_at,
-                    "end_at": end_at,
-                    "quantity": requirement.quantity,
-                },
-            )
-        return await _read_hold(session, request.organization_id, hold_id)
+                    choices = {choice.requirement_id: choice for choice in choices_tuple}
+                    resources = await lock_resources(
+                        session,
+                        organization_id=request.organization_id,
+                        resource_ids=tuple(choice.resource_id for choice in choices_tuple),
+                    )
+                    await validate_resource_capabilities(
+                        session,
+                        organization_id=request.organization_id,
+                        requirements=requirements,
+                        choices=choices,
+                        resources=resources,
+                        location_id=request.location_id,
+                    )
+                    locked_profiles = await load_locked_profiles(
+                        session,
+                        organization_id=request.organization_id,
+                        resources=resources,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )
+                    revalidate_exact_slot(
+                        requirements=requirements,
+                        choices=choices,
+                        profiles=locked_profiles,
+                        start_at=start_at,
+                        end_at=end_at,
+                        duration_minutes=duration_minutes,
+                        step_minutes=step_minutes,
+                    )
+
+                    hold_id = cast(
+                        UUID,
+                        (
+                            await session.execute(
+                                text(
+                                    """
+                                    INSERT INTO request_engine.capacity_holds (
+                                        organization_id,
+                                        offering_version_id,
+                                        subject_party_id,
+                                        location_id,
+                                        during,
+                                        expires_at
+                                    ) VALUES (
+                                        :organization_id,
+                                        :offering_version_id,
+                                        :subject_party_id,
+                                        :location_id,
+                                        tstzrange(:start_at, :end_at, '[)'),
+                                        :expires_at
+                                    )
+                                    RETURNING id
+                                    """
+                                ),
+                                {
+                                    "organization_id": request.organization_id,
+                                    "offering_version_id": request.offering_version_id,
+                                    "subject_party_id": request.subject_party_id,
+                                    "location_id": request.location_id,
+                                    "start_at": start_at,
+                                    "end_at": end_at,
+                                    "expires_at": expires_at,
+                                },
+                            )
+                        ).scalar_one(),
+                    )
+                    for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
+                        choice = choices[requirement.id]
+                        await session.execute(
+                            text(
+                                """
+                                INSERT INTO request_engine.capacity_claims (
+                                    organization_id,
+                                    resource_id,
+                                    requirement_id,
+                                    hold_id,
+                                    during,
+                                    quantity
+                                ) VALUES (
+                                    :organization_id,
+                                    :resource_id,
+                                    :requirement_id,
+                                    :hold_id,
+                                    tstzrange(:start_at, :end_at, '[)'),
+                                    :quantity
+                                )
+                                """
+                            ),
+                            {
+                                "organization_id": request.organization_id,
+                                "resource_id": choice.resource_id,
+                                "requirement_id": requirement.id,
+                                "hold_id": hold_id,
+                                "start_at": start_at,
+                                "end_at": end_at,
+                                "quantity": requirement.quantity,
+                            },
+                        )
+                    hold = await _read_hold(session, request.organization_id, hold_id)
+            except AppointmentUnavailable:
+                continue
+            except IntegrityError as exc:
+                if _is_capacity_conflict(exc):
+                    continue
+                raise
+            else:
+                return hold
+
+        raise SlotOfferCapacityUnavailable("SlotOpportunity no longer has eligible capacity")
 
     async def consume_slot_offer_hold(
         self,
@@ -494,6 +496,10 @@ def _session(transaction: object) -> AsyncSession:
     if not isinstance(transaction, AsyncSession):
         raise TypeError("slot-offer capacity transaction must be an AsyncSession")
     return transaction
+
+
+def _is_capacity_conflict(exc: IntegrityError) -> bool:
+    return getattr(exc.orig, "sqlstate", None) == "23P01"
 
 
 def _build_candidates(

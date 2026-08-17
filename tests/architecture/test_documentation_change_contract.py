@@ -11,6 +11,11 @@ REGISTRY = REPO_ROOT / "docs" / "architecture" / "documentation-contracts.toml"
 POLICY_DOC = REPO_ROOT / "docs" / "architecture" / "documentation-change-contract.md"
 WORKER_DOC = "docs/v3/10-worker-runtime-hardening.md"
 WORKER_CODE = "src/request_engine/platform/worker/runtime.py"
+SHARED_CAPACITY_DOC = "docs/v3/12-cross-tenant-shared-capacity-design.md"
+SHARED_CAPACITY_MIGRATION = "migrations/sql/v3_candidate/028-cross-tenant-shared-capacity.sql"
+SHARED_CAPACITY_HARDENING = "migrations/sql/v3_candidate/031-cross-tenant-provenance-hardening.sql"
+SHARED_CAPACITY_BOOKING = "src/request_engine/modules/booking/adapters/db/reservation_commands.py"
+SHARED_CAPACITY_TEST = "tests/db/test_v3_cross_tenant_slot_offer_integrity_hardening.py"
 
 
 def _run_checker(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -46,6 +51,37 @@ def test_documentation_contract_accepts_worker_change_with_normative_doc() -> No
         WORKER_CODE,
         "--changed-file",
         WORKER_DOC,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "documentation contract satisfied" in result.stdout
+
+
+def test_shared_capacity_contract_rejects_unaccompanied_protected_change() -> None:
+    protected_paths = (
+        SHARED_CAPACITY_MIGRATION,
+        SHARED_CAPACITY_HARDENING,
+        SHARED_CAPACITY_BOOKING,
+        SHARED_CAPACITY_TEST,
+    )
+    for protected_path in protected_paths:
+        result = _run_checker("--changed-file", protected_path)
+        assert result.returncode == 1
+        assert "[cross-tenant-shared-capacity]" in result.stderr
+        assert SHARED_CAPACITY_DOC in result.stderr
+
+
+def test_shared_capacity_contract_accepts_change_with_normative_doc() -> None:
+    result = _run_checker(
+        "--changed-file",
+        SHARED_CAPACITY_MIGRATION,
+        "--changed-file",
+        SHARED_CAPACITY_HARDENING,
+        "--changed-file",
+        SHARED_CAPACITY_BOOKING,
+        "--changed-file",
+        SHARED_CAPACITY_TEST,
+        "--changed-file",
+        SHARED_CAPACITY_DOC,
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert "documentation contract satisfied" in result.stdout

@@ -7,6 +7,14 @@ from psycopg import Connection, sql
 
 PgConnection = Connection[Any]
 
+PRIVATE_GLOBAL_TABLES = {
+    "global_identities",
+    "shared_capacity_authority_events",
+    "shared_capacity_bindings",
+    "shared_capacity_claim_links",
+    "shared_capacity_identities",
+}
+
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
     parts = pg_conninfo.split()
@@ -103,69 +111,46 @@ def test_real_application_login_has_only_the_runtime_table_contract(
         idempotency_privileges = app_conn.execute(
             """
             SELECT
-                has_table_privilege(
-                    current_user,
-                    'request_engine.idempotency_records',
-                    'SELECT'
-                ),
-                has_table_privilege(
-                    current_user,
-                    'request_engine.idempotency_records',
-                    'INSERT'
-                ),
-                has_table_privilege(
-                    current_user,
-                    'request_engine.idempotency_records',
-                    'UPDATE'
-                ),
-                has_table_privilege(
-                    current_user,
-                    'request_engine.idempotency_records',
-                    'DELETE'
-                ),
-                has_table_privilege(
-                    current_user,
-                    'request_engine.idempotency_records',
-                    'TRUNCATE'
-                )
+                has_table_privilege(current_user, 'request_engine.idempotency_records', 'SELECT'),
+                has_table_privilege(current_user, 'request_engine.idempotency_records', 'INSERT'),
+                has_table_privilege(current_user, 'request_engine.idempotency_records', 'UPDATE'),
+                has_table_privilege(current_user, 'request_engine.idempotency_records', 'DELETE'),
+                has_table_privilege(current_user, 'request_engine.idempotency_records', 'TRUNCATE')
             """
         ).fetchone()
         assert idempotency_privileges == (True, True, True, False, False)
 
-        missing_contract = app_conn.execute(
+        table_privileges = app_conn.execute(
             """
-            SELECT c.relname
+            SELECT
+                c.relname,
+                has_table_privilege(current_user, c.oid, 'SELECT'),
+                has_table_privilege(current_user, c.oid, 'INSERT'),
+                has_table_privilege(current_user, c.oid, 'UPDATE'),
+                has_table_privilege(current_user, c.oid, 'DELETE'),
+                has_table_privilege(current_user, c.oid, 'TRUNCATE'),
+                has_table_privilege(current_user, c.oid, 'REFERENCES'),
+                has_table_privilege(current_user, c.oid, 'TRIGGER')
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = 'request_engine'
               AND c.relkind IN ('r', 'p')
-              AND NOT (
-                  has_table_privilege(current_user, c.oid, 'SELECT')
-                  AND has_table_privilege(current_user, c.oid, 'INSERT')
-                  AND has_table_privilege(current_user, c.oid, 'UPDATE')
-              )
             ORDER BY c.relname
             """
         ).fetchall()
-        assert missing_contract == []
+        assert table_privileges
 
-        overprivileged = app_conn.execute(
-            """
-            SELECT c.relname
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'request_engine'
-              AND c.relkind IN ('r', 'p')
-              AND (
-                  has_table_privilege(current_user, c.oid, 'DELETE')
-                  OR has_table_privilege(current_user, c.oid, 'TRUNCATE')
-                  OR has_table_privilege(current_user, c.oid, 'REFERENCES')
-                  OR has_table_privilege(current_user, c.oid, 'TRIGGER')
-              )
-            ORDER BY c.relname
-            """
-        ).fetchall()
-        assert overprivileged == []
+        seen_private: set[str] = set()
+        for row in table_privileges:
+            table_name = cast(str, row[0])
+            privileges = cast(tuple[bool, bool, bool, bool, bool, bool, bool], tuple(row[1:]))
+            if table_name in PRIVATE_GLOBAL_TABLES:
+                seen_private.add(table_name)
+                assert privileges == (False,) * 7
+            else:
+                assert privileges[:3] == (True, True, True), table_name
+                assert privileges[3:] == (False, False, False, False), table_name
+        assert seen_private == PRIVATE_GLOBAL_TABLES
 
         probe_privileges = app_conn.execute(
             """
@@ -175,12 +160,7 @@ def test_real_application_login_has_only_the_runtime_table_contract(
                 has_table_privilege(current_user, %s, 'UPDATE'),
                 has_table_privilege(current_user, %s, 'DELETE')
             """,
-            (
-                f"request_engine.{probe_name}",
-                f"request_engine.{probe_name}",
-                f"request_engine.{probe_name}",
-                f"request_engine.{probe_name}",
-            ),
+            (f"request_engine.{probe_name}",) * 4,
         ).fetchone()
         assert probe_privileges == (True, True, True, False)
 
@@ -235,24 +215,16 @@ def test_application_group_role_has_idempotency_permissions(
         """
         SELECT
             has_table_privilege(
-                'request_engine_app',
-                'request_engine.idempotency_records',
-                'SELECT'
+                'request_engine_app', 'request_engine.idempotency_records', 'SELECT'
             ),
             has_table_privilege(
-                'request_engine_app',
-                'request_engine.idempotency_records',
-                'INSERT'
+                'request_engine_app', 'request_engine.idempotency_records', 'INSERT'
             ),
             has_table_privilege(
-                'request_engine_app',
-                'request_engine.idempotency_records',
-                'UPDATE'
+                'request_engine_app', 'request_engine.idempotency_records', 'UPDATE'
             ),
             has_table_privilege(
-                'request_engine_app',
-                'request_engine.idempotency_records',
-                'DELETE'
+                'request_engine_app', 'request_engine.idempotency_records', 'DELETE'
             )
         """
     ).fetchone()
@@ -263,7 +235,7 @@ def test_application_group_role_has_idempotency_permissions(
 def test_worker_group_role_has_no_direct_authoritative_table_privileges(
     admin_conn: PgConnection,
 ) -> None:
-    row = admin_conn.execute(
+    rows = admin_conn.execute(
         """
         SELECT
             has_table_privilege('request_engine_worker', c.oid, 'SELECT'),
@@ -277,7 +249,7 @@ def test_worker_group_role_has_no_direct_authoritative_table_privileges(
         ORDER BY c.relname
         """
     ).fetchall()
-    assert row
+    assert rows
     assert all(
-        cast(tuple[bool, bool, bool, bool], privileges) == (False,) * 4 for privileges in row
+        cast(tuple[bool, bool, bool, bool], privileges) == (False,) * 4 for privileges in rows
     )

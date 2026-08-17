@@ -646,6 +646,8 @@ async def lock_resources(
     if len(rows) != len(unique_ids):
         raise InvalidResourceSelection("one or more selected Resources do not exist")
 
+    await _lock_shared_capacity_roots(session, organization_id, unique_ids)
+
     result: dict[UUID, LockedResource] = {}
     for row in rows:
         if row["active"] is not True:
@@ -687,6 +689,31 @@ async def lock_resource_ids(
     ).all()
     if len(rows) != len(unique_ids):
         raise BookingConfigurationError("Reservation references missing Resources")
+
+    await _lock_shared_capacity_roots(session, organization_id, unique_ids)
+
+
+async def _lock_shared_capacity_roots(
+    session: AsyncSession,
+    organization_id: UUID,
+    resource_ids: tuple[UUID, ...],
+) -> None:
+    if not resource_ids:
+        return
+    await session.execute(
+        text(
+            """
+            SELECT request_cmd.lock_shared_capacity_roots(
+                :organization_id,
+                CAST(:resource_ids AS uuid[])
+            )
+            """
+        ),
+        {
+            "organization_id": organization_id,
+            "resource_ids": [str(value) for value in resource_ids],
+        },
+    )
 
 
 async def validate_resource_capabilities(

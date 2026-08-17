@@ -247,8 +247,8 @@ def build_manifest() -> dict[str, Any]:
     races = _ids(RACE_DOC, r"\bR\d{2}\b")
     gates = _ids(GATE_DOC, r"\bG\d{2}\b")
 
-    _assert_complete(invariants, [f"V3-I{i:02d}" for i in range(1, 62)], "Invariant")
-    _assert_complete(races, [f"R{i:02d}" for i in range(1, 25)], "Race")
+    _assert_complete(invariants, [f"V3-I{i:02d}" for i in range(1, 67)], "Invariant")
+    _assert_complete(races, [f"R{i:02d}" for i in range(1, 30)], "Race")
     _assert_complete(gates, [f"G{i:02d}" for i in range(1, 21)], "Gate")
 
     evidence_paths = {

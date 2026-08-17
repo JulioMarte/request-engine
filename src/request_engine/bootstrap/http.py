@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 
 from request_engine.entrypoints.http.app import create_app
-from request_engine.modules.booking.adapters.db.slot_offer_capacity import PostgresSlotOfferCapacity
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeSlotOfferCapacity,
+)
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
 )
@@ -26,7 +28,7 @@ def build_http_app(
         appointment_option_signing_key=appointment_option_signing_key,
         tenant_capability_policy=tenant_capability_policy,
         slot_offer_ports=QueueSlotOfferHttpPorts(
-            capacity=PostgresSlotOfferCapacity(),
+            capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),
         ),
     )

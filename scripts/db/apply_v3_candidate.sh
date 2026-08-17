@@ -32,6 +32,14 @@ files=(
   "025-worker-claim-stale-snapshot-fence.sql"
   "026-security-definer-search-path-hardening.sql"
   "027-reservation-access-delivery.sql"
+  "028-cross-tenant-shared-capacity.sql"
+  "029-cross-tenant-shared-capacity-hardening.sql"
+  "030-cross-tenant-slot-offer-integrity-hardening.sql"
+  "031-cross-tenant-provenance-hardening.sql"
+  "032-cross-tenant-person-capacity-cardinality.sql"
+  "033-cross-tenant-runtime-role-classification.sql"
+  "034-cross-tenant-slot-offer-terminal-consistency.sql"
+  "035-cross-tenant-slot-source-provenance.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"

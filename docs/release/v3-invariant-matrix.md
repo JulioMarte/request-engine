@@ -69,6 +69,17 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I59 | DB | trusted execution provenance DB test | PARTIAL | 6I/6J |
 | V3-I60 | BOTH | idempotency contract tests | PARTIAL | 6E |
 | V3-I61 | BOTH | idempotency PostgreSQL implementation/contracts | PARTIAL | 6E/6I |
+| V3-I62 | BOTH/ops | request_admin authority events + UUID/no-enumeration adversarial tests | PARTIAL | 6I |
+| V3-I63 | BOTH | cross-tenant CapacityClaim/Booking/Hold/SlotOffer integration + DB race tests | PARTIAL | 6D/6I |
+| V3-I64 | DB+APP | private-table runtime privilege contract + opaque Booking error tests | PARTIAL | 6I/6K |
+| V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL race tests | PARTIAL | 6D/6I |
+| V3-I66 | APP protocol + DB primitive | multi-root lock topology + simultaneous reschedule concurrency tests | PARTIAL | 6D/6L |
+
+## Cross-tenant shared-capacity extension evidence
+
+The extension rows V3-I62..V3-I66 are deliberately `PARTIAL` until a full final-head Phase 6 candidate run consumes this updated inventory. Current executable evidence includes least-privilege denial of global-state enumeration, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
+
+The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
 
 ## Current Phase 6I evidence
 
