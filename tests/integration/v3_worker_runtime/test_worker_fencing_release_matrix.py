@@ -276,6 +276,7 @@ def _complete_current_owner(
     work_id: UUID,
     token: UUID,
 ) -> None:
+    query: LiteralString
     if family.name == "scheduled_action":
         query = "SELECT request_cmd.complete_scheduled_action(%s, %s)"
     elif family.name == "outbox_message":
