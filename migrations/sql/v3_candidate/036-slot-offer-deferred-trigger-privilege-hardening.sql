@@ -26,5 +26,6 @@ REVOKE ALL ON FUNCTION request_engine.check_offered_slot_offer_source_consistenc
 REVOKE ALL ON FUNCTION request_engine.assert_offered_slot_offer_source_consistency(uuid, uuid)
     FROM PUBLIC, request_engine_app, request_engine_worker, request_engine_admin;
 
+RESET search_path;
 RESET ROLE;
 COMMIT;
