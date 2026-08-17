@@ -81,7 +81,7 @@ def _event(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_once(
+async def test_reservation_outbox_converges_after_partial_lifecycle_effects_and_recovers_once(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -107,18 +107,26 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
         start_at=support._future_start(),
         add_waitlist=True,
     )
+    reader = PostgresReservationLifecycleReader(session_factory)
+    scheduling = PostgresReservationLifecycleScheduling(session_factory)
+    notifications = PostgresReservationLifecycleNotificationIntent(session_factory)
     handler = _handler(session_factory, worker_principal_id=fixture.principal_id)
 
     created_event_id = uuid4()
-    await handler.handle(
-        _event(
-            event_id=created_event_id,
-            organization_id=fixture.organization_id,
-            reservation_id=fixture.reservation_id,
-            event_type="reservation.created.v1",
-        ),
-        uuid4(),
+    created_event = _event(
+        event_id=created_event_id,
+        organization_id=fixture.organization_id,
+        reservation_id=fixture.reservation_id,
+        event_type="reservation.created.v1",
     )
+
+    # Simulate a worker crash after the first independently committed consequence.
+    # Replaying the same Outbox fact must converge to one generation of work.
+    snapshot = await reader.get_lifecycle_snapshot(fixture.organization_id, fixture.reservation_id)
+    assert snapshot is not None
+    await scheduling.reconcile_reservation_schedule(snapshot, source_event_id=created_event_id)
+    await handler.handle(created_event, uuid4())
+    await handler.handle(created_event, uuid4())
 
     reservation_tasks = admin_conn.execute(
         """
@@ -147,12 +155,26 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
           AND status = 'pending'
           AND (
               (owner_module = 'booking' AND subject_kind = 'Reservation' AND subject_id = %s)
-              OR owner_module = 'communications'
+              OR (
+                  owner_module = 'communications'
+                  AND subject_id IN (
+                      SELECT id
+                      FROM request_engine.communication_tasks
+                      WHERE organization_id = %s
+                        AND source_kind = 'Reservation'
+                        AND source_id = %s
+                  )
+              )
           )
         GROUP BY owner_module, subject_kind
         ORDER BY owner_module, subject_kind
         """,
-        (fixture.organization_id, fixture.reservation_id),
+        (
+            fixture.organization_id,
+            fixture.reservation_id,
+            fixture.organization_id,
+            fixture.reservation_id,
+        ),
     ).fetchall()
     assert pending_before_cancel == [
         ("booking", "Reservation", 1),
@@ -195,6 +217,13 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
         payload=cast(dict[str, object], cancellation_row[4]),
     )
 
+    # Cancellation also spans independently committed consequences. Reproduce a
+    # crash after scheduling + communications cancellation but before recovery,
+    # then require the real handler replay to finish exactly once.
+    await scheduling.cancel_reservation_schedule(fixture.organization_id, fixture.reservation_id)
+    await notifications.cancel_reservation_notifications(
+        fixture.organization_id, fixture.reservation_id
+    )
     await handler.handle(cancellation, uuid4())
     await handler.handle(cancellation, uuid4())
 
@@ -264,14 +293,22 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
         (fixture.organization_id, cancellation_event_id),
     ).fetchall()
     assert len(recovered) == 1
-    assert recovered[0][1:] == (
-        "open",
-        recovered[0][2],
-        "offered",
-        "active",
-        "pending",
-        "pending",
-    )
+    (
+        opportunity_id,
+        opportunity_status,
+        offer_id,
+        offer_status,
+        hold_status,
+        communication_status,
+        expiry_action_status,
+    ) = recovered[0]
+    assert opportunity_id is not None
+    assert offer_id is not None
+    assert opportunity_status == "open"
+    assert offer_status == "offered"
+    assert hold_status == "active"
+    assert communication_status == "pending"
+    assert expiry_action_status == "pending"
 
     recovery_counts = admin_conn.execute(
         """
@@ -284,6 +321,35 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
              JOIN request_engine.slot_opportunities o
                ON o.organization_id = so.organization_id
               AND o.id = so.slot_opportunity_id
+             WHERE o.organization_id = %s AND o.source_event_id = %s),
+            (SELECT count(*)
+             FROM request_engine.capacity_holds h
+             JOIN request_engine.slot_offers so
+               ON so.organization_id = h.organization_id
+              AND so.capacity_hold_id = h.id
+             JOIN request_engine.slot_opportunities o
+               ON o.organization_id = so.organization_id
+              AND o.id = so.slot_opportunity_id
+             WHERE o.organization_id = %s AND o.source_event_id = %s),
+            (SELECT count(*)
+             FROM request_engine.communication_tasks ct
+             JOIN request_engine.slot_offers so
+               ON so.organization_id = ct.organization_id
+              AND ct.source_kind = 'SlotOffer'
+              AND ct.source_id = so.id
+             JOIN request_engine.slot_opportunities o
+               ON o.organization_id = so.organization_id
+              AND o.id = so.slot_opportunity_id
+             WHERE o.organization_id = %s AND o.source_event_id = %s),
+            (SELECT count(*)
+             FROM request_engine.scheduled_actions sa
+             JOIN request_engine.slot_offers so
+               ON so.organization_id = sa.organization_id
+              AND sa.subject_kind = 'SlotOffer'
+              AND sa.subject_id = so.id
+             JOIN request_engine.slot_opportunities o
+               ON o.organization_id = so.organization_id
+              AND o.id = so.slot_opportunity_id
              WHERE o.organization_id = %s AND o.source_event_id = %s)
         """,
         (
@@ -291,6 +357,12 @@ async def test_reservation_outbox_composes_lifecycle_then_slot_recovery_exactly_
             cancellation_event_id,
             fixture.organization_id,
             cancellation_event_id,
+            fixture.organization_id,
+            cancellation_event_id,
+            fixture.organization_id,
+            cancellation_event_id,
+            fixture.organization_id,
+            cancellation_event_id,
         ),
     ).fetchone()
-    assert recovery_counts == (1, 1)
+    assert recovery_counts == (1, 1, 1, 1, 1)
