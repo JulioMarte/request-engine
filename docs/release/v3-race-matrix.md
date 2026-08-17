@@ -19,11 +19,11 @@ Status values describe current proof breadth. `PASS` means the named race has co
 | R09 | CallNext vs CallNext | same QueueEntry cannot be called twice | PARTIAL | 6D |
 | R10 | Request writer revision N vs writer revision N | one writer succeeds and one receives revision conflict | PASS | 6E |
 | R11 | Reservation/booking writer revision N vs writer revision N | one authoritative mutation succeeds; stale writer cannot overwrite | PASS | 6E |
-| R12 | worker claim vs worker claim | one current claim token per work item | PARTIAL | 6F |
-| R13 | stale finalizer vs reclaimed worker | stale claim token cannot complete/retry/dead-letter reclaimed work | PARTIAL | 6F |
-| R14 | late lease renewal vs reclaimed worker | expired owner cannot resurrect ownership | PARTIAL | 6F |
-| R15 | ScheduledAction cancellation vs claim | one deterministic state transition; cancelled work cannot execute as authoritative new work | PARTIAL | 6F/6J |
-| R16 | Outbox completion vs lease reclaim | stale publisher cannot finalize another claim | PARTIAL | 6F |
+| R12 | worker claim vs worker claim | one current claim token per work item | PASS | 6F |
+| R13 | stale finalizer vs reclaimed worker | stale claim token cannot complete/retry/dead-letter reclaimed work | PASS | 6F |
+| R14 | late lease renewal vs reclaimed worker | expired owner cannot resurrect ownership | PASS | 6F |
+| R15 | ScheduledAction cancellation vs claim | one deterministic state transition; cancelled work cannot execute as authoritative new work | PASS | 6F/6J |
+| R16 | Outbox completion vs lease reclaim | stale publisher cannot finalize another claim | PASS | 6F |
 | R17 | ProviderEvent duplicate ingestion vs duplicate ingestion | one provider identity; different payload under same identity is conflict | PARTIAL | 6J |
 | R18 | provider callback semantic command vs business cancellation | provider ordering cannot bypass current business authority/lifecycle | PARTIAL | 6J/6L |
 | R19 | committed command response lost vs same idempotent retry | retry returns same logical effect without duplication | PASS | 6E |
@@ -60,7 +60,7 @@ R18 is exercised by `tests/integration/v3_reservation_lifecycle/test_provider_bu
 
 R22 is exercised by `tests/integration/v3_first_vertical/test_reminder_plan_races.py`. A due ReminderPlan occurrence is genuinely leased, both cancellation and materialization are started behind the same ReminderPlan `FOR UPDATE` barrier, and both valid winner orders are enumerated. Cancellation-first makes the leased occurrence no-op as `plan_inactive`; materialization-first may create exactly one current occurrence task before cancellation, but cancellation removes every future pending ReminderPlan occurrence. No mixed state may leave an active plan or obsolete future recurrence after cancellation.
 
-R17/R18/R22 remain `PARTIAL` because their named release claims still participate in unfinished provider/reconciliation and worker failure families. R08 no longer does: Phase 6K closes the complete Slot Recovery release claim and preserves the duplicate-source proof on the same current branch.
+R17/R18/R22 remain `PARTIAL` because their named release claims still participate in unfinished provider/reconciliation and communications-failure families. R08 no longer does: Phase 6K closes the complete Slot Recovery release claim and preserves the duplicate-source proof on the same current branch.
 
 ## Phase 6K Booking lifecycle / Slot Recovery race closure
 
@@ -82,9 +82,25 @@ Canonical CI #923 (`32053071800`) passed on exact PR head `12f7d5ade26dd4b192afc
 
 The post-PR-#52 rebaseline inspected exact-head CI `#847` (`31983843624`) and its `v3-candidate-release-proof` artifact. That artifact collected 340 release tests, passed the reverse-order run with all 340 tests, and passed three repeated PostgreSQL/concurrency rounds of 47 tests each. The reconciliation changed a race from `TO VERIFY` only when an inspected test exercised the actual conflicting operations with deliberate overlap and asserted final state/cardinality.
 
-At that earlier baseline R03/R05/R06 were conservatively `PARTIAL`; Phase 6K now promotes R03-R08 only after composing those deterministic races with the complete lifecycle/recovery vertical on the exact current branch. The historical evidence remains useful provenance but is no longer the current status authority.
+At that earlier baseline R03/R05/R06 and R15 were conservatively `PARTIAL`. Phase 6K promoted R03-R08 after composing deterministic races with the complete lifecycle/recovery vertical. Phase 6F now separately promotes R12-R16 only after closing the wider worker ownership, expired-lease and crash-recovery claims. Historical evidence remains useful provenance but is no longer the current status authority.
 
-R15 remains `PARTIAL` based on `tests/integration/v3_worker_runtime/test_scheduled_action_cancel_race.py`. It proves both lock orders: cancellation first causes worker `SKIP LOCKED` discovery to skip the action, while claim first makes cancellation wait and then fences the stale claim token after cancellation commits. Both paths assert the terminal ScheduledAction row. Its wider worker ownership/failure claim remains for G09/G10.
+## Phase 6F worker fencing / crash race closure
+
+**R12 is `PASS`.** `tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py::test_r12_claim_vs_claim_has_one_current_owner` parametrizes ScheduledAction, OutboxMessage and ProviderEvent. Worker A deliberately keeps the claim transaction open; independent worker B runs the production claim surface and must skip the same locked row. After A commits, final state requires one live token and exactly one attempt increment for that ownership transition.
+
+**R13 is `PASS`.** The same release matrix expires A, reclaims with B under a fresh token, then attempts every stale transition exposed by the family: complete, retry, dead-letter and renew, plus ProviderEvent reject. Every stale operation must fail while B remains the sole current owner. `tests/db/test_v3_worker_expired_leases.py` additionally proves that an expired token cannot finalize even before a replacement claimant exists.
+
+**R14 is `PASS`.** Late renewal is exercised across all three families. An expired owner cannot extend itself, and after reclaim A's old token cannot extend or replace B's lease. The current token remains unchanged until B performs its own valid transition.
+
+**R15 is `PASS`.** `tests/integration/v3_worker_runtime/test_scheduled_action_cancel_race.py` enumerates both real lock orders. Cancellation-first owns the ScheduledAction row so worker claim discovery skips it; final state is `cancelled` with no token and zero attempts. Claim-first makes cancellation serialize behind the claim; after cancellation commits, the old token cannot complete and cannot pass `lock_scheduled_action_claim`, so cancelled work cannot execute a new authoritative domain consequence.
+
+**R16 is `PASS`.** `test_worker_fencing_release_matrix.py` proves both valid Outbox completion/reclaim outcomes. Completion-first holds the row lock and a competing claim cannot acquire delivered work. Reclaim-first expires the old lease and opens the replacement claim transaction under a fresh token; while that replacement transaction remains open, stale completion must return `False`. Because the old lease is already expired, PostgreSQL may reject the stale finalizer directly on the `lease_until > clock_timestamp()` fence without waiting for the replacement row lock. The replacement token remains the only owner and is the only token that can complete the message.
+
+Canonical CI #946 (`32063335393`) passed on exact implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f`. Artifact `v3-candidate-release-proof` `9299172598` (`sha256:bf954de52a56fc6ace13ea76de4cade8732bb4c9a267cd5900ddf21324408dd7`) is `VALID`, complete and clean-tree; it binds base `cc46234c9e3e1c3109b0aa87484d83cbefe28633`, implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f` and tested merge checkout `8e36d4e62a65df28d0ccb5d12843966da34bbf01`. It collected all 109 expected files, passed 409 tests in reverse order, passed three concurrency-stability rounds of 81 tests, killed all four mutation probes and recorded zero test-quality errors/warnings.
+
+R20 remains `PARTIAL`: Communications and ReservationAccess now prove that a stale worker cannot publish provider success and that replacement work can use provider lookup/evidence instead of blindly duplicating the external effect, but the full provider duplicate/reorder/ambiguous-outcome/reconciliation contract remains G13.
+
+This registry-only R12-R16 promotion must itself survive canonical exact-head CI before PR #60 is merge-authoritative. Final V3 promotion reruns the full race matrix on the eventual frozen release candidate.
 
 ## Cross-tenant shared-capacity concurrency evidence
 
