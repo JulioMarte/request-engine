@@ -181,7 +181,7 @@ def _fixture(conn: PgConnection) -> SlotRecoveryFixture:
         """,
         (organization_id, resource_id),
     )
-    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     return SlotRecoveryFixture(
         organization_id=organization_id,
         principal_id=principal_id,
