@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import runpy
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from request_engine.platform.security.capabilities import CAPABILITIES
 
@@ -133,9 +133,7 @@ _EXPECTED_LITERAL_ERROR_CODES = frozenset(
 
 def _public_operations() -> tuple[Any, ...]:
     namespace = runpy.run_path("tests/e2e/http_surface.py")
-    operations = namespace["PUBLIC_HTTP_OPERATIONS"]
-    assert isinstance(operations, tuple)
-    return operations
+    return cast(tuple[Any, ...], namespace["PUBLIC_HTTP_OPERATIONS"])
 
 
 def _literal_error_codes(path: Path) -> set[str]:
