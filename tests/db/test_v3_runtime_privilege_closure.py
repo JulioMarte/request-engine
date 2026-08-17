@@ -119,9 +119,7 @@ EXPECTED_FUNCTIONS = {
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
     parts = pg_conninfo.split()
     filtered = [
-        part
-        for part in parts
-        if not part.startswith("user=") and not part.startswith("password=")
+        part for part in parts if not part.startswith("user=") and not part.startswith("password=")
     ]
     return " ".join([*filtered, f"user={role_name}", f"password={password}"])
 
@@ -280,15 +278,12 @@ def test_real_runtime_logins_match_complete_schema_relation_and_function_contrac
         assert own_role == (group_role, group_role == "request_engine_admin")
         with pytest.raises(InsufficientPrivilege):
             runtime.execute(
-                sql.SQL("CREATE TABLE request_engine.{} (id integer)").format(
-                    sql.Identifier(probe)
-                )
+                sql.SQL("CREATE TABLE request_engine.{} (id integer)").format(sql.Identifier(probe))
             )
         runtime.execute("RESET ROLE")
 
         for forbidden_role in (
-            {"request_engine_app", "request_engine_worker", "request_engine_admin"}
-            - {group_role}
+            {"request_engine_app", "request_engine_worker", "request_engine_admin"} - {group_role}
         ) | {"request_engine_schema_owner"}:
             with pytest.raises(InsufficientPrivilege):
                 runtime.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(forbidden_role)))
