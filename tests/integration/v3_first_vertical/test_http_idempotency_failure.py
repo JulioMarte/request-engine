@@ -1,7 +1,7 @@
 # pyright: reportPrivateUsage=false
 
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -96,9 +96,10 @@ async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_o
                 headers={**auth, "Idempotency-Key": idempotency_key},
             )
 
-        # The transport exception happened only after the ASGI application completed the
-        # request, so the authoritative transaction has already committed. The retry must
-        # replay the completed idempotency record instead of acquiring capacity again.
+        # The transport exception happens only after the ASGI application has completed
+        # the request. The authoritative transaction has therefore already committed. The
+        # retry must replay the completed idempotency record instead of acquiring capacity
+        # or emitting the Reservation consequence a second time.
         retry = await client.post(
             "/v1/appointments",
             json=booking_body,
@@ -106,7 +107,7 @@ async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_o
         )
 
     assert retry.status_code == 201
-    reservation_id = retry.json()["id"]
+    reservation_id = UUID(cast(str, retry.json()["id"]))
     reservation_rows = admin_conn.execute(
         """
         SELECT id, status, revision
@@ -121,8 +122,8 @@ async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_o
             fixture.offering_version_id,
         ),
     ).fetchall()
-    assert reservation_rows == [(reservation_rows[0][0], "confirmed", 1)]
-    assert str(reservation_rows[0][0]) == reservation_id
+    assert len(reservation_rows) == 1
+    assert reservation_rows[0] == (reservation_id, "confirmed", 1)
 
     claims = admin_conn.execute(
         """
@@ -146,7 +147,7 @@ async def test_r19_committed_booking_response_lost_then_same_key_retry_replays_o
         """,
         (fixture.organization_id, fixture.principal_id, idempotency_key),
     ).fetchone()
-    assert idempotency == ("completed", reservation_id)
+    assert idempotency == ("completed", str(reservation_id))
 
     outbox_count = admin_conn.execute(
         """
