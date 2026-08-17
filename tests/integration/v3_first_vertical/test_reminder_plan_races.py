@@ -107,7 +107,7 @@ def _seed_due_occurrence(
     return plan_id, action_id
 
 
-async def _wait_for_plan_lock_waiters(admin_conn: PgConnection, *, expected: int) -> None:
+async def _wait_for_app_lock_waiters(admin_conn: PgConnection, *, expected: int) -> None:
     deadline = asyncio.get_running_loop().time() + 5
     while asyncio.get_running_loop().time() < deadline:
         row = admin_conn.execute(
@@ -115,15 +115,15 @@ async def _wait_for_plan_lock_waiters(admin_conn: PgConnection, *, expected: int
             SELECT count(*)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
+              AND usename LIKE 'request_engine_app_test_%'
+              AND state = 'active'
               AND wait_event_type = 'Lock'
-              AND query ILIKE '%request_engine.reminder_plans%'
-              AND query ILIKE '%FOR UPDATE%'
             """
         ).fetchone()
         if row is not None and int(row[0]) >= expected:
             return
         await asyncio.sleep(0.01)
-    raise AssertionError(f"expected at least {expected} ReminderPlan row-lock waiters")
+    raise AssertionError(f"expected at least {expected} blocked app-runtime sessions")
 
 
 @pytest.mark.asyncio
@@ -168,7 +168,7 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
         ).fetchone()
         cancel_task = asyncio.create_task(cancel_reminder_plan(cancellation, cancel_command))
         materialize_task = asyncio.create_task(materializer.materialize(lease))
-        await _wait_for_plan_lock_waiters(admin_conn, expected=2)
+        await _wait_for_app_lock_waiters(admin_conn, expected=2)
         assert not cancel_task.done()
         assert not materialize_task.done()
 
