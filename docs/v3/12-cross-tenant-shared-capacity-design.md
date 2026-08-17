@@ -94,6 +94,8 @@ Canonical ordering is:
 
 Reschedule collects the union of old and new Resource ids before releasing old claims or acquiring replacements, preventing inverse old/new-root lock order and preserving self-overlap semantics.
 
+A reschedule Outbox fact also preserves the released Reservation coordinates (`old_location_id`, `old_start_at`, `old_end_at`) before the authoritative row is moved. This is required because shared/local claim history may continue to change after commit and a delayed lifecycle consumer must not infer which historical slot was released by looking at the latest replaced claim or current Reservation location. The historical coordinates drive only released-slot recovery; capacity locking and current Reservation reconciliation continue to use the normal authoritative Booking state.
+
 ## CapacityClaim lifecycle and provenance
 
 Shared capacity makes claim history security-relevant. PostgreSQL enforces that:

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -29,6 +30,9 @@ class ReservationLifecycleEvent:
     organization_id: UUID
     reservation_id: UUID
     event_type: ReservationEventType
+    released_start_at: datetime | None = None
+    released_end_at: datetime | None = None
+    released_location_id: UUID | None = None
 
 
 async def handle_reservation_lifecycle_event(
@@ -88,6 +92,9 @@ async def handle_reservation_lifecycle_event(
             event.organization_id,
             event.reservation_id,
             event_type=event.event_type,
+            released_start_at=event.released_start_at,
+            released_end_at=event.released_end_at,
+            released_location_id=event.released_location_id,
         )
         if slot is not None:
             await recovery.recover_released_slot(

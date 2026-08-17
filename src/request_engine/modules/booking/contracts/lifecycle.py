@@ -53,6 +53,9 @@ class ReservationLifecycleReader(Protocol):
         reservation_id: UUID,
         *,
         event_type: str,
+        released_start_at: datetime | None = None,
+        released_end_at: datetime | None = None,
+        released_location_id: UUID | None = None,
     ) -> ReleasedReservationSlot | None: ...
 
 

@@ -300,8 +300,8 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
             params={
                 "offering_version_id": str(fixture.offering_version_id),
                 "location_id": str(fixture.location_id),
-                "window_start": datetime(2026, 8, 17, 13, 0, tzinfo=UTC).isoformat(),
-                "window_end": datetime(2026, 8, 17, 16, 0, tzinfo=UTC).isoformat(),
+                "window_start": datetime(2099, 8, 17, 13, 0, tzinfo=UTC).isoformat(),
+                "window_end": datetime(2099, 8, 17, 16, 0, tzinfo=UTC).isoformat(),
             },
             headers=auth,
         )
