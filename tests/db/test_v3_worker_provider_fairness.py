@@ -66,15 +66,9 @@ def test_provider_event_claiming_is_fair_across_tenants(
 ) -> None:
     hot = _organization(admin_conn, "hot")
     quiet = _organization(admin_conn, "quiet")
-    hot_oldest = _provider_event(
-        admin_conn, hot, offset="-10 minutes", label="hot-oldest"
-    )
-    hot_second = _provider_event(
-        admin_conn, hot, offset="-9 minutes", label="hot-second"
-    )
-    quiet_oldest = _provider_event(
-        admin_conn, quiet, offset="-1 minute", label="quiet-oldest"
-    )
+    hot_oldest = _provider_event(admin_conn, hot, offset="-10 minutes", label="hot-oldest")
+    hot_second = _provider_event(admin_conn, hot, offset="-9 minutes", label="hot-second")
+    quiet_oldest = _provider_event(admin_conn, quiet, offset="-1 minute", label="quiet-oldest")
 
     worker: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
@@ -88,11 +82,7 @@ def test_provider_event_claiming_is_fair_across_tenants(
     finally:
         worker.close()
 
-    ours = [
-        (cast(UUID, row[0]), cast(UUID, row[1]))
-        for row in rows
-        if row[1] in {hot, quiet}
-    ]
+    ours = [(cast(UUID, row[0]), cast(UUID, row[1])) for row in rows if row[1] in {hot, quiet}]
     assert ours == [
         (hot_oldest, hot),
         (quiet_oldest, quiet),
