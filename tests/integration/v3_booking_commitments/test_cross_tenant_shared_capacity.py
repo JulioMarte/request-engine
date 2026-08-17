@@ -275,12 +275,12 @@ async def test_cross_tenant_hold_and_direct_booking_block_each_other(
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
 
-    first_start = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    first_start = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     await acquire_capacity_hold(commitments, _hold(tenant_a, first_start))
     with pytest.raises(AppointmentUnavailable):
         await book_appointment(reservations, _book(tenant_b, first_start))
 
-    second_start = datetime(2026, 8, 17, 14, 0, tzinfo=UTC)
+    second_start = datetime(2099, 8, 17, 14, 0, tzinfo=UTC)
     await book_appointment(reservations, _book(tenant_a, second_start))
     with pytest.raises(AppointmentUnavailable):
         await acquire_capacity_hold(commitments, _hold(tenant_b, second_start))
@@ -296,8 +296,8 @@ async def test_cross_tenant_reschedule_conflict_rolls_back_original_commitment(
     tenant_a, tenant_b, root_id = _two_bound_tenants(admin_conn)
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
-    original_start = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
-    blocked_start = datetime(2026, 8, 17, 14, 0, tzinfo=UTC)
+    original_start = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
+    blocked_start = datetime(2099, 8, 17, 14, 0, tzinfo=UTC)
 
     original = await book_appointment(reservations, _book(tenant_a, original_start))
     await book_appointment(reservations, _book(tenant_b, blocked_start))
@@ -356,7 +356,7 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
         notification=PostgresSlotOfferNotificationIntent(),
     )
     reservations = CapacitySafeReservationCommands(session_factory)
-    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
     entry = await join_waitlist(
@@ -460,7 +460,7 @@ async def test_foreign_booking_closes_slot_opportunity_without_orphan_hold(
         notification=PostgresSlotOfferNotificationIntent(),
     )
     reservations = CapacitySafeReservationCommands(session_factory)
-    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
     await join_waitlist(
