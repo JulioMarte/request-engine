@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -131,12 +132,23 @@ class ReservationLifecycleOutboxHandler:
             if payload_reservation_id != event.aggregate_id:
                 raise PermanentWorkError("reservation_lifecycle_payload_mismatch")
 
+        released_start_at: datetime | None = None
+        released_end_at: datetime | None = None
+        released_location_id: UUID | None = None
+        if event.event_type == "reservation.rescheduled.v1":
+            released_start_at, released_end_at, released_location_id = (
+                _parse_reschedule_release_payload(event.payload)
+            )
+
         await handle_reservation_lifecycle_event(
             ReservationLifecycleEvent(
                 event_id=event.id,
                 organization_id=event.organization_id,
                 reservation_id=event.aggregate_id,
                 event_type=cast(ReservationEventType, event.event_type),
+                released_start_at=released_start_at,
+                released_end_at=released_end_at,
+                released_location_id=released_location_id,
             ),
             worker_principal_id=self._worker_principal_id,
             reader=self._reader,
@@ -153,3 +165,31 @@ class ReservationLifecycleOutboxHandler:
 
     def handlers(self) -> dict[str, FencedOutboxInternalHandler]:
         return {event_type: self.handle for event_type in self._EVENT_TYPES}
+
+
+def _parse_reschedule_release_payload(
+    payload: dict[str, object],
+) -> tuple[datetime, datetime, UUID | None]:
+    raw_start = payload.get("old_start_at")
+    raw_end = payload.get("old_end_at")
+    raw_location = payload.get("old_location_id")
+    if not isinstance(raw_start, str) or not isinstance(raw_end, str):
+        raise PermanentWorkError("reservation_lifecycle_payload_invalid")
+    try:
+        start_at = datetime.fromisoformat(raw_start)
+        end_at = datetime.fromisoformat(raw_end)
+    except ValueError as exc:
+        raise PermanentWorkError("reservation_lifecycle_payload_invalid") from exc
+    if start_at.utcoffset() is None or end_at.utcoffset() is None or end_at <= start_at:
+        raise PermanentWorkError("reservation_lifecycle_payload_invalid")
+
+    if raw_location is None:
+        location_id = None
+    elif isinstance(raw_location, str):
+        try:
+            location_id = UUID(raw_location)
+        except ValueError as exc:
+            raise PermanentWorkError("reservation_lifecycle_payload_invalid") from exc
+    else:
+        raise PermanentWorkError("reservation_lifecycle_payload_invalid")
+    return start_at, end_at, location_id
