@@ -46,6 +46,29 @@ def _provider_lease(organization_id: UUID, reservation_id: UUID) -> ProviderEven
     )
 
 
+async def _wait_for_reservation_lock_waiters(
+    admin_conn: PgConnection,
+    *,
+    expected: int,
+) -> None:
+    deadline = asyncio.get_running_loop().time() + 5
+    while asyncio.get_running_loop().time() < deadline:
+        row = admin_conn.execute(
+            """
+            SELECT count(*)
+            FROM pg_stat_activity
+            WHERE pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE '%request_engine.reservations%'
+              AND query ILIKE '%FOR UPDATE%'
+            """
+        ).fetchone()
+        if row is not None and int(row[0]) >= expected:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"expected at least {expected} Reservation row-lock waiters")
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -100,7 +123,7 @@ async def test_r18_provider_semantic_callback_vs_business_cancellation_serialize
         ).fetchone()
         provider_task = asyncio.create_task(router.process(lease))
         cancel_task = asyncio.create_task(cancel_reservation(reservations, cancel_command))
-        await asyncio.sleep(0.1)
+        await _wait_for_reservation_lock_waiters(admin_conn, expected=2)
         assert not provider_task.done()
         assert not cancel_task.done()
 
