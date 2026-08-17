@@ -12,9 +12,10 @@ SET search_path = request_engine, pg_catalog;
 -- real Hold->Reservation promotion.
 
 -- Preserve both the broad provenance classification introduced by 030 and the
--- long-standing precise subject-mismatch diagnostic. Trigger ordering is
--- lexical, so the 00-prefixed trigger fires before the broader provenance guard.
--- This check is tenant-local and exposes no hidden shared-capacity metadata.
+-- long-standing precise subject-mismatch diagnostic on creation. Retargeting an
+-- existing SlotOffer remains owned by the immutable-provenance guard and keeps
+-- its 55000 contract. This check is tenant-local and exposes no hidden
+-- shared-capacity metadata.
 CREATE FUNCTION request_engine.guard_slot_offer_subject_match()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -47,8 +48,7 @@ END
 $function$;
 
 CREATE TRIGGER slot_offers_00_guard_subject_match
-BEFORE INSERT OR UPDATE OF status, waitlist_entry_id, capacity_hold_id
-ON request_engine.slot_offers
+BEFORE INSERT ON request_engine.slot_offers
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_slot_offer_subject_match();
 
 CREATE OR REPLACE FUNCTION request_engine.assert_slot_offer_consistency()
