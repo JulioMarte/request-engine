@@ -101,18 +101,28 @@ def test_postgres_accepts_provider_backed_immediate_policy(
             }
         ],
     )
+    policy = {
+        "access": [
+            {
+                "key": "video",
+                "kind": "video_link",
+                "provider": "meeting",
+            }
+        ]
+    }
 
     with admin_conn.transaction():
-        _insert_delivery_policy(
-            admin_conn,
-            fixture,
-            {
-                "access": [
-                    {
-                        "key": "video",
-                        "kind": "video_link",
-                        "provider": "meeting",
-                    }
-                ]
-            },
-        )
+        _insert_delivery_policy(admin_conn, fixture, policy)
+        row = admin_conn.execute(
+            """
+            SELECT delivery_policy
+              FROM request_engine.offering_versions
+             WHERE organization_id = %s
+               AND offering_id = %s
+               AND version = 2
+            """,
+            (fixture.organization_id, fixture.offering_id),
+        ).fetchone()
+
+        assert row is not None
+        assert row[0] == policy
