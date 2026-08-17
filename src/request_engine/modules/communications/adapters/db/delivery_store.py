@@ -355,14 +355,16 @@ async def finalize_provider_result(
             retryable=False,
             task_terminal=True,
         )
-    if current_status == "failed" and result.status is not ProviderDeliveryStatus.DELIVERED:
-        return FinalizedDelivery(
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            status=ProviderDeliveryStatus.FAILED,
-            retryable=_delivery_retryable(delivery),
-            task_terminal=cast(str, task["status"]) == "failed",
-        )
+    if current_status == "failed":
+        current_retryable = _delivery_retryable(delivery)
+        if not current_retryable or result.status is not ProviderDeliveryStatus.DELIVERED:
+            return FinalizedDelivery(
+                communication_task_id=task_id,
+                delivery_id=delivery_id,
+                status=ProviderDeliveryStatus.FAILED,
+                retryable=current_retryable,
+                task_terminal=not current_retryable or cast(str, task["status"]) == "failed",
+            )
 
     effective = result
     if result.status is ProviderDeliveryStatus.NOT_FOUND:
@@ -488,9 +490,9 @@ async def _resolve_route_and_contact_point(
                     },
                 )
             )
-            .mappings()
-            .first()
         )
+        .mappings()
+        .first()
         if point is None:
             raise DeliveryConfigurationError("explicit contact point is no longer usable")
         point_channel = cast(str, point["channel"])
