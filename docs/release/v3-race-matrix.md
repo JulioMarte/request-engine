@@ -30,8 +30,8 @@ Status values describe current proof breadth. `PASS` means the named race has co
 | R20 | external side effect succeeds then worker crashes before local finalization | retry/reconciliation cannot create an uncontrolled duplicate semantic effect | PARTIAL | 6F/6J |
 | R21 | reminder materialization vs same reminder materialization | occurrence identity dedupes duplicate future action creation | PARTIAL | 6J |
 | R22 | ReminderPlan cancel vs occurrence materialization | obsolete future work cannot survive as valid current-plan work | PARTIAL | 6J |
-| R23 | authority/revocation change vs material command | material command revalidates authority in its authoritative transaction | PARTIAL | 6I |
-| R24 | tenant A request vs guessed tenant B aggregate ID | no cross-tenant read/write or existence oracle through protected surfaces | PARTIAL | 6I |
+| R23 | authority/revocation change vs material command | material command revalidates authority in its authoritative transaction | PASS | 6I |
+| R24 | tenant A request vs guessed tenant B aggregate ID | no cross-tenant read/write or existence oracle through protected surfaces | PASS | 6I |
 | R25 | tenant A capacity commitment vs tenant B overlapping commitment on one shared root | exactly one incompatible live commitment commits; loser exposes only generic unavailability | PARTIAL | 6D/6I |
 | R26 | direct Booking vs cross-tenant Hold/SlotOffer in both winner orders | exactly one capacity owner; losing SlotOffer path leaves no false active offer or orphan Hold/Claim | PARTIAL | 6D/6L |
 | R27 | reschedule vs foreign shared-capacity commitment | conflicting reschedule rolls back completely and original Reservation/claims remain authoritative | PARTIAL | 6D |
@@ -60,7 +60,7 @@ R18 is exercised by `tests/integration/v3_reservation_lifecycle/test_provider_bu
 
 R22 is exercised by `tests/integration/v3_first_vertical/test_reminder_plan_races.py`. A due ReminderPlan occurrence is genuinely leased, both cancellation and materialization are started behind the same ReminderPlan `FOR UPDATE` barrier, and both valid winner orders are enumerated. Cancellation-first makes the leased occurrence no-op as `plan_inactive`; materialization-first may create exactly one current occurrence task before cancellation, but cancellation removes every future pending ReminderPlan occurrence. No mixed state may leave an active plan or obsolete future recurrence after cancellation.
 
-These R08/R17/R18/R22 rows remain `PARTIAL` because their named interleavings are only part of wider release gates that still include authority, provider-reconciliation or lifecycle failure families. R19 was initially in the same state but Phase 6E expanded it across the complete frozen runtime command inventory and therefore closes its specific claim.
+These R08/R17/R18/R22 rows remain `PARTIAL` because their named interleavings are only part of wider release gates that still include provider-reconciliation or lifecycle failure families. R19 was initially in the same state but Phase 6E expanded it across the complete frozen runtime command inventory and therefore closes its specific claim.
 
 ## Post-integration reconciliation
 
@@ -78,11 +78,13 @@ R25 has independent PostgreSQL connections deliberately overlapping on one hidde
 
 CI #847 consumed the cross-tenant inventory and repeated the concurrency selector successfully three times. R25-R29 remain `PARTIAL` here because this registry tracks wider release-proof closure on the release baseline rather than feature acceptance alone; the final release candidate still has to execute the complete gate set after all remaining Phase 6 work stops changing the candidate.
 
-## Current Phase 6I tenant evidence
+## Phase 6I tenant/Party-authority closure
 
-R23 has multiple independent evidence layers. `tests/db/test_v3_tenant_isolation_adversarial.py` proves both winner orders between Representation revocation and `lock_current_party_authority()` with independent PostgreSQL connections. HTTP authority-race suites additionally exercise material Request, Booking, Queue and Waitlist operations. R23 remains `PARTIAL` until every subject-scoped material mutation family named by the frozen contract has an equivalent deterministic authority-revalidation proof.
+**R23 is `PASS`.** `docs/release/v3-party-authority-adversarial-inventory.md` freezes the complete runtime Party-scoped surface and its nine distinct material exact scopes. Existing create-scope races plus the Phase 6I appointment, Queue, Waitlist, Reminder and Request management races exercise both serialized winner orders between material commands and Representation revocation with production-style application transactions. `lock_current_party_authority()` validates current exact-scope Representation, Principal and Party state inside the authoritative transaction. SlotOffer accept/decline was corrected so `waitlist.manage` authority is established after the canonical Opportunity -> Offer lock roots but before caller-selected revision, lifecycle or expiry state can be disclosed.
 
-R24 has direct app-role, real-login and HTTP evidence. The DB suite proves fail-closed RLS behavior, foreign-row invisibility, foreign-write rejection, `security_invoker` read isolation, and foreign-versus-nonexistent authority lookups. The E2E/runtime suites prove an actual LOGIN role that inherits `request_engine_app`, is `NOBYPASSRLS`/non-superuser, can serve tenant-scoped HTTP, and cannot `SET ROLE` into worker/admin/schema-owner roles. Adversarial HTTP suites exercise Booking, Requests, Queue and Waitlist with foreign versus nonexistent controls. R24 remains `PARTIAL` until the remaining protected execution surfaces and release-level tenant attack inventory are explicitly closed on the final release baseline.
+**R24 is `PASS`.** Direct app-role and real LOGIN tests prove fail-closed RLS, foreign-row invisibility, foreign-write rejection, `security_invoker` read isolation and forbidden role escalation. HTTP adversarial suites cover Booking, Requests, Queue, Waitlist and Reminders with foreign identifiers compared against nonexistent controls. The Reminder surface additionally proves that authenticated operator override cannot import a foreign Party; invalid recipient references are mapped to one opaque `tenant_reference_not_usable` error without echoing the probed UUID. `tests/db/test_v3_party_authority_state_adversarial.py` exercises future/expired/revoked Representation, inactive Principal/Party, wrong exact scope and same-tenant wrong Party against both read and lock authority primitives.
+
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected 392 tests from all 103 expected files, passed all 392 in reverse order, passed three concurrency-stability rounds of 70 tests each, passed mutation probes and included the exact real-LOGIN app function privilege inventory. Final release promotion must rerun R23/R24 on the eventual frozen release candidate; a later change to the Party-scoped capability inventory, RLS contract or app executable-function surface invalidates this PASS until re-proven.
 
 ## Test construction rules
 

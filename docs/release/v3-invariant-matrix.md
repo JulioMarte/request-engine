@@ -105,11 +105,13 @@ Those rows remain `PARTIAL` because feature integration and complete release pro
 
 The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
 
-## Current Phase 6I evidence
+## Phase 6I tenant/Party-authority evidence
 
-The tenant/runtime evidence is materially stronger than the historical baseline. Current CI includes a real LOGIN role inheriting only `request_engine_app`, proves that the role is non-superuser/NOBYPASSRLS and serves tenant-scoped HTTP, and proves that it cannot escalate into worker/admin/schema-owner roles. Additional suites inspect table/function ACLs, deny forbidden `SET ROLE`, exercise fail-closed RLS and attack protected tenant surfaces. Public HTTP authority suites cover Booking, Requests, Queue and Waitlist, with deterministic authority races for multiple material command families.
+Phase 6I closes the release-level tenant-isolation gate G06 and races R23/R24 without pre-promoting the broader invariant registry. The current branch now has a real least-privileged app LOGIN, fail-closed RLS/catalog coverage, an exact executable app-function allowlist, deterministic revoke races for every distinct material Party scope, protected HTTP foreign-versus-nonexistent controls across Booking/Requests/Queue/Waitlist/Reminders, exact-scope temporal/state authority denial tests and tenant-bounded authenticated override proof.
 
-V3-I01, I02, I03, I05, I08 and I13 remain `PARTIAL` because the remaining protected execution-surface inventory and every subject-scoped material authority/revocation race required by the frozen contract still need explicit closure.
+The invariant rows above intentionally remain unchanged in this PR. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. DB-owned V3-I01/I05/I08 also receive stronger evidence here, but promoting them opportunistically would mix Phase 6I gate closure with the separate complete-invariant-registry exercise.
+
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation must itself pass exact-head CI. Final G05 work will reassess V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
 
 ## Release-proof rule
 
