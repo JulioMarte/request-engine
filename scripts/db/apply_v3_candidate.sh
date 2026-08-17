@@ -37,6 +37,7 @@ files=(
   "030-cross-tenant-slot-offer-integrity-hardening.sql"
   "031-cross-tenant-provenance-hardening.sql"
   "032-cross-tenant-person-capacity-cardinality.sql"
+  "033-cross-tenant-runtime-role-classification.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
