@@ -36,9 +36,9 @@ def _uuid_row(
     return cast(UUID, row[0])
 
 
-def _fixture(admin_conn: PgConnection, family: WorkerFamily) -> tuple[UUID, UUID]:
+def _organization(admin_conn: PgConnection, family: WorkerFamily) -> UUID:
     suffix = uuid4().hex
-    organization_id = _uuid_row(
+    return _uuid_row(
         admin_conn,
         """
         INSERT INTO request_engine.organizations (organization_key, display_name)
@@ -47,6 +47,11 @@ def _fixture(admin_conn: PgConnection, family: WorkerFamily) -> tuple[UUID, UUID
         """,
         (f"process-crash-{family}-{suffix}", f"Process crash {family}"),
     )
+
+
+def _fixture(admin_conn: PgConnection, family: WorkerFamily) -> tuple[UUID, UUID]:
+    suffix = uuid4().hex
+    organization_id = _organization(admin_conn, family)
     if family == "outbox":
         work_id = _uuid_row(
             admin_conn,
@@ -95,6 +100,54 @@ def _expire(admin_conn: PgConnection, family: WorkerFamily, work_id: UUID) -> No
             WHERE id = %s
         """
     admin_conn.execute(sql, (work_id,))
+
+
+def _state(
+    admin_conn: PgConnection,
+    family: WorkerFamily,
+    organization_id: UUID,
+    work_id: UUID,
+) -> tuple[object, ...]:
+    query: LiteralString
+    if family == "outbox":
+        query = """
+            SELECT status, claim_token, lease_until > clock_timestamp(), attempt_count
+            FROM request_engine.outbox_messages
+            WHERE organization_id = %s AND id = %s
+        """
+    else:
+        query = """
+            SELECT status, claim_token, lease_until > clock_timestamp(), attempt_count
+            FROM request_engine.provider_events
+            WHERE organization_id = %s AND id = %s
+        """
+    row = admin_conn.execute(query, (organization_id, work_id)).fetchone()
+    assert row is not None
+    return tuple(row)
+
+
+def _final_state(
+    admin_conn: PgConnection,
+    family: WorkerFamily,
+    organization_id: UUID,
+    work_id: UUID,
+) -> tuple[object, ...]:
+    query: LiteralString
+    if family == "outbox":
+        query = """
+            SELECT status, claim_token, lease_until, attempt_count
+            FROM request_engine.outbox_messages
+            WHERE organization_id = %s AND id = %s
+        """
+    else:
+        query = """
+            SELECT status, claim_token, lease_until, attempt_count
+            FROM request_engine.provider_events
+            WHERE organization_id = %s AND id = %s
+        """
+    row = admin_conn.execute(query, (organization_id, work_id)).fetchone()
+    assert row is not None
+    return tuple(row)
 
 
 def _reclaim(worker: PgConnection, family: WorkerFamily, work_id: UUID) -> UUID:
@@ -177,16 +230,12 @@ os.kill(os.getpid(), signal.SIGKILL)
     assert result_path.exists(), process.stderr
     first_token = UUID(json.loads(result_path.read_text(encoding="utf-8"))["claim_token"])
 
-    table = "outbox_messages" if family == "outbox" else "provider_events"
-    claimed = admin_conn.execute(
-        f"""
-        SELECT status, claim_token, lease_until > clock_timestamp(), attempt_count
-        FROM request_engine.{table}
-        WHERE organization_id = %s AND id = %s
-        """,
-        (organization_id, work_id),
-    ).fetchone()
-    assert claimed == ("leased", first_token, True, 1)
+    assert _state(admin_conn, family, organization_id, work_id) == (
+        "leased",
+        first_token,
+        True,
+        1,
+    )
 
     _expire(admin_conn, family, work_id)
     worker: PgConnection = psycopg.connect(_conninfo(), autocommit=True)
@@ -200,12 +249,9 @@ os.kill(os.getpid(), signal.SIGKILL)
         worker.close()
 
     expected_status = "delivered" if family == "outbox" else "processed"
-    final = admin_conn.execute(
-        f"""
-        SELECT status, claim_token, lease_until, attempt_count
-        FROM request_engine.{table}
-        WHERE organization_id = %s AND id = %s
-        """,
-        (organization_id, work_id),
-    ).fetchone()
-    assert final == (expected_status, None, None, 2)
+    assert _final_state(admin_conn, family, organization_id, work_id) == (
+        expected_status,
+        None,
+        None,
+        2,
+    )
