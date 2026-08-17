@@ -186,9 +186,13 @@ async def test_supervisor_stream_failure_cancels_siblings_and_propagates() -> No
         }
     )
 
-    with pytest.raises(ExceptionGroup, match="unhandled errors in a TaskGroup"):
+    with pytest.raises(ExceptionGroup) as exc_info:
         await supervisor.run(asyncio.Event())
 
+    assert any(
+        isinstance(error, RuntimeError) and str(error) == "worker stream failed"
+        for error in exc_info.value.exceptions
+    )
     assert sibling.cancelled.is_set()
 
 
