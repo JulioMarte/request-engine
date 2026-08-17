@@ -679,6 +679,9 @@ class PostgresBookingCommitmentCommands:
                     },
                 )
 
+            old_location_id = cast(UUID | None, reservation_row["location_id"])
+            old_start_at = cast(datetime, reservation_row["start_at"])
+            old_end_at = cast(datetime, reservation_row["end_at"])
             await append_audit(
                 session,
                 organization_id=command.organization_id,
@@ -691,8 +694,10 @@ class PostgresBookingCommitmentCommands:
                     "subject_party_id": str(subject_party_id),
                     "subject_authority": authority.audit_details(),
                     "expected_revision": command.expected_revision,
-                    "old_start_at": cast(datetime, reservation_row["start_at"]).isoformat(),
-                    "old_end_at": cast(datetime, reservation_row["end_at"]).isoformat(),
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "new_location_id": str(command.location_id) if command.location_id else None,
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
                     "new_start_at": start_at.isoformat(),
                     "new_end_at": end_at.isoformat(),
                 },
@@ -705,6 +710,9 @@ class PostgresBookingCommitmentCommands:
                 aggregate_id=command.reservation_id,
                 payload={
                     "reservation_id": str(command.reservation_id),
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
                 },
