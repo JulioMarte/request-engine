@@ -74,6 +74,9 @@ class PostgresReservationLifecycleReader:
         reservation_id: UUID,
         *,
         event_type: str,
+        released_start_at: datetime | None = None,
+        released_end_at: datetime | None = None,
+        released_location_id: UUID | None = None,
     ) -> ReleasedReservationSlot | None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             reservation = (
@@ -95,42 +98,26 @@ class PostgresReservationLifecycleReader:
             )
             if reservation is None:
                 return None
-            if event_type == "reservation.rescheduled.v1":
-                old = (
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                SELECT lower(during) AS start_at, upper(during) AS end_at
-                                FROM request_engine.capacity_claims
-                                WHERE organization_id = :organization_id
-                                  AND reservation_id = :reservation_id
-                                  AND status = 'replaced'
-                                ORDER BY updated_at DESC, id DESC
-                                LIMIT 1
-                                """
-                            ),
-                            {"organization_id": organization_id, "reservation_id": reservation_id},
-                        )
-                    )
-                    .mappings()
-                    .first()
-                )
-                if old is None:
-                    return None
-                start_at = cast(datetime, old["start_at"])
-                end_at = cast(datetime, old["end_at"])
-            else:
-                start_at = cast(datetime, reservation["start_at"])
-                end_at = cast(datetime, reservation["end_at"])
             policy = reservation_lifecycle_policy(
                 cast(dict[str, object], reservation["booking_policy_snapshot"])
             )
+
+        if event_type == "reservation.rescheduled.v1":
+            if released_start_at is None or released_end_at is None:
+                raise ValueError("rescheduled release requires event-time slot coordinates")
+            start_at = released_start_at
+            end_at = released_end_at
+            location_id = released_location_id
+        else:
+            start_at = cast(datetime, reservation["start_at"])
+            end_at = cast(datetime, reservation["end_at"])
+            location_id = cast(UUID | None, reservation["location_id"])
+
         return ReleasedReservationSlot(
             organization_id=organization_id,
             reservation_id=reservation_id,
             offering_version_id=cast(UUID, reservation["offering_version_id"]),
-            location_id=cast(UUID | None, reservation["location_id"]),
+            location_id=location_id,
             start_at=start_at,
             end_at=end_at,
             recovery_enabled=policy.slot_recovery.enabled,
