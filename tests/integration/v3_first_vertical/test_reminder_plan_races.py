@@ -21,7 +21,10 @@ from request_engine.modules.communications.application.commands.cancel_reminder_
     cancel_reminder_plan,
 )
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker, ScheduledActionLease
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
 
 from .test_communications_reminders import _create_fixture, _database_now, _uuid_row
 
