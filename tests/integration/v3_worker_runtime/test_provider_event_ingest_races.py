@@ -8,7 +8,10 @@ from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.events.errors import ProviderEventDedupeConflict
-from request_engine.platform.events.provider_events import ProviderEventReceipt, record_provider_event
+from request_engine.platform.events.provider_events import (
+    ProviderEventReceipt,
+    record_provider_event,
+)
 
 PgConnection = Connection[Any]
 
