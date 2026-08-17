@@ -207,11 +207,17 @@ conn = psycopg.connect(conninfo, autocommit=True)
 conn.execute("SET ROLE request_engine_worker")
 if family == "outbox":
     rows = conn.execute(
-        "SELECT message_id, claim_token FROM request_cmd.claim_outbox_messages(500, interval '30 seconds')"
+        """
+        SELECT message_id, claim_token
+        FROM request_cmd.claim_outbox_messages(500, interval '30 seconds')
+        """
     ).fetchall()
 else:
     rows = conn.execute(
-        "SELECT provider_event_row_id, claim_token FROM request_cmd.claim_provider_events(500, interval '30 seconds')"
+        """
+        SELECT provider_event_row_id, claim_token
+        FROM request_cmd.claim_provider_events(500, interval '30 seconds')
+        """
     ).fetchall()
 row = next(value for value in rows if str(value[0]) == work_id)
 with open(result_path, "w", encoding="utf-8") as handle:
