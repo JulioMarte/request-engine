@@ -18,8 +18,8 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G06 | Tenant/RLS isolation | PASS | real app LOGIN role, protected-function inventory, fail-closed RLS and attack matrix |
 | G07 | Booking lifecycle | PASS | complete booking lifecycle including capacity/recovery/communication consequences |
 | G08 | Slot recovery | PASS | complete Opportunity/Offer/Hold/accept/decline/expiry/candidate proof |
-| G09 | Worker concurrency/fencing | PARTIAL | multi-worker claim/fencing/crash/reclaim proof |
-| G10 | Crash/recovery semantics | PARTIAL | crash at authoritative/external-effect boundaries and deterministic recovery |
+| G09 | Worker concurrency/fencing | PASS | multi-worker claim/fencing/crash/reclaim proof |
+| G10 | Crash/recovery semantics | PASS | crash at authoritative/external-effect boundaries and deterministic recovery |
 | G11 | Idempotency and retry semantics | PASS | frozen runtime command inventory + post-commit response-loss replay + fingerprint-conflict proof |
 | G12 | Optimistic concurrency | PASS | real concurrent writers for every caller-selected revision-managed public aggregate |
 | G13 | ProviderEvent/reconciliation | PARTIAL | duplicate/reorder/ambiguity/reconciliation/failure matrix |
@@ -88,6 +88,18 @@ Canonical CI #923 (`32053071800`) passed on exact implementation head `12f7d5ade
 
 The release-registry reconciliation is intentionally documentation-only after that implementation proof. Its own exact-head canonical CI must pass before PR #59 is merge-ready; the final `development -> main` promotion must rerun G07/G08 and R03-R08 on the eventual frozen candidate.
 
+## Phase 6F — worker concurrency/fencing and crash/recovery closure
+
+**G09 is `PASS`.** `docs/release/v3-worker-fencing-crash-recovery-inventory.md` freezes the complete control surface for ScheduledAction, OutboxMessage and ProviderEvent. R12-R14 are exercised across all three durable families with independent `request_engine_worker` sessions, current-token assertions, expired-lease fencing, reclaim under a fresh token and stale complete/retry/dead-letter/renew rejection. R15 keeps both ScheduledAction cancellation/claim winner orders and additionally proves that a cancelled stale claim cannot pass the authoritative domain fence. R16 proves both Outbox completion/reclaim outcomes: a current completion prevents reclaim of delivered work, while an expired stale completion cannot finalize the replacement claimant even when the replacement claim transaction remains open. Rank-round tenant fairness is executable for all three work families; G15 remains responsible only for representative-cardinality performance of those queries.
+
+**G10 is `PASS`.** The crash matrix covers every frozen failure boundary rather than treating lease expiry alone as crash recovery. Real subprocess tests `SIGKILL` a worker after durable claim for all three work families and require fresh-token reclaim with old-token fencing. Outbox replay proves an idempotent internal consequence can commit before publish failure and converge on retry. Reservation lifecycle composition proves independently committed authoritative business consequences converge when the durable fact is replayed. Communications and ReservationAccess both exercise external provider success followed by lease loss/local-finalization absence: the stale claimant cannot publish authoritative success, and the replacement claimant uses provider lookup/evidence instead of blindly creating a duplicate effect. Unit evidence covers processing timeout cancellation, heartbeat loss suppressing finalization, supervisor sibling cancellation/propagation and shared graceful-stop signaling. Existing retry/dead/admin-replay tests preserve database-clock scheduling, lifetime attempt history and audited privileged replay.
+
+R20 deliberately remains `PARTIAL`. G10 closes the worker ownership/crash boundary for real external effects, but the complete provider duplicate/reorder/ambiguous-outcome/reconciliation and communications failure policy remains G13.
+
+Canonical CI #946 (`32063335393`) passed on exact implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f`. Artifact `v3-candidate-release-proof` `9299172598` (`sha256:bf954de52a56fc6ace13ea76de4cade8732bb4c9a267cd5900ddf21324408dd7`) reports `evidence_status: VALID`, `artifact_set_complete: true`, zero validation errors and a clean tree. The manifest binds base `cc46234c9e3e1c3109b0aa87484d83cbefe28633`, implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f` and merge checkout/tested SHA `8e36d4e62a65df28d0ccb5d12843966da34bbf01`. It collected all 109 expected test files, recorded 409 reverse-order passes, three concurrency-stability rounds of 81 passes, four mutation probes killed as expected and zero test-quality errors/warnings. The artifact correctly remains `release_status: NOT_READY`.
+
+This registry reconciliation changes documentation only; it must itself pass canonical exact-head CI before PR #60 is merge-authoritative. Final promotion to `main` must rerun G09/G10 and R12-R16 on the eventual frozen candidate.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -96,15 +108,14 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G06/G07/G08/G11/G12/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G06/G07/G08/G09/G10/G11/G12/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. close worker concurrency/fencing and crash recovery (G09/G10);
-2. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
-3. freeze public API/error/capability contracts after correctness stops moving (G16);
-4. build representative query-plan/performance evidence and only then freeze indexes (G15);
-5. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
-6. execute the unified adversarial/failure gate (G18);
-7. prove a fresh production-like environment (G19);
-8. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
+2. freeze public API/error/capability contracts after correctness stops moving (G16);
+3. build representative query-plan/performance evidence and only then freeze indexes (G15);
+4. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
+5. execute the unified adversarial/failure gate (G18);
+6. prove a fresh production-like environment (G19);
+7. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G07/G08/G11/G12/G14 are now closed.
+Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G07/G08/G09/G10/G11/G12/G14 are now closed.
