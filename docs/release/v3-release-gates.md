@@ -15,7 +15,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G03 | V2 design-history preservation | PASS | canonical V2 history job |
 | G04 | Python quality and architecture | PASS | Ruff, format, Pyright, security, dependency and architecture suite |
 | G05 | Complete invariant registry | PARTIAL | every V3-Ixx must map to executable owner-boundary proof |
-| G06 | Tenant/RLS isolation | PARTIAL | real app LOGIN role, protected-function inventory, fail-closed RLS and attack matrix |
+| G06 | Tenant/RLS isolation | PASS | real app LOGIN role, protected-function inventory, fail-closed RLS and attack matrix |
 | G07 | Booking lifecycle | PARTIAL | complete booking lifecycle including capacity/recovery/communication consequences |
 | G08 | Slot recovery | PARTIAL | complete Opportunity/Offer/Hold/accept/decline/expiry/candidate proof |
 | G09 | Worker concurrency/fencing | PARTIAL | multi-worker claim/fencing/crash/reclaim proof |
@@ -53,6 +53,21 @@ PR #52 and the subsequent production-worker/reservation-delivery integrations ma
 
 The integrated baseline includes real `request_engine_app` LOGIN-role HTTP coverage, adversarial RLS/privilege tests, worker lease/fencing primitives, Booking/Queue/Waitlist/Reminder verticals, ReservationAccess/Delivery, ProviderEvent handling and cross-tenant shared-capacity serialization. Those components remain subject to the unfinished gates above.
 
+## Phase 6I — tenant/RLS and Party-authority closure
+
+**G06 is `PASS`.** The gate is now backed by all four required evidence families on one exact branch head:
+
+- **real app LOGIN:** integration and E2E proofs create LOGIN roles inheriting only `request_engine_app`, require non-superuser/NOBYPASSRLS runtime flags, serve tenant-scoped HTTP and deny `SET ROLE` escalation into worker/admin/schema-owner roles;
+- **protected-function inventory:** `tests/db/test_v3_app_function_privilege_inventory.py` enumerates every function executable by a real app LOGIN in `request_engine`, `request_cmd` and `request_admin` and requires exact equality with the reviewed allowlist; any new executable function is release-visible drift;
+- **fail-closed RLS:** adversarial DB tests require tenant policies on every tenant-owned table, prove missing organization context fails closed, and reject foreign reads/writes while `security_invoker` read surfaces preserve RLS;
+- **attack matrix:** Booking, Requests, Queue, Waitlist and Reminders compare foreign identifiers with nonexistent controls, exact Party-authority primitives reject invalid temporal/state/scope combinations, and authenticated operator override cannot cross tenant boundaries.
+
+The same Phase 6I work closes R23/R24 in `docs/release/v3-race-matrix.md`. It also corrected SlotOffer accept/decline authority ordering and normalized invalid Reminder Party references from an internal 500 fallback to an opaque tenant-reference error. These are correctness/security changes, not new product scope.
+
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced a `VALID` candidate evidence bundle with 392 collected tests across all 103 expected files, 392 reverse-order passes, three concurrency-stability rounds of 70 passes each, passing mutation probes and the exact real-LOGIN app function inventory. This registry reconciliation must itself pass canonical exact-head CI before integration.
+
+G06 does **not** imply G14. G14 remains `PARTIAL` because the complete release privilege contract still includes the broader app/worker/admin/table/function/`SECURITY DEFINER` review beyond the tenant-isolation claim closed here.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -61,9 +76,9 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G11/G12 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G06/G11/G12 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. finish tenant/Party authority and runtime privilege closure (G06/G14);
+1. finish the separate runtime privilege contract (G14);
 2. complete Booking and Slot Recovery vertical release proofs (G07/G08);
 3. close worker concurrency/fencing and crash recovery (G09/G10);
 4. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
@@ -74,4 +89,4 @@ With G11/G12 closed, the remaining proof work should proceed in dependency order
 9. prove a fresh production-like environment (G19);
 10. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G11/G12 are now closed.
+Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G11/G12 are now closed.

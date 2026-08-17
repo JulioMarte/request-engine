@@ -166,6 +166,15 @@ class PostgresSlotOfferCommands:
                 cast(UUID, offer_probe["slot_opportunity_id"]),
             )
             offer_row = await _lock_offer(session, command.organization_id, command.slot_offer_id)
+            subject_party_id = cast(UUID, offer_row["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key=MANAGE_WAITLIST_SCOPE,
+                allow_operator_override=command.allow_subject_override,
+            )
             _ensure_offer_revision(offer_row, command.slot_offer_id, command.expected_revision)
             offer_status = cast(str, offer_row["status"])
             if offer_status != "offered":
@@ -178,15 +187,6 @@ class PostgresSlotOfferCommands:
                     cast(str, opportunity["status"]),
                 )
 
-            subject_party_id = cast(UUID, offer_row["subject_party_id"])
-            authority = await require_subject_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                subject_party_id=subject_party_id,
-                scope_key=MANAGE_WAITLIST_SCOPE,
-                allow_operator_override=command.allow_subject_override,
-            )
             reservation = await self._capacity.consume_slot_offer_hold(
                 session,
                 ConsumeSlotOfferHold(
@@ -417,14 +417,6 @@ class PostgresSlotOfferCommands:
             cast(UUID, probe["slot_opportunity_id"]),
         )
         offer_row = await _lock_offer(session, organization_id, slot_offer_id)
-        _ensure_offer_revision(offer_row, slot_offer_id, expected_revision)
-        current_status = cast(str, offer_row["status"])
-        if current_status != "offered":
-            raise SlotOfferNotActionable(slot_offer_id, current_status)
-        if terminal_status == "declined" and cast(datetime, offer_row["expires_at"]) <= cast(
-            datetime, offer_row["db_now"]
-        ):
-            raise SlotOfferExpired(slot_offer_id)
 
         authority_details: dict[str, object] | None = None
         if require_authority:
@@ -437,6 +429,16 @@ class PostgresSlotOfferCommands:
                 allow_operator_override=allow_subject_override,
             )
             authority_details = authority.audit_details()
+
+        _ensure_offer_revision(offer_row, slot_offer_id, expected_revision)
+        current_status = cast(str, offer_row["status"])
+        if current_status != "offered":
+            raise SlotOfferNotActionable(slot_offer_id, current_status)
+        if terminal_status == "declined" and cast(datetime, offer_row["expires_at"]) <= cast(
+            datetime, offer_row["db_now"]
+        ):
+            raise SlotOfferExpired(slot_offer_id)
+
         return await self._resolve_locked_offer(
             session,
             organization_id=organization_id,

@@ -2,6 +2,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.communications.application.errors import (
+    RecipientNotFound,
     ReminderPlanNotActive,
     ReminderPlanNotFound,
     ReminderPlanRevisionConflict,
@@ -22,6 +23,13 @@ async def communications_error_handler(_: Request, exc: Exception) -> JSONRespon
 
 
 def _communications_error(exc: CommunicationsError) -> tuple[int, ErrorBody]:
+    if isinstance(exc, RecipientNotFound):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="tenant_reference_not_usable",
+            message="a referenced entity is not usable for this tenant",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"reference_kind": "subject_party_id"},
+        )
     if isinstance(exc, ReminderPlanNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(
             code="reminder_plan_not_found",
