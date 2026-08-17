@@ -1,3 +1,6 @@
+# pyright: reportPrivateUsage=false
+
+from collections.abc import Callable
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -13,13 +16,36 @@ from request_engine.modules.queue.application.commands.offer_next_waitlist_candi
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
-from tests.integration.v3_first_vertical._response_loss import (
-    DropFirstMatchingResponseTransport,
-)
 
 from .test_slot_offer_recovery import _fixture, _offer_command, _prepare
 
 PgConnection = Connection[Any]
+
+
+class DropFirstMatchingResponseTransport(httpx.AsyncBaseTransport):
+    def __init__(
+        self,
+        app: object,
+        *,
+        matches: Callable[[httpx.Request], bool],
+    ) -> None:
+        self._inner = httpx.ASGITransport(app=cast(Any, app))
+        self._matches = matches
+        self._dropped = False
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self._inner.handle_async_request(request)
+        if not self._dropped and self._matches(request):
+            self._dropped = True
+            await response.aclose()
+            raise httpx.ReadError(
+                "simulated response loss after committed command",
+                request=request,
+            )
+        return response
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
 
 
 class SlotOfferBearerResolver:
