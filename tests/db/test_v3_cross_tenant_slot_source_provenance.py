@@ -54,6 +54,41 @@ def _sources(conn: PgConnection) -> tuple[UUID, UUID, UUID, UUID]:
         """,
         (organization_id, offering_id),
     )
+    capability_id = _uuid(
+        conn,
+        """
+        INSERT INTO request_engine.resource_capabilities (
+            organization_id, capability_key, display_name
+        ) VALUES (%s, %s, 'Provider') RETURNING id
+        """,
+        (organization_id, f"provider-{suffix}"),
+    )
+    requirement_id = _uuid(
+        conn,
+        """
+        INSERT INTO request_engine.offering_resource_requirements (
+            organization_id, offering_version_id, capability_id, ordinal, quantity
+        ) VALUES (%s, %s, %s, 1, 1) RETURNING id
+        """,
+        (organization_id, offering_version_id, capability_id),
+    )
+    resource_id = _uuid(
+        conn,
+        """
+        INSERT INTO request_engine.resources (
+            organization_id, resource_key, display_name, capacity_model, capacity_units
+        ) VALUES (%s, %s, 'Provider', 'exclusive', 1) RETURNING id
+        """,
+        (organization_id, f"provider-{suffix}"),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.resource_capability_assignments (
+            organization_id, resource_id, capability_id
+        ) VALUES (%s, %s, %s)
+        """,
+        (organization_id, resource_id, capability_id),
+    )
     waitlist_entry_id = _uuid(
         conn,
         """
@@ -96,12 +131,36 @@ def _sources(conn: PgConnection) -> tuple[UUID, UUID, UUID, UUID]:
         """,
         (organization_id, offering_version_id, party_id),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.capacity_claims (
+            organization_id, resource_id, requirement_id, hold_id,
+            during, quantity
+        ) VALUES (
+            %s, %s, %s, %s,
+            tstzrange('2030-09-01T14:00:00+00'::timestamptz,
+                      '2030-09-01T14:30:00+00'::timestamptz, '[)'), 1
+        )
+        """,
+        (organization_id, resource_id, requirement_id, hold_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.slot_offers (
+            organization_id, slot_opportunity_id, waitlist_entry_id,
+            capacity_hold_id, expires_at
+        ) VALUES (%s, %s, %s, %s, clock_timestamp() + interval '5 minutes')
+        """,
+        (organization_id, opportunity_id, waitlist_entry_id, hold_id),
+    )
     conn.commit()
     return organization_id, hold_id, waitlist_entry_id, opportunity_id
 
 
 @pytest.mark.postgres
-def test_capacity_hold_material_provenance_is_immutable(admin_conn: PgConnection) -> None:
+def test_capacity_hold_material_provenance_is_immutable_after_offer_reference(
+    admin_conn: PgConnection,
+) -> None:
     organization_id, hold_id, _, _ = _sources(admin_conn)
 
     with pytest.raises(Error) as rejected:
@@ -132,7 +191,9 @@ def test_capacity_hold_material_provenance_is_immutable(admin_conn: PgConnection
 
 
 @pytest.mark.postgres
-def test_waitlist_entry_material_provenance_is_immutable(admin_conn: PgConnection) -> None:
+def test_waitlist_entry_material_provenance_is_immutable_after_offer_reference(
+    admin_conn: PgConnection,
+) -> None:
     organization_id, _, waitlist_entry_id, _ = _sources(admin_conn)
 
     with pytest.raises(Error) as rejected:
@@ -160,7 +221,9 @@ def test_waitlist_entry_material_provenance_is_immutable(admin_conn: PgConnectio
 
 
 @pytest.mark.postgres
-def test_slot_opportunity_material_provenance_is_immutable(admin_conn: PgConnection) -> None:
+def test_slot_opportunity_material_provenance_is_immutable_after_offer_reference(
+    admin_conn: PgConnection,
+) -> None:
     organization_id, _, _, opportunity_id = _sources(admin_conn)
 
     with pytest.raises(Error) as rejected:
