@@ -29,8 +29,8 @@ BEGIN
         OR OLD.expires_at IS DISTINCT FROM NEW.expires_at
         OR OLD.created_at IS DISTINCT FROM NEW.created_at
     ) THEN
-        RAISE EXCEPTION 'CapacityHold booking provenance is immutable after SlotOffer reference'
-            USING ERRCODE = '55000';
+        RAISE EXCEPTION 'SlotOffer source state is no longer valid: CapacityHold booking provenance is immutable after SlotOffer reference'
+            USING ERRCODE = '23514';
     END IF;
 
     RETURN NEW;
@@ -62,8 +62,8 @@ BEGIN
         OR OLD.latest_start IS DISTINCT FROM NEW.latest_start
         OR OLD.created_at IS DISTINCT FROM NEW.created_at
     ) THEN
-        RAISE EXCEPTION 'WaitlistEntry booking provenance is immutable after SlotOffer reference'
-            USING ERRCODE = '55000';
+        RAISE EXCEPTION 'SlotOffer source state is no longer valid: WaitlistEntry booking provenance is immutable after SlotOffer reference'
+            USING ERRCODE = '23514';
     END IF;
 
     RETURN NEW;
@@ -94,8 +94,8 @@ BEGIN
         OR OLD.during IS DISTINCT FROM NEW.during
         OR OLD.created_at IS DISTINCT FROM NEW.created_at
     ) THEN
-        RAISE EXCEPTION 'SlotOpportunity booking provenance is immutable after SlotOffer reference'
-            USING ERRCODE = '55000';
+        RAISE EXCEPTION 'SlotOffer source state is no longer valid: SlotOpportunity booking provenance is immutable after SlotOffer reference'
+            USING ERRCODE = '23514';
     END IF;
 
     RETURN NEW;
