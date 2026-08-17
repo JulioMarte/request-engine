@@ -1,11 +1,10 @@
 import asyncio
 from collections.abc import Awaitable
-from typing import Any, TypeVar
+from typing import Any
 from uuid import UUID
 
 from psycopg import Connection, sql
 
-T = TypeVar("T")
 PgConnection = Connection[Any]
 
 _ALLOWED_RACE_ROOTS = frozenset(
@@ -49,7 +48,7 @@ async def wait_for_new_lock_waiters(
     )
 
 
-async def race_behind_row_lock(
+async def race_behind_row_lock[T](
     admin_conn: PgConnection,
     *,
     table: str,
