@@ -45,35 +45,41 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I35 | architecture | queue model/reader implementation | PARTIAL | 6A/6K |
 | V3-I36 | model/DB | waitlist/slot recovery tests | PARTIAL | 6D |
 | V3-I37 | APP | SlotOpportunity/booking boundary | PARTIAL | 6D |
-| V3-I38 | DB | slot-offer recovery candidate/tests | PARTIAL | 6D |
+| V3-I38 | DB | SlotOffer cardinality + duplicate released-slot recovery race | PARTIAL | 6D |
 | V3-I39 | BOTH | slot-offer recovery vertical | PARTIAL | 6D |
 | V3-I40 | transaction+BOTH | accept slot-offer recovery flow | PARTIAL | 6D |
 | V3-I41 | transaction+BOTH | decline/expiry slot-offer flow | PARTIAL | 6D |
-| V3-I42 | BOTH | SlotOpportunity serialization implementation | PARTIAL | 6D |
+| V3-I42 | BOTH | SlotOpportunity source-event/idempotency serialization race | PARTIAL | 6D |
 | V3-I43 | APP under opportunity lock | waitlist/slot selection implementation | PARTIAL | 6D/6G |
 | V3-I44 | architecture/APP | durable communications ADR + vertical tests | PARTIAL | 6J |
 | V3-I45 | BOTH | communication intent/dedupe implementation | PARTIAL | 6J |
 | V3-I46 | BOTH/EXT | delivery store + communication delivery tests | PARTIAL | 6J |
-| V3-I47 | APP | provider event/business routing boundary | PARTIAL | 6J |
+| V3-I47 | APP | ProviderEventRouter → Booking semantic-command vs cancellation race | PARTIAL | 6J |
 | V3-I48 | BOTH | ReminderPlan contract + schedule tests | PARTIAL | 6K/6L |
-| V3-I49 | BOTH | reminder occurrence/materialization tests | PARTIAL | 6J/6K |
-| V3-I50 | BOTH | reminder cancellation/lifecycle tests | PARTIAL | 6J/6K |
+| V3-I49 | BOTH | reminder occurrence/replay + cancellation/materialization race | PARTIAL | 6J/6K |
+| V3-I50 | BOTH | ReminderPlan cancellation vs leased occurrence materialization race | PARTIAL | 6J/6K |
 | V3-I51 | product boundary/APP | V3 reminder product boundary | PARTIAL | 6K |
 | V3-I52 | DB | worker runtime/lease tests | PARTIAL | 6F |
 | V3-I53 | DB | expired-lease + communication fencing tests | PARTIAL | 6F |
 | V3-I54 | BOTH | worker runtime/dead-letter implementation | PARTIAL | 6F |
 | V3-I55 | architecture/APP | worker hardening contract/runtime | PARTIAL | 6F/6J |
-| V3-I56 | BOTH | ProviderEvent dedupe implementation | PARTIAL | 6J |
+| V3-I56 | BOTH | simultaneous ProviderEvent identity ingestion + payload-conflict race | PARTIAL | 6J |
 | V3-I57 | EXT/APP | delivery worker/reconciliation contract | PARTIAL | 6F/6J |
 | V3-I58 | transaction/APP | outbox pipeline and communication vertical | PARTIAL | 6J |
 | V3-I59 | DB | trusted execution provenance DB test | PARTIAL | 6I/6J |
-| V3-I60 | BOTH | idempotency contract tests | PARTIAL | 6E |
-| V3-I61 | BOTH | idempotency PostgreSQL implementation/contracts | PARTIAL | 6E/6I |
+| V3-I60 | BOTH | committed Booking response-loss + same-key HTTP replay proof | PARTIAL | 6E |
+| V3-I61 | BOTH | idempotency identity/fingerprint + committed-result replay contracts | PARTIAL | 6E/6I |
 | V3-I62 | BOTH/ops | request_admin authority events + UUID/no-enumeration adversarial tests | PARTIAL | 6I |
 | V3-I63 | BOTH | cross-tenant CapacityClaim/Booking/Hold/SlotOffer integration + DB race tests | PARTIAL | 6D/6I |
 | V3-I64 | DB+APP | private-table runtime privilege contract + opaque Booking error tests | PARTIAL | 6I/6K |
 | V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL race tests | PARTIAL | 6D/6I |
 | V3-I66 | APP protocol + DB primitive | multi-root lock topology + simultaneous reschedule concurrency tests | PARTIAL | 6D/6L |
+
+## Phase 6 race-closure evidence
+
+The race-closure work adds real runtime-role evidence to the invariant families that were still missing a deterministic interleaving after the post-integration rebaseline. R08 forces duplicate released-slot consumers to serialize on the source-event idempotency identity and asserts one Opportunity/Hold/Offer chain, strengthening V3-I38/I42. R17 forces simultaneous ProviderEvent identity inserts and validates same-payload replay versus different-payload conflict, strengthening V3-I56. R18 routes a provider event through `ProviderEventRouter` into Booking's semantic attendance command while cancellation competes for the same Reservation, strengthening V3-I47 without granting provider infrastructure direct Booking authority. R19 drops a successful HTTP Booking response only after the ASGI request finishes, then retries the same key and proves one Reservation/claim/outbox effect, strengthening V3-I60/I61. R22 races a leased ReminderPlan occurrence against plan cancellation under the real plan lock and asserts both valid serialized state machines, strengthening V3-I49/I50.
+
+These invariant rows remain `PARTIAL`. The tests close specific release-proof gaps; they do not by themselves complete the wider Booking, ProviderEvent, idempotency, communications or adversarial release gates, and all evidence must be repeated on the eventual frozen release candidate.
 
 ## Post-integration evidence baseline
 
@@ -81,7 +87,7 @@ PR #52 exact-head CI `#847` (`31983843624`) produced a complete, VALID candidate
 
 ## Cross-tenant shared-capacity extension evidence
 
-V3-I62..V3-I66 now have exact-head executable evidence that was consumed by CI #847: least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
+V3-I62..V3-I66 have exact-head executable evidence consumed by CI #847: least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
 
 Those rows remain `PARTIAL` in the release inventory because feature acceptance and release freeze are different claims. The final release candidate must execute these proofs again after the remaining Phase 6 correctness, privilege, performance, API-freeze and migration-equivalence work has stopped changing the candidate. A later weakening or removal of any proof returns the affected invariant to incomplete status.
 
