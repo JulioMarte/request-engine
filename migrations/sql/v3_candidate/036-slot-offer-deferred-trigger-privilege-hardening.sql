@@ -11,14 +11,20 @@ SET search_path = pg_catalog;
 -- the invariant could be evaluated.
 --
 -- Keep both routines private. Only the trigger wrapper executes as the schema
--- owner so it can evaluate the final-state invariant. Fix search_path exactly
--- to the repository's SECURITY DEFINER hardening contract, including pg_temp
--- last so temporary objects cannot shadow trusted objects.
+-- owner so it can evaluate the final-state invariant. Fix search_path across
+-- the entire privileged call chain to the repository's SECURITY DEFINER
+-- hardening contract, including pg_temp last so temporary objects cannot
+-- shadow trusted objects while the wrapper is executing as schema owner.
 ALTER FUNCTION request_engine.check_offered_slot_offer_source_consistency()
     SECURITY DEFINER;
 ALTER FUNCTION request_engine.check_offered_slot_offer_source_consistency()
     SET search_path = pg_catalog, request_engine, pg_temp;
 ALTER FUNCTION request_engine.check_offered_slot_offer_source_consistency()
+    OWNER TO request_engine_schema_owner;
+
+ALTER FUNCTION request_engine.assert_offered_slot_offer_source_consistency(uuid, uuid)
+    SET search_path = pg_catalog, request_engine, pg_temp;
+ALTER FUNCTION request_engine.assert_offered_slot_offer_source_consistency(uuid, uuid)
     OWNER TO request_engine_schema_owner;
 
 REVOKE ALL ON FUNCTION request_engine.check_offered_slot_offer_source_consistency()
