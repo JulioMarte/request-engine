@@ -42,6 +42,7 @@ EXPECTED_V3_CANDIDATE = [
     "035-cross-tenant-slot-source-provenance.sql",
     "036-slot-offer-deferred-trigger-privilege-hardening.sql",
     "037-attendance-idempotency-scope-hardening.sql",
+    "038-runtime-privilege-closure.sql",
 ]
 
 
