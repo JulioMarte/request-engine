@@ -95,11 +95,8 @@ _EXPECTED_LITERAL_ERROR_CODES = frozenset(
         "conflict",
         "database_integrity_error",
         "external_correlation_conflict",
-        "http_error",
         "idempotency_conflict",
         "invalid_resource_selection",
-        "method_not_allowed",
-        "not_found",
         "offering_not_available_for_waitlist",
         "offering_not_bookable",
         "offering_version_not_found",
@@ -197,6 +194,13 @@ def test_v3_public_error_code_inventory_is_frozen() -> None:
     for path in _ERROR_MODULES:
         literal_codes |= _literal_error_codes(path)
     assert literal_codes == _EXPECTED_LITERAL_ERROR_CODES
+
+    shared_errors = Path("src/request_engine/entrypoints/http/errors.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'code = "not_found"' in shared_errors
+    assert 'code = "method_not_allowed"' in shared_errors
+    assert 'code = "http_error"' in shared_errors
 
     request_errors = Path("src/request_engine/modules/requests/api/errors.py").read_text(
         encoding="utf-8"
