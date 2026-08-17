@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -24,7 +24,7 @@ from request_engine.platform.events.provider_events import ProviderEventLease
 
 from .test_reservation_lifecycle import _fixture, _future_start
 
-PgConnection = Connection[object]
+PgConnection = Connection[Any]
 
 
 def _provider_lease(organization_id: UUID, reservation_id: UUID) -> ProviderEventLease:
