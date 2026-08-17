@@ -1,6 +1,5 @@
 import os
 import queue
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, LiteralString, cast
@@ -284,19 +283,6 @@ def _complete_current_owner(
     else:
         query = "SELECT request_cmd.complete_provider_event(%s, %s)"
     assert connection.execute(query, (work_id, token)).fetchone() == (True,)
-
-
-def _wait_until_lock_blocked(admin_conn: PgConnection, backend_pid: int) -> None:
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        row = admin_conn.execute(
-            "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
-            (backend_pid,),
-        ).fetchone()
-        if row is not None and row[0] == "Lock":
-            return
-        time.sleep(0.01)
-    raise AssertionError(f"backend {backend_pid} never blocked on the expected row lock")
 
 
 def _complete_outbox_in_thread(
