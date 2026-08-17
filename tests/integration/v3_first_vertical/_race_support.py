@@ -3,10 +3,20 @@ from collections.abc import Awaitable
 from typing import Any, TypeVar
 from uuid import UUID
 
-from psycopg import Connection
+from psycopg import Connection, sql
 
 T = TypeVar("T")
 PgConnection = Connection[Any]
+
+_ALLOWED_RACE_ROOTS = frozenset(
+    {
+        "requests",
+        "reservations",
+        "queue_entries",
+        "waitlist_entries",
+        "reminder_plans",
+    }
+)
 
 
 def ungranted_lock_waiters(admin_conn: PgConnection) -> int:
@@ -48,21 +58,15 @@ async def race_behind_row_lock(
     first: Awaitable[T],
     second: Awaitable[T],
 ) -> tuple[T | BaseException, T | BaseException]:
-    if table not in {
-        "requests",
-        "reservations",
-        "queue_entries",
-        "waitlist_entries",
-        "reminder_plans",
-    }:
+    if table not in _ALLOWED_RACE_ROOTS:
         raise ValueError(f"unsupported race root: {table}")
 
     with admin_conn.transaction():
-        locked = admin_conn.execute(
-            f"SELECT id FROM request_engine.{table} "
-            "WHERE organization_id = %s AND id = %s FOR UPDATE",
-            (organization_id, aggregate_id),
-        ).fetchone()
+        query = sql.SQL(
+            "SELECT id FROM request_engine.{} "
+            "WHERE organization_id = %s AND id = %s FOR UPDATE"
+        ).format(sql.Identifier(table))
+        locked = admin_conn.execute(query, (organization_id, aggregate_id)).fetchone()
         assert locked == (aggregate_id,)
         baseline = ungranted_lock_waiters(admin_conn)
         first_task = asyncio.create_task(first)
