@@ -462,9 +462,11 @@ async def test_r16_outbox_reclaim_wins_row_lock_and_fences_stale_completion(
                 stale_token,
                 backend_queue,
             )
-            _wait_until_lock_blocked(admin_conn, backend_queue.get(timeout=2))
-            reclaimer.commit()
+            # The reclaimer transaction is deliberately still open here. Because the
+            # old lease is already expired, the stale finalizer may fail on the
+            # PostgreSQL-clock fence without waiting for the reclaimer's row lock.
             assert stale_completion.result(timeout=5) is False
+            reclaimer.commit()
 
         assert admin_conn.execute(OUTBOX.state_sql, (message_id,)).fetchone() == (
             "leased",
