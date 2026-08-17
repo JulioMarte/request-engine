@@ -9,9 +9,15 @@ import pytest
 from psycopg import Connection
 
 from request_engine.entrypoints.worker.provider_event_router import ProviderEventRouter
-from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
-from request_engine.modules.booking.adapters.db.reservation_commands import PostgresReservationCommands
-from request_engine.modules.booking.application.attendance_errors import AttendanceReservationNotActive
+from request_engine.modules.booking.adapters.db.attendance_commands import (
+    PostgresAttendanceCommands,
+)
+from request_engine.modules.booking.adapters.db.reservation_commands import (
+    PostgresReservationCommands,
+)
+from request_engine.modules.booking.application.attendance_errors import (
+    AttendanceReservationNotActive,
+)
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     cancel_reservation,
