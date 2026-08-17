@@ -36,7 +36,10 @@ class _DropFirstBookingResponseTransport(httpx.AsyncBaseTransport):
         ):
             self._dropped = True
             await response.aclose()
-            raise httpx.ReadError("simulated response loss after committed booking", request=request)
+            raise httpx.ReadError(
+                "simulated response loss after committed booking",
+                request=request,
+            )
         return response
 
     async def aclose(self) -> None:
