@@ -1,6 +1,6 @@
 # V3 worker fencing and crash-recovery inventory
 
-Status: Phase 6 G09/G10 executable closure inventory.
+Status: Phase 6 G09/G10 executable closure inventory; implementation evidence is assembled on this branch but remains subject to canonical exact-head CI before gate promotion.
 
 This document freezes the worker-control surface and the failure claims that must be executable before G09 (worker concurrency/fencing) or G10 (crash/recovery) can move to `PASS`. It does not add a workflow engine, change provider business semantics, or promise exactly-once execution outside PostgreSQL.
 
