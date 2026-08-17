@@ -216,10 +216,13 @@ def test_waitlist_entry_material_provenance_is_immutable_after_offer_reference(
     assert "WaitlistEntry booking provenance is immutable" in str(rejected.value)
     admin_conn.rollback()
 
+    # A non-semantic revision advance remains legal while the unresolved Offer
+    # keeps this WaitlistEntry active. Lifecycle transitions are still subject
+    # to the deferred SlotOffer source-state contract.
     admin_conn.execute(
         """
         UPDATE request_engine.waitlist_entries
-        SET status = 'cancelled', revision = revision + 1
+        SET revision = revision + 1
         WHERE organization_id = %s AND id = %s
         """,
         (organization_id, waitlist_entry_id),
@@ -246,10 +249,12 @@ def test_slot_opportunity_material_provenance_is_immutable_after_offer_reference
     assert "SlotOpportunity booking provenance is immutable" in str(rejected.value)
     admin_conn.rollback()
 
+    # Revision may advance without rewriting source provenance or invalidating
+    # the unresolved Offer's requirement that the Opportunity remain open.
     admin_conn.execute(
         """
         UPDATE request_engine.slot_opportunities
-        SET status = 'closed', revision = revision + 1
+        SET revision = revision + 1
         WHERE organization_id = %s AND id = %s
         """,
         (organization_id, opportunity_id),
