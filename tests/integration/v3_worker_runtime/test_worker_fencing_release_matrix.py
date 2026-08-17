@@ -1,5 +1,8 @@
-from dataclasses import dataclass
 import os
+import queue
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
@@ -78,6 +81,8 @@ FAMILIES = (
         terminal_status="processed",
     ),
 )
+
+OUTBOX = FAMILIES[1]
 
 
 def _conninfo() -> str:
@@ -280,6 +285,37 @@ def _complete_current_owner(
     assert connection.execute(query, (work_id, token)).fetchone() == (True,)
 
 
+def _wait_until_lock_blocked(admin_conn: PgConnection, backend_pid: int) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        row = admin_conn.execute(
+            "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s",
+            (backend_pid,),
+        ).fetchone()
+        if row is not None and row[0] == "Lock":
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"backend {backend_pid} never blocked on the expected row lock")
+
+
+def _complete_outbox_in_thread(
+    message_id: UUID,
+    stale_token: UUID,
+    backend_queue: queue.Queue[int],
+) -> bool:
+    worker = _worker_connection(autocommit=True)
+    try:
+        backend_queue.put(worker.info.backend_pid)
+        row = worker.execute(
+            "SELECT request_cmd.complete_outbox_message(%s, %s)",
+            (message_id, stale_token),
+        ).fetchone()
+        assert row is not None
+        return cast(bool, row[0])
+    finally:
+        worker.close()
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -353,3 +389,97 @@ async def test_r13_r14_reclaim_fences_every_stale_transition_and_late_renewal(
         assert terminal[3] is None
     finally:
         worker.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.concurrency
+async def test_r16_outbox_completion_wins_row_lock_and_prevents_reclaim(
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> None:
+    message_id = await _create_work(
+        OUTBOX,
+        admin_conn=admin_conn,
+        app_session_factory=app_session_factory,
+    )
+    claimant = _worker_connection(autocommit=True)
+    completer = _worker_connection(autocommit=False)
+    competitor = _worker_connection(autocommit=True)
+    try:
+        token = _claim_target(claimant, OUTBOX, message_id)
+        assert completer.execute(
+            "SELECT request_cmd.complete_outbox_message(%s, %s)",
+            (message_id, token),
+        ).fetchone() == (True,)
+
+        # Completion owns the row lock until commit. A concurrent claimant must skip
+        # the row and cannot create a second owner behind a successful finalization.
+        _assert_target_not_claimed(competitor, OUTBOX, message_id)
+        completer.commit()
+    finally:
+        completer.rollback()
+        claimant.close()
+        completer.close()
+        competitor.close()
+
+    assert admin_conn.execute(OUTBOX.state_sql, (message_id,)).fetchone() == (
+        "delivered",
+        None,
+        1,
+        None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.concurrency
+async def test_r16_outbox_reclaim_wins_row_lock_and_fences_stale_completion(
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> None:
+    message_id = await _create_work(
+        OUTBOX,
+        admin_conn=admin_conn,
+        app_session_factory=app_session_factory,
+    )
+    first_owner = _worker_connection(autocommit=True)
+    reclaimer = _worker_connection(autocommit=False)
+    try:
+        stale_token = _claim_target(first_owner, OUTBOX, message_id)
+        admin_conn.execute(OUTBOX.expire_sql, (message_id,))
+        current_token = _claim_target(reclaimer, OUTBOX, message_id)
+        assert current_token != stale_token
+
+        backend_queue: queue.Queue[int] = queue.Queue()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stale_completion = executor.submit(
+                _complete_outbox_in_thread,
+                message_id,
+                stale_token,
+                backend_queue,
+            )
+            _wait_until_lock_blocked(admin_conn, backend_queue.get(timeout=2))
+            reclaimer.commit()
+            assert stale_completion.result(timeout=5) is False
+
+        assert admin_conn.execute(OUTBOX.state_sql, (message_id,)).fetchone() == (
+            "leased",
+            current_token,
+            2,
+            True,
+        )
+        _complete_current_owner(first_owner, OUTBOX, message_id, current_token)
+    finally:
+        reclaimer.rollback()
+        first_owner.close()
+        reclaimer.close()
+
+    assert admin_conn.execute(OUTBOX.state_sql, (message_id,)).fetchone() == (
+        "delivered",
+        None,
+        2,
+        None,
+    )
