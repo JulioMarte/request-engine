@@ -1,8 +1,8 @@
 # V3 worker fencing and crash-recovery inventory
 
-Status: Phase 6 G09/G10 executable closure inventory; implementation evidence is assembled on this branch but remains subject to canonical exact-head CI before gate promotion.
+Status: Phase 6 G09/G10 executable closure inventory. Exact implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f` passed canonical CI #946 with a `VALID` candidate artifact; any subsequent registry-only reconciliation must itself pass canonical exact-head CI before merge authority.
 
-This document freezes the worker-control surface and the failure claims that must be executable before G09 (worker concurrency/fencing) or G10 (crash/recovery) can move to `PASS`. It does not add a workflow engine, change provider business semantics, or promise exactly-once execution outside PostgreSQL.
+This document freezes the worker-control surface and the failure claims required for G09 (worker concurrency/fencing) and G10 (crash/recovery) to remain `PASS`. It does not add a workflow engine, change provider business semantics, or promise exactly-once execution outside PostgreSQL.
 
 Base for this closure: `development@cc46234c9e3e1c3109b0aa87484d83cbefe28633`.
 
@@ -82,7 +82,7 @@ Executable evidence: `tests/integration/v3_worker_runtime/test_scheduled_action_
 
 If completion wins while the lease is current, reclaim cannot subsequently acquire delivered work. If reclaim wins after expiry, the stale publisher/finalizer cannot mark the new owner's row delivered.
 
-Executable evidence: `test_worker_fencing_release_matrix.py` proves both row-lock orders. Completion-first holds the Outbox row lock and a competing claim must skip it. Reclaim-first holds the replacement claim uncommitted while stale completion is observed blocked on the PostgreSQL row lock; after replacement commit, stale completion returns false and the new claimant remains authoritative.
+Executable evidence: `test_worker_fencing_release_matrix.py` proves both serialized outcomes. Completion-first holds the Outbox row lock and a competing claim must skip it. Reclaim-first keeps the replacement claim transaction open while the stale completion runs. Because the old lease is already expired, `complete_outbox_message` may reject the stale owner immediately on its PostgreSQL-clock lease fence without waiting for the replacement row lock. In either case stale completion returns false, the replacement token remains authoritative, and only that token can transition the row to `delivered`.
 
 ## G10 crash/recovery claims
 
@@ -110,7 +110,7 @@ Two real provider-facing families exercise this boundary:
 - **Communications:** `tests/integration/v3_worker_runtime/test_communication_fencing.py::test_worker_that_loses_lease_during_provider_io_cannot_finalize_delivery` lets `provider.send()` succeed while another worker reclaims the ScheduledAction. The stale worker raises `LeaseLostWorkError` and cannot mark the delivery delivered. The replacement claimant performs provider `lookup` rather than a second send, so `send_count == 1`, then publishes the recovered provider result under the current claim.
 - **ReservationAccess:** `tests/integration/v3_delivery/test_reservation_access_races.py::test_lost_outbox_lease_cannot_publish_but_replay_reuses_provider_evidence` loses the Outbox lease during provisioning. The stale claimant leaves only non-authoritative pending evidence; the replacement claimant reuses provider evidence and does not create a second provider resource. `test_cancel_recovers_provider_success_that_crashed_before_db_evidence` additionally proves non-creating lookup when provider success occurred before local evidence was durably published.
 
-These tests close the worker/crash ownership boundary. They do **not** claim the entire R20/G13 provider ambiguity matrix: provider callback reorder, ambiguous provider outcomes, reconciliation policy and communications failure semantics remain owned by G13. This branch may close G10 while R20 remains `PARTIAL` until that wider semantic claim is proven.
+These tests close the worker/crash ownership boundary. They do **not** claim the entire R20/G13 provider ambiguity matrix: provider callback reorder, ambiguous provider outcomes, reconciliation policy and communications failure semantics remain owned by G13. This branch closes G10 while R20 remains `PARTIAL` until that wider semantic claim is proven.
 
 ### Processing timeout and heartbeat loss
 
@@ -146,8 +146,18 @@ Release evidence executes worker-control functions through a real `request_engin
 
 No G09/G10 closure may widen `request_engine_worker` into authoritative business DML or bypass the existing narrow SECURITY DEFINER fences.
 
+## Exact-head implementation evidence
+
+Canonical CI #946 (`32063335393`) passed on implementation head `7f61149999ab737b3f6089b135ff1a50d1e6187f`: Python quality/architecture, observability, PostgreSQL 18 V2 history, repeated V3 bootstrap, V3 candidate proof and candidate-and-verticals all succeeded.
+
+Artifact `v3-candidate-release-proof` `9299172598` (`sha256:bf954de52a56fc6ace13ea76de4cade8732bb4c9a267cd5900ddf21324408dd7`) reports `evidence_status: VALID`, `artifact_set_complete: true`, zero validation errors and a clean tree. It binds base `cc46234c9e3e1c3109b0aa87484d83cbefe28633`, head `7f61149999ab737b3f6089b135ff1a50d1e6187f` and merge checkout/tested SHA `8e36d4e62a65df28d0ccb5d12843966da34bbf01`. All 109 expected test files were collected, 409 tests passed in reverse order, three concurrency-stability rounds each passed 81 tests, all four mutation probes were killed as expected, and test-quality reported zero errors/warnings.
+
+The artifact correctly remains `release_status: NOT_READY`; this evidence closes only the G09/G10 worker/crash claims, not unrelated release gates.
+
 ## Promotion rule
 
-G09 and G10 remain `PARTIAL` until the complete inventory above has current-branch executable evidence and the exact branch head passes canonical CI with a `VALID` candidate artifact. R12-R16 move independently only when their named interleaving is fully demonstrated with deliberate PostgreSQL overlap and final-state/cardinality assertions.
+G09 and G10 are `PASS` in the current registry because the complete inventory above has current-branch executable evidence and exact implementation-head CI #946 produced a `VALID` candidate artifact. R12-R16 are likewise `PASS` because each frozen race claim has deliberate PostgreSQL overlap or the exact database-clock fencing boundary plus final-state/cardinality assertions.
+
+Any later change that weakens this inventory, worker-control SQL, runtime ownership boundary or proof family invalidates the corresponding PASS until regenerated. This registry-only reconciliation must itself pass canonical exact-head CI before PR integration.
 
 Global V3 release status remains `NOT_READY` after this branch; ProviderEvent/communications ambiguity (G13), invariant registry closure (G05), API freeze (G16), performance/index proof (G15), `0001_initial` equivalence (G17), unified adversarial proof (G18), production-like bootstrap (G19), and the exact-head final manifest (G20) remain separate release work.
