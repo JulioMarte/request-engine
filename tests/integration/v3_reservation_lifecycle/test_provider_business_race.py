@@ -15,9 +15,6 @@ from request_engine.modules.booking.adapters.db.attendance_commands import (
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.application.attendance_errors import (
-    AttendanceReservationNotActive,
-)
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     cancel_reservation,
@@ -191,7 +188,7 @@ async def test_r18_provider_semantic_callback_vs_business_cancellation_serialize
         assert attendance_rows[0][0] == "accepted"
         assert cast(str, attendance_rows[0][1]).startswith("provider:attendance-provider:")
     else:
-        assert isinstance(provider_result, AttendanceReservationNotActive)
+        assert isinstance(provider_result, ReservationRevisionConflict)
         assert cancel_succeeded
         assert reservation == ("cancelled", 2)
         assert active_claim_count == (0,)

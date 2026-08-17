@@ -642,7 +642,7 @@ async def test_terminal_request_commands_serialize_on_request_row(
     )
     outcomes = (completed, cancelled)
     assert sum(isinstance(item, Request) for item in outcomes) == 1
-    assert sum(isinstance(item, RequestNotOpen) for item in outcomes) == 1
+    assert sum(isinstance(item, RequestRevisionConflict) for item in outcomes) == 1
 
     row = admin_conn.execute(
         """

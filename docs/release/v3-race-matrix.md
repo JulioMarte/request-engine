@@ -4,7 +4,7 @@ Status: Phase 6 concurrency proof inventory.
 
 The canonical transaction and lock rules are owned by `docs/v3/02-pre-sql-contract.md`. This matrix identifies the release-level interleavings that must have deterministic PostgreSQL evidence before freeze.
 
-Status values describe baseline proof breadth, not whether the implementation is believed correct.
+Status values describe current proof breadth. `PASS` means the named race has complete current-branch executable evidence for its frozen claim; final promotion still reruns the full matrix on the eventual release candidate.
 
 | Race | Concurrent operations | Required winner/loser property | Baseline proof | Target |
 |---|---|---|---|---|
@@ -17,8 +17,8 @@ Status values describe baseline proof breadth, not whether the implementation is
 | R07 | candidate selection vs candidate selection | one active offered SlotOffer per SlotOpportunity | PARTIAL | 6D |
 | R08 | Reservation cancellation vs duplicate opportunity creation | one recovery coordination chain per source identity | PARTIAL | 6D/6E |
 | R09 | CallNext vs CallNext | same QueueEntry cannot be called twice | PARTIAL | 6D |
-| R10 | Request writer revision N vs writer revision N | one writer succeeds and one receives revision conflict | PARTIAL | 6E |
-| R11 | Reservation/booking writer revision N vs writer revision N | one authoritative mutation succeeds; stale writer cannot overwrite | PARTIAL | 6E |
+| R10 | Request writer revision N vs writer revision N | one writer succeeds and one receives revision conflict | PASS | 6E |
+| R11 | Reservation/booking writer revision N vs writer revision N | one authoritative mutation succeeds; stale writer cannot overwrite | PASS | 6E |
 | R12 | worker claim vs worker claim | one current claim token per work item | PARTIAL | 6F |
 | R13 | stale finalizer vs reclaimed worker | stale claim token cannot complete/retry/dead-letter reclaimed work | PARTIAL | 6F |
 | R14 | late lease renewal vs reclaimed worker | expired owner cannot resurrect ownership | PARTIAL | 6F |
@@ -26,7 +26,7 @@ Status values describe baseline proof breadth, not whether the implementation is
 | R16 | Outbox completion vs lease reclaim | stale publisher cannot finalize another claim | PARTIAL | 6F |
 | R17 | ProviderEvent duplicate ingestion vs duplicate ingestion | one provider identity; different payload under same identity is conflict | PARTIAL | 6J |
 | R18 | provider callback semantic command vs business cancellation | provider ordering cannot bypass current business authority/lifecycle | PARTIAL | 6J/6L |
-| R19 | committed command response lost vs same idempotent retry | retry returns same logical effect without duplication | PARTIAL | 6E |
+| R19 | committed command response lost vs same idempotent retry | retry returns same logical effect without duplication | PASS | 6E |
 | R20 | external side effect succeeds then worker crashes before local finalization | retry/reconciliation cannot create an uncontrolled duplicate semantic effect | PARTIAL | 6F/6J |
 | R21 | reminder materialization vs same reminder materialization | occurrence identity dedupes duplicate future action creation | PARTIAL | 6J |
 | R22 | ReminderPlan cancel vs occurrence materialization | obsolete future work cannot survive as valid current-plan work | PARTIAL | 6J |
@@ -38,19 +38,29 @@ Status values describe baseline proof breadth, not whether the implementation is
 | R28 | binding activation/revocation vs live claim creation | one serialized authority/capacity outcome with correct backfill or preserved provenance | PARTIAL | 6D/6I |
 | R29 | inverse multi-Resource/multi-shared-root acquisition, including simultaneous reschedules | local Resources lock before stable-ordered shared roots; no deadlock and final claim cardinality/state remains valid | PARTIAL | 6D/6L |
 
-## Phase 6 race-closure evidence
+## Phase 6E optimistic-concurrency and response-loss evidence
 
-The race-closure branch adds deterministic PostgreSQL/HTTP evidence for the five gaps left by the post-integration rebaseline. These rows remain `PARTIAL` rather than `PASS`: closing one required interleaving is necessary evidence for its owning release gate, but the final release baseline must still repeat the complete race suite after the candidate stops changing.
+**R10 is `PASS`.** `tests/integration/v3_first_vertical/test_http_request_booking_revision_races.py::test_request_cancel_same_revision_has_one_winner_and_one_revision_conflict` starts two real app-runtime `requests.cancel` writers from the same observed Request revision behind a deliberate Request row-lock barrier. Exactly one returns success; the stale writer must return `revision_conflict`; the final Request is cancelled with revision advanced exactly once. Phase 6E also corrected the Request aggregate ordering used by record-result, complete and terminal mutations so revision validation precedes lifecycle validation after the root lock (and Party authority, when required). Existing terminal Request races now require `RequestRevisionConflict` for the stale same-revision writer while a later command using the current terminal revision still receives `RequestNotOpen`.
+
+**R11 is `PASS`.** The same HTTP race file runs Reservation cancel versus reschedule from the same revision and accepted versus declined attendance responses from the same Reservation revision. Only one writer may advance the Reservation revision; the loser is a `revision_conflict`; final CapacityClaim/attendance cardinality is asserted. Separate deterministic runtime races cover QueueEntry leave, WaitlistEntry leave and ReminderPlan cancel, and `tests/integration/v3_slot_offer_recovery/test_slot_offer_runtime_revision_race.py` covers SlotOffer accept versus decline using the real application role. Together they close the full caller-selected public revision-managed aggregate inventory defined by Phase 6E.
+
+**R19 is `PASS`.** The original Booking proof in `tests/integration/v3_first_vertical/test_http_idempotency_failure.py` remains the canonical create-Reservation example: the ASGI command commits, the transport drops the response, and the same-key retry must return the original Reservation with exactly one active CapacityClaim/idempotency result/outbox consequence. Phase 6E generalizes that failure shape to the rest of the frozen runtime mutation inventory through `test_http_request_idempotency_failure.py`, `test_http_reservation_idempotency_failure.py`, `test_http_attendance_idempotency_failure.py`, `test_http_queue_idempotency_failure.py`, `test_http_waitlist_idempotency_failure.py`, `test_http_slot_offer_idempotency_failure.py` and `test_http_reminder_idempotency_failure.py`. Every command asserts durable cardinality/state in addition to replay.
+
+The expanded R19 proof exposed a real attendance idempotency defect: accepted and declined responses historically used payload-dependent idempotency scopes. Migration `037-attendance-idempotency-scope-hardening.sql` canonicalizes the scope to `booking.record_attendance_response`, fails closed if historical identities would collide, and keeps the response value in the command fingerprint. Same key + accepted followed by declined is now a deterministic `idempotency_conflict`, not two independent commands.
+
+CI #896 (`31999091531`) on head `c7459454a5284ab295285bd0c4f463bb239f17b0` produced `evidence_status: VALID`, collected 369 tests, passed all 369 in reverse order and passed three concurrency-stability rounds of 60 tests each. This registry-only reconciliation must itself pass exact-head CI before integration; final V3 promotion reruns all race proofs after the remaining candidate work freezes.
+
+## Phase 6 race-closure evidence
 
 R08 is exercised by `tests/integration/v3_reservation_lifecycle/test_released_slot_recovery_races.py`. Two consumers of the same committed Reservation release are held behind the same real `waitlist.create_opportunity` idempotency row lock. After release, one transaction creates the recovery chain and the other replays it. The test requires one SlotOpportunity for the source event, one offered SlotOffer, one active CapacityHold/CapacityClaim chain and one completed idempotency identity.
 
 R17 is exercised by `tests/integration/v3_worker_runtime/test_provider_event_ingest_races.py`. One ProviderEvent insert is deliberately left uncommitted while a second independent tenant transaction attempts the same provider identity and is observed waiting on a PostgreSQL lock. Same-payload ingestion resolves to one row with one replay receipt; a different payload under the same identity resolves to `ProviderEventDedupeConflict` while preserving the first committed row.
 
-R18 is exercised by `tests/integration/v3_reservation_lifecycle/test_provider_business_race.py`. A real `ProviderEventRouter` handler translates an inbound provider event into Booking's semantic `confirm_attendance` command while `CancelReservation` races behind the same Reservation row lock. If the provider semantic command wins, cancellation loses on Reservation revision and the Reservation/claim remain confirmed/active with one attendance response. If cancellation wins, the provider command observes the current cancelled lifecycle and cannot append attendance or retain active capacity. Provider routing never writes Booking state directly.
-
-R19 is exercised by `tests/integration/v3_first_vertical/test_http_idempotency_failure.py`. A custom HTTP transport allows the real ASGI booking request to finish and then drops the first response before the client observes it. The retry uses the same request and idempotency key and must return the committed Reservation while PostgreSQL still contains exactly one Reservation, one active CapacityClaim, one completed idempotency result and one `reservation.created.v1` outbox consequence.
+R18 is exercised by `tests/integration/v3_reservation_lifecycle/test_provider_business_race.py`. A real `ProviderEventRouter` handler translates an inbound provider event into Booking's semantic attendance command while `CancelReservation` races behind the same Reservation row lock. If the provider semantic command wins, cancellation loses on Reservation revision and the Reservation/claim remain confirmed/active with one attendance response. If cancellation wins, the stale provider semantic command now also loses on Reservation revision before lifecycle mutation; it cannot append attendance or retain active capacity. Provider routing never writes Booking state directly.
 
 R22 is exercised by `tests/integration/v3_first_vertical/test_reminder_plan_races.py`. A due ReminderPlan occurrence is genuinely leased, both cancellation and materialization are started behind the same ReminderPlan `FOR UPDATE` barrier, and both valid winner orders are enumerated. Cancellation-first makes the leased occurrence no-op as `plan_inactive`; materialization-first may create exactly one current occurrence task before cancellation, but cancellation removes every future pending ReminderPlan occurrence. No mixed state may leave an active plan or obsolete future recurrence after cancellation.
+
+These R08/R17/R18/R22 rows remain `PARTIAL` because their named interleavings are only part of wider release gates that still include authority, provider-reconciliation or lifecycle failure families. R19 was initially in the same state but Phase 6E expanded it across the complete frozen runtime command inventory and therefore closes its specific claim.
 
 ## Post-integration reconciliation
 
@@ -58,7 +68,7 @@ The post-PR-#52 rebaseline inspected exact-head CI `#847` (`31983843624`) and it
 
 R03 is `PARTIAL` based on `tests/integration/v3_booking_commitments/test_reservation_races.py::test_cancel_and_reschedule_serialize_to_one_reservation_revision`. The test starts cancel and reschedule behind the same real Reservation row lock, requires exactly one successful revision transition and one `ReservationRevisionConflict`, then asserts either the complete cancelled/no-active-claim graph or the complete rescheduled/one-active-claim graph.
 
-R05 and R06 are `PARTIAL` based on `tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py`. Accept-vs-decline is forced behind the same SlotOpportunity lock and permits exactly one terminal winner; the final Offer/Hold/Opportunity/Reservation graph is asserted. Decline-vs-expire is exercised once expiry is due and asserts a single release/advance consequence and exactly one next active offer. The same file also materially strengthens R04 by proving both the pre-expiry accept winner and post-expiry expiry winner semantic orders.
+R05 and R06 are `PARTIAL` based on `tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py`. Accept-vs-decline is forced behind the same SlotOpportunity lock and permits exactly one terminal winner; the final Offer/Hold/Opportunity/Reservation graph is asserted. Decline-vs-expire is exercised once expiry is due and asserts a single release/advance consequence and exactly one next active offer. The same file materially strengthens R04 by proving both the pre-expiry accept winner and post-expiry expiry winner semantic orders.
 
 R15 is `PARTIAL` based on `tests/integration/v3_worker_runtime/test_scheduled_action_cancel_race.py`. It proves both lock orders: cancellation first causes worker `SKIP LOCKED` discovery to skip the action, while claim first makes cancellation wait and then fences the stale claim token after cancellation commits. Both paths assert the terminal ScheduledAction row.
 

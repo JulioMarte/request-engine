@@ -207,8 +207,8 @@ class PostgresRequestCommands:
                 organization_id=command.organization_id,
                 request_id=command.request_id,
             )
-            ensure_request_open(row, command.request_id)
             ensure_expected_revision(row, command.request_id, command.expected_revision)
+            ensure_request_open(row, command.request_id)
             if row["result_payload"] is not None:
                 raise RequestResultAlreadyRecorded(command.request_id)
 
@@ -279,8 +279,8 @@ class PostgresRequestCommands:
                 organization_id=command.organization_id,
                 request_id=command.request_id,
             )
-            ensure_request_open(row, command.request_id)
             ensure_expected_revision(row, command.request_id, command.expected_revision)
+            ensure_request_open(row, command.request_id)
             version = await load_request_definition_version(
                 session,
                 organization_id=command.organization_id,
@@ -422,8 +422,8 @@ class PostgresRequestCommands:
                     scope_key=party_scope,
                     allow_operator_override=allow_party_override,
                 )
-            ensure_request_open(row, request_id)
             ensure_expected_revision(row, request_id, expected_revision)
+            ensure_request_open(row, request_id)
             await session.execute(
                 text(
                     """
