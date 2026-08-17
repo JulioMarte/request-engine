@@ -22,7 +22,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G10 | Crash/recovery semantics | PASS | crash at authoritative/external-effect boundaries and deterministic recovery |
 | G11 | Idempotency and retry semantics | PASS | frozen runtime command inventory + post-commit response-loss replay + fingerprint-conflict proof |
 | G12 | Optimistic concurrency | PASS | real concurrent writers for every caller-selected revision-managed public aggregate |
-| G13 | ProviderEvent/reconciliation | PARTIAL | duplicate/reorder/ambiguity/reconciliation/failure matrix |
+| G13 | ProviderEvent/reconciliation | PASS | duplicate/reorder/ambiguity/reconciliation/failure matrix |
 | G14 | Runtime privilege contract | PASS | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
 | G15 | Query plans and index evidence | MISSING | representative-cardinality EXPLAIN/ANALYZE evidence for hot paths |
 | G16 | Public API contract freeze | PARTIAL | final OpenAPI/capability/error snapshots on frozen candidate |
@@ -100,6 +100,18 @@ Canonical CI #946 (`32063335393`) passed on exact implementation head `7f6114999
 
 This registry reconciliation changes documentation only; it must itself pass canonical exact-head CI before PR #60 is merge-authoritative. Final promotion to `main` must rerun G09/G10 and R12-R16 on the eventual frozen candidate.
 
+## Phase 6G — ProviderEvent reconciliation and communications reliability closure
+
+**G13 is `PASS`.** `docs/release/v3-provider-reconciliation-inventory.md` freezes the provider/reconciliation claim without inventing a universal provider state machine. ProviderEvent infrastructure owns durable identity, payload fingerprinting, routing and retry/reject/dead/replay; provider handlers translate inbound facts to semantic commands that revalidate current aggregate authority. Communications owns the concrete provider-correlated state machine and now proves send ambiguity, reconciliation-first recovery, accepted/ambiguous loops, retry/backoff, stale-worker fencing, terminal result ordering, ProviderEvent admin replay and Reminder occurrence reliability.
+
+The Phase 6G audit found and fixed a production terminal-ordering defect that an earlier green run did not expose: two `reconcile_delivery` actions could both finish provider lookup, allowing `FAILED(non-retryable)` to emit `communication.task_failed.v1` and then a late `DELIVERED` result to overwrite the same Delivery/Task and emit `communication.task_completed.v1`. `finalize_provider_result()` now treats both `delivered` and non-retryable `failed` as absorbing terminal states for the same provider attempt. Retryable failure remains provisional and may recover to delivered because it has not emitted a terminal failure fact. A two-action/two-lookup E2E race deterministically forces failure-first/delivered-second and requires one failure fact, zero completion facts and a permanently failed Delivery/Task; a companion proof preserves late-delivery recovery for retryable failure.
+
+The remaining matrix is executable on the same branch: duplicate ProviderEvent identity with payload conflict under real overlap; provider semantic command versus Reservation cancellation in both winner orders; send exception -> ambiguous + lookup-only reconciliation; lookup infrastructure failure without resend; crash after prepare and after provider finalization before ScheduledAction ack; lease loss during provider I/O; repeated accepted reconciliation without chain forking; NOT_FOUND -> retryable failure + future dispatch; retryable/non-retryable provider failure; trusted audited replay of dead/rejected ProviderEvents; deliberate concurrent Reminder occurrence materialization; and ReminderPlan cancellation versus leased occurrence.
+
+Canonical CI #960 (`32067492021`) passed on exact implementation head `7ca60020608c9e153dcede578767ca9969b2f98f`: Python quality/architecture, observability, PostgreSQL 18 V2 history, repeated V3 bootstrap, V3 candidate proof and candidate-and-verticals all succeeded. Artifact `v3-candidate-release-proof` `9300680212` (`sha256:d8cfb79d89f20dfac34bca906031bba5a6650011d6911b4d66c2befeca554839`) reports `evidence_status: VALID`, `artifact_set_complete: true`, zero validation errors and a clean tree. It binds base `cf98ac7da3b171d6dd42e0f77d91787b4450cc0c`, head `7ca60020608c9e153dcede578767ca9969b2f98f`, tested merge checkout `0e196a52b62e786e3d3200a9301f4be55e922f1d` and tree `d7c89c96a2e45ee4e8aaa6c4a67fa06a0edc3c92`. All 115 expected test files were collected, 419 tests passed in reverse order, three concurrency-stability rounds each passed 82 tests, all four mutation probes were killed and test quality reported zero errors/warnings. The artifact correctly remains `release_status: NOT_READY`.
+
+R17, R18, R20, R21 and R22 are promoted in the race matrix by this same proof. This registry-only reconciliation must itself pass canonical exact-head CI before PR #61 is merge-authoritative. Final promotion to `main` must rerun G13 and those races on the eventual frozen candidate.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -108,9 +120,9 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G06/G07/G08/G09/G10/G11/G12/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G06/G07/G08/G09/G10/G11/G12/G13/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
+1. reconcile and close the complete invariant registry (G05) now that the correctness/failure families have stopped moving;
 2. freeze public API/error/capability contracts after correctness stops moving (G16);
 3. build representative query-plan/performance evidence and only then freeze indexes (G15);
 4. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
@@ -118,4 +130,4 @@ With G06/G07/G08/G09/G10/G11/G12/G14 closed, the remaining proof work should pro
 6. prove a fresh production-like environment (G19);
 7. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G07/G08/G09/G10/G11/G12/G14 are now closed.
+Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G07/G08/G09/G10/G11/G12/G13/G14 are now closed.
