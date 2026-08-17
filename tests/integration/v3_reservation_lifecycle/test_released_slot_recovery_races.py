@@ -189,7 +189,7 @@ async def test_r08_duplicate_release_consumers_create_one_recovery_chain(
 
     hold_state = admin_conn.execute(
         """
-        SELECT status, count(cc.id), count(cc.id) FILTER (WHERE cc.status = 'active')
+        SELECT h.status, count(cc.id), count(cc.id) FILTER (WHERE cc.status = 'active')
         FROM request_engine.capacity_holds h
         LEFT JOIN request_engine.capacity_claims cc
           ON cc.organization_id = h.organization_id AND cc.hold_id = h.id
