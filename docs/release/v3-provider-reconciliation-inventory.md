@@ -18,11 +18,12 @@ Communications owns a concrete provider-correlated delivery state machine and th
 
 - `attempting`, `accepted` and `ambiguous` are nonterminal provider-correlated states that must reconcile before any new send;
 - `delivered` is terminal and monotonic;
+- a non-retryable `failed` result is also terminal for that Delivery and its CommunicationTask;
+- a retryable `failed` result is provisional and may later recover to `delivered` if reconciliation proves the same provider attempt succeeded, because no terminal task-failure fact was emitted;
 - a send exception is ambiguous, never proof that the provider did not accept the request;
 - lookup infrastructure failure retries lookup work and never sends;
 - provider `NOT_FOUND` after lookup becomes retryable failure and schedules a future dispatch according to policy;
 - retryable provider failure schedules exactly one future dispatch for the failed Delivery attempt;
-- non-retryable provider failure terminalizes the CommunicationTask;
 - every new send attempt receives a stable `provider_idempotency_key` derived from CommunicationTask + attempt number;
 - authoritative post-provider state is published only after revalidating the exact current ScheduledAction claim;
 - Request Engine promises duplicate resistance, durable correlation and reconciliation-first recovery, not exactly-once behavior from an external provider.
@@ -64,7 +65,13 @@ Existing E2E evidence proves:
 
 `tests/e2e/test_communication_provider_result_ordering.py::test_delivered_result_is_monotonic_against_late_nonterminal_provider_results` finalizes one Delivery as delivered and then applies late `ACCEPTED`, `AMBIGUOUS`, retryable/non-retryable `FAILED`, and `NOT_FOUND` results. The Delivery must remain delivered, the task remains completed, exactly one completion event exists, no failure event appears and no future delivery/reconciliation work is created.
 
-This is the Communications-specific out-of-order provider-result proof. It complements R18 rather than replacing semantic-command authority for arbitrary ProviderEvents.
+The G13 audit found the inverse terminal-order defect as well: two different `reconcile_delivery` ScheduledActions can both finish provider lookup for the same Delivery after separate prepare transactions. Before this branch, if the first lookup finalized `FAILED(non-retryable)` and emitted `communication.task_failed.v1`, a second lookup returning `DELIVERED` could overwrite the Delivery/Task and emit `communication.task_completed.v1`, leaving contradictory terminal business facts.
+
+`tests/e2e/test_communication_terminal_reconciliation_race.py::test_two_reconciliations_cannot_emit_failed_then_completed_for_one_delivery` reproduces that actual interleaving with two claimed reconciliation actions and two provider lookups in flight. It forces the terminal failure to finalize first and releases the delivered result second. The second finalizer must observe the already-terminal non-retryable failed Delivery, return failed, leave the Task failed and preserve exactly one failure event with zero completion events.
+
+The production rule is now explicit in `finalize_provider_result`: `delivered` and non-retryable `failed` are absorbing terminal states for the same provider attempt. `tests/e2e/test_communication_terminal_failure_ordering.py` preserves the direct regression. A retryable failed attempt remains recoverable: `test_retryable_failed_delivery_can_recover_from_late_delivered_evidence` proves later delivered evidence may complete it because the retryable failure emitted no terminal failure event; its already-scheduled future dispatch subsequently observes `task_completed` and becomes a no-op.
+
+These are Communications-specific provider-result ordering rules. They complement R18 rather than replacing semantic-command authority for arbitrary ProviderEvents.
 
 ## F — Retryable/non-retryable provider failure and backoff
 
@@ -98,7 +105,9 @@ Stale tokens cannot mutate terminal ProviderEvents. Application/worker roles can
 
 ReminderPlan scheduling is part of Communications reliability rather than provider transport.
 
-`tests/integration/v3_first_vertical/test_communications_reminders.py::test_reminder_occurrence_materialization_is_crash_replay_safe` materializes the same leased occurrence twice and requires one CommunicationTask, one dispatch and one next Reminder occurrence. The occurrence identity therefore dedupes replay without forking the schedule chain. This is the proof family for R21.
+`tests/integration/v3_first_vertical/test_communications_reminders.py::test_reminder_occurrence_materialization_is_crash_replay_safe` proves sequential crash replay of the same leased occurrence converges to one CommunicationTask, one dispatch and one next Reminder occurrence.
+
+`tests/integration/v3_first_vertical/test_reminder_occurrence_races.py::test_r21_duplicate_reminder_materialization_serializes_to_one_occurrence_graph` strengthens R21 with deliberate PostgreSQL overlap: two materializers for the same leased occurrence are both held behind the authoritative ReminderPlan `FOR UPDATE` lock, then released together. Both calls must return the same CommunicationTask/next occurrence and final state must contain exactly one Task, one dispatch, one next occurrence and one creation Outbox fact. The lease itself can be completed only once.
 
 `tests/integration/v3_first_vertical/test_reminder_plan_races.py::test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_plan_outcome` deliberately overlaps cancellation and materialization behind the ReminderPlan lock. Cancellation-first produces no task; materialization-first may create exactly one current task before cancellation, but no future Reminder occurrence survives. This is the proof family for R22.
 
@@ -116,8 +125,8 @@ On that same evidence:
 
 - R17 may move to `PASS` if duplicate identity/conflicting payload overlap remains deterministic;
 - R18 may move to `PASS` if provider semantic commands remain fenced by current business revision/lifecycle in both winner orders;
-- R20 may move to `PASS` only if ambiguity, lookup-first recovery, stale-worker fencing, crash windows, result ordering and retry backoff all pass together;
-- R21 may move to `PASS` only if duplicate occurrence materialization preserves one task/dispatch/next occurrence;
+- R20 may move to `PASS` only if ambiguity, lookup-first recovery, stale-worker fencing, crash windows, terminal result ordering and retry backoff all pass together;
+- R21 may move to `PASS` only if deliberately overlapping duplicate occurrence materialization preserves one task/dispatch/next occurrence graph;
 - R22 may move to `PASS` only if cancel/materialize overlap preserves one serialized ReminderPlan outcome.
 
 No promotion here changes global V3 `release_status: NOT_READY`. G05, G15-G20 and any other incomplete gate retain their current status.
