@@ -11,7 +11,7 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I01 | DB | tenant authority + adversarial app-role DB/HTTP tests | PARTIAL | 6C/6I |
 | V3-I02 | APP | adversarial HTTP Request/Booking/Queue/Waitlist authority tests | PARTIAL | 6I/6K |
 | V3-I03 | APP | material Request authority/revocation race + authority HTTP tests | PARTIAL | 6I/6K |
-| V3-I04 | DB/ops | worker role and migration role definitions | PARTIAL | 6I |
+| V3-I04 | DB/ops | exact real-login runtime role/privilege + SECURITY DEFINER matrix | PASS | 6I |
 | V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PARTIAL | 6I |
 | V3-I06 | BOTH | trusted execution provenance DB test | PARTIAL | 6I/6J |
 | V3-I07 | BOTH | candidate catalog/version references | PARTIAL | 6C/6K |
@@ -109,9 +109,19 @@ The extension preserves the original V3 ownership model: `Resource` remains tena
 
 Phase 6I closes the release-level tenant-isolation gate G06 and races R23/R24 without pre-promoting the broader invariant registry. The current branch now has a real least-privileged app LOGIN, fail-closed RLS/catalog coverage, an exact executable app-function allowlist, deterministic revoke races for every distinct material Party scope, protected HTTP foreign-versus-nonexistent controls across Booking/Requests/Queue/Waitlist/Reminders, exact-scope temporal/state authority denial tests and tenant-bounded authenticated override proof.
 
-The invariant rows above intentionally remain unchanged in this PR. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. DB-owned V3-I01/I05/I08 also receive stronger evidence here, but promoting them opportunistically would mix Phase 6I gate closure with the separate complete-invariant-registry exercise.
+The invariant rows above intentionally remain unchanged in this PR except where a later owner-boundary proof explicitly promotes one. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. DB-owned V3-I01/I05/I08 also receive stronger evidence here, but promoting them opportunistically would mix Phase 6I gate closure with the separate complete-invariant-registry exercise.
 
-CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation must itself pass exact-head CI. Final G05 work will reassess V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation passed exact-head CI before Phase 6I integration. Final G05 work will reassess V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
+
+## Runtime privilege evidence
+
+**V3-I04 is `PASS`.** Its canonical DB/ops claim is that runtime app/worker roles do not operate with schema-owner or superuser authority. Phase 6 G14 now proves that claim directly with real LOGIN roles and the complete PostgreSQL privilege catalog rather than relying on migration intent alone.
+
+`tests/db/test_v3_runtime_privilege_closure.py` verifies app/worker/admin runtime identities, schema privileges, every relation privilege, exact executable function allowlists, role transition boundaries and all current `SECURITY DEFINER` routines. App and worker LOGINs start NOBYPASSRLS/NOSUPERUSER and cannot `SET ROLE` into admin or schema-owner. Trusted admin BYPASSRLS is only reached by explicitly entering `request_engine_admin`, while even that role cannot become schema owner or create Request Engine schema objects. Migration `038-runtime-privilege-closure.sql` removes stale worker domain grants that predated the Production Worker Assembly split.
+
+CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced a `VALID`, complete artifact with 396/396 canonical and reverse-order tests, three 70/70 concurrency-stability rounds and passing mutation probes. This registry-only promotion must itself pass canonical exact-head CI before integration.
+
+No other invariant is promoted by G14. In particular, G05 remains `PARTIAL` until all V3-I01..V3-I66 have owner-boundary proof individually reviewed and recorded.
 
 ## Release-proof rule
 
