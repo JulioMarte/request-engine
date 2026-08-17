@@ -52,11 +52,7 @@ def _provider_lease(organization_id: UUID, reservation_id: UUID) -> ProviderEven
     )
 
 
-async def _wait_for_reservation_lock_waiters(
-    admin_conn: PgConnection,
-    *,
-    expected: int,
-) -> None:
+async def _wait_for_app_lock_waiters(admin_conn: PgConnection, *, expected: int) -> None:
     deadline = asyncio.get_running_loop().time() + 5
     while asyncio.get_running_loop().time() < deadline:
         row = admin_conn.execute(
@@ -64,15 +60,15 @@ async def _wait_for_reservation_lock_waiters(
             SELECT count(*)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
+              AND usename LIKE 'request_engine_app_test_%'
+              AND state = 'active'
               AND wait_event_type = 'Lock'
-              AND query ILIKE '%request_engine.reservations%'
-              AND query ILIKE '%FOR UPDATE%'
             """
         ).fetchone()
         if row is not None and int(row[0]) >= expected:
             return
         await asyncio.sleep(0.01)
-    raise AssertionError(f"expected at least {expected} Reservation row-lock waiters")
+    raise AssertionError(f"expected at least {expected} blocked app-runtime sessions")
 
 
 @pytest.mark.asyncio
@@ -129,7 +125,7 @@ async def test_r18_provider_semantic_callback_vs_business_cancellation_serialize
         ).fetchone()
         provider_task = asyncio.create_task(router.process(lease))
         cancel_task = asyncio.create_task(cancel_reservation(reservations, cancel_command))
-        await _wait_for_reservation_lock_waiters(admin_conn, expected=2)
+        await _wait_for_app_lock_waiters(admin_conn, expected=2)
         assert not provider_task.done()
         assert not cancel_task.done()
 
