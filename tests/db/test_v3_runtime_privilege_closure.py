@@ -177,13 +177,13 @@ def _function_surface(conn: PgConnection) -> set[str]:
     }
 
 
-def _relation_privileges(conn: PgConnection, object_name: str) -> set[str]:
+def _relation_privileges(conn: PgConnection, relation_oid: int) -> set[str]:
     return {
         privilege
         for privilege in ALL_TABLE_PRIVILEGES
         if conn.execute(
-            "SELECT has_table_privilege(current_user, %s, %s)",
-            (object_name, privilege),
+            "SELECT has_table_privilege(current_user, %s::oid, %s)",
+            (relation_oid, privilege),
         ).fetchone()
         == (True,)
     }
@@ -249,7 +249,7 @@ def test_real_runtime_logins_match_complete_schema_relation_and_function_contrac
 
         relations = runtime.execute(
             """
-            SELECT n.nspname, c.relname
+            SELECT c.oid, n.nspname, c.relname
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname IN ('request_engine', 'request_read', 'request_admin')
@@ -258,14 +258,11 @@ def test_real_runtime_logins_match_complete_schema_relation_and_function_contrac
             """
         ).fetchall()
         assert relations
-        for schema, name in relations:
+        for relation_oid, schema, name in relations:
             schema_name = cast(str, schema)
             relation_name = cast(str, name)
-            object_name = f"{schema_name}.{relation_name}"
-            assert _relation_privileges(runtime, object_name) == _expected_relation_privileges(
-                group_role,
-                schema_name,
-                relation_name,
+            assert _relation_privileges(runtime, cast(int, relation_oid)) == (
+                _expected_relation_privileges(group_role, schema_name, relation_name)
             )
 
         assert _function_surface(runtime) == EXPECTED_FUNCTIONS[group_role]
