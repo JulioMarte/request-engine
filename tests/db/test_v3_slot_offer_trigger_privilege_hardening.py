@@ -24,7 +24,14 @@ def test_slot_offer_deferred_trigger_is_private_safe_security_definer(
                has_function_privilege(
                    'request_engine_admin', p.oid, 'EXECUTE'
                ),
-               has_function_privilege('public', p.oid, 'EXECUTE')
+               EXISTS (
+                   SELECT 1
+                   FROM aclexplode(
+                       COALESCE(p.proacl, acldefault('f', p.proowner))
+                   ) acl
+                   WHERE acl.grantee = 0
+                     AND acl.privilege_type = 'EXECUTE'
+               ) AS public_execute
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'request_engine'
@@ -55,7 +62,14 @@ def test_slot_offer_deferred_trigger_is_private_safe_security_definer(
                has_function_privilege(
                    'request_engine_admin', p.oid, 'EXECUTE'
                ),
-               has_function_privilege('public', p.oid, 'EXECUTE')
+               EXISTS (
+                   SELECT 1
+                   FROM aclexplode(
+                       COALESCE(p.proacl, acldefault('f', p.proowner))
+                   ) acl
+                   WHERE acl.grantee = 0
+                     AND acl.privilege_type = 'EXECUTE'
+               ) AS public_execute
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'request_engine'
