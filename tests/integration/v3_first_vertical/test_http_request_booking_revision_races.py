@@ -6,27 +6,15 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from psycopg import Connection
-from tests.integration.v3_first_vertical._race_support import race_behind_row_lock
-from tests.integration.v3_first_vertical.test_http_attendance_idempotency_failure import (
-    _app as booking_app,
-)
-from tests.integration.v3_first_vertical.test_http_attendance_idempotency_failure import (
-    _book,
-)
-from tests.integration.v3_first_vertical.test_http_operations import (
-    _create_fixture as booking_fixture,
-)
-from tests.integration.v3_first_vertical.test_http_request_idempotency_failure import (
-    _app as request_app,
-)
-from tests.integration.v3_first_vertical.test_http_requests import (
-    _create_fixture as request_fixture,
-)
-from tests.integration.v3_first_vertical.test_http_reservation_idempotency_failure import (
-    _slot_options,
-)
 
 from request_engine.platform.db.session import SessionFactory
+
+from . import _race_support as race_support
+from . import test_http_attendance_idempotency_failure as attendance_support
+from . import test_http_operations as operations_support
+from . import test_http_request_idempotency_failure as request_idempotency_support
+from . import test_http_requests as request_support
+from . import test_http_reservation_idempotency_failure as reservation_support
 
 PgConnection = Connection[Any]
 
@@ -39,8 +27,8 @@ async def test_request_cancel_same_revision_has_one_winner_and_one_revision_conf
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
-    fixture = request_fixture(admin_conn)
-    app = request_app(app_session_factory, fixture)
+    fixture = request_support._create_fixture(admin_conn)
+    app = request_idempotency_support._app(app_session_factory, fixture)
     auth = {"Authorization": "Bearer agent"}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -70,7 +58,7 @@ async def test_request_cancel_same_revision_has_one_winner_and_one_revision_conf
             base_url="http://test",
         ) as second_client,
     ):
-        first, second = await race_behind_row_lock(
+        first, second = await race_support.race_behind_row_lock(
             admin_conn,
             table="requests",
             organization_id=fixture.organization_id,
@@ -110,15 +98,15 @@ async def test_reservation_cancel_vs_reschedule_same_revision_has_one_winner(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
-    fixture = booking_fixture(admin_conn)
-    app = booking_app(app_session_factory, fixture)
+    fixture = operations_support._create_fixture(admin_conn)
+    app = attendance_support._app(app_session_factory, fixture)
     auth = {"Authorization": "Bearer agent"}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
     ) as setup:
-        options = await _slot_options(setup, fixture)
-        reservation = await _book(setup, fixture)
+        options = await reservation_support._slot_options(setup, fixture)
+        reservation = await attendance_support._book(setup, fixture)
     assert len(options) >= 2
     reservation_id = UUID(cast(str, reservation["id"]))
     revision = cast(int, reservation["revision"])
@@ -135,7 +123,7 @@ async def test_reservation_cancel_vs_reschedule_same_revision_has_one_winner(
             base_url="http://test",
         ) as second_client,
     ):
-        first, second = await race_behind_row_lock(
+        first, second = await race_support.race_behind_row_lock(
             admin_conn,
             table="reservations",
             organization_id=fixture.organization_id,
@@ -191,14 +179,14 @@ async def test_attendance_same_revision_has_one_winner_and_one_revision_conflict
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
-    fixture = booking_fixture(admin_conn)
-    app = booking_app(app_session_factory, fixture)
+    fixture = operations_support._create_fixture(admin_conn)
+    app = attendance_support._app(app_session_factory, fixture)
     auth = {"Authorization": "Bearer agent"}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
     ) as setup:
-        reservation = await _book(setup, fixture)
+        reservation = await attendance_support._book(setup, fixture)
     reservation_id = UUID(cast(str, reservation["id"]))
     revision = cast(int, reservation["revision"])
     path = f"/v1/appointments/{reservation_id}/attendance"
@@ -213,7 +201,7 @@ async def test_attendance_same_revision_has_one_winner_and_one_revision_conflict
             base_url="http://test",
         ) as second_client,
     ):
-        first, second = await race_behind_row_lock(
+        first, second = await race_support.race_behind_row_lock(
             admin_conn,
             table="reservations",
             organization_id=fixture.organization_id,
