@@ -11,10 +11,10 @@ SET search_path = request_engine, pg_catalog;
 -- an accepted offer must commit together with the Queue terminal state and a
 -- real Hold->Reservation promotion.
 
--- Preserve the long-standing, precise subject-mismatch diagnostic before the
--- broader provenance guard from 030 runs.  Trigger ordering is lexical, so the
--- 00-prefixed trigger fires first.  This check is tenant-local and does not
--- expose any hidden shared-capacity metadata.
+-- Preserve both the broad provenance classification introduced by 030 and the
+-- long-standing precise subject-mismatch diagnostic. Trigger ordering is
+-- lexical, so the 00-prefixed trigger fires before the broader provenance guard.
+-- This check is tenant-local and exposes no hidden shared-capacity metadata.
 CREATE FUNCTION request_engine.guard_slot_offer_subject_match()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -38,7 +38,7 @@ BEGIN
        AND h.id = NEW.capacity_hold_id;
 
     IF FOUND AND v_hold_subject_party_id <> v_waitlist_subject_party_id THEN
-        RAISE EXCEPTION 'SlotOffer % Hold subject does not match WaitlistEntry subject', NEW.id
+        RAISE EXCEPTION 'SlotOffer provenance mismatch: Hold subject does not match WaitlistEntry subject'
             USING ERRCODE = '23514';
     END IF;
 
@@ -113,8 +113,8 @@ BEGIN
     END IF;
 
     IF hold_row.subject_party_id <> waitlist_row.subject_party_id THEN
-        RAISE EXCEPTION 'SlotOffer % Hold subject does not match WaitlistEntry subject',
-            offer_row.id USING ERRCODE = '23514';
+        RAISE EXCEPTION 'SlotOffer provenance mismatch: Hold subject does not match WaitlistEntry subject'
+            USING ERRCODE = '23514';
     END IF;
 
     IF hold_row.offering_version_id <> opportunity_row.offering_version_id
