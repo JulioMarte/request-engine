@@ -75,17 +75,23 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL race tests | PARTIAL | 6D/6I |
 | V3-I66 | APP protocol + DB primitive | multi-root lock topology + simultaneous reschedule concurrency tests | PARTIAL | 6D/6L |
 
+## Post-integration evidence baseline
+
+PR #52 exact-head CI `#847` (`31983843624`) produced a complete, VALID candidate evidence bundle on the same Git tree that was merged into `development`. The artifact collected 340 release tests, passed all 340 in reverse order, and completed three repeated PostgreSQL/concurrency rounds with 47 tests per round. This proves that the evidence families below are executable on the integrated tree; it does not by itself convert the entire invariant registry to `PASS`, because the final Phase 6 release baseline is not frozen and several cross-cutting gates remain incomplete.
+
 ## Cross-tenant shared-capacity extension evidence
 
-The extension rows V3-I62..V3-I66 are deliberately `PARTIAL` until a full final-head Phase 6 candidate run consumes this updated inventory. Current executable evidence includes least-privilege denial of global-state enumeration, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
+V3-I62..V3-I66 now have exact-head executable evidence that was consumed by CI #847: least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
+
+Those rows remain `PARTIAL` in the release inventory because feature acceptance and release freeze are different claims. The final release candidate must execute these proofs again after the remaining Phase 6 correctness, privilege, performance, API-freeze and migration-equivalence work has stopped changing the candidate. A later weakening or removal of any proof returns the affected invariant to incomplete status.
 
 The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
 
 ## Current Phase 6I evidence
 
-CI `#462` on commit `63d2d5004cd74800cb41d08f293e6aa5523f0a70` materially strengthens V3-I01, V3-I02, V3-I03, V3-I05, V3-I08, and V3-I13. The added evidence directly exercises PostgreSQL RLS as `request_engine_app`, verifies fail-closed behavior without tenant context, compares foreign identifiers with nonexistent controls, attacks public Booking/Request/Queue/Waitlist surfaces, keeps operator subject override tenant-bound, and deterministically overlaps a material Request command with Representation revocation.
+The tenant/runtime evidence is materially stronger than the historical CI #462 baseline. CI #847 includes a real LOGIN role inheriting only `request_engine_app`, proves that the role is non-superuser/NOBYPASSRLS and serves tenant-scoped HTTP, and proves that it cannot escalate into worker/admin/schema-owner roles. Additional DB suites inspect app/worker/admin table and function ACLs, deny forbidden `SET ROLE`, exercise fail-closed RLS/foreign-vs-nonexistent behavior and attack protected tenant function surfaces. Public HTTP authority suites cover Booking, Requests, Queue and Waitlist, and deterministic authority races exist for multiple material command families.
 
-Those rows remain `PARTIAL`. The current HTTP integration harness does not yet connect through a production login restricted to `request_engine_app`, and the same deterministic material-command race proof is not yet complete for every subject-scoped mutation family. Keeping these rows `PARTIAL` prevents the release registry from claiming more isolation or authority coverage than the executable evidence provides.
+V3-I01, I02, I03, I05, I08 and I13 remain `PARTIAL` because the release claim is broader than the existence of a least-privileged login test. The remaining protected execution-surface inventory and every subject-scoped material authority/revocation race required by the frozen contract still need explicit closure on the final release baseline.
 
 ## Release-proof rule
 
