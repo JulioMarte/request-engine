@@ -23,7 +23,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G11 | Idempotency and retry semantics | PASS | frozen runtime command inventory + post-commit response-loss replay + fingerprint-conflict proof |
 | G12 | Optimistic concurrency | PASS | real concurrent writers for every caller-selected revision-managed public aggregate |
 | G13 | ProviderEvent/reconciliation | PARTIAL | duplicate/reorder/ambiguity/reconciliation/failure matrix |
-| G14 | Runtime privilege contract | PARTIAL | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
+| G14 | Runtime privilege contract | PASS | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
 | G15 | Query plans and index evidence | MISSING | representative-cardinality EXPLAIN/ANALYZE evidence for hot paths |
 | G16 | Public API contract freeze | PARTIAL | final OpenAPI/capability/error snapshots on frozen candidate |
 | G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
@@ -66,7 +66,15 @@ The same Phase 6I work closes R23/R24 in `docs/release/v3-race-matrix.md`. It al
 
 CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced a `VALID` candidate evidence bundle with 392 collected tests across all 103 expected files, 392 reverse-order passes, three concurrency-stability rounds of 70 passes each, passing mutation probes and the exact real-LOGIN app function inventory. This registry reconciliation must itself pass canonical exact-head CI before integration.
 
-G06 does **not** imply G14. G14 remains `PARTIAL` because the complete release privilege contract still includes the broader app/worker/admin/table/function/`SECURITY DEFINER` review beyond the tenant-isolation claim closed here.
+## Runtime privilege closure
+
+**G14 is `PASS`.** `docs/release/v3-runtime-privilege-inventory.md` freezes the complete runtime role contract and `tests/db/test_v3_runtime_privilege_closure.py` proves it using real LOGINs rather than group-role catalog assumptions.
+
+The proof enumerates schema `USAGE/CREATE`, every relation privilege and the exact executable function set for `request_engine_app`, `request_engine_worker` and `request_engine_admin`. It verifies that app/worker cannot enter admin/schema-owner authority, that trusted admin BYPASSRLS is reachable only through explicit `SET ROLE request_engine_admin`, and that even admin cannot create Request Engine schema objects or become schema owner. Every current `SECURITY DEFINER` is dynamically audited for `request_engine_schema_owner` ownership, exact `pg_catalog, request_engine, pg_temp` search path and no `PUBLIC EXECUTE`.
+
+Migration `038-runtime-privilege-closure.sql` removes stale worker grants for application idempotency and Party-authority primitives plus worker `request_read` usage. Production Worker Assembly already routes domain work through the separate app-role domain session; CI proves that removing those historical grants does not break worker/domain verticals.
+
+CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced `VALID` artifact `9290385131` (`sha256:2b79a0fb702cb3f601bf80f68706eb8b30a2d5a97f0069c2950ff07d34de2f73`) bound to tree `100d55c00f32e389ae4930fb0af3e54838efba58`: 396 tests from all 104 expected files, 396/396 reverse-order passes, three 70-test concurrency-stability rounds, four passing mutation probes and zero test-quality errors/warnings. This registry-only promotion must itself pass canonical exact-head CI before integration.
 
 ## Promotion rule
 
@@ -76,17 +84,16 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G06/G11/G12 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G06/G11/G12/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. finish the separate runtime privilege contract (G14);
-2. complete Booking and Slot Recovery vertical release proofs (G07/G08);
-3. close worker concurrency/fencing and crash recovery (G09/G10);
-4. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
-5. freeze public API/error/capability contracts after correctness stops moving (G16);
-6. build representative query-plan/performance evidence and only then freeze indexes (G15);
-7. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
-8. execute the unified adversarial/failure gate (G18);
-9. prove a fresh production-like environment (G19);
-10. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. complete Booking and Slot Recovery vertical release proofs (G07/G08);
+2. close worker concurrency/fencing and crash recovery (G09/G10);
+3. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
+4. freeze public API/error/capability contracts after correctness stops moving (G16);
+5. build representative query-plan/performance evidence and only then freeze indexes (G15);
+6. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
+7. execute the unified adversarial/failure gate (G18);
+8. prove a fresh production-like environment (G19);
+9. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G11/G12 are now closed.
+Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G11/G12/G14 are now closed.

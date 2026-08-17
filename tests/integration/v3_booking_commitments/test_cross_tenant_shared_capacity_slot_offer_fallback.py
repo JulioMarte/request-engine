@@ -143,7 +143,7 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
         capacity=CapacitySafeSlotOfferCapacity(),
         notification=PostgresSlotOfferNotificationIntent(),
     )
-    start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
+    start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
     await book_appointment(reservations, support._book(tenant_b, start_at))

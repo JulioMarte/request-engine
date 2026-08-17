@@ -193,6 +193,8 @@ The branch contains PostgreSQL/application tests for:
 - opaque public Booking errors and narrow persistence-level conflict translation;
 - clean PostgreSQL 18 bootstrap, schema fingerprint/catalog audit and generated `0001_initial` equivalence.
 
+Release/concurrency fixtures that exercise these temporal paths must use deterministic intervals that remain future-relative for the lifetime of the proof corpus. A calendar date that can silently become historical is not valid evidence for SlotOpportunity/Booking availability semantics; the current fixtures therefore use a far-future Monday while preserving the same weekday and Santo Domingo wall-clock schedule relationship.
+
 `V3-I62..V3-I66` and `R25..R29` remain tracked in the release matrices. Their matrix status is tied to Phase 6/global release evidence and should not be interpreted as a claim that landing this capability alone completes the global V3 release.
 
 ## Residual risks and explicit assumptions
