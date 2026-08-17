@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
@@ -28,7 +28,7 @@ from ._authority_race_support import (
     wait_until_audit_blocked,
     wait_until_authority_blocked,
 )
-from .test_reservation_lifecycle import _fixture, _future_start
+from .test_reservation_lifecycle import LifecycleFixture, _fixture, _future_start
 
 PgConnection = Connection[Any]
 
@@ -36,7 +36,7 @@ PgConnection = Connection[Any]
 async def _confirmed_reservation(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
-):
+) -> tuple[LifecycleFixture, PostgresReservationCommands, UUID]:
     fixture = _fixture(
         admin_conn,
         policy={},
@@ -51,7 +51,7 @@ async def _confirmed_reservation(
     return fixture, PostgresReservationCommands(app_session_factory), representation_id
 
 
-def _cancel_command(fixture, *, key: str) -> CancelReservationCommand:
+def _cancel_command(fixture: LifecycleFixture, *, key: str) -> CancelReservationCommand:
     return CancelReservationCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,

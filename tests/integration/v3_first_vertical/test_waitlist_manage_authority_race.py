@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
@@ -17,7 +17,7 @@ from request_engine.modules.queue.application.commands.leave_waitlist import (
     leave_waitlist,
 )
 from request_engine.modules.queue.application.errors import SubjectAuthorityRequired
-from request_engine.modules.queue.contracts.waitlist import WaitlistEntryStatus
+from request_engine.modules.queue.contracts.waitlist import WaitlistEntry, WaitlistEntryStatus
 from request_engine.platform.db.session import SessionFactory
 
 from ._authority_race_support import (
@@ -30,7 +30,7 @@ from ._authority_race_support import (
     wait_until_audit_blocked,
     wait_until_authority_blocked,
 )
-from .test_http_waitlist import _fixture
+from .test_http_waitlist import WaitlistFixture, _fixture
 
 PgConnection = Connection[Any]
 
@@ -38,7 +38,7 @@ PgConnection = Connection[Any]
 async def _active_entry(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
-):
+) -> tuple[WaitlistFixture, PostgresWaitlistCommands, WaitlistEntry, UUID]:
     fixture = _fixture(admin_conn)
     commands = PostgresWaitlistCommands(app_session_factory)
     entry = await join_waitlist(
@@ -66,7 +66,12 @@ async def _active_entry(
     return fixture, commands, entry, representation_id
 
 
-def _leave_command(fixture, entry, *, key: str) -> LeaveWaitlistCommand:
+def _leave_command(
+    fixture: WaitlistFixture,
+    entry: WaitlistEntry,
+    *,
+    key: str,
+) -> LeaveWaitlistCommand:
     return LeaveWaitlistCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,

@@ -20,7 +20,10 @@ from request_engine.modules.communications.application.commands.create_reminder_
 from request_engine.modules.communications.application.errors import (
     ReminderSubjectAuthorityRequired,
 )
-from request_engine.modules.communications.contracts.reminders import ReminderPlanStatus
+from request_engine.modules.communications.contracts.reminders import (
+    ReminderPlan,
+    ReminderPlanStatus,
+)
 from request_engine.platform.db.session import SessionFactory
 
 from ._authority_race_support import (
@@ -40,7 +43,7 @@ PgConnection = Connection[Any]
 async def _active_plan(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
-):
+) -> tuple[UUID, UUID, PostgresReminderCommands, ReminderPlan, UUID]:
     organization_id, principal_id, party_id = _fixture(admin_conn, with_authority=True)
     commands = PostgresReminderCommands(app_session_factory)
     plan = await create_reminder_plan(
@@ -63,7 +66,13 @@ async def _active_plan(
     return organization_id, principal_id, commands, plan, cast(UUID, row[0])
 
 
-def _cancel_command(*, organization_id, principal_id, plan, key: str) -> CancelReminderPlanCommand:
+def _cancel_command(
+    *,
+    organization_id: UUID,
+    principal_id: UUID,
+    plan: ReminderPlan,
+    key: str,
+) -> CancelReminderPlanCommand:
     return CancelReminderPlanCommand(
         organization_id=organization_id,
         principal_id=principal_id,

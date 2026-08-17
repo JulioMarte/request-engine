@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
@@ -22,7 +22,7 @@ from request_engine.modules.queue.application.commands.leave_queue import (
     leave_queue,
 )
 from request_engine.modules.queue.application.errors import SubjectAuthorityRequired
-from request_engine.modules.queue.contracts.service_queue import QueueEntryStatus
+from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueEntryStatus
 from request_engine.platform.db.session import SessionFactory
 
 from ._authority_race_support import (
@@ -48,7 +48,7 @@ PgConnection = Connection[Any]
 async def _waiting_entry(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
-):
+) -> tuple[UUID, UUID, UUID, UUID, QueueEntry, UUID]:
     organization_id = _create_organization(admin_conn)
     principal_id = _create_principal(admin_conn, organization_id)
     queue_id = _create_queue(admin_conn, organization_id)
@@ -76,10 +76,10 @@ async def _waiting_entry(
 
 def _leave_command(
     *,
-    organization_id,
-    principal_id,
-    queue_id,
-    entry,
+    organization_id: UUID,
+    principal_id: UUID,
+    queue_id: UUID,
+    entry: QueueEntry,
     key: str,
 ) -> LeaveQueueCommand:
     return LeaveQueueCommand(
