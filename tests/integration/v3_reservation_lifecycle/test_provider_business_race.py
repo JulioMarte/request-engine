@@ -52,15 +52,15 @@ def _provider_lease(organization_id: UUID, reservation_id: UUID) -> ProviderEven
 @pytest.mark.concurrency
 async def test_r18_provider_semantic_callback_vs_business_cancellation_serializes_on_reservation(
     admin_conn: PgConnection,
-    session_factory: SessionFactory,
+    app_session_factory: SessionFactory,
 ) -> None:
     fixture = _fixture(
         admin_conn,
         policy={},
         start_at=_future_start(),
     )
-    attendance = PostgresAttendanceCommands(session_factory)
-    reservations = PostgresReservationCommands(session_factory)
+    attendance = PostgresAttendanceCommands(app_session_factory)
+    reservations = PostgresReservationCommands(app_session_factory)
     lease = _provider_lease(fixture.organization_id, fixture.reservation_id)
 
     async def provider_handler(event: ProviderEventLease) -> object:
