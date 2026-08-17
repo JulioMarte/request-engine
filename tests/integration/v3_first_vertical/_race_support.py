@@ -62,8 +62,7 @@ async def race_behind_row_lock[T](
 
     with admin_conn.transaction():
         query = sql.SQL(
-            "SELECT id FROM request_engine.{} "
-            "WHERE organization_id = %s AND id = %s FOR UPDATE"
+            "SELECT id FROM request_engine.{} WHERE organization_id = %s AND id = %s FOR UPDATE"
         ).format(sql.Identifier(table))
         locked = admin_conn.execute(query, (organization_id, aggregate_id)).fetchone()
         assert locked == (aggregate_id,)
