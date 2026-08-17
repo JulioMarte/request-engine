@@ -1,0 +1,271 @@
+# pyright: reportPrivateUsage=false
+
+from datetime import timedelta
+from typing import cast
+from uuid import UUID, uuid4
+
+import pytest
+
+from request_engine.modules.communications.adapters.db.delivery_store import (
+    finalize_provider_result,
+    prepare_dispatch,
+)
+from request_engine.modules.communications.contracts.delivery import (
+    ProviderDeliveryResult,
+    ProviderDeliveryStatus,
+)
+from request_engine.platform.db.session import tenant_transaction
+
+from . import operational_support as support
+from .test_communication_worker_resilience import (
+    PAST,
+    ScriptedProvider,
+    _action_status,
+    _claim_and_process,
+    _delivery_status,
+    _dispatch,
+    _events,
+    _task,
+    _task_status,
+    _worker_stack,
+)
+
+pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_delivery(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    org = support.new_org(e2e_admin_conn, "accepted-reconciliation")
+    task_id = _task(e2e_admin_conn, org)
+    dispatch_id = _dispatch(e2e_admin_conn, org, task_id)
+    provider = ScriptedProvider(
+        send=ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.ACCEPTED,
+            provider_message_id=f"accepted-{uuid4().hex}",
+        ),
+        lookup=ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.ACCEPTED,
+            provider_message_id=f"accepted-{uuid4().hex}",
+        ),
+    )
+
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        _, _, scheduler, worker = stack
+        first = await _claim_and_process(scheduler, worker)
+        assert first.detail == "accepted"
+        assert _action_status(e2e_admin_conn, dispatch_id) == "completed"
+        assert len(provider.send_calls) == 1
+        assert provider.lookup_calls == []
+
+        delivery_row = e2e_admin_conn.execute(
+            """
+            SELECT id, status
+            FROM request_engine.communication_deliveries
+            WHERE organization_id = %s AND communication_task_id = %s
+            """,
+            (org, task_id),
+        ).fetchone()
+        assert delivery_row is not None
+        delivery_id = cast(UUID, delivery_row[0])
+        assert delivery_row[1] == "accepted"
+
+        reconcile_row = e2e_admin_conn.execute(
+            """
+            SELECT id
+            FROM request_engine.scheduled_actions
+            WHERE organization_id = %s
+              AND action_type = 'reconcile_delivery'
+              AND subject_kind = 'CommunicationDelivery'
+              AND subject_id = %s
+              AND status = 'pending'
+            """,
+            (org, delivery_id),
+        ).fetchone()
+        assert reconcile_row is not None
+        first_reconcile_id = cast(UUID, reconcile_row[0])
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET execute_at = %s, next_attempt_at = %s
+            WHERE id = %s
+            """,
+            (PAST, PAST, first_reconcile_id),
+        )
+
+        accepted_again = await _claim_and_process(scheduler, worker)
+        assert accepted_again.detail == "accepted"
+        assert len(provider.send_calls) == 1
+        assert len(provider.lookup_calls) == 1
+        assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
+
+        pending_reconciliations = e2e_admin_conn.execute(
+            """
+            SELECT id
+            FROM request_engine.scheduled_actions
+            WHERE organization_id = %s
+              AND action_type = 'reconcile_delivery'
+              AND subject_kind = 'CommunicationDelivery'
+              AND subject_id = %s
+              AND status = 'pending'
+            ORDER BY created_at, id
+            """,
+            (org, delivery_id),
+        ).fetchall()
+        assert len(pending_reconciliations) == 1
+        next_reconcile_id = cast(UUID, pending_reconciliations[0][0])
+
+        replay_dispatch_id = _dispatch(e2e_admin_conn, org, task_id)
+        replay = await _claim_and_process(scheduler, worker)
+        assert replay.detail == "accepted"
+        assert _action_status(e2e_admin_conn, replay_dispatch_id) == "completed"
+        assert len(provider.send_calls) == 1
+        assert len(provider.lookup_calls) == 2
+
+        still_one_future = e2e_admin_conn.execute(
+            """
+            SELECT id
+            FROM request_engine.scheduled_actions
+            WHERE organization_id = %s
+              AND action_type = 'reconcile_delivery'
+              AND subject_kind = 'CommunicationDelivery'
+              AND subject_id = %s
+              AND status = 'pending'
+            """,
+            (org, delivery_id),
+        ).fetchall()
+        assert still_one_future == [(next_reconcile_id,)]
+
+        provider.lookup_result = ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.DELIVERED,
+            provider_message_id=f"delivered-{uuid4().hex}",
+        )
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET execute_at = %s, next_attempt_at = %s
+            WHERE id = %s
+            """,
+            (PAST, PAST, next_reconcile_id),
+        )
+        delivered = await _claim_and_process(scheduler, worker)
+
+    assert delivered.detail == "delivered"
+    assert len(provider.send_calls) == 1
+    assert len(provider.lookup_calls) == 3
+    assert _task_status(e2e_admin_conn, task_id) == "completed"
+    assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
+    assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
+    assert e2e_admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.scheduled_actions
+        WHERE organization_id = %s
+          AND action_type = 'reconcile_delivery'
+          AND subject_id = %s
+          AND status IN ('pending', 'leased')
+        """,
+        (org, delivery_id),
+    ).fetchone() == (0,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispatch_backoff(
+    e2e_admin_conn: support.PgConnection,
+    worker_runtime_credentials: support.RuntimeCredentialsLike,
+) -> None:
+    org = support.new_org(e2e_admin_conn, "retry-backoff-replay")
+    task_id = _task(e2e_admin_conn, org)
+    action_id = _dispatch(e2e_admin_conn, org, task_id)
+    provider = ScriptedProvider(
+        send=ProviderDeliveryResult(
+            status=ProviderDeliveryStatus.FAILED,
+            retryable=True,
+            result_data={"error_class": "provider_503"},
+        )
+    )
+
+    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+        domain_factory, _, scheduler, worker = stack
+        leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
+        assert len(leases) == 1
+        first_lease = leases[0]
+        assert first_lease.id == action_id
+
+        async with tenant_transaction(domain_factory, org) as session:
+            prepared = await prepare_dispatch(
+                session,
+                organization_id=org,
+                communication_task_id=task_id,
+            )
+        assert prepared.delivery_id is not None
+        assert prepared.send_request is not None
+        provider_result = await provider.send(prepared.send_request)
+        async with tenant_transaction(domain_factory, org) as session:
+            finalized = await finalize_provider_result(
+                session,
+                organization_id=org,
+                delivery_id=prepared.delivery_id,
+                result=provider_result,
+            )
+        assert finalized.status is ProviderDeliveryStatus.FAILED
+        assert finalized.retryable is True
+        assert _task_status(e2e_admin_conn, task_id) == "pending"
+        assert _action_status(e2e_admin_conn, action_id) == "leased"
+
+        retry_row = e2e_admin_conn.execute(
+            """
+            SELECT id, execute_at > clock_timestamp(), status
+            FROM request_engine.scheduled_actions
+            WHERE organization_id = %s
+              AND action_type = 'dispatch_task'
+              AND subject_kind = 'CommunicationTask'
+              AND subject_id = %s
+              AND id <> %s
+            """,
+            (org, task_id, action_id),
+        ).fetchone()
+        assert retry_row is not None
+        retry_id = cast(UUID, retry_row[0])
+        assert retry_row[1:] == (True, "pending")
+
+        e2e_admin_conn.execute(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET lease_until = clock_timestamp() - interval '1 second'
+            WHERE id = %s
+            """,
+            (action_id,),
+        )
+        reclaimed = await scheduler.claim(limit=1)
+        assert len(reclaimed) == 1
+        assert reclaimed[0].id == action_id
+        assert reclaimed[0].claim_token != first_lease.claim_token
+
+        replay = await worker.process(reclaimed[0])
+        assert replay.detail == "retry_already_scheduled"
+        assert await scheduler.complete(first_lease) is False
+
+    assert len(provider.send_calls) == 1
+    assert provider.lookup_calls == []
+    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert e2e_admin_conn.execute(
+        """
+        SELECT status, execute_at > clock_timestamp()
+        FROM request_engine.scheduled_actions
+        WHERE id = %s
+        """,
+        (retry_id,),
+    ).fetchone() == ("pending", True)
+    assert e2e_admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.communication_deliveries
+        WHERE organization_id = %s AND communication_task_id = %s
+        """,
+        (org, task_id),
+    ).fetchone() == (1,)
