@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast
+from typing import Any, Literal, LiteralString, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -42,25 +42,37 @@ def _provider_event(
     *,
     status: ProviderTerminalStatus,
 ) -> UUID:
-    processed_at_sql = "clock_timestamp()" if status == "rejected" else "NULL"
+    sql: LiteralString
+    if status == "rejected":
+        sql = """
+            INSERT INTO request_engine.provider_events (
+                organization_id, provider_key, connection_key,
+                provider_event_id, payload_hash, payload, status,
+                processed_at, attempt_count, max_attempts, last_error_class
+            ) VALUES (
+                %s, 'replay-provider', 'primary', %s, %s, '{}'::jsonb, 'rejected',
+                clock_timestamp(), 8, 8, 'terminal_rejected'
+            )
+            RETURNING id
+        """
+    else:
+        sql = """
+            INSERT INTO request_engine.provider_events (
+                organization_id, provider_key, connection_key,
+                provider_event_id, payload_hash, payload, status,
+                processed_at, attempt_count, max_attempts, last_error_class
+            ) VALUES (
+                %s, 'replay-provider', 'primary', %s, %s, '{}'::jsonb, 'dead',
+                NULL, 8, 8, 'terminal_dead'
+            )
+            RETURNING id
+        """
     row = conn.execute(
-        f"""
-        INSERT INTO request_engine.provider_events (
-            organization_id, provider_key, connection_key,
-            provider_event_id, payload_hash, payload, status,
-            processed_at, attempt_count, max_attempts, last_error_class
-        ) VALUES (
-            %s, 'replay-provider', 'primary', %s, %s, '{{}}'::jsonb, %s,
-            {processed_at_sql}, 8, 8, %s
-        )
-        RETURNING id
-        """,  # noqa: S608 -- status selects one of two internal SQL literals only.
+        sql,
         (
             organization_id,
             f"event-{uuid4().hex}",
             uuid4().hex,
-            status,
-            f"terminal_{status}",
         ),
     ).fetchone()
     assert row is not None
