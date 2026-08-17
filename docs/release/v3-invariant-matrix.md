@@ -19,7 +19,7 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I09 | BOTH | booking availability/resource adapters | PARTIAL | 6D/6E |
 | V3-I10 | APP+DB reference | requests core + schema validation tests | PARTIAL | 6D/6K |
 | V3-I11 | BOTH | requests core tests | PARTIAL | 6D/6E |
-| V3-I12 | BOTH | idempotency error-contract tests | PARTIAL | 6E |
+| V3-I12 | BOTH | idempotency error contract + frozen runtime fingerprint-conflict coverage | PASS | 6E |
 | V3-I13 | APP | adversarial authority/operator-override/security boundaries | PARTIAL | 6I/6J |
 | V3-I14 | APP | request cancellation implementation | PARTIAL | 6D/6K |
 | V3-I15 | DB | booking commitment/candidate DB tests | PARTIAL | 6D/6L |
@@ -67,40 +67,52 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I57 | EXT/APP | delivery worker/reconciliation contract | PARTIAL | 6F/6J |
 | V3-I58 | transaction/APP | outbox pipeline and communication vertical | PARTIAL | 6J |
 | V3-I59 | DB | trusted execution provenance DB test | PARTIAL | 6I/6J |
-| V3-I60 | BOTH | committed Booking response-loss + same-key HTTP replay proof | PARTIAL | 6E |
-| V3-I61 | BOTH | idempotency identity/fingerprint + committed-result replay contracts | PARTIAL | 6E/6I |
+| V3-I60 | BOTH | frozen runtime post-commit response-loss/retry matrix | PASS | 6E |
+| V3-I61 | BOTH | idempotency identity/fingerprint + canonical scope/replay contracts | PASS | 6E/6I |
 | V3-I62 | BOTH/ops | request_admin authority events + UUID/no-enumeration adversarial tests | PARTIAL | 6I |
 | V3-I63 | BOTH | cross-tenant CapacityClaim/Booking/Hold/SlotOffer integration + DB race tests | PARTIAL | 6D/6I |
 | V3-I64 | DB+APP | private-table runtime privilege contract + opaque Booking error tests | PARTIAL | 6I/6K |
 | V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL race tests | PARTIAL | 6D/6I |
 | V3-I66 | APP protocol + DB primitive | multi-root lock topology + simultaneous reschedule concurrency tests | PARTIAL | 6D/6L |
 
+## Phase 6E idempotency / optimistic-concurrency evidence
+
+Phase 6E closes the cross-cutting idempotency invariants whose canonical meaning is explicit in the pre-SQL contract:
+
+- **V3-I12 — same idempotency key + different fingerprint is rejected.** The shared PostgreSQL idempotency primitive already enforced fingerprint binding. The frozen runtime command inventory proves every public mutating capability is idempotent, and the attendance regression found and removed the one payload-dependent scope split that could evade that binding. Migration `037-attendance-idempotency-scope-hardening.sql` normalizes historical attendance scopes, fails closed on historical collisions, and new attendance commands use the stable `booking.record_attendance_response` scope directly.
+- **V3-I60 — idempotent retry cannot repeat an already committed business effect.** `appointments.book` retains the original R19 true response-loss proof. Phase 6E extends the same failure shape to Request submit/cancel, Reservation cancel/reschedule, attendance, Queue join/leave/call-next, Waitlist join/leave, SlotOffer accept/decline and ReminderPlan create/cancel. The custom ASGI transports allow the command transaction to commit before dropping the response, then require same-key replay plus command-specific durable cardinality assertions.
+- **V3-I61 — identity is Organization + Principal + capability + fingerprint.** The architecture inventory freezes the runtime capability surface; centralized idempotency records enforce Organization/Principal/capability/key identity and fingerprint equality; the attendance defect demonstrated why capability scope itself must be stable and is now covered by an explicit regression.
+
+Phase 6E also strengthens revision-managed aggregate correctness. Deterministic application-runtime races cover Request, Reservation cancel/reschedule, attendance, QueueEntry, WaitlistEntry, SlotOffer and ReminderPlan. Request exposed a real lifecycle-before-revision bug: a stale writer could receive `request_not_open` instead of revision conflict. Request mutation ordering is now lock → Party authority when applicable → revision → lifecycle. Attendance is similarly normalized to authority → revision → lifecycle after its Reservation lock, preventing lifecycle disclosure before subject authority and ensuring stale provider/business writers lose on revision.
+
+CI #896 (`31999091531`) on head `c7459454a5284ab295285bd0c4f463bb239f17b0` produced `evidence_status: VALID`, collected 369 tests, passed all 369 in reverse order and passed three concurrency-stability rounds of 60 tests each. The registry-only reconciliation that promotes these invariant rows must itself pass canonical exact-head CI before integration. Final V3 promotion must regenerate the proofs after the remaining gates stop changing the candidate.
+
 ## Phase 6 race-closure evidence
 
-The race-closure work adds real runtime-role evidence to the invariant families that were still missing a deterministic interleaving after the post-integration rebaseline. R08 forces duplicate released-slot consumers to serialize on the source-event idempotency identity and asserts one Opportunity/Hold/Offer chain, strengthening V3-I38/I42. R17 forces simultaneous ProviderEvent identity inserts and validates same-payload replay versus different-payload conflict, strengthening V3-I56. R18 routes a provider event through `ProviderEventRouter` into Booking's semantic attendance command while cancellation competes for the same Reservation, strengthening V3-I47 without granting provider infrastructure direct Booking authority. R19 drops a successful HTTP Booking response only after the ASGI request finishes, then retries the same key and proves one Reservation/claim/outbox effect, strengthening V3-I60/I61. R22 races a leased ReminderPlan occurrence against plan cancellation under the real plan lock and asserts both valid serialized state machines, strengthening V3-I49/I50.
+The preceding deterministic race-closure work added real runtime-role evidence to invariant families that were missing explicit interleavings. R08 strengthens V3-I38/I42; R17 strengthens V3-I56; R18 strengthens V3-I47; R22 strengthens V3-I49/I50. Those rows remain `PARTIAL` because their wider owning release claims remain incomplete. R19 was initially a Booking-only proof for V3-I60/I61; the subsequent Phase 6E full command inventory is what allows V3-I60/I61 to move to `PASS`.
 
-These invariant rows remain `PARTIAL`. The tests close specific release-proof gaps; they do not by themselves complete the wider Booking, ProviderEvent, idempotency, communications or adversarial release gates, and all evidence must be repeated on the eventual frozen release candidate.
+R18 now reflects the revision-first contract: when the provider semantic attendance command wins, cancellation loses on Reservation revision; when cancellation wins, the stale provider semantic command also loses on Reservation revision before lifecycle mutation and cannot append attendance or retain capacity. Provider routing still never writes Booking state directly.
 
 ## Post-integration evidence baseline
 
-PR #52 exact-head CI `#847` (`31983843624`) produced a complete, VALID candidate evidence bundle on the same Git tree that was merged into `development`. The artifact collected 340 release tests, passed all 340 in reverse order, and completed three repeated PostgreSQL/concurrency rounds with 47 tests per round. This proves that the evidence families below are executable on the integrated tree; it does not by itself convert the entire invariant registry to `PASS`, because the final Phase 6 release baseline is not frozen and several cross-cutting gates remain incomplete.
+PR #52 exact-head CI #847 produced a complete, VALID candidate evidence bundle on the same Git tree that was merged into `development`: 340 release tests, all 340 in reverse order, and three repeated PostgreSQL/concurrency rounds with 47 tests per round. This proves the integrated evidence families were executable; it did not convert unrelated wider release claims to `PASS`.
 
 ## Cross-tenant shared-capacity extension evidence
 
-V3-I62..V3-I66 have exact-head executable evidence consumed by CI #847: least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking in both winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking, and simultaneous real reschedules synchronized immediately before the protected shared-root lock call.
+V3-I62..V3-I66 have executable evidence for least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking and simultaneous real reschedules.
 
-Those rows remain `PARTIAL` in the release inventory because feature acceptance and release freeze are different claims. The final release candidate must execute these proofs again after the remaining Phase 6 correctness, privilege, performance, API-freeze and migration-equivalence work has stopped changing the candidate. A later weakening or removal of any proof returns the affected invariant to incomplete status.
+Those rows remain `PARTIAL` because feature integration and complete release proof are different claims. The final candidate must repeat them after correctness, privilege, performance, API-freeze and migration-equivalence work stops changing the candidate.
 
 The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
 
 ## Current Phase 6I evidence
 
-The tenant/runtime evidence is materially stronger than the historical CI #462 baseline. CI #847 includes a real LOGIN role inheriting only `request_engine_app`, proves that the role is non-superuser/NOBYPASSRLS and serves tenant-scoped HTTP, and proves that it cannot escalate into worker/admin/schema-owner roles. Additional DB suites inspect app/worker/admin table and function ACLs, deny forbidden `SET ROLE`, exercise fail-closed RLS/foreign-vs-nonexistent behavior and attack protected tenant function surfaces. Public HTTP authority suites cover Booking, Requests, Queue and Waitlist, and deterministic authority races exist for multiple material command families.
+The tenant/runtime evidence is materially stronger than the historical baseline. Current CI includes a real LOGIN role inheriting only `request_engine_app`, proves that the role is non-superuser/NOBYPASSRLS and serves tenant-scoped HTTP, and proves that it cannot escalate into worker/admin/schema-owner roles. Additional suites inspect table/function ACLs, deny forbidden `SET ROLE`, exercise fail-closed RLS and attack protected tenant surfaces. Public HTTP authority suites cover Booking, Requests, Queue and Waitlist, with deterministic authority races for multiple material command families.
 
-V3-I01, I02, I03, I05, I08 and I13 remain `PARTIAL` because the release claim is broader than the existence of a least-privileged login test. The remaining protected execution-surface inventory and every subject-scoped material authority/revocation race required by the frozen contract still need explicit closure on the final release baseline.
+V3-I01, I02, I03, I05, I08 and I13 remain `PARTIAL` because the remaining protected execution-surface inventory and every subject-scoped material authority/revocation race required by the frozen contract still need explicit closure.
 
 ## Release-proof rule
 
-Each row must eventually point to at least one executable proof that exercises the owner boundary named by the canonical contract. An application-only test is insufficient for a DB-owned invariant. A mocked concurrency test is insufficient for a lock, RLS, range-overlap, lease or fencing invariant.
+Each row must eventually point to executable proof that exercises the owner boundary named by the canonical contract. An application-only test is insufficient for a DB-owned invariant. A mocked concurrency test is insufficient for a lock, RLS, range-overlap, lease or fencing invariant.
 
 The matrix may become more specific as Phase 6 adds proof files. It must not silently change the meaning or ownership of a `V3-Ixx`; such a change belongs in the canonical V3 contract first.

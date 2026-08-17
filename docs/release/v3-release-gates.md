@@ -1,115 +1,77 @@
 # Request Engine V3 release gates
 
-Status: Phase 6 release gate registry.
+Status values:
 
-This file records release proof, not design intent. Canonical semantics remain in the owning V3 docs and ADRs.
+- `PASS`: current-branch executable evidence satisfies the gate;
+- `PARTIAL`: some evidence exists but the release gate is not closed;
+- `MISSING`: required release proof has not been implemented.
 
-The generated evidence manifest distinguishes a **valid candidate evidence bundle** from a
-**release-ready baseline**. Artifact presence, hashes, semantic PASS results,
-JUnit outcomes and source/tree binding can make candidate evidence `VALID`; the release
-remains `NOT_READY` until every gate below is `PASS`. CI must never describe
-artifact completeness as complete V3 release evidence.
+A green historical workflow is evidence only for the exact commit/tree it tested. Final promotion to `main` must regenerate the evidence bundle on the final release candidate.
 
-## Status semantics
+| Gate | Requirement | Status | Required proof before PASS |
+|---|---|---:|---|
+| G01 | V3 candidate and migration ordering | PASS | candidate SQL ordering/inventory architecture tests |
+| G02 | Clean PostgreSQL 18 bootstrap | PASS | repeated clean bootstrap proof |
+| G03 | V2 design-history preservation | PASS | canonical V2 history job |
+| G04 | Python quality and architecture | PASS | Ruff, format, Pyright, security, dependency and architecture suite |
+| G05 | Complete invariant registry | PARTIAL | every V3-Ixx must map to executable owner-boundary proof |
+| G06 | Tenant/RLS isolation | PARTIAL | real app LOGIN role, protected-function inventory, fail-closed RLS and attack matrix |
+| G07 | Booking lifecycle | PARTIAL | complete booking lifecycle including capacity/recovery/communication consequences |
+| G08 | Slot recovery | PARTIAL | complete Opportunity/Offer/Hold/accept/decline/expiry/candidate proof |
+| G09 | Worker concurrency/fencing | PARTIAL | multi-worker claim/fencing/crash/reclaim proof |
+| G10 | Crash/recovery semantics | PARTIAL | crash at authoritative/external-effect boundaries and deterministic recovery |
+| G11 | Idempotency and retry semantics | PASS | frozen runtime command inventory + post-commit response-loss replay + fingerprint-conflict proof |
+| G12 | Optimistic concurrency | PASS | real concurrent writers for every caller-selected revision-managed public aggregate |
+| G13 | ProviderEvent/reconciliation | PARTIAL | duplicate/reorder/ambiguity/reconciliation/failure matrix |
+| G14 | Runtime privilege contract | PARTIAL | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
+| G15 | Query plans and index evidence | MISSING | representative-cardinality EXPLAIN/ANALYZE evidence for hot paths |
+| G16 | Public API contract freeze | PARTIAL | final OpenAPI/capability/error snapshots on frozen candidate |
+| G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
+| G18 | Unified adversarial/failure suite | MISSING | one release gate executing attack, race, crash, retry, order and mutation families |
+| G19 | Fresh production-like bootstrap | PARTIAL | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
+| G20 | Final release artifact/manifest | MISSING | exact-head manifest with fingerprints, environment and all G01-G20 PASS |
 
-- `PASS`: current-branch executable evidence satisfies the gate.
-- `PARTIAL`: useful implementation/tests exist, but release-level proof is incomplete or has not been executed for this baseline.
-- `MISSING`: no release-level proof artifact exists yet.
-- `BLOCKED`: proof cannot proceed because a known correctness defect blocks it.
+## Phase 6E — idempotency and optimistic-concurrency closure
 
-At the Phase 6A baseline, no gate was promoted to `PASS` merely because CI configuration existed. The first complete Phase 6 execution baseline was CI run `#433` on commit `13a6d57495c12c0a497aa265d81a30ca00ee0e05`.
+Phase 6E freezes the runtime mutation inventory in `docs/release/v3-idempotency-concurrency-inventory.md` and enforces it with `tests/architecture/test_retryable_command_inventory.py`.
 
-## Executed evidence
+G11 is `PASS` on the current branch because all fifteen runtime-available, non-internal mutating capabilities now have executable post-commit response-loss coverage. `appointments.book` is covered by the original R19 Booking proof; Request, Reservation mutation, attendance, Queue, Waitlist, SlotOffer and ReminderPlan commands are covered by the Phase 6E HTTP failure matrix. Each proof allows the real ASGI transaction to commit, drops the first response, retries the same `Idempotency-Key`, and asserts authoritative cardinality/state rather than merely checking the HTTP response. The shared PostgreSQL idempotency primitive continues to reject same identity + different fingerprint; Phase 6E additionally found and fixed the attendance-specific payload-dependent scope split through candidate migration `037-attendance-idempotency-scope-hardening.sql`.
 
-CI `#433` established the original release-proof baseline for G01-G04:
+G12 is `PASS` on the current branch because every caller-selected public revision-managed aggregate has real concurrent-writer evidence with application-runtime sessions and deliberate PostgreSQL lock barriers: Request, Reservation (cancel/reschedule and attendance), QueueEntry, WaitlistEntry, SlotOffer and ReminderPlan. The stale writer must lose on revision and cannot append dependent state. Phase 6E found and fixed Request's previous lifecycle-before-revision ordering and normalized attendance to authority → revision → lifecycle after the aggregate lock.
 
-- Ruff lint passed;
-- Ruff formatting passed;
-- Pyright passed;
-- all architecture tests passed;
-- all module unit tests passed;
-- the PostgreSQL 18 repeated-bootstrap proof passed;
-- the V3 candidate applied cleanly;
-- the schema fingerprint generated successfully;
-- the blocking catalog audit passed;
-- all then-current V3 PostgreSQL invariant/race/vertical tests passed;
-- the candidate release-proof artifact uploaded successfully.
+CI #896 (`31999091531`) on head `c7459454a5284ab295285bd0c4f463bb239f17b0` produced a `VALID` candidate evidence bundle before this registry-only reconciliation: 369 collected tests, 369 reverse-order passes, and three concurrency-stability rounds of 60 passes each. The registry reconciliation itself must also pass the canonical exact-head CI before PR integration. As with every current-branch `PASS`, final promotion to `main` still requires regeneration on the eventual frozen release candidate; a later weakening/removal of the inventory or proof returns G11/G12 to incomplete status.
 
-The same release cycle discovered and fixed a real deny-by-default defect before that green baseline: application functions still inherited PostgreSQL's default `PUBLIC EXECUTE`. Candidate migration `021-release-privilege-hardening.sql` and dedicated DB tests enforce the intended boundary.
+## Deterministic race-closure evidence
 
-Phase 6I adversarial tenant work was strengthened in CI `#462` on commit `63d2d5004cd74800cb41d08f293e6aa5523f0a70` with direct `request_engine_app` RLS proof, cross-tenant/nonexistent identifier equivalence, HTTP Booking/Request/Queue/Waitlist attacks, operator-override tenant binding, and a real Request submit versus Representation revocation race.
+The preceding race-closure phase added deterministic PostgreSQL/HTTP evidence for R08, R17, R18, R19 and R22 and exposed a least-privilege SlotOffer deferred-trigger defect that was fixed by migration `036-slot-offer-deferred-trigger-privilege-hardening.sql`. R08/R17/R18/R22 still strengthen their wider owning gates without independently closing them. R19 became the seed for the broader Phase 6E G11 proof and is now covered across the frozen runtime command inventory.
 
-### Post-feature integration rebaseline
+The race proofs use real runtime roles, independent sessions and explicit PostgreSQL overlap. They assert final cardinality and state, not merely an exception. Provider routing remains semantic and does not acquire direct Booking authority; Reminder cancellation and materialization continue to serialize under the authoritative plan/root locks.
 
-After Production Worker Assembly, ReservationAccess/Delivery and Cross-Tenant Shared Capacity were integrated, PR #52 exact-head CI `#847` (`31983843624`) passed on head `31b2d51ccdb6e5ee9fa8b2c7f004359cc764048b`. The merge commit on `development`, `a5d6221e6cb3fd69a340dd0cccbe493ef7179c29`, has the same Git tree `e36eb2e717bc6e28927b2d444f148807cfa8ee52` as that proven head.
+## Post-integration baseline
 
-The CI #847 `v3-candidate-release-proof` artifact reports:
+PR #52 and the subsequent production-worker/reservation-delivery integrations materially strengthened the candidate before Phase 6 release closure. The post-merge rebaseline intentionally did not promote release gates merely because tests existed: a gate moves to `PASS` only when its complete frozen claim has executable current-branch evidence.
 
-- `evidence_status: VALID`;
-- `release_status: NOT_READY`;
-- `artifact_set_complete: true`;
-- clean tested working tree and zero manifest validation errors;
-- 340 collected release tests across 78 expected files;
-- reverse-order execution: 340 passed;
-- concurrency stability: 3/3 rounds passed, each with 47 PostgreSQL/concurrency tests;
-- schema fingerprint, catalog audit, mutation probes, candidate initial-equivalence artifact, test-quality artifact and worker query-plan artifact present.
-
-The artifact intentionally preserves the gate statuses below. A valid candidate evidence bundle is not a release-ready V3 baseline. `docs/release/v3-post-merge-rebaseline.md` records the current repository point and ordered closure work.
-
-### Deterministic race closure
-
-The current race-closure change set adds release-level interleaving tests for R08, R17, R18, R19 and R22 using production-style `request_engine_app` logins for authoritative domain transactions and the worker login where ScheduledAction claiming is technical worker work. The tests deliberately overlap real PostgreSQL transactions or, for R19, simulate a transport failure only after the real ASGI command has completed. They assert final state/cardinality rather than merely checking for exceptions.
-
-This closes the `TO VERIFY`/`MISSING` classification of those individual races, but it does **not** promote their owning gates to `PASS`. G08 still needs the final complete recovery vertical; G11 still needs lost-response/idempotency coverage across the frozen sensitive-command inventory; G13 still needs the wider provider event disorder/late/unknown/crash matrix; and G18 still lacks the unified release adversarial artifact.
-
-## Gate matrix
-
-| Gate | Release claim | Status | Existing evidence | Required proof before PASS | Primary phase |
-|---|---|---|---|---|---|
-| G01 | Static quality | PASS | CI #847: canonical Python quality job green on the integrated tree | Keep mandatory in final release CI | 6A/6P |
-| G02 | Architecture boundaries | PASS | CI #847: complete architecture fitness suite green on the integrated tree | Keep mandatory in final release CI | 6A/6P |
-| G03 | Unit/domain logic | PASS | CI #847: complete module/unit suite green on the integrated tree | Keep mandatory in final release CI | 6A/6P |
-| G04 | Fresh PostgreSQL bootstrap | PASS | CI #847: dedicated PostgreSQL 18 repeated clean candidate bootstrap passed | Preserve proof until final bootstrap is replaced by `0001_initial` in 6O | 6B |
-| G05 | Schema integrity | PARTIAL | CI #847 fingerprint/catalog audit, current DB/vertical suite, mutation probes and expanded cross-tenant/SlotOffer integrity tests are green; race closure adds deterministic source-event/provider/reminder/idempotency interleavings | Complete every critical invariant proof and execute the final release baseline after the candidate stops changing | 6B/6C/6D |
-| G06 | Tenant isolation | PARTIAL | Real least-privileged app LOGIN proof exists in E2E/integration; direct RLS/fail-closed DB tests, foreign-vs-nonexistent controls, HTTP Booking/Request/Queue/Waitlist attacks and authority races are collected by CI #847 | Close the remaining protected execution-surface attack inventory and every material subject-authority/revocation race required by the frozen contract; rerun on the final release baseline | 6I |
-| G07 | Booking vertical | PARTIAL | `v3_booking_core`, `v3_booking_commitments`, Reservation lifecycle, ReservationAccess/Delivery and adversarial E2E journeys run in the current candidate suite | Demonstrate the frozen release appointment journey end to end, including required lifecycle communications/completion semantics, under the final release gate | 6K |
-| G08 | Slot recovery | PARTIAL | SlotOffer terminal races plus R08 duplicate released-slot consumers now prove one source-event Opportunity/Hold/Offer chain under concurrent app transactions | Run the complete frozen recovery vertical and final candidate race suite after remaining correctness work stops changing the flow | 6D/6K |
-| G09 | Worker claim race | PARTIAL | DB/integration worker runtime suites, production worker assembly, worker soak/fuzz tests and claim fencing are in CI #847 | Deterministic multi-worker ownership/fairness proof at representative increasing concurrency/backlog | 6F |
-| G10 | Worker crash recovery | PARTIAL | expired-lease, stale-finalization, process crash recovery, communication fencing and poison/replay evidence exist | Complete claim-crash-reclaim and external-side-effect-success / local-finalization-crash release proof across relevant work families | 6F |
-| G11 | Idempotency | PARTIAL | idempotency contract/error tests and PostgreSQL primitives plus R19 committed Booking/response-loss/same-key HTTP replay with one Reservation/claim/outbox effect | Extend lost-response-after-commit proof across the frozen sensitive network-retryable command inventory and rerun on the final baseline | 6E |
-| G12 | Optimistic concurrency | PARTIAL | Request/booking/queue revision contracts plus real Reservation cancel-vs-reschedule revision race exist | Real concurrent writer proof for every mutable public aggregate requiring revisions | 6E |
-| G13 | Provider events | PARTIAL | simultaneous R17 ProviderEvent ingestion proves one provider identity and payload conflict; R18 proves ProviderEventRouter → Booking semantic-command ordering against business cancellation; terminal stale-worker/dead-letter support also exists | Complete duplicate/out-of-order/late/unknown/crash processing matrix and final provider-event vertical | 6J |
-| G14 | Runtime privilege model | PARTIAL | Real app/worker/admin LOGIN tests inspect role flags, table/function ACLs and deny forbidden `SET ROLE`; catalog audit and private shared-capacity privilege tests are green | Complete the explicit negative DDL/BYPASSRLS/remaining SECURITY DEFINER execution matrix for every runtime role on the final baseline | 6I |
-| G15 | Query-plan/index proof | MISSING | CI #847 contains a worker query-plan artifact proving `provider_events_due_idx` for one provider-event due query; this is intentionally insufficient for the gate | Representative production-like datasets plus stored `EXPLAIN (ANALYZE, BUFFERS)` evidence for all release hot paths and explicit final index decisions | 6H |
-| G16 | API contract freeze | PARTIAL | Phase 5 capability/OpenAPI architecture tests plus current E2E public-surface contract tests exist | Stable OpenAPI snapshot, machine-readable error matrix and capability consistency gate after correctness changes stop moving public semantics | 6G/6P |
-| G17 | Migration equivalence | MISSING | Candidate chain and candidate-side `0001_initial.candidate.sql`/initial-equivalence artifacts exist; no blessed release initial migration exists | Candidate fingerprint equals final `0001_initial` fingerprint and the same behavioral suite passes against both | 6M/6N |
-| G18 | Adversarial/failure proof | MISSING | Individual race/fencing/chaos/soak/mutation tests now include the formerly missing R08/R17/R18/R19/R22 proofs, but no complete release adversarial gate closes the registered failure inventory | Unified replay, temporal, deadlock, deterministic failure-injection and release-critical race suite with explicit coverage mapping | 6L |
-| G19 | Fresh release environment | PARTIAL | PostgreSQL 18 candidate and repeated-bootstrap jobs start from empty CI databases | Final release environment bootstraps using only `0001_initial`, production-style runtime roles/config and then passes the complete release suite | 6O |
-| G20 | Reproducible release artifact | MISSING | Candidate evidence manifest is versioned, hash-bound and VALID, but its own `release_status` is `NOT_READY` and it is not the final V3 artifact | Final release manifest with schema/OpenAPI/config/runtime fingerprints, all G01-G20 PASS, frozen candidate identity and release soak result | 6Q/6R/6S |
+The integrated baseline includes real `request_engine_app` LOGIN-role HTTP coverage, adversarial RLS/privilege tests, worker lease/fencing primitives, Booking/Queue/Waitlist/Reminder verticals, ReservationAccess/Delivery, ProviderEvent handling and cross-tenant shared-capacity serialization. Those components remain subject to the unfinished gates above.
 
 ## Promotion rule
 
-A gate changes to `PASS` only in the same change set that identifies its proof artifact. If a proof is later weakened, removed, skipped, or no longer runs in release CI, the gate must return to `PARTIAL` or `BLOCKED`.
+A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
 
-A previous feature-head artifact may justify reconciling what evidence exists when its Git tree is identical to the integrated tree, but it is not the final promotion artifact for `development -> main`. Final release proof must be regenerated against the frozen release candidate identity after all release-affecting changes are complete.
+Historical artifacts are supporting evidence, not release authority. The final release artifact must bind the exact commit/tree, PostgreSQL/Python environment, schema/migration/OpenAPI fingerprints and all gate results for the candidate that is actually promoted.
 
-## Candidate evidence versus release readiness
+## Next execution order
 
-The Phase 6 candidate manifest validates the contents of every required CI artifact;
-file presence alone is not success. Its `VALID` state is deliberately scoped to the
-candidate CI artifact set and does not promote unfinished gates. Overall
-`release_status` remains `NOT_READY` until every G01-G20 row above is `PASS`.
+With G11/G12 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-The required V3 candidate GitHub check also fails explicitly when any prerequisite
-job fails, is cancelled or is skipped. `v3-test-isolation.md` owns the executable
-isolation, evidence and aggregate-gate contract.
+1. finish tenant/Party authority and runtime privilege closure (G06/G14);
+2. complete Booking and Slot Recovery vertical release proofs (G07/G08);
+3. close worker concurrency/fencing and crash recovery (G09/G10);
+4. close ProviderEvent/reconciliation and communications failure semantics (G13 plus remaining invariant/race dependencies);
+5. freeze public API/error/capability contracts after correctness stops moving (G16);
+6. build representative query-plan/performance evidence and only then freeze indexes (G15);
+7. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
+8. execute the unified adversarial/failure gate (G18);
+9. prove a fresh production-like environment (G19);
+10. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-## Blocking severity
-
-- `P0`: can violate tenant isolation, authoritative state, capacity correctness, idempotency, fencing, durable intent or release reproducibility. V3 cannot freeze.
-- `P1`: can cause serious operational failure, starvation, unsafe privileges, unacceptable hot-path behavior or an unstable public contract. V3 cannot freeze without explicit resolution.
-- `P2`: release packaging/operational completeness that must finish before 6S but does not imply an already-known domain correctness defect.
-
-## Phase 6A exit condition
-
-The original Phase 6A inventory and post-feature rebaseline are complete. The deterministic race-closure change set removes the remaining `TO VERIFY`/`MISSING` classifications for R08/R17/R18/R19/R22 while deliberately leaving their broader owning gates incomplete. The next correctness work is command-family idempotency/optimistic-concurrency closure, followed by remaining privilege, vertical, worker/provider and performance/release-construction gates. `0001_initial` and final index freeze remain blocked.
+Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G11/G12 are now closed.
