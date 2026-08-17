@@ -1,6 +1,7 @@
 from datetime import timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from psycopg import Connection
@@ -98,16 +99,90 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
         add_waitlist=True,
     )
 
-    # Make the resource location-agnostic so the Reservation can move across
-    # locations while retaining one stable capacity requirement.
+    # Build a second Resource that is location-agnostic from birth. The production
+    # guard correctly forbids changing location on a Resource with live claims, so
+    # the regression must not weaken that invariant merely to construct its fixture.
+    requirement_row = admin_conn.execute(
+        """
+        SELECT id, capability_id
+        FROM request_engine.offering_resource_requirements
+        WHERE organization_id = %s AND offering_version_id = %s
+        """,
+        (fixture.organization_id, fixture.offering_version_id),
+    ).fetchone()
+    assert requirement_row is not None
+    requirement_id = cast(UUID, requirement_row[0])
+    capability_id = cast(UUID, requirement_row[1])
+    resource_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.resources (
+            organization_id, location_id, resource_key, display_name,
+            capacity_model, capacity_units
+        ) VALUES (%s, NULL, %s, 'Location-agnostic doctor', 'exclusive', 1)
+        RETURNING id
+        """,
+        (fixture.organization_id, f"locationless-{uuid4().hex}"),
+    )
     admin_conn.execute(
         """
-        UPDATE request_engine.resources
-        SET location_id = NULL
-        WHERE organization_id = %s AND id = %s
+        INSERT INTO request_engine.resource_capability_assignments (
+            organization_id, resource_id, capability_id
+        ) VALUES (%s, %s, %s)
         """,
-        (fixture.organization_id, fixture.resource_id),
+        (fixture.organization_id, resource_id, capability_id),
     )
+    weekday = start_a.astimezone(ZoneInfo("America/Santo_Domingo")).weekday()
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.availability_schedules (
+            organization_id, resource_id, weekday, local_start, local_end, timezone
+        ) VALUES (%s, %s, %s, '00:00', '23:59', 'America/Santo_Domingo')
+        """,
+        (fixture.organization_id, resource_id, weekday),
+    )
+
+    end_a = start_a + (fixture.end_at - fixture.start_at)
+    with admin_conn.transaction():
+        reservation_id = _uuid_row(
+            admin_conn,
+            """
+            INSERT INTO request_engine.reservations (
+                organization_id, offering_version_id, subject_party_id,
+                location_id, during, booking_policy_snapshot
+            )
+            SELECT %s, ov.id, %s, %s, tstzrange(%s, %s, '[)'), ov.booking_policy
+            FROM request_engine.offering_versions ov
+            WHERE ov.organization_id = %s AND ov.id = %s
+            RETURNING id
+            """,
+            (
+                fixture.organization_id,
+                fixture.subject_id,
+                fixture.location_id,
+                start_a,
+                end_a,
+                fixture.organization_id,
+                fixture.offering_version_id,
+            ),
+        )
+        admin_conn.execute(
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id, resource_id, requirement_id, reservation_id,
+                during, quantity
+            ) VALUES (%s, %s, %s, %s, tstzrange(%s, %s, '[)'), 1)
+            """,
+            (
+                fixture.organization_id,
+                resource_id,
+                requirement_id,
+                reservation_id,
+                start_a,
+                end_a,
+            ),
+        )
+
     location_b = _uuid_row(
         admin_conn,
         """
@@ -128,28 +203,19 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
         """,
         (fixture.organization_id, f"location-c-{uuid4().hex}"),
     )
-    requirement_id = _uuid_row(
-        admin_conn,
-        """
-        SELECT id
-        FROM request_engine.offering_resource_requirements
-        WHERE organization_id = %s AND offering_version_id = %s
-        """,
-        (fixture.organization_id, fixture.offering_version_id),
-    )
 
     start_b = start_a + timedelta(days=7)
     start_c = start_b + timedelta(days=7)
     commands = PostgresBookingCommitmentCommands(session_factory)
     resource_choice = (
-        ResourceChoice(requirement_id=requirement_id, resource_id=fixture.resource_id),
+        ResourceChoice(requirement_id=requirement_id, resource_id=resource_id),
     )
     first = await reschedule_reservation(
         commands,
         RescheduleReservationCommand(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
-            reservation_id=fixture.reservation_id,
+            reservation_id=reservation_id,
             start_at=start_b,
             resources=resource_choice,
             idempotency_key=f"reschedule-a-b-{uuid4().hex}",
@@ -164,7 +230,7 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
         RescheduleReservationCommand(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
-            reservation_id=fixture.reservation_id,
+            reservation_id=reservation_id,
             start_at=start_c,
             resources=resource_choice,
             idempotency_key=f"reschedule-b-c-{uuid4().hex}",
@@ -184,7 +250,7 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
           AND aggregate_id = %s
         ORDER BY created_at, id
         """,
-        (fixture.organization_id, fixture.reservation_id),
+        (fixture.organization_id, reservation_id),
     ).fetchall()
     assert len(rows) == 2
     event_ab = _outbox_event(rows[0], fixture.organization_id)
@@ -222,12 +288,12 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
     recovered_a = by_event[event_ab.id]
     assert recovered_a[1] == fixture.location_id
     assert recovered_a[2] == start_a
-    assert recovered_a[3] == fixture.end_at
+    assert recovered_a[3] == end_a
 
     recovered_b = by_event[event_bc.id]
     assert recovered_b[1] == location_b
     assert recovered_b[2] == start_b
-    assert recovered_b[3] == start_b + (fixture.end_at - fixture.start_at)
+    assert recovered_b[3] == start_b + (end_a - start_a)
 
     current = admin_conn.execute(
         """
@@ -235,6 +301,6 @@ async def test_delayed_reschedule_events_recover_their_own_historical_slots(
         FROM request_engine.reservations
         WHERE organization_id = %s AND id = %s
         """,
-        (fixture.organization_id, fixture.reservation_id),
+        (fixture.organization_id, reservation_id),
     ).fetchone()
     assert current == (location_c, start_c, 3)
