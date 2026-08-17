@@ -40,6 +40,7 @@ EXPECTED_V3_CANDIDATE = [
     "033-cross-tenant-runtime-role-classification.sql",
     "034-cross-tenant-slot-offer-terminal-consistency.sql",
     "035-cross-tenant-slot-source-provenance.sql",
+    "036-slot-offer-deferred-trigger-privilege-hardening.sql",
 ]
 
 
