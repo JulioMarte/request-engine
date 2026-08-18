@@ -130,6 +130,11 @@ def _vacuum_measurement_relations(connection: Any) -> None:
 
 
 def _cleanup_seeded_tenants(cursor: base.CursorLike, organization_ids: list[Any]) -> None:
+    # Cleanup is deliberately outside the measured workload. Some seeded catalog
+    # rows are append-only in production, so a normal DELETE must keep failing.
+    # This cleanup-only transaction runs as the bootstrap principal and disables
+    # user triggers locally so repeated local proof runs do not leave fixtures.
+    cursor.execute("SET LOCAL session_replication_role = replica")
     tenant_tables = (
         "capacity_claims",
         "capacity_holds",
