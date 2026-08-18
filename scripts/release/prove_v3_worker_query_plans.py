@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import uuid
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import psycopg
 
@@ -334,7 +334,7 @@ def main() -> int:
         connection.transaction(force_rollback=True),
         connection.cursor() as cursor,
     ):
-        suffix = uuid4().hex
+        suffix = uuid.uuid4().hex
         cursor.execute(
             """
             INSERT INTO request_engine.organizations (organization_key, display_name)
