@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 BUSINESS_MODULES = (
     Path("src/request_engine/modules/booking"),
     Path("src/request_engine/modules/queue"),
