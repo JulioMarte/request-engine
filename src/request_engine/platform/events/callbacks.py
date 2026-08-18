@@ -5,7 +5,10 @@ from uuid import UUID
 from fastapi import Request
 
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
-from request_engine.platform.events.provider_events import ProviderEventReceipt, record_provider_event
+from request_engine.platform.events.provider_events import (
+    ProviderEventReceipt,
+    record_provider_event,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +50,9 @@ async def ingest_provider_callback(
 
     trusted = await authenticator.authenticate_callback(request)
     if not trusted.provider_key or not trusted.connection_key:
-        raise ValueError("authenticated provider callback context must name provider and connection")
+        raise ValueError(
+            "authenticated provider callback context must name provider and connection"
+        )
 
     async with tenant_transaction(session_factory, trusted.organization_id) as session:
         return await record_provider_event(
