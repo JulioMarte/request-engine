@@ -119,6 +119,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "--output .phase6/v3-queue-query-plans.json",
         ),
         Step(
+            "booking-query-plans",
+            "Prove measured Booking and capacity query plans",
+            "uv run python scripts/release/prove_v3_booking_query_plans.py "
+            "--output .phase6/v3-booking-query-plans.json",
+        ),
+        Step(
             "initial-equivalence",
             "Generate and prove 0001 initial candidate equivalence",
             "uv run python scripts/db/build_v3_initial_candidate.py "
