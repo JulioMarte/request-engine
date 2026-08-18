@@ -1,7 +1,7 @@
 # pyright: reportPrivateUsage=false
 
 from datetime import timedelta
-from typing import Any, LiteralString, cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,12 +25,55 @@ from .test_worker_fencing_release_matrix import (
 PgConnection = Connection[Any]
 
 
-def _table_for(family: FamilySpec) -> LiteralString:
+def _set_max_attempts(admin_conn: PgConnection, family: FamilySpec, work_id: UUID) -> None:
     if family.name == "scheduled_action":
-        return "request_engine.scheduled_actions"
+        admin_conn.execute(
+            "UPDATE request_engine.scheduled_actions SET max_attempts = 2 WHERE id = %s",
+            (work_id,),
+        )
+    elif family.name == "outbox_message":
+        admin_conn.execute(
+            "UPDATE request_engine.outbox_messages SET max_attempts = 2 WHERE id = %s",
+            (work_id,),
+        )
+    else:
+        admin_conn.execute(
+            "UPDATE request_engine.provider_events SET max_attempts = 2 WHERE id = %s",
+            (work_id,),
+        )
+
+
+def _work_state(
+    admin_conn: PgConnection,
+    family: FamilySpec,
+    work_id: UUID,
+) -> tuple[object, ...] | None:
+    if family.name == "scheduled_action":
+        return admin_conn.execute(
+            """
+            SELECT status, attempt_count, max_attempts, last_error_class, claim_token
+            FROM request_engine.scheduled_actions
+            WHERE id = %s
+            """,
+            (work_id,),
+        ).fetchone()
     if family.name == "outbox_message":
-        return "request_engine.outbox_messages"
-    return "request_engine.provider_events"
+        return admin_conn.execute(
+            """
+            SELECT status, attempt_count, max_attempts, last_error_class, claim_token
+            FROM request_engine.outbox_messages
+            WHERE id = %s
+            """,
+            (work_id,),
+        ).fetchone()
+    return admin_conn.execute(
+        """
+        SELECT status, attempt_count, max_attempts, error_class, claim_token
+        FROM request_engine.provider_events
+        WHERE id = %s
+        """,
+        (work_id,),
+    ).fetchone()
 
 
 def _retry_current_owner(
@@ -73,11 +116,7 @@ async def test_i54_retry_budget_terminalizes_each_worker_family(
         admin_conn=admin_conn,
         app_session_factory=app_session_factory,
     )
-    table = _table_for(family)
-    admin_conn.execute(
-        f"UPDATE {table} SET max_attempts = 2 WHERE id = %s",  # noqa: S608 - closed enum mapping
-        (work_id,),
-    )
+    _set_max_attempts(admin_conn, family, work_id)
 
     worker = _worker_connection(autocommit=True)
     try:
@@ -90,12 +129,13 @@ async def test_i54_retry_budget_terminalizes_each_worker_family(
     finally:
         worker.close()
 
-    state = admin_conn.execute(
-        f"SELECT status, attempt_count, max_attempts, last_error_class, claim_token "
-        f"FROM {table} WHERE id = %s",  # noqa: S608 - closed enum mapping
-        (work_id,),
-    ).fetchone()
-    assert state == ("dead", 2, 2, "release_probe", None)
+    assert _work_state(admin_conn, family, work_id) == (
+        "dead",
+        2,
+        2,
+        "release_probe",
+        None,
+    )
 
 
 @pytest.mark.asyncio
