@@ -11,12 +11,6 @@ QUEUE_HISTORY_PER_TENANT = 2_500
 WAITLIST_CANDIDATES_PER_TENANT = 400
 PRIOR_OFFERS_PER_TARGET = 100
 SLOT_OFFER_HISTORY_PER_TENANT = 2_500
-HISTORY_SEQ_SCAN_REASON = " ".join(
-    (
-        "authoritative per-aggregate lookup sequentially scans",
-        "slot_offers history",
-    )
-)
 
 
 class CursorLike(Protocol):
@@ -36,6 +30,27 @@ def _index_names(plan: dict[str, Any]) -> set[str]:
     return {str(node["Index Name"]) for node in _walk(plan) if node.get("Index Name") is not None}
 
 
+def _relation_seq_scans(plan: dict[str, Any], relations: set[str]) -> list[str]:
+    return sorted(
+        {
+            str(node.get("Relation Name"))
+            for node in _walk(plan)
+            if node.get("Node Type") == "Seq Scan" and node.get("Relation Name") in relations
+        }
+    )
+
+
+def _rows_removed_by_filter(plan: dict[str, Any], relation: str) -> int:
+    total = 0.0
+    for node in _walk(plan):
+        if node.get("Relation Name") != relation:
+            continue
+        removed = float(node.get("Rows Removed by Filter", 0) or 0)
+        loops = float(node.get("Actual Loops", 1) or 1)
+        total += removed * loops
+    return int(total)
+
+
 def _explain(cursor: CursorLike, sql: str) -> dict[str, Any]:
     cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
     row = cursor.fetchone()
@@ -46,59 +61,65 @@ def _explain(cursor: CursorLike, sql: str) -> dict[str, Any]:
     return payload[0]
 
 
-def _record_index_proof(
+def _record_plan(
     report: dict[str, Any],
     *,
     name: str,
     plan: dict[str, Any],
-    required_index: str,
+    forbidden_seq_relations: set[str],
+    max_execution_ms: float,
+    max_shared_hit_blocks: int,
+    max_rows_removed: dict[str, int] | None = None,
 ) -> None:
-    indexes = _index_names(plan["Plan"])
-    missing = required_index not in indexes
-    report["proofs"].append(
-        {
-            "name": name,
-            "required_index": required_index,
-            "indexes": sorted(indexes),
-            "missing_indexes": [required_index] if missing else [],
-            "plan": plan,
-        }
-    )
-    if missing:
-        report["failures"].append(
-            {"name": name, "reason": f"required index {required_index} was not used"}
-        )
+    root = plan["Plan"]
+    execution_ms = float(plan.get("Execution Time", 0.0) or 0.0)
+    shared_hit_blocks = int(root.get("Shared Hit Blocks", 0) or 0)
+    shared_read_blocks = int(root.get("Shared Read Blocks", 0) or 0)
+    temp_written_blocks = int(root.get("Temp Written Blocks", 0) or 0)
+    seq_scans = _relation_seq_scans(root, forbidden_seq_relations)
+    rows_removed = {
+        relation: _rows_removed_by_filter(root, relation)
+        for relation in sorted((max_rows_removed or {}).keys())
+    }
 
-
-def _record_history_guard(
-    report: dict[str, Any],
-    *,
-    name: str,
-    plan: dict[str, Any],
-) -> None:
-    seq_scans = [
-        {
-            "node_type": node.get("Node Type"),
-            "relation_name": node.get("Relation Name"),
-            "actual_rows": node.get("Actual Rows"),
-            "actual_loops": node.get("Actual Loops"),
-            "shared_hit_blocks": node.get("Shared Hit Blocks"),
-            "shared_read_blocks": node.get("Shared Read Blocks"),
-        }
-        for node in _walk(plan["Plan"])
-        if node.get("Node Type") == "Seq Scan" and node.get("Relation Name") == "slot_offers"
-    ]
-    report["diagnostics"].append(
-        {
-            "name": name,
-            "forbidden_global_history_seq_scan": bool(seq_scans),
-            "slot_offer_seq_scans": seq_scans,
-            "indexes": sorted(_index_names(plan["Plan"])),
-            "plan": plan,
-        }
-    )
+    failures: list[str] = []
     if seq_scans:
-        report["failures"].append({"name": name, "reason": HISTORY_SEQ_SCAN_REASON})
+        failures.append(f"forbidden sequential scan on {', '.join(seq_scans)}")
+    if execution_ms > max_execution_ms:
+        failures.append(
+            f"execution time {execution_ms:.3f}ms exceeds {max_execution_ms:.3f}ms budget"
+        )
+    if shared_hit_blocks > max_shared_hit_blocks:
+        failures.append(
+            f"shared hit blocks {shared_hit_blocks} exceed {max_shared_hit_blocks} budget"
+        )
+    if shared_read_blocks:
+        failures.append(f"unexpected shared reads: {shared_read_blocks}")
+    if temp_written_blocks:
+        failures.append(f"plan spilled {temp_written_blocks} temp blocks")
+    for relation, maximum in (max_rows_removed or {}).items():
+        actual = rows_removed[relation]
+        if actual > maximum:
+            failures.append(
+                f"{relation} removed {actual} rows by filter, exceeding {maximum} selectivity budget"
+            )
+
+    proof = {
+        "name": name,
+        "status": "PASS" if not failures else "FAIL",
+        "indexes": sorted(_index_names(root)),
+        "execution_ms": execution_ms,
+        "shared_hit_blocks": shared_hit_blocks,
+        "shared_read_blocks": shared_read_blocks,
+        "temp_written_blocks": temp_written_blocks,
+        "forbidden_seq_scans": seq_scans,
+        "rows_removed_by_filter": rows_removed,
+        "failures": failures,
+        "plan": plan,
+    }
+    report["proofs"].append(proof)
+    for failure in failures:
+        report["failures"].append({"name": name, "reason": failure})
 
 
 def _one(cursor: CursorLike, sql: str, params: object) -> Any:
@@ -549,11 +570,13 @@ def _prove_queue_paths(cursor: CursorLike, report: dict[str, Any], target: dict[
         FOR UPDATE
         """,
     )
-    _record_index_proof(
+    _record_plan(
         report,
         name="queue_call_next_fifo",
         plan=fifo_plan,
-        required_index="queue_entries_fifo_idx",
+        forbidden_seq_relations={"queue_entries"},
+        max_execution_ms=20.0,
+        max_shared_hit_blocks=64,
     )
 
     active_offer_plan = _explain(
@@ -567,11 +590,13 @@ def _prove_queue_paths(cursor: CursorLike, report: dict[str, Any], target: dict[
         FOR UPDATE
         """,
     )
-    _record_index_proof(
+    _record_plan(
         report,
         name="slot_offer_active_for_opportunity",
         plan=active_offer_plan,
-        required_index="slot_offers_one_active_per_opportunity_uq",
+        forbidden_seq_relations={"slot_offers"},
+        max_execution_ms=20.0,
+        max_shared_hit_blocks=64,
     )
 
     candidate_plan = _explain(
@@ -611,22 +636,13 @@ def _prove_queue_paths(cursor: CursorLike, report: dict[str, Any], target: dict[
         LIMIT 1
         """,
     )
-    _record_index_proof(
+    _record_plan(
         report,
         name="waitlist_offer_candidate_fifo",
         plan=candidate_plan,
-        required_index="waitlist_entries_offer_candidate_idx",
-    )
-    report["diagnostics"].append(
-        {
-            "name": "waitlist_offer_candidate_slot_offer_history",
-            "slot_offer_seq_scan": any(
-                node.get("Node Type") == "Seq Scan" and node.get("Relation Name") == "slot_offers"
-                for node in _walk(candidate_plan["Plan"])
-            ),
-            "indexes": sorted(_index_names(candidate_plan["Plan"])),
-            "plan": candidate_plan,
-        }
+        forbidden_seq_relations={"waitlist_entries", "slot_offers"},
+        max_execution_ms=50.0,
+        max_shared_hit_blocks=512,
     )
 
     waitlist_history_plan = _explain(
@@ -639,10 +655,14 @@ def _prove_queue_paths(cursor: CursorLike, report: dict[str, Any], target: dict[
         LIMIT 1
         """,
     )
-    _record_history_guard(
+    _record_plan(
         report,
         name="slot_offer_waitlist_provenance_lookup",
         plan=waitlist_history_plan,
+        forbidden_seq_relations={"slot_offers"},
+        max_execution_ms=20.0,
+        max_shared_hit_blocks=32,
+        max_rows_removed={"slot_offers": 16},
     )
 
     opportunity_history_plan = _explain(
@@ -655,10 +675,14 @@ def _prove_queue_paths(cursor: CursorLike, report: dict[str, Any], target: dict[
         LIMIT 1
         """,
     )
-    _record_history_guard(
+    _record_plan(
         report,
         name="slot_offer_opportunity_provenance_lookup",
         plan=opportunity_history_plan,
+        forbidden_seq_relations={"slot_offers"},
+        max_execution_ms=20.0,
+        max_shared_hit_blocks=32,
+        max_rows_removed={"slot_offers": 16},
     )
 
 
@@ -670,7 +694,8 @@ def main() -> int:
     args = parser.parse_args()
 
     report: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "status": "PASS",
         "cardinality": {
             "tenant_count": TENANT_COUNT,
             "queue_history_per_tenant": QUEUE_HISTORY_PER_TENANT,
@@ -679,7 +704,6 @@ def main() -> int:
             "slot_offer_history_per_tenant": SLOT_OFFER_HISTORY_PER_TENANT,
         },
         "proofs": [],
-        "diagnostics": [],
         "failures": [],
     }
 
@@ -712,6 +736,9 @@ def main() -> int:
 
         assert target is not None
         _prove_queue_paths(cursor, report, target)
+
+    if report["failures"]:
+        report["status"] = "FAIL"
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
