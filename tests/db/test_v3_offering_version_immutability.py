@@ -67,6 +67,44 @@ def test_i07_referenced_offering_version_is_an_immutable_historical_snapshot(
         """,
         (organization_id, offering_id),
     )
+    capability_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.resource_capabilities (
+            organization_id, capability_key, display_name
+        ) VALUES (%s, %s, %s)
+        RETURNING id
+        """,
+        (organization_id, f"capability-{suffix}", f"Capability {suffix}"),
+    )
+    requirement_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.offering_resource_requirements (
+            organization_id, offering_version_id, capability_id, ordinal, quantity
+        ) VALUES (%s, %s, %s, 1, 1)
+        RETURNING id
+        """,
+        (organization_id, offering_version_id, capability_id),
+    )
+    resource_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.resources (
+            organization_id, resource_key, display_name, capacity_model, capacity_units
+        ) VALUES (%s, %s, %s, 'exclusive', 1)
+        RETURNING id
+        """,
+        (organization_id, f"resource-{suffix}", f"Resource {suffix}"),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.resource_capability_assignments (
+            organization_id, resource_id, capability_id
+        ) VALUES (%s, %s, %s)
+        """,
+        (organization_id, resource_id, capability_id),
+    )
     reservation_id = _uuid_row(
         admin_conn,
         """
@@ -85,6 +123,28 @@ def test_i07_referenced_offering_version_is_an_immutable_historical_snapshot(
         RETURNING id
         """,
         (organization_id, offering_version_id, party_id),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.capacity_claims (
+            organization_id,
+            resource_id,
+            requirement_id,
+            reservation_id,
+            during,
+            quantity
+        )
+        SELECT %s, %s, %s, id, during, 1
+        FROM request_engine.reservations
+        WHERE organization_id = %s AND id = %s
+        """,
+        (
+            organization_id,
+            resource_id,
+            requirement_id,
+            organization_id,
+            reservation_id,
+        ),
     )
 
     with pytest.raises(Error) as update_error:
