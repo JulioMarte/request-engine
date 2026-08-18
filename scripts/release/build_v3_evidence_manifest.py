@@ -113,6 +113,35 @@ def _validate_worker_plans(payload: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_queue_plans(payload: dict[str, Any]) -> list[str]:
+    errors = _validate_status_payload(payload)
+    proofs = payload.get("proofs")
+    failures = payload.get("failures")
+    cardinality = payload.get("cardinality")
+
+    if not isinstance(proofs, list) or not proofs:
+        errors.append("Queue query-plan proofs are missing")
+    elif any(not isinstance(proof, dict) or proof.get("status") != "PASS" for proof in proofs):
+        errors.append("one or more Queue query-plan proofs did not pass")
+    if failures != []:
+        errors.append("Queue query-plan proof reports failures")
+    if not isinstance(cardinality, dict):
+        errors.append("Queue query-plan cardinality is malformed")
+        return errors
+
+    minimums = {
+        "tenant_count": 4,
+        "queue_history_per_tenant": 2_500,
+        "waitlist_candidates_per_tenant": 400,
+        "slot_offer_history_per_tenant": 2_500,
+    }
+    for field, minimum in minimums.items():
+        value = cardinality.get(field)
+        if not isinstance(value, int) or value < minimum:
+            errors.append(f"Queue query-plan cardinality {field} is below {minimum}")
+    return errors
+
+
 def _validate_test_quality(payload: dict[str, Any]) -> list[str]:
     errors = _validate_status_payload(payload)
     if payload.get("error_count") != 0:
@@ -206,6 +235,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "schema_fingerprint": _validate_schema,
     "catalog_audit": _validate_catalog_audit,
     "worker_query_plans": _validate_worker_plans,
+    "queue_query_plans": _validate_queue_plans,
     "test_quality": _validate_test_quality,
     "test_collection": _validate_test_collection,
     "concurrency_stability": _validate_concurrency,
@@ -255,6 +285,7 @@ def build_manifest() -> dict[str, Any]:
         "schema_fingerprint": ROOT / ".phase6/v3-schema.json",
         "catalog_audit": ROOT / ".phase6/v3-catalog-audit.json",
         "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
+        "queue_query_plans": ROOT / ".phase6/v3-queue-query-plans.json",
         "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
         "test_collection": ROOT / ".phase6/v3-test-collection.json",
