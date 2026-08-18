@@ -12,6 +12,8 @@ from request_engine.modules.communications.adapters.db.communication_commands im
 )
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     REMINDER_ACTION_TYPE,
+    REMINDER_SCHEDULE_TYPE,
+    REMINDER_SCHEDULE_VERSION,
     PostgresReminderCommands,
 )
 from request_engine.modules.communications.adapters.db.reminder_occurrences import (
@@ -324,7 +326,8 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             fixture.party_id,
             json.dumps(
                 {
-                    "type": "daily_times",
+                    "type": REMINDER_SCHEDULE_TYPE,
+                    "version": REMINDER_SCHEDULE_VERSION,
                     "times": ["00:00:00"],
                     "max_lateness_minutes": 60,
                 }
@@ -363,10 +366,11 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             json.dumps(
                 {
                     "reminder_plan_id": str(plan_id),
+                    "plan_revision": 1,
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"test-reminder:{plan_id}:{occurrence_at.isoformat()}",
+            f"test-reminder:{plan_id}:r1:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
         ),
@@ -457,7 +461,8 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
             fixture.party_id,
             json.dumps(
                 {
-                    "type": "daily_times",
+                    "type": REMINDER_SCHEDULE_TYPE,
+                    "version": REMINDER_SCHEDULE_VERSION,
                     "times": ["00:00:00"],
                     "max_lateness_minutes": 1,
                 }
@@ -495,10 +500,11 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
             json.dumps(
                 {
                     "reminder_plan_id": str(plan_id),
+                    "plan_revision": 1,
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"test-stale-reminder:{plan_id}:{occurrence_at.isoformat()}",
+            f"test-stale-reminder:{plan_id}:r1:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
         ),
