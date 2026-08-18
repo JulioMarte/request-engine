@@ -142,6 +142,56 @@ def _validate_queue_plans(payload: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_booking_plans(payload: dict[str, Any]) -> list[str]:
+    errors = _validate_status_payload(payload)
+    proofs = payload.get("proofs")
+    failures = payload.get("failures")
+    cardinality = payload.get("cardinality")
+
+    if failures != []:
+        errors.append("Booking query-plan proof reports failures")
+    if not isinstance(cardinality, dict):
+        errors.append("Booking query-plan cardinality is malformed")
+    else:
+        minimums = {"tenant_count": 4, "history_per_tenant": 1_500}
+        for field, minimum in minimums.items():
+            value = cardinality.get(field)
+            if not isinstance(value, int) or value < minimum:
+                errors.append(f"Booking query-plan cardinality {field} is below {minimum}")
+
+    required_proofs = {
+        "booking_resource_schedules": "availability_schedules_active_lookup_idx",
+        "booking_resource_exceptions": "schedule_exceptions_resource_during_idx",
+        "booking_live_capacity_claims": "capacity_claims_active_resource_during_idx",
+    }
+    if not isinstance(proofs, list):
+        errors.append("Booking query-plan proofs are missing")
+        return errors
+
+    by_name = {
+        proof.get("name"): proof
+        for proof in proofs
+        if isinstance(proof, dict) and isinstance(proof.get("name"), str)
+    }
+    for proof_name, required_index in required_proofs.items():
+        proof = by_name.get(proof_name)
+        if not isinstance(proof, dict):
+            errors.append(f"{proof_name}: required Booking query-plan proof is missing")
+            continue
+        if proof.get("status") != "PASS":
+            errors.append(f"{proof_name}: proof did not pass")
+        indexes = proof.get("indexes")
+        if not isinstance(indexes, list) or required_index not in indexes:
+            errors.append(f"{proof_name}: required index {required_index} was not selected")
+        if proof.get("forbidden_seq_scans") != []:
+            errors.append(f"{proof_name}: forbidden sequential scan was reported")
+        if proof.get("shared_read_blocks") != 0:
+            errors.append(f"{proof_name}: shared reads are not zero")
+        if proof.get("temp_written_blocks") != 0:
+            errors.append(f"{proof_name}: temporary blocks were written")
+    return errors
+
+
 def _validate_test_quality(payload: dict[str, Any]) -> list[str]:
     errors = _validate_status_payload(payload)
     if payload.get("error_count") != 0:
@@ -236,6 +286,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "catalog_audit": _validate_catalog_audit,
     "worker_query_plans": _validate_worker_plans,
     "queue_query_plans": _validate_queue_plans,
+    "booking_query_plans": _validate_booking_plans,
     "test_quality": _validate_test_quality,
     "test_collection": _validate_test_collection,
     "concurrency_stability": _validate_concurrency,
@@ -286,6 +337,7 @@ def build_manifest() -> dict[str, Any]:
         "catalog_audit": ROOT / ".phase6/v3-catalog-audit.json",
         "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
         "queue_query_plans": ROOT / ".phase6/v3-queue-query-plans.json",
+        "booking_query_plans": ROOT / ".phase6/v3-booking-query-plans.json",
         "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
         "test_collection": ROOT / ".phase6/v3-test-collection.json",
