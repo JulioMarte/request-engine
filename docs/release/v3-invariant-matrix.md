@@ -41,16 +41,16 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I31 | DB | DB unique constraint rejects second active subject entry | PASS | 6D |
 | V3-I32 | APP under queue lock | FIFO CallNext ordered by admitted_at then id | PASS | 6D |
 | V3-I33 | DB transaction/lock | concurrent CallNext returns distinct entries | PASS | 6D |
-| V3-I34 | BOTH | queue command/HTTP tests | PARTIAL | 6D |
-| V3-I35 | architecture | queue model/reader implementation | PARTIAL | 6A/6K |
-| V3-I36 | model/DB | waitlist/slot recovery tests | PARTIAL | 6D |
-| V3-I37 | APP | SlotOpportunity/booking boundary | PARTIAL | 6D |
-| V3-I38 | DB | SlotOffer cardinality + duplicate released-slot recovery race | PARTIAL | 6D |
-| V3-I39 | BOTH | slot-offer recovery vertical | PARTIAL | 6D |
-| V3-I40 | transaction+BOTH | accept slot-offer recovery flow | PARTIAL | 6D |
-| V3-I41 | transaction+BOTH | decline/expiry slot-offer flow | PARTIAL | 6D |
-| V3-I42 | BOTH | SlotOpportunity source-event/idempotency serialization race | PARTIAL | 6D |
-| V3-I43 | APP under opportunity lock | waitlist/slot selection implementation | PARTIAL | 6D/6G |
+| V3-I34 | BOTH | canonical QueueEntry transition DB regression + queue command coverage | PASS | 6D |
+| V3-I35 | architecture | schema absence of mutable position + reader derivation regression | PASS | 6A/6K |
+| V3-I36 | model/DB | Waitlist join creates no Hold/CapacityClaim | PASS | 6D |
+| V3-I37 | APP | post-Opportunity live-capacity revalidation before offer | PASS | 6D |
+| V3-I38 | DB | DB rejects second active offered SlotOffer per Opportunity | PASS | 6D |
+| V3-I39 | BOTH | offered SlotOffer graph proves live unexpired matching Hold/claim | PASS | 6D |
+| V3-I40 | transaction+BOTH | accept serializes to Reservation + consumed Hold + filled Opportunity | PASS | 6D |
+| V3-I41 | transaction+BOTH | decline/expiry releases Hold before deterministic advancement | PASS | 6D |
+| V3-I42 | BOTH | concurrent accepts fill one Opportunity exactly once | PASS | 6D |
+| V3-I43 | APP under opportunity lock | FIFO `(created_at,id)` selection + Opportunity-lock races | PASS | 6D/6G |
 | V3-I44 | architecture/APP | durable communications ADR + vertical tests | PARTIAL | 6J |
 | V3-I45 | BOTH | communication intent/dedupe implementation | PARTIAL | 6J |
 | V3-I46 | BOTH/EXT | delivery store + communication delivery tests | PARTIAL | 6J |
@@ -89,7 +89,7 @@ CI #896 (`31999091531`) on head `c7459454a5284ab295285bd0c4f463bb239f17b0` produ
 
 ## Phase 6 race-closure evidence
 
-The preceding deterministic race-closure work added real runtime-role evidence to invariant families that were missing explicit interleavings. R08 strengthens V3-I38/I42; R17 strengthens V3-I56; R18 strengthens V3-I47; R22 strengthens V3-I49/I50. Those rows remain `PARTIAL` because their wider owning release claims remain incomplete. R19 was initially a Booking-only proof for V3-I60/I61; the subsequent Phase 6E full command inventory is what allows V3-I60/I61 to move to `PASS`.
+The preceding deterministic race-closure work added real runtime-role evidence to invariant families that were missing explicit interleavings. R08 strengthens V3-I38/I42; R17 strengthens V3-I56; R18 strengthens V3-I47; R22 strengthens V3-I49/I50. Those rows remain `PARTIAL` unless a later owner-boundary audit explicitly promotes them. R19 was initially a Booking-only proof for V3-I60/I61; the subsequent Phase 6E full command inventory is what allows V3-I60/I61 to move to `PASS`.
 
 R18 now reflects the revision-first contract: when the provider semantic attendance command wins, cancellation loses on Reservation revision; when cancellation wins, the stale provider semantic command also loses on Reservation revision before lifecycle mutation and cannot append attendance or retain capacity. Provider routing still never writes Booking state directly.
 
@@ -136,9 +136,14 @@ That evidence directly promotes these owner-boundary claims:
 - **V3-I32 — deterministic FIFO CallNext.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_call_next_is_fifo_idempotent_and_emits_outbox` proves earlier `admitted_at` wins first and the command query orders by `(admitted_at,id)` while holding the queue root.
 - **V3-I33 — concurrent CallNext cannot select the same entry.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry` runs two real concurrent commands against one queue and requires two distinct selected entry IDs.
 
-I34 and I35 intentionally remain `PARTIAL`: allowed transition enforcement and the absence of an authoritative mutable queue-position counter still need dedicated release guardrails.
+The current G05 owner-boundary suite extends that closure through Queue and Waitlist/Slot Recovery:
 
-These promotions do not imply G05 completion; every remaining `PARTIAL` invariant still requires its own declared owner-boundary proof.
+- **V3-I34/I35.** `tests/db/test_v3_queue_release_invariants.py` proves the canonical QueueEntry transition graph at PostgreSQL and proves queue position is not persisted as mutable authority: the schema has no position counter and the production reader derives waiting position from `(admitted_at,id)`.
+- **V3-I36/I37.** `tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py` proves joining a Waitlist creates neither CapacityHold nor CapacityClaim, and proves an existing SlotOpportunity cannot bypass Booking capacity revalidation when the Resource becomes occupied after Opportunity creation.
+- **V3-I38/I39/I42/I43.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py` proves the DB rejects a second active offer per Opportunity, an offered row is tied to a live unexpired matching Hold with an active claim, concurrent accepts fill exactly once, and tied candidates use stable ID as the FIFO tie-breaker. Existing opportunity-lock race tests prove these command paths serialize through the Opportunity root.
+- **V3-I40/I41.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py` plus `test_slot_offer_release_races.py` prove accept atomically produces Reservation/claim promotion and filled Opportunity state, while decline/expiry releases the short Hold before reopening/advancing to the next candidate. Competing terminal commands serialize to one valid graph without orphan capacity.
+
+These promotions still do not imply G05 completion; every remaining `PARTIAL` invariant requires its declared owner-boundary proof and an exact-head validation of the reconciled registry.
 
 ## Release-proof rule
 
