@@ -38,6 +38,17 @@ class BearerTestActorResolver:
         return actor
 
 
+class MutableTenantCapabilityPolicy:
+    def __init__(self, enabled: frozenset[str]) -> None:
+        self.enabled = enabled
+        self.calls = 0
+
+    async def enabled_capabilities(self, organization_id: UUID) -> frozenset[str]:
+        del organization_id
+        self.calls += 1
+        return self.enabled
+
+
 def _uuid_row(
     conn: PgConnection,
     sql: LiteralString,
@@ -150,6 +161,67 @@ def _client(session_factory: SessionFactory, actors: dict[str, ActorContext]) ->
         actor_resolver=BearerTestActorResolver(actors),
     )
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+async def test_i03_material_http_mutation_revalidates_current_tenant_capability_policy(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _create_fixture(admin_conn)
+    _grant(
+        admin_conn,
+        fixture,
+        party_id=fixture.requester_party_id,
+        scope_key="requests.submit",
+        authority_kind="authorized_contact",
+    )
+    actor = ActorContext(
+        organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
+        capabilities=frozenset({"requests.submit"}),
+    )
+    policy = MutableTenantCapabilityPolicy(frozenset({"requests.submit"}))
+    app = create_app(
+        session_factory=session_factory,
+        actor_resolver=BearerTestActorResolver({"actor": actor}),
+        tenant_capability_policy=policy,
+    )
+    headers = {"Authorization": "Bearer actor"}
+    body = {
+        "payload": {"message": "policy-current"},
+        "requester_party_id": str(fixture.requester_party_id),
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        allowed = await client.post(
+            f"/v1/requests/definitions/{fixture.request_key}/submit",
+            headers={**headers, "Idempotency-Key": f"policy-allowed-{uuid4().hex}"},
+            json=body,
+        )
+        assert allowed.status_code == 201
+
+        policy.enabled = frozenset()
+        denied = await client.post(
+            f"/v1/requests/definitions/{fixture.request_key}/submit",
+            headers={**headers, "Idempotency-Key": f"policy-denied-{uuid4().hex}"},
+            json=body,
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "capability_required"
+
+    assert policy.calls == 2
+    assert admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.requests
+        WHERE organization_id = %s
+          AND requester_party_id = %s
+        """,
+        (fixture.organization_id, fixture.requester_party_id),
+    ).fetchone() == (1,)
 
 
 @pytest.mark.asyncio
