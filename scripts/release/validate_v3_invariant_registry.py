@@ -122,14 +122,18 @@ def _has_postgres_marker(source: str, tree: ast.Module, node_path: tuple[str, ..
             None,
         )
         if class_node is not None and any(
-            ast.unparse(decorator) == "pytest.mark.postgres" for decorator in class_node.decorator_list
+            ast.unparse(decorator) == "pytest.mark.postgres"
+            for decorator in class_node.decorator_list
         ):
             return True
 
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if not any(isinstance(target_name, ast.Name) and target_name.id == "pytestmark" for target_name in node.targets):
+        if not any(
+            isinstance(target_name, ast.Name) and target_name.id == "pytestmark"
+            for target_name in node.targets
+        ):
             continue
         if "pytest.mark.postgres" in ast.unparse(node.value):
             return True
