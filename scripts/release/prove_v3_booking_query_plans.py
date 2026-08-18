@@ -317,17 +317,19 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
         INSERT INTO request_engine.capacity_claims (
             organization_id, resource_id, requirement_id, hold_id,
             during, quantity, status
-        ) VALUES (
-            %s, %s, %s, %s,
-            tstzrange(
-                clock_timestamp() + interval '1 day',
-                clock_timestamp() + interval '1 day 30 minutes',
-                '[)'
-            ),
-            1, 'active'
         )
+        SELECT %s, %s, %s, h.id, h.during, 1, 'active'
+        FROM request_engine.capacity_holds h
+        WHERE h.organization_id = %s
+          AND h.id = %s
         """,
-        (organization_id, resource_id, requirement_id, active_hold_id),
+        (
+            organization_id,
+            resource_id,
+            requirement_id,
+            organization_id,
+            active_hold_id,
+        ),
     )
 
     return {"organization_id": organization_id, "resource_id": resource_id}
