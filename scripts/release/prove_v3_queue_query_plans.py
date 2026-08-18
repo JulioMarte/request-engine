@@ -95,7 +95,10 @@ def _record_history_guard(
         report["failures"].append(
             {
                 "name": name,
-                "reason": "authoritative per-aggregate lookup sequentially scans slot_offers history",
+                "reason": (
+                    "authoritative per-aggregate lookup sequentially scans "
+                    "slot_offers history"
+                ),
             }
         )
 
