@@ -121,7 +121,7 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step(
             "booking-query-plans",
             "Prove measured Booking and capacity query plans",
-            "uv run python scripts/release/prove_v3_booking_query_plans.py "
+            "uv run python scripts/release/prove_v3_booking_query_plans_bound.py "
             "--output .phase6/v3-booking-query-plans.json",
         ),
         Step(
