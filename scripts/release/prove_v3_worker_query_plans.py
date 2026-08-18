@@ -376,8 +376,7 @@ def main() -> int:
     failures = report["failures"]
     if failures:
         details = "; ".join(
-            f"{failure['name']}: {', '.join(failure['missing_indexes'])}"
-            for failure in failures
+            f"{failure['name']}: {', '.join(failure['missing_indexes'])}" for failure in failures
         )
         raise SystemExit(f"measured worker query plan failures: {details}")
     return 0
