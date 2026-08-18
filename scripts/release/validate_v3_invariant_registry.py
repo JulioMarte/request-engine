@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -11,6 +12,7 @@ GATES = ROOT / "docs/release/v3-release-gates.md"
 REGISTRY = ROOT / "docs/release/v3-invariant-proof-registry.json"
 EXPECTED_IDS = [f"V3-I{i:02d}" for i in range(1, 67)]
 ALLOWED_STATUSES = {"PASS", "PARTIAL"}
+EXACT_NODE_EVIDENCE_IDS = {f"V3-I{i:02d}" for i in range(44, 52)}
 
 
 def _matrix_rows() -> dict[str, tuple[str, str]]:
@@ -49,6 +51,125 @@ def _requires_postgres(owner: str) -> bool:
     return any(
         token in normalized for token in ("db", "both", "transaction", "lock", "primitive", "ops")
     )
+
+
+def _proof_parts(proof: str) -> tuple[str, tuple[str, ...]]:
+    parts = proof.split("::")
+    return parts[0], tuple(parts[1:])
+
+
+def _find_test_node(tree: ast.Module, node_path: tuple[str, ...]) -> ast.AST | None:
+    if not node_path:
+        return None
+    if len(node_path) == 1:
+        name = node_path[0]
+        return next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
+            ),
+            None,
+        )
+    if len(node_path) == 2:
+        class_name, method_name = node_path
+        class_node = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            ),
+            None,
+        )
+        if class_node is None:
+            return None
+        return next(
+            (
+                node
+                for node in class_node.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == method_name
+            ),
+            None,
+        )
+    return None
+
+
+def _decorators(node: ast.AST) -> tuple[ast.expr, ...]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return tuple(node.decorator_list)
+    return ()
+
+
+def _has_postgres_marker(source: str, tree: ast.Module, node_path: tuple[str, ...]) -> bool:
+    if not node_path:
+        return "pytest.mark.postgres" in source
+
+    target = _find_test_node(tree, node_path)
+    if target is None:
+        return False
+    if any(ast.unparse(decorator) == "pytest.mark.postgres" for decorator in _decorators(target)):
+        return True
+
+    if len(node_path) == 2:
+        class_name = node_path[0]
+        class_node = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            ),
+            None,
+        )
+        if class_node is not None and any(
+            ast.unparse(decorator) == "pytest.mark.postgres" for decorator in class_node.decorator_list
+        ):
+            return True
+
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target_name, ast.Name) and target_name.id == "pytestmark" for target_name in node.targets):
+            continue
+        if "pytest.mark.postgres" in ast.unparse(node.value):
+            return True
+    return False
+
+
+def _validate_proof_reference(
+    invariant_id: str,
+    proof: str,
+    *,
+    require_exact_node: bool,
+) -> tuple[list[str], bool]:
+    errors: list[str] = []
+    proof_path, node_path = _proof_parts(proof)
+    if not proof_path.startswith("tests/") or not proof_path.endswith(".py"):
+        return [f"{invariant_id}: evidence must name a Python test path/node: {proof}"], False
+    if require_exact_node and not node_path:
+        errors.append(
+            f"{invariant_id}: evidence must name an exact pytest node with '::test_name': {proof}"
+        )
+
+    path = ROOT / proof_path
+    if not path.is_file():
+        return [f"{invariant_id}: evidence path does not exist: {proof_path}"], False
+
+    source = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f"{invariant_id}: evidence file cannot be parsed: {proof_path}: {exc}"], False
+
+    if node_path:
+        if len(node_path) > 2:
+            errors.append(f"{invariant_id}: unsupported pytest node depth: {proof}")
+        elif _find_test_node(tree, node_path) is None:
+            errors.append(f"{invariant_id}: exact pytest node does not exist: {proof}")
+        elif not node_path[-1].startswith("test_"):
+            errors.append(f"{invariant_id}: evidence node is not a pytest test: {proof}")
+
+    return errors, _has_postgres_marker(source, tree, node_path)
 
 
 def validate_registry() -> list[str]:
@@ -118,15 +239,13 @@ def validate_registry() -> list[str]:
             if not isinstance(proof, str):
                 errors.append(f"{invariant_id}: evidence entries must be strings")
                 continue
-            if not proof.startswith("tests/") or not proof.endswith(".py"):
-                errors.append(f"{invariant_id}: evidence path must name a Python test: {proof}")
-                continue
-            path = ROOT / proof
-            if not path.is_file():
-                errors.append(f"{invariant_id}: evidence path does not exist: {proof}")
-                continue
-            if "pytest.mark.postgres" in path.read_text(encoding="utf-8"):
-                postgres_boundary_proven = True
+            proof_errors, proof_has_postgres = _validate_proof_reference(
+                invariant_id,
+                proof,
+                require_exact_node=invariant_id in EXACT_NODE_EVIDENCE_IDS,
+            )
+            errors.extend(proof_errors)
+            postgres_boundary_proven = postgres_boundary_proven or proof_has_postgres
 
         if _requires_postgres(owner) and not postgres_boundary_proven:
             errors.append(f"{invariant_id}: owner {owner!r} requires a real PostgreSQL proof")
