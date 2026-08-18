@@ -21,4 +21,24 @@ ALTER TABLE request_engine.reminder_plans
         AND schedule_spec -> 'version' = '1'::jsonb
     );
 
+-- Active reminder work created before plan-revision provenance was added must
+-- be upgraded before the runtime starts failing closed on missing provenance.
+-- Terminal ScheduledAction history is intentionally left untouched.
+UPDATE request_engine.scheduled_actions AS action
+SET payload = jsonb_set(
+    action.payload,
+    '{plan_revision}',
+    to_jsonb(plan.revision),
+    true
+)
+FROM request_engine.reminder_plans AS plan
+WHERE action.organization_id = plan.organization_id
+  AND action.owner_module = 'communications'
+  AND action.action_type = 'materialize_reminder_occurrence'
+  AND action.action_version = 1
+  AND action.subject_kind = 'ReminderPlan'
+  AND action.subject_id = plan.id
+  AND action.status IN ('pending', 'leased')
+  AND NOT (action.payload ? 'plan_revision');
+
 COMMIT;
