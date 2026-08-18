@@ -16,7 +16,7 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
 from request_engine.modules.booking.application.errors import AppointmentUnavailable
 from request_engine.platform.db.session import SessionFactory
 
-from .test_booking_commitments import _book_command, _create_fixture
+from .booking_revalidation_fixture import book_command, create_fixture
 
 PgConnection = Connection[Any]
 
@@ -64,15 +64,11 @@ async def test_i27_booking_revalidates_schedule_after_resource_lock(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
-    fixture = _create_fixture(admin_conn)
+    fixture = create_fixture(admin_conn)
     reservations = PostgresReservationCommands(app_session_factory)
     start_at = datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
-    command = _book_command(
-        fixture,
-        subject_party_id=fixture.subject_party_id,
-        start_at=start_at,
-    )
+    command = book_command(fixture, start_at=start_at)
 
     # The fixture has a Monday 09:00-12:00 America/Santo_Domingo schedule;
     # 13:00 UTC is therefore initially a valid 09:00 local slot.
