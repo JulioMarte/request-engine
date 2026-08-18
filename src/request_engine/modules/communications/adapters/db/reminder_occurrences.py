@@ -149,8 +149,7 @@ class PostgresReminderOccurrenceCommands:
                         "occurrence_at": occurrence_at.isoformat(),
                     },
                     dedupe_key=(
-                        f"reminder-task:{plan.id}:r{plan.revision}:"
-                        f"{occurrence_at.isoformat()}:v1"
+                        f"reminder-task:{plan.id}:r{plan.revision}:{occurrence_at.isoformat()}:v1"
                     ),
                     not_before=occurrence_at,
                     expires_at=expires_at,
