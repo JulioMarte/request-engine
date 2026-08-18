@@ -265,29 +265,33 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
         """,
         (organization_id, offering_version_id, party_id),
     )
-    cursor.execute(
-        """
-        INSERT INTO request_engine.capacity_claims (
-            organization_id, resource_id, requirement_id, hold_id,
-            during, quantity, status, released_at
+    cursor.execute("ALTER TABLE request_engine.capacity_claims DISABLE TRIGGER USER")
+    try:
+        cursor.execute(
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id, resource_id, requirement_id, hold_id,
+                during, quantity, status, released_at
+            )
+            SELECT %s, %s, %s, %s,
+                   tstzrange(
+                       clock_timestamp() + interval '1 day',
+                       clock_timestamp() + interval '1 day 30 minutes',
+                       '[)'
+                   ),
+                   1, 'released', clock_timestamp()
+            FROM generate_series(1, %s)
+            """,
+            (
+                organization_id,
+                resource_id,
+                requirement_id,
+                released_hold_id,
+                HISTORY_PER_TENANT,
+            ),
         )
-        SELECT %s, %s, %s, %s,
-               tstzrange(
-                   clock_timestamp() + interval '1 day',
-                   clock_timestamp() + interval '1 day 30 minutes',
-                   '[)'
-               ),
-               1, 'released', clock_timestamp()
-        FROM generate_series(1, %s)
-        """,
-        (
-            organization_id,
-            resource_id,
-            requirement_id,
-            released_hold_id,
-            HISTORY_PER_TENANT,
-        ),
-    )
+    finally:
+        cursor.execute("ALTER TABLE request_engine.capacity_claims ENABLE TRIGGER USER")
 
     active_hold_id = _one(
         cursor,
@@ -326,10 +330,7 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
         (organization_id, resource_id, requirement_id, active_hold_id),
     )
 
-    return {
-        "organization_id": organization_id,
-        "resource_id": resource_id,
-    }
+    return {"organization_id": organization_id, "resource_id": resource_id}
 
 
 def _prove(cursor: CursorLike, report: dict[str, Any], target: dict[str, Any]) -> None:
