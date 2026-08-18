@@ -63,6 +63,7 @@ async def test_reminder_materialization_requires_current_claim_before_domain_wri
         subject_id=reminder_plan_id,
         payload={
             "reminder_plan_id": str(reminder_plan_id),
+            "plan_revision": 1,
             "occurrence_at": occurrence_at.isoformat(),
         },
         attempt_count=1,
