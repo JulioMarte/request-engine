@@ -47,6 +47,7 @@ EXPECTED_V3_CANDIDATE = [
     "040-worker-claim-plan-alignment.sql",
     "041-slot-offer-history-query-plan-alignment.sql",
     "042-booking-query-plan-alignment.sql",
+    "043-operational-query-plan-alignment.sql",
 ]
 
 
