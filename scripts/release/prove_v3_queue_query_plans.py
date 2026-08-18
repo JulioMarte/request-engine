@@ -97,7 +97,7 @@ def _record_history_guard(
                 "name": name,
                 "reason": (
                     "authoritative per-aggregate lookup sequentially scans "
-                    "slot_offers history"
+                    + "slot_offers history"
                 ),
             }
         )
