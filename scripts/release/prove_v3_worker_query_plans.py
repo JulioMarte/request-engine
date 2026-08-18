@@ -24,11 +24,7 @@ def _walk(node: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _index_names(plan: dict[str, Any]) -> set[str]:
-    return {
-        str(node["Index Name"])
-        for node in _walk(plan)
-        if node.get("Index Name") is not None
-    }
+    return {str(node["Index Name"]) for node in _walk(plan) if node.get("Index Name") is not None}
 
 
 def _explain(cursor: CursorLike, sql: str) -> dict[str, Any]:
@@ -60,8 +56,7 @@ def _record_proof(
     missing = required_indexes - indexes
     if missing:
         raise SystemExit(
-            f"{name}: measured plan did not select required indexes: "
-            f"{', '.join(sorted(missing))}"
+            f"{name}: measured plan did not select required indexes: {', '.join(sorted(missing))}"
         )
 
 
@@ -376,9 +371,7 @@ def main() -> int:
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(args.output)
     return 0
 
