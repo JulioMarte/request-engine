@@ -59,21 +59,21 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I49 | BOTH | reminder occurrence/replay + cancellation/materialization race | PARTIAL | 6J/6K |
 | V3-I50 | BOTH | ReminderPlan cancellation vs leased occurrence materialization race | PARTIAL | 6J/6K |
 | V3-I51 | product boundary/APP | V3 reminder product boundary | PARTIAL | 6K |
-| V3-I52 | DB | worker runtime/lease tests | PARTIAL | 6F |
-| V3-I53 | DB | expired-lease + communication fencing tests | PARTIAL | 6F |
-| V3-I54 | BOTH | worker runtime/dead-letter implementation | PARTIAL | 6F |
-| V3-I55 | architecture/APP | worker hardening contract/runtime | PARTIAL | 6F/6J |
-| V3-I56 | BOTH | simultaneous ProviderEvent identity ingestion + payload-conflict race | PARTIAL | 6J |
-| V3-I57 | EXT/APP | delivery worker/reconciliation contract | PARTIAL | 6F/6J |
-| V3-I58 | transaction/APP | outbox pipeline and communication vertical | PARTIAL | 6J |
-| V3-I59 | DB | trusted execution provenance DB test | PARTIAL | 6I/6J |
+| V3-I52 | DB | three-family claim/reclaim fencing matrix | PASS | 6F |
+| V3-I53 | DB | reclaimed lease rejects every stale transition for all worker families | PASS | 6F |
+| V3-I54 | BOTH | exact retry-budget terminalization for ScheduledAction/Outbox/ProviderEvent | PASS | 6F |
+| V3-I55 | architecture/APP | production claim methods release DB row locks before processing | PASS | 6F/6J |
+| V3-I56 | BOTH | simultaneous ProviderEvent identity ingest dedupe + payload-conflict race | PASS | 6J |
+| V3-I57 | EXT/APP | lease-loss ambiguity reconciles with provider lookup without duplicate send | PASS | 6F/6J |
+| V3-I58 | transaction/APP | Outbox remains unclaimable until originating local fact commits | PASS | 6J |
+| V3-I59 | DB | app-role UPDATE/DELETE audit immutability regression | PASS | 6I/6J |
 | V3-I60 | BOTH | frozen runtime post-commit response-loss/retry matrix | PASS | 6E |
 | V3-I61 | BOTH | idempotency identity/fingerprint + canonical scope/replay contracts | PASS | 6E/6I |
-| V3-I62 | BOTH/ops | request_admin authority events + UUID/no-enumeration adversarial tests | PARTIAL | 6I |
-| V3-I63 | BOTH | cross-tenant CapacityClaim/Booking/Hold/SlotOffer integration + DB race tests | PARTIAL | 6D/6I |
-| V3-I64 | DB+APP | private-table runtime privilege contract + opaque Booking error tests | PARTIAL | 6I/6K |
-| V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL race tests | PARTIAL | 6D/6I |
-| V3-I66 | APP protocol + DB primitive | multi-root lock topology + simultaneous reschedule concurrency tests | PARTIAL | 6D/6L |
+| V3-I62 | BOTH/ops | audited request_admin authority surface + private-state denial | PASS | 6I |
+| V3-I63 | BOTH | cross-tenant Booking/Hold/SlotOffer capacity arbitration | PASS | 6D/6I |
+| V3-I64 | DB+APP | private-table runtime denial + opaque shared-conflict semantics | PASS | 6I/6K |
+| V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL races | PASS | 6D/6I |
+| V3-I66 | APP protocol + DB primitive | stable multi-root locking + simultaneous reschedule races | PASS | 6D/6L |
 
 ## Phase 6E idempotency / optimistic-concurrency evidence
 
@@ -99,9 +99,7 @@ PR #52 exact-head CI #847 produced a complete, VALID candidate evidence bundle o
 
 ## Cross-tenant shared-capacity extension evidence
 
-V3-I62..V3-I66 have executable evidence for least-privilege denial of global-state enumeration, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking and simultaneous real reschedules.
-
-Those rows remain `PARTIAL` because feature integration and complete release proof are different claims. The final candidate must repeat them after correctness, privilege, performance, API-freeze and migration-equivalence work stops changing the candidate.
+**V3-I62..V3-I66 are now `PASS` at their declared owner boundaries.** Current-candidate tests prove least-privilege denial of global-state enumeration, audited control-plane-only mutation, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking and simultaneous real reschedules.
 
 The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
 
@@ -142,6 +140,14 @@ The current G05 owner-boundary suite extends that closure through Queue and Wait
 - **V3-I36/I37.** `tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py` proves joining a Waitlist creates neither CapacityHold nor CapacityClaim, and proves an existing SlotOpportunity cannot bypass Booking capacity revalidation when the Resource becomes occupied after Opportunity creation.
 - **V3-I38/I39/I42/I43.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py` proves the DB rejects a second active offer per Opportunity, an offered row is tied to a live unexpired matching Hold with an active claim, concurrent accepts fill exactly once, and tied candidates use stable ID as the FIFO tie-breaker. Existing opportunity-lock race tests prove these command paths serialize through the Opportunity root.
 - **V3-I40/I41.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py` plus `test_slot_offer_release_races.py` prove accept atomically produces Reservation/claim promotion and filled Opportunity state, while decline/expiry releases the short Hold before reopening/advancing to the next candidate. Competing terminal commands serialize to one valid graph without orphan capacity.
+
+The same current-candidate audit closes the worker/provider/audit tail:
+
+- **V3-I52/I53.** `test_worker_fencing_release_matrix.py` drives ScheduledAction, OutboxMessage and ProviderEvent through claim/reclaim and proves one current token plus stale renew/complete/retry/dead/reject fencing.
+- **V3-I54/I55/I58.** `test_worker_release_invariants.py` proves bounded retries terminate all three families at `dead`, production `claim()` returns only after its row-lock transaction is released, and Outbox publication cannot become claimable before the originating local fact commits.
+- **V3-I56.** `test_provider_event_ingest_races.py` proves simultaneous same-identity ingest converges to one row before semantic work; a different payload under the same provider identity fails closed.
+- **V3-I57.** `test_communication_fencing.py` proves an ambiguous provider result after lease loss is reconciled by provider lookup and does not blindly send again (`send_count=1`, `lookup_count=1`).
+- **V3-I59.** `test_v3_trusted_execution_provenance.py::test_i59_runtime_app_cannot_rewrite_or_delete_material_audit` creates a real material audit event and proves the normal app role cannot UPDATE or DELETE it; the original details remain intact.
 
 These promotions still do not imply G05 completion; every remaining `PARTIAL` invariant requires its declared owner-boundary proof and an exact-head validation of the reconciled registry.
 
