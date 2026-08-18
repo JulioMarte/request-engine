@@ -156,7 +156,7 @@ def test_i48_database_rejects_missing_or_unknown_schedule_document_version(
 
 @pytest.mark.integration
 def test_i48_application_parser_fails_closed_on_unknown_schedule_document_version() -> None:
-    valid = {
+    valid: dict[str, object] = {
         "type": REMINDER_SCHEDULE_TYPE,
         "version": REMINDER_SCHEDULE_VERSION,
         "times": ["08:00:00"],
@@ -166,6 +166,6 @@ def test_i48_application_parser_fails_closed_on_unknown_schedule_document_versio
     assert parsed.times == (time(8, 0),)
 
     for invalid_version in (None, 0, 2, True, "1"):
-        invalid = {**valid, "version": invalid_version}
+        invalid: dict[str, object] = {**valid, "version": invalid_version}
         with pytest.raises(ValueError, match="unsupported reminder schedule version"):
             parse_daily_schedule(invalid)
