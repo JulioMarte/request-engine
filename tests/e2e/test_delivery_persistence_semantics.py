@@ -271,7 +271,7 @@ def test_reminder_acknowledgement_is_idempotent_per_occurrence_and_subject(
             schedule_spec, template_key, template_version
         ) VALUES (
             %s, %s, 'medication', 'America/Santo_Domingo',
-            '{"type":"daily_times","times":["08:00"]}'::jsonb,
+            '{"type":"daily_times","version":1,"times":["08:00"]}'::jsonb,
             'medication-reminder', 1
         )
         RETURNING id
@@ -318,7 +318,7 @@ def test_reminder_plan_rejects_unknown_schedule_type(
                 schedule_spec, template_key, template_version
             ) VALUES (
                 %s, %s, 'medication', 'America/Santo_Domingo',
-                '{"type":"cron","expression":"* * * * *"}'::jsonb,
+                '{"type":"cron","version":1,"expression":"* * * * *"}'::jsonb,
                 'medication-reminder', 1
             )
             """,

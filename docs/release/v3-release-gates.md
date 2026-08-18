@@ -14,7 +14,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G02 | Clean PostgreSQL 18 bootstrap | PASS | repeated clean bootstrap proof |
 | G03 | V2 design-history preservation | PASS | canonical V2 history job |
 | G04 | Python quality and architecture | PASS | Ruff, format, Pyright, security, dependency and architecture suite |
-| G05 | Complete invariant registry | PARTIAL | every V3-Ixx must map to executable owner-boundary proof |
+| G05 | Complete invariant registry | PASS | every V3-Ixx maps to executable owner-boundary proof; 66/66 registry reconciliation survives exact-head canonical CI |
 | G06 | Tenant/RLS isolation | PASS | real app LOGIN role, protected-function inventory, fail-closed RLS and attack matrix |
 | G07 | Booking lifecycle | PASS | complete booking lifecycle including capacity/recovery/communication consequences |
 | G08 | Slot recovery | PASS | complete Opportunity/Offer/Hold/accept/decline/expiry/candidate proof |
@@ -112,6 +112,12 @@ Canonical CI #960 (`32067492021`) passed on exact implementation head `7ca600206
 
 R17, R18, R20, R21 and R22 are promoted in the race matrix by this same proof. This registry-only reconciliation must itself pass canonical exact-head CI before PR #61 is merge-authoritative. Final promotion to `main` must rerun G13 and those races on the eventual frozen candidate.
 
+## G05 — complete invariant registry closure
+
+**G05 is `PASS`.** `docs/release/v3-invariant-proof-registry.json` and `docs/release/v3-invariant-matrix.md` now agree on all `V3-I01..V3-I66` as `PASS`, with every row bound to an executable proof set at its canonical owner boundary. The closure includes the catalog-wide tenant-reference proof for I01, exact Request-version/lifecycle proofs for I10/I11, the authenticated provider callback trust boundary for I13, Booking capacity/release proofs for I15–I30, and explicit Communications/Reminder owner-boundary evidence for I44–I51.
+
+Canonical exact-head CI #1071 (`32174705295`) passed all six required jobs on head `a1af8715134820936cbd530440fc1ae131489c43`. Artifact `v3-candidate-release-proof` `9338829019` (`sha256:acd8ef31b56f41f719470f82159c3cc799dd01917343205d7803658b16cedea9`) is bound to that PR head and reports `evidence_status: VALID`, `artifact_set_complete: true`, `missing_artifacts: []`, `validation_errors: []`, `working_tree_dirty: false`, passing catalog/concurrency/equivalence/mutation/schema/test/order/query-plan sub-artifacts, and zero test-quality errors or warnings. Its `release_status` remains correctly `NOT_READY` because G15–G20 are not all closed. This G05 promotion changes the release registry and therefore must itself survive one final exact-head canonical CI before PR #63 is merged.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -120,14 +126,13 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G06/G07/G08/G09/G10/G11/G12/G13/G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G05–G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. reconcile and close the complete invariant registry (G05) now that the correctness/failure families have stopped moving;
-2. freeze public API/error/capability contracts after correctness stops moving (G16);
-3. build representative query-plan/performance evidence and only then freeze indexes (G15);
-4. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
-5. execute the unified adversarial/failure gate (G18);
-6. prove a fresh production-like environment (G19);
-7. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. build representative query-plan/performance evidence and only then freeze indexes (G15);
+2. finish the public API/error/capability contract freeze on the stabilized candidate (G16);
+3. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
+4. execute the unified adversarial/failure gate (G18);
+5. prove a fresh production-like environment (G19);
+6. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes, or claim release readiness merely because G06/G07/G08/G09/G10/G11/G12/G13/G14 are now closed.
+Do not create/bless `0001_initial`, freeze indexes before representative-cardinality evidence, or claim release readiness merely because G05–G14 are now closed.
