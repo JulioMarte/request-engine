@@ -1,28 +1,167 @@
 # pyright: reportPrivateUsage=false
 
+import os
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from psycopg import Connection
 from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
-from request_engine.platform.events.provider_events import PostgresProviderEventWorker
+from request_engine.platform.events.provider_events import (
+    PostgresProviderEventWorker,
+    record_provider_event,
+)
 from request_engine.platform.outbox.postgres import append_outbox
 from request_engine.platform.outbox.worker import PostgresOutboxWorker
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 
-from .test_worker_fencing_release_matrix import (
-    FAMILIES,
-    FamilySpec,
-    _claim_target,
-    _create_work,
-    _worker_connection,
+PgConnection = Connection[Any]
+
+
+@dataclass(frozen=True, slots=True)
+class FamilySpec:
+    name: str
+    claim_sql: LiteralString
+
+
+FAMILIES = (
+    FamilySpec(
+        name="scheduled_action",
+        claim_sql="""
+            SELECT action_id, claim_token
+            FROM request_cmd.claim_scheduled_actions(500, interval '30 seconds')
+        """,
+    ),
+    FamilySpec(
+        name="outbox_message",
+        claim_sql="""
+            SELECT message_id, claim_token
+            FROM request_cmd.claim_outbox_messages(500, interval '30 seconds')
+        """,
+    ),
+    FamilySpec(
+        name="provider_event",
+        claim_sql="""
+            SELECT provider_event_row_id, claim_token
+            FROM request_cmd.claim_provider_events(500, interval '30 seconds')
+        """,
+    ),
 )
 
-PgConnection = Connection[Any]
+
+def _conninfo() -> str:
+    return " ".join(
+        (
+            f"host={os.environ.get('PGHOST', '127.0.0.1')}",
+            f"port={os.environ.get('PGPORT', '5432')}",
+            f"dbname={os.environ.get('PGDATABASE', 'request_engine_v3')}",
+            f"user={os.environ.get('PGUSER', 'request_engine')}",
+            f"password={os.environ.get('PGPASSWORD', 'request_engine')}",
+        )
+    )
+
+
+def _worker_connection(*, autocommit: bool) -> PgConnection:
+    connection: PgConnection = psycopg.connect(_conninfo(), autocommit=autocommit)
+    connection.execute("SET ROLE request_engine_worker")
+    return connection
+
+
+def _uuid_row(
+    conn: PgConnection,
+    sql: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
+    row = conn.execute(sql, params).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
+def _organization(admin_conn: PgConnection) -> UUID:
+    suffix = uuid4().hex
+    return _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.organizations (organization_key, display_name)
+        VALUES (%s, %s)
+        RETURNING id
+        """,
+        (f"release-invariant-{suffix}", f"Release invariant {suffix}"),
+    )
+
+
+async def _create_work(
+    family: FamilySpec,
+    *,
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> UUID:
+    organization_id = _organization(admin_conn)
+    suffix = uuid4().hex
+
+    if family.name == "scheduled_action":
+        return _uuid_row(
+            admin_conn,
+            """
+            INSERT INTO request_engine.scheduled_actions (
+                organization_id, owner_module, action_type, action_version,
+                payload, dedupe_key, execute_at, next_attempt_at
+            ) VALUES (
+                %s, 'booking', 'test.release_invariant', 1, '{}'::jsonb, %s,
+                clock_timestamp() - interval '1 minute',
+                clock_timestamp() - interval '1 minute'
+            )
+            RETURNING id
+            """,
+            (organization_id, f"release-invariant:{suffix}"),
+        )
+
+    if family.name == "outbox_message":
+        return _uuid_row(
+            admin_conn,
+            """
+            INSERT INTO request_engine.outbox_messages (
+                organization_id, event_type, aggregate_kind, aggregate_id,
+                payload, next_attempt_at
+            ) VALUES (
+                %s, 'test.release_invariant.v1', 'Test', %s, '{}'::jsonb,
+                clock_timestamp() - interval '1 minute'
+            )
+            RETURNING id
+            """,
+            (organization_id, uuid4()),
+        )
+
+    async with tenant_transaction(app_session_factory, organization_id) as session:
+        receipt = await record_provider_event(
+            session,
+            organization_id=organization_id,
+            provider_key="release-invariant-test",
+            connection_key="primary",
+            provider_event_id=f"event-{suffix}",
+            payload={"test": "release-invariant"},
+        )
+    admin_conn.execute(
+        """
+        UPDATE request_engine.provider_events
+        SET next_attempt_at = clock_timestamp() - interval '1 minute'
+        WHERE id = %s
+        """,
+        (receipt.id,),
+    )
+    return receipt.id
+
+
+def _claim_target(connection: PgConnection, family: FamilySpec, work_id: UUID) -> UUID:
+    rows = connection.execute(family.claim_sql).fetchall()
+    row = next((candidate for candidate in rows if candidate[0] == work_id), None)
+    assert row is not None
+    return cast(UUID, row[1])
 
 
 def _set_max_attempts(admin_conn: PgConnection, family: FamilySpec, work_id: UUID) -> None:
