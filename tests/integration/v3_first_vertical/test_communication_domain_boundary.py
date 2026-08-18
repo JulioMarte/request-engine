@@ -8,7 +8,11 @@ from psycopg import Connection
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.application.commands.book_appointment import book_appointment
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentCommand,
+    book_appointment,
+)
+from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.communications.adapters.db.communication_commands import (
     PostgresCommunicationCommands,
 )
@@ -28,11 +32,14 @@ from request_engine.modules.communications.contracts.delivery import (
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
-
 from ..v3_booking_commitments.booking_revalidation_fixture import create_fixture
 
 PgConnection = Connection[Any]
+BookingState = tuple[
+    tuple[object, ...],
+    tuple[tuple[object, ...], ...],
+    tuple[tuple[object, ...], ...],
+]
 
 
 class BoundaryProvider:
@@ -50,12 +57,31 @@ class BoundaryProvider:
         raise AssertionError(f"unexpected provider lookup: {request.delivery_id}")
 
 
+def _contact_point(
+    conn: PgConnection,
+    *,
+    organization_id: UUID,
+    party_id: UUID,
+) -> UUID:
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.party_contact_points (
+            organization_id, party_id, channel, normalized_value, verified
+        ) VALUES (%s, %s, 'whatsapp', %s, true)
+        RETURNING id
+        """,
+        (organization_id, party_id, f"+1809{uuid4().hex[:7]}"),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
 def _booking_state(
     conn: PgConnection,
     *,
     organization_id: UUID,
     reservation_id: UUID,
-) -> tuple[tuple[object, ...], tuple[tuple[object, ...], ...], tuple[tuple[object, ...], ...]]:
+) -> BookingState:
     reservation = conn.execute(
         """
         SELECT status, revision, offering_version_id, subject_party_id,
@@ -103,39 +129,22 @@ async def test_i47_provider_delivery_status_cannot_mutate_source_reservation_gra
     fixture = create_fixture(admin_conn)
     reservation = await book_appointment(
         PostgresReservationCommands(session_factory),
-        command=cast(
-            Any,
-            __import__(
-                "request_engine.modules.booking.application.commands.book_appointment",
-                fromlist=["BookAppointmentCommand"],
-            ).BookAppointmentCommand(
-                organization_id=fixture.organization_id,
-                principal_id=fixture.principal_id,
-                offering_version_id=fixture.offering_version_id,
-                subject_party_id=fixture.subject_party_id,
-                location_id=fixture.location_id,
-                start_at=datetime(2026, 8, 24, 13, 0, tzinfo=UTC),
-                resources=(ResourceChoice(fixture.requirement_id, fixture.resource_id),),
-                idempotency_key=f"i47-book-{uuid4().hex}",
-                allow_subject_override=True,
-            ),
+        BookAppointmentCommand(
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            offering_version_id=fixture.offering_version_id,
+            subject_party_id=fixture.subject_party_id,
+            location_id=fixture.location_id,
+            start_at=datetime(2026, 8, 24, 13, 0, tzinfo=UTC),
+            resources=(ResourceChoice(fixture.requirement_id, fixture.resource_id),),
+            idempotency_key=f"i47-book-{uuid4().hex}",
+            allow_subject_override=True,
         ),
     )
-    contact_point_id = cast(
-        UUID,
-        admin_conn.execute(
-            """
-            INSERT INTO request_engine.party_contact_points (
-                organization_id, party_id, channel, normalized_value, verified
-            ) VALUES (%s, %s, 'whatsapp', %s, true)
-            RETURNING id
-            """,
-            (
-                fixture.organization_id,
-                fixture.subject_party_id,
-                f"+1809{uuid4().hex[:7]}",
-            ),
-        ).fetchone()[0],
+    contact_point_id = _contact_point(
+        admin_conn,
+        organization_id=fixture.organization_id,
+        party_id=fixture.subject_party_id,
     )
     task = await create_communication_task(
         PostgresCommunicationCommands(session_factory),
