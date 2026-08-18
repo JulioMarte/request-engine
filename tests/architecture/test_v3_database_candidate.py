@@ -44,6 +44,7 @@ EXPECTED_V3_CANDIDATE = [
     "037-attendance-idempotency-scope-hardening.sql",
     "038-runtime-privilege-closure.sql",
     "039-reminder-schedule-contract-version.sql",
+    "040-worker-claim-plan-alignment.sql",
 ]
 
 
