@@ -6,7 +6,6 @@ import uuid
 from pathlib import Path
 from typing import Any, Protocol
 
-
 FUTURE_ROWS = 10_000
 DUE_ROWS = 100
 
