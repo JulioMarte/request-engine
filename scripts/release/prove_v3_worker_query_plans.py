@@ -298,27 +298,22 @@ def _prove_worker_family(
     fairness_plan = _explain(
         cursor,
         f"""
-        WITH eligible AS MATERIALIZED (
-            SELECT id, organization_id, next_attempt_at AS due_at
-            FROM request_engine.{table}
-            WHERE status = '{ready_status}'
-              AND attempt_count < max_attempts
-              AND next_attempt_at <= clock_timestamp()
-
-            UNION ALL
-
-            SELECT id, organization_id, lease_until AS due_at
-            FROM request_engine.{table}
-            WHERE status = 'leased'
-              AND attempt_count < max_attempts
-              AND lease_until <= clock_timestamp()
-        )
-        SELECT id, organization_id, due_at,
+        SELECT id, organization_id,
+               CASE WHEN status = '{ready_status}'
+                    THEN next_attempt_at ELSE lease_until END AS due_at,
                row_number() OVER (
                    PARTITION BY organization_id
-                   ORDER BY due_at, id
+                   ORDER BY
+                       CASE WHEN status = '{ready_status}'
+                            THEN next_attempt_at ELSE lease_until END,
+                       id
                ) AS tenant_rank
-        FROM eligible
+        FROM request_engine.{table}
+        WHERE attempt_count < max_attempts
+          AND (
+              (status = '{ready_status}' AND next_attempt_at <= statement_timestamp())
+              OR (status = 'leased' AND lease_until <= statement_timestamp())
+          )
         """,
     )
     _record_proof(
@@ -338,7 +333,7 @@ def main() -> int:
 
     total_rows_per_family = TENANT_COUNT * (2 * FUTURE_ROWS_PER_TENANT + 2 * DUE_ROWS_PER_TENANT)
     report: dict[str, Any] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "cardinality": {
             "tenant_count": TENANT_COUNT,
             "future_per_state_per_tenant": FUTURE_ROWS_PER_TENANT,

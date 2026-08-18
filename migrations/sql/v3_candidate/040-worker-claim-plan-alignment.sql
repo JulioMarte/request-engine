@@ -4,12 +4,14 @@ SET search_path = request_engine, request_cmd, pg_catalog;
 
 -- G15 measured-plan alignment.
 --
--- The due and expired-lease branches are backed by separate partial indexes. The
--- previous fairness CTE combined them with OR before row_number(), which caused
--- PostgreSQL 18 to choose a sequential scan across the durable table even when
--- only a small due set was eligible. Keep the same statement-snapshot fairness
--- and stale-snapshot fences, but expose each mutually exclusive state as its own
--- indexable branch before ranking the unioned eligible rows.
+-- Fairness ranking is a statement-snapshot decision. Using clock_timestamp()
+-- inside the ranked scan makes the cutoff volatile to PostgreSQL's planner and
+-- prevents useful selectivity estimates for the existing due/reclaim partial
+-- indexes. Use the stable statement timestamp only for building the ranked
+-- snapshot. The locked candidate and UPDATE fences intentionally keep
+-- clock_timestamp() so a row that becomes stale while waiting for a lock cannot
+-- be re-leased.
+
 CREATE OR REPLACE FUNCTION request_cmd.claim_scheduled_actions(
     p_limit integer,
     p_lease interval DEFAULT interval '60 seconds'
@@ -54,33 +56,22 @@ BEGIN
        );
 
     RETURN QUERY
-    WITH eligible AS MATERIALIZED (
+    WITH ranked AS MATERIALIZED (
         SELECT s.id,
                s.organization_id,
-               s.next_attempt_at AS due_at
-          FROM request_engine.scheduled_actions s
-         WHERE s.status = 'pending'
-           AND s.attempt_count < s.max_attempts
-           AND s.next_attempt_at <= clock_timestamp()
-
-        UNION ALL
-
-        SELECT s.id,
-               s.organization_id,
-               s.lease_until AS due_at
-          FROM request_engine.scheduled_actions s
-         WHERE s.status = 'leased'
-           AND s.attempt_count < s.max_attempts
-           AND s.lease_until <= clock_timestamp()
-    ), ranked AS MATERIALIZED (
-        SELECT q.id,
-               q.organization_id,
-               q.due_at,
+               CASE WHEN s.status = 'pending' THEN s.next_attempt_at ELSE s.lease_until END AS due_at,
                row_number() OVER (
-                   PARTITION BY q.organization_id
-                   ORDER BY q.due_at, q.id
+                   PARTITION BY s.organization_id
+                   ORDER BY
+                       CASE WHEN s.status = 'pending' THEN s.next_attempt_at ELSE s.lease_until END,
+                       s.id
                ) AS tenant_rank
-          FROM eligible q
+          FROM request_engine.scheduled_actions s
+         WHERE s.attempt_count < s.max_attempts
+           AND (
+               (s.status = 'pending' AND s.next_attempt_at <= statement_timestamp()) OR
+               (s.status = 'leased' AND s.lease_until <= statement_timestamp())
+           )
     ), candidates AS (
         SELECT s.id
           FROM ranked r
@@ -169,33 +160,22 @@ BEGIN
        );
 
     RETURN QUERY
-    WITH eligible AS MATERIALIZED (
+    WITH ranked AS MATERIALIZED (
         SELECT o.id,
                o.organization_id,
-               o.next_attempt_at AS due_at
-          FROM request_engine.outbox_messages o
-         WHERE o.status = 'pending'
-           AND o.attempt_count < o.max_attempts
-           AND o.next_attempt_at <= clock_timestamp()
-
-        UNION ALL
-
-        SELECT o.id,
-               o.organization_id,
-               o.lease_until AS due_at
-          FROM request_engine.outbox_messages o
-         WHERE o.status = 'leased'
-           AND o.attempt_count < o.max_attempts
-           AND o.lease_until <= clock_timestamp()
-    ), ranked AS MATERIALIZED (
-        SELECT q.id,
-               q.organization_id,
-               q.due_at,
+               CASE WHEN o.status = 'pending' THEN o.next_attempt_at ELSE o.lease_until END AS due_at,
                row_number() OVER (
-                   PARTITION BY q.organization_id
-                   ORDER BY q.due_at, q.id
+                   PARTITION BY o.organization_id
+                   ORDER BY
+                       CASE WHEN o.status = 'pending' THEN o.next_attempt_at ELSE o.lease_until END,
+                       o.id
                ) AS tenant_rank
-          FROM eligible q
+          FROM request_engine.outbox_messages o
+         WHERE o.attempt_count < o.max_attempts
+           AND (
+               (o.status = 'pending' AND o.next_attempt_at <= statement_timestamp()) OR
+               (o.status = 'leased' AND o.lease_until <= statement_timestamp())
+           )
     ), candidates AS (
         SELECT o.id
           FROM ranked r
@@ -283,33 +263,22 @@ BEGIN
        );
 
     RETURN QUERY
-    WITH eligible AS MATERIALIZED (
+    WITH ranked AS MATERIALIZED (
         SELECT e.id,
                e.organization_id,
-               e.next_attempt_at AS due_at
-          FROM request_engine.provider_events e
-         WHERE e.status = 'received'
-           AND e.attempt_count < e.max_attempts
-           AND e.next_attempt_at <= clock_timestamp()
-
-        UNION ALL
-
-        SELECT e.id,
-               e.organization_id,
-               e.lease_until AS due_at
-          FROM request_engine.provider_events e
-         WHERE e.status = 'leased'
-           AND e.attempt_count < e.max_attempts
-           AND e.lease_until <= clock_timestamp()
-    ), ranked AS MATERIALIZED (
-        SELECT q.id,
-               q.organization_id,
-               q.due_at,
+               CASE WHEN e.status = 'received' THEN e.next_attempt_at ELSE e.lease_until END AS due_at,
                row_number() OVER (
-                   PARTITION BY q.organization_id
-                   ORDER BY q.due_at, q.id
+                   PARTITION BY e.organization_id
+                   ORDER BY
+                       CASE WHEN e.status = 'received' THEN e.next_attempt_at ELSE e.lease_until END,
+                       e.id
                ) AS tenant_rank
-          FROM eligible q
+          FROM request_engine.provider_events e
+         WHERE e.attempt_count < e.max_attempts
+           AND (
+               (e.status = 'received' AND e.next_attempt_at <= statement_timestamp()) OR
+               (e.status = 'leased' AND e.lease_until <= statement_timestamp())
+           )
     ), candidates AS (
         SELECT e.id
           FROM ranked r
