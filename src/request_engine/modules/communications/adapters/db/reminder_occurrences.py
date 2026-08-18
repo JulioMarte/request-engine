@@ -214,7 +214,7 @@ async def _ensure_next_occurrence(
                   AND subject_kind = 'ReminderPlan'
                   AND subject_id = :reminder_plan_id
                   AND execute_at > :current_occurrence_at
-                  AND payload ->> 'plan_revision' = CAST(:plan_revision AS text)
+                  AND payload ->> 'plan_revision' = :plan_revision_text
                 ORDER BY execute_at, id
                 LIMIT 1
                 """
@@ -224,7 +224,7 @@ async def _ensure_next_occurrence(
                 "action_type": REMINDER_ACTION_TYPE,
                 "reminder_plan_id": plan.id,
                 "current_occurrence_at": current_occurrence_at,
-                "plan_revision": plan.revision,
+                "plan_revision_text": str(plan.revision),
             },
         )
     ).scalar_one_or_none()
