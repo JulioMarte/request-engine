@@ -96,10 +96,11 @@ def _seed_due_occurrence(
             json.dumps(
                 {
                     "reminder_plan_id": str(plan_id),
+                    "plan_revision": 1,
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"r22-reminder:{plan_id}:{occurrence_at.isoformat()}:{uuid4().hex}",
+            f"r22-reminder:{plan_id}:r1:{occurrence_at.isoformat()}:{uuid4().hex}",
             occurrence_at,
             occurrence_at,
         ),
@@ -230,7 +231,7 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
     ).fetchone()
     assert task_count_row is not None
     task_count = cast(int, task_count_row[0])
-    if materialized.skipped_reason == "plan_inactive":
+    if materialized.skipped_reason == "plan_revision_stale":
         assert materialized.communication_task_id is None
         assert materialized.next_occurrence_at is None
         assert task_count == 0
@@ -238,9 +239,19 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
         assert materialized.skipped_reason is None
         assert materialized.communication_task_id is not None
         assert task_count == 1
+        task_state = admin_conn.execute(
+            """
+            SELECT status
+            FROM request_engine.communication_tasks
+            WHERE organization_id = %s
+              AND id = %s
+            """,
+            (fixture.organization_id, materialized.communication_task_id),
+        ).fetchone()
+        assert task_state == ("cancelled",)
         dispatch = admin_conn.execute(
             """
-            SELECT count(*)
+            SELECT status
             FROM request_engine.scheduled_actions
             WHERE organization_id = %s
               AND action_type = 'dispatch_task'
@@ -249,7 +260,7 @@ async def test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_
             """,
             (fixture.organization_id, materialized.communication_task_id),
         ).fetchone()
-        assert dispatch == (1,)
+        assert dispatch == ("cancelled",)
 
     assert await worker.complete(lease) is True
     final_action = admin_conn.execute(
