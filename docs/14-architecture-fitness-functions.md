@@ -223,6 +223,20 @@ boundary.
 module ownership, platform purity, no global horizontal business roots, deferred
 module isolation and other repository-level rules.
 
+`tests/architecture/test_branch_workflow_contract.py` protects the repository
+integration topology defined by `docs/architecture/branch-integration-contract.md`:
+
+- ordinary PRs target `development`;
+- only `development -> main` may target `main`;
+- `tmp/*` branches cannot become ordinary PR heads;
+- every ordinary PR must claim the single development integration lane by setting
+  `.github/development-integration-lane` to the exact `GITHUB_HEAD_REF`;
+- a stale/parallel sibling branch therefore receives an explicit integration-lane
+  failure after another branch is integrated into `development`.
+
+The lane guard is intentionally part of architecture CI rather than a separate
+workflow so it does not add another Actions pipeline or status check.
+
 These tests are **fitness functions**, not business correctness tests. PostgreSQL
 race/invariant tests, unit tests and HTTP integration tests remain independently
 required.
@@ -238,27 +252,9 @@ what surface is allowed
 what design question must be answered before changing the policy
 ```
 
-A coding agent must not respond to an architecture failure by:
-
-- widening an allowlist automatically;
-- moving business code into `platform`/`common`/`shared`;
-- exporting domain or adapter internals through `contracts`;
-- adding an event solely to avoid a valid synchronous transaction;
-- suppressing or deleting the fitness test.
-
-The correct response is to reconsider the connection surface first.
-
-## 9. Architecture change gate
-
-Changing an approved dependency direction or public surface requires, as applicable:
-
-1. update `10-module-ownership-map.md`;
-2. update `13-connection-surfaces.md`;
-3. update this executable policy/test;
-4. update affected module READMEs/contracts;
-5. add/update integration and concurrency tests when semantics change;
-6. add an ADR when the dependency/ownership decision is hard to reverse.
-
-The rule is:
-
-> **CI describes the accepted architecture; it must not silently redefine it.**
+Branch-workflow failures additionally explain the repository recovery action. A
+`Development integration lane mismatch` means the PR head no longer represents the
+current serialized `development` integration state. The correct response is to
+fetch/reconcile with current `origin/development`, set the lane cursor to the actual
+PR head, and rerun required exact-head checks. It is not valid to weaken the test,
+add a bypass branch, retarget the PR to `main`, or stack it on another feature branch.
