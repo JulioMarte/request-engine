@@ -85,7 +85,7 @@ def _booking_state(
     reservation = conn.execute(
         """
         SELECT status, revision, offering_version_id, subject_party_id,
-               location_id, start_at, end_at, origin_request_id
+               location_id, during::text, origin_request_id
         FROM request_engine.reservations
         WHERE organization_id = %s AND id = %s
         """,
