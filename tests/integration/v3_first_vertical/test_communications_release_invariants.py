@@ -8,6 +8,8 @@ from psycopg import Connection, Error
 
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     REMINDER_ACTION_TYPE,
+    REMINDER_SCHEDULE_TYPE,
+    REMINDER_SCHEDULE_VERSION,
     PostgresReminderCommands,
 )
 from request_engine.modules.communications.adapters.db.reminder_occurrences import (
@@ -119,6 +121,7 @@ async def test_i48_reminder_schedule_type_timezone_and_version_are_explicit(
         """
         SELECT timezone,
                schedule_spec ->> 'type',
+               schedule_spec -> 'version',
                schedule_spec -> 'times',
                revision
         FROM request_engine.reminder_plans
@@ -128,9 +131,12 @@ async def test_i48_reminder_schedule_type_timezone_and_version_are_explicit(
     ).fetchone()
     assert row is not None
     assert row[0] == "America/Santo_Domingo"
-    assert row[1] == "daily_times"
-    assert row[2] == ["08:00:00", "20:00:00"]
-    assert row[3] == 1
+    assert row[1] == REMINDER_SCHEDULE_TYPE
+    assert row[2] == REMINDER_SCHEDULE_VERSION
+    assert row[3] == ["08:00:00", "20:00:00"]
+    # Aggregate revision is an independent optimistic-concurrency field; it is
+    # deliberately not used as the schedule document's schema version.
+    assert row[4] == 1
 
     party_row = admin_conn.execute(
         "SELECT subject_party_id FROM request_engine.reminder_plans WHERE id = %s",
@@ -152,7 +158,7 @@ async def test_i48_reminder_schedule_type_timezone_and_version_are_explicit(
                 template_version
             ) VALUES (
                 %s, %s, 'medication_reminder', 'UTC',
-                '{"type":"cron","expression":"* * * * *"}'::jsonb,
+                '{"type":"cron","version":1,"expression":"* * * * *"}'::jsonb,
                 '{}'::jsonb,
                 'invalid-cron', 1
             )
@@ -222,7 +228,7 @@ async def test_i49_reminder_occurrence_is_bound_to_plan_revision(
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"i49-stale:{plan_id}:{uuid4().hex}",
+            f"i49-stale:{plan_id}:r2:{occurrence_at.isoformat()}:{uuid4().hex}",
             occurrence_at,
             occurrence_at,
         ),
@@ -289,7 +295,7 @@ async def test_i50_cancel_plan_cancels_pending_derived_work_and_preserves_delive
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"i50-current:{plan_id}:{uuid4().hex}",
+            f"i50-current:{plan_id}:r1:{occurrence_at.isoformat()}:{uuid4().hex}",
             occurrence_at,
             occurrence_at,
         ),
