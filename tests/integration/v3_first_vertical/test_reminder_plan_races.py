@@ -11,6 +11,8 @@ from psycopg import Connection
 
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     REMINDER_ACTION_TYPE,
+    REMINDER_SCHEDULE_TYPE,
+    REMINDER_SCHEDULE_VERSION,
     PostgresReminderCommands,
 )
 from request_engine.modules.communications.adapters.db.reminder_occurrences import (
@@ -57,7 +59,8 @@ def _seed_due_occurrence(
             party_id,
             json.dumps(
                 {
-                    "type": "daily_times",
+                    "type": REMINDER_SCHEDULE_TYPE,
+                    "version": REMINDER_SCHEDULE_VERSION,
                     "times": ["00:00:00"],
                     "max_lateness_minutes": 60,
                 }
