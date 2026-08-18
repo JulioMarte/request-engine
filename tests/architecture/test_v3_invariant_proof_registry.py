@@ -4,7 +4,6 @@ import sys
 from collections.abc import Callable
 from typing import Any, cast
 
-
 ProofValidator = Callable[..., tuple[list[str], bool]]
 
 
