@@ -8,7 +8,9 @@ from psycopg import Connection, Error
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.application.commands.book_appointment import book_appointment
+from request_engine.modules.booking.application.commands.book_appointment import (
+    book_appointment,
+)
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     cancel_reservation,
