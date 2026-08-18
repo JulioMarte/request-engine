@@ -155,6 +155,7 @@ def test_i48_database_rejects_missing_or_unknown_schedule_document_version(
 
 
 @pytest.mark.integration
+@pytest.mark.postgres
 def test_i48_application_parser_fails_closed_on_unknown_schedule_document_version() -> None:
     valid: dict[str, object] = {
         "type": REMINDER_SCHEDULE_TYPE,
