@@ -282,19 +282,24 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
             (organization_id, historical_claim_id),
         )
 
-    cursor.execute(
+    linked_history = _one(
+        cursor,
         """
-        INSERT INTO request_engine.shared_capacity_claim_links (
-            capacity_claim_id, shared_capacity_identity_id
-        )
-        SELECT id, %s
-        FROM request_engine.capacity_claims
-        WHERE organization_id = %s
-          AND resource_id = %s
-          AND status = 'released'
+        SELECT count(*)
+        FROM request_engine.shared_capacity_claim_links link
+        JOIN request_engine.capacity_claims c ON c.id = link.capacity_claim_id
+        WHERE link.shared_capacity_identity_id = %s
+          AND c.organization_id = %s
+          AND c.resource_id = %s
+          AND c.status = 'released'
         """,
         (shared_identity_id, organization_id, resource_id),
     )
+    if linked_history != HISTORY_PER_TENANT:
+        raise AssertionError(
+            f"shared-capacity history link count {linked_history} != {HISTORY_PER_TENANT}"
+        )
+
     active_claim_id = _one(
         cursor,
         """
@@ -309,6 +314,18 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
         """,
         (organization_id, resource_id, requirement_id, organization_id, reservation_id),
     )
+    linked_active = _one(
+        cursor,
+        """
+        SELECT count(*)
+        FROM request_engine.shared_capacity_claim_links
+        WHERE capacity_claim_id = %s
+          AND shared_capacity_identity_id = %s
+        """,
+        (active_claim_id, shared_identity_id),
+    )
+    if linked_active != 1:
+        raise AssertionError("active shared-capacity claim was not linked to its root")
 
     return {
         "organization_id": organization_id,
