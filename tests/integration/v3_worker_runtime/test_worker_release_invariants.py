@@ -85,17 +85,20 @@ def _retry_current_owner(
     row: tuple[object, ...] | None
     if family.name == "scheduled_action":
         row = worker.execute(
-            "SELECT request_cmd.retry_scheduled_action_after(%s, %s, interval '0 seconds', 'release_probe')",
+            "SELECT request_cmd.retry_scheduled_action_after("
+            "%s, %s, interval '0 seconds', 'release_probe')",
             (work_id, token),
         ).fetchone()
     elif family.name == "outbox_message":
         row = worker.execute(
-            "SELECT request_cmd.retry_outbox_message_after(%s, %s, interval '0 seconds', 'release_probe')",
+            "SELECT request_cmd.retry_outbox_message_after("
+            "%s, %s, interval '0 seconds', 'release_probe')",
             (work_id, token),
         ).fetchone()
     else:
         row = worker.execute(
-            "SELECT request_cmd.retry_provider_event_after(%s, %s, interval '0 seconds', 'release_probe')",
+            "SELECT request_cmd.retry_provider_event_after("
+            "%s, %s, interval '0 seconds', 'release_probe')",
             (work_id, token),
         ).fetchone()
     assert row is not None
