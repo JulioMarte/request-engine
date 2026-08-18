@@ -27,6 +27,7 @@ PgConnection = Connection[Any]
 class FamilySpec:
     name: str
     claim_sql: LiteralString
+    retryable_status: str
 
 
 FAMILIES = (
@@ -36,6 +37,7 @@ FAMILIES = (
             SELECT action_id, claim_token
             FROM request_cmd.claim_scheduled_actions(500, interval '30 seconds')
         """,
+        retryable_status="pending",
     ),
     FamilySpec(
         name="outbox_message",
@@ -43,6 +45,7 @@ FAMILIES = (
             SELECT message_id, claim_token
             FROM request_cmd.claim_outbox_messages(500, interval '30 seconds')
         """,
+        retryable_status="pending",
     ),
     FamilySpec(
         name="provider_event",
@@ -50,6 +53,7 @@ FAMILIES = (
             SELECT provider_event_row_id, claim_token
             FROM request_cmd.claim_provider_events(500, interval '30 seconds')
         """,
+        retryable_status="received",
     ),
 )
 
@@ -263,7 +267,9 @@ async def test_i54_retry_budget_terminalizes_each_worker_family(
     worker = _worker_connection(autocommit=True)
     try:
         first_token = _claim_target(worker, family, work_id)
-        assert _retry_current_owner(worker, family, work_id, first_token) == "pending"
+        assert _retry_current_owner(worker, family, work_id, first_token) == (
+            family.retryable_status
+        )
 
         second_token = _claim_target(worker, family, work_id)
         assert second_token != first_token
