@@ -27,14 +27,6 @@ def _prove(
     organization_id = target["organization_id"]
     resource_id = target["resource_id"]
 
-    for relation in (
-        "availability_schedules",
-        "schedule_exceptions",
-        "capacity_claims",
-        "capacity_holds",
-    ):
-        cursor.execute(f"ANALYZE request_engine.{relation}")
-
     cursor.execute(
         """
         SELECT clock_timestamp() + interval '1 day',
@@ -127,6 +119,42 @@ def _prove(
     )
 
 
+def _vacuum_measurement_relations(connection: Any) -> None:
+    for relation in (
+        "availability_schedules",
+        "schedule_exceptions",
+        "capacity_claims",
+        "capacity_holds",
+    ):
+        connection.execute(f"VACUUM (ANALYZE) request_engine.{relation}")
+
+
+def _cleanup_seeded_tenants(cursor: base.CursorLike, organization_ids: list[Any]) -> None:
+    tenant_tables = (
+        "capacity_claims",
+        "capacity_holds",
+        "schedule_exceptions",
+        "availability_schedules",
+        "resource_capability_assignments",
+        "offering_resource_requirements",
+        "resources",
+        "resource_capabilities",
+        "offering_versions",
+        "offerings",
+        "parties",
+    )
+    for organization_id in organization_ids:
+        for table in tenant_tables:
+            cursor.execute(
+                f"DELETE FROM request_engine.{table} WHERE organization_id = %s",
+                (organization_id,),
+            )
+        cursor.execute(
+            "DELETE FROM request_engine.organizations WHERE id = %s",
+            (organization_id,),
+        )
+
+
 def main() -> int:
     import psycopg
 
@@ -145,19 +173,27 @@ def main() -> int:
         "failures": [],
     }
 
-    with (
-        psycopg.connect() as connection,
-        connection.transaction(force_rollback=True),
-        connection.cursor() as cursor,
-    ):
+    organization_ids: list[Any] = []
+    with psycopg.connect(autocommit=True) as connection:
         run_suffix = uuid.uuid4().hex
         target: dict[str, Any] | None = None
-        for tenant_index in range(base.TENANT_COUNT):
-            seeded = base._seed_tenant(cursor, f"{run_suffix}-{tenant_index}")
-            if target is None:
-                target = seeded
-        assert target is not None
-        _prove(cursor, report, target)
+        try:
+            with connection.transaction(), connection.cursor() as cursor:
+                for tenant_index in range(base.TENANT_COUNT):
+                    seeded = base._seed_tenant(cursor, f"{run_suffix}-{tenant_index}")
+                    organization_ids.append(seeded["organization_id"])
+                    if target is None:
+                        target = seeded
+            assert target is not None
+
+            _vacuum_measurement_relations(connection)
+
+            with connection.transaction(), connection.cursor() as cursor:
+                _prove(cursor, report, target)
+        finally:
+            if organization_ids:
+                with connection.transaction(), connection.cursor() as cursor:
+                    _cleanup_seeded_tenants(cursor, organization_ids)
 
     if report["failures"]:
         report["status"] = "FAIL"
