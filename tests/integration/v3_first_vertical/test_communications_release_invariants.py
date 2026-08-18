@@ -132,13 +132,12 @@ async def test_i48_reminder_schedule_type_timezone_and_version_are_explicit(
     assert row[2] == ["08:00:00", "20:00:00"]
     assert row[3] == 1
 
-    party_id = cast(
-        UUID,
-        admin_conn.execute(
-            "SELECT subject_party_id FROM request_engine.reminder_plans WHERE id = %s",
-            (plan_id,),
-        ).fetchone()[0],
-    )
+    party_row = admin_conn.execute(
+        "SELECT subject_party_id FROM request_engine.reminder_plans WHERE id = %s",
+        (plan_id,),
+    ).fetchone()
+    assert party_row is not None
+    party_id = cast(UUID, party_row[0])
     with pytest.raises(Error) as invalid_schedule:
         admin_conn.execute(
             """
@@ -322,13 +321,12 @@ async def test_i50_cancel_plan_cancels_pending_derived_work_and_preserves_delive
     ).fetchone()
     assert pending_before == ("pending", "pending")
 
-    subject_party_id = cast(
-        UUID,
-        admin_conn.execute(
-            "SELECT subject_party_id FROM request_engine.reminder_plans WHERE id = %s",
-            (plan_id,),
-        ).fetchone()[0],
-    )
+    subject_row = admin_conn.execute(
+        "SELECT subject_party_id FROM request_engine.reminder_plans WHERE id = %s",
+        (plan_id,),
+    ).fetchone()
+    assert subject_row is not None
+    subject_party_id = cast(UUID, subject_row[0])
     history_task_id = _uuid_row(
         admin_conn,
         """
