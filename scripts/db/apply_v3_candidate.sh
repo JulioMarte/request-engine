@@ -43,6 +43,7 @@ files=(
   "036-slot-offer-deferred-trigger-privilege-hardening.sql"
   "037-attendance-idempotency-scope-hardening.sql"
   "038-runtime-privilege-closure.sql"
+  "039-reminder-schedule-contract-version.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
