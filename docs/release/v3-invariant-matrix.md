@@ -14,7 +14,7 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I04 | DB/ops | exact real-login runtime role/privilege + SECURITY DEFINER matrix | PASS | 6I |
 | V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PARTIAL | 6I |
 | V3-I06 | BOTH | trusted execution provenance DB test | PARTIAL | 6I/6J |
-| V3-I07 | BOTH | candidate catalog/version references | PARTIAL | 6C/6K |
+| V3-I07 | BOTH | referenced OfferingVersion UPDATE/DELETE immutability regression | PASS | 6C/6K |
 | V3-I08 | DB | relational tenant keys + foreign-reference adversarial tests | PARTIAL | 6C/6I |
 | V3-I09 | BOTH | booking availability/resource adapters | PARTIAL | 6D/6E |
 | V3-I10 | APP+DB reference | requests core + schema validation tests | PARTIAL | 6D/6K |
@@ -33,8 +33,8 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I23 | transaction+DB | reservation command/lifecycle tests | PARTIAL | 6D |
 | V3-I24 | BOTH | reschedule booking core coverage | PARTIAL | 6D |
 | V3-I25 | transaction | reschedule booking core coverage | PARTIAL | 6D |
-| V3-I26 | APP protocol | booking DB adapter lock protocol | PARTIAL | 6D/6L |
-| V3-I27 | APP | booking availability/commitment flow | PARTIAL | 6D |
+| V3-I26 | APP protocol | deterministic inverse-input Booking resource-lock ordering regression | PASS | 6D/6L |
+| V3-I27 | APP | post-lock availability/schedule revalidation regression | PASS | 6D |
 | V3-I28 | BOTH | reservation lifecycle tests | PARTIAL | 6D |
 | V3-I29 | domain/DB | reservation lifecycle/attendance tests | PARTIAL | 6K |
 | V3-I30 | APP | lifecycle policy tests | PARTIAL | 6K/6L |
@@ -122,6 +122,18 @@ CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produ
 CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced a `VALID`, complete artifact with 396/396 canonical and reverse-order tests, three 70/70 concurrency-stability rounds and passing mutation probes. This registry-only promotion must itself pass canonical exact-head CI before integration.
 
 No other invariant is promoted by G14. In particular, G05 remains `PARTIAL` until all V3-I01..V3-I66 have owner-boundary proof individually reviewed and recorded.
+
+## G05 direct invariant closure evidence
+
+CI #980 (`32137750612`) on head `81fb36da44743273265c9dce6ffb7ca5c01589c9` produced a complete `VALID` artifact: 422/422 canonical tests, 422/422 reverse-order tests, 118/118 expected files, three passing concurrency-stability rounds, four passing mutation probes, and zero test-quality errors or warnings. The artifact preserves `release_status: NOT_READY` and G05 `PARTIAL`.
+
+That evidence directly promotes three owner-boundary claims:
+
+- **V3-I07 — OfferingVersion historical snapshot immutability.** `tests/db/test_v3_offering_version_immutability.py` creates a Reservation and complete CapacityClaim set atomically against a concrete OfferingVersion, then proves direct UPDATE and DELETE are rejected and the Reservation retains the original immutable snapshot reference.
+- **V3-I26 — canonical Booking resource lock order.** `tests/integration/v3_booking_commitments/test_booking_lock_order.py` drives two real app-role transactions through `lock_resources()` with inverse input order and proves both serialize on the same UUID-sorted acquisition order without deadlock.
+- **V3-I27 — post-lock availability revalidation.** `tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py` blocks Booking at the real Resource `FOR UPDATE`, commits a newly-unavailable schedule exception, then proves Booking re-reads availability after acquiring the lock, rejects the stale slot and leaves no Reservation or CapacityClaim.
+
+These promotions do not imply G05 completion; every remaining `PARTIAL` invariant still requires its own declared owner-boundary proof.
 
 ## Release-proof rule
 
