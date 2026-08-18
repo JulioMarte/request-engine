@@ -45,6 +45,7 @@ files=(
   "038-runtime-privilege-closure.sql"
   "039-reminder-schedule-contract-version.sql"
   "040-worker-claim-plan-alignment.sql"
+  "041-slot-offer-history-query-plan-alignment.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"
