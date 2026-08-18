@@ -6,8 +6,9 @@ import uuid
 from pathlib import Path
 from typing import Any, Protocol
 
-FUTURE_ROWS = 10_000
-DUE_ROWS = 100
+TENANT_COUNT = 4
+FUTURE_ROWS_PER_TENANT = 2_500
+DUE_ROWS_PER_TENANT = 25
 
 
 class CursorLike(Protocol):
@@ -59,7 +60,11 @@ def _record_proof(
         report["failures"].append({"name": name, "missing_indexes": missing})
 
 
-def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix: str) -> None:
+def _seed_scheduled_actions(
+    cursor: CursorLike,
+    organization_id: object,
+    suffix: str,
+) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.scheduled_actions (
@@ -73,7 +78,7 @@ def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix:
                'pending'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, FUTURE_ROWS),
+        (organization_id, suffix, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -88,7 +93,7 @@ def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix:
                'pending'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, DUE_ROWS),
+        (organization_id, suffix, DUE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -98,12 +103,12 @@ def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix:
         )
         SELECT %s, 'plan', 'leased', '{}'::jsonb,
                'leased-future-' || value::text || '-' || %s,
-               clock_timestamp() - interval '1 hour', clock_timestamp(),
-               'leased', uuidv7(),
+               clock_timestamp() - interval '1 hour',
+               clock_timestamp(), 'leased', uuidv7(),
                clock_timestamp() + interval '7 days' + value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, FUTURE_ROWS),
+        (organization_id, suffix, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -113,15 +118,20 @@ def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix:
         )
         SELECT %s, 'plan', 'leased', '{}'::jsonb,
                'leased-expired-' || value::text || '-' || %s,
-               clock_timestamp() - interval '1 hour', clock_timestamp(),
-               'leased', uuidv7(), clock_timestamp() - value * interval '1 second'
+               clock_timestamp() - interval '1 hour',
+               clock_timestamp(), 'leased', uuidv7(),
+               clock_timestamp() - value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, DUE_ROWS),
+        (organization_id, suffix, DUE_ROWS_PER_TENANT),
     )
 
 
-def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: str) -> None:
+def _seed_outbox_messages(
+    cursor: CursorLike,
+    organization_id: object,
+    suffix: str,
+) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.outbox_messages (
@@ -131,7 +141,7 @@ def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp() + interval '7 days' + value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, FUTURE_ROWS),
+        (organization_id, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -142,7 +152,7 @@ def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp() - value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, DUE_ROWS),
+        (organization_id, suffix, DUE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -155,7 +165,7 @@ def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp()
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, FUTURE_ROWS),
+        (organization_id, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -167,11 +177,15 @@ def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp() - value * interval '1 second', clock_timestamp()
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, DUE_ROWS),
+        (organization_id, suffix, DUE_ROWS_PER_TENANT),
     )
 
 
-def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: str) -> None:
+def _seed_provider_events(
+    cursor: CursorLike,
+    organization_id: object,
+    suffix: str,
+) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.provider_events (
@@ -184,7 +198,7 @@ def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp() + interval '7 days' + value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, suffix, FUTURE_ROWS),
+        (organization_id, suffix, suffix, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -198,7 +212,7 @@ def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp() - value * interval '1 second'
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, suffix, DUE_ROWS),
+        (organization_id, suffix, suffix, DUE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -214,7 +228,7 @@ def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp()
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, suffix, FUTURE_ROWS),
+        (organization_id, suffix, suffix, FUTURE_ROWS_PER_TENANT),
     )
     cursor.execute(
         """
@@ -229,7 +243,7 @@ def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: s
                clock_timestamp()
         FROM generate_series(1, %s) AS value
         """,
-        (organization_id, suffix, suffix, DUE_ROWS),
+        (organization_id, suffix, suffix, DUE_ROWS_PER_TENANT),
     )
 
 
@@ -284,22 +298,27 @@ def _prove_worker_family(
     fairness_plan = _explain(
         cursor,
         f"""
-        SELECT id, organization_id,
-               CASE WHEN status = '{ready_status}'
-                    THEN next_attempt_at ELSE lease_until END AS due_at,
+        WITH eligible AS MATERIALIZED (
+            SELECT id, organization_id, next_attempt_at AS due_at
+            FROM request_engine.{table}
+            WHERE status = '{ready_status}'
+              AND attempt_count < max_attempts
+              AND next_attempt_at <= clock_timestamp()
+
+            UNION ALL
+
+            SELECT id, organization_id, lease_until AS due_at
+            FROM request_engine.{table}
+            WHERE status = 'leased'
+              AND attempt_count < max_attempts
+              AND lease_until <= clock_timestamp()
+        )
+        SELECT id, organization_id, due_at,
                row_number() OVER (
                    PARTITION BY organization_id
-                   ORDER BY
-                       CASE WHEN status = '{ready_status}'
-                            THEN next_attempt_at ELSE lease_until END,
-                       id
+                   ORDER BY due_at, id
                ) AS tenant_rank
-        FROM request_engine.{table}
-        WHERE attempt_count < max_attempts
-          AND (
-              (status = '{ready_status}' AND next_attempt_at <= clock_timestamp())
-              OR (status = 'leased' AND lease_until <= clock_timestamp())
-          )
+        FROM eligible
         """,
     )
     _record_proof(
@@ -317,9 +336,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    total_rows_per_family = TENANT_COUNT * (
+        2 * FUTURE_ROWS_PER_TENANT + 2 * DUE_ROWS_PER_TENANT
+    )
     report: dict[str, Any] = {
-        "schema_version": 3,
-        "cardinality": {"future_per_state": FUTURE_ROWS, "due_per_state": DUE_ROWS},
+        "schema_version": 4,
+        "cardinality": {
+            "tenant_count": TENANT_COUNT,
+            "future_per_state_per_tenant": FUTURE_ROWS_PER_TENANT,
+            "due_per_state_per_tenant": DUE_ROWS_PER_TENANT,
+            "total_rows_per_family": total_rows_per_family,
+        },
         "proofs": [],
         "failures": [],
     }
@@ -328,22 +355,23 @@ def main() -> int:
         connection.transaction(force_rollback=True),
         connection.cursor() as cursor,
     ):
-        suffix = uuid.uuid4().hex
-        cursor.execute(
-            """
-            INSERT INTO request_engine.organizations (organization_key, display_name)
-            VALUES (%s, 'Query plan proof')
-            RETURNING id
-            """,
-            (f"query-plan-{suffix}",),
-        )
-        row = cursor.fetchone()
-        assert row is not None
-        organization_id = row[0]
-
-        _seed_scheduled_actions(cursor, organization_id, suffix)
-        _seed_outbox_messages(cursor, organization_id, suffix)
-        _seed_provider_events(cursor, organization_id, suffix)
+        run_suffix = uuid.uuid4().hex
+        for tenant_index in range(TENANT_COUNT):
+            suffix = f"{run_suffix}-{tenant_index}"
+            cursor.execute(
+                """
+                INSERT INTO request_engine.organizations (organization_key, display_name)
+                VALUES (%s, 'Query plan proof')
+                RETURNING id
+                """,
+                (f"query-plan-{suffix}",),
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            organization_id = row[0]
+            _seed_scheduled_actions(cursor, organization_id, suffix)
+            _seed_outbox_messages(cursor, organization_id, suffix)
+            _seed_provider_events(cursor, organization_id, suffix)
 
         _prove_worker_family(
             cursor,
