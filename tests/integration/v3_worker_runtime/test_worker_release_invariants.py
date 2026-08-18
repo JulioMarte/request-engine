@@ -211,7 +211,7 @@ def _work_state(
         ).fetchone()
     return admin_conn.execute(
         """
-        SELECT status, attempt_count, max_attempts, error_class, claim_token
+        SELECT status, attempt_count, max_attempts, last_error_class, claim_token
         FROM request_engine.provider_events
         WHERE id = %s
         """,
