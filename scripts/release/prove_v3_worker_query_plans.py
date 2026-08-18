@@ -45,19 +45,18 @@ def _record_proof(
     required_indexes: set[str],
 ) -> None:
     indexes = _index_names(plan["Plan"])
+    missing = sorted(required_indexes - indexes)
     report["proofs"].append(
         {
             "name": name,
             "required_indexes": sorted(required_indexes),
             "indexes": sorted(indexes),
+            "missing_indexes": missing,
             "plan": plan,
         }
     )
-    missing = required_indexes - indexes
     if missing:
-        raise SystemExit(
-            f"{name}: measured plan did not select required indexes: {', '.join(sorted(missing))}"
-        )
+        report["failures"].append({"name": name, "missing_indexes": missing})
 
 
 def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix: str) -> None:
@@ -319,9 +318,10 @@ def main() -> int:
     args = parser.parse_args()
 
     report: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "cardinality": {"future_per_state": FUTURE_ROWS, "due_per_state": DUE_ROWS},
         "proofs": [],
+        "failures": [],
     }
     with (
         psycopg.connect() as connection,
@@ -373,6 +373,13 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(args.output)
+    failures = report["failures"]
+    if failures:
+        details = "; ".join(
+            f"{failure['name']}: {', '.join(failure['missing_indexes'])}"
+            for failure in failures
+        )
+        raise SystemExit(f"measured worker query plan failures: {details}")
     return 0
 
 
