@@ -214,7 +214,7 @@ async def _ensure_next_occurrence(
                   AND subject_kind = 'ReminderPlan'
                   AND subject_id = :reminder_plan_id
                   AND execute_at > :current_occurrence_at
-                  AND COALESCE(CAST(payload ->> 'plan_revision' AS integer), 1) = :plan_revision
+                  AND payload ->> 'plan_revision' = CAST(:plan_revision AS text)
                 ORDER BY execute_at, id
                 LIMIT 1
                 """
@@ -257,7 +257,7 @@ def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, int, datetime]:
         raise PermanentWorkError("unsupported_communications_scheduled_action")
 
     payload_plan_id = lease.payload.get("reminder_plan_id")
-    payload_plan_revision = lease.payload.get("plan_revision", 1)
+    payload_plan_revision = lease.payload.get("plan_revision")
     payload_occurrence = lease.payload.get("occurrence_at")
     if (
         not isinstance(payload_plan_id, str)
