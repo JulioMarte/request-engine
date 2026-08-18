@@ -13,7 +13,6 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
     CancelReservationCommand,
     cancel_reservation,
 )
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.platform.db.session import SessionFactory
 from tests.integration.v3_booking_commitments.booking_revalidation_fixture import (
     book_command,
