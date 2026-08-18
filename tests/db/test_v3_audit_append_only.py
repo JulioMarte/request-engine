@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -8,7 +8,11 @@ from psycopg import Connection, Error
 PgConnection = Connection[Any]
 
 
-def _uuid_row(conn: PgConnection, sql: str, params: tuple[object, ...]) -> UUID:
+def _uuid_row(
+    conn: PgConnection,
+    sql: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
     row = conn.execute(sql, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
@@ -67,7 +71,11 @@ def test_i59_runtime_app_cannot_rewrite_or_delete_material_audit(
         # The audit-specific append-only trigger is therefore the decisive backstop.
         with pytest.raises(Error) as update_error:
             app.execute(
-                "UPDATE request_engine.audit_records SET details = '{\"rewritten\":true}'::jsonb WHERE id = %s",
+                """
+                UPDATE request_engine.audit_records
+                SET details = '{"rewritten":true}'::jsonb
+                WHERE id = %s
+                """,
                 (audit_id,),
             )
         assert update_error.value.sqlstate == "55000"
