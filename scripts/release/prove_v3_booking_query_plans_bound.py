@@ -166,7 +166,7 @@ def _run_operational_proof() -> None:
     subprocess.run(
         [
             sys.executable,
-            "scripts/release/prove_v3_operational_query_plans.py",
+            "scripts/release/prove_v3_operational_query_plans_bound.py",
             "--output",
             ".phase6/v3-operational-query-plans.json",
         ],
