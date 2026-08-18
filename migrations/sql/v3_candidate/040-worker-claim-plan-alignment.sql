@@ -29,7 +29,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, request_engine
+SET search_path = pg_catalog, request_engine, pg_temp
 AS $function$
 BEGIN
     IF p_limit <= 0 OR p_limit > 500 THEN
@@ -144,7 +144,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, request_engine
+SET search_path = pg_catalog, request_engine, pg_temp
 AS $function$
 BEGIN
     IF p_limit <= 0 OR p_limit > 500 THEN
@@ -258,7 +258,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, request_engine
+SET search_path = pg_catalog, request_engine, pg_temp
 AS $function$
 BEGIN
     IF p_limit <= 0 OR p_limit > 500 THEN
