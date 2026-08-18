@@ -28,7 +28,40 @@
     "slot_offer_release_advance": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"],
     "slot_opportunity_fill_once": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"],
     "slot_offer_fifo": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py"],
-    "communications": ["tests/integration/v3_first_vertical/test_communications_reminders.py", "tests/integration/v3_first_vertical/test_communication_delivery.py"],
+    "communication_io_boundary": [
+      "tests/architecture/test_v3_reminder_release_boundaries.py::test_i44_business_modules_cannot_import_communication_provider_io",
+      "tests/integration/v3_worker_runtime/test_worker_release_invariants.py::test_i58_outbox_is_invisible_to_publisher_until_local_fact_commits",
+      "tests/integration/v3_first_vertical/test_communication_delivery.py::test_delivery_provider_io_runs_after_authoritative_transaction_commit"
+    ],
+    "communication_business_event_dedupe": [
+      "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py::test_reservation_outbox_converges_after_partial_lifecycle_effects_and_recovers_once",
+      "tests/integration/v3_first_vertical/test_communications_reminders.py::test_communication_task_is_idempotent_deduped_and_durably_scheduled"
+    ],
+    "communication_delivery_history": [
+      "tests/integration/v3_first_vertical/test_communication_delivery.py::test_ambiguous_send_reconciles_without_blind_resend",
+      "tests/integration/v3_first_vertical/test_communication_delivery.py::test_repeated_accepted_reconciliation_schedules_one_future_followup",
+      "tests/integration/v3_first_vertical/test_communication_delivery.py::test_retryable_failure_keeps_backoff_work_separate_from_old_action"
+    ],
+    "provider_delivery_domain_boundary": [
+      "tests/architecture/test_v3_communications_invariant_boundaries.py::test_i47_delivery_status_is_confined_to_communications_state"
+    ],
+    "reminder_schedule_contract": [
+      "tests/integration/v3_first_vertical/test_reminder_schedule_contract.py::test_i48_create_plan_persists_explicit_schedule_document_version",
+      "tests/integration/v3_first_vertical/test_reminder_schedule_contract.py::test_i48_database_rejects_missing_or_unknown_schedule_document_version",
+      "tests/integration/v3_first_vertical/test_reminder_schedule_contract.py::test_i48_application_parser_fails_closed_on_unknown_schedule_document_version"
+    ],
+    "reminder_occurrence_identity": [
+      "tests/integration/v3_first_vertical/test_communications_release_invariants.py::test_i49_reminder_occurrence_is_bound_to_plan_revision",
+      "tests/integration/v3_first_vertical/test_communications_reminders.py::test_reminder_occurrence_materialization_is_crash_replay_safe"
+    ],
+    "reminder_obsolete_work": [
+      "tests/integration/v3_first_vertical/test_communications_release_invariants.py::test_i50_cancel_plan_cancels_pending_derived_work_and_preserves_delivery_history",
+      "tests/integration/v3_first_vertical/test_reminder_plan_races.py::test_r22_cancel_reminder_plan_vs_leased_occurrence_has_one_serialized_plan_outcome",
+      "tests/architecture/test_v3_reminder_release_boundaries.py::test_i50_reminder_plan_mutation_surface_is_create_or_cancel_only"
+    ],
+    "reminder_clinical_boundary": [
+      "tests/architecture/test_v3_communications_invariant_boundaries.py::test_i51_medication_reminder_execution_cannot_infer_clinical_instruction"
+    ],
     "worker": ["tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py", "tests/integration/v3_worker_runtime/test_worker_release_invariants.py", "tests/integration/v3_worker_runtime/test_process_crash_recovery.py"],
     "provider_ingest": ["tests/integration/v3_worker_runtime/test_provider_event_ingest_races.py"],
     "provider_recovery": ["tests/integration/v3_worker_runtime/test_communication_fencing.py", "tests/integration/v3_delivery/test_reservation_access_races.py"],
@@ -83,14 +116,14 @@
     ["V3-I41", "transaction+BOTH", "PASS", "slot_offer_release_advance"],
     ["V3-I42", "BOTH", "PASS", "slot_opportunity_fill_once"],
     ["V3-I43", "APP under opportunity lock", "PASS", "slot_offer_fifo"],
-    ["V3-I44", "architecture/APP", "PARTIAL", "communications"],
-    ["V3-I45", "BOTH", "PARTIAL", "communications"],
-    ["V3-I46", "BOTH/EXT", "PARTIAL", "communications"],
-    ["V3-I47", "APP", "PARTIAL", "communications"],
-    ["V3-I48", "BOTH", "PARTIAL", "communications"],
-    ["V3-I49", "BOTH", "PARTIAL", "communications"],
-    ["V3-I50", "BOTH", "PARTIAL", "communications"],
-    ["V3-I51", "product boundary/APP", "PARTIAL", "communications"],
+    ["V3-I44", "architecture/APP", "PARTIAL", "communication_io_boundary"],
+    ["V3-I45", "BOTH", "PARTIAL", "communication_business_event_dedupe"],
+    ["V3-I46", "BOTH/EXT", "PARTIAL", "communication_delivery_history"],
+    ["V3-I47", "APP", "PARTIAL", "provider_delivery_domain_boundary"],
+    ["V3-I48", "BOTH", "PARTIAL", "reminder_schedule_contract"],
+    ["V3-I49", "BOTH", "PARTIAL", "reminder_occurrence_identity"],
+    ["V3-I50", "BOTH", "PARTIAL", "reminder_obsolete_work"],
+    ["V3-I51", "product boundary/APP", "PARTIAL", "reminder_clinical_boundary"],
     ["V3-I52", "DB", "PASS", "worker"],
     ["V3-I53", "DB", "PASS", "worker"],
     ["V3-I54", "BOTH", "PASS", "worker"],
