@@ -105,47 +105,49 @@ def test_i07_referenced_offering_version_is_an_immutable_historical_snapshot(
         """,
         (organization_id, resource_id, capability_id),
     )
-    reservation_id = _uuid_row(
-        admin_conn,
-        """
-        INSERT INTO request_engine.reservations (
-            organization_id, offering_version_id, subject_party_id,
-            during, booking_policy_snapshot
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange(
-                clock_timestamp() + interval '1 day',
-                clock_timestamp() + interval '1 day 30 minutes',
-                '[)'
+
+    with admin_conn.transaction():
+        reservation_id = _uuid_row(
+            admin_conn,
+            """
+            INSERT INTO request_engine.reservations (
+                organization_id, offering_version_id, subject_party_id,
+                during, booking_policy_snapshot
+            ) VALUES (
+                %s, %s, %s,
+                tstzrange(
+                    clock_timestamp() + interval '1 day',
+                    clock_timestamp() + interval '1 day 30 minutes',
+                    '[)'
+                ),
+                '{"slot_step_minutes": 30}'::jsonb
+            )
+            RETURNING id
+            """,
+            (organization_id, offering_version_id, party_id),
+        )
+        admin_conn.execute(
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id,
+                resource_id,
+                requirement_id,
+                reservation_id,
+                during,
+                quantity
+            )
+            SELECT %s, %s, %s, id, during, 1
+            FROM request_engine.reservations
+            WHERE organization_id = %s AND id = %s
+            """,
+            (
+                organization_id,
+                resource_id,
+                requirement_id,
+                organization_id,
+                reservation_id,
             ),
-            '{"slot_step_minutes": 30}'::jsonb
         )
-        RETURNING id
-        """,
-        (organization_id, offering_version_id, party_id),
-    )
-    admin_conn.execute(
-        """
-        INSERT INTO request_engine.capacity_claims (
-            organization_id,
-            resource_id,
-            requirement_id,
-            reservation_id,
-            during,
-            quantity
-        )
-        SELECT %s, %s, %s, id, during, 1
-        FROM request_engine.reservations
-        WHERE organization_id = %s AND id = %s
-        """,
-        (
-            organization_id,
-            resource_id,
-            requirement_id,
-            organization_id,
-            reservation_id,
-        ),
-    )
 
     with pytest.raises(Error) as update_error:
         admin_conn.execute(
