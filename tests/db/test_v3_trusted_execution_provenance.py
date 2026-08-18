@@ -162,3 +162,77 @@ def test_admin_replay_audit_actor_and_correlation_come_from_execution_context(
         (organization_id, action_id),
     ).fetchone()
     assert audit == (actor, str(correlation_id), "human", "test_adapter")
+
+
+@pytest.mark.postgres
+def test_i59_runtime_app_cannot_rewrite_or_delete_material_audit(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> None:
+    organization_id = _organization(admin_conn, "append-only")
+    actor = _principal(admin_conn, organization_id)
+    action_id = _dead_action(admin_conn, organization_id)
+
+    admin: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
+    try:
+        admin.execute("SET ROLE request_engine_admin")
+        for key, value in {
+            "request_engine.organization_id": str(organization_id),
+            "request_engine.authenticated_principal_id": str(actor),
+            "request_engine.principal_kind": "human",
+            "request_engine.authentication_method": "test_adapter",
+        }.items():
+            admin.execute("SELECT set_config(%s, %s, false)", (key, value))
+        assert admin.execute(
+            "SELECT request_admin.replay_dead_scheduled_action(%s, %s, 3, 'append-only proof')",
+            (organization_id, action_id),
+        ).fetchone() == (True,)
+    finally:
+        admin.close()
+
+    audit_row = admin_conn.execute(
+        """
+        SELECT id, details
+        FROM request_engine.audit_records
+        WHERE organization_id = %s
+          AND aggregate_kind = 'ScheduledAction'
+          AND aggregate_id = %s
+          AND command_name = 'admin.replay_scheduled_action'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (organization_id, action_id),
+    ).fetchone()
+    assert audit_row is not None
+    audit_id = cast(UUID, audit_row[0])
+    original_details = audit_row[1]
+
+    app: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
+    try:
+        app.execute("SET ROLE request_engine_app")
+        app.execute(
+            "SELECT set_config('request_engine.organization_id', %s, false)",
+            (str(organization_id),),
+        )
+
+        with pytest.raises(Error) as update_error:
+            app.execute(
+                """
+                UPDATE request_engine.audit_records
+                SET details = '{"rewritten":true}'::jsonb
+                WHERE id = %s
+                """,
+                (audit_id,),
+            )
+        assert update_error.value.sqlstate in {"42501", "55000"}
+
+        with pytest.raises(Error) as delete_error:
+            app.execute("DELETE FROM request_engine.audit_records WHERE id = %s", (audit_id,))
+        assert delete_error.value.sqlstate in {"42501", "55000"}
+    finally:
+        app.close()
+
+    assert admin_conn.execute(
+        "SELECT details FROM request_engine.audit_records WHERE id = %s",
+        (audit_id,),
+    ).fetchone() == (original_details,)
