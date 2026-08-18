@@ -152,6 +152,7 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 reminder_plan_id=plan.id,
+                plan_revision=plan.revision,
                 occurrence_at=first_occurrence,
             )
             await append_audit(
@@ -280,6 +281,11 @@ class PostgresReminderCommands:
                         "reminder_plan_id": command.reminder_plan_id,
                     },
                 )
+                await _cancel_pending_reminder_communications(
+                    session,
+                    organization_id=command.organization_id,
+                    reminder_plan_id=command.reminder_plan_id,
+                )
             elif plan_status is ReminderPlanStatus.COMPLETED:
                 raise ReminderPlanNotActive(command.reminder_plan_id, plan_status.value)
 
@@ -318,6 +324,74 @@ class PostgresReminderCommands:
             return plan
 
 
+async def _cancel_pending_reminder_communications(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    reminder_plan_id: UUID,
+) -> None:
+    task_rows = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.communication_tasks
+                WHERE organization_id = :organization_id
+                  AND source_kind = 'ReminderPlan'
+                  AND source_id = :reminder_plan_id
+                  AND status = 'pending'
+                ORDER BY id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "reminder_plan_id": reminder_plan_id,
+            },
+        )
+    ).all()
+    task_ids = tuple(cast(UUID, row[0]) for row in task_rows)
+    if not task_ids:
+        return
+
+    await session.execute(
+        text(
+            """
+            UPDATE request_engine.communication_tasks
+            SET status = 'cancelled',
+                revision = revision + 1,
+                updated_at = clock_timestamp()
+            WHERE organization_id = :organization_id
+              AND id = ANY(CAST(:task_ids AS uuid[]))
+              AND status = 'pending'
+            """
+        ),
+        {
+            "organization_id": organization_id,
+            "task_ids": [str(value) for value in task_ids],
+        },
+    )
+    await session.execute(
+        text(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET status = 'cancelled',
+                updated_at = clock_timestamp()
+            WHERE organization_id = :organization_id
+              AND owner_module = 'communications'
+              AND action_type = 'dispatch_task'
+              AND subject_kind = 'CommunicationTask'
+              AND subject_id = ANY(CAST(:task_ids AS uuid[]))
+              AND status = 'pending'
+            """
+        ),
+        {
+            "organization_id": organization_id,
+            "task_ids": [str(value) for value in task_ids],
+        },
+    )
+
+
 async def database_now(session: AsyncSession) -> datetime:
     return cast(
         datetime,
@@ -330,8 +404,11 @@ async def schedule_reminder_occurrence(
     *,
     organization_id: UUID,
     reminder_plan_id: UUID,
+    plan_revision: int,
     occurrence_at: datetime,
 ) -> UUID:
+    if plan_revision <= 0:
+        raise ValueError("plan_revision must be positive")
     return await schedule_action(
         session,
         organization_id=organization_id,
@@ -340,10 +417,14 @@ async def schedule_reminder_occurrence(
         action_version=REMINDER_ACTION_VERSION,
         subject_kind="ReminderPlan",
         subject_id=reminder_plan_id,
-        dedupe_key=(f"communications:reminder:{reminder_plan_id}:{occurrence_at.isoformat()}:v1"),
+        dedupe_key=(
+            f"communications:reminder:{reminder_plan_id}:r{plan_revision}:"
+            f"{occurrence_at.isoformat()}:v1"
+        ),
         execute_at=occurrence_at,
         payload={
             "reminder_plan_id": str(reminder_plan_id),
+            "plan_revision": plan_revision,
             "occurrence_at": occurrence_at.isoformat(),
         },
         max_attempts=8,
