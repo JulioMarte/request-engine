@@ -336,9 +336,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    total_rows_per_family = TENANT_COUNT * (
-        2 * FUTURE_ROWS_PER_TENANT + 2 * DUE_ROWS_PER_TENANT
-    )
+    total_rows_per_family = TENANT_COUNT * (2 * FUTURE_ROWS_PER_TENANT + 2 * DUE_ROWS_PER_TENANT)
     report: dict[str, Any] = {
         "schema_version": 4,
         "cardinality": {
