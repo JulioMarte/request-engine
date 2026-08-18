@@ -183,6 +183,14 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
         """,
         (organization_id, f"g15-operational-resource-{suffix}"),
     )
+    cursor.execute(
+        """
+        INSERT INTO request_engine.resource_capability_assignments (
+            organization_id, resource_id, capability_id
+        ) VALUES (%s, %s, %s)
+        """,
+        (organization_id, resource_id, capability_id),
+    )
     reservation_id = _one(
         cursor,
         """
@@ -244,21 +252,36 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
         (shared_identity_id, organization_id, resource_id),
     )
 
-    cursor.execute(
-        """
-        INSERT INTO request_engine.capacity_claims (
-            organization_id, resource_id, requirement_id, reservation_id,
-            during, quantity, status, released_at
+    for _ in range(HISTORY_PER_TENANT):
+        historical_claim_id = _one(
+            cursor,
+            """
+            INSERT INTO request_engine.capacity_claims (
+                organization_id, resource_id, requirement_id, reservation_id,
+                during, quantity
+            )
+            SELECT %s, %s, %s, r.id, r.during, 1
+            FROM request_engine.reservations r
+            WHERE r.organization_id = %s AND r.id = %s
+            RETURNING id
+            """,
+            (
+                organization_id,
+                resource_id,
+                requirement_id,
+                organization_id,
+                reservation_id,
+            ),
         )
-        SELECT %s, %s, %s, %s,
-               tstzrange(
-                   timestamptz '2020-01-01 00:00:00+00' + value * interval '2 hours',
-                   timestamptz '2020-01-01 01:00:00+00' + value * interval '2 hours', '[)'),
-               1, 'released', clock_timestamp()
-        FROM generate_series(1, %s) AS value
-        """,
-        (organization_id, resource_id, requirement_id, reservation_id, HISTORY_PER_TENANT),
-    )
+        cursor.execute(
+            """
+            UPDATE request_engine.capacity_claims
+            SET status = 'released', released_at = clock_timestamp()
+            WHERE organization_id = %s AND id = %s
+            """,
+            (organization_id, historical_claim_id),
+        )
+
     cursor.execute(
         """
         INSERT INTO request_engine.shared_capacity_claim_links (
@@ -277,9 +300,9 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
         """
         INSERT INTO request_engine.capacity_claims (
             organization_id, resource_id, requirement_id, reservation_id,
-            during, quantity, status
+            during, quantity
         )
-        SELECT %s, %s, %s, r.id, r.during, 1, 'active'
+        SELECT %s, %s, %s, r.id, r.during, 1
         FROM request_engine.reservations r
         WHERE r.organization_id = %s AND r.id = %s
         RETURNING id
