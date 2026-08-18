@@ -8,36 +8,36 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 
 | Invariant | Canonical owner class | Baseline evidence family | Baseline | Release proof phase |
 |---|---|---|---|---|
-| V3-I01 | DB | tenant authority + adversarial app-role DB/HTTP tests | PARTIAL | 6C/6I |
-| V3-I02 | APP | adversarial HTTP Request/Booking/Queue/Waitlist authority tests | PARTIAL | 6I/6K |
-| V3-I03 | APP | material Request authority/revocation race + authority HTTP tests | PARTIAL | 6I/6K |
+| V3-I01 | DB | catalog-wide composite tenant FK proof + adversarial tenant DB tests | PASS | 6C/6I |
+| V3-I02 | APP | adversarial HTTP Request/Booking/Queue/Waitlist authority tests | PASS | 6I/6K |
+| V3-I03 | APP | current tenant policy + Representation/revocation authority tests | PASS | 6I/6K |
 | V3-I04 | DB/ops | exact real-login runtime role/privilege + SECURITY DEFINER matrix | PASS | 6I |
-| V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PARTIAL | 6I |
-| V3-I06 | BOTH | trusted execution provenance DB test | PARTIAL | 6I/6J |
+| V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PASS | 6I |
+| V3-I06 | BOTH | trusted execution provenance DB + authority audit tests | PASS | 6I/6J |
 | V3-I07 | BOTH | referenced OfferingVersion UPDATE/DELETE immutability regression | PASS | 6C/6K |
-| V3-I08 | DB | relational tenant keys + foreign-reference adversarial tests | PARTIAL | 6C/6I |
-| V3-I09 | BOTH | booking availability/resource adapters | PARTIAL | 6D/6E |
-| V3-I10 | APP+DB reference | requests core + schema validation tests | PARTIAL | 6D/6K |
-| V3-I11 | BOTH | requests core tests | PARTIAL | 6D/6E |
+| V3-I08 | DB | cross-tenant configuration FK attacks | PASS | 6C/6I |
+| V3-I09 | BOTH | Resource serialization-root + availability revision regression | PASS | 6D/6E |
+| V3-I10 | APP+DB reference | exact RequestDefinitionVersion schema + immutability proof | PASS | 6D/6K |
+| V3-I11 | BOTH | direct terminal Request monotonicity regression | PASS | 6D/6E |
 | V3-I12 | BOTH | idempotency error contract + frozen runtime fingerprint-conflict coverage | PASS | 6E |
-| V3-I13 | APP | adversarial authority/operator-override/security boundaries | PARTIAL | 6I/6J |
-| V3-I14 | APP | request cancellation implementation | PARTIAL | 6D/6K |
-| V3-I15 | DB | booking commitment/candidate DB tests | PARTIAL | 6D/6L |
-| V3-I16 | DB | capacity hardening + commitment tests | PARTIAL | 6D |
-| V3-I17 | BOTH | booking commitment concurrency coverage | PARTIAL | 6D |
-| V3-I18 | BOTH | booking commitment capacity coverage | PARTIAL | 6D |
-| V3-I19 | transaction+BOTH | booking commitment vertical | PARTIAL | 6D |
-| V3-I20 | BOTH | hold/booking implementation | PARTIAL | 6D/6L |
-| V3-I21 | BOTH | booking commitment vertical | PARTIAL | 6D |
-| V3-I22 | BOTH | hold confirmation/commitment tests | PARTIAL | 6D |
-| V3-I23 | transaction+DB | reservation command/lifecycle tests | PARTIAL | 6D |
-| V3-I24 | BOTH | reschedule booking core coverage | PARTIAL | 6D |
-| V3-I25 | transaction | reschedule booking core coverage | PARTIAL | 6D |
+| V3-I13 | APP | authenticated provider callback binding + semantic-boundary proof | PASS | 6I/6J |
+| V3-I14 | APP | Request cancellation independence regression | PASS | 6D/6K |
+| V3-I15 | DB | direct half-open authoritative-capacity interval regression | PASS | 6D/6L |
+| V3-I16 | DB | direct CapacityClaim owner/interval consistency regression | PASS | 6D |
+| V3-I17 | BOTH | exclusive oversell PostgreSQL race coverage | PASS | 6D |
+| V3-I18 | BOTH | units oversell PostgreSQL race coverage | PASS | 6D |
+| V3-I19 | transaction+BOTH | all-or-nothing multi-requirement Hold regression | PASS | 6D |
+| V3-I20 | BOTH | expired Hold + confirm race coverage | PASS | 6D/6L |
+| V3-I21 | BOTH | deferred Reservation claim-completeness regression | PASS | 6D |
+| V3-I22 | BOTH | Hold confirmation transfers existing claims without double-count | PASS | 6D |
+| V3-I23 | transaction+DB | cancellation releases CapacityClaims atomically | PASS | 6D |
+| V3-I24 | BOTH | self-excluding reschedule + concurrency coverage | PASS | 6D |
+| V3-I25 | transaction | failed reschedule rollback preserves original state | PASS | 6D |
 | V3-I26 | APP protocol | deterministic inverse-input Booking resource-lock ordering regression | PASS | 6D/6L |
 | V3-I27 | APP | post-lock availability/schedule revalidation regression | PASS | 6D |
-| V3-I28 | BOTH | reservation lifecycle tests | PARTIAL | 6D |
-| V3-I29 | domain/DB | reservation lifecycle/attendance tests | PARTIAL | 6K |
-| V3-I30 | APP | lifecycle policy tests | PARTIAL | 6K/6L |
+| V3-I28 | BOTH | DB rejects terminal Reservation with consuming live claim | PASS | 6D |
+| V3-I29 | domain/DB | attendance/no-show remains independent from Reservation capacity lifecycle | PASS | 6K |
+| V3-I30 | APP | explicit versioned attendance decline policy controls cancellation | PASS | 6K/6L |
 | V3-I31 | DB | DB unique constraint rejects second active subject entry | PASS | 6D |
 | V3-I32 | APP under queue lock | FIFO CallNext ordered by admitted_at then id | PASS | 6D |
 | V3-I33 | DB transaction/lock | concurrent CallNext returns distinct entries | PASS | 6D |
@@ -51,14 +51,14 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I41 | transaction+BOTH | decline/expiry releases Hold before deterministic advancement | PASS | 6D |
 | V3-I42 | BOTH | concurrent accepts fill one Opportunity exactly once | PASS | 6D |
 | V3-I43 | APP under opportunity lock | FIFO `(created_at,id)` selection + Opportunity-lock races | PASS | 6D/6G |
-| V3-I44 | architecture/APP | durable communications ADR + vertical tests | PARTIAL | 6J |
-| V3-I45 | BOTH | communication intent/dedupe implementation | PARTIAL | 6J |
-| V3-I46 | BOTH/EXT | delivery store + communication delivery tests | PARTIAL | 6J |
-| V3-I47 | APP | ProviderEventRouter → Booking semantic-command vs cancellation race | PARTIAL | 6J |
-| V3-I48 | BOTH | ReminderPlan contract + schedule tests | PARTIAL | 6K/6L |
-| V3-I49 | BOTH | reminder occurrence/replay + cancellation/materialization race | PARTIAL | 6J/6K |
-| V3-I50 | BOTH | ReminderPlan cancellation vs leased occurrence materialization race | PARTIAL | 6J/6K |
-| V3-I51 | product boundary/APP | V3 reminder product boundary | PARTIAL | 6K |
+| V3-I44 | architecture/APP | provider I/O structurally and transactionally outside authoritative transaction | PASS | 6J |
+| V3-I45 | BOTH | durable CommunicationTask business-event dedupe | PASS | 6J |
+| V3-I46 | BOTH/EXT | durable delivery attempt history + provider idempotency/correlation reconciliation | PASS | 6J |
+| V3-I47 | APP | provider delivery status confined to Communications state | PASS | 6J |
+| V3-I48 | BOTH | versioned ReminderPlan schedule document contract | PASS | 6K/6L |
+| V3-I49 | BOTH | plan-revision-bound occurrence identity + replay safety | PASS | 6J/6K |
+| V3-I50 | BOTH | cancellation removes obsolete future work while preserving delivery history | PASS | 6J/6K |
+| V3-I51 | product boundary/APP | medication reminder clinical-instruction boundary fitness proof | PASS | 6K |
 | V3-I52 | DB | three-family claim/reclaim fencing matrix | PASS | 6F |
 | V3-I53 | DB | reclaimed lease rejects every stale transition for all worker families | PASS | 6F |
 | V3-I54 | BOTH | exact retry-budget terminalization for ScheduledAction/Outbox/ProviderEvent | PASS | 6F |
@@ -107,25 +107,25 @@ The extension preserves the original V3 ownership model: `Resource` remains tena
 
 Phase 6I closes the release-level tenant-isolation gate G06 and races R23/R24 without pre-promoting the broader invariant registry. The current branch now has a real least-privileged app LOGIN, fail-closed RLS/catalog coverage, an exact executable app-function allowlist, deterministic revoke races for every distinct material Party scope, protected HTTP foreign-versus-nonexistent controls across Booking/Requests/Queue/Waitlist/Reminders, exact-scope temporal/state authority denial tests and tenant-bounded authenticated override proof.
 
-The invariant rows above intentionally remain unchanged in this PR except where a later owner-boundary proof explicitly promotes one. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. DB-owned V3-I01/I05/I08 also receive stronger evidence here, but promoting them opportunistically would mix Phase 6I gate closure with the separate complete-invariant-registry exercise.
+At the Phase 6I checkpoint the invariant rows were intentionally left unchanged except where a separate owner-boundary proof had already promoted one. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. The later G05 closure below performs that owner-by-owner reconciliation.
 
-CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation passed exact-head CI before Phase 6I integration. Final G05 work will reassess V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation passed exact-head CI before Phase 6I integration. Final G05 work reassesses V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
 
 ## Runtime privilege evidence
 
-**V3-I04 is `PASS`.** Its canonical DB/ops claim is that runtime app/worker roles do not operate with schema-owner or superuser authority. Phase 6 G14 now proves that claim directly with real LOGIN roles and the complete PostgreSQL privilege catalog rather than relying on migration intent alone.
+**V3-I04 is `PASS`.** Its canonical DB/ops claim is that runtime app/worker roles do not operate with schema-owner or superuser authority. Phase 6 G14 proves that claim directly with real LOGIN roles and the complete PostgreSQL privilege catalog rather than relying on migration intent alone.
 
 `tests/db/test_v3_runtime_privilege_closure.py` verifies app/worker/admin runtime identities, schema privileges, every relation privilege, exact executable function allowlists, role transition boundaries and all current `SECURITY DEFINER` routines. App and worker LOGINs start NOBYPASSRLS/NOSUPERUSER and cannot `SET ROLE` into admin or schema-owner. Trusted admin BYPASSRLS is only reached by explicitly entering `request_engine_admin`, while even that role cannot become schema owner or create Request Engine schema objects. Migration `038-runtime-privilege-closure.sql` removes stale worker domain grants that predated the Production Worker Assembly split.
 
-CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced a `VALID`, complete artifact with 396/396 canonical and reverse-order tests, three 70/70 concurrency-stability rounds and passing mutation probes. This registry-only promotion must itself pass canonical exact-head CI before integration.
+CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced a `VALID`, complete artifact with 396/396 canonical and reverse-order tests, three 70/70 concurrency-stability rounds and passing mutation probes. That registry-only promotion then passed canonical exact-head CI before integration.
 
-No other invariant is promoted by G14. In particular, G05 remains `PARTIAL` until all V3-I01..V3-I66 have owner-boundary proof individually reviewed and recorded.
+No other invariant was promoted by G14 itself. G05 remained `PARTIAL` at that checkpoint until all V3-I01..V3-I66 could be owner-boundary reviewed and recorded.
 
 ## G05 direct invariant closure evidence
 
 CI #980 (`32137750612`) on head `81fb36da44743273265c9dce6ffb7ca5c01589c9` produced a complete `VALID` artifact: 422/422 canonical tests, 422/422 reverse-order tests, 118/118 expected files, three passing concurrency-stability rounds, four passing mutation probes, and zero test-quality errors or warnings. The artifact preserves `release_status: NOT_READY` and G05 `PARTIAL`.
 
-That evidence directly promotes these owner-boundary claims:
+That evidence directly promoted these owner-boundary claims:
 
 - **V3-I07 — OfferingVersion historical snapshot immutability.** `tests/db/test_v3_offering_version_immutability.py` creates a Reservation and complete CapacityClaim set atomically against a concrete OfferingVersion, then proves direct UPDATE and DELETE are rejected and the Reservation retains the original immutable snapshot reference.
 - **V3-I26 — canonical Booking resource lock order.** `tests/integration/v3_booking_commitments/test_booking_lock_order.py` drives two real app-role transactions through `lock_resources()` with inverse input order and proves both serialize on the same UUID-sorted acquisition order without deadlock.
@@ -149,7 +149,17 @@ The same current-candidate audit closes the worker/provider/audit tail:
 - **V3-I57.** `test_communication_fencing.py` proves an ambiguous provider result after lease loss is reconciled by provider lookup and does not blindly send again (`send_count=1`, `lookup_count=1`).
 - **V3-I59.** `test_v3_trusted_execution_provenance.py::test_i59_runtime_app_cannot_rewrite_or_delete_material_audit` creates a real material audit event and proves the normal app role cannot UPDATE or DELETE it; the original details remain intact.
 
-These promotions still do not imply G05 completion; every remaining `PARTIAL` invariant requires its declared owner-boundary proof and an exact-head validation of the reconciled registry.
+## G05 final owner-boundary reconciliation
+
+CI #1069 (`32173570345`) on head `7d15bc58786537a690f9a515d7d02046d711dafe` passed Python quality/architecture, V2 history, repeated V3 bootstrap, observability, the canonical V3 candidate proof and the ruleset-required `PostgreSQL 18 V3 candidate and verticals` aggregate. That run executes the newly added owner-boundary proofs before this registry-only promotion.
+
+The final audit closes the remaining families without weakening their canonical claims:
+
+- **I01–I14.** Tenant-owned FK topology is catalog-proved; UUID/correlation possession is not authority; current tenant policy is re-read; RLS remains fail-closed; material audit carries trusted authority provenance; tenant-local configuration attacks fail; schedule writes serialize through Resource revision; Request uses an exact immutable RequestDefinitionVersion and terminal lifecycle is monotonic; provider callback tenant/provider/connection authority is derived by an authentication adapter rather than payload fields; cancelling a source Request does not cancel an independently authoritative Reservation.
+- **I15–I30.** PostgreSQL proves half-open intervals, CapacityClaim owner/interval consistency, exclusive/units oversell rejection, deferred aggregate completeness and terminal-state consumption constraints. Application/concurrency tests prove all-or-nothing requirements, Hold expiry/confirmation semantics, claim transfer without double counting, atomic cancellation release, self-excluding reschedule, rollback on failed reschedule, attendance independence and explicit policy-controlled decline behavior.
+- **I44–I51.** Communications evidence proves provider I/O occurs only after authoritative commit, task creation is durable/deduped, Delivery retains `attempt_no` and provider correlation/idempotency across ambiguous reconciliation, provider status cannot mutate unrelated domain aggregates, ReminderPlan schedule documents and occurrence provenance are versioned, obsolete future work is cancelled without erasing delivery history, and medication reminders cannot infer or modify clinical instructions.
+
+The executable JSON registry now contains **66/66 `PASS`** rows. G05 may be promoted only after this reconciled matrix/registry itself passes exact-head CI. Global V3 remains `NOT_READY`; G15/G16/G17/G18/G19/G20 and later freeze/release work remain outside this branch's scope.
 
 ## Release-proof rule
 
