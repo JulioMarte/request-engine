@@ -486,18 +486,20 @@ def _seed_queue_waitlist(
         INSERT INTO request_engine.capacity_holds (
             organization_id, offering_version_id, subject_party_id,
             during, status, expires_at
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange(
-                clock_timestamp() + interval '1 day',
-                clock_timestamp() + interval '1 day 30 minutes',
-                '[)'
-            ),
-            'active', clock_timestamp() + interval '2 hours'
         )
+        SELECT %s, %s, %s, o.during, 'active', clock_timestamp() + interval '2 hours'
+        FROM request_engine.slot_opportunities o
+        WHERE o.organization_id = %s
+          AND o.id = %s
         RETURNING id
         """,
-        (organization_id, offering_version_id, active_subject_id),
+        (
+            organization_id,
+            offering_version_id,
+            active_subject_id,
+            organization_id,
+            active_opportunity_id,
+        ),
     )
     cursor.execute(
         """
