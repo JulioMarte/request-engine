@@ -53,7 +53,8 @@
     ],
     "reminder_occurrence_identity": [
       "tests/integration/v3_first_vertical/test_communications_release_invariants.py::test_i49_reminder_occurrence_is_bound_to_plan_revision",
-      "tests/integration/v3_first_vertical/test_communications_reminders.py::test_reminder_occurrence_materialization_is_crash_replay_safe"
+      "tests/integration/v3_first_vertical/test_communications_reminders.py::test_reminder_occurrence_materialization_is_crash_replay_safe",
+      "tests/integration/v3_first_vertical/test_reminder_occurrence_provenance.py::test_i49_missing_plan_revision_provenance_is_rejected_before_materialization"
     ],
     "reminder_obsolete_work": [
       "tests/integration/v3_first_vertical/test_communications_release_invariants.py::test_i50_cancel_plan_cancels_pending_derived_work_and_preserves_delivery_history",
