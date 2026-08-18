@@ -168,6 +168,7 @@ async def test_i10_request_payload_is_validated_against_exact_referenced_immutab
     assert immutable_version.value.sqlstate == "55000"
 
 
+@pytest.mark.integration
 @pytest.mark.postgres
 def test_i11_request_terminal_lifecycle_is_database_monotonic(
     admin_conn: PgConnection,
