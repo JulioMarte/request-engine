@@ -32,7 +32,7 @@ async def test_i38_database_rejects_second_active_offer_for_one_opportunity(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    fixture, _commands, opportunity_id, second_entry_id, offer = await _issue_offer(
+    fixture, _commands, opportunity_id, _second_entry_id, offer = await _issue_offer(
         admin_conn,
         session_factory,
         ttl=timedelta(minutes=5),
@@ -49,6 +49,9 @@ async def test_i38_database_rejects_second_active_offer_for_one_opportunity(
     hold_id = cast(UUID, hold_row[0])
     expires_at = hold_row[1]
 
+    # Keep all source provenance identical to the valid first offer so the
+    # attempted row is rejected specifically by the DB cardinality backstop,
+    # not by an earlier subject/hold provenance guard.
     with pytest.raises(Error) as duplicate_error:
         admin_conn.execute(
             """
@@ -63,7 +66,7 @@ async def test_i38_database_rejects_second_active_offer_for_one_opportunity(
             (
                 fixture.organization_id,
                 opportunity_id,
-                second_entry_id,
+                offer.waitlist_entry_id,
                 hold_id,
                 expires_at,
             ),
