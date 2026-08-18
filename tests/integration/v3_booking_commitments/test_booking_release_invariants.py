@@ -28,7 +28,7 @@ from request_engine.modules.requests.application.commands.cancel_request import 
 )
 from request_engine.platform.db.session import SessionFactory
 
-from .test_booking_commitments import _choice, _create_fixture
+from .booking_revalidation_fixture import create_fixture
 
 PgConnection = Connection[Any]
 
@@ -46,7 +46,7 @@ async def test_i14_request_cancellation_does_not_cancel_origin_reservation(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    fixture = _create_fixture(admin_conn)
+    fixture = create_fixture(admin_conn)
     request_definition_id = _uuid_row(
         admin_conn,
         """
@@ -94,7 +94,7 @@ async def test_i14_request_cancellation_does_not_cancel_origin_reservation(
             location_id=fixture.location_id,
             origin_request_id=request_id,
             start_at=start_at,
-            resources=_choice(fixture),
+            resources=(ResourceChoice(fixture.requirement_id, fixture.resource_id),),
             idempotency_key=f"i14-book-{uuid4().hex}",
             allow_subject_override=True,
         ),
@@ -141,7 +141,7 @@ async def test_i19_failed_multi_requirement_hold_leaves_no_partial_capacity(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    fixture = _create_fixture(admin_conn)
+    fixture = create_fixture(admin_conn)
     second_capability_id = _uuid_row(
         admin_conn,
         """
