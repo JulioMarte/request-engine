@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -160,6 +162,18 @@ def _cleanup_seeded_tenants(cursor: base.CursorLike, organization_ids: list[Any]
         )
 
 
+def _run_operational_proof() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/release/prove_v3_operational_query_plans.py",
+            "--output",
+            ".phase6/v3-operational-query-plans.json",
+        ],
+        check=True,
+    )
+
+
 def main() -> int:
     import psycopg
 
@@ -211,6 +225,8 @@ def main() -> int:
             f"{failure['name']}: {failure['reason']}" for failure in report["failures"]
         )
         raise SystemExit(f"measured Booking query plan failures: {details}")
+
+    _run_operational_proof()
     return 0
 
 
