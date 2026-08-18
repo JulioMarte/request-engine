@@ -47,8 +47,7 @@ def _load_registry() -> dict[str, Any]:
 def _requires_postgres(owner: str) -> bool:
     normalized = owner.lower()
     return any(
-        token in normalized
-        for token in ("db", "both", "transaction", "lock", "primitive", "ops")
+        token in normalized for token in ("db", "both", "transaction", "lock", "primitive", "ops")
     )
 
 
@@ -76,9 +75,7 @@ def validate_registry() -> list[str]:
             or len(entry) != 4
             or not all(isinstance(value, str) for value in entry)
         ):
-            errors.append(
-                f"entry {index} must be [invariant_id, owner, status, evidence_set]"
-            )
+            errors.append(f"entry {index} must be [invariant_id, owner, status, evidence_set]")
             continue
         parsed_entries.append((entry[0], entry[1], entry[2], entry[3]))
 
@@ -99,9 +96,7 @@ def validate_registry() -> list[str]:
             continue
         matrix_owner, matrix_status = matrix[invariant_id]
         if owner != matrix_owner:
-            errors.append(
-                f"{invariant_id}: owner {owner!r} does not match matrix {matrix_owner!r}"
-            )
+            errors.append(f"{invariant_id}: owner {owner!r} does not match matrix {matrix_owner!r}")
         if status not in ALLOWED_STATUSES:
             errors.append(f"{invariant_id}: invalid proof status {status!r}")
         if status != matrix_status:
@@ -124,9 +119,7 @@ def validate_registry() -> list[str]:
                 errors.append(f"{invariant_id}: evidence entries must be strings")
                 continue
             if not proof.startswith("tests/") or not proof.endswith(".py"):
-                errors.append(
-                    f"{invariant_id}: evidence path must name a Python test: {proof}"
-                )
+                errors.append(f"{invariant_id}: evidence path must name a Python test: {proof}")
                 continue
             path = ROOT / proof
             if not path.is_file():
@@ -136,9 +129,7 @@ def validate_registry() -> list[str]:
                 postgres_boundary_proven = True
 
         if _requires_postgres(owner) and not postgres_boundary_proven:
-            errors.append(
-                f"{invariant_id}: owner {owner!r} requires a real PostgreSQL proof"
-            )
+            errors.append(f"{invariant_id}: owner {owner!r} requires a real PostgreSQL proof")
 
     unused_sets = sorted(set(evidence_sets) - referenced_sets)
     if unused_sets:
@@ -152,8 +143,7 @@ def validate_registry() -> list[str]:
         ]
         if incomplete:
             errors.append(
-                "G05 is PASS but invariant proof registry is incomplete: "
-                + ", ".join(incomplete)
+                "G05 is PASS but invariant proof registry is incomplete: " + ", ".join(incomplete)
             )
 
     return errors
