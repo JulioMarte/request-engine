@@ -16,6 +16,7 @@ ALTER TABLE request_engine.reminder_plans
     CHECK (
         jsonb_typeof(schedule_spec) = 'object'
         AND schedule_spec ->> 'type' = 'daily_times'
+        AND schedule_spec ? 'version'
         AND jsonb_typeof(schedule_spec -> 'version') = 'number'
         AND schedule_spec -> 'version' = '1'::jsonb
     );
