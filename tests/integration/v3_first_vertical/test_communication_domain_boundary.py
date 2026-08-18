@@ -32,7 +32,7 @@ from request_engine.modules.communications.contracts.delivery import (
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 
-from ..v3_booking_commitments.booking_revalidation_fixture import create_fixture
+from .booking_boundary_fixture import create_booking_boundary_fixture
 
 PgConnection = Connection[Any]
 BookingState = tuple[
@@ -126,7 +126,7 @@ async def test_i47_provider_delivery_status_cannot_mutate_source_reservation_gra
     session_factory: SessionFactory,
     worker_session_factory: SessionFactory,
 ) -> None:
-    fixture = create_fixture(admin_conn)
+    fixture = create_booking_boundary_fixture(admin_conn)
     reservation = await book_appointment(
         PostgresReservationCommands(session_factory),
         BookAppointmentCommand(
