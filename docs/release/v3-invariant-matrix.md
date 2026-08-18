@@ -38,9 +38,9 @@ The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-con
 | V3-I28 | BOTH | reservation lifecycle tests | PARTIAL | 6D |
 | V3-I29 | domain/DB | reservation lifecycle/attendance tests | PARTIAL | 6K |
 | V3-I30 | APP | lifecycle policy tests | PARTIAL | 6K/6L |
-| V3-I31 | DB | first vertical queue tests | PARTIAL | 6D |
-| V3-I32 | APP under queue lock | first vertical queue tests | PARTIAL | 6D |
-| V3-I33 | DB transaction/lock | queue command implementation | PARTIAL | 6D |
+| V3-I31 | DB | DB unique constraint rejects second active subject entry | PASS | 6D |
+| V3-I32 | APP under queue lock | FIFO CallNext ordered by admitted_at then id | PASS | 6D |
+| V3-I33 | DB transaction/lock | concurrent CallNext returns distinct entries | PASS | 6D |
 | V3-I34 | BOTH | queue command/HTTP tests | PARTIAL | 6D |
 | V3-I35 | architecture | queue model/reader implementation | PARTIAL | 6A/6K |
 | V3-I36 | model/DB | waitlist/slot recovery tests | PARTIAL | 6D |
@@ -127,11 +127,16 @@ No other invariant is promoted by G14. In particular, G05 remains `PARTIAL` unti
 
 CI #980 (`32137750612`) on head `81fb36da44743273265c9dce6ffb7ca5c01589c9` produced a complete `VALID` artifact: 422/422 canonical tests, 422/422 reverse-order tests, 118/118 expected files, three passing concurrency-stability rounds, four passing mutation probes, and zero test-quality errors or warnings. The artifact preserves `release_status: NOT_READY` and G05 `PARTIAL`.
 
-That evidence directly promotes three owner-boundary claims:
+That evidence directly promotes these owner-boundary claims:
 
 - **V3-I07 — OfferingVersion historical snapshot immutability.** `tests/db/test_v3_offering_version_immutability.py` creates a Reservation and complete CapacityClaim set atomically against a concrete OfferingVersion, then proves direct UPDATE and DELETE are rejected and the Reservation retains the original immutable snapshot reference.
 - **V3-I26 — canonical Booking resource lock order.** `tests/integration/v3_booking_commitments/test_booking_lock_order.py` drives two real app-role transactions through `lock_resources()` with inverse input order and proves both serialize on the same UUID-sorted acquisition order without deadlock.
 - **V3-I27 — post-lock availability revalidation.** `tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py` blocks Booking at the real Resource `FOR UPDATE`, commits a newly-unavailable schedule exception, then proves Booking re-reads availability after acquiring the lock, rejects the stale slot and leaves no Reservation or CapacityClaim.
+- **V3-I31 — one active QueueEntry per queue/subject.** `tests/db/test_v3_candidate.py::test_queue_allows_only_one_active_entry_per_subject` inserts one active entry and proves PostgreSQL rejects a second active row for the same `(ServiceQueue, subject)` with the DB uniqueness backstop.
+- **V3-I32 — deterministic FIFO CallNext.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_call_next_is_fifo_idempotent_and_emits_outbox` proves earlier `admitted_at` wins first and the command query orders by `(admitted_at,id)` while holding the queue root.
+- **V3-I33 — concurrent CallNext cannot select the same entry.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry` runs two real concurrent commands against one queue and requires two distinct selected entry IDs.
+
+I34 and I35 intentionally remain `PARTIAL`: allowed transition enforcement and the absence of an authoritative mutable queue-position counter still need dedicated release guardrails.
 
 These promotions do not imply G05 completion; every remaining `PARTIAL` invariant still requires its own declared owner-boundary proof.
 
