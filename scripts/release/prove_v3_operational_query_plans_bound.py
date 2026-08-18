@@ -392,8 +392,7 @@ def main() -> int:
     print(args.output)
     if report["failures"]:
         details = "; ".join(
-            f"{failure['name']}: {failure['reason']}"
-            for failure in report["failures"]
+            f"{failure['name']}: {failure['reason']}" for failure in report["failures"]
         )
         raise SystemExit(f"measured operational query-plan failures: {details}")
     return 0
