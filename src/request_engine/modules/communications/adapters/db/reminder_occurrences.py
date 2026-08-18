@@ -47,7 +47,7 @@ class PostgresReminderOccurrenceCommands:
         self._session_factory = session_factory
 
     async def materialize(self, lease: ScheduledActionLease) -> ReminderOccurrenceResult:
-        reminder_plan_id, occurrence_at = _validate_lease(lease)
+        reminder_plan_id, plan_revision, occurrence_at = _validate_lease(lease)
 
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
             if not await lock_action_claim(
@@ -63,6 +63,15 @@ class PostgresReminderOccurrenceCommands:
                 reminder_plan_id=reminder_plan_id,
             )
             plan = reminder_plan_from_row(row)
+            if plan.revision != plan_revision:
+                return ReminderOccurrenceResult(
+                    reminder_plan_id=plan.id,
+                    occurrence_at=occurrence_at,
+                    communication_task_id=None,
+                    next_occurrence_at=None,
+                    skipped_reason="plan_revision_stale",
+                )
+
             db_now = await database_now(session)
             if occurrence_at > db_now:
                 raise RetryableWorkError("reminder_occurrence_claimed_early")
@@ -136,9 +145,13 @@ class PostgresReminderOccurrenceCommands:
                     template_version=plan.template_version,
                     render_context={
                         "reminder_plan_id": str(plan.id),
+                        "plan_revision": plan.revision,
                         "occurrence_at": occurrence_at.isoformat(),
                     },
-                    dedupe_key=(f"reminder-task:{plan.id}:{occurrence_at.isoformat()}:v1"),
+                    dedupe_key=(
+                        f"reminder-task:{plan.id}:r{plan.revision}:"
+                        f"{occurrence_at.isoformat()}:v1"
+                    ),
                     not_before=occurrence_at,
                     expires_at=expires_at,
                 ),
@@ -169,6 +182,7 @@ class PostgresReminderOccurrenceCommands:
                         "purpose": task.purpose,
                         "source_kind": "ReminderPlan",
                         "source_id": str(plan.id),
+                        "plan_revision": plan.revision,
                         "occurrence_at": occurrence_at.isoformat(),
                     },
                 )
@@ -201,6 +215,7 @@ async def _ensure_next_occurrence(
                   AND subject_kind = 'ReminderPlan'
                   AND subject_id = :reminder_plan_id
                   AND execute_at > :current_occurrence_at
+                  AND CAST(payload ->> 'plan_revision' AS integer) = :plan_revision
                 ORDER BY execute_at, id
                 LIMIT 1
                 """
@@ -210,6 +225,7 @@ async def _ensure_next_occurrence(
                 "action_type": REMINDER_ACTION_TYPE,
                 "reminder_plan_id": plan.id,
                 "current_occurrence_at": current_occurrence_at,
+                "plan_revision": plan.revision,
             },
         )
     ).scalar_one_or_none()
@@ -225,12 +241,13 @@ async def _ensure_next_occurrence(
         session,
         organization_id=organization_id,
         reminder_plan_id=plan.id,
+        plan_revision=plan.revision,
         occurrence_at=next_occurrence,
     )
     return next_occurrence
 
 
-def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
+def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, int, datetime]:
     if (
         lease.owner_module != "communications"
         or lease.action_type != REMINDER_ACTION_TYPE
@@ -241,8 +258,15 @@ def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
         raise PermanentWorkError("unsupported_communications_scheduled_action")
 
     payload_plan_id = lease.payload.get("reminder_plan_id")
+    payload_plan_revision = lease.payload.get("plan_revision")
     payload_occurrence = lease.payload.get("occurrence_at")
-    if not isinstance(payload_plan_id, str) or not isinstance(payload_occurrence, str):
+    if (
+        not isinstance(payload_plan_id, str)
+        or isinstance(payload_plan_revision, bool)
+        or not isinstance(payload_plan_revision, int)
+        or payload_plan_revision <= 0
+        or not isinstance(payload_occurrence, str)
+    ):
         raise PermanentWorkError("reminder_scheduled_action_payload_invalid")
     try:
         reminder_plan_id = UUID(payload_plan_id)
@@ -253,4 +277,4 @@ def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
         raise PermanentWorkError("reminder_scheduled_action_payload_mismatch")
     if occurrence_at.tzinfo is None or occurrence_at.utcoffset() is None:
         raise PermanentWorkError("reminder_scheduled_action_payload_invalid")
-    return reminder_plan_id, occurrence_at
+    return reminder_plan_id, payload_plan_revision, occurrence_at
