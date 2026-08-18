@@ -11,6 +11,12 @@ QUEUE_HISTORY_PER_TENANT = 2_500
 WAITLIST_CANDIDATES_PER_TENANT = 400
 PRIOR_OFFERS_PER_TARGET = 100
 SLOT_OFFER_HISTORY_PER_TENANT = 2_500
+HISTORY_SEQ_SCAN_REASON = " ".join(
+    (
+        "authoritative per-aggregate lookup sequentially scans",
+        "slot_offers history",
+    )
+)
 
 
 class CursorLike(Protocol):
@@ -92,15 +98,7 @@ def _record_history_guard(
         }
     )
     if seq_scans:
-        report["failures"].append(
-            {
-                "name": name,
-                "reason": (
-                    "authoritative per-aggregate lookup sequentially scans "
-                    + "slot_offers history"
-                ),
-            }
-        )
+        report["failures"].append({"name": name, "reason": HISTORY_SEQ_SCAN_REASON})
 
 
 def _one(cursor: CursorLike, sql: str, params: object) -> Any:
