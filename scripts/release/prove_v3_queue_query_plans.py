@@ -100,10 +100,7 @@ def _record_plan(
     for relation, maximum in (max_rows_removed or {}).items():
         actual = rows_removed[relation]
         if actual > maximum:
-            failures.append(
-                f"{relation} removed {actual} rows by filter; "
-                f"selectivity budget is {maximum}"
-            )
+            failures.append(f"{relation} filtered {actual} rows; budget {maximum}")
 
     proof = {
         "name": name,
