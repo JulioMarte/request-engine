@@ -16,18 +16,25 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  UV_VERSION: "0.12.5"
+
 jobs:
   python-quality:
     name: Python quality and architecture
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: python -m pip install --disable-pip-version-check uv==0.12.5
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Run canonical Python quality job
         run: >-
           python scripts/ci/ci_jobs.py python-quality
@@ -45,16 +52,23 @@ jobs:
   observability-contract:
     name: Observability runtime contract
     needs: python-quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            deploy/observability/requirements.txt
       - name: Install project and pinned OpenTelemetry runtime
         run: |
-          python -m pip install --disable-pip-version-check uv==0.12.5
           uv sync --frozen --no-dev
           uv pip install -r deploy/observability/requirements.txt
       - name: Validate zero-code launcher
@@ -67,7 +81,7 @@ jobs:
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
     needs: python-quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -94,17 +108,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
       - name: Run canonical V2 history job
         run: python scripts/ci/ci_jobs.py postgres-v2-history
 
   postgres-v3-bootstrap-proof:
     name: PostgreSQL 18 V3 repeated bootstrap proof
     needs: python-quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -132,10 +144,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
       - name: Run canonical V3 bootstrap proof job
         run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
@@ -145,7 +155,7 @@ jobs:
       - python-quality
       - observability-contract
       - postgres-v3-bootstrap-proof
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
@@ -175,11 +185,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install uv and PostgreSQL client
-        run: |
-          python -m pip install --disable-pip-version-check uv==0.12.5
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
       - name: Run canonical V3 candidate job
         run: python scripts/ci/ci_jobs.py postgres-v3-candidate
       - name: Upload V3 candidate release proof
@@ -202,7 +215,7 @@ jobs:
       - postgres-v3-bootstrap-proof
       - postgres-v3-candidate-proof
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
       REQUIRED_NEEDS_JSON: ${{ toJSON(needs) }}
