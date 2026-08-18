@@ -47,15 +47,19 @@ def _record_proof(
 ) -> None:
     indexes = _index_names(plan["Plan"])
     missing = sorted(required_indexes - indexes)
-    report["proofs"].append(
-        {
-            "name": name,
-            "required_indexes": sorted(required_indexes),
-            "indexes": sorted(indexes),
-            "missing_indexes": missing,
-            "plan": plan,
-        }
-    )
+    required = sorted(required_indexes)
+    for required_index in required:
+        proof_name = name if len(required) == 1 else f"{name}:{required_index}"
+        report["proofs"].append(
+            {
+                "name": proof_name,
+                "required_index": required_index,
+                "required_indexes": required,
+                "indexes": sorted(indexes),
+                "missing_indexes": missing,
+                "plan": plan,
+            }
+        )
     if missing:
         report["failures"].append({"name": name, "missing_indexes": missing})
 
