@@ -1,33 +1,115 @@
 {
   "schema_version": 1,
   "evidence_sets": {
-    "tenant_db": ["tests/db/test_v3_tenant_isolation_adversarial.py"],
-    "authority_app": ["tests/integration/v3_first_vertical/test_http_request_authority.py", "tests/integration/v3_first_vertical/test_http_booking_authority.py"],
-    "runtime_privileges": ["tests/db/test_v3_runtime_privilege_closure.py"],
-    "audit": ["tests/db/test_v3_trusted_execution_provenance.py"],
-    "offering_version_immutability": ["tests/db/test_v3_offering_version_immutability.py"],
-    "booking_core": ["tests/integration/v3_booking_core/test_booking_core.py"],
-    "requests": ["tests/integration/v3_first_vertical/test_requests_core.py", "tests/integration/v3_first_vertical/test_http_request_authority.py"],
-    "idempotency": ["tests/integration/v3_first_vertical/test_idempotency_error_contract.py", "tests/db/test_v3_candidate.py"],
-    "booking_commitments": ["tests/integration/v3_booking_commitments/test_booking_commitments.py"],
-    "booking_lock_order": ["tests/integration/v3_booking_commitments/test_booking_lock_order.py"],
-    "booking_schedule_revalidation": ["tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py"],
-    "hold_races": ["tests/integration/v3_booking_commitments/test_booking_commitments.py", "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"],
-    "reservation": ["tests/integration/v3_booking_commitments/test_booking_commitments.py", "tests/integration/v3_booking_commitments/test_reservation_races.py"],
-    "reservation_lifecycle": ["tests/integration/v3_booking_commitments/test_reservation_races.py", "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"],
-    "queue_single_active": ["tests/db/test_v3_candidate.py"],
-    "queue_fifo": ["tests/integration/v3_first_vertical/test_business_and_queue.py"],
-    "queue_call_next_concurrency": ["tests/integration/v3_first_vertical/test_business_and_queue.py"],
-    "queue_lifecycle": ["tests/db/test_v3_queue_release_invariants.py", "tests/integration/v3_first_vertical/test_business_and_queue.py"],
-    "queue_position_derived": ["tests/db/test_v3_queue_release_invariants.py"],
-    "waitlist_no_capacity": ["tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py"],
-    "slot_opportunity_capacity_revalidation": ["tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py"],
-    "slot_offer_cardinality": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py"],
-    "slot_offer_live_hold": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py"],
-    "slot_offer_accept_atomic": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"],
-    "slot_offer_release_advance": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"],
-    "slot_opportunity_fill_once": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"],
-    "slot_offer_fifo": ["tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py", "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py"],
+    "tenant_reference_integrity": [
+      "tests/db/test_v3_tenant_reference_integrity.py"
+    ],
+    "tenant_db": [
+      "tests/db/test_v3_tenant_isolation_adversarial.py"
+    ],
+    "authority_app": [
+      "tests/integration/v3_first_vertical/test_http_request_authority.py",
+      "tests/integration/v3_first_vertical/test_http_booking_authority.py"
+    ],
+    "runtime_privileges": [
+      "tests/db/test_v3_runtime_privilege_closure.py"
+    ],
+    "audit": [
+      "tests/db/test_v3_trusted_execution_provenance.py",
+      "tests/integration/v3_first_vertical/test_http_request_authority.py"
+    ],
+    "offering_version_immutability": [
+      "tests/db/test_v3_offering_version_immutability.py"
+    ],
+    "tenant_config_release": [
+      "tests/db/test_v3_tenant_config_release_invariants.py"
+    ],
+    "requests_release": [
+      "tests/integration/v3_first_vertical/test_requests_release_invariants.py"
+    ],
+    "provider_callback_trust": [
+      "tests/integration/v3_worker_runtime/test_provider_callback_trust_boundary.py",
+      "tests/architecture/test_v3_provider_callback_boundary.py",
+      "tests/integration/v3_first_vertical/test_http_request_authority.py"
+    ],
+    "booking_release": [
+      "tests/integration/v3_booking_commitments/test_booking_release_invariants.py"
+    ],
+    "idempotency": [
+      "tests/integration/v3_first_vertical/test_idempotency_error_contract.py",
+      "tests/db/test_v3_candidate.py"
+    ],
+    "booking_capacity_release": [
+      "tests/integration/v3_booking_commitments/test_booking_capacity_release_invariants.py"
+    ],
+    "booking_commitments": [
+      "tests/integration/v3_booking_commitments/test_booking_commitments.py"
+    ],
+    "booking_lock_order": [
+      "tests/integration/v3_booking_commitments/test_booking_lock_order.py"
+    ],
+    "booking_schedule_revalidation": [
+      "tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py"
+    ],
+    "hold_races": [
+      "tests/integration/v3_booking_commitments/test_booking_commitments.py",
+      "tests/integration/v3_booking_commitments/test_capacity_hold_races.py",
+      "tests/db/test_v3_candidate.py"
+    ],
+    "reservation": [
+      "tests/integration/v3_booking_commitments/test_booking_commitments.py",
+      "tests/integration/v3_booking_commitments/test_reservation_races.py"
+    ],
+    "reservation_lifecycle": [
+      "tests/integration/v3_booking_commitments/test_reservation_races.py",
+      "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle.py",
+      "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"
+    ],
+    "queue_single_active": [
+      "tests/db/test_v3_candidate.py"
+    ],
+    "queue_fifo": [
+      "tests/integration/v3_first_vertical/test_business_and_queue.py"
+    ],
+    "queue_call_next_concurrency": [
+      "tests/integration/v3_first_vertical/test_business_and_queue.py"
+    ],
+    "queue_lifecycle": [
+      "tests/db/test_v3_queue_release_invariants.py",
+      "tests/integration/v3_first_vertical/test_business_and_queue.py"
+    ],
+    "queue_position_derived": [
+      "tests/db/test_v3_queue_release_invariants.py"
+    ],
+    "waitlist_no_capacity": [
+      "tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py"
+    ],
+    "slot_opportunity_capacity_revalidation": [
+      "tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py"
+    ],
+    "slot_offer_cardinality": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py"
+    ],
+    "slot_offer_live_hold": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py",
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py"
+    ],
+    "slot_offer_accept_atomic": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py",
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"
+    ],
+    "slot_offer_release_advance": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py",
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"
+    ],
+    "slot_opportunity_fill_once": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py",
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_release_races.py"
+    ],
+    "slot_offer_fifo": [
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py",
+      "tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py"
+    ],
     "communication_io_boundary": [
       "tests/architecture/test_v3_reminder_release_boundaries.py::test_i44_business_modules_cannot_import_communication_provider_io",
       "tests/integration/v3_worker_runtime/test_worker_release_invariants.py::test_i58_outbox_is_invisible_to_publisher_until_local_fact_commits",
@@ -64,47 +146,74 @@
     "reminder_clinical_boundary": [
       "tests/architecture/test_v3_communications_invariant_boundaries.py::test_i51_medication_reminder_execution_cannot_infer_clinical_instruction"
     ],
-    "worker": ["tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py", "tests/integration/v3_worker_runtime/test_worker_release_invariants.py", "tests/integration/v3_worker_runtime/test_process_crash_recovery.py"],
-    "provider_ingest": ["tests/integration/v3_worker_runtime/test_provider_event_ingest_races.py"],
-    "provider_recovery": ["tests/integration/v3_worker_runtime/test_communication_fencing.py", "tests/integration/v3_delivery/test_reservation_access_races.py"],
-    "outbox": ["tests/integration/v3_worker_runtime/test_worker_release_invariants.py", "tests/integration/v3_worker_runtime/test_worker_runtime.py", "tests/integration/v3_first_vertical/test_communication_delivery.py"],
-    "shared_authority": ["tests/db/test_v3_cross_tenant_shared_capacity_authority_races.py", "tests/db/test_v3_cross_tenant_shared_capacity_security_hardening.py"],
-    "shared_capacity": ["tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity.py", "tests/db/test_v3_cross_tenant_shared_capacity.py"],
-    "shared_security": ["tests/db/test_v3_cross_tenant_shared_capacity_security_hardening.py", "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity.py"],
-    "shared_bindings": ["tests/db/test_v3_cross_tenant_shared_capacity_authority_races.py"],
-    "shared_locking": ["tests/db/test_v3_cross_tenant_shared_capacity_lock_topology.py", "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity_reschedule_race.py"]
+    "worker": [
+      "tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py",
+      "tests/integration/v3_worker_runtime/test_worker_release_invariants.py",
+      "tests/integration/v3_worker_runtime/test_process_crash_recovery.py"
+    ],
+    "provider_ingest": [
+      "tests/integration/v3_worker_runtime/test_provider_event_ingest_races.py"
+    ],
+    "provider_recovery": [
+      "tests/integration/v3_worker_runtime/test_communication_fencing.py",
+      "tests/integration/v3_delivery/test_reservation_access_races.py"
+    ],
+    "outbox": [
+      "tests/integration/v3_worker_runtime/test_worker_release_invariants.py",
+      "tests/integration/v3_worker_runtime/test_worker_runtime.py",
+      "tests/integration/v3_first_vertical/test_communication_delivery.py"
+    ],
+    "shared_authority": [
+      "tests/db/test_v3_cross_tenant_shared_capacity_authority_races.py",
+      "tests/db/test_v3_cross_tenant_shared_capacity_security_hardening.py"
+    ],
+    "shared_capacity": [
+      "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity.py",
+      "tests/db/test_v3_cross_tenant_shared_capacity.py"
+    ],
+    "shared_security": [
+      "tests/db/test_v3_cross_tenant_shared_capacity_security_hardening.py",
+      "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity.py"
+    ],
+    "shared_bindings": [
+      "tests/db/test_v3_cross_tenant_shared_capacity_authority_races.py"
+    ],
+    "shared_locking": [
+      "tests/db/test_v3_cross_tenant_shared_capacity_lock_topology.py",
+      "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity_reschedule_race.py"
+    ]
   },
   "invariants": [
-    ["V3-I01", "DB", "PARTIAL", "tenant_db"],
-    ["V3-I02", "APP", "PARTIAL", "authority_app"],
-    ["V3-I03", "APP", "PARTIAL", "authority_app"],
+    ["V3-I01", "DB", "PASS", "tenant_reference_integrity"],
+    ["V3-I02", "APP", "PASS", "authority_app"],
+    ["V3-I03", "APP", "PASS", "authority_app"],
     ["V3-I04", "DB/ops", "PASS", "runtime_privileges"],
-    ["V3-I05", "DB", "PARTIAL", "tenant_db"],
-    ["V3-I06", "BOTH", "PARTIAL", "audit"],
+    ["V3-I05", "DB", "PASS", "tenant_db"],
+    ["V3-I06", "BOTH", "PASS", "audit"],
     ["V3-I07", "BOTH", "PASS", "offering_version_immutability"],
-    ["V3-I08", "DB", "PARTIAL", "tenant_db"],
-    ["V3-I09", "BOTH", "PARTIAL", "booking_core"],
-    ["V3-I10", "APP+DB reference", "PARTIAL", "requests"],
-    ["V3-I11", "BOTH", "PARTIAL", "requests"],
+    ["V3-I08", "DB", "PASS", "tenant_config_release"],
+    ["V3-I09", "BOTH", "PASS", "tenant_config_release"],
+    ["V3-I10", "APP+DB reference", "PASS", "requests_release"],
+    ["V3-I11", "BOTH", "PASS", "requests_release"],
     ["V3-I12", "BOTH", "PASS", "idempotency"],
-    ["V3-I13", "APP", "PARTIAL", "requests"],
-    ["V3-I14", "APP", "PARTIAL", "requests"],
-    ["V3-I15", "DB", "PARTIAL", "booking_commitments"],
-    ["V3-I16", "DB", "PARTIAL", "booking_commitments"],
-    ["V3-I17", "BOTH", "PARTIAL", "hold_races"],
-    ["V3-I18", "BOTH", "PARTIAL", "hold_races"],
-    ["V3-I19", "transaction+BOTH", "PARTIAL", "hold_races"],
-    ["V3-I20", "BOTH", "PARTIAL", "hold_races"],
-    ["V3-I21", "BOTH", "PARTIAL", "hold_races"],
-    ["V3-I22", "BOTH", "PARTIAL", "hold_races"],
-    ["V3-I23", "transaction+DB", "PARTIAL", "reservation"],
-    ["V3-I24", "BOTH", "PARTIAL", "reservation"],
-    ["V3-I25", "transaction", "PARTIAL", "reservation"],
+    ["V3-I13", "APP", "PASS", "provider_callback_trust"],
+    ["V3-I14", "APP", "PASS", "booking_release"],
+    ["V3-I15", "DB", "PASS", "booking_capacity_release"],
+    ["V3-I16", "DB", "PASS", "booking_capacity_release"],
+    ["V3-I17", "BOTH", "PASS", "hold_races"],
+    ["V3-I18", "BOTH", "PASS", "hold_races"],
+    ["V3-I19", "transaction+BOTH", "PASS", "booking_release"],
+    ["V3-I20", "BOTH", "PASS", "hold_races"],
+    ["V3-I21", "BOTH", "PASS", "booking_capacity_release"],
+    ["V3-I22", "BOTH", "PASS", "booking_commitments"],
+    ["V3-I23", "transaction+DB", "PASS", "booking_capacity_release"],
+    ["V3-I24", "BOTH", "PASS", "reservation"],
+    ["V3-I25", "transaction", "PASS", "reservation"],
     ["V3-I26", "APP protocol", "PASS", "booking_lock_order"],
     ["V3-I27", "APP", "PASS", "booking_schedule_revalidation"],
-    ["V3-I28", "BOTH", "PARTIAL", "reservation_lifecycle"],
-    ["V3-I29", "domain/DB", "PARTIAL", "reservation_lifecycle"],
-    ["V3-I30", "APP", "PARTIAL", "reservation_lifecycle"],
+    ["V3-I28", "BOTH", "PASS", "booking_capacity_release"],
+    ["V3-I29", "domain/DB", "PASS", "reservation_lifecycle"],
+    ["V3-I30", "APP", "PASS", "reservation_lifecycle"],
     ["V3-I31", "DB", "PASS", "queue_single_active"],
     ["V3-I32", "APP under queue lock", "PASS", "queue_fifo"],
     ["V3-I33", "DB transaction/lock", "PASS", "queue_call_next_concurrency"],
@@ -118,14 +227,14 @@
     ["V3-I41", "transaction+BOTH", "PASS", "slot_offer_release_advance"],
     ["V3-I42", "BOTH", "PASS", "slot_opportunity_fill_once"],
     ["V3-I43", "APP under opportunity lock", "PASS", "slot_offer_fifo"],
-    ["V3-I44", "architecture/APP", "PARTIAL", "communication_io_boundary"],
-    ["V3-I45", "BOTH", "PARTIAL", "communication_business_event_dedupe"],
-    ["V3-I46", "BOTH/EXT", "PARTIAL", "communication_delivery_history"],
-    ["V3-I47", "APP", "PARTIAL", "provider_delivery_domain_boundary"],
-    ["V3-I48", "BOTH", "PARTIAL", "reminder_schedule_contract"],
-    ["V3-I49", "BOTH", "PARTIAL", "reminder_occurrence_identity"],
-    ["V3-I50", "BOTH", "PARTIAL", "reminder_obsolete_work"],
-    ["V3-I51", "product boundary/APP", "PARTIAL", "reminder_clinical_boundary"],
+    ["V3-I44", "architecture/APP", "PASS", "communication_io_boundary"],
+    ["V3-I45", "BOTH", "PASS", "communication_business_event_dedupe"],
+    ["V3-I46", "BOTH/EXT", "PASS", "communication_delivery_history"],
+    ["V3-I47", "APP", "PASS", "provider_delivery_domain_boundary"],
+    ["V3-I48", "BOTH", "PASS", "reminder_schedule_contract"],
+    ["V3-I49", "BOTH", "PASS", "reminder_occurrence_identity"],
+    ["V3-I50", "BOTH", "PASS", "reminder_obsolete_work"],
+    ["V3-I51", "product boundary/APP", "PASS", "reminder_clinical_boundary"],
     ["V3-I52", "DB", "PASS", "worker"],
     ["V3-I53", "DB", "PASS", "worker"],
     ["V3-I54", "BOTH", "PASS", "worker"],
