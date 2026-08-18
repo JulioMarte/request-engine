@@ -116,6 +116,52 @@ def _one(cursor: CursorLike, sql: str, params: object) -> Any:
     return row[0]
 
 
+def _seed_claim_history(
+    cursor: CursorLike,
+    *,
+    organization_id: object,
+    resource_id: object,
+    requirement_id: object,
+    hold_id: object,
+) -> None:
+    cursor.execute(
+        """
+        DO $block$
+        DECLARE
+            v_claim_id uuid;
+            v_step integer;
+        BEGIN
+            FOR v_step IN 1..%s LOOP
+                INSERT INTO request_engine.capacity_claims (
+                    organization_id, resource_id, requirement_id, hold_id,
+                    during, quantity, status
+                )
+                SELECT %s, %s, %s, h.id, h.during, 1, 'active'
+                FROM request_engine.capacity_holds h
+                WHERE h.organization_id = %s
+                  AND h.id = %s
+                RETURNING id INTO v_claim_id;
+
+                UPDATE request_engine.capacity_claims
+                SET status = 'released',
+                    released_at = clock_timestamp(),
+                    updated_at = clock_timestamp()
+                WHERE id = v_claim_id;
+            END LOOP;
+        END
+        $block$
+        """,
+        (
+            HISTORY_PER_TENANT,
+            organization_id,
+            resource_id,
+            requirement_id,
+            organization_id,
+            hold_id,
+        ),
+    )
+
+
 def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
     organization_id = _one(
         cursor,
@@ -246,54 +292,7 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
         (organization_id, resource_id),
     )
 
-    released_hold_id = _one(
-        cursor,
-        """
-        INSERT INTO request_engine.capacity_holds (
-            organization_id, offering_version_id, subject_party_id, during,
-            status, expires_at
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange(
-                clock_timestamp() + interval '1 day',
-                clock_timestamp() + interval '1 day 30 minutes',
-                '[)'
-            ),
-            'released', clock_timestamp() + interval '2 hours'
-        )
-        RETURNING id
-        """,
-        (organization_id, offering_version_id, party_id),
-    )
-    cursor.execute("ALTER TABLE request_engine.capacity_claims DISABLE TRIGGER USER")
-    try:
-        cursor.execute(
-            """
-            INSERT INTO request_engine.capacity_claims (
-                organization_id, resource_id, requirement_id, hold_id,
-                during, quantity, status, released_at
-            )
-            SELECT %s, %s, %s, %s,
-                   tstzrange(
-                       clock_timestamp() + interval '1 day',
-                       clock_timestamp() + interval '1 day 30 minutes',
-                       '[)'
-                   ),
-                   1, 'released', clock_timestamp()
-            FROM generate_series(1, %s)
-            """,
-            (
-                organization_id,
-                resource_id,
-                requirement_id,
-                released_hold_id,
-                HISTORY_PER_TENANT,
-            ),
-        )
-    finally:
-        cursor.execute("ALTER TABLE request_engine.capacity_claims ENABLE TRIGGER USER")
-
-    active_hold_id = _one(
+    hold_id = _one(
         cursor,
         """
         INSERT INTO request_engine.capacity_holds (
@@ -312,6 +311,14 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
         """,
         (organization_id, offering_version_id, party_id),
     )
+
+    _seed_claim_history(
+        cursor,
+        organization_id=organization_id,
+        resource_id=resource_id,
+        requirement_id=requirement_id,
+        hold_id=hold_id,
+    )
     cursor.execute(
         """
         INSERT INTO request_engine.capacity_claims (
@@ -328,7 +335,7 @@ def _seed_tenant(cursor: CursorLike, suffix: str) -> dict[str, Any]:
             resource_id,
             requirement_id,
             organization_id,
-            active_hold_id,
+            hold_id,
         ),
     )
 
