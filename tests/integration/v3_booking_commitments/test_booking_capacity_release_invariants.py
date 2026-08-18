@@ -8,18 +8,14 @@ from psycopg import Connection, Error
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     PostgresReservationCommands,
 )
-from request_engine.modules.booking.application.commands.book_appointment import (
-    book_appointment,
-)
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     cancel_reservation,
 )
 from request_engine.platform.db.session import SessionFactory
-from tests.integration.v3_booking_commitments.booking_revalidation_fixture import (
-    book_command,
-    create_fixture,
-)
+
+from .booking_revalidation_fixture import book_command, create_fixture
 
 PgConnection = Connection[Any]
 
