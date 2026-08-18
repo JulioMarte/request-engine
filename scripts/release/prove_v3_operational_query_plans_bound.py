@@ -6,9 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import prove_v3_booking_query_plans as booking_base
 import prove_v3_operational_query_plans as base
-
 
 MEASUREMENT_RELATIONS = (
     "party_contact_points",
@@ -22,11 +20,7 @@ MEASUREMENT_RELATIONS = (
 )
 
 
-def _explain(
-    cursor: booking_base.CursorLike,
-    sql: str,
-    params: object = (),
-) -> dict[str, Any]:
+def _explain(cursor: Any, sql: str, params: object = ()) -> dict[str, Any]:
     cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}", params)
     row = cursor.fetchone()
     assert row is not None
@@ -36,18 +30,14 @@ def _explain(
     return payload[0]
 
 
-def _one(cursor: booking_base.CursorLike, sql: str, params: object) -> Any:
+def _one(cursor: Any, sql: str, params: object) -> Any:
     cursor.execute(sql, params)
     row = cursor.fetchone()
     assert row is not None
     return row[0]
 
 
-def _seed_scale_history(
-    cursor: booking_base.CursorLike,
-    target: dict[str, Any],
-    suffix: str,
-) -> None:
+def _seed_scale_history(cursor: Any, target: dict[str, Any], suffix: str) -> None:
     organization_id = target["organization_id"]
     party_id = target["party_id"]
     reservation_id = target["reservation_id"]
@@ -86,12 +76,7 @@ def _seed_scale_history(
                clock_timestamp()
         FROM generate_series(1, %s) AS value
         """,
-        (
-            organization_id,
-            offering_version_id,
-            party_id,
-            base.HISTORY_PER_TENANT,
-        ),
+        (organization_id, offering_version_id, party_id, base.HISTORY_PER_TENANT),
     )
 
     cursor.execute(
@@ -219,7 +204,7 @@ def _vacuum_measurement_relations(connection: Any) -> None:
 
 
 def _prove_reconciliation(
-    cursor: booking_base.CursorLike,
+    cursor: Any,
     report: dict[str, Any],
     target: dict[str, Any],
 ) -> None:
@@ -252,7 +237,7 @@ def _prove_reconciliation(
         """,
         (organization_id, delivery_id, delivery_id, db_now),
     )
-    booking_base._record(
+    base.base._record(
         report,
         name="communications_future_reconciliation",
         plan=plan,
@@ -262,10 +247,7 @@ def _prove_reconciliation(
     )
 
 
-def _cleanup_seeded_tenants(
-    cursor: booking_base.CursorLike,
-    targets: list[dict[str, Any]],
-) -> None:
+def _cleanup_seeded_tenants(cursor: Any, targets: list[dict[str, Any]]) -> None:
     cursor.execute("SET LOCAL session_replication_role = replica")
     for target in targets:
         organization_id = target["organization_id"]
