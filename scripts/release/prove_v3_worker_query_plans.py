@@ -4,13 +4,17 @@ import argparse
 import json
 import uuid
 from pathlib import Path
-from typing import Any
-
-import psycopg
+from typing import Any, Protocol
 
 
 FUTURE_ROWS = 10_000
 DUE_ROWS = 100
+
+
+class CursorLike(Protocol):
+    def execute(self, query: str, params: object = ...) -> object: ...
+
+    def fetchone(self) -> Any: ...
 
 
 def _walk(node: dict[str, Any]) -> list[dict[str, Any]]:
@@ -28,7 +32,7 @@ def _index_names(plan: dict[str, Any]) -> set[str]:
     }
 
 
-def _explain(cursor: psycopg.Cursor[Any], sql: str) -> dict[str, Any]:
+def _explain(cursor: CursorLike, sql: str) -> dict[str, Any]:
     cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}")
     row = cursor.fetchone()
     assert row is not None
@@ -62,9 +66,7 @@ def _record_proof(
         )
 
 
-def _seed_scheduled_actions(
-    cursor: psycopg.Cursor[Any], organization_id: object, suffix: str
-) -> None:
+def _seed_scheduled_actions(cursor: CursorLike, organization_id: object, suffix: str) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.scheduled_actions (
@@ -126,9 +128,7 @@ def _seed_scheduled_actions(
     )
 
 
-def _seed_outbox_messages(
-    cursor: psycopg.Cursor[Any], organization_id: object, suffix: str
-) -> None:
+def _seed_outbox_messages(cursor: CursorLike, organization_id: object, suffix: str) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.outbox_messages (
@@ -178,9 +178,7 @@ def _seed_outbox_messages(
     )
 
 
-def _seed_provider_events(
-    cursor: psycopg.Cursor[Any], organization_id: object, suffix: str
-) -> None:
+def _seed_provider_events(cursor: CursorLike, organization_id: object, suffix: str) -> None:
     cursor.execute(
         """
         INSERT INTO request_engine.provider_events (
@@ -243,7 +241,7 @@ def _seed_provider_events(
 
 
 def _prove_worker_family(
-    cursor: psycopg.Cursor[Any],
+    cursor: CursorLike,
     report: dict[str, Any],
     *,
     table: str,
@@ -320,6 +318,8 @@ def _prove_worker_family(
 
 
 def main() -> int:
+    import psycopg
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
