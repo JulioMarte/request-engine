@@ -60,7 +60,7 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
         """,
         (organization_id, party_id, suffix, HISTORY_PER_TENANT),
     )
-    contact_point_id = _one(
+    _one(
         cursor,
         """
         INSERT INTO request_engine.party_contact_points (
@@ -78,7 +78,8 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
             organization_id, recipient_party_id, purpose, channel_policy,
             template_key, template_version, render_context, status
         ) VALUES (
-            %s, %s, 'g15', '{"channels":[{"channel":"email","provider_key":"test"}]}'::jsonb,
+            %s, %s, 'g15',
+            '{"channels":[{"channel":"email","provider_key":"test"}]}'::jsonb,
             'g15', 1, '{}'::jsonb, 'pending'
         )
         RETURNING id
@@ -189,8 +190,10 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
             organization_id, offering_version_id, subject_party_id, during, status
         ) VALUES (
             %s, %s, %s,
-            tstzrange(clock_timestamp() + interval '1 day',
-                      clock_timestamp() + interval '1 day 30 minutes', '[)'),
+            tstzrange(
+                clock_timestamp() + interval '1 day',
+                clock_timestamp() + interval '1 day 30 minutes', '[)'
+            ),
             'confirmed'
         )
         RETURNING id
@@ -287,7 +290,6 @@ def _seed_tenant(cursor: base.CursorLike, suffix: str) -> dict[str, Any]:
     return {
         "organization_id": organization_id,
         "party_id": party_id,
-        "contact_point_id": contact_point_id,
         "task_id": task_id,
         "reservation_id": reservation_id,
         "resource_id": resource_id,
@@ -317,12 +319,26 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
     shared_identity = target["shared_identity_id"]
     active_claim = target["active_claim_id"]
 
+    cursor.execute(
+        """
+        SELECT clock_timestamp(),
+               clock_timestamp() + interval '1 day',
+               clock_timestamp() + interval '1 day 30 minutes'
+        """
+    )
+    timing = cursor.fetchone()
+    assert timing is not None
+    db_now, window_start, window_end = timing
+
     latest_delivery = _explain(
         cursor,
         """
-        SELECT * FROM request_engine.communication_deliveries
+        SELECT *
+        FROM request_engine.communication_deliveries
         WHERE organization_id = %s AND communication_task_id = %s
-        ORDER BY attempt_no DESC LIMIT 1 FOR UPDATE
+        ORDER BY attempt_no DESC
+        LIMIT 1
+        FOR UPDATE
         """,
         (org, task),
     )
@@ -340,7 +356,10 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
         """
         SELECT id, channel, normalized_value
         FROM request_engine.party_contact_points
-        WHERE organization_id = %s AND party_id = %s AND active AND verified
+        WHERE organization_id = %s
+          AND party_id = %s
+          AND active
+          AND verified
         ORDER BY created_at, id
         """,
         (org, party),
@@ -358,7 +377,8 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
         cursor,
         """
         SELECT EXISTS (
-            SELECT 1 FROM request_engine.scheduled_actions
+            SELECT 1
+            FROM request_engine.scheduled_actions
             WHERE organization_id = %s
               AND owner_module = 'communications'
               AND action_type = 'dispatch_task'
@@ -366,16 +386,18 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
               AND subject_kind = 'CommunicationTask'
               AND subject_id = %s
               AND CASE
-                  WHEN pg_catalog.pg_input_is_valid(payload ->> 'communication_task_id', 'uuid')
+                  WHEN pg_catalog.pg_input_is_valid(
+                      payload ->> 'communication_task_id', 'uuid'
+                  )
                   THEN (payload ->> 'communication_task_id')::uuid = %s
                   ELSE false
               END
               AND status IN ('pending', 'leased')
               AND attempt_count < max_attempts
-              AND execute_at > clock_timestamp()
+              AND execute_at > %s
         )
         """,
-        (org, task, task),
+        (org, task, task, db_now),
     )
     base._record(
         report,
@@ -391,7 +413,8 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
         """
         SELECT reservation_id, attendance_status
         FROM request_read.reservation_status_v1
-        WHERE organization_id = %s AND reservation_id = %s
+        WHERE organization_id = %s
+          AND reservation_id = %s
         """,
         (org, reservation),
     )
@@ -410,8 +433,10 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
         SELECT s.id
         FROM request_engine.shared_capacity_identities s
         JOIN request_engine.shared_capacity_bindings b
-          ON b.shared_capacity_identity_id = s.id AND b.status = 'active'
-        WHERE b.organization_id = %s AND b.resource_id = %s
+          ON b.shared_capacity_identity_id = s.id
+         AND b.status = 'active'
+        WHERE b.organization_id = %s
+          AND b.resource_id = %s
           AND s.status = 'active'
         ORDER BY s.id
         FOR UPDATE OF s
@@ -433,25 +458,29 @@ def _prove(cursor: base.CursorLike, report: dict[str, Any], target: dict[str, An
         SELECT EXISTS (
             SELECT 1
             FROM request_engine.shared_capacity_claim_links link
-            JOIN request_engine.capacity_claims c ON c.id = link.capacity_claim_id
+            JOIN request_engine.capacity_claims c
+              ON c.id = link.capacity_claim_id
             LEFT JOIN request_engine.reservations r
-              ON r.organization_id = c.organization_id AND r.id = c.reservation_id
+              ON r.organization_id = c.organization_id
+             AND r.id = c.reservation_id
             LEFT JOIN request_engine.capacity_holds h
-              ON h.organization_id = c.organization_id AND h.id = c.hold_id
+              ON h.organization_id = c.organization_id
+             AND h.id = c.hold_id
             WHERE link.shared_capacity_identity_id = %s
               AND c.id <> %s
               AND c.status = 'active'
-              AND c.during && tstzrange(
-                  clock_timestamp() + interval '1 day',
-                  clock_timestamp() + interval '1 day 30 minutes', '[)')
+              AND c.during && tstzrange(%s, %s, '[)')
               AND (
                   (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
-                  OR (c.reservation_id IS NULL AND h.status = 'active'
-                      AND h.expires_at > clock_timestamp())
+                  OR (
+                      c.reservation_id IS NULL
+                      AND h.status = 'active'
+                      AND h.expires_at > %s
+                  )
               )
         )
         """,
-        (shared_identity, uuid.UUID(int=0)),
+        (shared_identity, active_claim, window_start, window_end, db_now),
     )
     base._record(
         report,
