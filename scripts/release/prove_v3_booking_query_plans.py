@@ -126,20 +126,48 @@ def _seed_claim_history(
 ) -> None:
     cursor.execute(
         """
+        CREATE TEMP TABLE IF NOT EXISTS g15_claim_history_seed (
+            organization_id uuid NOT NULL,
+            resource_id uuid NOT NULL,
+            requirement_id uuid NOT NULL,
+            hold_id uuid NOT NULL,
+            history_count integer NOT NULL
+        ) ON COMMIT DROP
+        """
+    )
+    cursor.execute("TRUNCATE g15_claim_history_seed")
+    cursor.execute(
+        """
+        INSERT INTO g15_claim_history_seed (
+            organization_id, resource_id, requirement_id, hold_id, history_count
+        ) VALUES (%s, %s, %s, %s, %s)
+        """,
+        (organization_id, resource_id, requirement_id, hold_id, HISTORY_PER_TENANT),
+    )
+    cursor.execute(
+        """
         DO $block$
         DECLARE
             v_claim_id uuid;
+            v_seed record;
             v_step integer;
         BEGIN
-            FOR v_step IN 1..%s LOOP
+            SELECT * INTO STRICT v_seed FROM g15_claim_history_seed;
+            FOR v_step IN 1..v_seed.history_count LOOP
                 INSERT INTO request_engine.capacity_claims (
                     organization_id, resource_id, requirement_id, hold_id,
                     during, quantity, status
                 )
-                SELECT %s, %s, %s, h.id, h.during, 1, 'active'
+                SELECT v_seed.organization_id,
+                       v_seed.resource_id,
+                       v_seed.requirement_id,
+                       h.id,
+                       h.during,
+                       1,
+                       'active'
                 FROM request_engine.capacity_holds h
-                WHERE h.organization_id = %s
-                  AND h.id = %s
+                WHERE h.organization_id = v_seed.organization_id
+                  AND h.id = v_seed.hold_id
                 RETURNING id INTO v_claim_id;
 
                 UPDATE request_engine.capacity_claims
@@ -150,15 +178,7 @@ def _seed_claim_history(
             END LOOP;
         END
         $block$
-        """,
-        (
-            HISTORY_PER_TENANT,
-            organization_id,
-            resource_id,
-            requirement_id,
-            organization_id,
-            hold_id,
-        ),
+        """
     )
 
 
