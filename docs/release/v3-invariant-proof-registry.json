@@ -14,7 +14,7 @@
     "booking_schedule_revalidation": ["tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py"],
     "hold_races": ["tests/integration/v3_booking_commitments/test_booking_commitments.py", "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"],
     "reservation": ["tests/integration/v3_booking_commitments/test_booking_commitments.py", "tests/integration/v3_booking_commitments/test_reservation_races.py"],
-    "reservation_lifecycle": ["tests/integration/v3_booking_commitments/test_reservation_races.py", "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"],
+    "reservation_lifecycle": ["tests/integration/v3_booking_commitments/test_booking_commitments.py", "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"],
     "queue_single_active": ["tests/db/test_v3_candidate.py"],
     "queue_fifo": ["tests/integration/v3_first_vertical/test_business_and_queue.py"],
     "queue_call_next_concurrency": ["tests/integration/v3_first_vertical/test_business_and_queue.py"],
@@ -43,7 +43,8 @@
       "tests/integration/v3_first_vertical/test_communication_delivery.py::test_retryable_failure_keeps_backoff_work_separate_from_old_action"
     ],
     "provider_delivery_domain_boundary": [
-      "tests/architecture/test_v3_communications_invariant_boundaries.py::test_i47_delivery_status_is_confined_to_communications_state"
+      "tests/architecture/test_v3_communications_invariant_boundaries.py::test_i47_delivery_status_is_confined_to_communications_state",
+      "tests/integration/v3_first_vertical/test_communication_domain_boundary.py::test_i47_provider_delivery_status_cannot_mutate_source_reservation_graph"
     ],
     "reminder_schedule_contract": [
       "tests/integration/v3_first_vertical/test_reminder_schedule_contract.py::test_i48_create_plan_persists_explicit_schedule_document_version",
