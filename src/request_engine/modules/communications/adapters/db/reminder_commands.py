@@ -45,6 +45,8 @@ from request_engine.platform.scheduling.store import schedule_action
 
 REMINDER_ACTION_TYPE = "materialize_reminder_occurrence"
 REMINDER_ACTION_VERSION = 1
+REMINDER_SCHEDULE_TYPE = "daily_times"
+REMINDER_SCHEDULE_VERSION = 1
 
 
 class PostgresReminderCommands:
@@ -101,7 +103,8 @@ class PostgresReminderCommands:
                 times=daily_times,
             )
             schedule_spec: dict[str, object] = {
-                "type": "daily_times",
+                "type": REMINDER_SCHEDULE_TYPE,
+                "version": REMINDER_SCHEDULE_VERSION,
                 "times": [value.isoformat() for value in daily_times],
                 "max_lateness_minutes": command.max_lateness_minutes,
             }
@@ -480,8 +483,15 @@ def reminder_plan_from_row(row: RowMapping) -> ReminderPlan:
 
 
 def parse_daily_schedule(schedule_spec: dict[str, object]) -> DailyReminderSchedule:
-    if schedule_spec.get("type") != "daily_times":
+    if schedule_spec.get("type") != REMINDER_SCHEDULE_TYPE:
         raise ValueError("unsupported reminder schedule type")
+    raw_version = schedule_spec.get("version")
+    if (
+        isinstance(raw_version, bool)
+        or not isinstance(raw_version, int)
+        or raw_version != REMINDER_SCHEDULE_VERSION
+    ):
+        raise ValueError("unsupported reminder schedule version")
     raw_times = schedule_spec.get("times")
     raw_lateness = schedule_spec.get("max_lateness_minutes")
     if not isinstance(raw_times, list) or not raw_times:
