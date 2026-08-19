@@ -173,6 +173,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
             timeout_seconds=1800,
         ),
         Step(
+            "adversarial-failure-proof",
+            "Compose mandatory G18 adversarial and failure proof",
+            "uv run python scripts/release/prove_v3_adversarial_failure.py "
+            "--output .phase6/v3-adversarial-failure-proof.json",
+        ),
+        Step(
             "evidence-manifest",
             "Generate executable release evidence manifest",
             "uv run python scripts/release/build_v3_evidence_manifest.py "

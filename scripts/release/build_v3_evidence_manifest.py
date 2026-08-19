@@ -6,17 +6,24 @@ import json
 import os
 import platform
 import re
+import runpy
 import subprocess
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 INVARIANT_DOC = ROOT / "docs/release/v3-invariant-matrix.md"
 RACE_DOC = ROOT / "docs/release/v3-race-matrix.md"
 GATE_DOC = ROOT / "docs/release/v3-release-gates.md"
 APPLICATION_SCHEMAS = {"request_engine", "request_read", "request_cmd", "request_admin"}
+_VALIDATE_G18 = cast(
+    Callable[[dict[str, Any]], list[str]],
+    runpy.run_path(str(Path(__file__).with_name("validate_v3_adversarial_failure_artifact.py")))[
+        "validate_adversarial_failure"
+    ],
+)
 
 
 def _git(*args: str) -> str:
@@ -429,6 +436,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "concurrency_stability": _validate_concurrency,
     "test_order_independence": _validate_order,
     "mutation_probes": _validate_mutations,
+    "adversarial_failure": _VALIDATE_G18,
 }
 
 
@@ -484,6 +492,7 @@ def build_manifest() -> dict[str, Any]:
         "concurrency_stability": ROOT / ".phase6/v3-concurrency-stability.json",
         "test_order_independence": ROOT / ".phase6/v3-test-order-independence.json",
         "mutation_probes": ROOT / ".phase6/v3-mutation-probes.json",
+        "adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json",
     }
     artifact_validation = {
         name: _validate_artifact(name, path) for name, path in evidence_paths.items()

@@ -8,15 +8,15 @@ Status values describe current proof breadth. `PASS` means the named race has co
 
 | Race | Concurrent operations | Required winner/loser property | Baseline proof | Target |
 |---|---|---|---|---|
-| R01 | acquire capacity vs acquire same capacity | incompatible live consumption cannot both commit | PARTIAL | 6D |
-| R02 | confirm Hold vs wall-clock expiry/expiry cleanup | either valid confirmation wins before expiry, or confirmation is rejected; never expired confirmation | PARTIAL | 6D/6L |
+| R01 | acquire capacity vs acquire same capacity | incompatible live consumption cannot both commit | PASS | 6D |
+| R02 | confirm Hold vs wall-clock expiry/expiry cleanup | either valid confirmation wins before expiry, or confirmation is rejected; never expired confirmation | PASS | 6D/6L |
 | R03 | Reservation cancel vs reschedule | one serialized lifecycle result; no leaked/replaced duplicate claims | PASS | 6D |
 | R04 | SlotOffer accept vs expire | exactly one terminal offer result; no Reservation plus next-candidate offer for same capacity | PASS | 6D |
 | R05 | SlotOffer accept vs decline | exactly one terminal offer result and one capacity consequence | PASS | 6D |
 | R06 | SlotOffer decline vs expire | exactly one release/advance consequence | PASS | 6D |
 | R07 | candidate selection vs candidate selection | one active offered SlotOffer per SlotOpportunity | PASS | 6D |
 | R08 | Reservation cancellation vs duplicate opportunity creation | one recovery coordination chain per source identity | PASS | 6D/6E |
-| R09 | CallNext vs CallNext | same QueueEntry cannot be called twice | PARTIAL | 6D |
+| R09 | CallNext vs CallNext | same QueueEntry cannot be called twice | PASS | 6D |
 | R10 | Request writer revision N vs writer revision N | one writer succeeds and one receives revision conflict | PASS | 6E |
 | R11 | Reservation/booking writer revision N vs writer revision N | one authoritative mutation succeeds; stale writer cannot overwrite | PASS | 6E |
 | R12 | worker claim vs worker claim | one current claim token per work item | PASS | 6F |
@@ -32,11 +32,11 @@ Status values describe current proof breadth. `PASS` means the named race has co
 | R22 | ReminderPlan cancel vs occurrence materialization | obsolete future work cannot survive as valid current-plan work | PASS | 6J |
 | R23 | authority/revocation change vs material command | material command revalidates authority in its authoritative transaction | PASS | 6I |
 | R24 | tenant A request vs guessed tenant B aggregate ID | no cross-tenant read/write or existence oracle through protected surfaces | PASS | 6I |
-| R25 | tenant A capacity commitment vs tenant B overlapping commitment on one shared root | exactly one incompatible live commitment commits; loser exposes only generic unavailability | PARTIAL | 6D/6I |
-| R26 | direct Booking vs cross-tenant Hold/SlotOffer in both winner orders | exactly one capacity owner; losing SlotOffer path leaves no false active offer or orphan Hold/Claim | PARTIAL | 6D/6L |
-| R27 | reschedule vs foreign shared-capacity commitment | conflicting reschedule rolls back completely and original Reservation/claims remain authoritative | PARTIAL | 6D |
-| R28 | binding activation/revocation vs live claim creation | one serialized authority/capacity outcome with correct backfill or preserved provenance | PARTIAL | 6D/6I |
-| R29 | inverse multi-Resource/multi-shared-root acquisition, including simultaneous reschedules | local Resources lock before stable-ordered shared roots; no deadlock and final claim cardinality/state remains valid | PARTIAL | 6D/6L |
+| R25 | tenant A capacity commitment vs tenant B overlapping commitment on one shared root | exactly one incompatible live commitment commits; loser exposes only generic unavailability | PASS | 6D/6I |
+| R26 | direct Booking vs cross-tenant Hold/SlotOffer in both winner orders | exactly one capacity owner; losing SlotOffer path leaves no false active offer or orphan Hold/Claim | PASS | 6D/6L |
+| R27 | reschedule vs foreign shared-capacity commitment | conflicting reschedule rolls back completely and original Reservation/claims remain authoritative | PASS | 6D |
+| R28 | binding activation/revocation vs live claim creation | one serialized authority/capacity outcome with correct backfill or preserved provenance | PASS | 6D/6I |
+| R29 | inverse multi-Resource/multi-shared-root acquisition, including simultaneous reschedules | local Resources lock before stable-ordered shared roots; no deadlock and final claim cardinality/state remains valid | PASS | 6D/6L |
 
 ## Phase 6E optimistic-concurrency and response-loss evidence
 
@@ -122,7 +122,27 @@ This registry-only R17/R18/R20/R21/R22 promotion must itself survive canonical e
 
 R25 has independent PostgreSQL connections deliberately overlapping on one hidden shared root and asserts exactly one winner plus one opaque `23P01` capacity-unavailable loser. R26 exercises Hold/Booking and SlotOffer/Booking in both ordering directions; the Booking-first SlotOffer proof requires a savepoint and asserts the opportunity closes without orphan speculative state. R27 proves rollback preserves the original Reservation and linked claim. R28 uses barriers around Resource/root authority mutation versus claim creation and validates link history. R29 combines an inverse multi-root SQL topology test with two real `RescheduleReservation` transactions synchronized immediately before the real protected shared-root lock call.
 
-CI #847 consumed the cross-tenant inventory and repeated the concurrency selector successfully three times. R25-R29 remain `PARTIAL` here because this registry tracks wider release-proof closure on the release baseline rather than feature acceptance alone; the final release candidate still has to execute the complete gate set after all remaining Phase 6 work stops changing the candidate.
+CI #847 consumed the cross-tenant inventory and repeated the concurrency selector successfully three times. At that historical baseline R25-R29 remained `PARTIAL` because this registry tracked wider release-proof closure rather than feature acceptance alone. Phase 6 G18 now closes those rows with current exact-head evidence below; the final frozen release candidate must still rerun the complete gate set.
+
+## Phase 6 G18 adversarial race reconciliation
+
+**R01 is `PASS`.** `tests/integration/v3_booking_commitments/test_capacity_hold_races.py::test_concurrent_conflicting_holds_commit_exactly_one_capacity_owner` uses independent PostgreSQL transactions with deliberate overlap and requires exactly one incompatible live capacity owner.
+
+**R02 is `PASS`.** Two complementary PostgreSQL-clock proofs now cover the validity boundary. `tests/integration/v3_booking_commitments/test_g18_adversarial_races.py::test_hold_confirmation_waiting_past_authoritative_expiry_is_rejected` blocks confirmation across the stored deadline and requires `CapacityHoldExpired` with no Reservation, promoted claim or residual capacity consumption. `tests/integration/v3_booking_commitments/test_g18_adversarial_race_boundaries.py::test_hold_confirmation_released_before_authoritative_expiry_consumes_hold_once` releases the same operation before the authoritative deadline and requires one consumed Hold, one Reservation and exactly one active promoted claim.
+
+**R09 is `PASS`.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry` runs concurrent `CallNext` operations and requires distinct QueueEntries; the same entry cannot become current work for two callers.
+
+**R25 is `PASS`.** `tests/db/test_v3_cross_tenant_shared_capacity.py::test_simultaneous_cross_tenant_claims_have_exactly_one_winner` deliberately overlaps two tenant commitments on one hidden shared root. Final outcomes are exactly one committed owner and one opaque generic-capacity loser; foreign tenant/root identifiers are not disclosed.
+
+**R26 is `PASS`.** `tests/integration/v3_booking_commitments/test_g18_adversarial_race_boundaries.py::test_direct_booking_vs_foreign_capacity_hold_has_one_owner_in_both_orders` proves Booking versus foreign CapacityHold under both forced shared-root winner orders. `tests/integration/v3_booking_commitments/test_g18_adversarial_races.py::test_direct_booking_vs_foreign_slot_offer_has_one_capacity_owner_in_both_orders` does the same for Booking versus foreign SlotOffer and additionally rejects false active offers, orphan Holds and orphan Claims on the losing speculative path.
+
+**R27 is `PASS`.** `tests/integration/v3_booking_commitments/test_g18_adversarial_races.py::test_foreign_shared_booking_winning_race_rolls_back_reschedule_completely` forces the foreign shared-capacity Booking to win while a conflicting reschedule waits. The reschedule is rejected and the original Reservation location, interval, revision and active historical claim graph remain authoritative; no target claim leaks.
+
+**R28 is `PASS`.** `tests/db/test_v3_cross_tenant_shared_capacity_authority_races.py::test_binding_activation_race_captures_live_commitment` and `::test_binding_revocation_race_preserves_historical_link` overlap binding authority changes with live claim creation and require either correct current-root backfill or preserved historical shared-root provenance without an unlinked live commitment.
+
+**R29 is `PASS`.** `tests/db/test_v3_cross_tenant_shared_capacity_lock_topology.py::test_reversed_cross_tenant_multi_root_requests_do_not_deadlock` deliberately requests inverse multi-root orders and requires both transactions to commit under canonical root ordering rather than PostgreSQL deadlock victim selection. `tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity_reschedule_race.py::test_simultaneous_cross_tenant_reschedules_acquire_shared_roots_canonically` exercises the application reschedule path with two synchronized real transactions and validates the final active/replaced claim graph.
+
+Canonical CI #1161 (`32240059908`) on exact PR head `90f5b9907debe281fd903b19dc9b00cbdab5accc` provides the implementation-side prerequisite for this reconciliation. Its second `PostgreSQL 18 V3 candidate proof` attempt (job `96030465480`) completed successfully after the first attempt was externally cancelled, and the same head already had successful Python quality/architecture, observability, repeated V3 bootstrap and V2 history jobs. This promotes the race registry only: G18 itself remains unclosed until the composed `.phase6/v3-adversarial-failure-proof.json` is generated by canonical CI and passes the evidence manifest's semantic validator on the wired exact head.
 
 ## Phase 6I tenant/Party-authority closure
 
