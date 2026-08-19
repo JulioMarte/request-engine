@@ -17,9 +17,7 @@ validator: ModuleType = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = validator
 SPEC.loader.exec_module(validator)
 
-EXPECTED_INITIAL_SQL_SHA256 = (
-    "502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88"
-)
+EXPECTED_INITIAL_SQL_SHA256 = "502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88"
 
 
 def _sha(payload: dict[str, Any]) -> str:
