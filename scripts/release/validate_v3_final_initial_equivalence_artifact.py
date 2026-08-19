@@ -118,12 +118,20 @@ def _validate_behavior_record(
     return typed_ids
 
 
-def _validate_runtime(runtime: object, errors: list[str]) -> None:
+def _validate_runtime(
+    runtime: object,
+    initial_database: object,
+    errors: list[str],
+) -> None:
     if not isinstance(runtime, dict):
         errors.append("runtime must be an object")
         return
     if runtime.get("status") != "PASS":
         errors.append("runtime status must be PASS")
+    if not isinstance(initial_database, str) or not initial_database:
+        errors.append("initial_database must be a non-empty string")
+    elif runtime.get("database") != initial_database:
+        errors.append("runtime database does not match initial_database")
     if runtime.get("postgresql_major") != 18:
         errors.append("runtime postgresql_major must be 18")
     if runtime.get("secrets_redacted") is not True:
@@ -228,7 +236,7 @@ def validation_errors(payload: Any) -> list[str]:
         if candidate_ids is not None and initial_ids is not None and candidate_ids != initial_ids:
             errors.append("candidate and initial test inventories differ")
 
-    _validate_runtime(payload.get("runtime"), errors)
+    _validate_runtime(payload.get("runtime"), payload.get("initial_database"), errors)
     return errors
 
 
