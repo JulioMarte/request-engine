@@ -93,8 +93,10 @@ def _validate_behavior_record(
     if record.get("selector") != EXPECTED_SELECTOR:
         errors.append(f"{label} behavioral selector is not the canonical V3 suite")
     test_ids = record.get("test_ids")
-    if not isinstance(test_ids, list) or not test_ids or any(
-        not isinstance(item, str) or not item for item in test_ids
+    if (
+        not isinstance(test_ids, list)
+        or not test_ids
+        or any(not isinstance(item, str) or not item for item in test_ids)
     ):
         errors.append(f"{label} test_ids must be a non-empty list of strings")
         return None
@@ -232,9 +234,7 @@ def validation_errors(payload: Any) -> list[str]:
     else:
         if behavioral.get("equivalent") is not True:
             errors.append("behavioral equivalent must be true")
-        candidate_ids = _validate_behavior_record(
-            "candidate", behavioral.get("candidate"), errors
-        )
+        candidate_ids = _validate_behavior_record("candidate", behavioral.get("candidate"), errors)
         initial_ids = _validate_behavior_record("initial", behavioral.get("initial"), errors)
         if candidate_ids is not None and initial_ids is not None and candidate_ids != initial_ids:
             errors.append("candidate and initial test inventories differ")
