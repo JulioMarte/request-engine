@@ -88,10 +88,7 @@ def test_candidate_freeze_validator_rejects_wrong_provenance_and_digests() -> No
     errors = validator.validation_errors(payload)
 
     assert "candidate_source_commit does not match the frozen G19 source" in errors
-    assert (
-        "ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor"
-        in errors
-    )
+    assert "ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor" in errors
     assert "migration_set_sha256 must be 64 lowercase hex characters" in errors
     assert "locked_tools must contain exactly the apply and fingerprint tools" in errors
 

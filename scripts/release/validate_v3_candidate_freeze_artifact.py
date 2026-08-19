@@ -37,23 +37,16 @@ def validation_errors(payload: Any) -> list[str]:
 
     ancestry_evidence = payload.get("ancestry_evidence")
     if ancestry_evidence not in EXPECTED_ANCESTRY_EVIDENCE:
-        errors.append(
-            "ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor"
-        )
+        errors.append("ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor")
     ancestry_base_sha = payload.get("ancestry_base_sha")
     if ancestry_evidence == "git-merge-base":
         if ancestry_base_sha is not None:
             errors.append("ancestry_base_sha must be null for git-merge-base evidence")
     elif ancestry_evidence == "ci-base-sha":
         if ancestry_base_sha != EXPECTED_SOURCE_COMMIT:
-            errors.append(
-                "ci-base-sha evidence must bind the frozen source commit as its base"
-            )
+            errors.append("ci-base-sha evidence must bind the frozen source commit as its base")
     elif ancestry_evidence == "ci-base-ancestor":
-        if (
-            not isinstance(ancestry_base_sha, str)
-            or HEX40.fullmatch(ancestry_base_sha) is None
-        ):
+        if not isinstance(ancestry_base_sha, str) or HEX40.fullmatch(ancestry_base_sha) is None:
             errors.append("ci-base-ancestor evidence must bind a 40-character base SHA")
         elif ancestry_base_sha == EXPECTED_SOURCE_COMMIT:
             errors.append("ci-base-ancestor evidence must bind a descendant base commit")
@@ -87,14 +80,10 @@ def validation_errors(payload: Any) -> list[str]:
             errors.append(f"migration[{index}].name is invalid")
         blob = item.get("git_blob_sha1")
         if not isinstance(blob, str) or HEX40.fullmatch(blob) is None:
-            errors.append(
-                f"migration[{index}].git_blob_sha1 must be 40 lowercase hex characters"
-            )
+            errors.append(f"migration[{index}].git_blob_sha1 must be 40 lowercase hex characters")
         sha256 = item.get("sha256")
         if not isinstance(sha256, str) or HEX64.fullmatch(sha256) is None:
-            errors.append(
-                f"migration[{index}].sha256 must be 64 lowercase hex characters"
-            )
+            errors.append(f"migration[{index}].sha256 must be 64 lowercase hex characters")
 
     if len([item for item in migrations if isinstance(item, dict)]) == EXPECTED_MIGRATION_COUNT:
         blobs = [item.get("git_blob_sha1") for item in migrations]
