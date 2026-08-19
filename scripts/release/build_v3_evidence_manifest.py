@@ -50,7 +50,9 @@ _VALIDATE_G19 = cast(
 _G17_PATH = ROOT / ".phase6/v3-final-initial-equivalence.json"
 _FREEZE_PATH = ROOT / ".phase6/v3-candidate-freeze.json"
 _INITIAL_SQL_PATH = ROOT / ".phase6/0001_initial.candidate.sql"
-_CANDIDATE_SCHEMA_PATH = ROOT / ".phase6/v3-schema.json"
+_CANDIDATE_SCHEMA_PATH = (
+    ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
+)
 _INITIAL_SCHEMA_PATH = ROOT / ".phase6/v3-final-initial-schema.json"
 _CANDIDATE_JUNIT_PATH = ROOT / ".phase6/v3-tests-junit.xml"
 _INITIAL_JUNIT_PATH = ROOT / ".phase6/v3-final-initial-tests-junit.xml"
