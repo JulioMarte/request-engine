@@ -29,6 +29,7 @@ def _valid_payload() -> dict[str, Any]:
         "format_version": 1,
         "candidate_source_commit": "4311200a8a9d8dfa18340c0eba5dff0cfdb47803",
         "candidate_source_tree": "68b92307d85dca0e30cdcee763e8cf9512fef186",
+        "ancestry_evidence": "git-merge-base",
         "current_head": "a" * 40,
         "current_tree": "b" * 40,
         "migration_count": 43,
@@ -71,11 +72,13 @@ def test_candidate_freeze_validator_rejects_lying_pass() -> None:
 def test_candidate_freeze_validator_rejects_wrong_provenance_and_digests() -> None:
     payload = _valid_payload()
     payload["candidate_source_commit"] = "0" * 40
+    payload["ancestry_evidence"] = "trust-me"
     payload["migration_set_sha256"] = "not-a-sha"
     payload["locked_tools"].pop()
 
     errors = validator.validation_errors(payload)
 
     assert "candidate_source_commit does not match the frozen G19 source" in errors
+    assert "ancestry_evidence must be git-merge-base or ci-base-sha" in errors
     assert "migration_set_sha256 must be 64 lowercase hex characters" in errors
     assert "locked_tools must contain exactly the apply and fingerprint tools" in errors
