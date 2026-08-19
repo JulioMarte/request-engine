@@ -26,7 +26,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G14 | Runtime privilege contract | PASS | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
 | G15 | Query plans and index evidence | PASS | representative-cardinality EXPLAIN/ANALYZE evidence for worker, Queue/SlotOffer, Booking, Communications, Reservation lifecycle and shared-capacity hot paths |
 | G16 | Public API contract freeze | PASS | final OpenAPI/capability/error snapshots on frozen candidate |
-| G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
+| G17 | `0001_initial` equivalence | PASS | clean candidate-chain DB vs reviewed initial DB structural/behavioral/runtime equivalence with exact baseline digest and provenance |
 | G18 | Unified adversarial/failure suite | PASS | one release gate executing attack, race, crash, retry, order and mutation families |
 | G19 | Fresh production-like bootstrap | PASS | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
 | G20 | Final release artifact/manifest | MISSING | exact-head manifest with fingerprints, environment and all G01-G20 PASS |
@@ -78,7 +78,7 @@ CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produ
 
 ## Phase 6K — Booking lifecycle and Slot Recovery closure
 
-**G07 is `PASS`.** The release claim now covers the authoritative Reservation lifecycle and its durable consequences rather than only isolated Booking state transitions. Existing Booking integration tests prove creation, cancellation, reschedule, attendance/no-show and capacity-claim state transitions; Phase 6K adds `tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py`, which deliberately simulates partial committed lifecycle consequences and replays the same durable Reservation facts. Creation replay converges to one generation of Reservation scheduling and communications work. Cancellation replay cancels Reservation scheduling and communication tasks, then recovers the released slot exactly once through the existing SlotOpportunity -> Waitlist -> CapacityHold -> SlotOffer pipeline. Final task/action/opportunity/offer/hold cardinality and status are asserted.
+**G07 is `PASS`.** The release claim now covers the authoritative Reservation lifecycle and its durable consequences rather than only isolated Booking state transitions. Existing Booking integration tests prove creation, cancellation, reschedule, attendance/no-show and capacity-claim state transitions; Phase 6K adds `tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py`, which deliberately simulates partial committed lifecycle consequences and replays the same durable Reservation facts. Creation replay converges to one generation of Reservation scheduling and communications work. Cancellation replay cancels Reservation scheduling and communication tasks, then recovers the released slot exactly once through the existing SlotOpportunity -> Waitlist -> CapacityHold + SlotOffer pipeline. Final task/action/opportunity/offer/hold cardinality and status are asserted.
 
 Phase 6K also fixes a production provenance defect in delayed `reservation.rescheduled.v1` processing. Reschedule facts now preserve `old_location_id`, `old_start_at` and `old_end_at` before the Reservation moves. `tests/integration/v3_reservation_lifecycle/test_reschedule_outbox_release_provenance.py` executes A -> B -> C first, processes both reschedule facts only after the aggregate has reached C, and requires the A -> B event to recover A and the B -> C event to recover B while the authoritative Reservation remains at C. Slot recovery therefore consumes event-time released-slot provenance; scheduling, communications and access reconciliation continue to converge against current Reservation state.
 
@@ -148,6 +148,14 @@ Canonical CI #1166 (`32242214119`) passed every required job on that exact PR he
 
 This documentation promotion must itself survive canonical exact-head CI before PR #68 becomes merge-authoritative. Final promotion to `main` must regenerate G18 on the eventual frozen candidate if freeze/baseline reconciliation changes an executable release input.
 
+## G17 — final `0001_initial` equivalence closure
+
+**G17 is `PASS` on implementation head `f3c93fed8f66b438d1729d113e6f568d5dcb3497`.** Canonical CI #1224 (`32275821530`) completed every required job and produced GitHub artifact `v3-candidate-release-proof` `9374338903` (`sha256:0fe74eb5190915afea983a29d623eb715651544565da75b9ad7678de1f2dce23`). The proof is bound to source branch head `f3c93fed8f66b438d1729d113e6f568d5dcb3497` and tested merge checkout `db7b77e19c1cc33d5b3abe474eb1246691c7b43d`; the candidate freeze inside the proof is bound to the same tested checkout rather than conflating it with the source head.
+
+The final baseline SQL is the reviewed `0001_initial` payload with SHA-256 `502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88` and size 364,122 bytes. Database A, built from the frozen 43-file candidate chain, and database B, built through `alembic upgrade head` from the reviewed initial baseline, produce identical canonical structural fingerprints: `8345eec114eb4af2184c0796debece536e27d7fb4851f77811b2721df1afd877`. The same canonical PostgreSQL V3 selector runs independently against both construction paths and reports **466/466 tests PASS** on each side, zero failures/errors/skips, identical sorted test inventories and identical test-inventory SHA-256 `39601a26ac608d86b86e8338ccfbbbe32d9c1d4b86769f6a5ab4230b45118b4d`. Runtime provisioning for the initial path also passes with exactly the intended restricted app/worker/admin role identities.
+
+`.phase6/v3-final-initial-equivalence.json` is schema version 2 and explicitly separates `source_head_sha` from `tested_sha`. Its independent semantic validator rejects legacy ambiguous provenance, stale freeze checkout identity, malformed fingerprints, divergent test inventories, runtime-role drift and any baseline digest other than the reviewed initial. The final manifest from #1224 reports `artifact_validation.initial_equivalence.status: PASS`, no G17 validation errors and `evidence_status: VALID`. G20 remains intentionally unresolved; this G17 registry promotion itself must survive canonical exact-head CI before it is merge-authoritative.
+
 ## G19 — fresh production-like bootstrap closure
 
 **G19 is `PASS` on implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e`.** The canonical PostgreSQL 18 candidate job now starts G19 from an empty database, provisions exactly three production-style runtime LOGINs for app, worker and trusted admin authority, runs the application and worker through those distinct role boundaries, exercises representative HTTP/queue/worker/recovery paths, executes the complete release suite and emits `.phase6/v3-production-like-bootstrap.json` as mandatory semantically validated evidence.
@@ -166,11 +174,11 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G05–G16, G18 and G19 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G01–G19 closed, the remaining release work is G20 only:
 
-1. freeze the candidate now that G19 has survived without semantic or schema changes;
-2. generate and prove final `0001_initial` structural/behavioral equivalence against that frozen candidate (G17);
-3. rerun G18/G19 against the frozen candidate if the initial/freeze reconciliation changes any executable release input;
-4. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. run canonical exact-head CI on this G17 registry promotion and require the manifest to remain `evidence_status: VALID` with G17 `PASS` and G20 `MISSING`;
+2. build the final exact-head release artifact/manifest for the commit that will actually be promoted;
+3. validate that every G01–G20 gate is `PASS`, the working tree is clean, and all source/tested/tree/environment fingerprints are bound to that exact candidate;
+4. only then set `release_status: READY`, merge `development -> main`, and tag/release from the proven commit.
 
-Do not create/bless `0001_initial` before the candidate freeze is recorded, and do not claim release readiness while G17/G20 remain incomplete.
+Do not claim release readiness while G20 remains incomplete.

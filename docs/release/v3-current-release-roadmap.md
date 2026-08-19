@@ -2,298 +2,200 @@
 
 Status: **active operational roadmap for Phase 6 V3 Freeze & Release Proof**.
 
-Repository reference points for this roadmap:
+Repository reference points:
 
 - integration branch: `development`;
-- latest implementation-bearing gate closure before documentation reconciliation: `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` (PR #69, G19 fresh production-like bootstrap);
-- documentation reconciliation merged by PR #66: `8f0f6f1c66b8bd143e440a83bbabe04cc7d58556`;
+- frozen post-G19 candidate source: `4311200a8a9d8dfa18340c0eba5dff0cfdb47803`;
+- G17 implementation head proven by canonical CI: `f3c93fed8f66b438d1729d113e6f568d5dcb3497`;
+- G17 registry-promotion head proven by canonical CI: `443d3aaa9047f5e76c0bc4d7741ce0dd69e22778`;
 - PostgreSQL target: PostgreSQL 18;
-- release status: `NOT_READY`.
+- release status: `NOT_READY` because G20 is still `MISSING`.
 
-Commit identities above are provenance checkpoints, not a claim that `development` will forever equal either SHA. The branch head may advance as the remaining release gates are implemented. Current status authority is this roadmap together with `v3-release-gates.md`, and executable evidence remains authoritative only for the exact commit/tree that produced it.
+Commit identities above are provenance checkpoints, not a claim that `development` will forever equal those SHAs. Executable evidence is authoritative only for the exact commit/tree that produced it. `v3-release-gates.md` is the canonical gate registry; this roadmap defines current ordering and release discipline.
 
-Historical Phase 6 planning and rebaseline documents remain useful evidence of how the release proof evolved, but they must not override this roadmap or `v3-release-gates.md` when deciding what to execute next.
+Historical Phase 6 planning/rebaseline documents remain useful design history, but they do not override this roadmap or the executable gate registry.
 
 ## 1. Current gate state
 
 | Gate range | State | Meaning |
 |---|---:|---|
-| G01–G16 | PASS | integrated executable proof and registry closure exist for these gates; final promotion still requires exact-final-candidate regeneration where applicable |
-| G17 | MISSING | final `0001_initial` has not been generated/blessed or proven equivalent |
-| G18 | PASS | unified attack/race/crash/retry/order/mutation evidence is mandatory, machine-readable and semantically validated on exact-head canonical CI |
-| G19 | PASS | fresh PostgreSQL 18 bootstrap, production-style runtime LOGINs, app/worker execution, crash/reclaim and canonical release suite are machine-readable and semantically validated |
-| G20 | MISSING | no final exact-head release manifest with all G01–G20 PASS exists |
+| G01–G16 | PASS | executable proof and registry closure exist; canonical reruns continue to protect them on the release branch |
+| G17 | PASS | the frozen candidate and reviewed `0001_initial` are structurally, behaviorally and runtime-equivalent with explicit source/tested provenance |
+| G18 | PASS | unified attack/race/crash/retry/order/mutation evidence is mandatory and semantically validated |
+| G19 | PASS | fresh PostgreSQL 18 bootstrap and production-style runtime role proof are mandatory and semantically validated |
+| G20 | MISSING | no final exact-head release proof has yet promoted all G01–G20 to one `READY` evidence set |
 
-`release_status` must remain `NOT_READY` until every gate is `PASS` on the final release candidate.
+`release_status` remains `NOT_READY` until G20 closes on the exact final candidate.
 
-## 2. What is already implemented and proven
+## 2. Frozen candidate and G17 closure
 
-The following is no longer implementation backlog for V3 unless new evidence falsifies it.
+The V3 candidate was frozen only after G18 and G19 passed. The freeze locks the exact 43-file candidate migration inventory, the post-G19 source commit/tree, migration Git blobs, the candidate apply script and the canonical schema-fingerprint tool. Any executable blocker fix after freeze must identify and rerun the evidence it invalidates.
 
-### Candidate construction and quality
+G17 is now closed by an independent two-construction proof:
 
-- ordered PostgreSQL 18 V3 candidate chain;
-- repeated clean bootstrap proof;
-- separately preserved V2 design-history proof;
-- Python quality, typing, security, dependency and architecture fitness checks.
+1. database A is created from `template0` and built from the complete frozen 43-file candidate chain;
+2. database B is created independently from `template0` and built through `alembic upgrade head` using the reviewed `0001_initial` baseline;
+3. both databases are fingerprinted with the canonical PostgreSQL 18 catalog fingerprint;
+4. the same canonical V3 PostgreSQL selector is executed independently against both databases;
+5. the initial path is provisioned with production-shaped app/worker/admin runtime identities;
+6. a machine-readable G17 artifact binds baseline digest, structural proof, behavioral inventory, runtime proof, candidate freeze and exact source/tested provenance;
+7. an independent semantic validator rejects malformed, stale or ambiguous PASS artifacts.
 
-### Invariant and tenant-authority closure
+The reviewed baseline SQL is fixed at SHA-256:
 
-- `V3-I01..V3-I66` reconciled to executable owner-boundary proof;
-- real `request_engine_app` LOGIN coverage;
-- fail-closed tenant RLS and cross-tenant attack matrix;
-- protected-function inventory and Party-authority validation;
-- runtime app/worker/admin privilege closure and SECURITY DEFINER hardening.
+`502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88`
 
-Invariant ownership and race-matrix closure remain separate proof dimensions. G18 has now reconciled the race dimension independently rather than inferring race success from invariant `PASS` state.
+The canonical structural fingerprint for both construction paths is:
 
-### Booking and released-slot recovery
+`8345eec114eb4af2184c0796debece536e27d7fb4851f77811b2721df1afd877`
 
-- Reservation create/cancel/reschedule/attendance/no-show lifecycle;
-- capacity hold/claim correctness;
-- released-slot recovery through SlotOpportunity → Waitlist → CapacityHold + SlotOffer;
-- accept/decline/expiry and concurrency semantics;
-- historical reschedule provenance via `old_location_id`, `old_start_at`, `old_end_at` so delayed A→B→C facts recover the slot released by the event rather than mutable later state.
+The canonical behavioral proof executes **466 tests on each path**, with zero failures/errors/skips and identical sorted test inventories. The test-inventory SHA-256 is:
 
-### Workers and failure recovery
+`39601a26ac608d86b86e8338ccfbbbe32d9c1d4b86769f6a5ab4230b45118b4d`
 
-- ScheduledAction, OutboxMessage and ProviderEvent leasing/fencing;
-- stale-token rejection, reclaim, retry, dead-letter and fairness behavior;
-- process-death and lease-loss recovery;
-- worker control sessions separated from domain application sessions;
-- external-effect ambiguity recovered through lookup/reconciliation rather than exactly-once assumptions.
+Canonical CI #1224 (`32275821530`) proved the implementation on source head `f3c93fed8f66b438d1729d113e6f568d5dcb3497`; artifact `9374338903` has digest `sha256:0fe74eb5190915afea983a29d623eb715651544565da75b9ad7678de1f2dce23`.
 
-### Idempotency and optimistic concurrency
+Canonical CI #1225 (`32282849691`) then proved the G17 registry promotion on source head `443d3aaa9047f5e76c0bc4d7741ce0dd69e22778`. Every required job passed. Artifact `9376847945` has digest `sha256:8ad888768e6aa430598d485d8d91cb8a93245ba6590405d2aef6f2c688354373` and records:
 
-- frozen runtime mutation inventory;
-- post-commit response-loss retry proof;
-- same-key/different-fingerprint rejection;
-- real concurrent-writer revision proof for public revision-managed aggregates.
+- source head `443d3aaa9047f5e76c0bc4d7741ce0dd69e22778`;
+- tested merge checkout `6c9647703447b255b9d8dc463655583840ad9f4b`;
+- tree `d938b0e4a0ca2fc9b2c049a5a7193cf28c43a22c`;
+- `working_tree_dirty: false`;
+- `evidence_status: VALID`;
+- G01–G19 `PASS`;
+- G20 `MISSING`;
+- `release_status: NOT_READY`.
 
-### ProviderEvent and Communications reliability
+The G17 artifact schema explicitly separates `source_head_sha` from `tested_sha`. The candidate freeze is tied to the tested checkout, preventing a PR merge-ref from being mislabeled as the source branch head.
 
-- duplicate/reordered/ambiguous provider evidence handling;
-- reconciliation-first recovery;
-- retryable versus non-retryable provider outcomes;
-- terminal Communications ordering so late `DELIVERED` cannot overwrite an absorbing non-retryable terminal failure for the same attempt;
-- trusted ProviderEvent replay and Reminder reliability races.
+After V3 ships, the released `0001_initial` becomes immutable migration history. Later schema changes must be append-only migrations.
 
-### Query-plan and index evidence
+## 3. What remains proven on the frozen release line
 
-Representative-cardinality `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` proof exists for:
+The canonical release pipeline continues to regenerate the evidence needed for the already-closed gates, including:
 
-- worker claims;
-- Queue/Waitlist/SlotOffer;
-- Booking availability/capacity;
-- Communications;
-- Reservation lifecycle;
-- shared-capacity hot paths.
+- candidate ordering and repeated clean bootstrap;
+- V2 design-history preservation;
+- Python quality, typing, security, dependencies and architecture fitness;
+- V3-I01..V3-I66 invariant ownership and tenant/RLS isolation;
+- Booking lifecycle and released-slot recovery;
+- worker leasing/fencing, crash recovery and idempotency;
+- ProviderEvent and Communications reconciliation;
+- runtime privilege closure;
+- representative-cardinality query-plan/index proof;
+- public API/OpenAPI/capability/error freeze;
+- R01–R29 adversarial/race/failure evidence;
+- fresh production-like bootstrap with distinct app/worker/admin runtime identities.
 
-Indexes retained for V3 were justified by measured planner behavior. Speculative or ineffective indexes, including the rejected global range-only CapacityClaim GiST experiment, were not kept merely because they had been implemented.
+G17 did not weaken or bypass any of these proofs. CI #1225 reran the canonical release pipeline after G17 registry promotion and all required jobs remained green.
 
-### Public contract freeze
+## 4. Current execution order
 
-G16 freezes and proves:
-
-- exactly 24 classified `/v1/` operations;
-- exactly 34 canonical capability definitions;
-- capability schema versions `[1]`;
-- exactly 51 public machine error codes;
-- runtime FastAPI/OpenAPI metadata consistency;
-- mandatory machine-readable `.phase6/v3-public-api-contract.json` evidence;
-- release-manifest validation that recomputes the embedded runtime contract fingerprint.
-
-Final exact-head G16 evidence before integration was CI #1140 (`32206740884`) on `d3279fc5022f063779df4a48c323a53916cf8e93`, artifact `9349539679` (`sha256:274ae8e3dd47c9fdd65ae8c65cff335b43ec15c1817178b2ac40871d29520ab8`). The manifest recorded G16 `PASS`, public-contract validation `PASS`, a complete clean evidence bundle and `release_status: NOT_READY`.
-
-### Unified adversarial/failure proof
-
-G18 now composes the previously distributed failure evidence into one mandatory release artifact. `.phase6/v3-adversarial-failure-proof.json` covers six required families — attack/security, race/concurrency, crash/recovery, retry/idempotency, order independence and mutation probes — and the release manifest validates its exact inventories and statuses. The canonical race registry is closed independently at R01–R29 PASS.
-
-Canonical CI #1166 (`32242214119`) passed on exact implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`. Artifact `v3-candidate-release-proof` `9361488628` (`sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`) contains a G18 artifact with 6/6 families PASS, 29/29 races PASS, `registry_non_pass: []`, `missing_evidence: []` and `failures: []`. The same candidate run passed 463 PostgreSQL tests, three 96-test concurrency-stability rounds, 463 order-independence tests and mutation probes; the final evidence manifest is `VALID` while `release_status` remains correctly `NOT_READY`.
-
-### Fresh production-like bootstrap
-
-G19 now composes clean-start, PostgreSQL 18, production-style runtime role provisioning, real app/worker execution, representative HTTP/queue behavior, worker separation, crash/reclaim and the canonical release suite into mandatory machine-readable evidence. The proof uses exactly three restricted runtime LOGINs for app, worker and trusted admin authority, keeps credentials outside `.phase6/`, and validates only sanitized role metadata in the release artifact.
-
-Canonical CI #1178 (`32250520126`) passed every required job on exact implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` against `development` base `f99c3b6207448d3d307d8da6f1838efc48b6ffbd`. Artifact `v3-candidate-release-proof` `9364480065` (`sha256:7949e975ee85b09fca3c7f71fa77477d5f6339a4655cfb3423ae5dc635065442`) contains a G19 artifact with `status: PASS`, `failures: []`, empty clean-start state, PostgreSQL 18, three non-superuser runtime LOGINs with exactly one intended membership each, secrets redacted and all representative vertical/queue/worker/recovery nodes PASS. The same run passed 466/466 canonical PostgreSQL tests, all concurrency-stability rounds, order-independence, mutation probes and G18. The final manifest reports `evidence_status: VALID`; `release_status` remains correctly `NOT_READY` because G17 and G20 are unresolved.
-
-## 3. Current execution order
-
-The remaining work must proceed in this dependency order:
+The remaining work is intentionally narrow:
 
 ```text
-freeze the candidate
+merge G17 PR #70 into development
         ↓
-G17 final 0001_initial + structural/behavioral equivalence
+create a dedicated G20 branch from post-G17 development
         ↓
-rerun any proof affected by the frozen baseline / initial reconciliation
+implement independent exact-head final-release proof + validator
         ↓
-G20 exact-head final release manifest
+canonical CI produces one VALID, complete, clean G01–G20 evidence set
+        ↓
+G20 PASS / release_status READY
         ↓
 development → main
         ↓
-release/tag from the proven commit
+verify promoted commit/tree
+        ↓
+tag/release only the proven tree
 ```
 
-This ordering is intentional. G18 has closed the release-level adversarial/failure envelope and G19 has closed the fresh production-like construction/runtime envelope. Candidate freeze is therefore the next dependency. Generating `0001_initial` before the freeze checkpoint would make it ambiguous which candidate semantics the baseline is supposed to reproduce.
+G20 must not be mixed into the G17 branch. The repository integration discipline requires one coherent gate per branch, and G20 must prove the post-G17 `development` candidate rather than inheriting PR #70's historical merge checkout as final release authority.
 
-## 4. G18 — unified adversarial/failure suite
-
-G18 is **PASS** on implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`.
-
-### 4.1 Required families
-
-The unified proof requires and now passes exactly six families:
-
-1. **Attack/security** — cross-tenant isolation, foreign references, missing tenant context, privilege escalation and opaque authorization/reference behavior.
-2. **Race/concurrency** — every release-critical R01–R29 row maps to deterministic executable evidence with real PostgreSQL serialization where required.
-3. **Crash/recovery** — authoritative-commit boundaries, durable claims, external success before local finalization, lease loss and process-death reclaim/fencing.
-4. **Retry/idempotency** — replay, fingerprint conflict, post-commit response loss, provider retry policy and durable retry/dead behavior.
-5. **Order independence** — the canonical release suite passes independently of execution ordering/state leakage.
-6. **Mutation probes** — representative dangerous weakenings are killed by the release proof.
-
-### 4.2 Race-matrix closure
-
-The former PARTIAL rows R01, R02, R09 and R25–R29 are now `PASS` in `v3-race-matrix.md`. Exact current evidence already existed for R01, R09, R25, R28 and R29. G18 added deterministic PostgreSQL proof for the genuine gaps:
-
-- R02 — Hold confirmation blocked across authoritative wall-clock expiry is rejected without promoted Reservation/capacity consumption;
-- R26 — direct Booking versus foreign SlotOffer/Hold is forced through both shared-root winner orders with exactly one capacity owner and no orphan speculative state;
-- R27 — a foreign shared-capacity booking can win against a conflicting reschedule while the losing reschedule rolls back and preserves the original Reservation/claim graph.
-
-No race was promoted from invariant status by inference. The emitted G18 artifact requires an exact R01–R29 inventory and fails if any registry row, owner or required collected node is missing/non-PASS.
-
-### 4.3 G18 artifact and manifest contract
-
-`scripts/release/prove_v3_adversarial_failure.py` emits `.phase6/v3-adversarial-failure-proof.json` after the canonical PostgreSQL suite, concurrency stability, order independence and mutation probes. `scripts/release/build_v3_evidence_manifest.py` makes the artifact mandatory and invokes `validate_v3_adversarial_failure_artifact.py` by explicit sibling path so both script execution and architecture-test module loading use the same validator contract.
-
-The semantic validator rejects malformed or lying top-level PASS payloads by checking the exact six-family inventory, exact R01–R29 inventory, expected/observed cardinalities, required supporting artifact set, family/race statuses and missing/failure fields. Architecture tests protect both the validator semantics and CI/manifest wiring.
-
-### 4.4 G18 exit evidence
-
-CI #1166 (`32242214119`) is the exact-head closure run for implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`. It passed Python quality/architecture, repeated PostgreSQL 18 V3 bootstrap, observability, PostgreSQL 18 V2 history and the PostgreSQL 18 V3 candidate proof. The candidate proof recorded:
-
-- 463/463 canonical PostgreSQL tests PASS;
-- three concurrency-stability rounds of 96/96 tests PASS;
-- 463/463 order-independence tests PASS;
-- mutation probes PASS;
-- G18 artifact 6/6 families PASS and 29/29 races PASS;
-- `registry_non_pass: []`, `missing_evidence: []`, `failures: []`;
-- final evidence manifest `evidence_status: VALID`;
-- final `release_status: NOT_READY`, correctly reflecting unresolved G17/G19/G20 at that historical head.
-
-Artifact `9361488628` is bound by GitHub to that head with digest `sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`.
-
-The documentation promotion that records this PASS must itself survive exact-head canonical CI before PR #68 is merge-authoritative. If later freeze/baseline work changes an executable input relevant to G18, the affected proof must be regenerated rather than inherited from this historical head.
-
-## 5. G19 — fresh production-like bootstrap
-
-G19 is **PASS** on implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e`.
-
-The proof starts from an empty PostgreSQL 18 environment and demonstrates:
-
-- migration/bootstrap authority creates the database objects and runtime role groups;
-- exactly three real LOGINs for app, worker and trusted admin have the intended flags and exactly one intended membership each;
-- the application executes representative public verticals through the app-role session path;
-- the worker uses distinct worker-control and domain application session factories and identities;
-- representative ScheduledAction/queue/worker work executes under production-style roles;
-- restart/crash/reclaim behavior works in the fresh environment;
-- credentials remain confined to ephemeral `.ci/` material and the `.phase6/` evidence contains sanitized metadata only;
-- the complete canonical release suite runs successfully against the freshly constructed environment;
-- nested scratch proofs strip outer runtime DSNs and role bindings, preventing cross-database contamination.
-
-`scripts/release/prove_v3_production_like_bootstrap.py` emits `.phase6/v3-production-like-bootstrap.json`, and `validate_v3_production_like_bootstrap_artifact.py` semantically validates the exact proof contract. The canonical evidence manifest treats the artifact as mandatory rather than trusting a top-level PASS string.
-
-CI #1178 (`32250520126`) passed every required job on exact implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` against `development` base `f99c3b6207448d3d307d8da6f1838efc48b6ffbd`. The candidate run recorded 466/466 canonical PostgreSQL tests PASS, all concurrency-stability rounds PASS, order-independence PASS, mutation probes PASS and G18 PASS. The G19 artifact reports `status: PASS`, `failures: []`, clean-start emptiness, PostgreSQL 18, all three restricted runtime LOGINs and all representative HTTP/queue/worker/recovery nodes PASS. The final manifest reports `evidence_status: VALID`.
-
-Artifact `v3-candidate-release-proof` `9364480065` is bound by GitHub to that exact head with digest `sha256:7949e975ee85b09fca3c7f71fa77477d5f6339a4655cfb3423ae5dc635065442`. `release_status` remains correctly `NOT_READY` because G17 and G20 are unresolved.
-
-This documentation promotion must itself survive canonical exact-head CI before PR #69 becomes merge-authoritative. If candidate freeze or G17 baseline construction changes an executable release input relevant to G19, the affected proof must be regenerated rather than inherited from this historical head.
-
-## 6. Candidate freeze
-
-G18 and G19 now pass, so the V3 candidate can proceed to the explicit freeze checkpoint for baseline construction.
-
-At freeze, changes to these surfaces become release-invalidating unless explicitly reviewed as blocker fixes:
-
-- `migrations/sql/v3_candidate/` semantics;
-- constraints, triggers, functions, RLS and grants;
-- runtime role contract;
-- public `/v1/` surface, capability registry and machine errors;
-- worker lease/fencing protocols;
-- representative hot-path indexes;
-- release-proof registries.
-
-A blocker fix after freeze must identify which gates/fingerprints it invalidates and rerun them. “Documentation-only” must not be used to conceal an executable release-input change.
-
-## 7. G17 — final `0001_initial` equivalence
-
-G17 intentionally occurs after the candidate survives G18/G19.
-
-Required work:
-
-1. generate the final clean V3 `0001_initial` from the frozen candidate semantics;
-2. build database A from the complete candidate chain;
-3. build database B from the final initial migration path;
-4. compare structural catalogs including schemas, relations, columns, types, constraints, indexes, functions, triggers, policies, grants, roles, sequences, extensions and relevant views;
-5. execute representative behavioral proofs against both databases, including tenant isolation, capacity/Booking, Queue/Waitlist/SlotOffer, workers, ProviderEvent/Communications and shared capacity;
-6. produce deterministic fingerprints and a machine-readable equivalence artifact;
-7. keep the candidate construction history until equivalence is proven.
-
-After V3 ships, the released `0001_initial` becomes immutable history. Later schema changes use new migrations.
-
-## 8. Final rerun after baseline construction
-
-Structural equivalence alone is not sufficient release authority. If construction/freeze reconciliation changes any executable input, rerun the affected gates on the exact final candidate. At minimum review whether G06, G09/G10, G13, G14, G15, G16, G18 and G19 require regeneration.
-
-The final `development → main` release proof must refer to the exact tree that is actually promoted.
-
-## 9. G20 — final release manifest
+## 5. G20 — final exact-head release proof
 
 G20 is the last gate and the only point at which `release_status` may become `READY`.
 
-The final artifact must bind at least:
+A simple edit from `G20=MISSING` to `G20=PASS` is **not** sufficient. G20 needs an independent machine-readable proof and semantic validator so release readiness cannot become a registry tautology.
 
-- exact source/head/tree/tested commit identities;
+The final proof must bind at least:
+
+- exact source head, tested checkout and Git tree identities;
+- expected integration base identity for the final release candidate;
+- clean working-tree status;
 - PostgreSQL and Python/runtime environment;
-- migration and schema fingerprints;
-- final `0001_initial` equivalence fingerprint;
+- frozen candidate migration-set identity;
+- canonical schema fingerprint;
+- reviewed `0001_initial` digest and G17 equivalence artifact;
 - public API/OpenAPI/capability/error fingerprints;
-- all mandatory evidence artifacts and their digests;
-- gate registry G01–G20;
-- clean-tree status;
+- invariant, race and gate registry digests;
+- every mandatory evidence artifact and its digest;
+- semantic validation status for every mandatory evidence family;
+- G01–G20 registry state;
 - zero missing artifacts and zero validation errors.
 
-`release_status: READY` is valid only when G01–G20 are all `PASS` in the same final release evidence set.
+The G20 validator must independently reject at least:
 
-## 10. Promotion discipline
+- source head different from `PHASE6_HEAD_SHA`;
+- tested SHA different from `PHASE6_TESTED_SHA` or the actual checkout;
+- dirty tree or inconsistent tree identity;
+- missing/invalid evidence artifacts;
+- a G17 artifact whose source/tested provenance does not match the same final run;
+- baseline/schema/API fingerprint drift;
+- any non-PASS gate;
+- any manifest that claims `READY` without a valid G20 proof.
+
+Avoid recursive self-hashing: the G20 proof may bind the digests of all underlying evidence and a provisional manifest/input set, but the final manifest must not require its own digest as an input to itself.
+
+## 6. G20 implementation sequence
+
+On a dedicated G20 branch from post-G17 `development`:
+
+1. add the final-release proof producer and independent validator while G20 remains `MISSING`;
+2. add architecture tests that falsify stale head/tested/tree provenance, missing artifacts, fingerprint drift, non-PASS gates and lying READY claims;
+3. wire production of `.phase6/v3-final-release-proof.json` after all underlying evidence exists;
+4. make the final manifest semantically validate that G20 artifact as mandatory release evidence;
+5. only then promote the G20 registry row to `PASS`;
+6. run canonical exact-head CI and inspect the uploaded evidence bundle, not just job status;
+7. accept `release_status: READY` only if the final manifest is `VALID`, complete, clean and all G01–G20 gates are PASS on that exact source/tested/tree identity.
+
+If implementing the G20 proof changes any executable release input, the affected earlier gates must be regenerated. A documentation/validator-only change does not excuse a failed canonical rerun.
+
+## 7. Promotion discipline
 
 The final promotion sequence is:
 
-1. exact-head canonical CI on the final `development` candidate;
-2. inspect the final evidence bundle rather than trusting green checks alone;
-3. require G01–G20 `PASS`, manifest `VALID`, complete artifact set and `release_status: READY`;
+1. exact-head canonical CI on the final G20 candidate;
+2. inspect the final evidence bundle and G20 artifact;
+3. require G01–G20 `PASS`, manifest `VALID`, complete artifact set, clean tree and `release_status: READY`;
 4. require branch up-to-date and review conversations resolved;
-5. merge `development → main` without bypassing branch/ruleset requirements;
-6. verify the resulting `main` commit/tree identity;
-7. tag/release only the commit whose release evidence is authoritative, rerunning evidence if the promotion creates a different executable tree.
+5. merge the G20 branch to `development`;
+6. run/confirm authoritative release evidence on the exact `development` commit/tree that will be promoted;
+7. merge `development → main` without bypassing branch/ruleset requirements;
+8. verify the resulting `main` commit/tree identity;
+9. tag/release only the commit whose release evidence is authoritative, rerunning evidence if promotion creates a different executable tree.
 
-## 11. Explicit non-goals during closure
+A green historical workflow is never sufficient for a different commit/tree.
 
-Until V3 is released, do not add unrelated product breadth. In particular, Phase 6 should not grow Request Engine into a CRM/ERP/accounting/PSP/PBX, universal workflow engine, workforce optimizer, GPS/delivery platform, generic agent framework, advanced payment domain or generalized capacity-pool/federation product.
+## 8. Explicit non-goals during closure
 
-Correctness fixes exposed by G18/G19 are allowed. New feature scope that changes the target should be deferred until after the V3 baseline unless the release guarantee cannot be made correct without a narrowly scoped change.
+Until V3 is released, do not add unrelated product breadth. In particular, Phase 6 must not grow Request Engine into a CRM/ERP/accounting/PSP/PBX, universal workflow engine, workforce optimizer, GPS/delivery platform, generic agent framework, advanced payment domain or generalized capacity-pool/federation product.
 
-## 12. Definition of done
+Correctness fixes exposed by release evidence are allowed. New feature scope that changes the target must be deferred unless the release guarantee cannot be made correct without a narrowly scoped fix.
+
+## 9. Definition of done
 
 V3 is release-ready only when all of the following are true together:
 
 - G01–G20 are `PASS`;
 - `V3-I01..V3-I66` remain reconciled to executable evidence;
-- every release-critical race in `v3-race-matrix.md` is `PASS` with deterministic evidence;
-- final `0001_initial` is structurally and behaviorally equivalent to the frozen candidate;
-- fresh production-like bootstrap passes with real runtime roles and app/worker processes;
+- every release-critical R01–R29 race is `PASS` with deterministic evidence;
+- final `0001_initial` remains structurally, behaviorally and runtime-equivalent to the frozen candidate;
+- fresh production-like bootstrap passes with real runtime roles and app/worker paths;
 - public API/capability/error freeze remains unchanged or intentionally versioned;
 - representative query plans remain valid on the final schema;
 - no P0/P1 release blocker remains;
-- the exact-head evidence manifest is `VALID`, complete and clean;
+- exact-head evidence is `VALID`, complete and clean;
+- the independent G20 proof is valid for the same source/tested/tree identity;
 - `release_status` is `READY` for the exact tree promoted to `main`.
