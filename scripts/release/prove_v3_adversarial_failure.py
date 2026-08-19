@@ -79,7 +79,9 @@ FAMILY_OWNERS: dict[str, tuple[str, ...]] = {
         "tests/e2e/test_http_tenant_isolation_matrix.py",
         "tests/integration/v3_first_vertical/test_http_input_adversarial.py",
     ),
-    "race_concurrency": tuple(sorted({owner for owners in RACE_OWNERS.values() for owner in owners})),
+    "race_concurrency": tuple(
+        sorted({owner for owners in RACE_OWNERS.values() for owner in owners})
+    ),
     "crash_recovery": (
         "tests/integration/v3_worker_runtime/test_process_crash_recovery.py",
         "tests/integration/v3_worker_runtime/test_process_crash_recovery_other_families.py",
@@ -140,7 +142,11 @@ def _junit_status(path: Path) -> tuple[str, dict[str, int], list[str]]:
         return "FAIL", {}, [f"malformed JUnit artifact: {exc}"]
 
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
-    counts = {key: sum(int(suite.attrib.get(key, "0")) for suite in suites) for key in ("tests", "failures", "errors", "skipped")}
+    count_keys = ("tests", "failures", "errors", "skipped")
+    counts = {
+        key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
+        for key in count_keys
+    }
     failures: list[str] = []
     if counts["tests"] <= 0:
         failures.append("JUnit contains zero tests")
@@ -170,7 +176,9 @@ def build_proof() -> dict[str, Any]:
     expected_races = [f"R{number:02d}" for number in range(1, 30)]
     missing_races = sorted(set(expected_races) - set(race_statuses))
     unmapped_races = sorted(set(expected_races) - set(RACE_OWNERS))
-    non_pass_races = sorted(race_id for race_id in expected_races if race_statuses.get(race_id) != "PASS")
+    non_pass_races = sorted(
+        race_id for race_id in expected_races if race_statuses.get(race_id) != "PASS"
+    )
     if missing_races:
         failures.append(f"race registry missing: {', '.join(missing_races)}")
     if unmapped_races:
@@ -184,10 +192,11 @@ def build_proof() -> dict[str, Any]:
         observed, missing = _owner_inventory(owners)
         if missing:
             failures.append(f"{race_id} missing owner(s): {', '.join(missing)}")
+        status = "PASS" if race_statuses.get(race_id) == "PASS" and not missing else "FAIL"
         race_rows.append(
             {
                 "id": race_id,
-                "status": "PASS" if race_statuses.get(race_id) == "PASS" and not missing else "FAIL",
+                "status": status,
                 "owners": list(owners),
                 "expected_owner_count": len(owners),
                 "observed_owner_count": len(observed),
@@ -195,7 +204,9 @@ def build_proof() -> dict[str, Any]:
         )
 
     supporting: dict[str, dict[str, Any]] = {}
-    junit_status, junit_counts, junit_failures = _junit_status(SUPPORTING_ARTIFACTS["test_junit"])
+    junit_status, junit_counts, junit_failures = _junit_status(
+        SUPPORTING_ARTIFACTS["test_junit"]
+    )
     supporting["test_junit"] = {"status": junit_status, "counts": junit_counts}
     failures.extend(junit_failures)
     for name, path in SUPPORTING_ARTIFACTS.items():
@@ -206,18 +217,27 @@ def build_proof() -> dict[str, Any]:
         failures.extend(artifact_failures)
 
     families: list[dict[str, Any]] = []
+    junit_families = {
+        "race_concurrency",
+        "crash_recovery",
+        "retry_idempotency",
+        "attack_security",
+    }
     for family_id, owners in FAMILY_OWNERS.items():
         observed, missing = _owner_inventory(owners)
         family_failures = [f"missing owner: {path}" for path in missing]
         if family_id == "race_concurrency" and non_pass_races:
             family_failures.append(f"non-PASS races: {', '.join(non_pass_races)}")
-        if family_id == "order_independence" and supporting.get("test_order_independence", {}).get("status") != "PASS":
+        order_status = supporting.get("test_order_independence", {}).get("status")
+        if family_id == "order_independence" and order_status != "PASS":
             family_failures.append("order-independence artifact is not PASS")
-        if family_id == "mutation_probes" and supporting.get("mutation_probes", {}).get("status") != "PASS":
+        mutation_status = supporting.get("mutation_probes", {}).get("status")
+        if family_id == "mutation_probes" and mutation_status != "PASS":
             family_failures.append("mutation-probe artifact is not PASS")
-        if family_id in {"race_concurrency", "crash_recovery", "retry_idempotency", "attack_security"} and junit_status != "PASS":
+        if family_id in junit_families and junit_status != "PASS":
             family_failures.append("canonical PostgreSQL JUnit artifact is not PASS")
-        if family_id == "race_concurrency" and supporting.get("concurrency_stability", {}).get("status") != "PASS":
+        concurrency_status = supporting.get("concurrency_stability", {}).get("status")
+        if family_id == "race_concurrency" and concurrency_status != "PASS":
             family_failures.append("concurrency-stability artifact is not PASS")
         failures.extend(f"{family_id}: {message}" for message in family_failures)
         families.append(
@@ -264,7 +284,10 @@ def main() -> int:
     args = parse_args()
     proof = build_proof()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(proof, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     print(f"G18 adversarial/failure proof: {proof['status']}")
     if args.require_pass and proof["status"] != "PASS":
         for failure in proof["failures"]:
