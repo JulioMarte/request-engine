@@ -14,6 +14,7 @@ class RescheduleReservationCommand:
     start_at: datetime
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
+    expected_revision: int
     location_id: UUID | None = None
     allow_subject_override: bool = False
 
@@ -30,6 +31,8 @@ async def reschedule_reservation(
 ) -> Reservation:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    if command.expected_revision <= 0:
+        raise ValueError("expected_revision must be positive")
     if not command.resources:
         raise ValueError("at least one ResourceChoice is required")
     return await handler.reschedule_reservation(command)

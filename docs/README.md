@@ -4,11 +4,15 @@ This folder is the system of record for the current Request Engine product/domai
 
 ## V3 transition status
 
-Request Engine is in a **pre-baseline capability-first V3 transition**.
+Request Engine is in **Phase 6 — V3 Freeze & Release Proof** on the clean capability-first V3 candidate.
 
-The V3 product thesis is followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`, and those contracts now drive an executable clean PostgreSQL 18 candidate under `migrations/sql/v3_candidate/`.
+The current operational release roadmap is `release/v3-current-release-roadmap.md`. The canonical gate registry is `release/v3-release-gates.md`. When an older transition/rebaseline document conflicts with those files about current status or execution order, the current roadmap and gate registry win.
 
-The historical V2 PostgreSQL design chain remains useful as executable design history, but it is **not** a schema to freeze or extend. The active candidate is still pre-baseline: it must survive the required PostgreSQL invariant/race/security tests and application vertical slices before becoming `0001_initial`.
+At `development@3281075bdc5e19997a3ba8120fa6a275e7ee5ab1`, G01–G16 are integrated `PASS`; G17 is `MISSING`, G18 is `MISSING`, G19 is `PARTIAL`, G20 is `MISSING`, and global V3 remains `NOT_READY`. The active order is G18 unified adversarial/failure proof → G19 fresh production-like bootstrap → candidate freeze → G17 final `0001_initial` equivalence → affected frozen-proof reruns → G20 final exact-head manifest.
+
+The V3 product thesis is followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`, and those contracts drive the executable clean PostgreSQL 18 candidate under `migrations/sql/v3_candidate/`.
+
+The historical V2 PostgreSQL design chain remains useful as executable design history, but it is **not** a schema to freeze or extend. The active candidate remains pre-baseline until the remaining release gates close; it must not become `0001_initial` merely because G01–G16 are green.
 
 When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the first schema, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
 
@@ -26,11 +30,23 @@ Use this precedence when rules overlap:
 8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
 9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
-Transition support documents:
+Current Phase 6 release execution documents:
 
-- `12-v3-transition-plan.md` — implementation/reduction order;
-- `v3/sql-disposition.md` — V2 SQL disposition inventory; later V3 contracts close previously open `RE_EVALUATE` questions;
+- `release/v3-current-release-roadmap.md` — current repository point, implemented proof and remaining execution path;
+- `release/v3-release-gates.md` — canonical G01–G20 status registry;
+- `release/v3-freeze-scope.md` — scope, evidence discipline and freeze rules;
+- `release/v3-race-matrix.md` — release-critical race inventory;
+- `release/v3-invariant-matrix.md` and `release/v3-invariant-proof-registry.json` — V3-I01..V3-I66 proof registry;
+- `release/v3-public-api-contract-freeze.md` — G16 frozen public surface.
+
+Transition/history support documents:
+
+- `12-v3-transition-plan.md` — architectural migration/reduction plan; useful history, not the current Phase 6 execution order;
+- `release/v3-post-merge-rebaseline.md` — historical rebaseline after the earlier feature integrations; its old gate statuses are not current;
+- `v3/sql-disposition.md` — V2 SQL disposition inventory;
 - `migrations/README.md` — active V3 candidate ownership, apply order and baseline-freeze gate.
+
+Phase 6 executable release-proof contracts live under `release/`. In particular, `release/v3-test-isolation.md` owns disposable PostgreSQL test isolation, scratch database cleanup, evidence-manifest semantics and required CI-gate aggregation.
 
 The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
 
@@ -83,7 +99,7 @@ The connector must define ownership, contract, trust/tenant context, transaction
 
 The older numbered canonical documents are retained during transition because design history and invariant references still point to them. Do not perform cosmetic bulk moves while V3 is stabilizing.
 
-New V3 domain/schema contracts belong under `docs/v3/`. Durable rationale belongs in `adr/`.
+New V3 domain/schema contracts belong under `docs/v3/`. Durable rationale belongs in `adr/`. Current release execution belongs under `docs/release/` and must distinguish active status from historical evidence.
 
 ## PostgreSQL executable surfaces
 
@@ -103,7 +119,7 @@ It is installed by:
 bash scripts/db/apply_v3_candidate.sh
 ```
 
-CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history and must not be called `0001_initial` until the freeze gate in `v3/02-pre-sql-contract.md` passes.
+CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history. Do not create or bless the final `0001_initial` until G18 and G19 close and the candidate is explicitly frozen according to `release/v3-current-release-roadmap.md`.
 
 ### Historical V2 design chain
 

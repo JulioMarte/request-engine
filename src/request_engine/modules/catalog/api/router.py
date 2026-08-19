@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from request_engine.modules.catalog.api.models import BusinessInfoView, OfferingView
 from request_engine.modules.catalog.application.queries.get_business_info import (
@@ -13,8 +13,9 @@ from request_engine.modules.catalog.application.queries.search_offerings import 
     get_offering_details,
     search_offerings,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 
 def create_router(
@@ -26,18 +27,12 @@ def create_router(
     router = APIRouter(tags=["catalog"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
-        try:
-            return await actor_resolver.resolve_actor(request)
-        except AuthenticationRequired as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="authentication required",
-            ) from exc
+        return await actor_resolver.resolve_actor(request)
 
     async def business_info(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> BusinessInfoView:
-        _require(actor, "business.read")
+        require_capability(actor, "business.get_info")
         info = await get_business_info(business_reader, actor.organization_id)
         return BusinessInfoView.from_contract(info)
 
@@ -48,7 +43,7 @@ def create_router(
         requestable: bool | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[OfferingView, ...]:
-        _require(actor, "catalog.read")
+        require_capability(actor, "catalog.search_offerings")
         result = await search_offerings(
             offering_reader,
             SearchOfferingsQuery(
@@ -65,7 +60,7 @@ def create_router(
         offering_key: str,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> OfferingView:
-        _require(actor, "catalog.read")
+        require_capability(actor, "catalog.get_offering_details")
         offering = await get_offering_details(
             offering_reader,
             organization_id=actor.organization_id,
@@ -75,30 +70,28 @@ def create_router(
             raise HTTPException(status_code=404, detail="Offering not found")
         return OfferingView.from_contract(offering)
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/business",
         business_info,
+        capability="business.get_info",
         methods=["GET"],
         response_model=BusinessInfoView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/catalog/offerings",
         offerings,
+        capability="catalog.search_offerings",
         methods=["GET"],
         response_model=tuple[OfferingView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/v1/catalog/offerings/{offering_key}",
         offering_details,
+        capability="catalog.get_offering_details",
         methods=["GET"],
         response_model=OfferingView,
     )
     return router
-
-
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
-        )

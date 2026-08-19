@@ -12,6 +12,8 @@ from request_engine.modules.communications.adapters.db.communication_commands im
 )
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     REMINDER_ACTION_TYPE,
+    REMINDER_SCHEDULE_TYPE,
+    REMINDER_SCHEDULE_VERSION,
     PostgresReminderCommands,
 )
 from request_engine.modules.communications.adapters.db.reminder_occurrences import (
@@ -90,6 +92,18 @@ def _create_fixture(conn: PgConnection) -> CommunicationFixture:
         RETURNING id
         """,
         (organization_id, f"Patient {suffix}"),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.representations (
+            organization_id,
+            principal_id,
+            represented_party_id,
+            scope_key,
+            authority_kind
+        ) VALUES (%s, %s, %s, 'reminders.manage', 'self')
+        """,
+        (organization_id, principal_id, party_id),
     )
     contact_point_id = _uuid_row(
         conn,
@@ -260,6 +274,7 @@ async def test_reminder_plan_creation_and_cancellation_own_future_schedule(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
             reminder_plan_id=plan.id,
+            expected_revision=plan.revision,
             reason="plan no longer needed",
             idempotency_key=f"cancel-reminder-{uuid4().hex}",
         ),
@@ -284,9 +299,11 @@ async def test_reminder_plan_creation_and_cancellation_own_future_schedule(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_reminder_occurrence_materialization_is_crash_replay_safe(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     plan_id = _uuid_row(
@@ -309,7 +326,8 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             fixture.party_id,
             json.dumps(
                 {
-                    "type": "daily_times",
+                    "type": REMINDER_SCHEDULE_TYPE,
+                    "version": REMINDER_SCHEDULE_VERSION,
                     "times": ["00:00:00"],
                     "max_lateness_minutes": 60,
                 }
@@ -348,16 +366,17 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
             json.dumps(
                 {
                     "reminder_plan_id": str(plan_id),
+                    "plan_revision": 1,
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"test-reminder:{plan_id}:{occurrence_at.isoformat()}",
+            f"test-reminder:{plan_id}:r1:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
         ),
     )
 
-    worker = PostgresScheduledActionWorker(session_factory)
+    worker = PostgresScheduledActionWorker(worker_session_factory)
     leases = await worker.claim(limit=500)
     lease = next(item for item in leases if item.id == action_id)
     materializer = PostgresReminderOccurrenceCommands(session_factory)
@@ -419,6 +438,7 @@ async def test_reminder_occurrence_materialization_is_crash_replay_safe(
 async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    worker_session_factory: SessionFactory,
 ) -> None:
     fixture = _create_fixture(admin_conn)
     plan_id = _uuid_row(
@@ -441,7 +461,8 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
             fixture.party_id,
             json.dumps(
                 {
-                    "type": "daily_times",
+                    "type": REMINDER_SCHEDULE_TYPE,
+                    "version": REMINDER_SCHEDULE_VERSION,
                     "times": ["00:00:00"],
                     "max_lateness_minutes": 1,
                 }
@@ -479,16 +500,17 @@ async def test_stale_reminder_occurrence_is_skipped_without_catchup_send(
             json.dumps(
                 {
                     "reminder_plan_id": str(plan_id),
+                    "plan_revision": 1,
                     "occurrence_at": occurrence_at.isoformat(),
                 }
             ),
-            f"test-stale-reminder:{plan_id}:{occurrence_at.isoformat()}",
+            f"test-stale-reminder:{plan_id}:r1:{occurrence_at.isoformat()}",
             occurrence_at,
             occurrence_at,
         ),
     )
 
-    worker = PostgresScheduledActionWorker(session_factory)
+    worker = PostgresScheduledActionWorker(worker_session_factory)
     lease = next(item for item in await worker.claim(limit=500) if item.id == action_id)
     result = await PostgresReminderOccurrenceCommands(session_factory).materialize(lease)
 

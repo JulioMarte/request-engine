@@ -4,37 +4,85 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A PR can receive several commits while an implementation is in progress.
+# Only the newest revision has evidentiary value, so cancel obsolete runs instead
+# of consuming runners and external service/API quotas for stale commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+
 jobs:
   python-quality:
     name: Python quality and architecture
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install uv
-        run: python -m pip install --disable-pip-version-check uv
-      - name: Resolve development environment
-        run: uv sync --all-groups
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Ruff format check
-        run: uv run ruff format --diff .
-      - name: Pyright
-        run: uv run pyright
-      - name: Architecture tests
-        run: uv run pytest tests/architecture -q
-      - name: Module unit tests
-        run: uv run pytest tests/modules -q
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Run canonical Python quality job
+        run: >-
+          python scripts/ci/ci_jobs.py python-quality
+          --summary-output .ci/python-quality.json
+          --log-dir .ci/logs
+      - name: Upload Python quality failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-quality-failure-summary
+          path: .ci/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  observability-contract:
+    name: Observability runtime contract
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            deploy/observability/requirements.txt
+      - name: Install project and pinned OpenTelemetry runtime
+        run: |
+          uv sync --frozen --no-dev
+          uv pip install -r deploy/observability/requirements.txt
+      - name: Validate zero-code launcher
+        run: >-
+          uv run --no-sync python scripts/observability/run_with_otel.py
+          --service-name request-engine-ci --check
+      - name: Run OpenTelemetry compatibility, SDK, and exporter smoke test
+        run: uv run --no-sync python scripts/observability/smoke_otel.py
 
   postgres-v2-history:
     name: PostgreSQL 18 V2 design history
-    runs-on: ubuntu-latest
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
@@ -52,32 +100,74 @@ jobs:
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGDATABASE: request_engine
       PGUSER: request_engine
       PGPASSWORD: request_engine
+      PGDATABASE: request_engine
     steps:
       - uses: actions/checkout@v6
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-      - name: Apply historical V2 design chain
-        run: scripts/db/apply_design_chain.sh
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
+      - name: Run canonical V2 history job
+        run: python scripts/ci/ci_jobs.py postgres-v2-history
 
-  postgres-v3-candidate:
-    name: PostgreSQL 18 V3 candidate and verticals
-    runs-on: ubuntu-latest
+  postgres-v3-bootstrap-proof:
+    name: PostgreSQL 18 V3 repeated bootstrap proof
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
         env:
           POSTGRES_DB: request_engine_v3
-          POSTGRES_USER: request_engine
-          POSTGRES_PASSWORD: request_engine
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U request_engine -d request_engine_v3"
+          --health-cmd "pg_isready -U postgres -d request_engine_v3"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGMAINTENANCE_DB: postgres
+      V3_PROOF_DATABASE_PREFIX: request_engine_v3_phase6
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
+      - name: Run canonical V3 bootstrap proof job
+        run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
+
+  postgres-v3-candidate-proof:
+    name: PostgreSQL 18 V3 candidate proof
+    needs:
+      - python-quality
+      - observability-contract
+      - postgres-v3-bootstrap-proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_v3
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_v3"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -85,28 +175,51 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
       PGDATABASE: request_engine_v3
-      PGUSER: request_engine
-      PGPASSWORD: request_engine
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PHASE6_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PHASE6_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      PHASE6_TESTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - name: Install uv and PostgreSQL client
-        run: |
-          python -m pip install --disable-pip-version-check uv
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-      - name: Apply clean V3 candidate
-        run: bash scripts/db/apply_v3_candidate.sh
-      - name: Resolve test environment
-        run: uv sync --all-groups
-      - name: V3 PostgreSQL invariant, race, and vertical tests
-        run: >-
-          uv run pytest
-          tests/db
-          tests/integration/v3_first_vertical
-          tests/integration/v3_booking_core
-          tests/integration/v3_booking_commitments
-          -q
-          -m postgres
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
+      - name: Run canonical V3 candidate job
+        run: bash scripts/ci/run_v3_candidate_with_g19.sh
+      - name: Upload V3 candidate release proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-candidate-release-proof
+          path: .phase6/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
+  # conditional, then always run this lightweight aggregate so a failed/skipped
+  # prerequisite can never become a non-blocking skipped required check.
+  postgres-v3-candidate:
+    name: PostgreSQL 18 V3 candidate and verticals
+    needs:
+      - python-quality
+      - observability-contract
+      - postgres-v3-bootstrap-proof
+      - postgres-v3-candidate-proof
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      REQUIRED_NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require successful prerequisite jobs
+        run: python scripts/ci/require_successful_needs.py

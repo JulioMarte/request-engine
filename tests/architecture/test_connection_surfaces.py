@@ -7,7 +7,13 @@ HTTP_ENTRYPOINT = SRC_ROOT / "entrypoints" / "http"
 MODULES_ROOT = SRC_ROOT / "modules"
 
 HTTP_MODULES = {"requests", "catalog", "booking", "queue"}
-ENTRYPOINT_ALLOWED_PYTHON = {"__init__.py", "app.py", "errors.py", "security.py"}
+ENTRYPOINT_ALLOWED_PYTHON = {
+    "__init__.py",
+    "app.py",
+    "capabilities.py",
+    "errors.py",
+    "security.py",
+}
 
 
 def _imports(path: Path) -> list[str]:

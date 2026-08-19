@@ -39,6 +39,7 @@ class PostgresRequestReader:
                 requester_party_id=cast(UUID | None, row["requester_party_id"]),
                 scope_key="requests.manage",
                 allow_operator_override=allow_party_override,
+                lock_authority=False,
             )
             participants = await read_participants(session, organization_id, request_id)
             correlations = await read_correlations(session, organization_id, request_id)

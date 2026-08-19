@@ -7,6 +7,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.adapters.db.reminder_authority import (
+    require_reminder_subject_authority,
+)
 from request_engine.modules.communications.adapters.db.task_store import (
     validate_recipient_and_contact_point,
 )
@@ -19,6 +22,7 @@ from request_engine.modules.communications.application.commands.create_reminder_
 from request_engine.modules.communications.application.errors import (
     ReminderPlanNotActive,
     ReminderPlanNotFound,
+    ReminderPlanRevisionConflict,
 )
 from request_engine.modules.communications.contracts.reminders import (
     DailyReminderSchedule,
@@ -41,10 +45,12 @@ from request_engine.platform.scheduling.store import schedule_action
 
 REMINDER_ACTION_TYPE = "materialize_reminder_occurrence"
 REMINDER_ACTION_VERSION = 1
+REMINDER_SCHEDULE_TYPE = "daily_times"
+REMINDER_SCHEDULE_VERSION = 1
 
 
 class PostgresReminderCommands:
-    """Durable ReminderPlan lifecycle commands."""
+    """Durable ReminderPlan lifecycle commands with transactional Party authority."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
@@ -52,7 +58,7 @@ class PostgresReminderCommands:
     async def create_reminder_plan(self, command: CreateReminderPlanCommand) -> ReminderPlan:
         daily_times = normalize_daily_times(command.daily_times)
         fingerprint = command_fingerprint(
-            "communications.create_reminder_plan",
+            "reminders.create_plan",
             {
                 "subject_party_id": command.subject_party_id,
                 "purpose": command.purpose,
@@ -70,13 +76,20 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability="communications.create_reminder_plan",
+                capability="reminders.create_plan",
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
             if replay is not None:
                 return reminder_plan_from_json(cast(dict[str, object], replay["reminder_plan"]))
 
+            authority = await require_reminder_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                allow_operator_override=command.allow_subject_override,
+            )
             await validate_recipient_and_contact_point(
                 session,
                 organization_id=command.organization_id,
@@ -90,7 +103,8 @@ class PostgresReminderCommands:
                 times=daily_times,
             )
             schedule_spec: dict[str, object] = {
-                "type": "daily_times",
+                "type": REMINDER_SCHEDULE_TYPE,
+                "version": REMINDER_SCHEDULE_VERSION,
                 "times": [value.isoformat() for value in daily_times],
                 "max_lateness_minutes": command.max_lateness_minutes,
             }
@@ -141,13 +155,14 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 reminder_plan_id=plan.id,
+                plan_revision=plan.revision,
                 occurrence_at=first_occurrence,
             )
             await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name="communications.create_reminder_plan",
+                command_name="reminders.create_plan",
                 aggregate_kind="ReminderPlan",
                 aggregate_id=plan.id,
                 idempotency_id=idempotency_id,
@@ -155,6 +170,7 @@ class PostgresReminderCommands:
                     "purpose": plan.purpose,
                     "timezone": plan.timezone,
                     "first_occurrence_at": first_occurrence.isoformat(),
+                    "authority": authority.audit_details(),
                 },
             )
             await append_outbox(
@@ -179,9 +195,10 @@ class PostgresReminderCommands:
 
     async def cancel_reminder_plan(self, command: CancelReminderPlanCommand) -> ReminderPlan:
         fingerprint = command_fingerprint(
-            "communications.cancel_reminder_plan",
+            "reminders.cancel_plan",
             {
                 "reminder_plan_id": command.reminder_plan_id,
+                "expected_revision": command.expected_revision,
                 "reason": command.reason,
             },
         )
@@ -190,7 +207,7 @@ class PostgresReminderCommands:
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability="communications.cancel_reminder_plan",
+                capability="reminders.cancel_plan",
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
@@ -202,9 +219,25 @@ class PostgresReminderCommands:
                 organization_id=command.organization_id,
                 reminder_plan_id=command.reminder_plan_id,
             )
-            status = ReminderPlanStatus(cast(str, row["status"]))
+            subject_party_id = cast(UUID, row["subject_party_id"])
+            authority = await require_reminder_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                allow_operator_override=command.allow_subject_override,
+            )
+            actual_revision = cast(int, row["revision"])
+            if actual_revision != command.expected_revision:
+                raise ReminderPlanRevisionConflict(
+                    command.reminder_plan_id,
+                    command.expected_revision,
+                    actual_revision,
+                )
+
+            plan_status = ReminderPlanStatus(cast(str, row["status"]))
             changed = False
-            if status is ReminderPlanStatus.ACTIVE:
+            if plan_status is ReminderPlanStatus.ACTIVE:
                 row = (
                     (
                         await session.execute(
@@ -216,12 +249,14 @@ class PostgresReminderCommands:
                                     updated_at = clock_timestamp()
                                 WHERE organization_id = :organization_id
                                   AND id = :reminder_plan_id
+                                  AND revision = :expected_revision
                                 RETURNING *
                                 """
                             ),
                             {
                                 "organization_id": command.organization_id,
                                 "reminder_plan_id": command.reminder_plan_id,
+                                "expected_revision": command.expected_revision,
                             },
                         )
                     )
@@ -249,19 +284,28 @@ class PostgresReminderCommands:
                         "reminder_plan_id": command.reminder_plan_id,
                     },
                 )
-            elif status is ReminderPlanStatus.COMPLETED:
-                raise ReminderPlanNotActive(command.reminder_plan_id, status.value)
+                await _cancel_pending_reminder_communications(
+                    session,
+                    organization_id=command.organization_id,
+                    reminder_plan_id=command.reminder_plan_id,
+                )
+            elif plan_status is ReminderPlanStatus.COMPLETED:
+                raise ReminderPlanNotActive(command.reminder_plan_id, plan_status.value)
 
             plan = reminder_plan_from_row(row)
             await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                command_name="communications.cancel_reminder_plan",
+                command_name="reminders.cancel_plan",
                 aggregate_kind="ReminderPlan",
                 aggregate_id=plan.id,
                 idempotency_id=idempotency_id,
-                details={"reason": command.reason, "already_cancelled": not changed},
+                details={
+                    "reason": command.reason,
+                    "already_cancelled": not changed,
+                    "authority": authority.audit_details(),
+                },
             )
             if changed:
                 await append_outbox(
@@ -283,6 +327,74 @@ class PostgresReminderCommands:
             return plan
 
 
+async def _cancel_pending_reminder_communications(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    reminder_plan_id: UUID,
+) -> None:
+    task_rows = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.communication_tasks
+                WHERE organization_id = :organization_id
+                  AND source_kind = 'ReminderPlan'
+                  AND source_id = :reminder_plan_id
+                  AND status = 'pending'
+                ORDER BY id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "reminder_plan_id": reminder_plan_id,
+            },
+        )
+    ).all()
+    task_ids = tuple(cast(UUID, row[0]) for row in task_rows)
+    if not task_ids:
+        return
+
+    await session.execute(
+        text(
+            """
+            UPDATE request_engine.communication_tasks
+            SET status = 'cancelled',
+                revision = revision + 1,
+                updated_at = clock_timestamp()
+            WHERE organization_id = :organization_id
+              AND id = ANY(CAST(:task_ids AS uuid[]))
+              AND status = 'pending'
+            """
+        ),
+        {
+            "organization_id": organization_id,
+            "task_ids": [str(value) for value in task_ids],
+        },
+    )
+    await session.execute(
+        text(
+            """
+            UPDATE request_engine.scheduled_actions
+            SET status = 'cancelled',
+                updated_at = clock_timestamp()
+            WHERE organization_id = :organization_id
+              AND owner_module = 'communications'
+              AND action_type = 'dispatch_task'
+              AND subject_kind = 'CommunicationTask'
+              AND subject_id = ANY(CAST(:task_ids AS uuid[]))
+              AND status = 'pending'
+            """
+        ),
+        {
+            "organization_id": organization_id,
+            "task_ids": [str(value) for value in task_ids],
+        },
+    )
+
+
 async def database_now(session: AsyncSession) -> datetime:
     return cast(
         datetime,
@@ -295,8 +407,11 @@ async def schedule_reminder_occurrence(
     *,
     organization_id: UUID,
     reminder_plan_id: UUID,
+    plan_revision: int,
     occurrence_at: datetime,
 ) -> UUID:
+    if plan_revision <= 0:
+        raise ValueError("plan_revision must be positive")
     return await schedule_action(
         session,
         organization_id=organization_id,
@@ -305,10 +420,14 @@ async def schedule_reminder_occurrence(
         action_version=REMINDER_ACTION_VERSION,
         subject_kind="ReminderPlan",
         subject_id=reminder_plan_id,
-        dedupe_key=(f"communications:reminder:{reminder_plan_id}:{occurrence_at.isoformat()}:v1"),
+        dedupe_key=(
+            f"communications:reminder:{reminder_plan_id}:r{plan_revision}:"
+            f"{occurrence_at.isoformat()}:v1"
+        ),
         execute_at=occurrence_at,
         payload={
             "reminder_plan_id": str(reminder_plan_id),
+            "plan_revision": plan_revision,
             "occurrence_at": occurrence_at.isoformat(),
         },
         max_attempts=8,
@@ -364,8 +483,15 @@ def reminder_plan_from_row(row: RowMapping) -> ReminderPlan:
 
 
 def parse_daily_schedule(schedule_spec: dict[str, object]) -> DailyReminderSchedule:
-    if schedule_spec.get("type") != "daily_times":
+    if schedule_spec.get("type") != REMINDER_SCHEDULE_TYPE:
         raise ValueError("unsupported reminder schedule type")
+    raw_version = schedule_spec.get("version")
+    if (
+        isinstance(raw_version, bool)
+        or not isinstance(raw_version, int)
+        or raw_version != REMINDER_SCHEDULE_VERSION
+    ):
+        raise ValueError("unsupported reminder schedule version")
     raw_times = schedule_spec.get("times")
     raw_lateness = schedule_spec.get("max_lateness_minutes")
     if not isinstance(raw_times, list) or not raw_times:

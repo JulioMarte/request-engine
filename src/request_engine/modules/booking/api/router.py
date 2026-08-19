@@ -2,10 +2,12 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
+    AttendanceResponseBody,
+    AttendanceStateView,
     BookAppointmentBody,
     CancelReservationBody,
     RescheduleReservationBody,
@@ -22,11 +24,17 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
     CancelReservationHandler,
     cancel_reservation,
 )
+from request_engine.modules.booking.application.commands.record_attendance import (
+    RecordAttendanceResponseCommand,
+    RecordAttendanceResponseHandler,
+    record_attendance_response,
+)
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
     RescheduleReservationHandler,
     reschedule_reservation,
 )
+from request_engine.modules.booking.application.errors import ReservationNotFound
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     AppointmentAvailabilityReader,
     FindAppointmentSlotsQuery,
@@ -36,9 +44,11 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver, AuthenticationRequired
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -49,9 +59,11 @@ IdempotencyKey = Annotated[
 def create_router(
     *,
     availability_reader: AppointmentAvailabilityReader,
+    option_codec: AppointmentOptionCodec,
     book_handler: BookAppointmentHandler,
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
+    attendance_handler: RecordAttendanceResponseHandler,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
@@ -59,13 +71,7 @@ def create_router(
     router = APIRouter(prefix="/v1/appointments", tags=["appointments"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
-        try:
-            return await actor_resolver.resolve_actor(request)
-        except AuthenticationRequired as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="authentication required",
-            ) from exc
+        return await actor_resolver.resolve_actor(request)
 
     async def slots(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
@@ -75,7 +81,7 @@ def create_router(
         location_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
-        _require(actor, "booking.find_slots")
+        require_capability(actor, "appointments.find_slots")
         result = await find_appointment_slots(
             availability_reader,
             FindAppointmentSlotsQuery(
@@ -87,24 +93,31 @@ def create_router(
                 limit=limit,
             ),
         )
-        return tuple(AppointmentSlotView.from_contract(item) for item in result)
+        return tuple(
+            AppointmentSlotView.from_contract(
+                item,
+                option_id=option_codec.issue(actor.organization_id, item),
+            )
+            for item in result
+        )
 
     async def book(
         body: BookAppointmentBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.book_appointment")
+        require_capability(actor, "appointments.book")
+        option = option_codec.decode(actor.organization_id, body.option_id)
         reservation = await book_appointment(
             book_handler,
             BookAppointmentCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
-                offering_version_id=body.offering_version_id,
+                offering_version_id=option.offering_version_id,
                 subject_party_id=body.subject_party_id,
-                start_at=body.start_at,
-                resources=tuple(item.to_contract() for item in body.resources),
-                location_id=body.location_id,
+                start_at=option.start_at,
+                resources=option.resources,
+                location_id=option.location_id,
                 origin_request_id=body.origin_request_id,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
@@ -116,7 +129,7 @@ def create_router(
         reservation_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> ReservationView:
-        _require(actor, "booking.read")
+        require_capability(actor, "appointments.read")
         reservation = await get_reservation_status(
             reservation_reader,
             authority_reader,
@@ -126,7 +139,7 @@ def create_router(
             allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
         )
         if reservation is None:
-            raise HTTPException(status_code=404, detail="Reservation not found")
+            raise ReservationNotFound(reservation_id)
         return ReservationView.from_contract(reservation)
 
     async def cancel(
@@ -135,7 +148,7 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.cancel_reservation")
+        require_capability(actor, "appointments.cancel")
         reservation = await cancel_reservation(
             cancel_handler,
             CancelReservationCommand(
@@ -144,6 +157,7 @@ def create_router(
                 reservation_id=reservation_id,
                 reason=body.reason,
                 idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
@@ -155,59 +169,93 @@ def create_router(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
-        _require(actor, "booking.reschedule_reservation")
+        require_capability(actor, "appointments.reschedule")
+        option = option_codec.decode(actor.organization_id, body.option_id)
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 reservation_id=reservation_id,
-                start_at=body.start_at,
-                resources=tuple(item.to_contract() for item in body.resources),
-                location_id=body.location_id,
+                start_at=option.start_at,
+                resources=option.resources,
+                location_id=option.location_id,
                 idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
             ),
         )
         return ReservationView.from_contract(reservation)
 
-    router.add_api_route(
+    async def attendance_response(
+        reservation_id: UUID,
+        body: AttendanceResponseBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> AttendanceStateView:
+        require_capability(actor, "appointments.confirm_attendance")
+        attendance = await record_attendance_response(
+            attendance_handler,
+            RecordAttendanceResponseCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                reservation_id=reservation_id,
+                response=body.response,
+                source_key="http",
+                idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return AttendanceStateView.from_contract(attendance)
+
+    add_capability_route(
+        router,
         "/slots",
         slots,
+        capability="appointments.find_slots",
         methods=["GET"],
         response_model=tuple[AppointmentSlotView, ...],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "",
         book,
+        capability="appointments.book",
         methods=["POST"],
         response_model=ReservationView,
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}",
         reservation_status,
+        capability="appointments.read",
         methods=["GET"],
         response_model=ReservationView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}/cancel",
         cancel,
+        capability="appointments.cancel",
         methods=["POST"],
         response_model=ReservationView,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{reservation_id}/reschedule",
         reschedule,
+        capability="appointments.reschedule",
         methods=["POST"],
         response_model=ReservationView,
     )
+    add_capability_route(
+        router,
+        "/{reservation_id}/attendance",
+        attendance_response,
+        capability="appointments.confirm_attendance",
+        methods=["POST"],
+        response_model=AttendanceStateView,
+    )
     return router
-
-
-def _require(actor: ActorContext, capability: str) -> None:
-    if not actor.allows(capability):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"capability {capability!r} is required",
-        )

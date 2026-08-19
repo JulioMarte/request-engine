@@ -18,6 +18,17 @@ class OfferingVersionNotFound(BookingError):
         self.offering_version_id = offering_version_id
 
 
+class AppointmentOptionInvalid(BookingError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"AppointmentOption is invalid: {reason}")
+        self.reason = reason
+
+
+class AppointmentOptionExpired(BookingError):
+    def __init__(self) -> None:
+        super().__init__("AppointmentOption has expired")
+
+
 class InvalidResourceSelection(BookingError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -63,10 +74,30 @@ class CapacityHoldExpired(BookingError):
         self.hold_id = hold_id
 
 
+class CapacityHoldRevisionConflict(BookingError):
+    def __init__(self, hold_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"CapacityHold {hold_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.hold_id = hold_id
+        self.expected = expected
+        self.actual = actual
+
+
 class ReservationNotFound(BookingError):
     def __init__(self, reservation_id: UUID) -> None:
         super().__init__(f"Reservation {reservation_id} was not found")
         self.reservation_id = reservation_id
+
+
+class ReservationRevisionConflict(BookingError):
+    def __init__(self, reservation_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"Reservation {reservation_id} revision conflict: expected {expected}, current {actual}"
+        )
+        self.reservation_id = reservation_id
+        self.expected = expected
+        self.actual = actual
 
 
 class ReservationNotCancellable(BookingError):

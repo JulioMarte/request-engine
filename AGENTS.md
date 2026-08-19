@@ -2,6 +2,33 @@
 
 These instructions apply repository-wide. A nearer `AGENTS.md` may add stricter path-specific rules.
 
+## Branch workflow — mandatory
+
+`development` is the canonical integration branch. `main` is release-only. Request Engine uses **one serialized ordinary development integration lane**.
+
+For ordinary feature, fix, refactor, test, documentation, release-proof, or agent work:
+
+1. fetch the remote and resolve the current `origin/development` HEAD;
+2. do not start a second merge-ready sibling workstream while another ordinary integration branch is still active;
+3. create/rebuild the work branch from the current `development` state;
+4. set `.github/development-integration-lane` to exactly the work branch name;
+5. open the pull request against `development`;
+6. finish the complete coherent feature/gate on that branch;
+7. if `development` changes before merge, reconcile/rebuild the branch onto the new integrated state and reclaim the lane with the same actual branch name;
+8. require exact-head CI/evidence before merge;
+9. merge into `development` and delete the merged work branch;
+10. only then start the next ordinary work branch from the new `development` HEAD.
+
+`tmp/*` branches are scratch/reconciliation space only and MUST NOT become ordinary PR heads.
+
+The only normal pull request allowed to target `main` is the release promotion `development -> main` after the integrated `development` state has passed the required release proof again.
+
+Do not avoid conflicts by targeting a feature branch at `main`, silently stacking it on another unmerged feature branch, or keeping sibling branches from an older `development` snapshot and treating them as independently merge-ready. Exploratory parallel work may exist provisionally, but after the current integration owner merges it must reconcile with the new `development`, claim the lane, and rerun required checks before review.
+
+`tests/architecture/test_branch_workflow_contract.py` enforces this topology. A **Development integration lane mismatch** is an integration-state error: fetch/reconcile with current `origin/development`, set `.github/development-integration-lane` to the actual PR head, and rerun CI. Do not weaken or bypass the test.
+
+See `docs/architecture/branch-integration-contract.md` for the canonical policy and `CONTRIBUTING.md` for contributor steps. Never infer the development base from GitHub's default branch.
+
 ## Start here
 
 Before editing, identify the primary owner and read only the canonical material needed for the task:

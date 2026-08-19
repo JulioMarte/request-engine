@@ -47,26 +47,26 @@ class SubmitRequestBody(BaseModel):
 class RecordRequestResultBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     result_payload: dict[str, object]
-    expected_revision: int | None = Field(default=None, gt=0)
+    expected_revision: int = Field(gt=0)
 
 
 class CompleteRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     result_payload: dict[str, object] | None = None
-    expected_revision: int | None = Field(default=None, gt=0)
+    expected_revision: int = Field(gt=0)
 
 
 class CancelRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str | None = Field(default=None, max_length=1000)
-    expected_revision: int | None = Field(default=None, gt=0)
+    expected_revision: int = Field(gt=0)
 
 
 class FailRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     error_class: str = Field(min_length=1, max_length=200)
     details: dict[str, object] = Field(default_factory=dict)
-    expected_revision: int | None = Field(default=None, gt=0)
+    expected_revision: int = Field(gt=0)
 
 
 class RequestParticipantView(BaseModel):

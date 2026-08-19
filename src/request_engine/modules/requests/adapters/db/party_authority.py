@@ -36,12 +36,13 @@ async def require_requester_authority(
     requester_party_id: UUID | None,
     scope_key: str,
     allow_operator_override: bool,
+    lock_authority: bool = True,
 ) -> RequestPartyAuthorityEvidence:
     """Authorize one Request operation against its requester authority anchor.
 
-    requester_party_id is the only Party field that grants caller-facing control
-    over a Request. Recipient and RequestParticipant roles remain business facts.
-    Requests without a requester anchor are operator-managed only.
+    Mutations lock the current exact-scope Representation and its Principal/Party
+    endpoints by default so a concurrent revoke/deactivation serializes after the
+    already-authorized command. Read callers explicitly opt out of those locks.
     """
 
     if allow_operator_override:
@@ -49,20 +50,26 @@ async def require_requester_authority(
     if requester_party_id is None:
         raise RequestPartyAuthorityRequired(None, scope_key)
 
+    function_name = (
+        "request_engine.lock_current_party_authority"
+        if lock_authority
+        else "request_engine.resolve_current_party_authority"
+    )
+    query = text(
+        f"""
+        SELECT representation_id, authority_kind
+        FROM {function_name}(
+            :organization_id,
+            :principal_id,
+            :requester_party_id,
+            :scope_key
+        )
+        """
+    )
     row = (
         (
             await session.execute(
-                text(
-                    """
-                    SELECT representation_id, authority_kind
-                    FROM request_engine.resolve_current_party_authority(
-                        :organization_id,
-                        :principal_id,
-                        :requester_party_id,
-                        :scope_key
-                    )
-                    """
-                ),
+                query,
                 {
                     "organization_id": organization_id,
                     "principal_id": principal_id,

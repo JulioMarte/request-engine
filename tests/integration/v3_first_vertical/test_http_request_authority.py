@@ -38,6 +38,17 @@ class BearerTestActorResolver:
         return actor
 
 
+class MutableTenantCapabilityPolicy:
+    def __init__(self, enabled: frozenset[str]) -> None:
+        self.enabled = enabled
+        self.calls = 0
+
+    async def enabled_capabilities(self, organization_id: UUID) -> frozenset[str]:
+        del organization_id
+        self.calls += 1
+        return self.enabled
+
+
 def _uuid_row(
     conn: PgConnection,
     sql: LiteralString,
@@ -155,6 +166,67 @@ def _client(session_factory: SessionFactory, actors: dict[str, ActorContext]) ->
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+async def test_i03_material_http_mutation_revalidates_current_tenant_capability_policy(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _create_fixture(admin_conn)
+    _grant(
+        admin_conn,
+        fixture,
+        party_id=fixture.requester_party_id,
+        scope_key="requests.submit",
+        authority_kind="authorized_contact",
+    )
+    actor = ActorContext(
+        organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
+        capabilities=frozenset({"requests.submit"}),
+    )
+    policy = MutableTenantCapabilityPolicy(frozenset({"requests.submit"}))
+    app = create_app(
+        session_factory=session_factory,
+        actor_resolver=BearerTestActorResolver({"actor": actor}),
+        tenant_capability_policy=policy,
+    )
+    headers = {"Authorization": "Bearer actor"}
+    body = {
+        "payload": {"message": "policy-current"},
+        "requester_party_id": str(fixture.requester_party_id),
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        allowed = await client.post(
+            f"/v1/requests/definitions/{fixture.request_key}/submit",
+            headers={**headers, "Idempotency-Key": f"policy-allowed-{uuid4().hex}"},
+            json=body,
+        )
+        assert allowed.status_code == 201
+
+        policy.enabled = frozenset()
+        denied = await client.post(
+            f"/v1/requests/definitions/{fixture.request_key}/submit",
+            headers={**headers, "Idempotency-Key": f"policy-denied-{uuid4().hex}"},
+            json=body,
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["code"] == "capability_required"
+
+    assert policy.calls == 2
+    assert admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.requests
+        WHERE organization_id = %s
+          AND requester_party_id = %s
+        """,
+        (fixture.organization_id, fixture.requester_party_id),
+    ).fetchone() == (1,)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
 async def test_requester_is_the_only_party_authority_anchor_and_override_is_audited(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
@@ -195,7 +267,8 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
             json=body,
         )
         assert denied_submit.status_code == 403
-        assert denied_submit.json()["error"]["code"] == "request_party_authority_required"
+        assert denied_submit.json()["error"]["code"] == "party_authority_required"
+        assert denied_submit.json()["error"]["resolution"] == "request_authority"
         assert denied_submit.json()["error"]["details"]["scope_key"] == "requests.submit"
 
         submit_representation_id = _grant(
@@ -235,6 +308,7 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
         readable = await client.get(f"/v1/requests/{request_id}", headers=delegated)
         assert readable.status_code == 200
         assert readable.json()["requester_party_id"] == str(fixture.requester_party_id)
+        current_revision = cast(int, readable.json()["revision"])
 
         admin_conn.execute(
             """
@@ -248,17 +322,18 @@ async def test_requester_is_the_only_party_authority_anchor_and_override_is_audi
         revoked_cancel = await client.post(
             f"/v1/requests/{request_id}/cancel",
             headers={**delegated, "Idempotency-Key": f"revoked-cancel-{uuid4().hex}"},
-            json={"reason": "should be denied"},
+            json={"reason": "should be denied", "expected_revision": current_revision},
         )
         assert revoked_read.status_code == 403
         assert revoked_cancel.status_code == 403
 
         operator_read = await client.get(f"/v1/requests/{request_id}", headers=operator)
         assert operator_read.status_code == 200
+        operator_revision = cast(int, operator_read.json()["revision"])
         cancelled = await client.post(
             f"/v1/requests/{request_id}/cancel",
             headers={**operator, "Idempotency-Key": f"operator-cancel-{uuid4().hex}"},
-            json={"reason": "operator decision"},
+            json={"reason": "operator decision", "expected_revision": operator_revision},
         )
         assert cancelled.status_code == 200
         assert cancelled.json()["status"] == "cancelled"
@@ -331,7 +406,9 @@ async def test_unattributed_request_can_be_submitted_but_is_operator_managed(
             headers={"Authorization": "Bearer submitter"},
         )
         assert denied.status_code == 403
-        assert denied.json()["error"]["details"]["requester_party_id"] is None
+        assert denied.json()["error"]["code"] == "party_authority_required"
+        assert denied.json()["error"]["resolution"] == "request_authority"
+        assert denied.json()["error"]["details"]["party_id"] is None
 
         operator_read = await client.get(
             f"/v1/requests/{request_id}",

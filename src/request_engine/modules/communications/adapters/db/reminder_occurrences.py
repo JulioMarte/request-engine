@@ -18,13 +18,17 @@ from request_engine.modules.communications.adapters.db.task_store import (
     CommunicationTaskIntent,
     insert_or_reuse_communication_task,
 )
-from request_engine.modules.communications.application.errors import UnsupportedScheduledAction
 from request_engine.modules.communications.contracts.reminders import ReminderPlan
 from request_engine.modules.communications.domain.daily_schedule import next_daily_occurrence
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.outbox.postgres import append_outbox
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
-from request_engine.platform.scheduling.store import schedule_action
+from request_engine.platform.scheduling.store import lock_action_claim, schedule_action
+from request_engine.platform.worker.runtime import (
+    LeaseLostWorkError,
+    PermanentWorkError,
+    RetryableWorkError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,18 +47,34 @@ class PostgresReminderOccurrenceCommands:
         self._session_factory = session_factory
 
     async def materialize(self, lease: ScheduledActionLease) -> ReminderOccurrenceResult:
-        reminder_plan_id, occurrence_at = _validate_lease(lease)
+        reminder_plan_id, plan_revision, occurrence_at = _validate_lease(lease)
 
         async with tenant_transaction(self._session_factory, lease.organization_id) as session:
+            if not await lock_action_claim(
+                session,
+                action_id=lease.id,
+                claim_token=lease.claim_token,
+            ):
+                raise LeaseLostWorkError("reminder_materialization_fence_lost")
+
             row = await lock_reminder_plan(
                 session,
                 organization_id=lease.organization_id,
                 reminder_plan_id=reminder_plan_id,
             )
             plan = reminder_plan_from_row(row)
+            if plan.revision != plan_revision:
+                return ReminderOccurrenceResult(
+                    reminder_plan_id=plan.id,
+                    occurrence_at=occurrence_at,
+                    communication_task_id=None,
+                    next_occurrence_at=None,
+                    skipped_reason="plan_revision_stale",
+                )
+
             db_now = await database_now(session)
             if occurrence_at > db_now:
-                raise ValueError("reminder occurrence was claimed before execute_at")
+                raise RetryableWorkError("reminder_occurrence_claimed_early")
 
             if plan.status.value != "active":
                 return ReminderOccurrenceResult(
@@ -125,9 +145,12 @@ class PostgresReminderOccurrenceCommands:
                     template_version=plan.template_version,
                     render_context={
                         "reminder_plan_id": str(plan.id),
+                        "plan_revision": plan.revision,
                         "occurrence_at": occurrence_at.isoformat(),
                     },
-                    dedupe_key=(f"reminder-task:{plan.id}:{occurrence_at.isoformat()}:v1"),
+                    dedupe_key=(
+                        f"reminder-task:{plan.id}:r{plan.revision}:{occurrence_at.isoformat()}:v1"
+                    ),
                     not_before=occurrence_at,
                     expires_at=expires_at,
                 ),
@@ -158,6 +181,7 @@ class PostgresReminderOccurrenceCommands:
                         "purpose": task.purpose,
                         "source_kind": "ReminderPlan",
                         "source_id": str(plan.id),
+                        "plan_revision": plan.revision,
                         "occurrence_at": occurrence_at.isoformat(),
                     },
                 )
@@ -190,6 +214,7 @@ async def _ensure_next_occurrence(
                   AND subject_kind = 'ReminderPlan'
                   AND subject_id = :reminder_plan_id
                   AND execute_at > :current_occurrence_at
+                  AND payload ->> 'plan_revision' = :plan_revision_text
                 ORDER BY execute_at, id
                 LIMIT 1
                 """
@@ -199,6 +224,7 @@ async def _ensure_next_occurrence(
                 "action_type": REMINDER_ACTION_TYPE,
                 "reminder_plan_id": plan.id,
                 "current_occurrence_at": current_occurrence_at,
+                "plan_revision_text": str(plan.revision),
             },
         )
     ).scalar_one_or_none()
@@ -214,12 +240,13 @@ async def _ensure_next_occurrence(
         session,
         organization_id=organization_id,
         reminder_plan_id=plan.id,
+        plan_revision=plan.revision,
         occurrence_at=next_occurrence,
     )
     return next_occurrence
 
 
-def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
+def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, int, datetime]:
     if (
         lease.owner_module != "communications"
         or lease.action_type != REMINDER_ACTION_TYPE
@@ -227,20 +254,26 @@ def _validate_lease(lease: ScheduledActionLease) -> tuple[UUID, datetime]:
         or lease.subject_kind != "ReminderPlan"
         or lease.subject_id is None
     ):
-        raise UnsupportedScheduledAction(
-            lease.owner_module,
-            lease.action_type,
-            lease.action_version,
-        )
+        raise PermanentWorkError("unsupported_communications_scheduled_action")
 
     payload_plan_id = lease.payload.get("reminder_plan_id")
+    payload_plan_revision = lease.payload.get("plan_revision")
     payload_occurrence = lease.payload.get("occurrence_at")
-    if not isinstance(payload_plan_id, str) or not isinstance(payload_occurrence, str):
-        raise ValueError("reminder action payload is malformed")
-    reminder_plan_id = UUID(payload_plan_id)
+    if (
+        not isinstance(payload_plan_id, str)
+        or isinstance(payload_plan_revision, bool)
+        or not isinstance(payload_plan_revision, int)
+        or payload_plan_revision <= 0
+        or not isinstance(payload_occurrence, str)
+    ):
+        raise PermanentWorkError("reminder_scheduled_action_payload_invalid")
+    try:
+        reminder_plan_id = UUID(payload_plan_id)
+        occurrence_at = datetime.fromisoformat(payload_occurrence)
+    except ValueError as exc:
+        raise PermanentWorkError("reminder_scheduled_action_payload_invalid") from exc
     if reminder_plan_id != lease.subject_id:
-        raise ValueError("reminder action subject does not match payload")
-    occurrence_at = datetime.fromisoformat(payload_occurrence)
+        raise PermanentWorkError("reminder_scheduled_action_payload_mismatch")
     if occurrence_at.tzinfo is None or occurrence_at.utcoffset() is None:
-        raise ValueError("reminder occurrence_at must be timezone-aware")
-    return reminder_plan_id, occurrence_at
+        raise PermanentWorkError("reminder_scheduled_action_payload_invalid")
+    return reminder_plan_id, payload_plan_revision, occurrence_at

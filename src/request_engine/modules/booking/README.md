@@ -12,7 +12,8 @@ ScheduleException
 CapacityClaim
 CapacityHold
 Reservation
-AttendanceResponse history / attendance policy consequences
+AttendanceResponse history
+ReservationAttendance execution outcome
 ```
 
 Catalog owns `ResourceCapability` vocabulary and immutable `OfferingVersion` mandatory resource requirements; booking resolves those requirements to concrete Resources.
@@ -36,6 +37,8 @@ RescheduleReservation
 GetReservationStatus
 ConfirmAttendance
 DeclineAttendance
+CheckInReservation
+EvaluateNoShow
 ChangeResourceAvailability
 ChangeScheduleException
 ```
@@ -44,8 +47,9 @@ ChangeScheduleException
 
 - `1 Reservation = 1 OfferingVersion + 1 subject + 1 interval`.
 - No `ReservationItem` baseline.
-- Concrete `Resource` is the capacity serialization/lock root; no separate one-to-one `CapacityAuthority` baseline.
-- `CapacityClaim` is the common Hold/Reservation capacity-consumption truth.
+- Concrete `Resource` is the baseline tenant-local capacity serialization/lock root; no separate one-to-one `CapacityAuthority` baseline.
+- For an explicitly authorized cross-tenant shared-capacity binding on an `exclusive` Resource, Booking locks the tenant-local Resource first and then the hidden `SharedCapacityIdentity` root. Unbound Resources retain the baseline protocol.
+- `CapacityClaim` is the common Hold/Reservation capacity-consumption truth. Shared-capacity claim links are private serialization provenance, never a second capacity ledger.
 - No `ResourceAllocation` baseline. Add a future `ResourceAssignment` only if execution assignment becomes independently mutable from capacity consumption.
 - No CapacityPool, PlanningRevision, external commitment planning or field-service feasibility baseline.
 
@@ -55,12 +59,32 @@ An OfferingVersion may have multiple mandatory resource requirements. Booking mu
 
 Hold confirmation must promote/associate existing claims with the Reservation without temporary Hold + Reservation double counting.
 
-Reschedule is self-overlap safe: lock the Reservation, then the union of old/new Resources in stable-id order; validate the **final** desired state excluding only this Reservation's claims being replaced; atomically mark old claims replaced and insert new claims. Failure/rollback preserves the original Reservation and claims.
+Reschedule is self-overlap safe: lock the Reservation, then the union of old/new Resources in stable-id order; for bound Resources lock the complete shared-root set in stable-id order only after all local Resources; validate the **final** desired state excluding only this Reservation's claims being replaced; atomically mark old claims replaced and insert new claims. Failure/rollback preserves the original Reservation and claims.
 
 Routine schedule changes do not silently rewrite already-committed Reservations. New booking/hold acquisition revalidates schedule under Resource locks; administrative invalidation of an existing Hold/Reservation must be an explicit semantic command.
 
-Reservation confirmation and customer/patient attendance confirmation are distinct. Attendance responses are history-preserving facts/current projection; no-response or decline changes Reservation/capacity only through explicit versioned policy.
+## Reservation lifecycle and attendance
+
+Reservation commitment and attendance execution are deliberately orthogonal:
+
+```text
+Reservation.status
+confirmed | cancelled
+
+ReservationAttendance.status
+pending | checked_in | no_show
+```
+
+`AttendanceResponse` is append-only response history (`accepted|declined`). The newest response is the current response projection. A response changes Reservation concurrency state by advancing `Reservation.revision`.
+
+`ReservationAttendance` records what happened operationally. Check-in and no-show serialize on the Reservation before mutating the one-per-Reservation execution projection.
+
+A no-show is **not** a cancellation. It does not release capacity retroactively and it never creates a `SlotOpportunity`; the reserved interval has already occurred. A decline may cancel a future Reservation only when the immutable `booking_policy_snapshot` explicitly selects `decline_action=cancel`.
+
+Lifecycle automation reads only the Reservation's policy snapshot. It does not reinterpret the current mutable Offering policy after booking.
+
+Cancellation and reschedule may expose future capacity for recovery. That recovery begins only after the Booking transaction commits and then enters Queue through its public contract and the Phase 2B `SlotOpportunity -> SlotOffer` state machine.
 
 Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts.
 
-The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`.
+The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`. The cross-tenant extension design and privacy rationale are documented in `docs/v3/12-cross-tenant-shared-capacity-design.md` and ADR 0011.

@@ -300,8 +300,8 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
             params={
                 "offering_version_id": str(fixture.offering_version_id),
                 "location_id": str(fixture.location_id),
-                "window_start": datetime(2026, 8, 17, 13, 0, tzinfo=UTC).isoformat(),
-                "window_end": datetime(2026, 8, 17, 16, 0, tzinfo=UTC).isoformat(),
+                "window_start": datetime(2099, 8, 17, 13, 0, tzinfo=UTC).isoformat(),
+                "window_end": datetime(2099, 8, 17, 16, 0, tzinfo=UTC).isoformat(),
             },
             headers=auth,
         )
@@ -309,13 +309,11 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
         slots = slots_response.json()
         assert len(slots) == 6
         first = slots[0]
+        assert set(first) == {"option_id", "start_at", "end_at", "location_id"}
         booking_key = f"http-book-{uuid4().hex}"
         booking_body = {
-            "offering_version_id": str(fixture.offering_version_id),
+            "option_id": first["option_id"],
             "subject_party_id": str(fixture.subject_party_id),
-            "location_id": str(fixture.location_id),
-            "start_at": first["start_at"],
-            "resources": first["resources"],
         }
         booked = await client.post(
             "/v1/appointments",
@@ -335,16 +333,21 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
         read = await client.get(f"/v1/appointments/{reservation_id}", headers=auth)
         assert read.status_code == 200
         assert read.json()["status"] == "confirmed"
+        current_revision = cast(int, read.json()["revision"])
 
         cancel_key = f"http-cancel-{uuid4().hex}"
+        cancel_body = {
+            "reason": "patient changed plans",
+            "expected_revision": current_revision,
+        }
         cancelled = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "patient changed plans"},
+            json=cancel_body,
             headers={**auth, "Idempotency-Key": cancel_key},
         )
         cancel_replay = await client.post(
             f"/v1/appointments/{reservation_id}/cancel",
-            json={"reason": "patient changed plans"},
+            json=cancel_body,
             headers={**auth, "Idempotency-Key": cancel_key},
         )
     assert cancelled.status_code == 200
@@ -391,6 +394,8 @@ async def test_http_queue_discover_join_status_leave_and_replay(
         assert joined.status_code == 201
         assert join_replay.json() == joined.json()
         assert joined.json()["status"] == "waiting"
+        queue_entry_id = joined.json()["id"]
+        queue_entry_revision = cast(int, joined.json()["revision"])
 
         queue_status = await client.get(
             f"/v1/queues/{fixture.queue_id}/status",
@@ -402,16 +407,17 @@ async def test_http_queue_discover_join_status_leave_and_replay(
 
         leave_key = f"http-queue-leave-{uuid4().hex}"
         leave_body = {
-            "subject_party_id": str(fixture.subject_party_id),
+            "expected_revision": queue_entry_revision,
             "reason": "patient left",
         }
+        leave_url = f"/v1/queues/{fixture.queue_id}/entries/{queue_entry_id}/leave"
         left = await client.post(
-            f"/v1/queues/{fixture.queue_id}/leave",
+            leave_url,
             json=leave_body,
             headers={**auth, "Idempotency-Key": leave_key},
         )
         leave_replay = await client.post(
-            f"/v1/queues/{fixture.queue_id}/leave",
+            leave_url,
             json=leave_body,
             headers={**auth, "Idempotency-Key": leave_key},
         )

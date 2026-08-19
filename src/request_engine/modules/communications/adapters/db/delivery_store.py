@@ -59,6 +59,52 @@ class FinalizedDelivery:
     task_terminal: bool
 
 
+async def fail_poisoned_communication_task(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    communication_task_id: UUID,
+    scheduled_action_id: UUID,
+    reason: str,
+) -> bool:
+    """Terminalize a task whose only executable dispatch intent is poison work."""
+
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT status
+                FROM request_engine.communication_tasks
+                WHERE organization_id = :organization_id
+                  AND id = :communication_task_id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "communication_task_id": communication_task_id,
+            },
+        )
+    ).one_or_none()
+    if row is None or cast(str, row[0]) in {"completed", "cancelled", "failed"}:
+        return False
+
+    await _mark_task_failed(session, organization_id, communication_task_id)
+    await append_outbox(
+        session,
+        organization_id=organization_id,
+        event_type="communication.task_failed.v1",
+        aggregate_kind="CommunicationTask",
+        aggregate_id=communication_task_id,
+        payload={
+            "communication_task_id": str(communication_task_id),
+            "scheduled_action_id": str(scheduled_action_id),
+            "reason": reason,
+        },
+    )
+    return True
+
+
 async def prepare_dispatch(
     session: AsyncSession,
     *,
@@ -309,14 +355,16 @@ async def finalize_provider_result(
             retryable=False,
             task_terminal=True,
         )
-    if current_status == "failed" and result.status is not ProviderDeliveryStatus.DELIVERED:
-        return FinalizedDelivery(
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            status=ProviderDeliveryStatus.FAILED,
-            retryable=_delivery_retryable(delivery),
-            task_terminal=cast(str, task["status"]) == "failed",
-        )
+    if current_status == "failed":
+        current_retryable = _delivery_retryable(delivery)
+        if not current_retryable or result.status is not ProviderDeliveryStatus.DELIVERED:
+            return FinalizedDelivery(
+                communication_task_id=task_id,
+                delivery_id=delivery_id,
+                status=ProviderDeliveryStatus.FAILED,
+                retryable=current_retryable,
+                task_terminal=not current_retryable or cast(str, task["status"]) == "failed",
+            )
 
     effective = result
     if result.status is ProviderDeliveryStatus.NOT_FOUND:
@@ -618,9 +666,20 @@ async def _future_dispatch_exists(
                         WHERE organization_id = :organization_id
                           AND owner_module = 'communications'
                           AND action_type = :action_type
+                          AND action_version = :action_version
                           AND subject_kind = 'CommunicationTask'
                           AND subject_id = :communication_task_id
+                          AND CASE
+                              WHEN pg_catalog.pg_input_is_valid(
+                                  payload ->> 'communication_task_id',
+                                  'uuid'
+                              )
+                              THEN (payload ->> 'communication_task_id')::uuid
+                                   = :communication_task_id
+                              ELSE false
+                          END
                           AND status IN ('pending', 'leased')
+                          AND attempt_count < max_attempts
                           AND execute_at > :db_now
                     )
                     """
@@ -628,6 +687,7 @@ async def _future_dispatch_exists(
                 {
                     "organization_id": organization_id,
                     "action_type": DISPATCH_ACTION_TYPE,
+                    "action_version": DISPATCH_ACTION_VERSION,
                     "communication_task_id": communication_task_id,
                     "db_now": db_now,
                 },
@@ -656,9 +716,16 @@ async def _ensure_reconciliation(
                         WHERE organization_id = :organization_id
                           AND owner_module = 'communications'
                           AND action_type = :action_type
+                          AND action_version = :action_version
                           AND subject_kind = 'CommunicationDelivery'
                           AND subject_id = :delivery_id
+                          AND CASE
+                              WHEN pg_catalog.pg_input_is_valid(payload ->> 'delivery_id', 'uuid')
+                              THEN (payload ->> 'delivery_id')::uuid = :delivery_id
+                              ELSE false
+                          END
                           AND status IN ('pending', 'leased')
+                          AND attempt_count < max_attempts
                           AND execute_at > :db_now
                     )
                     """
@@ -666,6 +733,7 @@ async def _ensure_reconciliation(
                 {
                     "organization_id": organization_id,
                     "action_type": RECONCILE_ACTION_TYPE,
+                    "action_version": RECONCILE_ACTION_VERSION,
                     "delivery_id": delivery_id,
                     "db_now": db_now,
                 },

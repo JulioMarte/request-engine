@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     LockedResource,
+    ensure_reservation_revision,
     load_bookable_offering,
     load_locked_profiles,
     load_requirements,
@@ -28,7 +29,10 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
     load_resource_schedules,
 )
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
-from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
+from request_engine.modules.booking.application.authority import (
+    BOOK_APPOINTMENT_SCOPE,
+    MANAGE_APPOINTMENT_SCOPE,
+)
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
     AcquireCapacityHoldCommand,
 )
@@ -43,6 +47,7 @@ from request_engine.modules.booking.application.errors import (
     CapacityHoldExpired,
     CapacityHoldNotActive,
     CapacityHoldNotFound,
+    CapacityHoldRevisionConflict,
     InvalidHoldExpiration,
     ReservationNotFound,
     ReservationNotReschedulable,
@@ -128,6 +133,14 @@ class PostgresBookingCommitmentCommands:
                 subject_party_id=command.subject_party_id,
                 location_id=command.location_id,
                 origin_request_id=None,
+            )
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=command.subject_party_id,
+                scope_key=BOOK_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
             )
             requirements = await load_requirements(
                 session,
@@ -245,6 +258,7 @@ class PostgresBookingCommitmentCommands:
                 details={
                     "offering_version_id": str(command.offering_version_id),
                     "subject_party_id": str(command.subject_party_id),
+                    "subject_authority": authority.audit_details(),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
                     "expires_at": expires_at.isoformat(),
@@ -274,7 +288,11 @@ class PostgresBookingCommitmentCommands:
     async def confirm_capacity_hold(self, command: ConfirmCapacityHoldCommand) -> Reservation:
         fingerprint = command_fingerprint(
             "booking.confirm_capacity_hold",
-            {"hold_id": command.hold_id, "origin_request_id": command.origin_request_id},
+            {
+                "hold_id": command.hold_id,
+                "expected_revision": command.expected_revision,
+                "origin_request_id": command.origin_request_id,
+            },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
@@ -289,11 +307,21 @@ class PostgresBookingCommitmentCommands:
                 return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
             hold_row = await _lock_hold(session, command.organization_id, command.hold_id)
+            subject_party_id = cast(UUID, hold_row["subject_party_id"])
+            authority = await require_subject_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                subject_party_id=subject_party_id,
+                scope_key=BOOK_APPOINTMENT_SCOPE,
+                allow_operator_override=command.allow_subject_override,
+            )
+            ensure_hold_revision(hold_row, command.hold_id, command.expected_revision)
             _assert_live_hold(hold_row, command.hold_id)
             await validate_subject_location_and_origin(
                 session,
                 organization_id=command.organization_id,
-                subject_party_id=cast(UUID, hold_row["subject_party_id"]),
+                subject_party_id=subject_party_id,
                 location_id=cast(UUID | None, hold_row["location_id"]),
                 origin_request_id=command.origin_request_id,
             )
@@ -390,7 +418,12 @@ class PostgresBookingCommitmentCommands:
                 aggregate_kind="Reservation",
                 aggregate_id=reservation_id,
                 idempotency_id=idempotency_id,
-                details={"hold_id": str(command.hold_id)},
+                details={
+                    "hold_id": str(command.hold_id),
+                    "subject_party_id": str(subject_party_id),
+                    "subject_authority": authority.audit_details(),
+                    "expected_hold_revision": command.expected_revision,
+                },
             )
             await append_outbox(
                 session,
@@ -424,6 +457,7 @@ class PostgresBookingCommitmentCommands:
             "booking.reschedule_reservation",
             {
                 "reservation_id": command.reservation_id,
+                "expected_revision": command.expected_revision,
                 "start_at": start_at,
                 "location_id": command.location_id,
                 "resources": [
@@ -463,6 +497,11 @@ class PostgresBookingCommitmentCommands:
                 subject_party_id=subject_party_id,
                 scope_key=MANAGE_APPOINTMENT_SCOPE,
                 allow_operator_override=command.allow_subject_override,
+            )
+            ensure_reservation_revision(
+                reservation_row,
+                command.reservation_id,
+                command.expected_revision,
             )
             status = cast(str, reservation_row["status"])
             if status != "confirmed":
@@ -640,6 +679,9 @@ class PostgresBookingCommitmentCommands:
                     },
                 )
 
+            old_location_id = cast(UUID | None, reservation_row["location_id"])
+            old_start_at = cast(datetime, reservation_row["start_at"])
+            old_end_at = cast(datetime, reservation_row["end_at"])
             await append_audit(
                 session,
                 organization_id=command.organization_id,
@@ -651,8 +693,11 @@ class PostgresBookingCommitmentCommands:
                 details={
                     "subject_party_id": str(subject_party_id),
                     "subject_authority": authority.audit_details(),
-                    "old_start_at": cast(datetime, reservation_row["start_at"]).isoformat(),
-                    "old_end_at": cast(datetime, reservation_row["end_at"]).isoformat(),
+                    "expected_revision": command.expected_revision,
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "new_location_id": str(command.location_id) if command.location_id else None,
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
                     "new_start_at": start_at.isoformat(),
                     "new_end_at": end_at.isoformat(),
                 },
@@ -665,6 +710,9 @@ class PostgresBookingCommitmentCommands:
                 aggregate_id=command.reservation_id,
                 payload={
                     "reservation_id": str(command.reservation_id),
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
                 },
@@ -733,6 +781,12 @@ async def _read_hold_row(
         .mappings()
         .first()
     )
+
+
+def ensure_hold_revision(row: RowMapping, hold_id: UUID, expected_revision: int) -> None:
+    current_revision = cast(int, row["revision"])
+    if current_revision != expected_revision:
+        raise CapacityHoldRevisionConflict(hold_id, expected_revision, current_revision)
 
 
 def _assert_live_hold(row: RowMapping, hold_id: UUID) -> None:

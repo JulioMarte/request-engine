@@ -11,6 +11,7 @@ class CancelReservationCommand:
     principal_id: UUID
     reservation_id: UUID
     idempotency_key: str
+    expected_revision: int
     reason: str | None = None
     allow_subject_override: bool = False
 
@@ -25,4 +26,6 @@ async def cancel_reservation(
 ) -> Reservation:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    if command.expected_revision <= 0:
+        raise ValueError("expected_revision must be positive")
     return await handler.cancel_reservation(command)

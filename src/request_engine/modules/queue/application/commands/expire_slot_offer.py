@@ -1,0 +1,36 @@
+from dataclasses import dataclass
+from typing import Protocol
+from uuid import UUID
+
+from request_engine.modules.queue.contracts.waitlist import SlotOfferResolution
+
+
+@dataclass(frozen=True, slots=True)
+class ExpireSlotOfferCommand:
+    organization_id: UUID
+    principal_id: UUID
+    slot_offer_id: UUID
+    expected_revision: int
+    idempotency_key: str
+    scheduled_action_id: UUID | None = None
+    scheduled_action_claim_token: UUID | None = None
+
+
+class ExpireSlotOfferExecutor(Protocol):
+    async def expire_slot_offer(
+        self,
+        command: ExpireSlotOfferCommand,
+    ) -> SlotOfferResolution: ...
+
+
+async def expire_slot_offer(
+    executor: ExpireSlotOfferExecutor,
+    command: ExpireSlotOfferCommand,
+) -> SlotOfferResolution:
+    if command.expected_revision <= 0:
+        raise ValueError("expected_revision must be positive")
+    if not command.idempotency_key:
+        raise ValueError("idempotency_key is required")
+    if (command.scheduled_action_id is None) != (command.scheduled_action_claim_token is None):
+        raise ValueError("scheduled action id and claim token must be supplied together")
+    return await executor.expire_slot_offer(command)

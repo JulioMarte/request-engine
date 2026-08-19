@@ -1,0 +1,40 @@
+schema_version = 1
+
+# Contract-sensitive production surfaces. When a pull request changes one of
+# these paths it must also change the normative documentation listed for the
+# rule. Keep this registry narrow: it protects architectural/operational
+# contracts, not every implementation detail.
+
+[[rules]]
+id = "worker-runtime"
+description = "Durable worker execution, fencing, process assembly, and worker/domain credential boundaries"
+triggers = [
+  "src/request_engine/platform/worker/**",
+  "src/request_engine/platform/scheduling/**",
+  "src/request_engine/platform/outbox/**",
+  "src/request_engine/platform/events/provider_events.py",
+  "src/request_engine/bootstrap/worker.py",
+  "src/request_engine/entrypoints/worker/**",
+]
+required_docs = ["docs/v3/10-worker-runtime-hardening.md"]
+required_docs_mode = "all"
+
+[[rules]]
+id = "cross-tenant-shared-capacity"
+description = "Cross-tenant shared-capacity identity, authority, serialization, privacy, and booking integration"
+triggers = [
+  "migrations/sql/v3_candidate/*cross-tenant-*.sql",
+  "src/request_engine/modules/booking/adapters/db/reservation_commands.py",
+  "src/request_engine/modules/booking/adapters/db/commitment_commands.py",
+  "src/request_engine/modules/booking/adapters/db/slot_offer_capacity.py",
+  "src/request_engine/modules/booking/adapters/db/capacity_errors.py",
+  "src/request_engine/modules/booking/adapters/db/capacity_error_boundary.py",
+  "src/request_engine/modules/booking/api/__init__.py",
+  "src/request_engine/modules/booking/api/errors.py",
+  "src/request_engine/bootstrap/http.py",
+  "tests/db/test_v3_cross_tenant_*.py",
+  "tests/integration/v3_booking_commitments/test_cross_tenant_shared_capacity*.py",
+  "tests/unit/test_booking_unavailability_privacy.py",
+]
+required_docs = ["docs/v3/12-cross-tenant-shared-capacity-design.md"]
+required_docs_mode = "all"

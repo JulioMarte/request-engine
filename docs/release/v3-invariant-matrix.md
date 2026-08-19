@@ -1,0 +1,168 @@
+# Request Engine V3 invariant release matrix
+
+Status: Phase 6 proof inventory.
+
+The normative invariant definitions and ownership are in `docs/v3/02-pre-sql-contract.md`. This matrix intentionally references those IDs instead of redefining their semantics.
+
+`PARTIAL` means relevant implementation or tests exist, but the Phase 6 release proof is not yet complete. `UNPROVEN` means a specific release proof has not yet been identified. `PASS` requires current-branch executable evidence.
+
+| Invariant | Canonical owner class | Baseline evidence family | Baseline | Release proof phase |
+|---|---|---|---|---|
+| V3-I01 | DB | catalog-wide composite tenant FK proof + adversarial tenant DB tests | PASS | 6C/6I |
+| V3-I02 | APP | adversarial HTTP Request/Booking/Queue/Waitlist authority tests | PASS | 6I/6K |
+| V3-I03 | APP | current tenant policy + Representation/revocation authority tests | PASS | 6I/6K |
+| V3-I04 | DB/ops | exact real-login runtime role/privilege + SECURITY DEFINER matrix | PASS | 6I |
+| V3-I05 | DB | adversarial RLS catalog/fail-closed app-role tests | PASS | 6I |
+| V3-I06 | BOTH | trusted execution provenance DB + authority audit tests | PASS | 6I/6J |
+| V3-I07 | BOTH | referenced OfferingVersion UPDATE/DELETE immutability regression | PASS | 6C/6K |
+| V3-I08 | DB | cross-tenant configuration FK attacks | PASS | 6C/6I |
+| V3-I09 | BOTH | Resource serialization-root + availability revision regression | PASS | 6D/6E |
+| V3-I10 | APP+DB reference | exact RequestDefinitionVersion schema + immutability proof | PASS | 6D/6K |
+| V3-I11 | BOTH | direct terminal Request monotonicity regression | PASS | 6D/6E |
+| V3-I12 | BOTH | idempotency error contract + frozen runtime fingerprint-conflict coverage | PASS | 6E |
+| V3-I13 | APP | authenticated provider callback binding + semantic-boundary proof | PASS | 6I/6J |
+| V3-I14 | APP | Request cancellation independence regression | PASS | 6D/6K |
+| V3-I15 | DB | direct half-open authoritative-capacity interval regression | PASS | 6D/6L |
+| V3-I16 | DB | direct CapacityClaim owner/interval consistency regression | PASS | 6D |
+| V3-I17 | BOTH | exclusive oversell PostgreSQL race coverage | PASS | 6D |
+| V3-I18 | BOTH | units oversell PostgreSQL race coverage | PASS | 6D |
+| V3-I19 | transaction+BOTH | all-or-nothing multi-requirement Hold regression | PASS | 6D |
+| V3-I20 | BOTH | expired Hold + confirm race coverage | PASS | 6D/6L |
+| V3-I21 | BOTH | deferred Reservation claim-completeness regression | PASS | 6D |
+| V3-I22 | BOTH | Hold confirmation transfers existing claims without double-count | PASS | 6D |
+| V3-I23 | transaction+DB | cancellation releases CapacityClaims atomically | PASS | 6D |
+| V3-I24 | BOTH | self-excluding reschedule + concurrency coverage | PASS | 6D |
+| V3-I25 | transaction | failed reschedule rollback preserves original state | PASS | 6D |
+| V3-I26 | APP protocol | deterministic inverse-input Booking resource-lock ordering regression | PASS | 6D/6L |
+| V3-I27 | APP | post-lock availability/schedule revalidation regression | PASS | 6D |
+| V3-I28 | BOTH | DB rejects terminal Reservation with consuming live claim | PASS | 6D |
+| V3-I29 | domain/DB | attendance/no-show remains independent from Reservation capacity lifecycle | PASS | 6K |
+| V3-I30 | APP | explicit versioned attendance decline policy controls cancellation | PASS | 6K/6L |
+| V3-I31 | DB | DB unique constraint rejects second active subject entry | PASS | 6D |
+| V3-I32 | APP under queue lock | FIFO CallNext ordered by admitted_at then id | PASS | 6D |
+| V3-I33 | DB transaction/lock | concurrent CallNext returns distinct entries | PASS | 6D |
+| V3-I34 | BOTH | canonical QueueEntry transition DB regression + queue command coverage | PASS | 6D |
+| V3-I35 | architecture | schema absence of mutable position + reader derivation regression | PASS | 6A/6K |
+| V3-I36 | model/DB | Waitlist join creates no Hold/CapacityClaim | PASS | 6D |
+| V3-I37 | APP | post-Opportunity live-capacity revalidation before offer | PASS | 6D |
+| V3-I38 | DB | DB rejects second active offered SlotOffer per Opportunity | PASS | 6D |
+| V3-I39 | BOTH | offered SlotOffer graph proves live unexpired matching Hold/claim | PASS | 6D |
+| V3-I40 | transaction+BOTH | accept serializes to Reservation + consumed Hold + filled Opportunity | PASS | 6D |
+| V3-I41 | transaction+BOTH | decline/expiry releases Hold before deterministic advancement | PASS | 6D |
+| V3-I42 | BOTH | concurrent accepts fill one Opportunity exactly once | PASS | 6D |
+| V3-I43 | APP under opportunity lock | FIFO `(created_at,id)` selection + Opportunity-lock races | PASS | 6D/6G |
+| V3-I44 | architecture/APP | provider I/O structurally and transactionally outside authoritative transaction | PASS | 6J |
+| V3-I45 | BOTH | durable CommunicationTask business-event dedupe | PASS | 6J |
+| V3-I46 | BOTH/EXT | durable delivery attempt history + provider idempotency/correlation reconciliation | PASS | 6J |
+| V3-I47 | APP | provider delivery status confined to Communications state | PASS | 6J |
+| V3-I48 | BOTH | versioned ReminderPlan schedule document contract | PASS | 6K/6L |
+| V3-I49 | BOTH | plan-revision-bound occurrence identity + replay safety | PASS | 6J/6K |
+| V3-I50 | BOTH | cancellation removes obsolete future work while preserving delivery history | PASS | 6J/6K |
+| V3-I51 | product boundary/APP | medication reminder clinical-instruction boundary fitness proof | PASS | 6K |
+| V3-I52 | DB | three-family claim/reclaim fencing matrix | PASS | 6F |
+| V3-I53 | DB | reclaimed lease rejects every stale transition for all worker families | PASS | 6F |
+| V3-I54 | BOTH | exact retry-budget terminalization for ScheduledAction/Outbox/ProviderEvent | PASS | 6F |
+| V3-I55 | architecture/APP | production claim methods release DB row locks before processing | PASS | 6F/6J |
+| V3-I56 | BOTH | simultaneous ProviderEvent identity ingest dedupe + payload-conflict race | PASS | 6J |
+| V3-I57 | EXT/APP | lease-loss ambiguity reconciles with provider lookup without duplicate send | PASS | 6F/6J |
+| V3-I58 | transaction/APP | Outbox remains unclaimable until originating local fact commits | PASS | 6J |
+| V3-I59 | DB | app-role UPDATE/DELETE audit immutability regression | PASS | 6I/6J |
+| V3-I60 | BOTH | frozen runtime post-commit response-loss/retry matrix | PASS | 6E |
+| V3-I61 | BOTH | idempotency identity/fingerprint + canonical scope/replay contracts | PASS | 6E/6I |
+| V3-I62 | BOTH/ops | audited request_admin authority surface + private-state denial | PASS | 6I |
+| V3-I63 | BOTH | cross-tenant Booking/Hold/SlotOffer capacity arbitration | PASS | 6D/6I |
+| V3-I64 | DB+APP | private-table runtime denial + opaque shared-conflict semantics | PASS | 6I/6K |
+| V3-I65 | BOTH | binding activation/revocation/rebinding PostgreSQL races | PASS | 6D/6I |
+| V3-I66 | APP protocol + DB primitive | stable multi-root locking + simultaneous reschedule races | PASS | 6D/6L |
+
+## Phase 6E idempotency / optimistic-concurrency evidence
+
+Phase 6E closes the cross-cutting idempotency invariants whose canonical meaning is explicit in the pre-SQL contract:
+
+- **V3-I12 — same idempotency key + different fingerprint is rejected.** The shared PostgreSQL idempotency primitive already enforced fingerprint binding. The frozen runtime command inventory proves every public mutating capability is idempotent, and the attendance regression found and removed the one payload-dependent scope split that could evade that binding. Migration `037-attendance-idempotency-scope-hardening.sql` normalizes historical attendance scopes, fails closed on historical collisions, and new attendance commands use the stable `booking.record_attendance_response` scope directly.
+- **V3-I60 — idempotent retry cannot repeat an already committed business effect.** `appointments.book` retains the original R19 true response-loss proof. Phase 6E extends the same failure shape to Request submit/cancel, Reservation cancel/reschedule, attendance, Queue join/leave/call-next, Waitlist join/leave, SlotOffer accept/decline and ReminderPlan create/cancel. The custom ASGI transports allow the command transaction to commit before dropping the response, then require same-key replay plus command-specific durable cardinality assertions.
+- **V3-I61 — identity is Organization + Principal + capability + fingerprint.** The architecture inventory freezes the runtime capability surface; centralized idempotency records enforce Organization/Principal/capability/key identity and fingerprint equality; the attendance defect demonstrated why capability scope itself must be stable and is now covered by an explicit regression.
+
+Phase 6E also strengthens revision-managed aggregate correctness. Deterministic application-runtime races cover Request, Reservation cancel/reschedule, attendance, QueueEntry, WaitlistEntry, SlotOffer and ReminderPlan. Request exposed a real lifecycle-before-revision bug: a stale writer could receive `request_not_open` instead of revision conflict. Request mutation ordering is now lock → Party authority when applicable → revision → lifecycle. Attendance is similarly normalized to authority → revision → lifecycle after its Reservation lock, preventing lifecycle disclosure before subject authority and ensuring stale provider/business writers lose on revision.
+
+CI #896 (`31999091531`) on head `c7459454a5284ab295285bd0c4f463bb239f17b0` produced `evidence_status: VALID`, collected 369 tests, passed all 369 in reverse order and passed three concurrency-stability rounds of 60 tests each. The registry-only reconciliation that promotes these invariant rows must itself pass canonical exact-head CI before integration. Final V3 promotion must regenerate the proofs after the remaining gates stop changing the candidate.
+
+## Phase 6 race-closure evidence
+
+The preceding deterministic race-closure work added real runtime-role evidence to invariant families that were missing explicit interleavings. R08 strengthens V3-I38/I42; R17 strengthens V3-I56; R18 strengthens V3-I47; R22 strengthens V3-I49/I50. Those rows remain `PARTIAL` unless a later owner-boundary audit explicitly promotes them. R19 was initially a Booking-only proof for V3-I60/I61; the subsequent Phase 6E full command inventory is what allows V3-I60/I61 to move to `PASS`.
+
+R18 now reflects the revision-first contract: when the provider semantic attendance command wins, cancellation loses on Reservation revision; when cancellation wins, the stale provider semantic command also loses on Reservation revision before lifecycle mutation and cannot append attendance or retain capacity. Provider routing still never writes Booking state directly.
+
+## Post-integration evidence baseline
+
+PR #52 exact-head CI #847 produced a complete, VALID candidate evidence bundle on the same Git tree that was merged into `development`: 340 release tests, all 340 in reverse order, and three repeated PostgreSQL/concurrency rounds with 47 tests per round. This proves the integrated evidence families were executable; it did not convert unrelated wider release claims to `PASS`.
+
+## Cross-tenant shared-capacity extension evidence
+
+**V3-I62..V3-I66 are now `PASS` at their declared owner boundaries.** Current-candidate tests prove least-privilege denial of global-state enumeration, audited control-plane-only mutation, runtime-role/pre-RLS guard behavior, opaque cross-tenant conflict errors, simultaneous cross-tenant claim arbitration, Hold/Booking contention, SlotOffer/Booking winner orders, transactional reschedule rollback, binding activation/revocation races, unsafe rebind rejection, inverse multi-root locking and simultaneous real reschedules.
+
+The extension preserves the original V3 ownership model: `Resource` remains tenant-local and `CapacityClaim` remains the only consumption ledger. `SharedCapacityIdentity` is an optional hidden serialization root for explicitly bound exclusive Resources, not a global Resource or second commitment ledger.
+
+## Phase 6I tenant/Party-authority evidence
+
+Phase 6I closes the release-level tenant-isolation gate G06 and races R23/R24 without pre-promoting the broader invariant registry. The current branch now has a real least-privileged app LOGIN, fail-closed RLS/catalog coverage, an exact executable app-function allowlist, deterministic revoke races for every distinct material Party scope, protected HTTP foreign-versus-nonexistent controls across Booking/Requests/Queue/Waitlist/Reminders, exact-scope temporal/state authority denial tests and tenant-bounded authenticated override proof.
+
+At the Phase 6I checkpoint the invariant rows were intentionally left unchanged except where a separate owner-boundary proof had already promoted one. Their canonical claims do not map one-to-one to G06/R23/R24: V3-I03 includes current Principal/Representation/**policy** revalidation; V3-I13 is specifically provider callback authentication/semantic binding; and G05 requires every invariant to be reviewed at its declared owner boundary. The later G05 closure below performs that owner-by-owner reconciliation.
+
+CI #905 (`32029659776`) on head `f6cec8e2c2b779d4b18f1a12195b52b0ffa15367` produced `evidence_status: VALID`, collected all 392 tests from 103 expected files, passed 392/392 in reverse order, passed three concurrency-stability rounds of 70 tests and passed mutation probes. The subsequent registry reconciliation passed exact-head CI before Phase 6I integration. Final G05 work reassesses V3-I01..V3-I66 individually without weakening the Phase 6I proofs recorded here.
+
+## Runtime privilege evidence
+
+**V3-I04 is `PASS`.** Its canonical DB/ops claim is that runtime app/worker roles do not operate with schema-owner or superuser authority. Phase 6 G14 proves that claim directly with real LOGIN roles and the complete PostgreSQL privilege catalog rather than relying on migration intent alone.
+
+`tests/db/test_v3_runtime_privilege_closure.py` verifies app/worker/admin runtime identities, schema privileges, every relation privilege, exact executable function allowlists, role transition boundaries and all current `SECURITY DEFINER` routines. App and worker LOGINs start NOBYPASSRLS/NOSUPERUSER and cannot `SET ROLE` into admin or schema-owner. Trusted admin BYPASSRLS is only reached by explicitly entering `request_engine_admin`, while even that role cannot become schema owner or create Request Engine schema objects. Migration `038-runtime-privilege-closure.sql` removes stale worker domain grants that predated the Production Worker Assembly split.
+
+CI #914 (`32034507295`) on head `90529b199064924561b61da5e2611d3c1ffdb78f` produced a `VALID`, complete artifact with 396/396 canonical and reverse-order tests, three 70/70 concurrency-stability rounds and passing mutation probes. That registry-only promotion then passed canonical exact-head CI before integration.
+
+No other invariant was promoted by G14 itself. G05 remained `PARTIAL` at that checkpoint until all V3-I01..V3-I66 could be owner-boundary reviewed and recorded.
+
+## G05 direct invariant closure evidence
+
+CI #980 (`32137750612`) on head `81fb36da44743273265c9dce6ffb7ca5c01589c9` produced a complete `VALID` artifact: 422/422 canonical tests, 422/422 reverse-order tests, 118/118 expected files, three passing concurrency-stability rounds, four passing mutation probes, and zero test-quality errors or warnings. The artifact preserves `release_status: NOT_READY` and G05 `PARTIAL`.
+
+That evidence directly promoted these owner-boundary claims:
+
+- **V3-I07 — OfferingVersion historical snapshot immutability.** `tests/db/test_v3_offering_version_immutability.py` creates a Reservation and complete CapacityClaim set atomically against a concrete OfferingVersion, then proves direct UPDATE and DELETE are rejected and the Reservation retains the original immutable snapshot reference.
+- **V3-I26 — canonical Booking resource lock order.** `tests/integration/v3_booking_commitments/test_booking_lock_order.py` drives two real app-role transactions through `lock_resources()` with inverse input order and proves both serialize on the same UUID-sorted acquisition order without deadlock.
+- **V3-I27 — post-lock availability revalidation.** `tests/integration/v3_booking_commitments/test_booking_schedule_revalidation.py` blocks Booking at the real Resource `FOR UPDATE`, commits a newly-unavailable schedule exception, then proves Booking re-reads availability after acquiring the lock, rejects the stale slot and leaves no Reservation or CapacityClaim.
+- **V3-I31 — one active QueueEntry per queue/subject.** `tests/db/test_v3_candidate.py::test_queue_allows_only_one_active_entry_per_subject` inserts one active entry and proves PostgreSQL rejects a second active row for the same `(ServiceQueue, subject)` with the DB uniqueness backstop.
+- **V3-I32 — deterministic FIFO CallNext.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_call_next_is_fifo_idempotent_and_emits_outbox` proves earlier `admitted_at` wins first and the command query orders by `(admitted_at,id)` while holding the queue root.
+- **V3-I33 — concurrent CallNext cannot select the same entry.** `tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry` runs two real concurrent commands against one queue and requires two distinct selected entry IDs.
+
+The current G05 owner-boundary suite extends that closure through Queue and Waitlist/Slot Recovery:
+
+- **V3-I34/I35.** `tests/db/test_v3_queue_release_invariants.py` proves the canonical QueueEntry transition graph at PostgreSQL and proves queue position is not persisted as mutable authority: the schema has no position counter and the production reader derives waiting position from `(admitted_at,id)`.
+- **V3-I36/I37.** `tests/integration/v3_slot_offer_recovery/test_waitlist_capacity_boundaries.py` proves joining a Waitlist creates neither CapacityHold nor CapacityClaim, and proves an existing SlotOpportunity cannot bypass Booking capacity revalidation when the Resource becomes occupied after Opportunity creation.
+- **V3-I38/I39/I42/I43.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_cardinality_invariants.py` proves the DB rejects a second active offer per Opportunity, an offered row is tied to a live unexpired matching Hold with an active claim, concurrent accepts fill exactly once, and tied candidates use stable ID as the FIFO tie-breaker. Existing opportunity-lock race tests prove these command paths serialize through the Opportunity root.
+- **V3-I40/I41.** `tests/integration/v3_slot_offer_recovery/test_slot_offer_recovery.py` plus `test_slot_offer_release_races.py` prove accept atomically produces Reservation/claim promotion and filled Opportunity state, while decline/expiry releases the short Hold before reopening/advancing to the next candidate. Competing terminal commands serialize to one valid graph without orphan capacity.
+
+The same current-candidate audit closes the worker/provider/audit tail:
+
+- **V3-I52/I53.** `test_worker_fencing_release_matrix.py` drives ScheduledAction, OutboxMessage and ProviderEvent through claim/reclaim and proves one current token plus stale renew/complete/retry/dead/reject fencing.
+- **V3-I54/I55/I58.** `test_worker_release_invariants.py` proves bounded retries terminate all three families at `dead`, production `claim()` returns only after its row-lock transaction is released, and Outbox publication cannot become claimable before the originating local fact commits.
+- **V3-I56.** `test_provider_event_ingest_races.py` proves simultaneous same-identity ingest converges to one row before semantic work; a different payload under the same provider identity fails closed.
+- **V3-I57.** `test_communication_fencing.py` proves an ambiguous provider result after lease loss is reconciled by provider lookup and does not blindly send again (`send_count=1`, `lookup_count=1`).
+- **V3-I59.** `test_v3_trusted_execution_provenance.py::test_i59_runtime_app_cannot_rewrite_or_delete_material_audit` creates a real material audit event and proves the normal app role cannot UPDATE or DELETE it; the original details remain intact.
+
+## G05 final owner-boundary reconciliation
+
+CI #1069 (`32173570345`) on head `7d15bc58786537a690f9a515d7d02046d711dafe` passed Python quality/architecture, V2 history, repeated V3 bootstrap, observability, the canonical V3 candidate proof and the ruleset-required `PostgreSQL 18 V3 candidate and verticals` aggregate. That run executes the newly added owner-boundary proofs before this registry-only promotion.
+
+The final audit closes the remaining families without weakening their canonical claims:
+
+- **I01–I14.** Tenant-owned FK topology is catalog-proved; UUID/correlation possession is not authority; current tenant policy is re-read; RLS remains fail-closed; material audit carries trusted authority provenance; tenant-local configuration attacks fail; schedule writes serialize through Resource revision; Request uses an exact immutable RequestDefinitionVersion and terminal lifecycle is monotonic; provider callback tenant/provider/connection authority is derived by an authentication adapter rather than payload fields; cancelling a source Request does not cancel an independently authoritative Reservation.
+- **I15–I30.** PostgreSQL proves half-open intervals, CapacityClaim owner/interval consistency, exclusive/units oversell rejection, deferred aggregate completeness and terminal-state consumption constraints. Application/concurrency tests prove all-or-nothing requirements, Hold expiry/confirmation semantics, claim transfer without double counting, atomic cancellation release, self-excluding reschedule, rollback on failed reschedule, attendance independence and explicit policy-controlled decline behavior.
+- **I44–I51.** Communications evidence proves provider I/O occurs only after authoritative commit, task creation is durable/deduped, Delivery retains `attempt_no` and provider correlation/idempotency across ambiguous reconciliation, provider status cannot mutate unrelated domain aggregates, ReminderPlan schedule documents and occurrence provenance are versioned, obsolete future work is cancelled without erasing delivery history, and medication reminders cannot infer or modify clinical instructions.
+
+The executable JSON registry now contains **66/66 `PASS`** rows. G05 may be promoted only after this reconciled matrix/registry itself passes exact-head CI. Global V3 remains `NOT_READY`; G15/G16/G17/G18/G19/G20 and later freeze/release work remain outside this branch's scope.
+
+## Release-proof rule
+
+Each row must eventually point to executable proof that exercises the owner boundary named by the canonical contract. An application-only test is insufficient for a DB-owned invariant. A mocked concurrency test is insufficient for a lock, RLS, range-overlap, lease or fencing invariant.
+
+The matrix may become more specific as Phase 6 adds proof files. It must not silently change the meaning or ownership of a `V3-Ixx`; such a change belongs in the canonical V3 contract first.

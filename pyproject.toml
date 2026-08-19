@@ -13,6 +13,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
 ]
 
+[project.scripts]
+request-engine-worker = "request_engine.entrypoints.worker.cli:main"
+
 [dependency-groups]
 dev = [
     "pyright[nodejs]>=1.1.411,<1.2",
@@ -48,11 +51,13 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
 markers = [
     "unit: pure or isolated unit tests",
     "postgres: requires PostgreSQL",
     "integration: crosses component boundaries",
+    "e2e: exercises a production-like journey across public entrypoints and runtime database roles",
     "concurrency: proves transactional race behavior",
     "slow: intentionally slower validation",
 ]
