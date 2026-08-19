@@ -2,22 +2,23 @@
 
 Status: **active operational roadmap for Phase 6 V3 Freeze & Release Proof**.
 
-Repository baseline for this roadmap:
+Repository reference points for this roadmap:
 
 - integration branch: `development`;
-- baseline commit: `3281075bdc5e19997a3ba8120fa6a275e7ee5ab1`;
-- baseline tree: `6788623d107ea89ee5a422cfbacfe21c67368b0e`;
-- latest integrated closure: PR #65, G16 public API contract freeze;
+- last implementation-bearing gate closure before documentation reconciliation: `3281075bdc5e19997a3ba8120fa6a275e7ee5ab1` (PR #65, G16 public API contract freeze);
+- documentation reconciliation merged by PR #66: `8f0f6f1c66b8bd143e440a83bbabe04cc7d58556`;
 - PostgreSQL target: PostgreSQL 18;
 - release status: `NOT_READY`.
 
-This document is the current execution map. Historical Phase 6 planning and rebaseline documents remain useful evidence of how the release proof evolved, but they must not override this roadmap or `v3-release-gates.md` when deciding what to execute next.
+Commit identities above are provenance checkpoints, not a claim that `development` will forever equal either SHA. The branch head may advance as the remaining release gates are implemented. Current status authority is this roadmap together with `v3-release-gates.md`, and executable evidence remains authoritative only for the exact commit/tree that produced it.
+
+Historical Phase 6 planning and rebaseline documents remain useful evidence of how the release proof evolved, but they must not override this roadmap or `v3-release-gates.md` when deciding what to execute next.
 
 ## 1. Current gate state
 
 | Gate range | State | Meaning |
 |---|---:|---|
-| G01–G16 | PASS | current `development` contains executable proof and integrated registry closure for these gates |
+| G01–G16 | PASS | integrated executable proof and registry closure exist for these gates; final promotion still requires exact-final-candidate regeneration where applicable |
 | G17 | MISSING | final `0001_initial` has not been generated/blessed or proven equivalent |
 | G18 | MISSING | existing attack/race/crash/retry/order/mutation evidence has not yet been composed into one mandatory unified release proof |
 | G19 | PARTIAL | strong bootstrap/runtime-role evidence exists, but the final fresh production-like app+worker release bootstrap is not closed |
@@ -43,6 +44,8 @@ The following is no longer implementation backlog for V3 unless new evidence fal
 - fail-closed tenant RLS and cross-tenant attack matrix;
 - protected-function inventory and Party-authority validation;
 - runtime app/worker/admin privilege closure and SECURITY DEFINER hardening.
+
+The invariant registry being complete does **not** imply that every broader release-race row is already `PASS`: invariant ownership and race-matrix closure are separate proof dimensions. G18 must reconcile both without silently promoting a race from related invariant evidence.
 
 ### Booking and released-slot recovery
 
@@ -163,7 +166,27 @@ The unified proof must include at minimum:
 6. **Mutation probes**
    - representative dangerous weakenings of tenant checks, revision checks, fencing, terminal-state protection or relational invariants are killed by the release suite.
 
-### 4.2 G18 artifact
+### 4.2 Race-matrix debt that G18 must resolve
+
+As of this documentation audit, the canonical table in `v3-race-matrix.md` still marks these rows `PARTIAL`:
+
+- R01 — acquire capacity vs acquire same capacity;
+- R02 — confirm Hold vs wall-clock expiry/expiry cleanup;
+- R09 — CallNext vs CallNext;
+- R25 — cross-tenant shared-root commitment vs commitment;
+- R26 — direct Booking vs cross-tenant Hold/SlotOffer;
+- R27 — reschedule vs foreign shared-capacity commitment;
+- R28 — binding activation/revocation vs live claim creation;
+- R29 — inverse multi-Resource/multi-shared-root acquisition including simultaneous reschedules.
+
+This is **not** permission to assume those races are defective, nor permission to promote them because related invariants are `PASS`. G18 must inspect the current executable tests and do one of two things per row:
+
+1. prove the exact race claim is already completely covered and promote the row with explicit evidence; or
+2. add/fix the missing deterministic proof and only then promote it.
+
+Until that reconciliation happens, G18 cannot claim a complete race family.
+
+### 4.3 G18 artifact
 
 Add one mandatory machine-readable artifact, e.g. `.phase6/v3-adversarial-failure-proof.json`, containing:
 
@@ -177,11 +200,12 @@ Add one mandatory machine-readable artifact, e.g. `.phase6/v3-adversarial-failur
 
 `build_v3_evidence_manifest.py` must reject a missing, malformed or non-PASS G18 artifact.
 
-### 4.3 G18 exit condition
+### 4.4 G18 exit condition
 
 G18 may move to `PASS` only when one exact head has:
 
 - every required adversarial family PASS;
+- every release-critical race row either PASS with explicit current evidence or explicitly removed from release scope by a normative contract change (not by test convenience);
 - zero unmapped release-critical race/proof obligations;
 - zero validation errors;
 - canonical CI green;
@@ -194,7 +218,7 @@ A failing G18 test is evidence of a product/release defect until demonstrated ot
 
 G19 follows G18.
 
-The current repository already has strong clean PostgreSQL bootstrap and runtime-role tests, which is why G19 is `PARTIAL`, not `MISSING`. What is still absent is the final release-shaped construction and runtime exercise.
+The current repository already has strong clean PostgreSQL bootstrap and runtime-role tests, which is why G19 is `PARTIAL`, not `MISSING`. G02's repeated candidate-construction proof is necessary but not sufficient for G19. What is still absent is the final release-shaped construction and runtime exercise.
 
 The G19 proof must start from an empty PostgreSQL 18 environment and demonstrate:
 
@@ -289,7 +313,7 @@ V3 is release-ready only when all of the following are true together:
 
 - G01–G20 are `PASS`;
 - `V3-I01..V3-I66` remain reconciled to executable evidence;
-- release-critical races have deterministic proof;
+- every release-critical race in `v3-race-matrix.md` is `PASS` with deterministic evidence;
 - final `0001_initial` is structurally and behaviorally equivalent to the frozen candidate;
 - fresh production-like bootstrap passes with real runtime roles and app/worker processes;
 - public API/capability/error freeze remains unchanged or intentionally versioned;
