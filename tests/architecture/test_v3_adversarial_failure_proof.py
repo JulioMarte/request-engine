@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/release/prove_v3_adversarial_failure.py"
 SPEC = importlib.util.spec_from_file_location("v3_adversarial_failure", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
@@ -59,7 +61,11 @@ def test_g18_junit_validator_rejects_failures_errors_and_skips(tmp_path: Path) -
     assert "JUnit contains 1 skipped" in failures
 
 
-def test_g18_json_status_requires_real_pass_payload(tmp_path: Path) -> None:
+def test_g18_json_status_requires_real_pass_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(proof, "ROOT", tmp_path)
     artifact = tmp_path / "artifact.json"
     artifact.write_text('{"status":"PASS"}\n', encoding="utf-8")
     assert proof._json_status(artifact) == ("PASS", [])
