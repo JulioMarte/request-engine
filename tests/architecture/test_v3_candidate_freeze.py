@@ -47,7 +47,7 @@ def test_shallow_freeze_ancestry_is_bounded_and_fail_closed() -> None:
     assert '"fetch", "--no-tags", f"--depth={depth}", "origin", descendant_sha' in proof_source
     assert '"merge-base", "--is-ancestor", source_commit, descendant' in proof_source
     assert 'os.environ.get("PHASE6_TESTED_SHA")' in proof_source
-    assert 'if ci_tested_sha != current_head:' in proof_source
+    assert "if ci_tested_sha != current_head:" in proof_source
     assert 'return "ci-tested-ancestor", ci_base_sha, ci_tested_sha, None' in proof_source
     assert "ancestor of tested checkout" in proof_source
     assert '"ancestry_base_sha": ancestry_base_sha' in proof_source
