@@ -12,6 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from validate_v3_adversarial_failure_artifact import validate_adversarial_failure
+
 ROOT = Path(__file__).resolve().parents[2]
 INVARIANT_DOC = ROOT / "docs/release/v3-invariant-matrix.md"
 RACE_DOC = ROOT / "docs/release/v3-race-matrix.md"
@@ -429,6 +431,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "concurrency_stability": _validate_concurrency,
     "test_order_independence": _validate_order,
     "mutation_probes": _validate_mutations,
+    "adversarial_failure": validate_adversarial_failure,
 }
 
 
@@ -484,6 +487,7 @@ def build_manifest() -> dict[str, Any]:
         "concurrency_stability": ROOT / ".phase6/v3-concurrency-stability.json",
         "test_order_independence": ROOT / ".phase6/v3-test-order-independence.json",
         "mutation_probes": ROOT / ".phase6/v3-mutation-probes.json",
+        "adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json",
     }
     artifact_validation = {
         name: _validate_artifact(name, path) for name, path in evidence_paths.items()
