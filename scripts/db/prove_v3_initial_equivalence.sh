@@ -27,6 +27,7 @@ if [[ "${candidate_db}" == "${PGMAINTENANCE_DB}" || "${initial_db}" == "${PGMAIN
 fi
 work_dir="$(mktemp -d)"
 initial_sql="${work_dir}/0001_initial.sql"
+freeze_json="${work_dir}/candidate-freeze.json"
 
 cleanup() {
   local original_status=$?
@@ -65,11 +66,15 @@ trap cleanup EXIT
 
 for database_name in "${candidate_db}" "${initial_db}"; do
   dropdb --if-exists --force --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}" >/dev/null
-  createdb --maintenance-db="${PGMAINTENANCE_DB}" "${database_name}"
+  createdb --maintenance-db="${PGMAINTENANCE_DB}" --template=template0 "${database_name}"
 done
 
-python "${repo_root}/scripts/db/build_v3_initial_candidate.py" --output "${initial_sql}"
 PGDATABASE="${candidate_db}" bash "${repo_root}/scripts/db/apply_v3_candidate.sh"
+python "${repo_root}/scripts/db/build_v3_initial_candidate.py" \
+  --database "${candidate_db}" \
+  --freeze-output "${freeze_json}" \
+  --output "${initial_sql}"
+python "${repo_root}/scripts/release/validate_v3_candidate_freeze_artifact.py" "${freeze_json}"
 PGDATABASE="${initial_db}" psql --set=ON_ERROR_STOP=1 --file="${initial_sql}"
 
 python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
@@ -82,9 +87,9 @@ python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
   --sha-output "${work_dir}/initial.sha256"
 
 if ! diff --unified "${work_dir}/candidate.json" "${work_dir}/initial.json"; then
-  echo "generated 0001_initial candidate is not catalog-equivalent to the migration chain" >&2
+  echo "generated final-initial candidate is not catalog-equivalent to the frozen migration chain" >&2
   exit 1
 fi
 
-echo "==> generated 0001_initial candidate is catalog-equivalent to the V3 candidate chain"
+echo "==> generated final-initial candidate is catalog-equivalent to the frozen V3 candidate chain"
 cat "${work_dir}/candidate.sha256"
