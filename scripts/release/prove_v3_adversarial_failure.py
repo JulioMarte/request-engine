@@ -204,9 +204,7 @@ def build_proof() -> dict[str, Any]:
         )
 
     supporting: dict[str, dict[str, Any]] = {}
-    junit_status, junit_counts, junit_failures = _junit_status(
-        SUPPORTING_ARTIFACTS["test_junit"]
-    )
+    junit_status, junit_counts, junit_failures = _junit_status(SUPPORTING_ARTIFACTS["test_junit"])
     supporting["test_junit"] = {"status": junit_status, "counts": junit_counts}
     failures.extend(junit_failures)
     for name, path in SUPPORTING_ARTIFACTS.items():
