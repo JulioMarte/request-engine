@@ -7,17 +7,19 @@ import argparse
 import hashlib
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from migrations.v3_initial_payload import load_v3_initial_sql
 from sqlalchemy.engine import URL
 
 ROOT = Path(__file__).resolve().parents[2]
+INITIAL_PAYLOAD_LOADER = ROOT / "migrations/v3_initial_payload.py"
 DEFAULT_FREEZE = ROOT / ".phase6/v3-candidate-freeze.json"
 DEFAULT_INITIAL_SQL = ROOT / ".phase6/0001_initial.candidate.sql"
 DEFAULT_CANDIDATE_SCHEMA = ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
@@ -72,6 +74,12 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path} does not contain a JSON object")
     return payload
+
+
+def _load_reviewed_initial_sql() -> str:
+    namespace = runpy.run_path(str(INITIAL_PAYLOAD_LOADER))
+    loader = cast(Callable[[], str], namespace["load_v3_initial_sql"])
+    return loader()
 
 
 def _junit_summary(path: Path) -> dict[str, Any]:
@@ -174,7 +182,7 @@ def _migration_database_url(database: str, env: dict[str, str]) -> str:
 
 
 def _install_initial(database: str, initial_sql: Path, env: dict[str, str]) -> None:
-    reviewed = load_v3_initial_sql()
+    reviewed = _load_reviewed_initial_sql()
     generated = initial_sql.read_text(encoding="utf-8")
     if generated != reviewed:
         raise RuntimeError("G17 initial SQL artifact differs from the reviewed Alembic payload")

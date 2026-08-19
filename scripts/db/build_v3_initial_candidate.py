@@ -3,12 +3,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import runpy
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 FREEZE_PROOF = ROOT / "scripts/release/prove_v3_candidate_freeze.py"
+INITIAL_PAYLOAD_LOADER = ROOT / "migrations/v3_initial_payload.py"
 DEFAULT_FREEZE_OUTPUT = ROOT / ".phase6/v3-candidate-freeze.json"
 APPLICATION_SCHEMAS = (
     "request_engine",
@@ -151,10 +155,14 @@ def render_initial(database: str) -> str:
     return ROLE_PREAMBLE + _normalize_dump(dump)
 
 
-def _require_reviewed_baseline(rendered: str) -> None:
-    from migrations.v3_initial_payload import load_v3_initial_sql
+def _load_reviewed_initial_sql() -> str:
+    namespace = runpy.run_path(str(INITIAL_PAYLOAD_LOADER))
+    loader = cast(Callable[[], str], namespace["load_v3_initial_sql"])
+    return loader()
 
-    reviewed = load_v3_initial_sql()
+
+def _require_reviewed_baseline(rendered: str) -> None:
+    reviewed = _load_reviewed_initial_sql()
     if rendered == reviewed:
         return
     generated_sha = hashlib.sha256(rendered.encode("utf-8")).hexdigest()

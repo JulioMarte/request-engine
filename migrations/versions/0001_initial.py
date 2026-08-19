@@ -5,15 +5,25 @@ Revises:
 Create Date: 2026-08-19
 """
 
-from collections.abc import Sequence
+import runpy
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import cast
 
 from alembic import op
-from migrations.v3_initial_payload import load_v3_initial_sql
 
 revision: str = "0001_initial"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+_PAYLOAD_LOADER = Path(__file__).resolve().parents[1] / "v3_initial_payload.py"
+
+
+def _load_v3_initial_sql() -> str:
+    namespace = runpy.run_path(str(_PAYLOAD_LOADER))
+    loader = cast(Callable[[], str], namespace["load_v3_initial_sql"])
+    return loader()
 
 
 def upgrade() -> None:
@@ -23,7 +33,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind is None:
         raise RuntimeError("V3 0001_initial requires a live database connection")
-    bind.exec_driver_sql(load_v3_initial_sql())
+    bind.exec_driver_sql(_load_v3_initial_sql())
     # The pg_dump-derived payload intentionally pins session settings while
     # replaying DDL. Restore defaults before Alembic records the revision.
     bind.exec_driver_sql("RESET ALL")
