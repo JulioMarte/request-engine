@@ -44,11 +44,14 @@ def test_shallow_freeze_ancestry_is_bounded_and_fail_closed() -> None:
 
     assert "_CI_ANCESTRY_FETCH_DEPTHS" in proof_source
     assert "(32, 128, 512)" in proof_source
-    assert '"fetch", "--no-tags", f"--depth={depth}", "origin", base_sha' in proof_source
+    assert '"fetch", "--no-tags", f"--depth={depth}", "origin", descendant_sha' in proof_source
     assert '"merge-base", "--is-ancestor", source_commit, descendant' in proof_source
-    assert 'return "ci-base-ancestor", ci_base_sha, None' in proof_source
-    assert "within bounded history depths" in proof_source
+    assert 'os.environ.get("PHASE6_TESTED_SHA")' in proof_source
+    assert 'if ci_tested_sha != current_head:' in proof_source
+    assert 'return "ci-tested-ancestor", ci_base_sha, ci_tested_sha, None' in proof_source
+    assert "ancestor of tested checkout" in proof_source
     assert '"ancestry_base_sha": ancestry_base_sha' in proof_source
+    assert '"ancestry_tested_sha": ancestry_tested_sha' in proof_source
 
 
 def test_initial_construction_is_fail_closed_and_catalog_derived() -> None:

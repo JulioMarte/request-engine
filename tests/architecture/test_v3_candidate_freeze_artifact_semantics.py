@@ -31,6 +31,7 @@ def _valid_payload() -> dict[str, Any]:
         "candidate_source_tree": "68b92307d85dca0e30cdcee763e8cf9512fef186",
         "ancestry_evidence": "git-merge-base",
         "ancestry_base_sha": None,
+        "ancestry_tested_sha": None,
         "current_head": "a" * 40,
         "current_tree": "b" * 40,
         "migration_count": 43,
@@ -66,6 +67,26 @@ def test_candidate_freeze_validator_accepts_bounded_ci_base_ancestry() -> None:
     assert validator.validation_errors(payload) == []
 
 
+def test_candidate_freeze_validator_accepts_bounded_tested_checkout_ancestry() -> None:
+    payload = _valid_payload()
+    payload["ancestry_evidence"] = "ci-tested-ancestor"
+    payload["ancestry_base_sha"] = "8" * 40
+    payload["ancestry_tested_sha"] = "9" * 40
+    payload["current_head"] = "9" * 40
+
+    assert validator.validation_errors(payload) == []
+
+
+def test_candidate_freeze_validator_rejects_tested_checkout_not_bound_to_head() -> None:
+    payload = _valid_payload()
+    payload["ancestry_evidence"] = "ci-tested-ancestor"
+    payload["ancestry_tested_sha"] = "9" * 40
+
+    errors = validator.validation_errors(payload)
+
+    assert "ci-tested-ancestor evidence must bind the checked out HEAD" in errors
+
+
 def test_candidate_freeze_validator_rejects_lying_pass() -> None:
     payload = _valid_payload()
     payload["failures"] = ["candidate drift"]
@@ -88,7 +109,7 @@ def test_candidate_freeze_validator_rejects_wrong_provenance_and_digests() -> No
     errors = validator.validation_errors(payload)
 
     assert "candidate_source_commit does not match the frozen G19 source" in errors
-    assert "ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor" in errors
+    assert any(error.startswith("ancestry_evidence must be") for error in errors)
     assert "migration_set_sha256 must be 64 lowercase hex characters" in errors
     assert "locked_tools must contain exactly the apply and fingerprint tools" in errors
 
