@@ -102,9 +102,17 @@ def test_g18_artifact_semantics_reject_cardinality_lies() -> None:
 
 def test_g18_artifact_is_mandatory_in_candidate_manifest_and_ci() -> None:
     manifest = (ROOT / "scripts/release/build_v3_evidence_manifest.py").read_text(encoding="utf-8")
+    manifest_base = (ROOT / "scripts/release/build_v3_evidence_manifest_base.py").read_text(
+        encoding="utf-8"
+    )
     ci_jobs = (ROOT / "scripts/ci/ci_jobs.py").read_text(encoding="utf-8")
-    assert '"adversarial_failure": _VALIDATE_G18' in manifest
-    assert "validate_v3_adversarial_failure_artifact.py" in manifest
-    assert '"adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json"' in manifest
+
+    assert "build_v3_evidence_manifest_base.py" in manifest
+    assert '"adversarial_failure": _VALIDATE_G18' in manifest_base
+    assert "validate_v3_adversarial_failure_artifact.py" in manifest_base
+    assert (
+        '"adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json"'
+        in manifest_base
+    )
     assert '"adversarial-failure-proof"' in ci_jobs
     assert "prove_v3_adversarial_failure.py" in ci_jobs
