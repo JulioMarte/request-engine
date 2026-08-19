@@ -307,7 +307,9 @@ def _validate_public_api_contract(payload: dict[str, Any]) -> list[str]:
     for field, expected in expected_lengths.items():
         value = contract.get(field)
         if not isinstance(value, list) or len(value) != expected:
-            errors.append(f"public API contract {field} snapshot does not contain {expected} entries")
+            errors.append(
+                f"public API contract {field} snapshot does not contain {expected} entries"
+            )
 
     literal_codes = contract.get("literal_error_codes")
     shared_codes = contract.get("shared_error_codes")
