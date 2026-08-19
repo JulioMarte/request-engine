@@ -5,7 +5,7 @@ import secrets
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote, urlsplit
 
 import psycopg
 import pytest
@@ -19,6 +19,10 @@ from request_engine.platform.db.session import (
 )
 
 PgConnection = Connection[Any]
+_RUNTIME_DATABASE_URLS = {
+    "request_engine_app": "REQUEST_ENGINE_APP_DATABASE_URL",
+    "request_engine_worker": "REQUEST_ENGINE_WORKER_DATABASE_URL",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +54,20 @@ def e2e_admin_conn() -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
+
+
+def _preprovisioned_credentials(parent_role: str) -> RuntimeCredentials | None:
+    configured_url = os.environ.get(_RUNTIME_DATABASE_URLS[parent_role])
+    if not configured_url:
+        return None
+    parsed = urlsplit(configured_url)
+    if not parsed.username or parsed.password is None:
+        raise RuntimeError(f"preprovisioned {parent_role} URL lacks username/password")
+    return RuntimeCredentials(
+        role_name=unquote(parsed.username),
+        password=unquote(parsed.password),
+        database_url=configured_url,
+    )
 
 
 def _runtime_credentials(
@@ -86,6 +104,11 @@ def _drop_runtime_role(conn: PgConnection, credentials: RuntimeCredentials) -> N
 def app_runtime_credentials(
     e2e_admin_conn: PgConnection,
 ) -> Iterator[RuntimeCredentials]:
+    configured = _preprovisioned_credentials("request_engine_app")
+    if configured is not None:
+        yield configured
+        return
+
     credentials = _runtime_credentials(
         e2e_admin_conn,
         parent_role="request_engine_app",
@@ -101,6 +124,16 @@ def worker_runtime_credentials(
     e2e_admin_conn: PgConnection,
     app_runtime_credentials: RuntimeCredentials,
 ) -> Iterator[RuntimeCredentials]:
+    configured = _preprovisioned_credentials("request_engine_worker")
+    if configured is not None:
+        yield RuntimeCredentials(
+            role_name=configured.role_name,
+            password=configured.password,
+            database_url=configured.database_url,
+            domain_database_url=app_runtime_credentials.database_url,
+        )
+        return
+
     credentials = _runtime_credentials(
         e2e_admin_conn,
         parent_role="request_engine_worker",
