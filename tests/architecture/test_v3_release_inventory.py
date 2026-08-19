@@ -5,6 +5,9 @@ ROOT = Path(__file__).resolve().parents[2]
 RELEASE_DIR = ROOT / "docs" / "release"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
+CI_G19_WRAPPER = ROOT / "scripts" / "ci" / "run_v3_candidate_with_g19.sh"
+MANIFEST = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
+MANIFEST_BASE = ROOT / "scripts" / "release" / "build_v3_evidence_manifest_base.py"
 REQUIRED_RELEASE_DOCS = {
     "v3-freeze-scope.md",
     "v3-release-gates.md",
@@ -50,16 +53,17 @@ def test_phase6_scope_keeps_initial_migration_blocked_until_proof() -> None:
     assert "Do not remove the V3 candidate chain until" in text
 
 
-def _ci_sources() -> tuple[str, str]:
+def _ci_sources() -> tuple[str, str, str]:
     return (
         CI_WORKFLOW.read_text(encoding="utf-8"),
         CI_JOBS.read_text(encoding="utf-8"),
+        CI_G19_WRAPPER.read_text(encoding="utf-8"),
     )
 
 
 def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
     script = ROOT / "scripts" / "db" / "prove_v3_candidate_bootstrap.sh"
-    workflow, jobs = _ci_sources()
+    workflow, jobs, _ = _ci_sources()
 
     assert script.is_file()
     assert "postgres-v3-bootstrap-proof:" in workflow
@@ -70,11 +74,12 @@ def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
 def test_phase6_schema_fingerprint_and_catalog_audit_are_wired_to_ci() -> None:
     fingerprint = ROOT / "scripts" / "db" / "v3_schema_fingerprint.py"
     audit = ROOT / "scripts" / "db" / "audit_v3_catalog.py"
-    workflow, jobs = _ci_sources()
+    workflow, jobs, wrapper = _ci_sources()
 
     assert fingerprint.is_file()
     assert audit.is_file()
-    assert "scripts/ci/ci_jobs.py postgres-v3-candidate" in workflow
+    assert "run_v3_candidate_with_g19.sh" in workflow
+    assert "scripts/ci/ci_jobs.py postgres-v3-candidate" in wrapper
     assert "scripts/db/v3_schema_fingerprint.py" in jobs
     assert "scripts/db/audit_v3_catalog.py" in jobs
     assert "v3-candidate-release-proof" in workflow
@@ -87,7 +92,7 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     order = ROOT / "scripts" / "release" / "prove_v3_test_order_independence.py"
     mutation = ROOT / "scripts" / "release" / "run_v3_mutation_probes.py"
     scratch_database = ROOT / "scripts" / "release" / "v3_scratch_database.py"
-    _, jobs = _ci_sources()
+    _, jobs, wrapper = _ci_sources()
 
     assert quality.is_file()
     assert collection.is_file()
@@ -106,6 +111,10 @@ def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
     assert "prove_v3_test_order_independence.py" in jobs
     assert "v3-test-order-independence.json" in jobs
     assert "v3-mutation-probes.json" in jobs
+    assert "--step test-quality-audit" in wrapper
+    assert "--step concurrency-stability" in wrapper
+    assert "--step test-order-independence" in wrapper
+    assert "--step mutation-probes" in wrapper
 
 
 def test_phase6_repeated_test_proofs_use_fresh_v3_databases() -> None:
@@ -133,20 +142,27 @@ def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
 
 
 def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
-    manifest = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
-    workflow, jobs = _ci_sources()
+    workflow, _, wrapper = _ci_sources()
 
-    assert manifest.is_file()
-    assert "evidence-manifest" in jobs
-    assert "evidence-validity" in jobs
-    assert "--require-valid" in jobs
-    source = manifest.read_text(encoding="utf-8")
-    assert '"evidence_status": candidate_status' in source
-    assert '"release_status": "READY" if release_ready else "NOT_READY"' in source
-    assert '"head_sha": head_sha' in source
-    assert '"tested_sha": tested_sha' in source
-    assert "_validate_junit" in source
-    assert "artifact_validation" in source
+    assert MANIFEST.is_file()
+    assert MANIFEST_BASE.is_file()
+    assert "build_v3_evidence_manifest.py" in wrapper
+    assert "--require-valid" in wrapper
+
+    source = MANIFEST.read_text(encoding="utf-8")
+    base_source = MANIFEST_BASE.read_text(encoding="utf-8")
+    assert "build_v3_evidence_manifest_base.py" in source
+    assert 'manifest["evidence_status"] = candidate_status' in source
+    assert 'manifest["release_status"] = "READY" if release_ready else "NOT_READY"' in source
+    assert "_validate_g19_artifact" in source
+    assert ".phase6/v3-production-like-bootstrap-proof.json" in source
+
+    assert '"evidence_status": candidate_status' in base_source
+    assert '"release_status": "READY" if release_ready else "NOT_READY"' in base_source
+    assert '"head_sha": head_sha' in base_source
+    assert '"tested_sha": tested_sha' in base_source
+    assert "_validate_junit" in base_source
+    assert "artifact_validation" in base_source
 
     assert "postgres-v3-candidate-proof:" in workflow
     assert "if: ${{ always() }}" in workflow

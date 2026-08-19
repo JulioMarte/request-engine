@@ -1,9 +1,18 @@
+import os
 from typing import cast
 
 import pytest
 from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
+
+
+def _assert_runtime_login_name(current_user: str) -> None:
+    expected = os.environ.get("REQUEST_ENGINE_APP_ROLE_NAME")
+    if expected is not None:
+        assert current_user == expected
+    else:
+        assert current_user.startswith("request_engine_app_test_")
 
 
 @pytest.mark.asyncio
@@ -37,7 +46,7 @@ async def test_first_vertical_uses_real_least_privileged_app_login(
     current_user = cast(str, row[0])
     session_user = cast(str, row[1])
     assert current_user == session_user
-    assert current_user.startswith("request_engine_app_test_")
+    _assert_runtime_login_name(current_user)
     assert row[2:6] == (False, False, False, False)
     assert row[6] is True
     assert row[7] is False

@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -33,6 +35,15 @@ async def _identity(factory: SessionFactory) -> tuple[str, str, bool, bool, bool
         )
 
 
+def _assert_runtime_login_name(current_user: str, *, role: str) -> None:
+    env_name = f"REQUEST_ENGINE_{role.upper()}_ROLE_NAME"
+    expected = os.environ.get(env_name)
+    if expected is not None:
+        assert current_user == expected
+    else:
+        assert current_user.startswith(f"request_engine_{role}_test_")
+
+
 async def _assert_set_role_forbidden(factory: SessionFactory, target_role: str) -> None:
     async with factory() as session:
         with pytest.raises(DBAPIError):
@@ -48,7 +59,7 @@ async def test_application_login_has_only_application_runtime_membership(
 ) -> None:
     current_user, session_user, app, worker, admin, superuser = await _identity(app_session_factory)
     assert current_user == session_user
-    assert current_user.startswith("request_engine_app_test_")
+    _assert_runtime_login_name(current_user, role="app")
     assert (app, worker, admin, superuser) == (True, False, False, False)
 
     await _assert_set_role_forbidden(app_session_factory, "request_engine_worker")
@@ -66,7 +77,7 @@ async def test_worker_login_has_only_worker_runtime_membership(
         worker_session_factory
     )
     assert current_user == session_user
-    assert current_user.startswith("request_engine_worker_test_")
+    _assert_runtime_login_name(current_user, role="worker")
     assert (app, worker, admin, superuser) == (False, True, False, False)
 
     await _assert_set_role_forbidden(worker_session_factory, "request_engine_app")
@@ -84,7 +95,7 @@ async def test_admin_login_does_not_inherit_schema_ownership_or_runtime_roles(
         runtime_admin_session_factory
     )
     assert current_user == session_user
-    assert current_user.startswith("request_engine_admin_test_")
+    _assert_runtime_login_name(current_user, role="admin")
     assert (app, worker, admin, superuser) == (False, False, True, False)
 
     await _assert_set_role_forbidden(runtime_admin_session_factory, "request_engine_app")

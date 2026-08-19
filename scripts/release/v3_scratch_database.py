@@ -12,6 +12,16 @@ ROOT = Path(__file__).resolve().parents[2]
 COMMAND_TIMEOUT_SECONDS = 60
 BOOTSTRAP_TIMEOUT_SECONDS = 1200
 DATABASE_PREFIX = re.compile(r"^[a-z_][a-z0-9_]{0,41}$")
+RUNTIME_DATABASE_ENV_KEYS = frozenset(
+    {
+        "REQUEST_ENGINE_APP_DATABASE_URL",
+        "REQUEST_ENGINE_WORKER_DATABASE_URL",
+        "REQUEST_ENGINE_ADMIN_DATABASE_URL",
+        "REQUEST_ENGINE_APP_ROLE_NAME",
+        "REQUEST_ENGINE_WORKER_ROLE_NAME",
+        "REQUEST_ENGINE_ADMIN_ROLE_NAME",
+    }
+)
 
 
 class ScratchDatabaseError(RuntimeError):
@@ -45,6 +55,15 @@ def _run(
 def _failure_tail(result: subprocess.CompletedProcess[str], *, limit: int = 80) -> str:
     output = (result.stdout + result.stderr).strip().splitlines()
     return "\n".join(output[-limit:])
+
+
+def _scratch_environment(base_env: dict[str, str], database: str) -> dict[str, str]:
+    """Bind subprocesses exclusively to the scratch DB, never an outer runtime DSN."""
+
+    scratch_env = {**base_env, "PGDATABASE": database}
+    for key in RUNTIME_DATABASE_ENV_KEYS:
+        scratch_env.pop(key, None)
+    return scratch_env
 
 
 def _drop_and_verify(
@@ -125,7 +144,7 @@ def fresh_v3_database(prefix: str) -> Generator[dict[str, str]]:
         raise create_error
     created = True
 
-    scratch_env = {**base_env, "PGDATABASE": database}
+    scratch_env = _scratch_environment(base_env, database)
     try:
         bootstrap = _run(
             ["bash", "scripts/db/apply_v3_candidate.sh"],

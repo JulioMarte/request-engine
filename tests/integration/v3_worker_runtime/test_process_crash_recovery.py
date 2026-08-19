@@ -4,24 +4,36 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
 from psycopg import Connection
+from psycopg.conninfo import make_conninfo
 
 PgConnection = Connection[Any]
 
 
 def _conninfo() -> str:
-    return " ".join(
-        (
-            f"host={os.environ.get('PGHOST', '127.0.0.1')}",
-            f"port={os.environ.get('PGPORT', '5432')}",
-            f"dbname={os.environ.get('PGDATABASE', 'request_engine_v3')}",
-            f"user={os.environ.get('PGUSER', 'request_engine')}",
-            f"password={os.environ.get('PGPASSWORD', 'request_engine')}",
+    runtime_url = os.environ.get("REQUEST_ENGINE_WORKER_DATABASE_URL")
+    if runtime_url:
+        parsed = urlsplit(runtime_url)
+        if not parsed.hostname or not parsed.username or parsed.password is None:
+            raise RuntimeError("REQUEST_ENGINE_WORKER_DATABASE_URL is malformed")
+        return make_conninfo(
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            dbname=parsed.path.lstrip("/"),
+            user=unquote(parsed.username),
+            password=unquote(parsed.password),
         )
+    return make_conninfo(
+        host=os.environ.get("PGHOST", "127.0.0.1"),
+        port=os.environ.get("PGPORT", "5432"),
+        dbname=os.environ.get("PGDATABASE", "request_engine_v3"),
+        user=os.environ.get("PGUSER", "request_engine"),
+        password=os.environ.get("PGPASSWORD", "request_engine"),
     )
 
 
@@ -78,6 +90,7 @@ import psycopg
 
 conninfo, action_id, result_path = sys.argv[1:4]
 conn = psycopg.connect(conninfo, autocommit=True)
+login_role = conn.execute("SELECT current_user").fetchone()[0]
 conn.execute("SET ROLE request_engine_worker")
 rows = conn.execute(
     """
@@ -87,7 +100,10 @@ rows = conn.execute(
 ).fetchall()
 row = next(value for value in rows if str(value[0]) == action_id)
 with open(result_path, "w", encoding="utf-8") as handle:
-    json.dump({"action_id": str(row[0]), "claim_token": str(row[1])}, handle)
+    json.dump(
+        {"action_id": str(row[0]), "claim_token": str(row[1]), "login_role": login_role},
+        handle,
+    )
     handle.flush()
     os.fsync(handle.fileno())
 os.kill(os.getpid(), signal.SIGKILL)
@@ -102,6 +118,9 @@ os.kill(os.getpid(), signal.SIGKILL)
     assert result_path.exists(), process.stderr
     first_claim = json.loads(result_path.read_text(encoding="utf-8"))
     first_token = UUID(first_claim["claim_token"])
+    expected_runtime_role = os.environ.get("REQUEST_ENGINE_WORKER_ROLE_NAME")
+    if expected_runtime_role:
+        assert first_claim["login_role"] == expected_runtime_role
 
     claimed_state = admin_conn.execute(
         """
@@ -125,6 +144,10 @@ os.kill(os.getpid(), signal.SIGKILL)
 
     worker: PgConnection = psycopg.connect(_conninfo(), autocommit=True)
     try:
+        login_role = worker.execute("SELECT current_user").fetchone()
+        assert login_role is not None
+        if expected_runtime_role:
+            assert login_role == (expected_runtime_role,)
         worker.execute("SET ROLE request_engine_worker")
         rows = worker.execute(
             """

@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
@@ -92,6 +93,7 @@ async def test_production_worker_assembly_enforces_runtime_role_split(
                 text(
                     """
                     SELECT
+                        current_user,
                         pg_has_role(current_user, 'request_engine_worker', 'member'),
                         pg_has_role(current_user, 'request_engine_app', 'member')
                     """
@@ -104,6 +106,7 @@ async def test_production_worker_assembly_enforces_runtime_role_split(
                 text(
                     """
                     SELECT
+                        current_user,
                         pg_has_role(current_user, 'request_engine_app', 'member'),
                         pg_has_role(current_user, 'request_engine_worker', 'member')
                     """
@@ -111,8 +114,14 @@ async def test_production_worker_assembly_enforces_runtime_role_split(
             )
         ).one()
 
-    assert worker_roles == (True, False)
-    assert app_roles == (True, False)
+    assert worker_roles[1:] == (True, False)
+    assert app_roles[1:] == (True, False)
+    expected_worker_login = os.environ.get("REQUEST_ENGINE_WORKER_ROLE_NAME")
+    expected_app_login = os.environ.get("REQUEST_ENGINE_APP_ROLE_NAME")
+    if expected_worker_login:
+        assert worker_roles[0] == expected_worker_login
+    if expected_app_login:
+        assert app_roles[0] == expected_app_login
 
     organization_id = _organization(admin_conn)
     action_id = _uuid_row(
