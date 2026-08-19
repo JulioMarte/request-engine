@@ -90,6 +90,7 @@ def _valid_payload() -> dict[str, Any]:
         "proof": "v3-final-initial-equivalence",
         "status": "PASS",
         "head_sha": "1" * 40,
+        "initial_database": "request_engine_v3_g17_initial",
         "candidate_freeze": {
             "candidate_source_commit": "4311200a8a9d8dfa18340c0eba5dff0cfdb47803",
             "current_head": "1" * 40,
@@ -109,6 +110,7 @@ def _valid_payload() -> dict[str, Any]:
         },
         "runtime": {
             "status": "PASS",
+            "database": "request_engine_v3_g17_initial",
             "postgresql_major": 18,
             "secrets_redacted": True,
             "artifact_sha256": "5" * 64,
