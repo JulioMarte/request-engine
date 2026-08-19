@@ -143,10 +143,7 @@ def _junit_status(path: Path) -> tuple[str, dict[str, int], list[str]]:
 
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
     count_keys = ("tests", "failures", "errors", "skipped")
-    counts = {
-        key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
-        for key in count_keys
-    }
+    counts = {key: sum(int(suite.attrib.get(key, "0")) for suite in suites) for key in count_keys}
     failures: list[str] = []
     if counts["tests"] <= 0:
         failures.append("JUnit contains zero tests")
