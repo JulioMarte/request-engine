@@ -17,7 +17,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FREEZE = ROOT / ".phase6/v3-candidate-freeze.json"
 DEFAULT_INITIAL_SQL = ROOT / ".phase6/0001_initial.candidate.sql"
-DEFAULT_CANDIDATE_SCHEMA = ROOT / ".phase6/v3-schema.json"
+DEFAULT_CANDIDATE_SCHEMA = (
+    ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
+)
 DEFAULT_CANDIDATE_JUNIT = ROOT / ".phase6/v3-tests-junit.xml"
 DEFAULT_INITIAL_SCHEMA = ROOT / ".phase6/v3-final-initial-schema.json"
 DEFAULT_INITIAL_JUNIT = ROOT / ".phase6/v3-final-initial-tests-junit.xml"
@@ -179,32 +181,6 @@ def _install_initial(database: str, initial_sql: Path, env: dict[str, str]) -> N
         raise RuntimeError(f"final-initial install failed: {detail}")
 
 
-def _fingerprint_initial(database: str, output: Path, env: dict[str, str]) -> dict[str, Any]:
-    sha_output = output.with_suffix(".sha256")
-    target_env = dict(env)
-    target_env["PGDATABASE"] = database
-    result = _run(
-        [
-            "uv",
-            "run",
-            "python",
-            "scripts/db/v3_schema_fingerprint.py",
-            "--database",
-            database,
-            "--json-output",
-            str(output),
-            "--sha-output",
-            str(sha_output),
-        ],
-        env=target_env,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"final-initial schema fingerprint failed: {detail}")
-    return _load_json(output)
-
-
 def _provision_runtime(
     database: str,
     runtime_output: Path,
@@ -294,6 +270,7 @@ def _run_initial_suite(
 def _runtime_record(runtime_payload: dict[str, Any], runtime_output: Path) -> dict[str, Any]:
     return {
         "status": runtime_payload.get("status"),
+        "database": runtime_payload.get("database"),
         "postgresql_major": runtime_payload.get("postgresql_major"),
         "secrets_redacted": runtime_payload.get("secrets_redacted"),
         "runtime_roles": runtime_payload.get("runtime_roles"),
@@ -328,8 +305,6 @@ def main() -> int:
     args.initial_junit.parent.mkdir(parents=True, exist_ok=True)
     args.runtime_env.parent.mkdir(parents=True, exist_ok=True)
     for stale_path in (
-        args.initial_schema,
-        args.initial_schema.with_suffix(".sha256"),
         args.initial_junit,
         args.runtime_output,
         args.runtime_env,
@@ -347,7 +322,13 @@ def main() -> int:
     freeze_payload: dict[str, Any] = {}
     database_created = False
 
-    required = (args.freeze, args.initial_sql, args.candidate_schema, args.candidate_junit)
+    required = (
+        args.freeze,
+        args.initial_sql,
+        args.candidate_schema,
+        args.initial_schema,
+        args.candidate_junit,
+    )
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         failures.append(f"required G17 inputs are missing: {', '.join(missing)}")
@@ -369,6 +350,9 @@ def main() -> int:
                 raise RuntimeError(f"candidate freeze validation failed: {detail}")
 
             candidate_schema_payload = _load_json(args.candidate_schema)
+            initial_schema_payload = _load_json(args.initial_schema)
+            if candidate_schema_payload != initial_schema_payload:
+                raise RuntimeError("clean structural fingerprints differ")
             candidate_summary = _junit_summary(args.candidate_junit)
             if any(candidate_summary[field] != 0 for field in ("failures", "errors", "skipped")):
                 raise RuntimeError("candidate canonical V3 suite did not pass cleanly")
@@ -376,11 +360,6 @@ def main() -> int:
             _create_database(args.database, env)
             database_created = True
             _install_initial(args.database, args.initial_sql, env)
-            initial_schema_payload = _fingerprint_initial(
-                args.database, args.initial_schema, env
-            )
-            if candidate_schema_payload != initial_schema_payload:
-                raise RuntimeError("final-initial schema fingerprint differs from candidate")
 
             runtime_payload = _provision_runtime(
                 args.database, args.runtime_output, args.runtime_env, env
@@ -437,6 +416,7 @@ def main() -> int:
             "PASS" if not failures and structural_equivalent and behavioral_equivalent else "FAIL"
         ),
         "head_sha": head_sha,
+        "initial_database": args.database,
         "candidate_freeze": {
             "candidate_source_commit": freeze_payload.get("candidate_source_commit"),
             "current_head": freeze_payload.get("current_head"),
