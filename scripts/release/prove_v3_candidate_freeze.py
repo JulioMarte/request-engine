@@ -32,6 +32,42 @@ def _git(*args: str) -> str:
     return result.stdout.strip()
 
 
+def _ensure_source_commit(source_commit: str) -> None:
+    revision = f"{source_commit}^{{commit}}"
+    probe = subprocess.run(
+        ["git", "cat-file", "-e", revision],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode == 0:
+        return
+
+    fetch = subprocess.run(
+        ["git", "fetch", "--no-tags", "--depth=1", "origin", source_commit],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if fetch.returncode != 0:
+        detail = (fetch.stderr or fetch.stdout).strip()
+        raise RuntimeError(f"could not fetch frozen source commit {source_commit}: {detail}")
+
+    verify = subprocess.run(
+        ["git", "cat-file", "-e", revision],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if verify.returncode != 0:
+        raise RuntimeError(f"frozen source commit {source_commit} remains unavailable after fetch")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -93,6 +129,8 @@ def main() -> int:
     candidate_dir = REPO_ROOT / str(lock["candidate_directory"])
     expected_migrations = list(lock["migrations"])
     expected_names = [str(item["name"]) for item in expected_migrations]
+
+    _ensure_source_commit(source_commit)
 
     current_head = _git("rev-parse", "HEAD")
     current_tree = _git("rev-parse", "HEAD^{tree}")
