@@ -326,6 +326,7 @@ def build_proof() -> dict[str, Any]:
         "retry_idempotency",
         "attack_security",
     }
+    race_nodes_missing = any(row["status"] != "PASS" for row in race_rows)
     for family_id, owners in FAMILY_OWNERS.items():
         observed, missing = _owner_inventory(owners)
         family_failures = [f"missing owner: {path}" for path in missing]
@@ -333,9 +334,7 @@ def build_proof() -> dict[str, Any]:
             family_failures.append(f"non-PASS races: {', '.join(non_pass_races)}")
         if family_id == "race_concurrency" and collection_status != "PASS":
             family_failures.append("canonical PostgreSQL collection artifact is not PASS")
-        if family_id == "race_concurrency" and any(
-            row["status"] != "PASS" for row in race_rows
-        ):
+        if family_id == "race_concurrency" and race_nodes_missing:
             family_failures.append("one or more required race pytest nodes are not collected")
         order_status = supporting.get("test_order_independence", {}).get("status")
         if family_id == "order_independence" and order_status != "PASS":
