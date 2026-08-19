@@ -16,6 +16,7 @@ APPLICATION_SCHEMAS = (
     "request_admin",
 )
 RESTRICT_KEY = "RequestEngineV3Baseline"
+PG_DUMP_CONTAINER_ENV = "REQUEST_ENGINE_PG_DUMP_CONTAINER"
 
 ROLE_PREAMBLE = """-- Request Engine V3 final-initial release candidate.
 -- Generated from the frozen post-G19 PostgreSQL catalog, not migration-history concatenation.
@@ -58,20 +59,37 @@ def prove_candidate_freeze(output: Path) -> None:
         raise SystemExit("refusing to build 0001 candidate because the V3 candidate freeze failed")
 
 
-def _pg_dump_schema(database: str) -> str:
-    command = [
-        "pg_dump",
-        "--schema-only",
-        "--format=plain",
-        "--no-comments",
-        "--no-security-labels",
-        f"--restrict-key={RESTRICT_KEY}",
-        "--strict-names",
-    ]
+def _pg_dump_command(database: str) -> list[str]:
+    container = os.environ.get(PG_DUMP_CONTAINER_ENV)
+    if container:
+        command = [
+            "docker",
+            "exec",
+            container,
+            "pg_dump",
+            f"--username={os.environ.get('PGUSER', 'postgres')}",
+        ]
+    else:
+        command = ["pg_dump"]
+
+    command.extend(
+        (
+            "--schema-only",
+            "--format=plain",
+            "--no-comments",
+            "--no-security-labels",
+            f"--restrict-key={RESTRICT_KEY}",
+            "--strict-names",
+        )
+    )
     for schema in APPLICATION_SCHEMAS:
         command.append(f"--schema={schema}")
     command.append(database)
+    return command
 
+
+def _pg_dump_schema(database: str) -> str:
+    command = _pg_dump_command(database)
     result = subprocess.run(
         command,
         cwd=ROOT,
