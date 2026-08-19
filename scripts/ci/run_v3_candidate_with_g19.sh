@@ -87,7 +87,9 @@ uv run python scripts/release/prove_v3_final_initial_equivalence.py \
   --candidate-schema .phase6/v3-initial-equivalence-candidate-schema.json \
   --initial-schema .phase6/v3-final-initial-schema.json \
   --output "$G17_PROOF"
-uv run python scripts/release/validate_v3_final_initial_equivalence_artifact.py \
+uv run python scripts/release/finalize_v3_final_initial_equivalence_provenance.py \
+  "$G17_PROOF"
+uv run python scripts/release/validate_v3_final_initial_equivalence_artifact_v2.py \
   "$G17_PROOF"
 
 uv run python scripts/release/prove_v3_production_like_bootstrap.py \
