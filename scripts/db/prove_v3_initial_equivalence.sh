@@ -21,13 +21,38 @@ fi
 
 candidate_db="${V3_EQUIVALENCE_PREFIX}_candidate"
 initial_db="${V3_EQUIVALENCE_PREFIX}_initial"
-if [[ "${candidate_db}" == "${PGMAINTENANCE_DB}" || "${initial_db}" == "${PGMAINTENANCE_DB}" ]]; then
+if [[ "${candidate_db}" == "${PGMAINTENANCE_DB}" \
+  || "${initial_db}" == "${PGMAINTENANCE_DB}" ]]; then
   echo "equivalence databases must not equal the maintenance database" >&2
   exit 2
 fi
 work_dir="$(mktemp -d)"
 initial_sql="${work_dir}/0001_initial.sql"
 freeze_json="${work_dir}/candidate-freeze.json"
+
+resolve_output() {
+  local value="$1"
+  if [[ -z "$value" ]]; then
+    return 0
+  fi
+  if [[ "$value" = /* ]]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s/%s\n' "$repo_root" "$value"
+  fi
+}
+
+copy_artifact() {
+  local source="$1"
+  local configured="$2"
+  local destination
+  destination="$(resolve_output "$configured")"
+  if [[ -z "$destination" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$destination")"
+  cp "$source" "$destination"
+}
 
 cleanup() {
   local original_status=$?
@@ -87,9 +112,17 @@ python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
   --sha-output "${work_dir}/initial.sha256"
 
 if ! diff --unified "${work_dir}/candidate.json" "${work_dir}/initial.json"; then
-  echo "generated final-initial candidate is not catalog-equivalent to the frozen migration chain" >&2
+  echo "generated final-initial candidate is not catalog-equivalent" \
+    "to the frozen migration chain" >&2
   exit 1
 fi
+
+copy_artifact "$initial_sql" "${V3_EQUIVALENCE_INITIAL_SQL_OUTPUT:-}"
+copy_artifact "$freeze_json" "${V3_EQUIVALENCE_FREEZE_OUTPUT:-}"
+copy_artifact "${work_dir}/candidate.json" "${V3_EQUIVALENCE_CANDIDATE_SCHEMA_OUTPUT:-}"
+copy_artifact "${work_dir}/candidate.sha256" "${V3_EQUIVALENCE_CANDIDATE_SHA_OUTPUT:-}"
+copy_artifact "${work_dir}/initial.json" "${V3_EQUIVALENCE_INITIAL_SCHEMA_OUTPUT:-}"
+copy_artifact "${work_dir}/initial.sha256" "${V3_EQUIVALENCE_INITIAL_SHA_OUTPUT:-}"
 
 echo "==> generated final-initial candidate is catalog-equivalent to the frozen V3 candidate chain"
 cat "${work_dir}/candidate.sha256"
