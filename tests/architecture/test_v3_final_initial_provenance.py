@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 FINALIZER_PATH = ROOT / "scripts/release/finalize_v3_final_initial_equivalence_provenance.py"
 VALIDATOR_PATH = ROOT / "scripts/release/validate_v3_final_initial_equivalence_artifact_v2.py"
@@ -32,7 +34,9 @@ def _producer_payload(tested_sha: str) -> dict[str, object]:
     }
 
 
-def test_finalizer_splits_source_head_from_tested_checkout(monkeypatch) -> None:
+def test_finalizer_splits_source_head_from_tested_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source_sha = "1" * 40
     tested_sha = "2" * 40
     monkeypatch.setattr(finalizer, "_git_head", lambda: tested_sha)
@@ -49,7 +53,9 @@ def test_finalizer_splits_source_head_from_tested_checkout(monkeypatch) -> None:
     assert payload["candidate_freeze"]["current_head"] == tested_sha
 
 
-def test_finalizer_rejects_tested_sha_that_is_not_the_checkout(monkeypatch) -> None:
+def test_finalizer_rejects_tested_sha_that_is_not_the_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     checkout_sha = "2" * 40
     monkeypatch.setattr(finalizer, "_git_head", lambda: checkout_sha)
 
@@ -64,7 +70,9 @@ def test_finalizer_rejects_tested_sha_that_is_not_the_checkout(monkeypatch) -> N
         raise AssertionError("mismatched tested SHA was accepted")
 
 
-def test_finalizer_rejects_freeze_bound_to_another_checkout(monkeypatch) -> None:
+def test_finalizer_rejects_freeze_bound_to_another_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tested_sha = "2" * 40
     payload = _producer_payload(tested_sha)
     payload["candidate_freeze"] = {"current_head": "3" * 40}
