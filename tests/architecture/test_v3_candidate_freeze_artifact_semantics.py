@@ -30,6 +30,7 @@ def _valid_payload() -> dict[str, Any]:
         "candidate_source_commit": "4311200a8a9d8dfa18340c0eba5dff0cfdb47803",
         "candidate_source_tree": "68b92307d85dca0e30cdcee763e8cf9512fef186",
         "ancestry_evidence": "git-merge-base",
+        "ancestry_base_sha": None,
         "current_head": "a" * 40,
         "current_tree": "b" * 40,
         "migration_count": 43,
@@ -57,6 +58,14 @@ def test_candidate_freeze_validator_accepts_complete_proof_shape() -> None:
     assert validator.validation_errors(_valid_payload()) == []
 
 
+def test_candidate_freeze_validator_accepts_bounded_ci_base_ancestry() -> None:
+    payload = _valid_payload()
+    payload["ancestry_evidence"] = "ci-base-ancestor"
+    payload["ancestry_base_sha"] = "9" * 40
+
+    assert validator.validation_errors(payload) == []
+
+
 def test_candidate_freeze_validator_rejects_lying_pass() -> None:
     payload = _valid_payload()
     payload["failures"] = ["candidate drift"]
@@ -79,6 +88,19 @@ def test_candidate_freeze_validator_rejects_wrong_provenance_and_digests() -> No
     errors = validator.validation_errors(payload)
 
     assert "candidate_source_commit does not match the frozen G19 source" in errors
-    assert "ancestry_evidence must be git-merge-base or ci-base-sha" in errors
+    assert (
+        "ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor"
+        in errors
+    )
     assert "migration_set_sha256 must be 64 lowercase hex characters" in errors
     assert "locked_tools must contain exactly the apply and fingerprint tools" in errors
+
+
+def test_candidate_freeze_validator_rejects_unbound_ci_ancestry_base() -> None:
+    payload = _valid_payload()
+    payload["ancestry_evidence"] = "ci-base-ancestor"
+    payload["ancestry_base_sha"] = "not-a-sha"
+
+    errors = validator.validation_errors(payload)
+
+    assert "ci-base-ancestor evidence must bind a 40-character base SHA" in errors
