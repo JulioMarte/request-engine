@@ -50,9 +50,7 @@ _VALIDATE_G19 = cast(
 _G17_PATH = ROOT / ".phase6/v3-final-initial-equivalence.json"
 _FREEZE_PATH = ROOT / ".phase6/v3-candidate-freeze.json"
 _INITIAL_SQL_PATH = ROOT / ".phase6/0001_initial.candidate.sql"
-_CANDIDATE_SCHEMA_PATH = (
-    ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
-)
+_CANDIDATE_SCHEMA_PATH = ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
 _INITIAL_SCHEMA_PATH = ROOT / ".phase6/v3-final-initial-schema.json"
 _CANDIDATE_JUNIT_PATH = ROOT / ".phase6/v3-tests-junit.xml"
 _INITIAL_JUNIT_PATH = ROOT / ".phase6/v3-final-initial-tests-junit.xml"
@@ -107,9 +105,8 @@ def _validate_g17_artifact(path: Path = _G17_PATH) -> dict[str, Any]:
     if freeze["status"] != "PASS":
         errors.append("candidate freeze artifact is not independently valid")
     freeze_summary = payload.get("candidate_freeze")
-    if (
-        isinstance(freeze_summary, dict)
-        and freeze["sha256"] != freeze_summary.get("artifact_sha256")
+    if isinstance(freeze_summary, dict) and freeze["sha256"] != freeze_summary.get(
+        "artifact_sha256"
     ):
         errors.append("candidate freeze digest does not match the G17 proof")
 
