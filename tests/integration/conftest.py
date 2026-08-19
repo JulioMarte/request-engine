@@ -16,6 +16,12 @@ from request_engine.platform.db.session import (
 
 PgConnection = Connection[Any]
 
+_RUNTIME_DATABASE_URLS = {
+    "request_engine_app": "REQUEST_ENGINE_APP_DATABASE_URL",
+    "request_engine_worker": "REQUEST_ENGINE_WORKER_DATABASE_URL",
+    "request_engine_admin": "REQUEST_ENGINE_ADMIN_DATABASE_URL",
+}
+
 
 def _pg_values() -> tuple[str, str, str, str, str]:
     return (
@@ -61,7 +67,16 @@ async def session_factory() -> AsyncIterator[SessionFactory]:
 
 
 async def _runtime_factory(group_role: str) -> AsyncIterator[SessionFactory]:
-    """Create a disposable LOGIN that inherits exactly one production runtime role."""
+    """Use a release-shaped LOGIN when supplied, else create a test-only equivalent."""
+
+    configured_url = os.environ.get(_RUNTIME_DATABASE_URLS[group_role])
+    if configured_url:
+        engine = create_postgres_engine(configured_url)
+        try:
+            yield create_session_factory(engine)
+        finally:
+            await engine.dispose()
+        return
 
     host, port, database, _, _ = _pg_values()
     role_name = f"{group_role}_test_{uuid4().hex[:16]}"
