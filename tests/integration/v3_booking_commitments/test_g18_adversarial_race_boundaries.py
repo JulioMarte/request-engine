@@ -16,6 +16,7 @@ from request_engine.modules.booking.adapters.db.commitment_commands import (
     PostgresBookingCommitmentCommands,
 )
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
+    AcquireCapacityHoldCommand,
     acquire_capacity_hold,
 )
 from request_engine.modules.booking.application.commands.book_appointment import book_appointment
@@ -50,10 +51,7 @@ async def test_hold_confirmation_released_before_authoritative_expiry_consumes_h
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     hold = await acquire_capacity_hold(
         commitments,
-        __import__(
-            "request_engine.modules.booking.application.commands.acquire_capacity_hold",
-            fromlist=["AcquireCapacityHoldCommand"],
-        ).AcquireCapacityHoldCommand(
+        AcquireCapacityHoldCommand(
             organization_id=fixture.organization_id,
             principal_id=fixture.principal_id,
             offering_version_id=fixture.offering_version_id,
