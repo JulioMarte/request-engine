@@ -93,6 +93,7 @@ def main() -> int:
         "expected_file_count": len(expected_files),
         "collected_file_count": len(collected_files),
         "errors": errors,
+        "node_ids": node_ids,
         "expected_files": expected_files,
         "collected_files": collected_files,
         "collection_tail": output[-40:],
