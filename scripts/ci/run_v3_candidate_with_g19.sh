@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 CLEAN_PROOF=".phase6/v3-production-like-clean-start.json"
 RUNTIME_PROOF=".phase6/v3-production-like-runtime.json"
 RUNTIME_ENV=".ci/v3-production-like-runtime.env"
+G17_PROOF=".phase6/v3-final-initial-equivalence.json"
 G19_PROOF=".phase6/v3-production-like-bootstrap-proof.json"
 MANIFEST=".phase6/v3-evidence-manifest.json"
 
@@ -70,6 +71,11 @@ python scripts/ci/ci_jobs.py postgres-v3-candidate \
   --step test-order-independence \
   --step mutation-probes \
   --step adversarial-failure-proof
+
+uv run python scripts/release/prove_v3_final_initial_equivalence.py \
+  --output "$G17_PROOF"
+uv run python scripts/release/validate_v3_final_initial_equivalence_artifact.py \
+  "$G17_PROOF"
 
 uv run python scripts/release/prove_v3_production_like_bootstrap.py \
   --output "$G19_PROOF"
