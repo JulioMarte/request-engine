@@ -31,7 +31,7 @@ _RELEASE_READY = cast(
 _VALIDATE_G17 = cast(
     Callable[[Any], list[str]],
     runpy.run_path(
-        str(Path(__file__).with_name("validate_v3_final_initial_equivalence_artifact.py"))
+        str(Path(__file__).with_name("validate_v3_final_initial_equivalence_artifact_v2.py"))
     )["validation_errors"],
 )
 _VALIDATE_FREEZE = cast(
