@@ -74,9 +74,7 @@ def _role_record(
         "attributes": attributes,
         "memberships": memberships,
         "status": (
-            "PASS"
-            if attributes == expected_attributes and memberships == [parent_role]
-            else "FAIL"
+            "PASS" if attributes == expected_attributes and memberships == [parent_role] else "FAIL"
         ),
     }
 
@@ -137,9 +135,12 @@ def provision(output: Path, env_output: Path) -> int:
     )
     env_output.chmod(0o600)
 
-    status = "PASS" if server_version // 10000 == 18 and all(
-        item["status"] == "PASS" for item in role_records
-    ) else "FAIL"
+    status = (
+        "PASS"
+        if server_version // 10000 == 18
+        and all(item["status"] == "PASS" for item in role_records)
+        else "FAIL"
+    )
     payload = {
         "proof": "v3-production-like-runtime-provisioning",
         "status": status,
