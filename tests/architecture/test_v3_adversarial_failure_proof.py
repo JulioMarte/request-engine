@@ -24,6 +24,16 @@ def test_g18_declares_exact_required_families_and_all_races() -> None:
     assert all(proof.RACE_OWNERS[race_id] for race_id in proof.RACE_OWNERS)
 
 
+def test_g18_freezes_supporting_artifact_inventory() -> None:
+    assert set(proof.SUPPORTING_ARTIFACTS) == {
+        "test_collection",
+        "test_junit",
+        "concurrency_stability",
+        "test_order_independence",
+        "mutation_probes",
+    }
+
+
 def test_g18_every_declared_source_owner_exists() -> None:
     source_owners = {
         owner
