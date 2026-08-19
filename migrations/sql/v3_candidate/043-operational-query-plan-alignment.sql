@@ -14,7 +14,7 @@ CREATE INDEX party_contact_points_verified_lookup_idx
     WHERE active AND verified;
 
 -- Communications dispatch/reconciliation checks are subject-specific and
--- concern only currently actionable rows.  Worker due/reclaim indexes are
+-- concern only currently actionable rows. Worker due/reclaim indexes are
 -- intentionally different access paths and do not bound this lookup.
 CREATE INDEX scheduled_actions_active_subject_idx
     ON request_engine.scheduled_actions (
@@ -28,11 +28,15 @@ CREATE INDEX scheduled_actions_active_subject_idx
     )
     WHERE status IN ('pending', 'leased');
 
--- Shared-capacity conflict detection starts from a global shared-capacity root,
--- so it cannot use the resource-leading GiST from migration 042.  Restrict the
--- overlap index to live claims and key it directly by the temporal range.
-CREATE INDEX capacity_claims_active_during_idx
-    ON request_engine.capacity_claims USING gist (during)
+-- Shared-capacity conflict detection joins append-only root history to the
+-- currently live CapacityClaim set by claim id. A range-only GiST was measured
+-- and rejected: PostgreSQL still preferred scanning all CapacityClaim history.
+-- Keep a physically small partial B-tree over live claim ids instead, allowing
+-- the planner to join the live subset to shared_capacity_claim_links without
+-- walking released/replaced history. The resource-leading GiST from 042 remains
+-- the correct access path for local Booking overlap checks.
+CREATE INDEX capacity_claims_active_id_idx
+    ON request_engine.capacity_claims (id)
     WHERE status = 'active';
 
 RESET search_path;
