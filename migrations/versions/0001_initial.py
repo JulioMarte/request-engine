@@ -25,6 +25,9 @@ def upgrade() -> None:
     if bind is None:
         raise RuntimeError("V3 0001_initial requires a live database connection")
     bind.exec_driver_sql(load_v3_initial_sql())
+    # The pg_dump-derived payload intentionally pins session settings while
+    # replaying DDL. Restore defaults before Alembic records the revision.
+    bind.exec_driver_sql("RESET ALL")
 
 
 def downgrade() -> None:

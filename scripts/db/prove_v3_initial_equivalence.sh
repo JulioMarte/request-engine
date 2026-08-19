@@ -27,7 +27,7 @@ if [[ "${candidate_db}" == "${PGMAINTENANCE_DB}" \
   exit 2
 fi
 work_dir="$(mktemp -d)"
-initial_sql="${work_dir}/0001_initial.sql"
+initial_sql="${work_dir}/0001_initial.generated.sql"
 freeze_json="${work_dir}/candidate-freeze.json"
 
 resolve_output() {
@@ -98,9 +98,29 @@ PGDATABASE="${candidate_db}" bash "${repo_root}/scripts/db/apply_v3_candidate.sh
 python "${repo_root}/scripts/db/build_v3_initial_candidate.py" \
   --database "${candidate_db}" \
   --freeze-output "${freeze_json}" \
+  --require-reviewed-baseline \
   --output "${initial_sql}"
 python "${repo_root}/scripts/release/validate_v3_candidate_freeze_artifact.py" "${freeze_json}"
-PGDATABASE="${initial_db}" psql --set=ON_ERROR_STOP=1 --file="${initial_sql}"
+
+migration_database_url="$(
+  PGDATABASE="${initial_db}" uv run python - <<'PY'
+import os
+from sqlalchemy import URL
+
+password = os.environ.get("PGPASSWORD")
+port = int(os.environ.get("PGPORT", "5432"))
+url = URL.create(
+    "postgresql+psycopg",
+    username=os.environ.get("PGUSER", "postgres"),
+    password=password,
+    host=os.environ.get("PGHOST", "127.0.0.1"),
+    port=port,
+    database=os.environ["PGDATABASE"],
+)
+print(url.render_as_string(hide_password=False))
+PY
+)"
+MIGRATION_DATABASE_URL="${migration_database_url}" uv run alembic upgrade head
 
 python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
   --database "${candidate_db}" \
@@ -112,7 +132,7 @@ python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
   --sha-output "${work_dir}/initial.sha256"
 
 if ! diff --unified "${work_dir}/candidate.json" "${work_dir}/initial.json"; then
-  echo "generated final-initial candidate is not catalog-equivalent" \
+  echo "checked-in Alembic 0001_initial is not catalog-equivalent" \
     "to the frozen migration chain" >&2
   exit 1
 fi
@@ -124,5 +144,5 @@ copy_artifact "${work_dir}/candidate.sha256" "${V3_EQUIVALENCE_CANDIDATE_SHA_OUT
 copy_artifact "${work_dir}/initial.json" "${V3_EQUIVALENCE_INITIAL_SCHEMA_OUTPUT:-}"
 copy_artifact "${work_dir}/initial.sha256" "${V3_EQUIVALENCE_INITIAL_SHA_OUTPUT:-}"
 
-echo "==> generated final-initial candidate is catalog-equivalent to the frozen V3 candidate chain"
+echo "==> checked-in Alembic 0001_initial is catalog-equivalent to the frozen V3 candidate chain"
 cat "${work_dir}/candidate.sha256"

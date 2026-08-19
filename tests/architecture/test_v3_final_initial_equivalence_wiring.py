@@ -5,6 +5,7 @@ WRAPPER = ROOT / "scripts/ci/run_v3_candidate_with_g19.sh"
 STRUCTURAL = ROOT / "scripts/db/prove_v3_initial_equivalence.sh"
 BEHAVIORAL = ROOT / "scripts/release/prove_v3_final_initial_equivalence.py"
 MANIFEST = ROOT / "scripts/release/build_v3_evidence_manifest.py"
+BASELINE_REVISION = ROOT / "migrations/versions/0001_initial.py"
 
 
 def test_clean_structural_equivalence_runs_before_runtime_identity_provisioning() -> None:
@@ -17,6 +18,18 @@ def test_clean_structural_equivalence_runs_before_runtime_identity_provisioning(
     assert "V3_EQUIVALENCE_CANDIDATE_SCHEMA_OUTPUT" in wrapper
     assert "V3_EQUIVALENCE_INITIAL_SCHEMA_OUTPUT" in wrapper
     assert "--step initial-equivalence" not in wrapper
+
+
+def test_structural_equivalence_executes_the_reviewed_alembic_baseline() -> None:
+    structural = STRUCTURAL.read_text(encoding="utf-8")
+    revision = BASELINE_REVISION.read_text(encoding="utf-8")
+
+    assert "--require-reviewed-baseline" in structural
+    assert "MIGRATION_DATABASE_URL" in structural
+    assert "alembic upgrade head" in structural
+    assert 'PGDATABASE="${initial_db}" psql' not in structural
+    assert "load_v3_initial_sql" in revision
+    assert 'exec_driver_sql("RESET ALL")' in revision
 
 
 def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
