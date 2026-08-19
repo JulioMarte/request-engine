@@ -38,6 +38,9 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
 
     assert 'SELECTOR = "ci_jobs:postgres-v3-candidate:v3-tests"' in behavioral
     assert "postgres-v3-candidate --step v3-tests" in behavioral
+    assert '["uv", "run", "alembic", "upgrade", "head"]' in behavioral
+    assert "G17 initial SQL artifact differs from the reviewed Alembic payload" in behavioral
+    assert '["psql", "--set=ON_ERROR_STOP=1"' not in behavioral
     assert "prove_v3_final_initial_equivalence.py" in wrapper
     assert "validate_v3_final_initial_equivalence_artifact.py" in wrapper
 

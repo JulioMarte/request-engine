@@ -8,7 +8,6 @@ Create Date: 2026-08-19
 from collections.abc import Sequence
 
 from alembic import op
-
 from migrations.v3_initial_payload import load_v3_initial_sql
 
 revision: str = "0001_initial"

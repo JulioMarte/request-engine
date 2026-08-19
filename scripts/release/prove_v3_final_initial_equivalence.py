@@ -14,6 +14,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.engine import URL
+
+from migrations.v3_initial_payload import load_v3_initial_sql
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FREEZE = ROOT / ".phase6/v3-candidate-freeze.json"
 DEFAULT_INITIAL_SQL = ROOT / ".phase6/0001_initial.candidate.sql"
@@ -26,18 +30,6 @@ DEFAULT_OUTPUT = ROOT / ".phase6/v3-final-initial-equivalence.json"
 DEFAULT_RUNTIME_ENV = ROOT / ".ci/v3-final-initial-runtime.env"
 DEFAULT_DATABASE = "request_engine_v3_g17_initial"
 SELECTOR = "ci_jobs:postgres-v3-candidate:v3-tests"
-APPLICATION_SCHEMAS = (
-    "request_engine",
-    "request_read",
-    "request_cmd",
-    "request_admin",
-)
-FINGERPRINT_ROLES = (
-    "request_engine_schema_owner",
-    "request_engine_app",
-    "request_engine_worker",
-    "request_engine_admin",
-)
 
 
 def _run(
@@ -166,17 +158,39 @@ def _create_database(database: str, env: dict[str, str]) -> None:
         raise RuntimeError(f"could not create G17 database: {detail}")
 
 
+def _migration_database_url(database: str, env: dict[str, str]) -> str:
+    try:
+        port = int(env.get("PGPORT", "5432"))
+    except ValueError as exc:
+        raise ValueError("PGPORT must be an integer") from exc
+    url = URL.create(
+        "postgresql+psycopg",
+        username=env.get("PGUSER", "postgres"),
+        password=env.get("PGPASSWORD"),
+        host=env.get("PGHOST", "127.0.0.1"),
+        port=port,
+        database=database,
+    )
+    return url.render_as_string(hide_password=False)
+
+
 def _install_initial(database: str, initial_sql: Path, env: dict[str, str]) -> None:
+    reviewed = load_v3_initial_sql()
+    generated = initial_sql.read_text(encoding="utf-8")
+    if generated != reviewed:
+        raise RuntimeError("G17 initial SQL artifact differs from the reviewed Alembic payload")
+
     target_env = dict(env)
     target_env["PGDATABASE"] = database
+    target_env["MIGRATION_DATABASE_URL"] = _migration_database_url(database, target_env)
     result = _run(
-        ["psql", "--set=ON_ERROR_STOP=1", f"--file={initial_sql}"],
+        ["uv", "run", "alembic", "upgrade", "head"],
         env=target_env,
         capture_output=True,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"final-initial install failed: {detail}")
+        raise RuntimeError(f"final-initial Alembic install failed: {detail}")
 
 
 def _provision_runtime(
