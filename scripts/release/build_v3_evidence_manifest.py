@@ -57,6 +57,7 @@ _INITIAL_EQUIVALENCE_LOG = ROOT / ".phase6/v3-initial-equivalence.txt"
 _G19_PATH = ROOT / ".phase6/v3-production-like-bootstrap-proof.json"
 _G20_PREFLIGHT_PATH = ROOT / ".phase6/v3-evidence-preflight.json"
 _G20_PATH = ROOT / ".phase6/v3-final-release-proof.json"
+_TEST_QUALITY_PATH = ROOT / ".phase6/v3-test-quality.json"
 
 
 def _canonical_sha256(payload: Any) -> str:
@@ -247,6 +248,19 @@ def _validate_g20_artifact(
     }
     if payload.get("evidence_inputs") != expected_inputs:
         errors.append("G20 evidence input digests do not match final manifest")
+
+    try:
+        test_quality = _LOAD_JSON(_TEST_QUALITY_PATH)
+    except (KeyError, OSError, TypeError, UnicodeError, ValueError) as exc:
+        errors.append(f"could not parse test-quality artifact for G20 cross-check: {exc}")
+    else:
+        expected_quality_summary = {
+            "tests_audited": test_quality.get("tests_audited"),
+            "error_count": test_quality.get("error_count"),
+            "warning_count": test_quality.get("warning_count"),
+        }
+        if payload.get("test_quality_summary") != expected_quality_summary:
+            errors.append("G20 test quality summary does not match test-quality artifact")
 
     artifacts = cast(dict[str, Any], manifest["artifacts"])
     expected_registries = {

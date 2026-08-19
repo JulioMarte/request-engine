@@ -30,6 +30,8 @@ def test_final_manifest_requires_semantically_valid_g20_artifact_for_ready() -> 
     assert 'manifest["release_status"] = "READY" if release_ready else "NOT_READY"' in source
     assert "include_final_release_proof=not args.preflight" in source
     assert "if args.require_ready" in source
+    assert "_TEST_QUALITY_PATH" in source
+    assert "G20 test quality summary does not match test-quality artifact" in source
 
 
 def test_g20_producer_and_validator_are_separate_fail_closed_scripts() -> None:
