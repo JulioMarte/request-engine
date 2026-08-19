@@ -9,6 +9,7 @@ FREEZE = ROOT / "docs/release/v3-candidate-freeze.json"
 APPLY_SCRIPT = ROOT / "scripts/db/apply_v3_candidate.sh"
 FREEZE_PROOF = ROOT / "scripts/release/prove_v3_candidate_freeze.py"
 INITIAL_BUILDER = ROOT / "scripts/db/build_v3_initial_candidate.py"
+INITIAL_EQUIVALENCE = ROOT / "scripts/db/prove_v3_initial_equivalence.sh"
 
 
 def _apply_order() -> list[str]:
@@ -38,14 +39,28 @@ def test_candidate_freeze_locks_construction_and_fingerprint_tools() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", payload["schema_fingerprint_tool"]["git_blob_sha1"])
 
 
-def test_initial_construction_is_fail_closed_on_candidate_drift() -> None:
+def test_initial_construction_is_fail_closed_and_catalog_derived() -> None:
     proof_source = FREEZE_PROOF.read_text(encoding="utf-8")
     builder_source = INITIAL_BUILDER.read_text(encoding="utf-8")
+    equivalence_source = INITIAL_EQUIVALENCE.read_text(encoding="utf-8")
 
-    assert "git hash-object" not in proof_source  # the proof invokes git as argv, never through a shell
+    assert "git hash-object" not in proof_source  # git is invoked as argv, never through a shell
     assert '"hash-object"' in proof_source
     assert '"merge-base", "--is-ancestor"' in proof_source
     assert "candidate migration inventory drift" in proof_source
     assert "apply_v3_candidate.sh order no longer matches" in proof_source
     assert "prove_candidate_freeze(args.freeze_output)" in builder_source
-    assert "not the final blessed G17 0001_initial" in builder_source
+
+    assert '"pg_dump"' in builder_source
+    assert '"--schema-only"' in builder_source
+    assert 'f"--restrict-key={RESTRICT_KEY}"' in builder_source
+    assert "CREATE EXTENSION IF NOT EXISTS btree_gist" in builder_source
+    assert "migration-history concatenation" in builder_source
+    for schema in ("request_engine", "request_read", "request_cmd", "request_admin"):
+        assert f'"{schema}"' in builder_source
+
+    candidate_apply = equivalence_source.index('PGDATABASE="${candidate_db}" bash')
+    initial_build = equivalence_source.index("build_v3_initial_candidate.py")
+    initial_apply = equivalence_source.index('PGDATABASE="${initial_db}" psql')
+    assert candidate_apply < initial_build < initial_apply
+    assert "--template=template0" in equivalence_source
