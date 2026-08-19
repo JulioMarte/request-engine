@@ -172,13 +172,20 @@ A gate changes to `PASS` only in the same change set that identifies its executa
 
 Historical artifacts are supporting evidence, not release authority. The final release artifact must bind the exact commit/tree, PostgreSQL/Python environment, schema/migration/OpenAPI fingerprints and all gate results for the candidate that is actually promoted.
 
-## Next execution order
+## G20 closure and current promotion order
 
-With G01–G19 closed, the remaining release work is G20 only:
+**G20 is `PASS`.** Canonical CI #1235 (`32292875575`) on source head `921020052833628bf1061aaa25ecd595ba2d0439` completed every required job and produced a semantically valid release bundle with G01–G20 `PASS`, `evidence_status: VALID`, `release_status: READY`, `artifact_set_complete: true`, no missing artifacts, no validation errors, a clean tree, and zero test-quality errors or warnings. The independent G20 artifact reports all 12 required criteria `true` and is cross-checked by the final manifest against source/base/tested/tree provenance, runtime metadata, evidence digests, registry digests, test inventory, preflight digest and the actual test-quality summary.
 
-1. run canonical exact-head CI on this G17 registry promotion and require the manifest to remain `evidence_status: VALID` with G17 `PASS` and G20 `MISSING`;
-2. build the final exact-head release artifact/manifest for the commit that will actually be promoted;
-3. validate that every G01–G20 gate is `PASS`, the working tree is clean, and all source/tested/tree/environment fingerprints are bound to that exact candidate;
-4. only then set `release_status: READY`, merge `development -> main`, and tag/release from the proven commit.
+CI #1235 is authority only for the exact source/tested/tree identities it records. This documentation reconciliation changes the source tree, so it must itself reproduce `VALID` + `READY` on canonical exact-head CI before PR #71 may merge.
 
-Do not claim release readiness while G20 remains incomplete.
+Phase 6 has no remaining release gate. The remaining work is release promotion:
+
+1. run canonical exact-head CI on the final PR #71 source head and inspect the uploaded evidence bundle;
+2. require G01–G20 `PASS`, `evidence_status: VALID`, `release_status: READY`, a complete clean artifact set, zero validation errors and zero test-quality warnings;
+3. mark PR #71 ready and merge it to `development` only after that exact-head proof is authoritative;
+4. identify the actual post-merge `development` commit/tree and run or confirm authoritative release evidence for that exact tree;
+5. promote `development -> main` without bypassing repository rulesets;
+6. verify the resulting `main` commit/tree and regenerate evidence if promotion creates a different executable tree;
+7. tag/release only the exact `main` tree for which release evidence is authoritative.
+
+A PR synthetic merge checkout must not be mislabeled as the later literal `development` or `main` SHA. G20 closes the Freeze & Release Proof gate set; it does not waive exact-tree proof during promotion.
