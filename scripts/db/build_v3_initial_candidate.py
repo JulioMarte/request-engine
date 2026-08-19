@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -150,19 +151,37 @@ def render_initial(database: str) -> str:
     return ROLE_PREAMBLE + _normalize_dump(dump)
 
 
+def _require_reviewed_baseline(rendered: str) -> None:
+    from migrations.v3_initial_payload import load_v3_initial_sql
+
+    reviewed = load_v3_initial_sql()
+    if rendered == reviewed:
+        return
+    generated_sha = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    reviewed_sha = hashlib.sha256(reviewed.encode("utf-8")).hexdigest()
+    raise SystemExit(
+        "generated final-initial SQL differs from the reviewed Alembic baseline "
+        f"(generated={generated_sha}, reviewed={reviewed_sha})"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--database", default=os.environ.get("PGDATABASE"))
     parser.add_argument("--freeze-output", type=Path, default=DEFAULT_FREEZE_OUTPUT)
+    parser.add_argument("--require-reviewed-baseline", action="store_true")
     args = parser.parse_args()
 
     if not args.database:
         raise SystemExit("--database or PGDATABASE is required")
 
     prove_candidate_freeze(args.freeze_output)
+    rendered = render_initial(args.database)
+    if args.require_reviewed_baseline:
+        _require_reviewed_baseline(rendered)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render_initial(args.database), encoding="utf-8")
+    args.output.write_text(rendered, encoding="utf-8")
     print(args.output)
     return 0
 
