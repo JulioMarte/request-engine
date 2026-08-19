@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = ROOT / "scripts/release/validate_v3_candidate_freeze_artifact.py"
+SPEC = importlib.util.spec_from_file_location("v3_candidate_freeze_validator", VALIDATOR)
+assert SPEC is not None and SPEC.loader is not None
+validator: ModuleType = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = validator
+SPEC.loader.exec_module(validator)
 
 
-def _load_validator() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("v3_candidate_freeze_validator", VALIDATOR)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _valid_payload() -> dict[str, object]:
+def _valid_payload() -> dict[str, Any]:
     migrations = [
         {
             "name": f"{index:03d}-migration-{index}.sql",
@@ -54,15 +53,13 @@ def _valid_payload() -> dict[str, object]:
 
 
 def test_candidate_freeze_validator_accepts_complete_proof_shape() -> None:
-    validator = _load_validator()
     assert validator.validation_errors(_valid_payload()) == []
 
 
 def test_candidate_freeze_validator_rejects_lying_pass() -> None:
-    validator = _load_validator()
     payload = _valid_payload()
     payload["failures"] = ["candidate drift"]
-    payload["migrations"] = list(payload["migrations"])[1:]
+    payload["migrations"] = payload["migrations"][1:]
 
     errors = validator.validation_errors(payload)
 
@@ -72,13 +69,10 @@ def test_candidate_freeze_validator_rejects_lying_pass() -> None:
 
 
 def test_candidate_freeze_validator_rejects_wrong_provenance_and_digests() -> None:
-    validator = _load_validator()
     payload = _valid_payload()
     payload["candidate_source_commit"] = "0" * 40
     payload["migration_set_sha256"] = "not-a-sha"
-    tools = list(payload["locked_tools"])
-    tools.pop()
-    payload["locked_tools"] = tools
+    payload["locked_tools"].pop()
 
     errors = validator.validation_errors(payload)
 
