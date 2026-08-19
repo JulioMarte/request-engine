@@ -97,7 +97,9 @@ def main() -> int:
         "canonical_release_suite": canonical_suite_pass,
         "representative_public_vertical": node_results["public_vertical"]["status"] == "PASS",
         "queue_outbox_workflow": node_results["queue_workflow"]["status"] == "PASS",
-        "app_worker_process_separation": node_results["worker_runtime_boundary"]["status"] == "PASS",
+        "app_worker_process_separation": (
+            node_results["worker_runtime_boundary"]["status"] == "PASS"
+        ),
         "restart_reclaim_fencing": node_results["worker_crash_recovery"]["status"] == "PASS",
         "secrets_redacted": runtime.get("secrets_redacted") is True,
     }
