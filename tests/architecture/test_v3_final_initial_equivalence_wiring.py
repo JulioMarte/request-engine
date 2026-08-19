@@ -31,9 +31,9 @@ def test_structural_equivalence_executes_the_reviewed_alembic_baseline() -> None
     assert "alembic upgrade head" in structural
     assert 'PGDATABASE="${initial_db}" psql' not in structural
     assert "runpy.run_path" in builder
-    assert 'from migrations.v3_initial_payload import' not in builder
+    assert "from migrations.v3_initial_payload import" not in builder
     assert "runpy.run_path" in revision
-    assert 'from migrations.v3_initial_payload import' not in revision
+    assert "from migrations.v3_initial_payload import" not in revision
     assert 'exec_driver_sql("RESET ALL")' in revision
 
 
@@ -47,7 +47,7 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
     assert "G17 initial SQL artifact differs from the reviewed Alembic payload" in behavioral
     assert '["psql", "--set=ON_ERROR_STOP=1"' not in behavioral
     assert "runpy.run_path" in behavioral
-    assert 'from migrations.v3_initial_payload import' not in behavioral
+    assert "from migrations.v3_initial_payload import" not in behavioral
     assert "prove_v3_final_initial_equivalence.py" in wrapper
     assert "validate_v3_final_initial_equivalence_artifact.py" in wrapper
 
