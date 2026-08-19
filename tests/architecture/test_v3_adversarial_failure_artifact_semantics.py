@@ -111,8 +111,7 @@ def test_g18_artifact_is_mandatory_in_candidate_manifest_and_ci() -> None:
     assert '"adversarial_failure": _VALIDATE_G18' in manifest_base
     assert "validate_v3_adversarial_failure_artifact.py" in manifest_base
     assert (
-        '"adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json"'
-        in manifest_base
+        '"adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json"' in manifest_base
     )
     assert '"adversarial-failure-proof"' in ci_jobs
     assert "prove_v3_adversarial_failure.py" in ci_jobs
