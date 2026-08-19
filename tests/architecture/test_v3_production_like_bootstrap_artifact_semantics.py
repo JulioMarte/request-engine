@@ -100,7 +100,10 @@ def test_g19_artifact_semantics_reject_missing_required_node_and_extra_membershi
 
 def test_g19_manifest_extension_requires_semantically_valid_artifact(tmp_path: Path) -> None:
     manifest_path = ROOT / "scripts/release/build_v3_evidence_manifest.py"
-    manifest_spec = importlib.util.spec_from_file_location("v3_evidence_manifest_g19", manifest_path)
+    manifest_spec = importlib.util.spec_from_file_location(
+        "v3_evidence_manifest_g19",
+        manifest_path,
+    )
     assert manifest_spec is not None and manifest_spec.loader is not None
     manifest: ModuleType = importlib.util.module_from_spec(manifest_spec)
     sys.modules[manifest_spec.name] = manifest

@@ -6,8 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import runpy
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 _BASE_PATH = Path(__file__).with_name("build_v3_evidence_manifest_base.py")
 _BASE = runpy.run_path(str(_BASE_PATH))
