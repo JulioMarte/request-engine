@@ -17,9 +17,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FREEZE = ROOT / ".phase6/v3-candidate-freeze.json"
 DEFAULT_INITIAL_SQL = ROOT / ".phase6/0001_initial.candidate.sql"
-DEFAULT_CANDIDATE_SCHEMA = (
-    ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
-)
+DEFAULT_CANDIDATE_SCHEMA = ROOT / ".phase6/v3-initial-equivalence-candidate-schema.json"
 DEFAULT_CANDIDATE_JUNIT = ROOT / ".phase6/v3-tests-junit.xml"
 DEFAULT_INITIAL_SCHEMA = ROOT / ".phase6/v3-final-initial-schema.json"
 DEFAULT_INITIAL_JUNIT = ROOT / ".phase6/v3-final-initial-tests-junit.xml"
