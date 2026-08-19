@@ -192,6 +192,83 @@ def _validate_booking_plans(payload: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_operational_plans(payload: dict[str, Any]) -> list[str]:
+    errors = _validate_status_payload(payload)
+    proofs = payload.get("proofs")
+    failures = payload.get("failures")
+    cardinality = payload.get("cardinality")
+
+    if failures != []:
+        errors.append("operational query-plan proof reports failures")
+    if not isinstance(cardinality, dict):
+        errors.append("operational query-plan cardinality is malformed")
+    else:
+        minimums = {
+            "tenant_count": 4,
+            "history_per_tenant": 1_500,
+            "reservation_history_per_tenant": 1_500,
+            "binding_history_per_tenant": 1_500,
+            "reconciliation_history_per_tenant": 1_500,
+        }
+        for field, minimum in minimums.items():
+            value = cardinality.get(field)
+            if not isinstance(value, int) or value < minimum:
+                errors.append(f"operational query-plan cardinality {field} is below {minimum}")
+
+    required_proofs = {
+        "communications_latest_delivery": {
+            "communication_deliveries_organization_id_communication_task_key"
+        },
+        "communications_verified_contacts": {"party_contact_points_verified_lookup_idx"},
+        "communications_future_dispatch": {"scheduled_actions_active_subject_idx"},
+        "reservation_status_latest_attendance": {
+            "reservations_organization_id_id_key",
+            "attendance_responses_current_idx",
+        },
+        "shared_capacity_root_resolution": {
+            "shared_capacity_bindings_one_active_resource_idx",
+            "shared_capacity_identities_pkey",
+        },
+        "shared_capacity_live_conflict": {
+            "capacity_claims_active_id_idx",
+            "shared_capacity_claim_links_root_idx",
+        },
+        "communications_future_reconciliation": {"scheduled_actions_active_subject_idx"},
+    }
+    if not isinstance(proofs, list):
+        errors.append("operational query-plan proofs are missing")
+        return errors
+
+    by_name = {
+        proof.get("name"): proof
+        for proof in proofs
+        if isinstance(proof, dict) and isinstance(proof.get("name"), str)
+    }
+    for proof_name, required_indexes in required_proofs.items():
+        proof = by_name.get(proof_name)
+        if not isinstance(proof, dict):
+            errors.append(f"{proof_name}: required operational query-plan proof is missing")
+            continue
+        if proof.get("status") != "PASS":
+            errors.append(f"{proof_name}: proof did not pass")
+        indexes = proof.get("indexes")
+        if not isinstance(indexes, list):
+            errors.append(f"{proof_name}: selected-index evidence is malformed")
+        else:
+            missing_indexes = sorted(required_indexes - set(indexes))
+            if missing_indexes:
+                errors.append(
+                    f"{proof_name}: required indexes were not selected: {', '.join(missing_indexes)}"
+                )
+        if proof.get("forbidden_seq_scans") != []:
+            errors.append(f"{proof_name}: forbidden sequential scan was reported")
+        if proof.get("shared_read_blocks") != 0:
+            errors.append(f"{proof_name}: shared reads are not zero")
+        if proof.get("temp_written_blocks") != 0:
+            errors.append(f"{proof_name}: temporary blocks were written")
+    return errors
+
+
 def _validate_test_quality(payload: dict[str, Any]) -> list[str]:
     errors = _validate_status_payload(payload)
     if payload.get("error_count") != 0:
@@ -287,6 +364,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "worker_query_plans": _validate_worker_plans,
     "queue_query_plans": _validate_queue_plans,
     "booking_query_plans": _validate_booking_plans,
+    "operational_query_plans": _validate_operational_plans,
     "test_quality": _validate_test_quality,
     "test_collection": _validate_test_collection,
     "concurrency_stability": _validate_concurrency,
@@ -338,6 +416,7 @@ def build_manifest() -> dict[str, Any]:
         "worker_query_plans": ROOT / ".phase6/v3-worker-query-plans.json",
         "queue_query_plans": ROOT / ".phase6/v3-queue-query-plans.json",
         "booking_query_plans": ROOT / ".phase6/v3-booking-query-plans.json",
+        "operational_query_plans": ROOT / ".phase6/v3-operational-query-plans.json",
         "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
         "test_collection": ROOT / ".phase6/v3-test-collection.json",
