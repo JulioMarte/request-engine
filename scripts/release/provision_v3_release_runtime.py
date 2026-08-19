@@ -137,8 +137,7 @@ def provision(output: Path, env_output: Path) -> int:
 
     status = (
         "PASS"
-        if server_version // 10000 == 18
-        and all(item["status"] == "PASS" for item in role_records)
+        if server_version // 10000 == 18 and all(item["status"] == "PASS" for item in role_records)
         else "FAIL"
     )
     payload = {
