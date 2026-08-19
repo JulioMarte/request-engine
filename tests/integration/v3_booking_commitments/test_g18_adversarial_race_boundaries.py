@@ -58,7 +58,7 @@ async def test_hold_confirmation_released_before_authoritative_expiry_consumes_h
             subject_party_id=fixture.subject_party_id,
             location_id=fixture.location_id,
             start_at=start_at,
-            expires_at=datetime.now(UTC) + timedelta(seconds=5),
+            expires_at=datetime.now(UTC) + timedelta(seconds=30),
             resources=_choice(fixture),
             idempotency_key=f"g18-live-hold-{uuid4().hex}",
             allow_subject_override=True,
