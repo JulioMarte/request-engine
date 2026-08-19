@@ -5,15 +5,16 @@ import runpy
 from pathlib import Path
 from typing import Any, cast
 
-from scripts.release.v3_public_api_contract_baseline import (
-    EXPECTED_CAPABILITIES,
-    EXPECTED_LITERAL_ERROR_CODES,
-    EXPECTED_OPERATIONS,
-    EXPECTED_REQUEST_HELPER_CODES,
-    EXPECTED_SHARED_ERROR_CODES,
-)
-
 from request_engine.platform.security.capabilities import CAPABILITIES
+
+_BASELINE = runpy.run_path("scripts/release/v3_public_api_contract_baseline.py")
+EXPECTED_OPERATIONS = cast(tuple[str, ...], _BASELINE["EXPECTED_OPERATIONS"])
+EXPECTED_CAPABILITIES = cast(tuple[str, ...], _BASELINE["EXPECTED_CAPABILITIES"])
+EXPECTED_LITERAL_ERROR_CODES = cast(frozenset[str], _BASELINE["EXPECTED_LITERAL_ERROR_CODES"])
+EXPECTED_SHARED_ERROR_CODES = cast(frozenset[str], _BASELINE["EXPECTED_SHARED_ERROR_CODES"])
+EXPECTED_REQUEST_HELPER_CODES = cast(
+    frozenset[str], _BASELINE["EXPECTED_REQUEST_HELPER_CODES"]
+)
 
 _ERROR_MODULES = (
     Path("src/request_engine/entrypoints/http/errors.py"),
