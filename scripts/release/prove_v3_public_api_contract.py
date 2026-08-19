@@ -9,12 +9,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from fastapi import Request
-
-from request_engine.entrypoints.http.app import create_app
-from request_engine.entrypoints.http.security import AuthenticationRequired
-from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.capabilities import CAPABILITIES, capability_definition
-from request_engine.platform.security.context import ActorContext
 from scripts.release.v3_public_api_contract_baseline import (
     EXPECTED_CAPABILITIES,
     EXPECTED_LITERAL_ERROR_CODES,
@@ -22,6 +16,12 @@ from scripts.release.v3_public_api_contract_baseline import (
     EXPECTED_REQUEST_HELPER_CODES,
     EXPECTED_SHARED_ERROR_CODES,
 )
+
+from request_engine.entrypoints.http.app import create_app
+from request_engine.entrypoints.http.security import AuthenticationRequired
+from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.capabilities import CAPABILITIES, capability_definition
+from request_engine.platform.security.context import ActorContext
 
 _ERROR_MODULES = (
     Path("src/request_engine/entrypoints/http/errors.py"),
@@ -164,7 +164,9 @@ def _openapi_snapshot(operations: tuple[Any, ...]) -> tuple[list[dict[str, objec
         if definition.party_scope is not None:
             expected_metadata["x-request-engine-party-scope"] = definition.party_scope
         if definition.override_capability is not None:
-            expected_metadata["x-request-engine-override-capability"] = definition.override_capability
+            expected_metadata["x-request-engine-override-capability"] = (
+                definition.override_capability
+            )
 
         expected_operation_id = definition.key.replace(".", "_")
         if contract.get("operationId") != expected_operation_id:
@@ -226,12 +228,13 @@ def build_report() -> dict[str, object]:
         "shared_error_codes": sorted(EXPECTED_SHARED_ERROR_CODES),
         "request_helper_error_codes": sorted(EXPECTED_REQUEST_HELPER_CODES),
     }
+    schema_versions = sorted({definition.schema_version for definition in CAPABILITIES})
     return {
         "schema_version": 1,
         "status": "PASS" if not failures else "FAIL",
         "operation_count": len(operation_lines),
         "capability_count": len(capability_lines),
-        "capability_schema_versions": sorted({definition.schema_version for definition in CAPABILITIES}),
+        "capability_schema_versions": schema_versions,
         "error_code_count": len(literal_codes | shared_codes | helper_codes),
         "baseline_sha256": _fingerprint(baseline),
         "contract_sha256": _fingerprint(contract),
