@@ -20,7 +20,7 @@ Historical Phase 6 planning and rebaseline documents remain useful evidence of h
 |---|---:|---|
 | G01–G16 | PASS | integrated executable proof and registry closure exist for these gates; final promotion still requires exact-final-candidate regeneration where applicable |
 | G17 | MISSING | final `0001_initial` has not been generated/blessed or proven equivalent |
-| G18 | MISSING | existing attack/race/crash/retry/order/mutation evidence has not yet been composed into one mandatory unified release proof |
+| G18 | PASS | unified attack/race/crash/retry/order/mutation evidence is mandatory, machine-readable and semantically validated on exact-head canonical CI |
 | G19 | PARTIAL | strong bootstrap/runtime-role evidence exists, but the final fresh production-like app+worker release bootstrap is not closed |
 | G20 | MISSING | no final exact-head release manifest with all G01–G20 PASS exists |
 
@@ -45,7 +45,7 @@ The following is no longer implementation backlog for V3 unless new evidence fal
 - protected-function inventory and Party-authority validation;
 - runtime app/worker/admin privilege closure and SECURITY DEFINER hardening.
 
-The invariant registry being complete does **not** imply that every broader release-race row is already `PASS`: invariant ownership and race-matrix closure are separate proof dimensions. G18 must reconcile both without silently promoting a race from related invariant evidence.
+Invariant ownership and race-matrix closure remain separate proof dimensions. G18 has now reconciled the race dimension independently rather than inferring race success from invariant `PASS` state.
 
 ### Booking and released-slot recovery
 
@@ -105,13 +105,17 @@ G16 freezes and proves:
 
 Final exact-head G16 evidence before integration was CI #1140 (`32206740884`) on `d3279fc5022f063779df4a48c323a53916cf8e93`, artifact `9349539679` (`sha256:274ae8e3dd47c9fdd65ae8c65cff335b43ec15c1817178b2ac40871d29520ab8`). The manifest recorded G16 `PASS`, public-contract validation `PASS`, a complete clean evidence bundle and `release_status: NOT_READY`.
 
+### Unified adversarial/failure proof
+
+G18 now composes the previously distributed failure evidence into one mandatory release artifact. `.phase6/v3-adversarial-failure-proof.json` covers six required families — attack/security, race/concurrency, crash/recovery, retry/idempotency, order independence and mutation probes — and the release manifest validates its exact inventories and statuses. The canonical race registry is closed independently at R01–R29 PASS.
+
+Canonical CI #1166 (`32242214119`) passed on exact implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`. Artifact `v3-candidate-release-proof` `9361488628` (`sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`) contains a G18 artifact with 6/6 families PASS, 29/29 races PASS, `registry_non_pass: []`, `missing_evidence: []` and `failures: []`. The same candidate run passed 463 PostgreSQL tests, three 96-test concurrency-stability rounds, 463 order-independence tests and mutation probes; the final evidence manifest is `VALID` while `release_status` remains correctly `NOT_READY`.
+
 ## 3. Current execution order
 
 The remaining work must proceed in this dependency order:
 
 ```text
-G18 unified adversarial/failure proof
-        ↓
 G19 fresh production-like bootstrap
         ↓
 freeze the candidate
@@ -127,96 +131,59 @@ development → main
 release/tag from the proven commit
 ```
 
-This ordering is intentional. Generating `0001_initial` before G18/G19 would freeze a candidate that has not yet survived the complete release-level failure envelope or the final production-like bootstrap.
+This ordering is intentional. G18 has closed the release-level adversarial/failure envelope; G19 is now the remaining pre-freeze construction/runtime gate. Generating `0001_initial` before G19 would freeze a candidate that has not yet survived the final production-like bootstrap.
 
 ## 4. G18 — unified adversarial/failure suite
 
-G18 is the **next active gate**.
-
-The repository already contains substantial adversarial evidence. The missing requirement is a single release-proof family that proves coverage is complete, mandatory and machine-readable instead of inferred from scattered tests.
+G18 is **PASS** on implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`.
 
 ### 4.1 Required families
 
-The unified proof must include at minimum:
+The unified proof requires and now passes exactly six families:
 
-1. **Attack/security**
-   - cross-tenant reads/writes;
-   - foreign Party/Resource/Reservation/Queue/Waitlist references;
-   - missing tenant context;
-   - privilege escalation / forbidden role transitions;
-   - opaque authorization/reference behavior.
-2. **Race/concurrency**
-   - every release-critical row in `v3-race-matrix.md` mapped to deterministic executable evidence;
-   - independent PostgreSQL sessions and deliberate barriers where DB serialization is the guarantee;
-   - final state and cardinality assertions, not exception-only assertions.
-3. **Crash/recovery**
-   - crash before/after authoritative commit;
-   - crash after durable claim;
-   - external success before local finalization;
-   - lease loss during I/O;
-   - process death / reclaim / stale-worker fencing.
-4. **Retry/idempotency**
-   - same key + same payload replay;
-   - same key + different fingerprint rejection;
-   - post-commit response loss;
-   - retryable/non-retryable provider outcomes;
-   - durable work retry/dead behavior.
-5. **Order independence**
-   - release tests do not depend on execution order or leaked database/process state.
-6. **Mutation probes**
-   - representative dangerous weakenings of tenant checks, revision checks, fencing, terminal-state protection or relational invariants are killed by the release suite.
+1. **Attack/security** — cross-tenant isolation, foreign references, missing tenant context, privilege escalation and opaque authorization/reference behavior.
+2. **Race/concurrency** — every release-critical R01–R29 row maps to deterministic executable evidence with real PostgreSQL serialization where required.
+3. **Crash/recovery** — authoritative-commit boundaries, durable claims, external success before local finalization, lease loss and process-death reclaim/fencing.
+4. **Retry/idempotency** — replay, fingerprint conflict, post-commit response loss, provider retry policy and durable retry/dead behavior.
+5. **Order independence** — the canonical release suite passes independently of execution ordering/state leakage.
+6. **Mutation probes** — representative dangerous weakenings are killed by the release proof.
 
-### 4.2 Race-matrix debt that G18 must resolve
+### 4.2 Race-matrix closure
 
-As of this documentation audit, the canonical table in `v3-race-matrix.md` still marks these rows `PARTIAL`:
+The former PARTIAL rows R01, R02, R09 and R25–R29 are now `PASS` in `v3-race-matrix.md`. Exact current evidence already existed for R01, R09, R25, R28 and R29. G18 added deterministic PostgreSQL proof for the genuine gaps:
 
-- R01 — acquire capacity vs acquire same capacity;
-- R02 — confirm Hold vs wall-clock expiry/expiry cleanup;
-- R09 — CallNext vs CallNext;
-- R25 — cross-tenant shared-root commitment vs commitment;
-- R26 — direct Booking vs cross-tenant Hold/SlotOffer;
-- R27 — reschedule vs foreign shared-capacity commitment;
-- R28 — binding activation/revocation vs live claim creation;
-- R29 — inverse multi-Resource/multi-shared-root acquisition including simultaneous reschedules.
+- R02 — Hold confirmation blocked across authoritative wall-clock expiry is rejected without promoted Reservation/capacity consumption;
+- R26 — direct Booking versus foreign SlotOffer/Hold is forced through both shared-root winner orders with exactly one capacity owner and no orphan speculative state;
+- R27 — a foreign shared-capacity booking can win against a conflicting reschedule while the losing reschedule rolls back and preserves the original Reservation/claim graph.
 
-This is **not** permission to assume those races are defective, nor permission to promote them because related invariants are `PASS`. G18 must inspect the current executable tests and do one of two things per row:
+No race was promoted from invariant status by inference. The emitted G18 artifact requires an exact R01–R29 inventory and fails if any registry row, owner or required collected node is missing/non-PASS.
 
-1. prove the exact race claim is already completely covered and promote the row with explicit evidence; or
-2. add/fix the missing deterministic proof and only then promote it.
+### 4.3 G18 artifact and manifest contract
 
-Until that reconciliation happens, G18 cannot claim a complete race family.
+`scripts/release/prove_v3_adversarial_failure.py` emits `.phase6/v3-adversarial-failure-proof.json` after the canonical PostgreSQL suite, concurrency stability, order independence and mutation probes. `scripts/release/build_v3_evidence_manifest.py` makes the artifact mandatory and invokes `validate_v3_adversarial_failure_artifact.py` by explicit sibling path so both script execution and architecture-test module loading use the same validator contract.
 
-### 4.3 G18 artifact
+The semantic validator rejects malformed or lying top-level PASS payloads by checking the exact six-family inventory, exact R01–R29 inventory, expected/observed cardinalities, required supporting artifact set, family/race statuses and missing/failure fields. Architecture tests protect both the validator semantics and CI/manifest wiring.
 
-Add one mandatory machine-readable artifact, e.g. `.phase6/v3-adversarial-failure-proof.json`, containing:
+### 4.4 G18 exit evidence
 
-- overall status;
-- family status and inventory;
-- mapped test/proof owners;
-- expected versus observed counts;
-- missing evidence;
-- failures;
-- environment/source metadata.
+CI #1166 (`32242214119`) is the exact-head closure run for implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`. It passed Python quality/architecture, repeated PostgreSQL 18 V3 bootstrap, observability, PostgreSQL 18 V2 history and the PostgreSQL 18 V3 candidate proof. The candidate proof recorded:
 
-`build_v3_evidence_manifest.py` must reject a missing, malformed or non-PASS G18 artifact.
+- 463/463 canonical PostgreSQL tests PASS;
+- three concurrency-stability rounds of 96/96 tests PASS;
+- 463/463 order-independence tests PASS;
+- mutation probes PASS;
+- G18 artifact 6/6 families PASS and 29/29 races PASS;
+- `registry_non_pass: []`, `missing_evidence: []`, `failures: []`;
+- final evidence manifest `evidence_status: VALID`;
+- final `release_status: NOT_READY`, correctly reflecting unresolved G17/G19/G20.
 
-### 4.4 G18 exit condition
+Artifact `9361488628` is bound by GitHub to that head with digest `sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`.
 
-G18 may move to `PASS` only when one exact head has:
-
-- every required adversarial family PASS;
-- every release-critical race row either PASS with explicit current evidence or explicitly removed from release scope by a normative contract change (not by test convenience);
-- zero unmapped release-critical race/proof obligations;
-- zero validation errors;
-- canonical CI green;
-- complete clean-tree candidate evidence;
-- the unified G18 artifact semantically validated by the release manifest.
-
-A failing G18 test is evidence of a product/release defect until demonstrated otherwise. Do not weaken invariants or remove adversarial coverage merely to make the gate green.
+The documentation promotion that records this PASS must itself survive exact-head canonical CI before PR #68 is merge-authoritative. If later freeze/baseline work changes an executable input relevant to G18, the affected proof must be regenerated rather than inherited from this historical head.
 
 ## 5. G19 — fresh production-like bootstrap
 
-G19 follows G18.
+G19 is now the **next active gate**.
 
 The current repository already has strong clean PostgreSQL bootstrap and runtime-role tests, which is why G19 is `PARTIAL`, not `MISSING`. G02's repeated candidate-construction proof is necessary but not sufficient for G19. What is still absent is the final release-shaped construction and runtime exercise.
 
