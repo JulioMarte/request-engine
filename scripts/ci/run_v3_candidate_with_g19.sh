@@ -108,4 +108,4 @@ uv run python scripts/release/validate_v3_final_release_artifact.py \
   "$G20_PROOF"
 uv run python scripts/release/build_v3_evidence_manifest.py \
   --output "$MANIFEST" \
-  --require-valid
+  --require-ready

@@ -17,6 +17,9 @@ def test_g20_uses_preflight_then_independent_proof_then_final_manifest() -> None
     assert preflight < producer < validator < final_manifest
     assert 'G20_PREFLIGHT=".phase6/v3-evidence-preflight.json"' in runner
     assert 'G20_PROOF=".phase6/v3-final-release-proof.json"' in runner
+    final_command = runner[final_manifest:]
+    assert "--require-ready" in final_command
+    assert "--require-valid" not in final_command
 
 
 def test_final_manifest_requires_semantically_valid_g20_artifact_for_ready() -> None:

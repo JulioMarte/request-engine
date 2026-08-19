@@ -29,7 +29,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G17 | `0001_initial` equivalence | PASS | clean candidate-chain DB vs reviewed initial DB structural/behavioral/runtime equivalence with exact baseline digest and provenance |
 | G18 | Unified adversarial/failure suite | PASS | one release gate executing attack, race, crash, retry, order and mutation families |
 | G19 | Fresh production-like bootstrap | PASS | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
-| G20 | Final release artifact/manifest | MISSING | exact-head manifest with fingerprints, environment and all G01-G20 PASS |
+| G20 | Final release artifact/manifest | PASS | exact-head manifest with fingerprints, environment and all G01-G20 PASS |
 
 ## Phase 6E — idempotency and optimistic-concurrency closure
 
