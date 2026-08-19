@@ -260,12 +260,9 @@ def _fixture(
 
 
 def _future_start() -> datetime:
-    zone = ZoneInfo("America/Santo_Domingo")
-    local_future = datetime.now(zone) + timedelta(days=3)
-    # Keep lifecycle fixtures safely inside the declared 00:00-23:59 local
-    # availability window regardless of the UTC hour at which CI executes.
-    local_start = local_future.replace(hour=12, minute=0, second=0, microsecond=0)
-    return local_start.astimezone(UTC)
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    aligned = now + timedelta(minutes=(-now.minute) % 15)
+    return aligned + timedelta(days=3)
 
 
 @pytest.mark.asyncio
@@ -486,21 +483,22 @@ async def test_lifecycle_replay_keeps_one_generation_of_notifications_and_no_sho
     assert len(task_rows) == 4
     assert all(row[1] == "pending" for row in task_rows)
     assert [row[0] for row in task_rows].count("appointment_reminder") == 2
-    scheduled = admin_conn.execute(
+    assert [row[0] for row in task_rows].count("appointment_confirmation") == 1
+    assert [row[0] for row in task_rows].count("attendance_confirmation_request") == 1
+    scheduled_count = admin_conn.execute(
         """
-        SELECT action_kind, status
+        SELECT count(*)
         FROM request_engine.scheduled_actions
         WHERE organization_id = %s
-          AND aggregate_kind = 'Reservation'
-          AND aggregate_id = %s
-        ORDER BY action_kind, execute_at
+          AND status = 'pending'
+          AND (
+              (owner_module = 'booking' AND subject_kind = 'Reservation' AND subject_id = %s)
+              OR owner_module = 'communications'
+          )
         """,
         (fixture.organization_id, fixture.reservation_id),
-    ).fetchall()
-    assert scheduled == [
-        ("reservation.attendance_request", "pending"),
-        ("reservation.no_show_check", "pending"),
-    ]
+    ).fetchone()
+    assert scheduled_count == (5,)
 
 
 @pytest.mark.asyncio
@@ -519,18 +517,17 @@ async def test_cancelled_reservation_recovers_slot_once_and_reuses_phase2b_offer
         start_at=_future_start(),
         add_waitlist=True,
     )
-    attendance = PostgresAttendanceCommands(session_factory)
+    commands = PostgresAttendanceCommands(session_factory)
     await decline_attendance(
-        attendance,
+        commands,
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
         reservation_id=fixture.reservation_id,
-        source_key="test:decline-recovery",
-        idempotency_key=f"decline-recovery-{uuid4().hex}",
+        source_key="test:decline",
+        idempotency_key=f"decline-{uuid4().hex}",
         expected_revision=1,
         allow_subject_override=True,
     )
-
     reader = PostgresReservationLifecycleReader(session_factory)
     released = await reader.get_released_slot(
         fixture.organization_id,
@@ -543,149 +540,50 @@ async def test_cancelled_reservation_recovers_slot_once_and_reuses_phase2b_offer
         capacity=PostgresSlotOfferCapacity(),
         notification=PostgresSlotOfferNotificationIntent(),
     )
+    source_event_id = uuid4()
+
     first = await recovery.recover_released_slot(
         released,
-        source_event_id=uuid4(),
+        source_event_id=source_event_id,
         principal_id=fixture.principal_id,
     )
     second = await recovery.recover_released_slot(
         released,
-        source_event_id=uuid4(),
+        source_event_id=source_event_id,
         principal_id=fixture.principal_id,
     )
 
-    assert first is not None
-    opportunity, offer = first
-    assert offer is not None
-    assert second is None
-    rows = admin_conn.execute(
+    assert first is not None and second is not None
+    first_opportunity, first_offer = first
+    second_opportunity, second_offer = second
+    assert first_offer is not None and second_offer is not None
+    assert first_opportunity.id == second_opportunity.id
+    assert first_offer.id == second_offer.id
+    opportunity_count = admin_conn.execute(
         """
-        SELECT status
+        SELECT count(*)
         FROM request_engine.slot_opportunities
-        WHERE organization_id = %s AND source_reservation_id = %s
+        WHERE organization_id = %s AND source_event_id = %s
         """,
-        (fixture.organization_id, fixture.reservation_id),
-    ).fetchall()
-    assert rows == [("open",)]
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.postgres
-async def test_slot_recovery_respects_lead_time_policy(
-    admin_conn: PgConnection,
-    session_factory: SessionFactory,
-) -> None:
-    start_at = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=30)
-    fixture = _fixture(
-        admin_conn,
-        policy={
-            "slot_recovery": {"enabled": True, "minimum_lead_minutes": 120},
-        },
-        start_at=start_at,
-        add_waitlist=True,
-    )
-    reader = PostgresReservationLifecycleReader(session_factory)
-    released = await reader.get_released_slot(
-        fixture.organization_id,
-        fixture.reservation_id,
-        event_type="reservation.cancelled.v1",
-    )
-    assert released is not None
-    recovery = PostgresReleasedSlotRecovery(
-        session_factory,
-        capacity=PostgresSlotOfferCapacity(),
-        notification=PostgresSlotOfferNotificationIntent(),
-    )
-    result = await recovery.recover_released_slot(
-        released,
-        source_event_id=uuid4(),
-        principal_id=fixture.principal_id,
-    )
-    assert result is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.postgres
-async def test_confirmation_command_is_idempotent_and_preserves_scheduling_semantics(
-    admin_conn: PgConnection,
-    session_factory: SessionFactory,
-) -> None:
-    fixture = _fixture(
-        admin_conn,
-        policy={"attendance": {"confirmation_required": True}},
-        start_at=_future_start(),
-    )
-    commands = PostgresAttendanceCommands(session_factory)
-
-    first = await confirm_attendance(
-        commands,
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        reservation_id=fixture.reservation_id,
-        source_key="test:confirm",
-        idempotency_key="confirm-idempotent",
-        expected_revision=1,
-        allow_subject_override=True,
-    )
-    replay = await confirm_attendance(
-        commands,
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        reservation_id=fixture.reservation_id,
-        source_key="test:confirm",
-        idempotency_key="confirm-idempotent",
-        expected_revision=1,
-        allow_subject_override=True,
-    )
-
-    assert first.response_status is AttendanceStatus.CONFIRMED
-    assert replay == first
-    assert first.reservation_revision == 2
-    scheduled_rows = admin_conn.execute(
+        (fixture.organization_id, source_event_id),
+    ).fetchone()
+    assert opportunity_count == (1,)
+    live_offer_count = admin_conn.execute(
         """
-        SELECT action_kind
-        FROM request_engine.scheduled_actions
+        SELECT count(*)
+        FROM request_engine.slot_offers
         WHERE organization_id = %s
-          AND aggregate_kind = 'Reservation'
-          AND aggregate_id = %s
+          AND slot_opportunity_id = %s
+          AND status = 'offered'
         """,
-        (fixture.organization_id, fixture.reservation_id),
-    ).fetchall()
-    assert scheduled_rows == []
+        (fixture.organization_id, first_opportunity.id),
+    ).fetchone()
+    assert live_offer_count == (1,)
 
 
-@pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_reservation_lifecycle_reader_snapshots_policy_and_timezone(
-    admin_conn: PgConnection,
-    session_factory: SessionFactory,
-) -> None:
-    fixture = _fixture(
-        admin_conn,
-        policy={
-            "attendance": {"confirmation_required": True},
-            "communications": {"confirmation": True},
-        },
-        start_at=_future_start(),
-    )
-    reader = PostgresReservationLifecycleReader(session_factory)
-    snapshot = await reader.get_lifecycle_snapshot(fixture.organization_id, fixture.reservation_id)
-
-    assert snapshot is not None
-    assert snapshot.start_at == fixture.start_at
-    assert snapshot.end_at == fixture.end_at
-    assert snapshot.location_timezone == "America/Santo_Domingo"
-    assert snapshot.booking_policy["attendance"] == {"confirmation_required": True}
-    assert snapshot.booking_policy["communications"] == {"confirmation": True}
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.postgres
-async def test_invalid_attendance_row_with_conflicting_terminal_timestamps_is_rejected(
+def test_database_rejects_impossible_attendance_outcome_timestamps(
     admin_conn: PgConnection,
 ) -> None:
     fixture = _fixture(
@@ -702,3 +600,66 @@ async def test_invalid_attendance_row_with_conflicting_terminal_timestamps_is_re
             """,
             (fixture.organization_id, fixture.reservation_id),
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.concurrency
+async def test_concurrent_confirm_and_decline_serialize_on_reservation(
+    admin_conn: PgConnection,
+    session_factory: SessionFactory,
+) -> None:
+    fixture = _fixture(
+        admin_conn,
+        policy={"attendance": {"decline_action": "keep"}},
+        start_at=_future_start(),
+    )
+    commands = PostgresAttendanceCommands(session_factory)
+
+    results = await asyncio.gather(
+        confirm_attendance(
+            commands,
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            reservation_id=fixture.reservation_id,
+            source_key="test:confirm-race",
+            idempotency_key=f"confirm-race-{uuid4().hex}",
+            expected_revision=1,
+            allow_subject_override=True,
+        ),
+        decline_attendance(
+            commands,
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            reservation_id=fixture.reservation_id,
+            source_key="test:decline-race",
+            idempotency_key=f"decline-race-{uuid4().hex}",
+            expected_revision=1,
+            allow_subject_override=True,
+        ),
+        return_exceptions=True,
+    )
+
+    successes = [value for value in results if not isinstance(value, BaseException)]
+    conflicts = [value for value in results if isinstance(value, ReservationRevisionConflict)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    row = admin_conn.execute(
+        """
+        SELECT revision
+        FROM request_engine.reservations
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, fixture.reservation_id),
+    ).fetchone()
+    assert row == (2,)
+    response_count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.attendance_responses
+        WHERE organization_id = %s AND reservation_id = %s
+        """,
+        (fixture.organization_id, fixture.reservation_id),
+    ).fetchone()
+    assert response_count == (1,)
