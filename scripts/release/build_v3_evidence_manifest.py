@@ -257,9 +257,8 @@ def _validate_operational_plans(payload: dict[str, Any]) -> list[str]:
         else:
             missing_indexes = sorted(required_indexes - set(indexes))
             if missing_indexes:
-                errors.append(
-                    f"{proof_name}: required indexes were not selected: {', '.join(missing_indexes)}"
-                )
+                missing = ", ".join(missing_indexes)
+                errors.append(f"{proof_name}: required indexes were not selected: {missing}")
         if proof.get("forbidden_seq_scans") != []:
             errors.append(f"{proof_name}: forbidden sequential scan was reported")
         if proof.get("shared_read_blocks") != 0:
