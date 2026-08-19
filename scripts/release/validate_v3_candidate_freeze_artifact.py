@@ -16,6 +16,8 @@ EXPECTED_ANCESTRY_EVIDENCE: Final = {
     "git-merge-base",
     "ci-base-sha",
     "ci-base-ancestor",
+    "ci-tested-sha",
+    "ci-tested-ancestor",
 }
 HEX40: Final = re.compile(r"^[0-9a-f]{40}$")
 HEX64: Final = re.compile(r"^[0-9a-f]{64}$")
@@ -37,11 +39,17 @@ def validation_errors(payload: Any) -> list[str]:
 
     ancestry_evidence = payload.get("ancestry_evidence")
     if ancestry_evidence not in EXPECTED_ANCESTRY_EVIDENCE:
-        errors.append("ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor")
+        errors.append(
+            "ancestry_evidence must be git-merge-base, ci-base-sha, ci-base-ancestor, "
+            "ci-tested-sha, or ci-tested-ancestor"
+        )
     ancestry_base_sha = payload.get("ancestry_base_sha")
+    ancestry_tested_sha = payload.get("ancestry_tested_sha")
+    current_head = payload.get("current_head")
+
     if ancestry_evidence == "git-merge-base":
-        if ancestry_base_sha is not None:
-            errors.append("ancestry_base_sha must be null for git-merge-base evidence")
+        if ancestry_tested_sha is not None:
+            errors.append("ancestry_tested_sha must be null for git-merge-base evidence")
     elif ancestry_evidence == "ci-base-sha":
         if ancestry_base_sha != EXPECTED_SOURCE_COMMIT:
             errors.append("ci-base-sha evidence must bind the frozen source commit as its base")
@@ -50,6 +58,23 @@ def validation_errors(payload: Any) -> list[str]:
             errors.append("ci-base-ancestor evidence must bind a 40-character base SHA")
         elif ancestry_base_sha == EXPECTED_SOURCE_COMMIT:
             errors.append("ci-base-ancestor evidence must bind a descendant base commit")
+    elif ancestry_evidence == "ci-tested-sha":
+        if ancestry_tested_sha != EXPECTED_SOURCE_COMMIT:
+            errors.append("ci-tested-sha evidence must bind the frozen source commit as tested SHA")
+        if current_head != ancestry_tested_sha:
+            errors.append("ci-tested-sha evidence must bind the checked out HEAD")
+    elif ancestry_evidence == "ci-tested-ancestor":
+        if not isinstance(ancestry_tested_sha, str) or HEX40.fullmatch(ancestry_tested_sha) is None:
+            errors.append("ci-tested-ancestor evidence must bind a 40-character tested SHA")
+        elif ancestry_tested_sha == EXPECTED_SOURCE_COMMIT:
+            errors.append("ci-tested-ancestor evidence must bind a descendant tested checkout")
+        if current_head != ancestry_tested_sha:
+            errors.append("ci-tested-ancestor evidence must bind the checked out HEAD")
+
+    if ancestry_base_sha is not None and (
+        not isinstance(ancestry_base_sha, str) or HEX40.fullmatch(ancestry_base_sha) is None
+    ):
+        errors.append("ancestry_base_sha must be null or 40 lowercase hex characters")
 
     failures = payload.get("failures")
     if failures != []:
