@@ -17,6 +17,10 @@ APPLICATION_SCHEMAS = (
 )
 RESTRICT_KEY = "RequestEngineV3Baseline"
 PG_DUMP_CONTAINER_ENV = "REQUEST_ENGINE_PG_DUMP_CONTAINER"
+DUMP_VERSION_PREFIXES = (
+    "-- Dumped from database version ",
+    "-- Dumped by pg_dump version ",
+)
 
 ROLE_PREAMBLE = """-- Request Engine V3 final-initial SQL payload.
 -- Generated from the frozen post-G19 PostgreSQL catalog, not migration-history concatenation.
@@ -110,7 +114,7 @@ def _pg_dump_schema(database: str) -> str:
     return result.stdout
 
 
-def _strip_psql_meta_commands(dump: str) -> str:
+def _normalize_dump(dump: str) -> str:
     restrict_line = f"\\restrict {RESTRICT_KEY}"
     unrestrict_line = f"\\unrestrict {RESTRICT_KEY}"
     saw_restrict = False
@@ -128,6 +132,8 @@ def _strip_psql_meta_commands(dump: str) -> str:
                 raise SystemExit("pg_dump emitted duplicate \\unrestrict markers")
             saw_unrestrict = True
             continue
+        if line.startswith(DUMP_VERSION_PREFIXES):
+            continue
         if line.startswith("\\"):
             raise SystemExit(f"pg_dump emitted unsupported psql meta-command: {line}")
         output.append(line)
@@ -141,7 +147,7 @@ def render_initial(database: str) -> str:
     dump = _pg_dump_schema(database)
     if not dump.strip():
         raise SystemExit("pg_dump produced an empty final-initial candidate")
-    return ROLE_PREAMBLE + _strip_psql_meta_commands(dump)
+    return ROLE_PREAMBLE + _normalize_dump(dump)
 
 
 def main() -> int:
