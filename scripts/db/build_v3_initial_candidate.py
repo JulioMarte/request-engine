@@ -18,9 +18,9 @@ APPLICATION_SCHEMAS = (
 RESTRICT_KEY = "RequestEngineV3Baseline"
 PG_DUMP_CONTAINER_ENV = "REQUEST_ENGINE_PG_DUMP_CONTAINER"
 
-ROLE_PREAMBLE = """-- Request Engine V3 final-initial release candidate.
+ROLE_PREAMBLE = """-- Request Engine V3 final-initial SQL payload.
 -- Generated from the frozen post-G19 PostgreSQL catalog, not migration-history concatenation.
--- This file is not blessed as production 0001_initial until G17 passes exact-head evidence.
+-- Production authority is the checked-in Alembic revision plus exact-head G17 evidence.
 
 DO $roles$
 BEGIN
@@ -110,11 +110,38 @@ def _pg_dump_schema(database: str) -> str:
     return result.stdout
 
 
+def _strip_psql_meta_commands(dump: str) -> str:
+    restrict_line = f"\\restrict {RESTRICT_KEY}"
+    unrestrict_line = f"\\unrestrict {RESTRICT_KEY}"
+    saw_restrict = False
+    saw_unrestrict = False
+    output: list[str] = []
+
+    for line in dump.splitlines():
+        if line == restrict_line:
+            if saw_restrict:
+                raise SystemExit("pg_dump emitted duplicate \\restrict markers")
+            saw_restrict = True
+            continue
+        if line == unrestrict_line:
+            if saw_unrestrict:
+                raise SystemExit("pg_dump emitted duplicate \\unrestrict markers")
+            saw_unrestrict = True
+            continue
+        if line.startswith("\\"):
+            raise SystemExit(f"pg_dump emitted unsupported psql meta-command: {line}")
+        output.append(line)
+
+    if not saw_restrict or not saw_unrestrict:
+        raise SystemExit("pg_dump output is missing the deterministic restrict markers")
+    return "\n".join(output).rstrip() + "\n"
+
+
 def render_initial(database: str) -> str:
     dump = _pg_dump_schema(database)
     if not dump.strip():
         raise SystemExit("pg_dump produced an empty final-initial candidate")
-    return ROLE_PREAMBLE + dump.rstrip() + "\n"
+    return ROLE_PREAMBLE + _strip_psql_meta_commands(dump)
 
 
 def main() -> int:
