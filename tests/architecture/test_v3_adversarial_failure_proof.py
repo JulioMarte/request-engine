@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -14,6 +15,7 @@ SPEC.loader.exec_module(proof)
 
 
 def test_g18_declares_exact_required_families_and_all_races() -> None:
+    expected_races = {f"R{number:02d}" for number in range(1, 30)}
     assert set(proof.FAMILY_OWNERS) == {
         "attack_security",
         "race_concurrency",
@@ -22,8 +24,16 @@ def test_g18_declares_exact_required_families_and_all_races() -> None:
         "order_independence",
         "mutation_probes",
     }
-    assert set(proof.RACE_OWNERS) == {f"R{number:02d}" for number in range(1, 30)}
-    assert all(proof.RACE_OWNERS[race_id] for race_id in proof.RACE_OWNERS)
+    assert set(proof.RACE_NODES) == expected_races
+    assert set(proof.RACE_OWNERS) == expected_races
+    assert all(proof.RACE_NODES[race_id] for race_id in expected_races)
+    assert all("::" in selector for selectors in proof.RACE_NODES.values() for selector in selectors)
+
+
+def test_g18_race_owners_are_derived_from_required_nodes() -> None:
+    for race_id, selectors in proof.RACE_NODES.items():
+        expected = tuple(sorted({selector.split("::", 1)[0] for selector in selectors}))
+        assert proof.RACE_OWNERS[race_id] == expected
 
 
 def test_g18_freezes_supporting_artifact_inventory() -> None:
@@ -74,3 +84,37 @@ def test_g18_json_status_requires_real_pass_payload(
     status, failures = proof._json_status(artifact)
     assert status == "FAIL"
     assert failures
+
+
+def test_g18_collection_inventory_requires_exact_unique_nodes(tmp_path: Path) -> None:
+    artifact = tmp_path / "collection.json"
+    node = "tests/db/test_example.py::test_example"
+    artifact.write_text(
+        json.dumps({"status": "PASS", "node_count": 1, "node_ids": [node]}),
+        encoding="utf-8",
+    )
+    assert proof._collection_node_inventory(artifact) == ("PASS", {node}, [])
+
+    artifact.write_text(
+        json.dumps({"status": "PASS", "node_count": 2, "node_ids": [node, node]}),
+        encoding="utf-8",
+    )
+    status, nodes, failures = proof._collection_node_inventory(artifact)
+    assert status == "FAIL"
+    assert nodes == {node}
+    assert failures == ["test collection artifact contains duplicate node_ids"]
+
+    artifact.write_text(
+        json.dumps({"status": "PASS", "node_count": 2, "node_ids": [node]}),
+        encoding="utf-8",
+    )
+    status, _, failures = proof._collection_node_inventory(artifact)
+    assert status == "FAIL"
+    assert failures == ["test collection node_count does not match node_ids inventory"]
+
+
+def test_g18_selector_matching_accepts_param_cases_but_not_missing_tests() -> None:
+    selector = "tests/db/test_example.py::test_example"
+    assert proof._selector_collected(selector, {selector}) is True
+    assert proof._selector_collected(selector, {f"{selector}[case-a]"}) is True
+    assert proof._selector_collected(selector, {"tests/db/test_example.py::test_other"}) is False
