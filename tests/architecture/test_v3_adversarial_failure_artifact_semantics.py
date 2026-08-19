@@ -4,10 +4,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / "scripts/release/validate_v3_adversarial_failure_artifact.py"
-)
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts/release/validate_v3_adversarial_failure_artifact.py"
 SPEC = importlib.util.spec_from_file_location("v3_adversarial_failure_validator", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 validator: ModuleType = importlib.util.module_from_spec(SPEC)
@@ -100,3 +98,12 @@ def test_g18_artifact_semantics_reject_cardinality_lies() -> None:
     errors = validator.validate_adversarial_failure(payload)
     assert any("is missing owners" in error for error in errors)
     assert any("expected pytest node count is inconsistent" in error for error in errors)
+
+
+def test_g18_artifact_is_mandatory_in_candidate_manifest_and_ci() -> None:
+    manifest = (ROOT / "scripts/release/build_v3_evidence_manifest.py").read_text(encoding="utf-8")
+    ci_jobs = (ROOT / "scripts/ci/ci_jobs.py").read_text(encoding="utf-8")
+    assert '"adversarial_failure": validate_adversarial_failure' in manifest
+    assert '"adversarial_failure": ROOT / ".phase6/v3-adversarial-failure-proof.json"' in manifest
+    assert '"adversarial-failure-proof"' in ci_jobs
+    assert "prove_v3_adversarial_failure.py" in ci_jobs
