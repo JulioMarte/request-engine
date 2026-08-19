@@ -1,6 +1,6 @@
 # V3 public API, capability, and error contract freeze
 
-Status: Phase 6 G16 implementation inventory. G16 remains `PARTIAL` until the rebuilt post-G15 branch passes canonical exact-head CI, emits its machine-readable contract proof, and the release manifest validates that artifact.
+Status: **Phase 6 G16 PASS** on the current branch. The rebuilt post-G15 contract freeze passed canonical exact-head CI and its machine-readable artifact is mandatory semantic evidence in the release manifest.
 
 Base for this closure: `development@6c86fd4d57e5845428650700249897f6e1ef51f0`, after G15 query-plan/index evidence was integrated.
 
@@ -52,7 +52,7 @@ The machine code and recovery/security semantics are contractual; arbitrary Engl
 - a runtime contract fingerprint;
 - the exact operation, capability, error, and OpenAPI metadata snapshot.
 
-G16 is not closed merely because literal tests exist. The canonical candidate job must produce this artifact and `build_v3_evidence_manifest.py` must treat it as mandatory semantic evidence.
+`build_v3_evidence_manifest.py` now treats that artifact as mandatory semantic evidence. It requires 24 operations, 34 capabilities, schema version `[1]`, 51 public machine error codes, exact snapshot cardinalities, valid SHA-256 fingerprints, and recomputes the runtime-contract fingerprint from the embedded snapshot before accepting the artifact.
 
 ## 6. What counts as contract drift
 
@@ -69,17 +69,12 @@ The following require explicit V3 contract review and an intentional baseline up
 
 A deliberate future V4 or other versioned surface may change these contracts without pretending to be V3-compatible.
 
-## 7. Evidence required for G16 PASS
+## 7. G16 PASS evidence
 
-G16 may move to `PASS` only when one exact branch head proves all of the following together:
+Canonical CI #1138 (`32205998999`) passed on exact implementation head `824b74836acdf6014e34a98ed931dcf21c07cfa1`: Python quality/architecture, observability, PostgreSQL 18 V2 history, repeated V3 bootstrap, V3 candidate proof and the aggregate candidate-and-verticals check all succeeded.
 
-- the 24-operation baseline matches the classified HTTP registry;
-- the 34-capability baseline matches the production capability registry;
-- the installed public error-code inventory matches the reviewed baseline;
-- runtime OpenAPI contains exactly the classified `/v1/` surface;
-- runtime OpenAPI metadata matches canonical capability definitions;
-- the machine-readable contract artifact is generated and semantically validated by the release manifest;
-- existing authentication, tenant isolation, authority, idempotency, revision, and error-envelope tests remain green;
-- canonical CI produces a `VALID`, clean-tree candidate evidence bundle bound to that exact head.
+Artifact `v3-candidate-release-proof` `9349299370` (`sha256:b34aa22e91aa8974e62f7ad670e8dc34429835936676f3120c38f873995033f2`) is bound to that head. Its release manifest reports `evidence_status: VALID`, `artifact_set_complete: true`, `missing_artifacts: []`, `validation_errors: []`, a clean working tree and `artifact_validation.public_api_contract.status: PASS`. The public-contract artifact SHA is `83e5e76350c572e8bc879671b8fbf553ca19dff81aaec32cb527054c45111cad`; the contract proof itself reports 24 operations, 34 capabilities, capability schema versions `[1]`, 51 public machine error codes, 24 OpenAPI snapshots and `failures: []`.
 
-Promotion of G16 does not change global `release_status: NOT_READY`. G17-G20 remain independent release gates.
+The #1138 manifest still records G16 as `PARTIAL` because it predates this registry promotion. Therefore this promotion must itself survive one final canonical exact-head CI. Only that post-promotion artifact can be merge-authoritative for PR #65.
+
+Promotion of G16 does not change global `release_status: NOT_READY`. G17-G20 remain independent release gates, and final promotion to `main` must regenerate this contract evidence on the eventual frozen release candidate.
