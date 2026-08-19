@@ -42,6 +42,19 @@ uv run python scripts/release/provision_v3_release_runtime.py \
 # shellcheck disable=SC1090
 source "$RUNTIME_ENV"
 
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]] && command -v docker >/dev/null 2>&1; then
+  mapfile -t pg_dump_containers < <(
+    docker ps --filter ancestor=postgres:18 --format '{{.ID}}'
+  )
+  if (( ${#pg_dump_containers[@]} > 1 )); then
+    echo "multiple PostgreSQL 18 service containers found; refusing ambiguous pg_dump" >&2
+    exit 1
+  fi
+  if (( ${#pg_dump_containers[@]} == 1 )); then
+    export REQUEST_ENGINE_PG_DUMP_CONTAINER="${pg_dump_containers[0]}"
+  fi
+fi
+
 python scripts/ci/ci_jobs.py postgres-v3-candidate \
   --step test-quality-audit \
   --step test-collection-integrity \
