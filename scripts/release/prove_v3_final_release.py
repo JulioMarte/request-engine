@@ -100,9 +100,14 @@ def main() -> int:
     checkout_sha = _git("rev-parse", "HEAD")
     tree_sha = _git("rev-parse", "HEAD^{tree}")
     expected_head_sha = os.environ.get("PHASE6_HEAD_SHA") or checkout_sha
+    expected_base_sha = os.environ.get("PHASE6_BASE_SHA")
     expected_tested_sha = os.environ.get("PHASE6_TESTED_SHA") or checkout_sha
+    if not expected_base_sha:
+        failures.append("PHASE6_BASE_SHA is required for G20 release provenance")
+        expected_base_sha = ""
     expected_source = {
         "head_sha": expected_head_sha,
+        "base_sha": expected_base_sha,
         "tested_sha": expected_tested_sha,
         "checkout_sha": checkout_sha,
         "tree_sha": tree_sha,
@@ -147,7 +152,8 @@ def main() -> int:
         "no_missing_artifacts": preflight.get("missing_artifacts") == [],
         "no_validation_errors": preflight.get("validation_errors") == [],
         "preflight_not_ready": (
-            preflight.get("release_status") == "NOT_READY" and preflight.get("release_ready") is False
+            preflight.get("release_status") == "NOT_READY"
+            and preflight.get("release_ready") is False
         ),
         "all_underlying_evidence_bound": len(evidence_inputs) == len(REQUIRED_EVIDENCE),
         "all_pre_g20_gates_pass": all(
@@ -163,7 +169,11 @@ def main() -> int:
         ),
         "registry_digests_bound": len(registry_digests) == len(REGISTRY_DIGEST_KEYS),
     }
-    failures.extend(name for name, passed in criteria.items() if not passed and name not in failures)
+    failures.extend(
+        name
+        for name, passed in criteria.items()
+        if not passed and name not in failures
+    )
 
     payload = {
         "schema_version": 1,

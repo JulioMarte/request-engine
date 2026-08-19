@@ -102,7 +102,10 @@ def _validate_g17_artifact(path: Path = _G17_PATH) -> dict[str, Any]:
     if freeze["status"] != "PASS":
         errors.append("candidate freeze artifact is not independently valid")
     freeze_summary = payload.get("candidate_freeze")
-    if isinstance(freeze_summary, dict) and freeze["sha256"] != freeze_summary.get("artifact_sha256"):
+    if (
+        isinstance(freeze_summary, dict)
+        and freeze["sha256"] != freeze_summary.get("artifact_sha256")
+    ):
         errors.append("candidate freeze digest does not match the G17 proof")
 
     initial_sql_digest = _SHA256(_INITIAL_SQL_PATH)
@@ -219,7 +222,14 @@ def _validate_g20_artifact(
     source = cast(dict[str, Any], manifest["source"])
     proof_source = payload.get("source")
     if isinstance(proof_source, dict):
-        for field in ("head_sha", "tested_sha", "checkout_sha", "tree_sha", "working_tree_dirty"):
+        for field in (
+            "head_sha",
+            "base_sha",
+            "tested_sha",
+            "checkout_sha",
+            "tree_sha",
+            "working_tree_dirty",
+        ):
             if proof_source.get(field) != source.get(field):
                 errors.append(f"G20 source {field} does not match final manifest")
 
@@ -280,9 +290,9 @@ def build_manifest(*, include_final_release_proof: bool = True) -> dict[str, Any
     artifact_validation["final_release"] = g20
     candidate_status = _recompute_status(manifest)
 
-    release_ready = (
-        g20["status"] == "PASS"
-        and _RELEASE_READY(candidate_status, gate_statuses)
+    release_ready = g20["status"] == "PASS" and _RELEASE_READY(
+        candidate_status,
+        gate_statuses,
     )
     manifest["release_ready"] = release_ready
     manifest["release_status"] = "READY" if release_ready else "NOT_READY"

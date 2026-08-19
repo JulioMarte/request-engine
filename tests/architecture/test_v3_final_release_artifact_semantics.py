@@ -4,7 +4,10 @@ from copy import deepcopy
 from pathlib import Path
 from types import ModuleType
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/release/validate_v3_final_release_artifact.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[2]
+    / "scripts/release/validate_v3_final_release_artifact.py"
+)
 SPEC = importlib.util.spec_from_file_location("v3_final_release_validator", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 validator: ModuleType = importlib.util.module_from_spec(SPEC)
@@ -23,6 +26,7 @@ def _payload() -> dict[str, object]:
         "failures": [],
         "source": {
             "head_sha": sha1,
+            "base_sha": sha1,
             "tested_sha": sha1,
             "checkout_sha": sha1,
             "tree_sha": sha1,
@@ -69,6 +73,7 @@ def test_final_release_validator_accepts_bound_preflight_with_g20_missing_or_pas
 def test_final_release_validator_rejects_lying_pass_and_provenance_drift() -> None:
     payload = _payload()
     payload["source"]["working_tree_dirty"] = True  # type: ignore[index]
+    payload["source"]["base_sha"] = "missing"  # type: ignore[index]
     payload["gate_statuses"]["G17"] = "MISSING"  # type: ignore[index]
     payload["preflight_evidence_status"] = "INVALID"
     payload["preflight_release_status"] = "READY"
@@ -76,6 +81,7 @@ def test_final_release_validator_rejects_lying_pass_and_provenance_drift() -> No
 
     errors = validator.validation_errors(payload)
     assert "source working tree is not clean" in errors
+    assert "source base_sha is malformed" in errors
     assert "G17 is not PASS" in errors
     assert "preflight evidence status is not VALID" in errors
     assert "preflight release status must be NOT_READY" in errors

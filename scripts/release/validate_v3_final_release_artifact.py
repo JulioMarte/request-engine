@@ -61,14 +61,18 @@ def validation_errors(payload: Any) -> list[str]:
         errors.append("failures is not empty")
 
     criteria = payload.get("criteria")
-    if not isinstance(criteria, dict) or not criteria or any(value is not True for value in criteria.values()):
+    if (
+        not isinstance(criteria, dict)
+        or not criteria
+        or any(value is not True for value in criteria.values())
+    ):
         errors.append("criteria are incomplete or non-PASS")
 
     source = payload.get("source")
     if not isinstance(source, dict):
         errors.append("source provenance is missing")
     else:
-        for field in ("head_sha", "tested_sha", "checkout_sha", "tree_sha"):
+        for field in ("head_sha", "base_sha", "tested_sha", "checkout_sha", "tree_sha"):
             if not _valid_sha1(source.get(field)):
                 errors.append(f"source {field} is malformed")
         if source.get("working_tree_dirty") is not False:
