@@ -44,6 +44,10 @@ files=(
   "037-attendance-idempotency-scope-hardening.sql"
   "038-runtime-privilege-closure.sql"
   "039-reminder-schedule-contract-version.sql"
+  "040-worker-claim-plan-alignment.sql"
+  "041-slot-offer-history-query-plan-alignment.sql"
+  "042-booking-query-plan-alignment.sql"
+  "043-operational-query-plan-alignment.sql"
 )
 
 : "${PGHOST:=127.0.0.1}"

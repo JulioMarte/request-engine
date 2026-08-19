@@ -24,7 +24,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G12 | Optimistic concurrency | PASS | real concurrent writers for every caller-selected revision-managed public aggregate |
 | G13 | ProviderEvent/reconciliation | PASS | duplicate/reorder/ambiguity/reconciliation/failure matrix |
 | G14 | Runtime privilege contract | PASS | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
-| G15 | Query plans and index evidence | MISSING | representative-cardinality EXPLAIN/ANALYZE evidence for hot paths |
+| G15 | Query plans and index evidence | PASS | representative-cardinality EXPLAIN/ANALYZE evidence for worker, Queue/SlotOffer, Booking, Communications, Reservation lifecycle and shared-capacity hot paths |
 | G16 | Public API contract freeze | PARTIAL | final OpenAPI/capability/error snapshots on frozen candidate |
 | G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
 | G18 | Unified adversarial/failure suite | MISSING | one release gate executing attack, race, crash, retry, order and mutation families |
@@ -118,6 +118,16 @@ R17, R18, R20, R21 and R22 are promoted in the race matrix by this same proof. T
 
 Canonical exact-head CI #1071 (`32174705295`) passed all six required jobs on head `a1af8715134820936cbd530440fc1ae131489c43`. Artifact `v3-candidate-release-proof` `9338829019` (`sha256:acd8ef31b56f41f719470f82159c3cc799dd01917343205d7803658b16cedea9`) is bound to that PR head and reports `evidence_status: VALID`, `artifact_set_complete: true`, `missing_artifacts: []`, `validation_errors: []`, `working_tree_dirty: false`, passing catalog/concurrency/equivalence/mutation/schema/test/order/query-plan sub-artifacts, and zero test-quality errors or warnings. Its `release_status` remains correctly `NOT_READY` because G15–G20 are not all closed. This G05 promotion changes the release registry and therefore must itself survive one final exact-head canonical CI before PR #63 is merged.
 
+## G15 — representative query-plan and index evidence
+
+**G15 is `PASS`.** The candidate now measures the actual production SQL shapes at representative cardinality instead of treating schema index presence as proof. The canonical PostgreSQL 18 candidate job emits four independent query-plan artifacts: worker claims; Queue/Waitlist/SlotOffer; Booking availability/capacity; and operational Communications/Reservation/shared-capacity paths. Every proof uses `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`, rejects inappropriate sequential scans, enforces rows-removed/buffer/temp-I/O budgets, and binds production time windows before EXPLAIN where the runtime uses bind parameters.
+
+The evidence drove three pre-baseline alignment migrations rather than a speculative index sweep. `041-slot-offer-history-query-plan-alignment.sql` bounds SlotOffer provenance lookups; `042-booking-query-plan-alignment.sql` adds active schedule, resource-exception and live local-capacity access paths; `043-operational-query-plan-alignment.sql` adds verified-contact lookup, subject-specific active ScheduledAction lookup, and the partial live-claim id access path required by cross-tenant shared-capacity conflict detection. An earlier range-only global CapacityClaim GiST was explicitly rejected after steady-state `VACUUM (ANALYZE)` still produced a historical Seq Scan; the final partial B-tree is therefore evidence-driven rather than retained merely because it existed in an earlier attempt.
+
+Canonical CI #1125 (`32199955533`) passed the PostgreSQL 18 V3 candidate proof on implementation head `40276e8a02f4673c685e40af41ced8afafcb7597`. Artifact `v3-candidate-release-proof` `9347289531` (`sha256:8eb1fb0ecbd26f4d66b2574d5df5f0f877c06d6b8c784d7459f7b50f9ba6ca7d`) records the operational proof at four tenants with 1,500 rows/tenant of claim, Reservation, binding and reconciliation history. The seven operational probes all pass: latest delivery uses the existing delivery uniqueness index; verified contacts use `party_contact_points_verified_lookup_idx`; dispatch and reconciliation use `scheduled_actions_active_subject_idx`; Reservation status uses the tenant Reservation key plus `attendance_responses_current_idx`; root resolution uses the active-resource binding index; and shared-capacity conflict uses `capacity_claims_active_id_idx` plus `shared_capacity_claim_links_root_idx`. The previously pathological shared-capacity probe falls from 273 shared-hit blocks and 6,001 filtered CapacityClaims to 15 shared-hit blocks and one filtered claim, with no forbidden Seq Scan. Worker, Queue/SlotOffer and Booking plan families remain PASS in the same candidate artifact.
+
+The executable evidence manifest now treats `.phase6/v3-operational-query-plans.json` as mandatory semantic evidence, validates all seven proof names, required selected indexes and representative cardinalities, and rejects non-PASS status, reported failures, forbidden sequential scans, shared reads or temporary writes. This G15 promotion therefore must itself survive canonical exact-head CI before PR #64 becomes merge-authoritative; final promotion to `main` must regenerate all G15 evidence on the frozen release candidate.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -126,13 +136,12 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G05–G14 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G05–G15 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. build representative query-plan/performance evidence and only then freeze indexes (G15);
-2. finish the public API/error/capability contract freeze on the stabilized candidate (G16);
-3. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
-4. execute the unified adversarial/failure gate (G18);
-5. prove a fresh production-like environment (G19);
-6. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. finish the public API/error/capability contract freeze on the stabilized candidate (G16);
+2. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
+3. execute the unified adversarial/failure gate (G18);
+4. prove a fresh production-like environment (G19);
+5. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial`, freeze indexes before representative-cardinality evidence, or claim release readiness merely because G05–G14 are now closed.
+Do not create/bless `0001_initial` before G16 is frozen, and do not claim release readiness merely because G05–G15 are now closed.
