@@ -5,7 +5,6 @@ import runpy
 from pathlib import Path
 from typing import Any, cast
 
-from request_engine.platform.security.capabilities import CAPABILITIES
 from scripts.release.v3_public_api_contract_baseline import (
     EXPECTED_CAPABILITIES,
     EXPECTED_LITERAL_ERROR_CODES,
@@ -13,6 +12,8 @@ from scripts.release.v3_public_api_contract_baseline import (
     EXPECTED_REQUEST_HELPER_CODES,
     EXPECTED_SHARED_ERROR_CODES,
 )
+
+from request_engine.platform.security.capabilities import CAPABILITIES
 
 _ERROR_MODULES = (
     Path("src/request_engine/entrypoints/http/errors.py"),
