@@ -116,7 +116,10 @@ def main() -> int:
     if actual_names != sorted(expected_names):
         missing = sorted(set(expected_names) - set(actual_names))
         unexpected = sorted(set(actual_names) - set(expected_names))
-        failures.append(f"candidate migration inventory drift: missing={missing} unexpected={unexpected}")
+        failures.append(
+            "candidate migration inventory drift: "
+            f"missing={missing} unexpected={unexpected}"
+        )
 
     apply_info = lock["apply_script"]
     apply_path = REPO_ROOT / str(apply_info["path"])
@@ -134,11 +137,13 @@ def main() -> int:
         source_blob = _source_blob(source_commit, relative_path)
         if source_blob != expected_blob:
             failures.append(
-                f"frozen source blob mismatch for {relative_path}: lock={expected_blob} source={source_blob}"
+                f"frozen source blob mismatch for {relative_path}: "
+                f"lock={expected_blob} source={source_blob}"
             )
         if current_blob != expected_blob:
             failures.append(
-                f"frozen tool drift for {relative_path}: expected={expected_blob} current={current_blob}"
+                f"frozen tool drift for {relative_path}: "
+                f"expected={expected_blob} current={current_blob}"
             )
         tool_payload.append(
             {
@@ -161,7 +166,8 @@ def main() -> int:
         source_blob = _source_blob(source_commit, relative_path)
         if source_blob != expected_blob:
             failures.append(
-                f"frozen source blob mismatch for {name}: lock={expected_blob} source={source_blob}"
+                f"frozen source blob mismatch for {name}: "
+                f"lock={expected_blob} source={source_blob}"
             )
         if current_blob != expected_blob:
             failures.append(
