@@ -52,8 +52,10 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
     assert '["psql", "--set=ON_ERROR_STOP=1"' not in behavioral
     assert "runpy.run_path" in behavioral
     assert "from migrations.v3_initial_payload import" not in behavioral
-    assert "prove_v3_final_initial_equivalence.py" in wrapper
-    assert "validate_v3_final_initial_equivalence_artifact.py" in wrapper
+    producer = wrapper.index("prove_v3_final_initial_equivalence.py")
+    finalizer = wrapper.index("finalize_v3_final_initial_equivalence_provenance.py")
+    validator = wrapper.index("validate_v3_final_initial_equivalence_artifact_v2.py")
+    assert producer < finalizer < validator
 
 
 def test_structural_proof_only_exports_artifacts_after_catalog_equality() -> None:
@@ -71,6 +73,6 @@ def test_manifest_uses_structured_g17_proof_instead_of_log_marker() -> None:
     manifest = MANIFEST.read_text(encoding="utf-8")
 
     assert 'artifact_validation["initial_equivalence"] = g17' in manifest
-    assert "validate_v3_final_initial_equivalence_artifact.py" in manifest
+    assert "validate_v3_final_initial_equivalence_artifact_v2.py" in manifest
     assert "v3-initial-equivalence-candidate-schema.json" in manifest
     assert "v3-final-initial-tests-junit.xml" in manifest
