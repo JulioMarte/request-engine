@@ -97,9 +97,7 @@ def validate_production_like_bootstrap(payload: dict[str, Any]) -> list[str]:
         if not isinstance(roles, list) or len(roles) != 3:
             errors.append("G19 runtime role inventory is not exactly three roles")
         else:
-            parents = {
-                row.get("parent_role") for row in roles if isinstance(row, dict)
-            }
+            parents = {row.get("parent_role") for row in roles if isinstance(row, dict)}
             if parents != REQUIRED_PARENT_ROLES:
                 errors.append("G19 runtime parent-role inventory is not exact")
             for row in roles:
