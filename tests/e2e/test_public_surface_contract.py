@@ -8,6 +8,7 @@ from fastapi import Request
 from request_engine.entrypoints.http.app import create_app
 from request_engine.entrypoints.http.security import AuthenticationRequired
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
 
 from .http_surface import PUBLIC_HTTP_OPERATIONS, operation_keys
@@ -99,6 +100,41 @@ async def test_idempotency_registry_matches_required_openapi_headers(
             assert headers.get("idempotency-key") is True, operation.name
         else:
             assert "idempotency-key" not in headers, operation.name
+
+
+@pytest.mark.asyncio
+@pytest.mark.e2e
+@pytest.mark.postgres
+async def test_public_openapi_metadata_matches_frozen_capability_contract(
+    e2e_session_factory: SessionFactory,
+) -> None:
+    openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
+    for operation in PUBLIC_HTTP_OPERATIONS:
+        if operation.capability is None:
+            assert operation.name == "capabilities.list"
+            continue
+
+        definition = capability_definition(operation.capability)
+        assert definition is not None
+        contract = _operation_contract(
+            openapi, path=operation.path_template, method=operation.method
+        )
+        assert contract["operationId"] == definition.key.replace(".", "_")
+        assert contract["x-request-engine-capability"] == definition.key
+        assert contract["x-request-engine-schema-version"] == definition.schema_version
+        assert contract["x-request-engine-idempotency"] == definition.idempotency.value
+        assert contract["x-request-engine-expected-revision"] == definition.revision.value
+        assert contract["x-request-engine-exposure"] == definition.exposure.value
+        if definition.party_scope is None:
+            assert "x-request-engine-party-scope" not in contract
+        else:
+            assert contract["x-request-engine-party-scope"] == definition.party_scope
+        if definition.override_capability is None:
+            assert "x-request-engine-override-capability" not in contract
+        else:
+            assert (
+                contract["x-request-engine-override-capability"] == definition.override_capability
+            )
 
 
 @pytest.mark.e2e

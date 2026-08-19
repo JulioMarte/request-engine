@@ -268,6 +268,65 @@ def _validate_operational_plans(payload: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _validate_public_api_contract(payload: dict[str, Any]) -> list[str]:
+    errors = _validate_status_payload(payload)
+    if payload.get("schema_version") != 1:
+        errors.append("public API contract schema_version is not 1")
+    if payload.get("failures") != []:
+        errors.append("public API contract proof reports failures")
+    if payload.get("operation_count") != 24:
+        errors.append("public API contract operation_count is not 24")
+    if payload.get("capability_count") != 34:
+        errors.append("public API contract capability_count is not 34")
+    if payload.get("capability_schema_versions") != [1]:
+        errors.append("public API contract capability schema versions are not exactly [1]")
+    if payload.get("error_code_count") != 51:
+        errors.append("public API contract error_code_count is not 51")
+
+    baseline_sha = payload.get("baseline_sha256")
+    contract_sha = payload.get("contract_sha256")
+    if not _valid_sha256(baseline_sha):
+        errors.append("public API contract baseline fingerprint is malformed")
+    if not _valid_sha256(contract_sha):
+        errors.append("public API contract runtime fingerprint is malformed")
+
+    contract = payload.get("contract")
+    if not isinstance(contract, dict):
+        errors.append("public API contract snapshot is malformed")
+        return errors
+
+    expected_lengths = {
+        "operations": 24,
+        "capabilities": 34,
+        "openapi": 24,
+    }
+    for field, expected in expected_lengths.items():
+        value = contract.get(field)
+        if not isinstance(value, list) or len(value) != expected:
+            errors.append(
+                f"public API contract {field} snapshot does not contain {expected} entries"
+            )
+
+    literal_codes = contract.get("literal_error_codes")
+    shared_codes = contract.get("shared_error_codes")
+    helper_codes = contract.get("request_helper_error_codes")
+    if not all(isinstance(value, list) for value in (literal_codes, shared_codes, helper_codes)):
+        errors.append("public API contract error-code snapshots are malformed")
+    else:
+        all_codes = set(literal_codes) | set(shared_codes) | set(helper_codes)
+        if len(all_codes) != 51 or any(not isinstance(code, str) for code in all_codes):
+            errors.append("public API contract error-code snapshot does not contain 51 strings")
+
+    encoded = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if _valid_sha256(contract_sha) and hashlib.sha256(encoded).hexdigest() != contract_sha:
+        errors.append("public API contract runtime fingerprint does not match its snapshot")
+    return errors
+
+
 def _validate_test_quality(payload: dict[str, Any]) -> list[str]:
     errors = _validate_status_payload(payload)
     if payload.get("error_count") != 0:
@@ -364,6 +423,7 @@ JSON_VALIDATORS: dict[str, Callable[[dict[str, Any]], list[str]]] = {
     "queue_query_plans": _validate_queue_plans,
     "booking_query_plans": _validate_booking_plans,
     "operational_query_plans": _validate_operational_plans,
+    "public_api_contract": _validate_public_api_contract,
     "test_quality": _validate_test_quality,
     "test_collection": _validate_test_collection,
     "concurrency_stability": _validate_concurrency,
@@ -416,6 +476,7 @@ def build_manifest() -> dict[str, Any]:
         "queue_query_plans": ROOT / ".phase6/v3-queue-query-plans.json",
         "booking_query_plans": ROOT / ".phase6/v3-booking-query-plans.json",
         "operational_query_plans": ROOT / ".phase6/v3-operational-query-plans.json",
+        "public_api_contract": ROOT / ".phase6/v3-public-api-contract.json",
         "initial_equivalence": ROOT / ".phase6/v3-initial-equivalence.txt",
         "test_quality": ROOT / ".phase6/v3-test-quality.json",
         "test_collection": ROOT / ".phase6/v3-test-collection.json",
