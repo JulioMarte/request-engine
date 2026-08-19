@@ -11,7 +11,7 @@ def test_clean_structural_equivalence_runs_before_runtime_identity_provisioning(
     wrapper = WRAPPER.read_text(encoding="utf-8")
 
     structural = wrapper.index("prove_v3_initial_equivalence.sh")
-    runtime = wrapper.index("provision_v3_release_runtime.py")
+    runtime = wrapper.index("provision_v3_release_runtime.py", structural)
 
     assert structural < runtime
     assert "V3_EQUIVALENCE_CANDIDATE_SCHEMA_OUTPUT" in wrapper
