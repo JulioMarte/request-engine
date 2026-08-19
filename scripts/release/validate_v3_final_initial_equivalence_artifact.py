@@ -219,9 +219,12 @@ def validation_errors(payload: Any) -> list[str]:
                 errors.append("candidate and initial fingerprint payloads differ")
             candidate_record = structural.get("candidate")
             initial_record = structural.get("initial")
-            if isinstance(candidate_record, dict) and isinstance(initial_record, dict):
-                if candidate_record.get("sha256") != initial_record.get("sha256"):
-                    errors.append("candidate and initial fingerprint digests differ")
+            if (
+                isinstance(candidate_record, dict)
+                and isinstance(initial_record, dict)
+                and candidate_record.get("sha256") != initial_record.get("sha256")
+            ):
+                errors.append("candidate and initial fingerprint digests differ")
 
     behavioral = payload.get("behavioral")
     if not isinstance(behavioral, dict):
