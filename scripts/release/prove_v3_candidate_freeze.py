@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -66,6 +67,31 @@ def _ensure_source_commit(source_commit: str) -> None:
     )
     if verify.returncode != 0:
         raise RuntimeError(f"frozen source commit {source_commit} remains unavailable after fetch")
+
+
+def _ancestry_evidence(source_commit: str) -> tuple[str | None, str | None]:
+    shallow = _git("rev-parse", "--is-shallow-repository") == "true"
+    if not shallow:
+        ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if ancestry.returncode == 0:
+            return "git-merge-base", None
+        return None, f"frozen candidate source {source_commit} is not an ancestor of HEAD"
+
+    ci_base_sha = os.environ.get("PHASE6_BASE_SHA")
+    if ci_base_sha == source_commit:
+        return "ci-base-sha", None
+    if ci_base_sha:
+        return (
+            None,
+            f"shallow CI base mismatch: expected={source_commit} current={ci_base_sha}",
+        )
+    return None, "shallow checkout cannot prove frozen ancestry without PHASE6_BASE_SHA"
 
 
 def _sha256(path: Path) -> str:
@@ -140,15 +166,9 @@ def main() -> int:
             f"frozen source tree mismatch: lock={expected_source_tree} git={source_tree}"
         )
 
-    ancestry = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if ancestry.returncode != 0:
-        failures.append(f"frozen candidate source {source_commit} is not an ancestor of HEAD")
+    ancestry_evidence, ancestry_failure = _ancestry_evidence(source_commit)
+    if ancestry_failure:
+        failures.append(ancestry_failure)
 
     actual_names = sorted(path.name for path in candidate_dir.glob("*.sql"))
     if actual_names != sorted(expected_names):
@@ -223,6 +243,7 @@ def main() -> int:
         "format_version": 1,
         "candidate_source_commit": source_commit,
         "candidate_source_tree": expected_source_tree,
+        "ancestry_evidence": ancestry_evidence,
         "current_head": current_head,
         "current_tree": current_tree,
         "migration_count": len(migration_payload),
@@ -248,7 +269,7 @@ def main() -> int:
     print(
         "V3 candidate freeze proof passed: "
         f"{len(migration_payload)} migrations locked to {source_commit} "
-        f"({aggregate_sha256})."
+        f"({aggregate_sha256}; ancestry={ancestry_evidence})."
     )
     return 0
 
