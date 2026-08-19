@@ -9,6 +9,8 @@ RUNTIME_PROOF=".phase6/v3-production-like-runtime.json"
 RUNTIME_ENV=".ci/v3-production-like-runtime.env"
 G17_PROOF=".phase6/v3-final-initial-equivalence.json"
 G19_PROOF=".phase6/v3-production-like-bootstrap-proof.json"
+G20_PREFLIGHT=".phase6/v3-evidence-preflight.json"
+G20_PROOF=".phase6/v3-final-release-proof.json"
 MANIFEST=".phase6/v3-evidence-manifest.json"
 
 cleanup_runtime() {
@@ -94,8 +96,16 @@ uv run python scripts/release/validate_v3_final_initial_equivalence_artifact_v2.
 
 uv run python scripts/release/prove_v3_production_like_bootstrap.py \
   --output "$G19_PROOF"
+
 uv run python scripts/release/build_v3_evidence_manifest.py \
-  --output "$MANIFEST"
+  --output "$G20_PREFLIGHT" \
+  --preflight \
+  --require-valid
+uv run python scripts/release/prove_v3_final_release.py \
+  --preflight "$G20_PREFLIGHT" \
+  --output "$G20_PROOF"
+uv run python scripts/release/validate_v3_final_release_artifact.py \
+  "$G20_PROOF"
 uv run python scripts/release/build_v3_evidence_manifest.py \
   --output "$MANIFEST" \
   --require-valid
