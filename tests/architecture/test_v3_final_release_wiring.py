@@ -43,5 +43,9 @@ def test_g20_producer_and_validator_are_separate_fail_closed_scripts() -> None:
     assert "working_tree_dirty" in producer
     assert "REQUIRED_EVIDENCE" in producer
     assert "REQUIRED_EVIDENCE" in validator
+    assert "TEST_QUALITY_PATH" in producer
+    assert '"test_quality_warning_free"' in producer
+    assert 'test_quality_summary["warning_count"] == 0' in producer
+    assert "test quality summary reports warnings" in validator
     assert "preflight release status must be NOT_READY" in validator
     assert "G20 status is neither MISSING nor PASS" in validator

@@ -21,7 +21,7 @@ def _payload() -> dict[str, object]:
         "schema_version": 1,
         "proof": "v3-final-release-proof",
         "status": "PASS",
-        "criteria": {"exact_head_provenance": True, "evidence_valid": True},
+        "criteria": {name: True for name in validator.EXPECTED_CRITERIA},
         "failures": [],
         "source": {
             "head_sha": sha1,
@@ -42,6 +42,11 @@ def _payload() -> dict[str, object]:
             "gate_registry_sha256": sha256,
         },
         "test_inventory_sha256": sha256,
+        "test_quality_summary": {
+            "tests_audited": 371,
+            "error_count": 0,
+            "warning_count": 0,
+        },
         "runtime": {
             "python": "3.13.7",
             "postgres_target": "18",
@@ -105,3 +110,21 @@ def test_final_release_validator_rejects_invalid_g20_status_and_runtime_roles() 
     errors = validator.validation_errors(payload)
     assert "G20 status is neither MISSING nor PASS" in errors
     assert "runtime worker_role does not match the release role contract" in errors
+
+
+def test_final_release_validator_rejects_test_quality_warnings() -> None:
+    payload = _payload()
+    payload["criteria"]["test_quality_warning_free"] = False  # type: ignore[index]
+    payload["test_quality_summary"]["warning_count"] = 1  # type: ignore[index]
+
+    errors = validator.validation_errors(payload)
+    assert "criteria are incomplete or non-PASS" in errors
+    assert "test quality summary reports warnings" in errors
+
+
+def test_final_release_validator_rejects_missing_criterion() -> None:
+    payload = _payload()
+    payload["criteria"].pop("runtime_contract")  # type: ignore[union-attr]
+
+    errors = validator.validation_errors(payload)
+    assert "criteria inventory is incomplete or contains drift" in errors

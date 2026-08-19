@@ -22,7 +22,6 @@ from request_engine.modules.booking.application.commands.acquire_capacity_hold i
 from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.booking.application.commands.confirm_capacity_hold import (
     ConfirmCapacityHoldCommand,
-    confirm_capacity_hold,
 )
 from request_engine.modules.booking.application.errors import AppointmentUnavailable
 from request_engine.modules.booking.contracts.appointments import Reservation
@@ -31,7 +30,10 @@ from request_engine.platform.db.session import SessionFactory
 
 from .test_booking_commitments import _choice, _create_fixture
 from .test_cross_tenant_shared_capacity import _book, _hold, _two_bound_tenants
-from .test_g18_adversarial_races import _force_shared_root_winner
+from .test_g18_adversarial_races import (
+    _force_shared_root_winner,
+    _start_blocked_hold_confirmation,
+)
 
 PgConnection = Connection[Any]
 
@@ -43,6 +45,7 @@ PgConnection = Connection[Any]
 async def test_hold_confirmation_released_before_authoritative_expiry_consumes_hold_once(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """R02: confirmation may win only while PostgreSQL still considers the Hold live."""
 
@@ -75,20 +78,19 @@ async def test_hold_confirmation_released_before_authoritative_expiry_consumes_h
             """,
             (fixture.organization_id, hold.id),
         ).fetchone()
-        confirm_task = asyncio.create_task(
-            confirm_capacity_hold(
-                commitments,
-                ConfirmCapacityHoldCommand(
-                    organization_id=fixture.organization_id,
-                    principal_id=fixture.principal_id,
-                    hold_id=hold.id,
-                    expected_revision=hold.revision,
-                    idempotency_key=f"g18-live-confirm-{uuid4().hex}",
-                    allow_subject_override=True,
-                ),
-            )
+        confirm_task = await _start_blocked_hold_confirmation(
+            monkeypatch,
+            admin_conn,
+            commitments,
+            ConfirmCapacityHoldCommand(
+                organization_id=fixture.organization_id,
+                principal_id=fixture.principal_id,
+                hold_id=hold.id,
+                expected_revision=hold.revision,
+                idempotency_key=f"g18-live-confirm-{uuid4().hex}",
+                allow_subject_override=True,
+            ),
         )
-        await asyncio.sleep(0.1)
         still_live = admin_conn.execute(
             """
             SELECT expires_at > clock_timestamp()
@@ -155,6 +157,7 @@ async def test_direct_booking_vs_foreign_capacity_hold_has_one_owner_in_both_ord
     if winner == "booking":
         booking_result, hold_result = await _force_shared_root_winner(
             monkeypatch,
+            admin_conn,
             winner_organization_id=tenant_b.organization_id,
             winner=booking_race,
             loser=hold_race,
@@ -164,6 +167,7 @@ async def test_direct_booking_vs_foreign_capacity_hold_has_one_owner_in_both_ord
     else:
         hold_result, booking_result = await _force_shared_root_winner(
             monkeypatch,
+            admin_conn,
             winner_organization_id=tenant_a.organization_id,
             winner=hold_race,
             loser=booking_race,

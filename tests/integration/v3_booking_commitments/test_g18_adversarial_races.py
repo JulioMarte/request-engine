@@ -8,8 +8,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.booking.adapters.db import commitment_commands as commitment_db
 from request_engine.modules.booking.adapters.db import reservation_commands as reservation_db
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeBookingCommitmentCommands,
@@ -35,6 +37,7 @@ from request_engine.modules.booking.application.errors import (
     AppointmentUnavailable,
     CapacityHoldExpired,
 )
+from request_engine.modules.booking.contracts.appointments import Reservation
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
 )
@@ -71,19 +74,84 @@ from .test_cross_tenant_shared_capacity_reschedule_race import _tenant as _resch
 PgConnection = Connection[Any]
 RaceCoroutine = Coroutine[Any, Any, Any]
 SharedRootLocker = Callable[[AsyncSession, UUID, tuple[UUID, ...]], Awaitable[None]]
+HoldLocker = Callable[[AsyncSession, UUID, UUID], Awaitable[Any]]
+
+
+async def _wait_until_blocked_by(
+    observer_conn: PgConnection,
+    *,
+    waiter_pid: int,
+    blocker_pid: int,
+) -> None:
+    """Prove PostgreSQL sees waiter_pid blocked by blocker_pid before releasing the winner."""
+
+    try:
+        async with asyncio.timeout(5):
+            while True:
+                blocked = observer_conn.execute(
+                    "SELECT %s = ANY(pg_blocking_pids(%s))",
+                    (blocker_pid, waiter_pid),
+                ).fetchone()
+                if blocked == (True,):
+                    return
+                await asyncio.sleep(0)
+    except TimeoutError as exc:
+        raise AssertionError(
+            f"backend {waiter_pid} never blocked on backend {blocker_pid}"
+        ) from exc
+
+
+async def _start_blocked_hold_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    observer_conn: PgConnection,
+    commitments: PostgresBookingCommitmentCommands,
+    command: ConfirmCapacityHoldCommand,
+) -> asyncio.Task[Reservation]:
+    """Start Hold confirmation and prove it is blocked on the observer's row lock."""
+
+    loop = asyncio.get_running_loop()
+    waiter_pid_ready: asyncio.Future[int] = loop.create_future()
+    original_lock_hold = cast(HoldLocker, commitment_db.__dict__["_lock_hold"])
+
+    async def observed_lock_hold(
+        session: AsyncSession,
+        organization_id: UUID,
+        hold_id: UUID,
+    ) -> Any:
+        if not waiter_pid_ready.done():
+            waiter_pid = cast(
+                int,
+                (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one(),
+            )
+            waiter_pid_ready.set_result(waiter_pid)
+        return await original_lock_hold(session, organization_id, hold_id)
+
+    monkeypatch.setattr(commitment_db, "_lock_hold", observed_lock_hold)
+    confirm_task = asyncio.create_task(confirm_capacity_hold(commitments, command))
+    waiter_pid = await asyncio.wait_for(waiter_pid_ready, timeout=5)
+    await _wait_until_blocked_by(
+        observer_conn,
+        waiter_pid=waiter_pid,
+        blocker_pid=observer_conn.info.backend_pid,
+    )
+    return confirm_task
 
 
 async def _force_shared_root_winner(
     monkeypatch: pytest.MonkeyPatch,
+    observer_conn: PgConnection,
     *,
     winner_organization_id: UUID,
     winner: RaceCoroutine,
     loser: RaceCoroutine,
 ) -> tuple[Any, Any]:
-    """Hold the winner after it owns the shared root while the loser reaches that lock."""
+    """Hold the winner on the shared root until PostgreSQL proves the loser is blocked."""
 
+    loop = asyncio.get_running_loop()
     winner_locked = asyncio.Event()
     release_winner = asyncio.Event()
+    winner_pid_ready: asyncio.Future[int] = loop.create_future()
+    loser_pid_ready: asyncio.Future[int] = loop.create_future()
     original_locker = cast(
         SharedRootLocker,
         reservation_db.__dict__["_lock_shared_capacity_roots"],
@@ -94,6 +162,16 @@ async def _force_shared_root_winner(
         organization_id: UUID,
         resource_ids: tuple[UUID, ...],
     ) -> None:
+        backend_pid = cast(
+            int,
+            (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one(),
+        )
+        if organization_id == winner_organization_id:
+            if not winner_pid_ready.done():
+                winner_pid_ready.set_result(backend_pid)
+        elif not loser_pid_ready.done():
+            loser_pid_ready.set_result(backend_pid)
+
         await original_locker(session, organization_id, resource_ids)
         if organization_id == winner_organization_id and not winner_locked.is_set():
             winner_locked.set()
@@ -107,9 +185,17 @@ async def _force_shared_root_winner(
 
     winner_task = asyncio.create_task(winner)
     await asyncio.wait_for(winner_locked.wait(), timeout=5)
+    winner_pid = await asyncio.wait_for(winner_pid_ready, timeout=5)
     loser_task = asyncio.create_task(loser)
-    await asyncio.sleep(0.1)
-    release_winner.set()
+    loser_pid = await asyncio.wait_for(loser_pid_ready, timeout=5)
+    try:
+        await _wait_until_blocked_by(
+            observer_conn,
+            waiter_pid=loser_pid,
+            blocker_pid=winner_pid,
+        )
+    finally:
+        release_winner.set()
     winner_result, loser_result = await asyncio.wait_for(
         asyncio.gather(winner_task, loser_task, return_exceptions=True),
         timeout=10,
@@ -124,6 +210,7 @@ async def _force_shared_root_winner(
 async def test_hold_confirmation_waiting_past_authoritative_expiry_is_rejected(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """R02: a confirmer blocked on the Hold lock must re-check DB wall-clock expiry."""
 
@@ -157,22 +244,41 @@ async def test_hold_confirmation_waiting_past_authoritative_expiry_is_rejected(
             """,
             (fixture.organization_id, hold.id),
         ).fetchone()
-        confirm_task = asyncio.create_task(
-            confirm_capacity_hold(
-                commitments,
-                ConfirmCapacityHoldCommand(
-                    organization_id=fixture.organization_id,
-                    principal_id=fixture.principal_id,
-                    hold_id=hold.id,
-                    expected_revision=hold.revision,
-                    idempotency_key=f"g18-expiry-confirm-{uuid4().hex}",
-                    allow_subject_override=True,
-                ),
-            )
+        confirm_task = await _start_blocked_hold_confirmation(
+            monkeypatch,
+            admin_conn,
+            commitments,
+            ConfirmCapacityHoldCommand(
+                organization_id=fixture.organization_id,
+                principal_id=fixture.principal_id,
+                hold_id=hold.id,
+                expected_revision=hold.revision,
+                idempotency_key=f"g18-expiry-confirm-{uuid4().hex}",
+                allow_subject_override=True,
+            ),
         )
-        await asyncio.sleep(0.1)
-        remaining = max((hold.expires_at - datetime.now(UTC)).total_seconds(), 0.0)
-        await asyncio.sleep(remaining + 0.1)
+        admin_conn.execute(
+            """
+            SELECT pg_sleep(
+                GREATEST(
+                    EXTRACT(EPOCH FROM (expires_at - clock_timestamp())),
+                    0
+                )::double precision + 0.05
+            )
+            FROM request_engine.capacity_holds
+            WHERE organization_id = %s AND id = %s
+            """,
+            (fixture.organization_id, hold.id),
+        ).fetchone()
+        expired = admin_conn.execute(
+            """
+            SELECT expires_at <= clock_timestamp()
+            FROM request_engine.capacity_holds
+            WHERE organization_id = %s AND id = %s
+            """,
+            (fixture.organization_id, hold.id),
+        ).fetchone()
+        assert expired == (True,)
 
     result = await asyncio.wait_for(
         asyncio.gather(confirm_task, return_exceptions=True),
@@ -273,6 +379,7 @@ async def test_direct_booking_vs_foreign_slot_offer_has_one_capacity_owner_in_bo
     if winner == "booking":
         booking_result, offer_result = await _force_shared_root_winner(
             monkeypatch,
+            admin_conn,
             winner_organization_id=tenant_b.organization_id,
             winner=booking_race,
             loser=offer_race,
@@ -282,6 +389,7 @@ async def test_direct_booking_vs_foreign_slot_offer_has_one_capacity_owner_in_bo
     else:
         offer_result, booking_result = await _force_shared_root_winner(
             monkeypatch,
+            admin_conn,
             winner_organization_id=tenant_a.organization_id,
             winner=offer_race,
             loser=booking_race,
@@ -381,6 +489,7 @@ async def test_foreign_shared_booking_winning_race_rolls_back_reschedule_complet
     )
     booking_result, reschedule_result = await _force_shared_root_winner(
         monkeypatch,
+        admin_conn,
         winner_organization_id=tenant_b.organization_id,
         winner=foreign_booking,
         loser=conflicting_reschedule,

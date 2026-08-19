@@ -37,6 +37,7 @@ REGISTRY_DIGEST_KEYS = {
     "race_registry_sha256",
     "gate_registry_sha256",
 }
+TEST_QUALITY_PATH = ROOT / ".phase6/v3-test-quality.json"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -83,6 +84,22 @@ def main() -> int:
                 failures.append(f"required evidence {name} digest is malformed")
                 continue
             evidence_inputs[name] = digest
+
+    test_quality = _load_json(TEST_QUALITY_PATH)
+    test_quality_summary = {
+        "tests_audited": test_quality.get("tests_audited"),
+        "error_count": test_quality.get("error_count"),
+        "warning_count": test_quality.get("warning_count"),
+    }
+    if test_quality_summary["error_count"] != 0:
+        failures.append("test quality artifact reports errors")
+    if test_quality_summary["warning_count"] != 0:
+        failures.append("test quality artifact reports warnings")
+    if (
+        not isinstance(test_quality_summary["tests_audited"], int)
+        or test_quality_summary["tests_audited"] <= 0
+    ):
+        failures.append("test quality artifact audited zero tests")
 
     registries = preflight.get("registries")
     gate_statuses = registries.get("gate_statuses") if isinstance(registries, dict) else None
@@ -168,6 +185,12 @@ def main() -> int:
             and runtime.get("admin_role") == "request_engine_admin"
         ),
         "registry_digests_bound": len(registry_digests) == len(REGISTRY_DIGEST_KEYS),
+        "test_quality_warning_free": (
+            isinstance(test_quality_summary["tests_audited"], int)
+            and test_quality_summary["tests_audited"] > 0
+            and test_quality_summary["error_count"] == 0
+            and test_quality_summary["warning_count"] == 0
+        ),
     }
     failures.extend(
         name for name, passed in criteria.items() if not passed and name not in failures
@@ -184,6 +207,7 @@ def main() -> int:
         "evidence_inputs": evidence_inputs,
         "registry_digests": registry_digests,
         "test_inventory_sha256": _canonical_sha256(preflight.get("tests")),
+        "test_quality_summary": test_quality_summary,
         "runtime": runtime,
         "preflight_sha256": _sha256(args.preflight),
         "preflight_evidence_status": preflight.get("evidence_status"),

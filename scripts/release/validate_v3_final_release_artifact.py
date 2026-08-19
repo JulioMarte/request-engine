@@ -12,6 +12,20 @@ from typing import Any
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_GATES = {f"G{number:02d}" for number in range(1, 21)}
+EXPECTED_CRITERIA = {
+    "evidence_valid",
+    "artifact_set_complete",
+    "no_missing_artifacts",
+    "no_validation_errors",
+    "preflight_not_ready",
+    "all_underlying_evidence_bound",
+    "all_pre_g20_gates_pass",
+    "g20_not_self_proving",
+    "exact_head_provenance",
+    "runtime_contract",
+    "registry_digests_bound",
+    "test_quality_warning_free",
+}
 REQUIRED_EVIDENCE = {
     "schema_fingerprint",
     "catalog_audit",
@@ -61,11 +75,9 @@ def validation_errors(payload: Any) -> list[str]:
         errors.append("failures is not empty")
 
     criteria = payload.get("criteria")
-    if (
-        not isinstance(criteria, dict)
-        or not criteria
-        or any(value is not True for value in criteria.values())
-    ):
+    if not isinstance(criteria, dict) or set(criteria) != EXPECTED_CRITERIA:
+        errors.append("criteria inventory is incomplete or contains drift")
+    elif any(criteria.get(name) is not True for name in EXPECTED_CRITERIA):
         errors.append("criteria are incomplete or non-PASS")
 
     source = payload.get("source")
@@ -108,6 +120,20 @@ def validation_errors(payload: Any) -> list[str]:
         errors.append("test inventory digest is malformed")
     if not _valid_sha256(payload.get("preflight_sha256")):
         errors.append("preflight digest is malformed")
+
+    test_quality_summary = payload.get("test_quality_summary")
+    if not isinstance(test_quality_summary, dict):
+        errors.append("test quality summary is missing")
+    else:
+        if set(test_quality_summary) != {"tests_audited", "error_count", "warning_count"}:
+            errors.append("test quality summary inventory is malformed")
+        tests_audited = test_quality_summary.get("tests_audited")
+        if not isinstance(tests_audited, int) or tests_audited <= 0:
+            errors.append("test quality summary audited zero tests")
+        if test_quality_summary.get("error_count") != 0:
+            errors.append("test quality summary reports errors")
+        if test_quality_summary.get("warning_count") != 0:
+            errors.append("test quality summary reports warnings")
 
     runtime = payload.get("runtime")
     if not isinstance(runtime, dict):
