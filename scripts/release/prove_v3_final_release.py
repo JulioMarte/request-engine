@@ -170,9 +170,7 @@ def main() -> int:
         "registry_digests_bound": len(registry_digests) == len(REGISTRY_DIGEST_KEYS),
     }
     failures.extend(
-        name
-        for name, passed in criteria.items()
-        if not passed and name not in failures
+        name for name, passed in criteria.items() if not passed and name not in failures
     )
 
     payload = {

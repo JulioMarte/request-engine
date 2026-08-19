@@ -102,9 +102,8 @@ def _validate_g17_artifact(path: Path = _G17_PATH) -> dict[str, Any]:
     if freeze["status"] != "PASS":
         errors.append("candidate freeze artifact is not independently valid")
     freeze_summary = payload.get("candidate_freeze")
-    if (
-        isinstance(freeze_summary, dict)
-        and freeze["sha256"] != freeze_summary.get("artifact_sha256")
+    if isinstance(freeze_summary, dict) and freeze["sha256"] != freeze_summary.get(
+        "artifact_sha256"
     ):
         errors.append("candidate freeze digest does not match the G17 proof")
 

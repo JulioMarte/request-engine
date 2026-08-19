@@ -5,8 +5,7 @@ from pathlib import Path
 from types import ModuleType
 
 SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / "scripts/release/validate_v3_final_release_artifact.py"
+    Path(__file__).resolve().parents[2] / "scripts/release/validate_v3_final_release_artifact.py"
 )
 SPEC = importlib.util.spec_from_file_location("v3_final_release_validator", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
