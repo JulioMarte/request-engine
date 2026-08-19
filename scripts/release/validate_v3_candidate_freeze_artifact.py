@@ -12,6 +12,7 @@ from typing import Any, Final
 EXPECTED_SOURCE_COMMIT: Final = "4311200a8a9d8dfa18340c0eba5dff0cfdb47803"
 EXPECTED_SOURCE_TREE: Final = "68b92307d85dca0e30cdcee763e8cf9512fef186"
 EXPECTED_MIGRATION_COUNT: Final = 43
+EXPECTED_ANCESTRY_EVIDENCE: Final = {"git-merge-base", "ci-base-sha"}
 HEX40: Final = re.compile(r"^[0-9a-f]{40}$")
 HEX64: Final = re.compile(r"^[0-9a-f]{64}$")
 
@@ -29,6 +30,8 @@ def validation_errors(payload: Any) -> list[str]:
         errors.append("candidate_source_commit does not match the frozen G19 source")
     if payload.get("candidate_source_tree") != EXPECTED_SOURCE_TREE:
         errors.append("candidate_source_tree does not match the frozen G19 source")
+    if payload.get("ancestry_evidence") not in EXPECTED_ANCESTRY_EVIDENCE:
+        errors.append("ancestry_evidence must be git-merge-base or ci-base-sha")
 
     failures = payload.get("failures")
     if failures != []:
