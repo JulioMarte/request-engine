@@ -194,7 +194,7 @@ jobs:
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
       - name: Run canonical V3 candidate job
-        run: python scripts/ci/ci_jobs.py postgres-v3-candidate
+        run: bash scripts/ci/run_v3_candidate_with_g19.sh
       - name: Upload V3 candidate release proof
         if: always()
         uses: actions/upload-artifact@v4
