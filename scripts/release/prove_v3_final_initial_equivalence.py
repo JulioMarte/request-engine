@@ -14,9 +14,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy.engine import URL
-
 from migrations.v3_initial_payload import load_v3_initial_sql
+from sqlalchemy.engine import URL
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FREEZE = ROOT / ".phase6/v3-candidate-freeze.json"
