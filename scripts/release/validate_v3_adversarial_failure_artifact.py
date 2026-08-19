@@ -139,7 +139,9 @@ def validate_adversarial_failure(payload: dict[str, Any]) -> list[str]:
             missing = sorted(REQUIRED_SUPPORTING - supporting_ids)
             extra = sorted(supporting_ids - REQUIRED_SUPPORTING)
             if missing:
-                errors.append(f"adversarial proof missing supporting artifacts: {', '.join(missing)}")
+                errors.append(
+                    f"adversarial proof missing supporting artifacts: {', '.join(missing)}"
+                )
             if extra:
                 errors.append(
                     f"adversarial proof has unexpected supporting artifacts: {', '.join(extra)}"
