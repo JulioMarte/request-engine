@@ -34,6 +34,10 @@ def test_structural_equivalence_executes_the_reviewed_alembic_baseline() -> None
     assert "from migrations.v3_initial_payload import" not in builder
     assert "runpy.run_path" in revision
     assert "from migrations.v3_initial_payload import" not in revision
+    assert "ClientCursor" in revision
+    assert "bind.connection.driver_connection" in revision
+    assert "sql.SQL(_load_v3_initial_sql())" in revision
+    assert "bind.exec_driver_sql(_load_v3_initial_sql())" not in revision
     assert 'exec_driver_sql("RESET ALL")' in revision
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from alembic import op
+from psycopg import ClientCursor, sql
 
 revision: str = "0001_initial"
 down_revision: str | Sequence[str] | None = None
@@ -33,7 +34,17 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind is None:
         raise RuntimeError("V3 0001_initial requires a live database connection")
-    bind.exec_driver_sql(_load_v3_initial_sql())
+
+    driver_connection = bind.connection.driver_connection
+    if driver_connection is None:
+        raise RuntimeError("V3 0001_initial requires the live psycopg driver connection")
+
+    # The reviewed baseline is a trusted pg_dump-derived multi-statement batch.
+    # ClientCursor guarantees Psycopg's simple query protocol, avoiding the
+    # prepared-statement restriction without parsing or rewriting SQL bodies.
+    with ClientCursor(driver_connection) as cursor:
+        cursor.execute(sql.SQL(_load_v3_initial_sql()))
+
     # The pg_dump-derived payload intentionally pins session settings while
     # replaying DDL. Restore defaults before Alembic records the revision.
     bind.exec_driver_sql("RESET ALL")
