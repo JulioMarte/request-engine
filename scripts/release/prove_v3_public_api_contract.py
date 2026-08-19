@@ -9,19 +9,21 @@ from pathlib import Path
 from typing import Any, cast
 
 from fastapi import Request
-from scripts.release.v3_public_api_contract_baseline import (
-    EXPECTED_CAPABILITIES,
-    EXPECTED_LITERAL_ERROR_CODES,
-    EXPECTED_OPERATIONS,
-    EXPECTED_REQUEST_HELPER_CODES,
-    EXPECTED_SHARED_ERROR_CODES,
-)
 
 from request_engine.entrypoints.http.app import create_app
 from request_engine.entrypoints.http.security import AuthenticationRequired
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.capabilities import CAPABILITIES, capability_definition
 from request_engine.platform.security.context import ActorContext
+
+_BASELINE = runpy.run_path("scripts/release/v3_public_api_contract_baseline.py")
+EXPECTED_OPERATIONS = cast(tuple[str, ...], _BASELINE["EXPECTED_OPERATIONS"])
+EXPECTED_CAPABILITIES = cast(tuple[str, ...], _BASELINE["EXPECTED_CAPABILITIES"])
+EXPECTED_LITERAL_ERROR_CODES = cast(frozenset[str], _BASELINE["EXPECTED_LITERAL_ERROR_CODES"])
+EXPECTED_SHARED_ERROR_CODES = cast(frozenset[str], _BASELINE["EXPECTED_SHARED_ERROR_CODES"])
+EXPECTED_REQUEST_HELPER_CODES = cast(
+    frozenset[str], _BASELINE["EXPECTED_REQUEST_HELPER_CODES"]
+)
 
 _ERROR_MODULES = (
     Path("src/request_engine/entrypoints/http/errors.py"),
@@ -252,7 +254,8 @@ def main() -> int:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(args.output)
     if report["status"] != "PASS":
-        raise SystemExit("V3 public API contract proof failed: " + "; ".join(report["failures"]))
+        failures = cast(list[str], report["failures"])
+        raise SystemExit("V3 public API contract proof failed: " + "; ".join(failures))
     return 0
 
 
