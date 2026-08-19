@@ -17,6 +17,10 @@ validator: ModuleType = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = validator
 SPEC.loader.exec_module(validator)
 
+EXPECTED_INITIAL_SQL_SHA256 = (
+    "502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88"
+)
+
 
 def _sha(payload: dict[str, Any]) -> str:
     encoded = json.dumps(
@@ -97,7 +101,7 @@ def _valid_payload() -> dict[str, Any]:
             "migration_set_sha256": "2" * 64,
             "artifact_sha256": "3" * 64,
         },
-        "initial_sql_sha256": "4" * 64,
+        "initial_sql_sha256": EXPECTED_INITIAL_SQL_SHA256,
         "structural": {
             "equivalent": True,
             "candidate": {"sha256": _sha(schema), "payload": copy.deepcopy(schema)},
@@ -171,3 +175,12 @@ def test_rejects_shallow_pass_with_missing_structural_and_behavioral_proofs() ->
     assert "initial fingerprint record must be an object" in errors
     assert "candidate behavioral record must be an object" in errors
     assert "initial behavioral record must be an object" in errors
+
+
+def test_rejects_well_formed_but_unreviewed_initial_sql_digest() -> None:
+    payload = _valid_payload()
+    payload["initial_sql_sha256"] = "4" * 64
+
+    errors = validator.validation_errors(payload)
+
+    assert "initial_sql_sha256 is not the reviewed V3 0001_initial baseline" in errors

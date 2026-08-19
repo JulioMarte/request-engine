@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any, Final
 
 EXPECTED_SOURCE_COMMIT: Final = "4311200a8a9d8dfa18340c0eba5dff0cfdb47803"
+EXPECTED_INITIAL_SQL_SHA256: Final = (
+    "502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88"
+)
 EXPECTED_SCHEMAS: Final = (
     "request_engine",
     "request_read",
@@ -201,8 +204,11 @@ def validation_errors(payload: Any) -> list[str]:
             if not _valid_sha256(freeze.get(field)):
                 errors.append(f"candidate_freeze {field} is malformed")
 
-    if not _valid_sha256(payload.get("initial_sql_sha256")):
+    initial_sql_sha256 = payload.get("initial_sql_sha256")
+    if not _valid_sha256(initial_sql_sha256):
         errors.append("initial_sql_sha256 is malformed")
+    elif initial_sql_sha256 != EXPECTED_INITIAL_SQL_SHA256:
+        errors.append("initial_sql_sha256 is not the reviewed V3 0001_initial baseline")
 
     structural = payload.get("structural")
     if not isinstance(structural, dict):
