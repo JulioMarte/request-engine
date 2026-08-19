@@ -25,7 +25,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G13 | ProviderEvent/reconciliation | PASS | duplicate/reorder/ambiguity/reconciliation/failure matrix |
 | G14 | Runtime privilege contract | PASS | complete app/worker/admin/table/function/SECURITY DEFINER matrix |
 | G15 | Query plans and index evidence | PASS | representative-cardinality EXPLAIN/ANALYZE evidence for worker, Queue/SlotOffer, Booking, Communications, Reservation lifecycle and shared-capacity hot paths |
-| G16 | Public API contract freeze | PARTIAL | final OpenAPI/capability/error snapshots on frozen candidate |
+| G16 | Public API contract freeze | PASS | final OpenAPI/capability/error snapshots on frozen candidate |
 | G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
 | G18 | Unified adversarial/failure suite | MISSING | one release gate executing attack, race, crash, retry, order and mutation families |
 | G19 | Fresh production-like bootstrap | PARTIAL | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
@@ -128,6 +128,16 @@ Canonical CI #1125 (`32199955533`) passed the PostgreSQL 18 V3 candidate proof o
 
 The executable evidence manifest now treats `.phase6/v3-operational-query-plans.json` as mandatory semantic evidence, validates all seven proof names, required selected indexes and representative cardinalities, and rejects non-PASS status, reported failures, forbidden sequential scans, shared reads or temporary writes. This G15 promotion therefore must itself survive canonical exact-head CI before PR #64 becomes merge-authoritative; final promotion to `main` must regenerate all G15 evidence on the frozen release candidate.
 
+## G16 — public API contract freeze
+
+**G16 is `PASS`.** The post-G15 candidate freezes the externally reviewable V3 contract at 24 classified `/v1/` operations, 34 canonical capability definitions on schema version `1`, and 51 public machine error codes. Architecture and E2E proofs compare independent reviewed baselines with the runtime capability registry and FastAPI/OpenAPI machine metadata; contract drift requires an intentional baseline diff rather than silently changing V3.
+
+`scripts/release/prove_v3_public_api_contract.py` emits `.phase6/v3-public-api-contract.json`, and the canonical release manifest now treats it as mandatory semantic evidence. The manifest validator checks the exact operation/capability/OpenAPI cardinalities, schema versions and error-code inventory, validates both SHA-256 fingerprints and recomputes the embedded runtime-contract fingerprint before accepting the artifact.
+
+Canonical CI #1138 (`32205998999`) passed all required jobs on exact implementation head `824b74836acdf6014e34a98ed931dcf21c07cfa1`. Artifact `v3-candidate-release-proof` `9349299370` (`sha256:b34aa22e91aa8974e62f7ad670e8dc34429835936676f3120c38f873995033f2`) reports `evidence_status: VALID`, `artifact_set_complete: true`, `missing_artifacts: []`, `validation_errors: []`, a clean working tree, and `artifact_validation.public_api_contract.status: PASS`. The public-contract artifact SHA is `83e5e76350c572e8bc879671b8fbf553ca19dff81aaec32cb527054c45111cad`; the proof reports 24 operations, 34 capabilities, schema versions `[1]`, 51 public machine error codes, 24 OpenAPI snapshots and `failures: []`.
+
+The #1138 manifest intentionally still records G16 as `PARTIAL` because it predates this registry promotion. This promotion must therefore survive one final canonical exact-head CI before PR #65 is merge-authoritative. Final promotion to `main` must regenerate G16 evidence on the eventual frozen candidate.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -136,12 +146,13 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G05–G15 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G05–G16 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. finish the public API/error/capability contract freeze on the stabilized candidate (G16);
-2. generate and prove `0001_initial` equivalence after the candidate is semantically/index frozen (G17);
-3. execute the unified adversarial/failure gate (G18);
-4. prove a fresh production-like environment (G19);
-5. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. execute the unified adversarial/failure gate across the stabilized pre-freeze candidate (G18);
+2. prove a fresh production-like bootstrap with production-style roles and runtime processes (G19);
+3. freeze the candidate only after G18/G19 survive without semantic or schema changes;
+4. generate and prove final `0001_initial` structural/behavioral equivalence against that frozen candidate (G17);
+5. rerun G18/G19 against the frozen candidate if the initial/freeze reconciliation changes any executable release input;
+6. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial` before G16 is frozen, and do not claim release readiness merely because G05–G15 are now closed.
+Do not create/bless `0001_initial` before G18/G19 establish the production-like failure/bootstrap envelope, and do not claim release readiness merely because G05–G16 are now closed.
