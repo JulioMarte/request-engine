@@ -12,7 +12,11 @@ from typing import Any, Final
 EXPECTED_SOURCE_COMMIT: Final = "4311200a8a9d8dfa18340c0eba5dff0cfdb47803"
 EXPECTED_SOURCE_TREE: Final = "68b92307d85dca0e30cdcee763e8cf9512fef186"
 EXPECTED_MIGRATION_COUNT: Final = 43
-EXPECTED_ANCESTRY_EVIDENCE: Final = {"git-merge-base", "ci-base-sha"}
+EXPECTED_ANCESTRY_EVIDENCE: Final = {
+    "git-merge-base",
+    "ci-base-sha",
+    "ci-base-ancestor",
+}
 HEX40: Final = re.compile(r"^[0-9a-f]{40}$")
 HEX64: Final = re.compile(r"^[0-9a-f]{64}$")
 
@@ -30,8 +34,22 @@ def validation_errors(payload: Any) -> list[str]:
         errors.append("candidate_source_commit does not match the frozen G19 source")
     if payload.get("candidate_source_tree") != EXPECTED_SOURCE_TREE:
         errors.append("candidate_source_tree does not match the frozen G19 source")
-    if payload.get("ancestry_evidence") not in EXPECTED_ANCESTRY_EVIDENCE:
-        errors.append("ancestry_evidence must be git-merge-base or ci-base-sha")
+
+    ancestry_evidence = payload.get("ancestry_evidence")
+    if ancestry_evidence not in EXPECTED_ANCESTRY_EVIDENCE:
+        errors.append("ancestry_evidence must be git-merge-base, ci-base-sha, or ci-base-ancestor")
+    ancestry_base_sha = payload.get("ancestry_base_sha")
+    if ancestry_evidence == "git-merge-base":
+        if ancestry_base_sha is not None:
+            errors.append("ancestry_base_sha must be null for git-merge-base evidence")
+    elif ancestry_evidence == "ci-base-sha":
+        if ancestry_base_sha != EXPECTED_SOURCE_COMMIT:
+            errors.append("ci-base-sha evidence must bind the frozen source commit as its base")
+    elif ancestry_evidence == "ci-base-ancestor":
+        if not isinstance(ancestry_base_sha, str) or HEX40.fullmatch(ancestry_base_sha) is None:
+            errors.append("ci-base-ancestor evidence must bind a 40-character base SHA")
+        elif ancestry_base_sha == EXPECTED_SOURCE_COMMIT:
+            errors.append("ci-base-ancestor evidence must bind a descendant base commit")
 
     failures = payload.get("failures")
     if failures != []:

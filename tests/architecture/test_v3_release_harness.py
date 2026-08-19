@@ -273,6 +273,10 @@ def test_release_manifest_does_not_confuse_candidate_evidence_with_release_readi
     statuses = evidence._gate_statuses()
 
     assert len(statuses) == 20
-    assert any(status != "PASS" for status in statuses.values())
-    assert evidence._release_ready("VALID", statuses) is False
-    assert evidence._release_ready("INVALID", dict.fromkeys(statuses, "PASS")) is False
+    all_pass = dict.fromkeys(statuses, "PASS")
+    degraded = dict(all_pass)
+    degraded["G20"] = "MISSING"
+
+    assert evidence._release_ready("VALID", all_pass) is True
+    assert evidence._release_ready("VALID", degraded) is False
+    assert evidence._release_ready("INVALID", all_pass) is False

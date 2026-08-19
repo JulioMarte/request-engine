@@ -104,11 +104,17 @@ def test_equivalence_validator_requires_success_marker_and_fingerprint(tmp_path:
     assert "catalog-equivalence success marker is missing" in manifest._validate_equivalence(proof)
 
 
-def test_release_gate_registry_is_not_release_ready() -> None:
+def test_release_gate_registry_and_release_ready_are_consistent() -> None:
     statuses = manifest._gate_statuses()
     assert set(statuses) == {f"G{number:02d}" for number in range(1, 21)}
-    assert any(status != "PASS" for status in statuses.values())
-    assert manifest._release_ready("VALID", statuses) is False
+
+    expected_ready = all(status == "PASS" for status in statuses.values())
+    assert manifest._release_ready("VALID", statuses) is expected_ready
+
+    degraded = dict(statuses)
+    degraded["G20"] = "MISSING"
+    assert manifest._release_ready("VALID", degraded) is False
+    assert manifest._release_ready("INVALID", statuses) is False
 
 
 def test_release_ready_requires_all_twenty_gates() -> None:

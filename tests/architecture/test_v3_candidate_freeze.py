@@ -39,6 +39,18 @@ def test_candidate_freeze_locks_construction_and_fingerprint_tools() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", payload["schema_fingerprint_tool"]["git_blob_sha1"])
 
 
+def test_shallow_freeze_ancestry_is_bounded_and_fail_closed() -> None:
+    proof_source = FREEZE_PROOF.read_text(encoding="utf-8")
+
+    assert "_CI_ANCESTRY_FETCH_DEPTHS" in proof_source
+    assert "(32, 128, 512)" in proof_source
+    assert '"fetch", "--no-tags", f"--depth={depth}", "origin", base_sha' in proof_source
+    assert '"merge-base", "--is-ancestor", source_commit, descendant' in proof_source
+    assert 'return "ci-base-ancestor", ci_base_sha, None' in proof_source
+    assert "within bounded history depths" in proof_source
+    assert '"ancestry_base_sha": ancestry_base_sha' in proof_source
+
+
 def test_initial_construction_is_fail_closed_and_catalog_derived() -> None:
     proof_source = FREEZE_PROOF.read_text(encoding="utf-8")
     builder_source = INITIAL_BUILDER.read_text(encoding="utf-8")

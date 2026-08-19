@@ -15,6 +15,7 @@ from typing import Any, Final
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 LOCK_PATH: Final = REPO_ROOT / "docs/release/v3-candidate-freeze.json"
 _APPLY_ENTRY_RE: Final = re.compile(r'^\s*"([0-9]{3}-[^"]+\.sql)"\s*$')
+_CI_ANCESTRY_FETCH_DEPTHS: Final = (32, 128, 512)
 
 
 def _git(*args: str) -> str:
@@ -69,29 +70,74 @@ def _ensure_source_commit(source_commit: str) -> None:
         raise RuntimeError(f"frozen source commit {source_commit} remains unavailable after fetch")
 
 
-def _ancestry_evidence(source_commit: str) -> tuple[str | None, str | None]:
+def _is_ancestor(source_commit: str, descendant: str) -> bool:
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_commit, descendant],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return ancestry.returncode == 0
+
+
+def _fetch_ci_base_history(base_sha: str, depth: int) -> tuple[bool, str | None]:
+    fetch = subprocess.run(
+        ["git", "fetch", "--no-tags", f"--depth={depth}", "origin", base_sha],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if fetch.returncode == 0:
+        return True, None
+    detail = (fetch.stderr or fetch.stdout).strip()
+    return False, detail or "git fetch failed without diagnostic output"
+
+
+def _ancestry_evidence(
+    source_commit: str,
+) -> tuple[str | None, str | None, str | None]:
     shallow = _git("rev-parse", "--is-shallow-repository") == "true"
     if not shallow:
-        ancestry = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if ancestry.returncode == 0:
-            return "git-merge-base", None
-        return None, f"frozen candidate source {source_commit} is not an ancestor of HEAD"
-
-    ci_base_sha = os.environ.get("PHASE6_BASE_SHA")
-    if ci_base_sha == source_commit:
-        return "ci-base-sha", None
-    if ci_base_sha:
+        if _is_ancestor(source_commit, "HEAD"):
+            return "git-merge-base", None, None
         return (
             None,
-            f"shallow CI base mismatch: expected={source_commit} current={ci_base_sha}",
+            None,
+            f"frozen candidate source {source_commit} is not an ancestor of HEAD",
         )
-    return None, "shallow checkout cannot prove frozen ancestry without PHASE6_BASE_SHA"
+
+    ci_base_sha = os.environ.get("PHASE6_BASE_SHA")
+    if not ci_base_sha:
+        return (
+            None,
+            None,
+            "shallow checkout cannot prove frozen ancestry without PHASE6_BASE_SHA",
+        )
+    if ci_base_sha == source_commit:
+        return "ci-base-sha", ci_base_sha, None
+
+    fetch_failures: list[str] = []
+    for depth in _CI_ANCESTRY_FETCH_DEPTHS:
+        fetched, detail = _fetch_ci_base_history(ci_base_sha, depth)
+        if not fetched:
+            fetch_failures.append(f"depth={depth}: {detail}")
+            continue
+        if _is_ancestor(source_commit, ci_base_sha):
+            return "ci-base-ancestor", ci_base_sha, None
+
+    detail = "; ".join(fetch_failures)
+    suffix = f"; fetch failures: {detail}" if detail else ""
+    return (
+        None,
+        ci_base_sha,
+        "shallow CI could not prove frozen source "
+        f"{source_commit} is an ancestor of base {ci_base_sha} "
+        f"within bounded history depths {_CI_ANCESTRY_FETCH_DEPTHS}{suffix}",
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -166,7 +212,7 @@ def main() -> int:
             f"frozen source tree mismatch: lock={expected_source_tree} git={source_tree}"
         )
 
-    ancestry_evidence, ancestry_failure = _ancestry_evidence(source_commit)
+    ancestry_evidence, ancestry_base_sha, ancestry_failure = _ancestry_evidence(source_commit)
     if ancestry_failure:
         failures.append(ancestry_failure)
 
@@ -244,6 +290,7 @@ def main() -> int:
         "candidate_source_commit": source_commit,
         "candidate_source_tree": expected_source_tree,
         "ancestry_evidence": ancestry_evidence,
+        "ancestry_base_sha": ancestry_base_sha,
         "current_head": current_head,
         "current_tree": current_tree,
         "migration_count": len(migration_payload),
@@ -269,7 +316,7 @@ def main() -> int:
     print(
         "V3 candidate freeze proof passed: "
         f"{len(migration_payload)} migrations locked to {source_commit} "
-        f"({aggregate_sha256}; ancestry={ancestry_evidence})."
+        f"({aggregate_sha256}; ancestry={ancestry_evidence}; base={ancestry_base_sha})."
     )
     return 0
 
