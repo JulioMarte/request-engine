@@ -6,7 +6,7 @@ Status: Phase 6B proof contract.
 
 `scripts/db/prove_v3_candidate_bootstrap.sh` proves that the current V3 candidate can be constructed twice from independently empty PostgreSQL databases in the same fresh PostgreSQL 18 CI cluster and produces the same normalized bootstrap inventory.
 
-This is a candidate-construction gate. It is not the final schema fingerprint and it does not authorize creation of `0001_initial`.
+This is the executable proof for the clean PostgreSQL 18 bootstrap gate (G02). It is not the final schema fingerprint and it does not authorize creation of `0001_initial`.
 
 ## Procedure
 
@@ -38,10 +38,10 @@ CI uses `request_engine_v3_phase6` as the prefix.
 
 `.github/workflows/ci.yml` runs this proof in `postgres-v3-bootstrap-proof` against PostgreSQL 18.
 
-A configured job is not sufficient evidence. G04 may become `PASS` only after the current branch executes this job successfully.
+A configured job is not sufficient evidence. G02 is `PASS` only when the applicable candidate head executes this proof successfully. Final release promotion still requires regeneration on the frozen release candidate; a historical green run is not authority for a later tree.
 
 ## Deliberate limitation
 
-The bootstrap inventory is narrower than the Phase 6C schema fingerprint. It does not yet prove normalized function bodies, role attributes/memberships, grants/default privileges, complete extension metadata, or every catalog property needed for candidate-versus-`0001_initial` equivalence.
+The bootstrap inventory is narrower than the Phase 6C schema fingerprint. It does not by itself prove normalized function bodies, role attributes/memberships, grants/default privileges, complete extension metadata, or every catalog property needed for candidate-versus-`0001_initial` equivalence.
 
-Phase 6C owns that stronger fingerprint and catalog audit.
+Phase 6C owns that stronger fingerprint and catalog audit. G19 is a separate and wider production-like bootstrap claim: it must exercise the final release-shaped environment with production-style runtime roles and app/worker processes rather than treating this repeated candidate-construction proof as sufficient.
