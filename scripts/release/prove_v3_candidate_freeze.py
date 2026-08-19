@@ -117,8 +117,7 @@ def main() -> int:
         missing = sorted(set(expected_names) - set(actual_names))
         unexpected = sorted(set(actual_names) - set(expected_names))
         failures.append(
-            "candidate migration inventory drift: "
-            f"missing={missing} unexpected={unexpected}"
+            f"candidate migration inventory drift: missing={missing} unexpected={unexpected}"
         )
 
     apply_info = lock["apply_script"]
@@ -166,8 +165,7 @@ def main() -> int:
         source_blob = _source_blob(source_commit, relative_path)
         if source_blob != expected_blob:
             failures.append(
-                f"frozen source blob mismatch for {name}: "
-                f"lock={expected_blob} source={source_blob}"
+                f"frozen source blob mismatch for {name}: lock={expected_blob} source={source_blob}"
             )
         if current_blob != expected_blob:
             failures.append(
