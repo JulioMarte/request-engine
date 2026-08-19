@@ -5,7 +5,7 @@ Status: **active operational roadmap for Phase 6 V3 Freeze & Release Proof**.
 Repository reference points for this roadmap:
 
 - integration branch: `development`;
-- last implementation-bearing gate closure before documentation reconciliation: `3281075bdc5e19997a3ba8120fa6a275e7ee5ab1` (PR #65, G16 public API contract freeze);
+- latest implementation-bearing gate closure before documentation reconciliation: `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` (PR #69, G19 fresh production-like bootstrap);
 - documentation reconciliation merged by PR #66: `8f0f6f1c66b8bd143e440a83bbabe04cc7d58556`;
 - PostgreSQL target: PostgreSQL 18;
 - release status: `NOT_READY`.
@@ -21,7 +21,7 @@ Historical Phase 6 planning and rebaseline documents remain useful evidence of h
 | G01–G16 | PASS | integrated executable proof and registry closure exist for these gates; final promotion still requires exact-final-candidate regeneration where applicable |
 | G17 | MISSING | final `0001_initial` has not been generated/blessed or proven equivalent |
 | G18 | PASS | unified attack/race/crash/retry/order/mutation evidence is mandatory, machine-readable and semantically validated on exact-head canonical CI |
-| G19 | PARTIAL | strong bootstrap/runtime-role evidence exists, but the final fresh production-like app+worker release bootstrap is not closed |
+| G19 | PASS | fresh PostgreSQL 18 bootstrap, production-style runtime LOGINs, app/worker execution, crash/reclaim and canonical release suite are machine-readable and semantically validated |
 | G20 | MISSING | no final exact-head release manifest with all G01–G20 PASS exists |
 
 `release_status` must remain `NOT_READY` until every gate is `PASS` on the final release candidate.
@@ -111,13 +111,17 @@ G18 now composes the previously distributed failure evidence into one mandatory 
 
 Canonical CI #1166 (`32242214119`) passed on exact implementation head `a08ddb00b52d7405e9eb5d972a1439eee52c7190`. Artifact `v3-candidate-release-proof` `9361488628` (`sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`) contains a G18 artifact with 6/6 families PASS, 29/29 races PASS, `registry_non_pass: []`, `missing_evidence: []` and `failures: []`. The same candidate run passed 463 PostgreSQL tests, three 96-test concurrency-stability rounds, 463 order-independence tests and mutation probes; the final evidence manifest is `VALID` while `release_status` remains correctly `NOT_READY`.
 
+### Fresh production-like bootstrap
+
+G19 now composes clean-start, PostgreSQL 18, production-style runtime role provisioning, real app/worker execution, representative HTTP/queue behavior, worker separation, crash/reclaim and the canonical release suite into mandatory machine-readable evidence. The proof uses exactly three restricted runtime LOGINs for app, worker and trusted admin authority, keeps credentials outside `.phase6/`, and validates only sanitized role metadata in the release artifact.
+
+Canonical CI #1178 (`32250520126`) passed every required job on exact implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` against `development` base `f99c3b6207448d3d307d8da6f1838efc48b6ffbd`. Artifact `v3-candidate-release-proof` `9364480065` (`sha256:7949e975ee85b09fca3c7f71fa77477d5f6339a4655cfb3423ae5dc635065442`) contains a G19 artifact with `status: PASS`, `failures: []`, empty clean-start state, PostgreSQL 18, three non-superuser runtime LOGINs with exactly one intended membership each, secrets redacted and all representative vertical/queue/worker/recovery nodes PASS. The same run passed 466/466 canonical PostgreSQL tests, all concurrency-stability rounds, order-independence, mutation probes and G18. The final manifest reports `evidence_status: VALID`; `release_status` remains correctly `NOT_READY` because G17 and G20 are unresolved.
+
 ## 3. Current execution order
 
 The remaining work must proceed in this dependency order:
 
 ```text
-G19 fresh production-like bootstrap
-        ↓
 freeze the candidate
         ↓
 G17 final 0001_initial + structural/behavioral equivalence
@@ -131,7 +135,7 @@ development → main
 release/tag from the proven commit
 ```
 
-This ordering is intentional. G18 has closed the release-level adversarial/failure envelope; G19 is now the remaining pre-freeze construction/runtime gate. Generating `0001_initial` before G19 would freeze a candidate that has not yet survived the final production-like bootstrap.
+This ordering is intentional. G18 has closed the release-level adversarial/failure envelope and G19 has closed the fresh production-like construction/runtime envelope. Candidate freeze is therefore the next dependency. Generating `0001_initial` before the freeze checkpoint would make it ambiguous which candidate semantics the baseline is supposed to reproduce.
 
 ## 4. G18 — unified adversarial/failure suite
 
@@ -175,7 +179,7 @@ CI #1166 (`32242214119`) is the exact-head closure run for implementation head `
 - G18 artifact 6/6 families PASS and 29/29 races PASS;
 - `registry_non_pass: []`, `missing_evidence: []`, `failures: []`;
 - final evidence manifest `evidence_status: VALID`;
-- final `release_status: NOT_READY`, correctly reflecting unresolved G17/G19/G20.
+- final `release_status: NOT_READY`, correctly reflecting unresolved G17/G19/G20 at that historical head.
 
 Artifact `9361488628` is bound by GitHub to that head with digest `sha256:1778a081977a4d92208dc37af27f2c9c6a997b15f5a607824dbf3939ac2ade16`.
 
@@ -183,26 +187,31 @@ The documentation promotion that records this PASS must itself survive exact-hea
 
 ## 5. G19 — fresh production-like bootstrap
 
-G19 is now the **next active gate**.
+G19 is **PASS** on implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e`.
 
-The current repository already has strong clean PostgreSQL bootstrap and runtime-role tests, which is why G19 is `PARTIAL`, not `MISSING`. G02's repeated candidate-construction proof is necessary but not sufficient for G19. What is still absent is the final release-shaped construction and runtime exercise.
+The proof starts from an empty PostgreSQL 18 environment and demonstrates:
 
-The G19 proof must start from an empty PostgreSQL 18 environment and demonstrate:
-
-- migration/bootstrap authority creates the database objects and runtime roles;
-- real LOGINs for app, worker and trusted admin have the intended flags and no accidental authority;
-- the application starts using the app-role session path and executes representative public verticals;
-- the worker starts with distinct worker control and domain application session factories;
-- ScheduledAction, OutboxMessage and ProviderEvent work can be claimed and processed under production-style roles;
+- migration/bootstrap authority creates the database objects and runtime role groups;
+- exactly three real LOGINs for app, worker and trusted admin have the intended flags and exactly one intended membership each;
+- the application executes representative public verticals through the app-role session path;
+- the worker uses distinct worker-control and domain application session factories and identities;
+- representative ScheduledAction/queue/worker work executes under production-style roles;
 - restart/crash/reclaim behavior works in the fresh environment;
-- no test/bootstrap-only superuser privilege leaks into the runtime path;
-- the release suite can run against the freshly constructed environment.
+- credentials remain confined to ephemeral `.ci/` material and the `.phase6/` evidence contains sanitized metadata only;
+- the complete canonical release suite runs successfully against the freshly constructed environment;
+- nested scratch proofs strip outer runtime DSNs and role bindings, preventing cross-database contamination.
 
-G19 must emit a mandatory machine-readable production-bootstrap artifact and the release manifest must validate it.
+`scripts/release/prove_v3_production_like_bootstrap.py` emits `.phase6/v3-production-like-bootstrap.json`, and `validate_v3_production_like_bootstrap_artifact.py` semantically validates the exact proof contract. The canonical evidence manifest treats the artifact as mandatory rather than trusting a top-level PASS string.
+
+CI #1178 (`32250520126`) passed every required job on exact implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` against `development` base `f99c3b6207448d3d307d8da6f1838efc48b6ffbd`. The candidate run recorded 466/466 canonical PostgreSQL tests PASS, all concurrency-stability rounds PASS, order-independence PASS, mutation probes PASS and G18 PASS. The G19 artifact reports `status: PASS`, `failures: []`, clean-start emptiness, PostgreSQL 18, all three restricted runtime LOGINs and all representative HTTP/queue/worker/recovery nodes PASS. The final manifest reports `evidence_status: VALID`.
+
+Artifact `v3-candidate-release-proof` `9364480065` is bound by GitHub to that exact head with digest `sha256:7949e975ee85b09fca3c7f71fa77477d5f6339a4655cfb3423ae5dc635065442`. `release_status` remains correctly `NOT_READY` because G17 and G20 are unresolved.
+
+This documentation promotion must itself survive canonical exact-head CI before PR #69 becomes merge-authoritative. If candidate freeze or G17 baseline construction changes an executable release input relevant to G19, the affected proof must be regenerated rather than inherited from this historical head.
 
 ## 6. Candidate freeze
 
-Only after G18 and G19 pass should the V3 candidate be considered frozen for baseline construction.
+G18 and G19 now pass, so the V3 candidate can proceed to the explicit freeze checkpoint for baseline construction.
 
 At freeze, changes to these surfaces become release-invalidating unless explicitly reviewed as blocker fixes:
 

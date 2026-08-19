@@ -28,7 +28,7 @@ A green historical workflow is evidence only for the exact commit/tree it tested
 | G16 | Public API contract freeze | PASS | final OpenAPI/capability/error snapshots on frozen candidate |
 | G17 | `0001_initial` equivalence | MISSING | clean candidate-chain DB vs generated initial DB structural/behavioral equivalence |
 | G18 | Unified adversarial/failure suite | PASS | one release gate executing attack, race, crash, retry, order and mutation families |
-| G19 | Fresh production-like bootstrap | PARTIAL | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
+| G19 | Fresh production-like bootstrap | PASS | empty PostgreSQL 18 + production-style roles + app/worker + release suite |
 | G20 | Final release artifact/manifest | MISSING | exact-head manifest with fingerprints, environment and all G01-G20 PASS |
 
 ## Phase 6E — idempotency and optimistic-concurrency closure
@@ -148,6 +148,16 @@ Canonical CI #1166 (`32242214119`) passed every required job on that exact PR he
 
 This documentation promotion must itself survive canonical exact-head CI before PR #68 becomes merge-authoritative. Final promotion to `main` must regenerate G18 on the eventual frozen candidate if freeze/baseline reconciliation changes an executable release input.
 
+## G19 — fresh production-like bootstrap closure
+
+**G19 is `PASS` on implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e`.** The canonical PostgreSQL 18 candidate job now starts G19 from an empty database, provisions exactly three production-style runtime LOGINs for app, worker and trusted admin authority, runs the application and worker through those distinct role boundaries, exercises representative HTTP/queue/worker/recovery paths, executes the complete release suite and emits `.phase6/v3-production-like-bootstrap.json` as mandatory semantically validated evidence.
+
+The proof records the database as clean before Request Engine bootstrap, PostgreSQL major version 18, three non-superuser runtime LOGINs with exactly one intended role membership each, no credential material in the sanitized artifact, app and worker execution through distinct production-style DSNs, and representative crash/reclaim behavior. The fixture harness retains its normal ephemeral-LOGIN fallback outside G19; scratch release proofs explicitly remove outer G19 DSNs and role-name bindings so a nested proof cannot accidentally reconnect to the parent database.
+
+Canonical CI #1178 (`32250520126`) passed every required job on exact implementation head `b6985be7ecd229da1c5e6aa754f12bc311af6f1e` against `development` base `f99c3b6207448d3d307d8da6f1838efc48b6ffbd`. The candidate proof passed **466/466 canonical PostgreSQL tests**, all three concurrency-stability rounds, order-independence, mutation probes and G18; the G19 artifact reports `status: PASS` and `failures: []`, and the final evidence manifest reports `evidence_status: VALID`. GitHub artifact `v3-candidate-release-proof` `9364480065` is bound to that head with digest `sha256:7949e975ee85b09fca3c7f71fa77477d5f6339a4655cfb3423ae5dc635065442`. `release_status` remains correctly `NOT_READY` because G17 and G20 are unresolved.
+
+This documentation promotion changes only release bookkeeping and must itself survive canonical exact-head CI before PR #69 becomes merge-authoritative. Candidate freeze is the next dependency; if freeze or G17 baseline construction changes an executable release input, the affected G19 proof must be regenerated rather than inherited from this historical head.
+
 ## Promotion rule
 
 A gate changes to `PASS` only in the same change set that identifies its executable proof family and survives canonical CI. If later implementation changes weaken or invalidate that proof, the gate returns to `PARTIAL`/`MISSING` until regenerated.
@@ -156,12 +166,11 @@ Historical artifacts are supporting evidence, not release authority. The final r
 
 ## Next execution order
 
-With G05–G16 and G18 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
+With G05–G16, G18 and G19 closed, the remaining proof work should proceed in dependency order rather than by feature novelty:
 
-1. prove a fresh production-like bootstrap with production-style roles and runtime processes (G19);
-2. freeze the candidate after G19 survives without semantic or schema changes;
-3. generate and prove final `0001_initial` structural/behavioral equivalence against that frozen candidate (G17);
-4. rerun G18/G19 against the frozen candidate if the initial/freeze reconciliation changes any executable release input;
-5. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
+1. freeze the candidate now that G19 has survived without semantic or schema changes;
+2. generate and prove final `0001_initial` structural/behavioral equivalence against that frozen candidate (G17);
+3. rerun G18/G19 against the frozen candidate if the initial/freeze reconciliation changes any executable release input;
+4. generate the exact-head final artifact/manifest and set `release_status: READY` only when every gate is `PASS` (G20).
 
-Do not create/bless `0001_initial` before G19 establishes the final production-like bootstrap envelope, and do not claim release readiness while G17/G19/G20 remain incomplete.
+Do not create/bless `0001_initial` before the candidate freeze is recorded, and do not claim release readiness while G17/G20 remain incomplete.
