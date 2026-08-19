@@ -288,7 +288,9 @@ def build_proof() -> dict[str, Any]:
         owners = RACE_OWNERS.get(race_id, ())
         observed_owners, missing_owners = _owner_inventory(owners)
         missing_selectors = [
-            selector for selector in selectors if not _selector_collected(selector, collection_nodes)
+            selector
+            for selector in selectors
+            if not _selector_collected(selector, collection_nodes)
         ]
         if missing_owners:
             failures.append(f"{race_id} missing owner(s): {', '.join(missing_owners)}")
