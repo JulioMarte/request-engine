@@ -27,7 +27,11 @@ def test_g18_declares_exact_required_families_and_all_races() -> None:
     assert set(proof.RACE_NODES) == expected_races
     assert set(proof.RACE_OWNERS) == expected_races
     assert all(proof.RACE_NODES[race_id] for race_id in expected_races)
-    assert all("::" in selector for selectors in proof.RACE_NODES.values() for selector in selectors)
+    assert all(
+        "::" in selector
+        for selectors in proof.RACE_NODES.values()
+        for selector in selectors
+    )
 
 
 def test_g18_race_owners_are_derived_from_required_nodes() -> None:
