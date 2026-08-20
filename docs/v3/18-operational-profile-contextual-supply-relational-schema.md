@@ -288,7 +288,9 @@ location_id uuid NOT NULL
 during tstzrange NOT NULL
 exception_kind text NOT NULL
 reason text NULL
+active boolean NOT NULL DEFAULT true
 created_at timestamptz
+updated_at timestamptz
 ```
 
 Allowed kinds:
@@ -306,19 +308,21 @@ bounded lower/upper
 [lower, upper)
 ```
 
-Ambiguous overlapping Location exceptions for one exact Location are forbidden by an exclusion constraint using the existing `btree_gist` extension:
+Only active exceptions participate in effective availability. Cancellation/retirement is represented by `active=false`; runtime DELETE is not required.
+
+Ambiguous overlapping active Location exceptions for one exact Location are forbidden by an exclusion constraint using the existing `btree_gist` extension:
 
 ```text
 EXCLUDE USING gist (
   organization_id WITH =,
   location_id WITH =,
   during WITH &&
-)
+) WHERE (active)
 ```
 
-This forces a semantic command to express the final one-off Location state instead of stacking contradictory available/unavailable exceptions over the same instant.
+This forces a semantic command to express the final one-off Location state instead of stacking contradictory active available/unavailable exceptions over the same instant.
 
-Every write advances `locations.operational_revision`.
+Every insert/update that changes effective exception state advances `locations.operational_revision`.
 
 ---
 
@@ -435,7 +439,9 @@ resource_location_assignment_id uuid NOT NULL
 during tstzrange NOT NULL
 exception_kind text NOT NULL
 reason text NULL
+active boolean NOT NULL DEFAULT true
 created_at timestamptz
+updated_at timestamptz
 ```
 
 Semantics mirror current `schedule_exceptions` but the scope is explicit assignment context.
@@ -447,12 +453,12 @@ For an F1 contextual Resource, effective exception composition is:
 ```text
 existing resource-wide schedule_exceptions
 +
-resource_location_schedule_exceptions for selected assignment
+active resource_location_schedule_exceptions for selected assignment
 ```
 
 An assignment-specific command never writes `schedule_exceptions`.
 
-Every assignment-exception row write advances `resources.availability_revision`.
+Every insert/update that changes effective assignment-exception state advances `resources.availability_revision`.
 
 Overlapping broad and narrow exceptions are allowed because they represent distinct explicit scopes. Resolver precedence is safety-oriented:
 
@@ -461,7 +467,7 @@ any applicable UNAVAILABLE at either scope blocks the interval
 AVAILABLE may add Resource availability only if effective Location availability also permits the interval
 ```
 
-Within one assignment-specific exception table, exact overlapping rows are rejected by exclusion to avoid contradictory state for one scope.
+Within one assignment-specific scope, overlapping active rows are rejected by exclusion to avoid contradictory state.
 
 ---
 
@@ -525,6 +531,7 @@ amount numeric(20,6) NULL
 currency text NULL
 planned_duration_minutes integer NULL
 bookable boolean NOT NULL DEFAULT true
+active boolean NOT NULL DEFAULT true
 revision bigint NOT NULL DEFAULT 1
 created_at timestamptz
 updated_at timestamptz
@@ -541,7 +548,9 @@ at least one material override exists OR bookable=false
 effective range is [) and bounded below
 ```
 
-Exact-scope ambiguity is forbidden:
+`active=false` retires/cancels the contextual override and causes resolution to ignore it; it is different from `bookable=false`, which is an active rule making that exact context unavailable.
+
+Exact active-scope ambiguity is forbidden:
 
 ```text
 EXCLUDE USING gist (
@@ -549,13 +558,13 @@ EXCLUDE USING gist (
   resource_location_assignment_id WITH =,
   offering_version_id WITH =,
   effective_during WITH &&
-)
+) WHERE (active)
 ```
 
 Resolution at a concrete instant:
 
 ```text
-exact effective booking_context_terms
+active exact effective booking_context_terms
   amount/currency if present
   planned_duration if present
   bookable state
@@ -566,7 +575,7 @@ offering_versions.duration_minutes
 missing required value => not quoteable/bookable
 ```
 
-Context-term mutations serialize against the selected assignment/Resource but use the exact `booking_context_terms.revision` and resolved material values for stale detection. They do not advance the broad Resource availability token merely because an unrelated Offering's price changed.
+Context-term mutations serialize against the selected assignment/Resource but use the exact `booking_context_terms.revision`, active state and resolved material values for stale detection. They do not advance the broad Resource availability token merely because an unrelated Offering's price changed.
 
 ### Multi-resource Offering rule
 
@@ -644,7 +653,7 @@ selected Resource requirement/resource pairs
 selected resource_location_assignment IDs + revisions
 selected Resource availability_revision values
 Location operational_revision
-resolved booking_context_terms IDs + revisions where applicable
+resolved booking_context_terms IDs + revisions + active state where applicable
 base terms identity when applicable
 resolved amount/currency/planned duration
 material configuration fingerprint
@@ -664,7 +673,7 @@ Resource recurring/broad/narrow exception availability
 OfferingVersion bookable state
 resolved duration
 resolved amount/currency
-context bookable state
+context active/bookable state
 ```
 
 Material mismatch returns an opaque stale/conflict result; it never silently substitutes price.
@@ -796,17 +805,17 @@ resource_location_availability
   (organization_id, resource_location_assignment_id, weekday)
 
 resource_location_schedule_exceptions
-  GiST scope/range exclusion + overlap lookup
+  GiST active scope/range exclusion + overlap lookup
 
 location_operational_hours
   (organization_id, location_id, weekday)
 
 location_hours_exceptions
-  GiST scope/range exclusion + overlap lookup
+  GiST active scope/range exclusion + overlap lookup
 
 booking_context_terms
   (organization_id, offering_version_id)
-  GiST exact-scope effective exclusion
+  GiST active exact-scope effective exclusion
 ```
 
 Do not add PostGIS in F1. Latitude/longitude B-tree indexing is unnecessary until F2 supplies an actual proximity query plan.
@@ -883,8 +892,8 @@ cross-tenant context terms rejected
 invalid coordinates rejected
 invalid currency/amount rejected
 overlapping Resource+Location assignment rejected
-overlapping exact booking context rejected
-overlapping Location exception rejected
+overlapping active exact booking context rejected
+overlapping active Location exception rejected
 ```
 
 ### Revision/serialization
