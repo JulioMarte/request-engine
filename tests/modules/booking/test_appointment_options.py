@@ -83,13 +83,62 @@ def test_contextual_slot_uses_v2_and_roundtrips_material_observation() -> None:
 
 
 @pytest.mark.unit
-def test_contextual_slot_requires_complete_assignment_observation() -> None:
+def test_contextual_slot_v2_supports_mixed_contextual_and_legacy_resources() -> None:
+    organization_id = uuid4()
+    contextual = ResourceChoice(
+        requirement_id=uuid4(),
+        resource_id=uuid4(),
+        resource_location_assignment_id=uuid4(),
+        assignment_revision=3,
+        availability_revision=8,
+    )
+    legacy = ResourceChoice(
+        requirement_id=uuid4(),
+        resource_id=uuid4(),
+        availability_revision=5,
+    )
+    slot = AppointmentSlot(
+        offering_version_id=uuid4(),
+        start_at=_NOW + timedelta(hours=2),
+        end_at=_NOW + timedelta(hours=2, minutes=30),
+        location_id=uuid4(),
+        resources=(contextual, legacy),
+        planned_duration_minutes=30,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=2,
+        configuration_fingerprint="sha256:mixed-observation",
+    )
+
+    token = _codec().issue(organization_id, slot)
+    decoded = _codec().decode(organization_id, token)
+
+    assert token.startswith("aptopt_v2.")
+    assert decoded.is_contextual
+    assert set(decoded.resources) == {contextual, legacy}
+    decoded_legacy = next(
+        choice for choice in decoded.resources if choice.resource_id == legacy.resource_id
+    )
+    assert decoded_legacy.resource_location_assignment_id is None
+    assert decoded_legacy.assignment_revision is None
+    assert decoded_legacy.availability_revision == 5
+
+
+@pytest.mark.unit
+def test_contextual_slot_requires_availability_revision_for_every_resource() -> None:
     slot = AppointmentSlot(
         offering_version_id=uuid4(),
         start_at=_NOW + timedelta(hours=1),
         end_at=_NOW + timedelta(hours=1, minutes=30),
         location_id=uuid4(),
-        resources=(ResourceChoice(uuid4(), uuid4()),),
+        resources=(
+            ResourceChoice(
+                requirement_id=uuid4(),
+                resource_id=uuid4(),
+                resource_location_assignment_id=uuid4(),
+                assignment_revision=1,
+            ),
+        ),
         planned_duration_minutes=30,
         amount=Decimal("3500"),
         currency="DOP",
@@ -97,5 +146,31 @@ def test_contextual_slot_requires_complete_assignment_observation() -> None:
         configuration_fingerprint="sha256:incomplete",
     )
 
-    with pytest.raises(ValueError, match="ResourceLocationAssignment"):
+    with pytest.raises(ValueError, match="availability revision"):
+        _codec().issue(uuid4(), slot)
+
+
+@pytest.mark.unit
+def test_contextual_slot_rejects_partial_assignment_observation() -> None:
+    slot = AppointmentSlot(
+        offering_version_id=uuid4(),
+        start_at=_NOW + timedelta(hours=1),
+        end_at=_NOW + timedelta(hours=1, minutes=30),
+        location_id=uuid4(),
+        resources=(
+            ResourceChoice(
+                requirement_id=uuid4(),
+                resource_id=uuid4(),
+                resource_location_assignment_id=uuid4(),
+                availability_revision=1,
+            ),
+        ),
+        planned_duration_minutes=30,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=1,
+        configuration_fingerprint="sha256:partial-assignment",
+    )
+
+    with pytest.raises(ValueError, match="present together"):
         _codec().issue(uuid4(), slot)
