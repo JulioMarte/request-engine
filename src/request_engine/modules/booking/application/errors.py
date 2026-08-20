@@ -29,6 +29,12 @@ class AppointmentOptionExpired(BookingError):
         super().__init__("AppointmentOption has expired")
 
 
+class AppointmentOptionStale(BookingError):
+    def __init__(self, reason: str = "material booking configuration changed") -> None:
+        super().__init__("AppointmentOption is stale")
+        self.reason = reason
+
+
 class InvalidResourceSelection(BookingError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
