@@ -42,8 +42,12 @@ from request_engine.modules.booking.adapters.db.resource_availability import (
 )
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.booking.application.authority import BOOK_APPOINTMENT_SCOPE
-from request_engine.modules.booking.application.commands.book_appointment import BookAppointmentCommand
-from request_engine.modules.booking.application.commands.cancel_reservation import CancelReservationCommand
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentCommand,
+)
+from request_engine.modules.booking.application.commands.cancel_reservation import (
+    CancelReservationCommand,
+)
 from request_engine.modules.booking.application.errors import (
     AppointmentOptionStale,
     InvalidResourceSelection,
@@ -748,9 +752,9 @@ def _build_authoritative_profiles(
         else:
             timezone = location.timezone
             schedules = assignment_schedules.get(assignment.id, ())
-            exceptions = broad_exceptions.get(
-                choice.resource_id, ()
-            ) + assignment_exceptions.get(assignment.id, ())
+            exceptions = broad_exceptions.get(choice.resource_id, ()) + assignment_exceptions.get(
+                assignment.id, ()
+            )
         profiles[choice.resource_id] = ResourceAvailability(
             capacity_model=resource.capacity_model,
             capacity_units=resource.capacity_units,

@@ -494,9 +494,7 @@ def _terms_from_json(value: dict[str, object]) -> BookingContextTermsState:
     amount = cast(str | None, value.get("amount"))
     return BookingContextTermsState(
         context_terms_id=UUID(cast(str, value["context_terms_id"])),
-        resource_location_assignment_id=UUID(
-            cast(str, value["resource_location_assignment_id"])
-        ),
+        resource_location_assignment_id=UUID(cast(str, value["resource_location_assignment_id"])),
         offering_version_id=UUID(cast(str, value["offering_version_id"])),
         effective_from=datetime.fromisoformat(cast(str, value["effective_from"])),
         effective_until=datetime.fromisoformat(effective_until) if effective_until else None,

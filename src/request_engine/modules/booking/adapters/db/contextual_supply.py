@@ -301,8 +301,7 @@ async def load_location_observations(
         cast(UUID, row["id"]): cast(str, row["timezone"]) for row in location_rows
     }
     revision_by_location = {
-        cast(UUID, row["id"]): cast(int, row["operational_revision"])
-        for row in location_rows
+        cast(UUID, row["id"]): cast(int, row["operational_revision"]) for row in location_rows
     }
 
     hour_rows = (
@@ -491,9 +490,7 @@ async def load_booking_terms(
                     revision=cast(int, row["revision"]),
                     amount=cast(Decimal | None, row["amount"]),
                     currency=cast(str | None, row["currency"]),
-                    planned_duration_minutes=cast(
-                        int | None, row["planned_duration_minutes"]
-                    ),
+                    planned_duration_minutes=cast(int | None, row["planned_duration_minutes"]),
                     bookable=cast(bool, row["bookable"]),
                 ),
             )

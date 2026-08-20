@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-
 MANAGE_OPERATIONAL_PROFILE_SCOPE = "operations.manage_profile"
 MANAGE_CONTEXTUAL_SUPPLY_SCOPE = "operations.manage_supply"
 MANAGE_COMMERCIAL_TERMS_SCOPE = "operations.manage_terms"

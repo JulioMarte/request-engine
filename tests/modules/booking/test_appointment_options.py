@@ -12,7 +12,6 @@ from request_engine.modules.booking.contracts.appointments import (
     ResourceChoice,
 )
 
-
 _NOW = datetime(2030, 1, 7, 12, tzinfo=UTC)
 _KEY = b"request-engine-appointment-option-test-key-0001"
 

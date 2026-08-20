@@ -107,7 +107,10 @@ def _authority_fixture(
             organization_id, location_key, display_name, timezone
         ) VALUES (%s, %s, 'Main', 'America/Santo_Domingo') RETURNING id
         """,
-        (organization_id, f"main-{suffix}",),
+        (
+            organization_id,
+            f"main-{suffix}",
+        ),
     )
     return (
         organization_id,

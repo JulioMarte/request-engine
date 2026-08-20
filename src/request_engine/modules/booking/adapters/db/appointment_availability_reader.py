@@ -527,7 +527,9 @@ def _contextual_or_mixed_slots(
                     start_at,
                     start_at + timedelta(minutes=cast(int, base_terms.planned_duration_minutes)),
                 )
-                if interval.end_at > end or not _combination_exactly_available(combination, interval):
+                if interval.end_at > end or not _combination_exactly_available(
+                    combination, interval
+                ):
                     continue
                 slots.append(
                     AppointmentSlot(
@@ -708,13 +710,14 @@ def _slot_location(
 ) -> UUID | None:
     if requested_location_id is not None:
         if any(
-            candidate.location_id is not None
-            and candidate.location_id != requested_location_id
+            candidate.location_id is not None and candidate.location_id != requested_location_id
             for candidate in combination
         ):
             return None
         return requested_location_id
-    locations = {candidate.location_id for candidate in combination if candidate.location_id is not None}
+    locations = {
+        candidate.location_id for candidate in combination if candidate.location_id is not None
+    }
     return next(iter(locations)) if len(locations) == 1 else None
 
 

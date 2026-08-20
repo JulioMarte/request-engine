@@ -105,9 +105,7 @@ async def test_business_info_exposes_typed_public_operational_truth_only(
     assert info.default_timezone == "America/Santo_Domingo"
     assert info.default_locale == "es-DO"
     assert info.default_currency == "DOP"
-    assert [(item.channel, item.value) for item in info.contacts] == [
-        ("whatsapp", "+18095550101")
-    ]
+    assert [(item.channel, item.value) for item in info.contacts] == [("whatsapp", "+18095550101")]
 
     assert len(info.locations) == 1
     location = info.locations[0]
@@ -115,9 +113,7 @@ async def test_business_info_exposes_typed_public_operational_truth_only(
     assert location.address_line1 == "Av. Demo 123"
     assert location.locality == "Puerto Plata"
     assert location.country_code == "DO"
-    assert [(item.channel, item.value) for item in location.contacts] == [
-        ("phone", "+18095550202")
-    ]
+    assert [(item.channel, item.value) for item in location.contacts] == [("phone", "+18095550202")]
     assert len(location.operational_hours) == 1
     window = location.operational_hours[0]
     assert window.weekday == 0

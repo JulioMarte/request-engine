@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
-import psycopg
 import pytest
 from psycopg import Connection
 

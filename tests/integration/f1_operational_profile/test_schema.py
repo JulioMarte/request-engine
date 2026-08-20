@@ -119,7 +119,9 @@ def _location_revision(conn: PgConnection, location_id: UUID) -> int:
 
 
 @pytest.mark.postgres
-def test_f1_assignment_is_multi_location_tenant_safe_and_non_overlapping(admin_conn: PgConnection) -> None:
+def test_f1_assignment_is_multi_location_tenant_safe_and_non_overlapping(
+    admin_conn: PgConnection,
+) -> None:
     fixture = _fixture(admin_conn, "assignment")
 
     with pytest.raises(psycopg.errors.ExclusionViolation):
@@ -213,7 +215,9 @@ def test_f1_material_schedule_children_change_observation_tokens(admin_conn: PgC
 
 
 @pytest.mark.postgres
-def test_f1_context_terms_are_effective_dated_and_exactly_revisioned(admin_conn: PgConnection) -> None:
+def test_f1_context_terms_are_effective_dated_and_exactly_revisioned(
+    admin_conn: PgConnection,
+) -> None:
     fixture = _fixture(admin_conn, "terms")
     _uuid(
         admin_conn,
@@ -278,7 +282,9 @@ def test_f1_context_terms_are_effective_dated_and_exactly_revisioned(admin_conn:
 
 
 @pytest.mark.postgres
-def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(admin_conn: PgConnection) -> None:
+def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(
+    admin_conn: PgConnection,
+) -> None:
     fixture = _fixture(admin_conn, "claim")
 
     # A second same-tenant Resource/assignment lets us prove the trigger validates
@@ -316,7 +322,12 @@ def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(admin_
                     clock_timestamp() + interval '1 hour'
                 ) RETURNING id
                 """,
-                (fixture.organization_id, fixture.offering_version_id, fixture.party_id, fixture.location_id),
+                (
+                    fixture.organization_id,
+                    fixture.offering_version_id,
+                    fixture.party_id,
+                    fixture.location_id,
+                ),
             )
             admin_conn.execute(
                 """
@@ -358,7 +369,12 @@ def test_f1_commercial_commitment_is_append_only(admin_conn: PgConnection) -> No
                 tstzrange('2030-06-03T14:00:00+00', '2030-06-03T14:30:00+00', '[)')
             ) RETURNING id
             """,
-            (fixture.organization_id, fixture.offering_version_id, fixture.party_id, fixture.location_id),
+            (
+                fixture.organization_id,
+                fixture.offering_version_id,
+                fixture.party_id,
+                fixture.location_id,
+            ),
         )
         admin_conn.execute(
             """

@@ -123,10 +123,7 @@ def resolve_booking_terms(
             context_revisions=(),
         )
 
-    resolved = [
-        _resolve_one(base, context)
-        for context in contexts
-    ]
+    resolved = [_resolve_one(base, context) for context in contexts]
     first = resolved[0]
     if any(value != first for value in resolved[1:]):
         raise ConflictingContextualTerms(
