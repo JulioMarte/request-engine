@@ -308,8 +308,7 @@ def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(
         (fixture.organization_id, other_resource_id, fixture.location_id),
     )
 
-    with pytest.raises(psycopg.errors.CheckViolation):
-        with admin_conn.transaction():
+    with pytest.raises(psycopg.errors.CheckViolation), admin_conn.transaction():
             hold_id = _uuid(
                 admin_conn,
                 """

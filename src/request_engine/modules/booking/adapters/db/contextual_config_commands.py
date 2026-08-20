@@ -440,9 +440,10 @@ def _validate_terms(
         raise ValueError("amount and currency must be present together")
     if amount is not None and amount < 0:
         raise ValueError("amount must be non-negative")
-    if currency is not None:
-        if len(currency) != 3 or not currency.isalpha() or currency != currency.upper():
-            raise ValueError("currency must be an uppercase three-letter code")
+    if currency is not None and (
+        len(currency) != 3 or not currency.isalpha() or currency != currency.upper()
+    ):
+        raise ValueError("currency must be an uppercase three-letter code")
     if planned_duration_minutes is not None and planned_duration_minutes <= 0:
         raise ValueError("planned_duration_minutes must be positive")
     if amount is None and planned_duration_minutes is None and bookable:
