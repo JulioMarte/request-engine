@@ -17,9 +17,8 @@ from request_engine.modules.catalog.application.errors import LocationOperationa
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
-from request_engine.modules.tenancy.application.commands.update_organization_operational_profile import (
-    UpdateOrganizationOperationalProfileCommand,
-    update_organization_operational_profile,
+from request_engine.modules.tenancy.application.commands import (
+    update_organization_operational_profile as profile_command,
 )
 from request_engine.modules.tenancy.contracts.operational_authority import (
     MANAGE_OPERATIONAL_PROFILE_SCOPE,
@@ -108,7 +107,7 @@ def _authority_fixture(
             organization_id, location_key, display_name, timezone
         ) VALUES (%s, %s, 'Main', 'America/Santo_Domingo') RETURNING id
         """,
-        (organization_id, f"main-{suffix}"),
+        (organization_id, f"main-{suffix}",),
     )
     return (
         organization_id,
@@ -135,9 +134,9 @@ async def test_operational_profile_requires_exact_representation_scope(
     ) = _authority_fixture(admin_conn)
     commands = PostgresOperationalProfileCommands(session_factory)
 
-    profile = await update_organization_operational_profile(
+    profile = await profile_command.update_organization_operational_profile(
         commands,
-        UpdateOrganizationOperationalProfileCommand(
+        profile_command.UpdateOrganizationOperationalProfileCommand(
             organization_id=organization_id,
             principal_id=authorized_principal_id,
             authority_party_id=authority_party_id,
@@ -153,9 +152,9 @@ async def test_operational_profile_requires_exact_representation_scope(
     assert profile.default_currency == "DOP"
 
     with pytest.raises(OperationalAuthorityRequired):
-        await update_organization_operational_profile(
+        await profile_command.update_organization_operational_profile(
             commands,
-            UpdateOrganizationOperationalProfileCommand(
+            profile_command.UpdateOrganizationOperationalProfileCommand(
                 organization_id=organization_id,
                 principal_id=unauthorized_principal_id,
                 authority_party_id=authority_party_id,
