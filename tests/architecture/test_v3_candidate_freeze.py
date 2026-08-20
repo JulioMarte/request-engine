@@ -76,8 +76,9 @@ def test_initial_construction_is_fail_closed_and_catalog_derived() -> None:
 
     candidate_apply = equivalence_source.index('PGDATABASE="${candidate_db}" bash')
     initial_build = equivalence_source.index("build_v3_initial_candidate.py")
-    initial_apply = equivalence_source.index("uv run alembic upgrade head")
+    initial_apply = equivalence_source.index("uv run alembic upgrade 0001_initial")
     assert candidate_apply < initial_build < initial_apply
+    assert "uv run alembic upgrade head" not in equivalence_source
     assert "--require-reviewed-baseline" in equivalence_source
     assert 'MIGRATION_DATABASE_URL="${migration_database_url}"' in equivalence_source
     assert 'PGDATABASE="${initial_db}" psql --set=ON_ERROR_STOP=1 --file=' not in equivalence_source
