@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import cast
@@ -19,6 +20,17 @@ _V1_PREFIX = "aptopt_v1"
 _V2_PREFIX = "aptopt_v2"
 _V1_FORMAT = 1
 _V2_FORMAT = 2
+
+
+@dataclass(frozen=True, slots=True)
+class _DecodedCommon:
+    organization_id: UUID
+    offering_version_id: UUID
+    start_at: datetime
+    end_at: datetime
+    location_id: UUID | None
+    resources: tuple[ResourceChoice, ...]
+    expires_at: datetime
 
 
 class SignedAppointmentOptionCodec:
@@ -93,11 +105,11 @@ class SignedAppointmentOptionCodec:
         now = _require_aware(self._now(), "codec clock")
         expires_at = now + self._ttl
         resources = _sorted_resources(slot.resources)
-        assert slot.amount is not None
-        assert slot.currency is not None
-        assert slot.planned_duration_minutes is not None
-        assert slot.location_operational_revision is not None
-        assert slot.configuration_fingerprint is not None
+        amount = cast(Decimal, slot.amount)
+        currency = cast(str, slot.currency)
+        duration = cast(int, slot.planned_duration_minutes)
+        location_revision = cast(int, slot.location_operational_revision)
+        fingerprint = cast(str, slot.configuration_fingerprint)
 
         payload: dict[str, object] = {
             "v": _V2_FORMAT,
@@ -118,11 +130,11 @@ class SignedAppointmentOptionCodec:
                 }
                 for choice in resources
             ],
-            "planned_duration_minutes": slot.planned_duration_minutes,
-            "amount": str(slot.amount),
-            "currency": slot.currency,
-            "location_operational_revision": slot.location_operational_revision,
-            "configuration_fingerprint": slot.configuration_fingerprint,
+            "planned_duration_minutes": duration,
+            "amount": str(amount),
+            "currency": currency,
+            "location_operational_revision": location_revision,
+            "configuration_fingerprint": fingerprint,
             "issued_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
@@ -157,7 +169,15 @@ class SignedAppointmentOptionCodec:
         if payload.get("v") != _V1_FORMAT:
             raise AppointmentOptionInvalid("unsupported payload version")
         common = self._decode_common(organization_id, payload, contextual=False)
-        return DecodedAppointmentOption(**common)
+        return DecodedAppointmentOption(
+            organization_id=common.organization_id,
+            offering_version_id=common.offering_version_id,
+            start_at=common.start_at,
+            end_at=common.end_at,
+            location_id=common.location_id,
+            resources=common.resources,
+            expires_at=common.expires_at,
+        )
 
     def _decode_v2(
         self,
@@ -167,8 +187,7 @@ class SignedAppointmentOptionCodec:
         if payload.get("v") != _V2_FORMAT:
             raise AppointmentOptionInvalid("unsupported payload version")
         common = self._decode_common(organization_id, payload, contextual=True)
-        location_id = cast(UUID | None, common["location_id"])
-        if location_id is None:
+        if common.location_id is None:
             raise AppointmentOptionInvalid("contextual option requires location_id")
 
         duration = _positive_int_field(payload, "planned_duration_minutes")
@@ -180,7 +199,13 @@ class SignedAppointmentOptionCodec:
             raise AppointmentOptionInvalid("configuration_fingerprint is malformed")
 
         return DecodedAppointmentOption(
-            **common,
+            organization_id=common.organization_id,
+            offering_version_id=common.offering_version_id,
+            start_at=common.start_at,
+            end_at=common.end_at,
+            location_id=common.location_id,
+            resources=common.resources,
+            expires_at=common.expires_at,
             planned_duration_minutes=duration,
             amount=amount,
             currency=currency,
@@ -194,7 +219,7 @@ class SignedAppointmentOptionCodec:
         payload: dict[str, object],
         *,
         contextual: bool,
-    ) -> dict[str, object]:
+    ) -> _DecodedCommon:
         token_organization_id = _uuid_field(payload, "organization_id")
         if token_organization_id != organization_id:
             raise AppointmentOptionInvalid("token belongs to a different Organization")
@@ -216,16 +241,15 @@ class SignedAppointmentOptionCodec:
         except ValueError as exc:
             raise AppointmentOptionInvalid("location_id is malformed") from exc
 
-        resources = _resource_fields(payload, contextual=contextual)
-        return {
-            "organization_id": organization_id,
-            "offering_version_id": _uuid_field(payload, "offering_version_id"),
-            "start_at": start_at,
-            "end_at": end_at,
-            "location_id": location_id,
-            "resources": resources,
-            "expires_at": expires_at,
-        }
+        return _DecodedCommon(
+            organization_id=organization_id,
+            offering_version_id=_uuid_field(payload, "offering_version_id"),
+            start_at=start_at,
+            end_at=end_at,
+            location_id=location_id,
+            resources=_resource_fields(payload, contextual=contextual),
+            expires_at=expires_at,
+        )
 
 
 def _validate_contextual_slot(slot: AppointmentSlot) -> None:
