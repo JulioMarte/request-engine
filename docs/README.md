@@ -2,19 +2,28 @@
 
 This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files should point here rather than duplicate these documents.
 
-## V3 transition status
+## Current V3 status
 
-Request Engine is in **Phase 6 — V3 Freeze & Release Proof** on the clean capability-first V3 candidate.
+Request Engine V3 has completed **Phase 6 — V3 Freeze & Release Proof**.
 
-The current operational release roadmap is `release/v3-current-release-roadmap.md`. The canonical gate registry is `release/v3-release-gates.md`. When an older transition/rebaseline document conflicts with those files about current status or execution order, the current roadmap and gate registry win.
+Canonical release state:
 
-At `development@3281075bdc5e19997a3ba8120fa6a275e7ee5ab1`, G01–G16 are integrated `PASS`; G17 is `MISSING`, G18 is `MISSING`, G19 is `PARTIAL`, G20 is `MISSING`, and global V3 remains `NOT_READY`. The active order is G18 unified adversarial/failure proof → G19 fresh production-like bootstrap → candidate freeze → G17 final `0001_initial` equivalence → affected frozen-proof reruns → G20 final exact-head manifest.
+- G01–G20: `PASS`;
+- frozen V3 candidate: complete;
+- reviewed Alembic `0001_initial`: complete and proven structurally, behaviorally and runtime-equivalent to the frozen candidate;
+- release evidence: `VALID` / `READY` for the proven promotion candidate;
+- V3 promotion: merged from `development` to `main` in PR #72;
+- released `main` commit: `07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc`;
+- released tree: `4243840442d9b03d731c67ac514b46b1ee7dea7f`;
+- current integration line: post-V3-baseline development.
 
-The V3 product thesis is followed by concrete capability and pre-SQL transaction contracts under `docs/v3/`, and those contracts drive the executable clean PostgreSQL 18 candidate under `migrations/sql/v3_candidate/`.
+The final promotion proof for PR #72 recorded source `development@9e58368e4ff593c8537c07de09defaec198d2b55`, tested merge candidate `0d1beea7c527fb5c3fc4bf37db29b04bf0a2d65f`, all G01–G20 `PASS`, `evidence_status: VALID`, `release_status: READY`, and preserved G17 equivalence. PR #73, already integrated into that development source, corrected shallow-CI freeze ancestry so release topology proves the frozen source is an ancestor of the exact tested checkout rather than incorrectly requiring an older `main` base to contain the freeze.
 
-The historical V2 PostgreSQL design chain remains useful as executable design history, but it is **not** a schema to freeze or extend. The active candidate remains pre-baseline until the remaining release gates close; it must not become `0001_initial` merely because G01–G16 are green.
+`release/v3-release-gates.md` remains the canonical G01–G20 registry. `release/v3-current-release-roadmap.md` is now a release-closure/provenance document rather than an unfinished execution plan. Older transition/rebaseline documents remain useful history but do not override current post-baseline status.
 
-When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the first schema, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
+The historical V2 PostgreSQL design chain remains useful as executable design history. The frozen V3 candidate remains release provenance and an equivalence reference. Neither is the mutable production migration line. Production schema history begins at `migrations/versions/0001_initial.py` and evolves append-only from there.
+
+When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the baseline, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
 
 ## Authoritative documents
 
@@ -30,23 +39,22 @@ Use this precedence when rules overlap:
 8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
 9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
 
-Current Phase 6 release execution documents:
+Release/freeze provenance documents:
 
-- `release/v3-current-release-roadmap.md` — current repository point, implemented proof and remaining execution path;
-- `release/v3-release-gates.md` — canonical G01–G20 status registry;
-- `release/v3-freeze-scope.md` — scope, evidence discipline and freeze rules;
+- `release/v3-release-gates.md` — canonical G01–G20 closure registry;
+- `release/v3-current-release-roadmap.md` — Phase 6 closure, G17/G20 provenance and release promotion record;
+- `release/v3-candidate-freeze.json` — frozen candidate identity/provenance;
+- `release/v3-freeze-scope.md` — evidence discipline and freeze rules;
 - `release/v3-race-matrix.md` — release-critical race inventory;
 - `release/v3-invariant-matrix.md` and `release/v3-invariant-proof-registry.json` — V3-I01..V3-I66 proof registry;
 - `release/v3-public-api-contract-freeze.md` — G16 frozen public surface.
 
 Transition/history support documents:
 
-- `12-v3-transition-plan.md` — architectural migration/reduction plan; useful history, not the current Phase 6 execution order;
-- `release/v3-post-merge-rebaseline.md` — historical rebaseline after the earlier feature integrations; its old gate statuses are not current;
-- `v3/sql-disposition.md` — V2 SQL disposition inventory;
-- `migrations/README.md` — active V3 candidate ownership, apply order and baseline-freeze gate.
-
-Phase 6 executable release-proof contracts live under `release/`. In particular, `release/v3-test-isolation.md` owns disposable PostgreSQL test isolation, scratch database cleanup, evidence-manifest semantics and required CI-gate aggregation.
+- `12-v3-transition-plan.md` — architectural migration/reduction history, not current execution state;
+- `release/v3-post-merge-rebaseline.md` — historical rebaseline from earlier feature integration;
+- `v3/sql-disposition.md` — historical V2→V3 SQL disposition inventory;
+- earlier Phase 6 planning documents — release-proof history, not present-tense work queues.
 
 The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
 
@@ -97,29 +105,33 @@ The connector must define ownership, contract, trust/tenant context, transaction
 
 ## Documentation organization policy
 
-The older numbered canonical documents are retained during transition because design history and invariant references still point to them. Do not perform cosmetic bulk moves while V3 is stabilizing.
+The older numbered canonical documents are retained because design history and invariant references still point to them. Do not perform cosmetic bulk moves that erase provenance or make historical references ambiguous.
 
-New V3 domain/schema contracts belong under `docs/v3/`. Durable rationale belongs in `adr/`. Current release execution belongs under `docs/release/` and must distinguish active status from historical evidence.
+New durable domain/schema contracts belong under `docs/v3/` or a successor versioned contract area. Durable rationale belongs in `adr/`. Release-proof history and evidence contracts belong under `docs/release/` and must clearly distinguish historical checkpoints from current status.
 
 ## PostgreSQL executable surfaces
 
 Executable SQL does not live in `docs/`.
 
-### Active V3 candidate
+### Production migration history
 
-The active clean pre-baseline candidate is under:
+The production migration line begins at:
+
+```text
+migrations/versions/0001_initial.py
+```
+
+That baseline was reviewed and proven equivalent to the frozen V3 candidate by G17. It is immutable release history. Post-release schema changes must be represented by new append-only Alembic revisions; do not edit `0001_initial` to make a later feature fit.
+
+### Frozen V3 candidate provenance
+
+The frozen release candidate remains under:
 
 ```text
 migrations/sql/v3_candidate/
 ```
 
-It is installed by:
-
-```bash
-bash scripts/db/apply_v3_candidate.sh
-```
-
-CI installs it into a clean PostgreSQL 18 database and runs PostgreSQL-backed invariant/race/RLS tests. It is **not** yet production migration history. Do not create or bless the final `0001_initial` until G18 and G19 close and the candidate is explicitly frozen according to `release/v3-current-release-roadmap.md`.
+It is retained as the source/provenance side of the V3 freeze and equivalence proof. It is no longer the normal mutable schema-development surface. Do not append post-release product migrations there or reinterpret the frozen candidate as current production history.
 
 ### Historical V2 design chain
 
@@ -129,7 +141,7 @@ The historical V2.6→V2.10 chain remains under:
 migrations/sql/design_chain/
 ```
 
-Those files are pre-production design history, not permanent Alembic history and not the active candidate. CI validates them separately so useful historical SQL does not silently rot.
+Those files are executable design history, not production Alembic history and not the active post-release migration path. CI may continue validating them independently so useful historical SQL does not silently rot.
 
 See `migrations/README.md` before changing SQL.
 

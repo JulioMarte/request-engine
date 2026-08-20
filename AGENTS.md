@@ -33,7 +33,7 @@ See `docs/architecture/branch-integration-contract.md` for the canonical policy 
 
 Before editing, identify the primary owner and read only the canonical material needed for the task:
 
-1. `docs/README.md` — documentation map and precedence.
+1. `docs/README.md` — documentation map, precedence and current post-V3-baseline status.
 2. `docs/11-capability-first-v3.md` — current product thesis and V3 baseline.
 3. `docs/v3/01-capability-contracts.md` — public/application capability semantics.
 4. `docs/v3/02-pre-sql-contract.md` — V3 cardinalities, serialization roots, locks, transactions, invariants and race matrix.
@@ -43,8 +43,9 @@ Before editing, identify the primary owner and read only the canonical material 
 8. `docs/09-python-module-architecture.md` — physical Python layout/import rules.
 9. `docs/13-connection-surfaces.md` — mandatory boundary/adapter design between layers, modules, DB, workers and providers.
 10. `docs/14-architecture-fitness-functions.md` — executable dependency/surface rules enforced by CI.
-11. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — migration/disposition context when touching transitional V2 concepts.
-12. `docs/adr/README.md` — accepted architectural decisions and rationale.
+11. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
+12. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
+13. `docs/adr/README.md` — accepted architectural decisions and rationale.
 
 Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-pre-sql-domain-contract.md` only as V2 source material according to `docs/README.md`. Do not reintroduce a V2 concept V3 explicitly removed/deferred merely because it exists in old docs or SQL.
 
@@ -54,7 +55,8 @@ Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-p
 
 - Modular monolith: **module first, capability-local, layer-conscious, explicit connection surfaces**.
 - V3 baseline business modules: `tenancy`, `catalog`, `requests`, `booking`, `queue`, `communications`.
-- Transitional deferred modules: `delivery`, `payments`, `dispatch`. Baseline modules must not depend on them without an accepted architecture change and concrete use case.
+- `delivery` is narrowly reactivated/incubating for `ReservationAccess`; advanced fulfillment/execution remains deferred. Baseline modules must not import Delivery internals; current composition occurs through published contracts at the worker composition boundary.
+- `payments` and `dispatch` remain deferred/incubating. Baseline modules must not depend on them without an accepted architecture change and concrete use case.
 - Cross-module imports use the target module's supported `contracts` surface; never import another module's `domain`, `application`, `adapters`, or `api` internals.
 - Business HTTP routers/models/error mappings belong to the owning module's `api` package. `entrypoints/http` is composition/trust-boundary code, not a parallel business taxonomy.
 - Entrypoints compose modules through published module surfaces and must not reach directly into module DB/provider adapters.
@@ -118,6 +120,7 @@ Do **not** make CI green by automatically widening dependency allowlists, moving
 - `SlotOpportunity` coordinates one released-slot recovery chain; `SlotOffer` is one candidate offer backed by a short CapacityHold in baseline.
 - Reservation confirmation is distinct from attendance confirmation.
 - Communications/reminders are durable transactional intent; provider transport remains external.
+- `ReservationAccess` is the narrowly admitted Delivery capability; advanced Fulfillment remains out of baseline scope.
 - `Workflow`, `OutcomeScope`, advanced Fulfillment, CapacityPool, PlanningRevision, dispatch and advanced payments are not baseline dependencies.
 - Prefer stable capabilities such as `appointments.book`, `queue.join`, `waitlist.accept_offer`, `requests.submit` over table-shaped endpoints/tools.
 
@@ -131,14 +134,15 @@ Do not infer `table → entity → repository → endpoint`. Database structures
 
 ## Correctness-sensitive changes
 
-For booking/capacity, queue selection, waitlist offers, scheduling, communications, authority, idempotency, outbox, or any concurrent mutation:
+For booking/capacity, queue selection, waitlist offers, scheduling, communications, authority, idempotency, outbox, delivery access, or any concurrent mutation:
 
-- identify the exact `V3-Ixx` invariants in `docs/v3/02-pre-sql-contract.md`;
+- identify the exact `V3-Ixx` invariants in `docs/v3/02-pre-sql-contract.md` and any narrower accepted contract for the capability;
 - preserve the documented `READ / PLAN / LOCK / VALIDATE / WRITE / EMIT` protocol;
 - follow canonical lock order and serialization roots before choosing SQL shape;
 - use real PostgreSQL tests for constraints, range overlap, locks, isolation, `SKIP LOCKED`, lease/fencing, RLS/privilege behavior and races;
 - add a regression test for every fixed invariant/race bug;
-- do not claim `0001_initial` readiness until the V3 schema construction gate passes.
+- treat `migrations/versions/0001_initial.py` as immutable release history;
+- implement post-release schema changes as new append-only Alembic revisions rather than editing `0001_initial` or the frozen 43-file V3 candidate.
 
 ## Validation before completion
 
@@ -158,3 +162,5 @@ Never claim a check passed unless it actually ran. Report skipped or unavailable
 ## Documentation rule
 
 The repository documentation is the system of record. Agent files are maps and operational guardrails, not duplicated architecture manuals. If a durable design decision changes, update its canonical doc/ADR and keep agent instructions short enough to remain useful.
+
+Historical transition/release-proof documents may retain the tense and status of the checkpoint they document, but current maps/READMEs must not describe the released V3 baseline as if it were still pre-baseline or awaiting `0001_initial`/promotion.
