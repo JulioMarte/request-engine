@@ -388,6 +388,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError(
-        "F1 shared-capacity guard compatibility is append-only production history"
-    )
+    raise RuntimeError("F1 shared-capacity guard compatibility is append-only production history")
