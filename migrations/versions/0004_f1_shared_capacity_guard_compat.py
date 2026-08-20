@@ -21,7 +21,7 @@ SET search_path = request_engine, pg_catalog;
 
 -- CapacityClaim already has a SECURITY DEFINER guard in released V3 because
 -- shared-capacity conflict detection must see private cross-tenant provenance.
--- Keep that privileged responsibility narrow.  F1 only changes the legacy
+-- Keep that privileged responsibility narrow. F1 only changes the legacy
 -- Resource.location_id check when an explicit ResourceLocationAssignment is
 -- present; assignment lookup/validation lives in a separate invoker trigger so
 -- FORCE RLS remains authoritative for tenant-local contextual configuration.
@@ -53,7 +53,10 @@ BEGIN
     END IF;
 
     SELECT r.capacity_model, r.capacity_units, r.active, r.location_id
-      INTO v_capacity_model, v_capacity_units, v_resource_active, v_resource_location
+      INTO v_capacity_model,
+           v_capacity_units,
+           v_resource_active,
+           v_resource_location
       FROM request_engine.resources r
      WHERE r.organization_id = NEW.organization_id
        AND r.id = NEW.resource_id
@@ -69,10 +72,12 @@ BEGIN
     END IF;
 
     IF TG_OP = 'UPDATE' AND OLD.resource_id <> NEW.resource_id AND EXISTS (
-        SELECT 1 FROM request_engine.shared_capacity_claim_links
+        SELECT 1
+          FROM request_engine.shared_capacity_claim_links
          WHERE capacity_claim_id = OLD.id
     ) THEN
-        RAISE EXCEPTION 'linked CapacityClaim cannot move between Resources; release/recreate it'
+        RAISE EXCEPTION
+            'linked CapacityClaim cannot move between Resources; release/recreate it'
             USING ERRCODE = '55000';
     END IF;
 
@@ -121,13 +126,16 @@ BEGIN
            AND h.status = 'active'
            AND h.expires_at > clock_timestamp();
         IF NOT FOUND THEN
-            RAISE EXCEPTION 'active hold claim requires live, unexpired CapacityHold %', NEW.hold_id
+            RAISE EXCEPTION
+                'active hold claim requires live, unexpired CapacityHold %',
+                NEW.hold_id
                 USING ERRCODE = '23514';
         END IF;
     END IF;
 
     IF NEW.during <> v_owner_during THEN
-        RAISE EXCEPTION 'CapacityClaim interval must equal its Hold/Reservation interval'
+        RAISE EXCEPTION
+            'CapacityClaim interval must equal its Hold/Reservation interval'
             USING ERRCODE = '23514';
     END IF;
     IF NEW.resource_location_assignment_id IS NULL
@@ -141,12 +149,15 @@ BEGIN
     END IF;
 
     SELECT rr.offering_version_id, rr.capability_id, rr.quantity
-      INTO v_requirement_offering_version, v_required_capability, v_required_quantity
+      INTO v_requirement_offering_version,
+           v_required_capability,
+           v_required_quantity
       FROM request_engine.offering_resource_requirements rr
      WHERE rr.organization_id = NEW.organization_id
        AND rr.id = NEW.requirement_id;
     IF NOT FOUND OR v_requirement_offering_version <> v_owner_offering_version THEN
-        RAISE EXCEPTION 'CapacityClaim requirement does not belong to the owner OfferingVersion'
+        RAISE EXCEPTION
+            'CapacityClaim requirement does not belong to the owner OfferingVersion'
             USING ERRCODE = '23514';
     END IF;
     IF NEW.quantity <> v_required_quantity THEN
@@ -157,12 +168,15 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
     IF NOT EXISTS (
-        SELECT 1 FROM request_engine.resource_capability_assignments a
+        SELECT 1
+          FROM request_engine.resource_capability_assignments a
          WHERE a.organization_id = NEW.organization_id
            AND a.resource_id = NEW.resource_id
            AND a.capability_id = v_required_capability
     ) THEN
-        RAISE EXCEPTION 'Resource % does not satisfy required capability', NEW.resource_id
+        RAISE EXCEPTION
+            'Resource % does not satisfy required capability',
+            NEW.resource_id
             USING ERRCODE = '23514';
     END IF;
 
@@ -170,25 +184,38 @@ BEGIN
       INTO v_other_quantity, v_other_count
       FROM request_engine.capacity_claims c
       LEFT JOIN request_engine.reservations r
-        ON r.organization_id = c.organization_id AND r.id = c.reservation_id
+        ON r.organization_id = c.organization_id
+       AND r.id = c.reservation_id
       LEFT JOIN request_engine.capacity_holds h
-        ON h.organization_id = c.organization_id AND h.id = c.hold_id
+        ON h.organization_id = c.organization_id
+       AND h.id = c.hold_id
      WHERE c.organization_id = NEW.organization_id
        AND c.resource_id = NEW.resource_id
        AND c.status = 'active'
        AND c.id <> NEW.id
        AND c.during && NEW.during
        AND (
-           (c.reservation_id IS NOT NULL AND r.status = 'confirmed') OR
-           (c.reservation_id IS NULL AND h.status = 'active' AND h.expires_at > clock_timestamp())
+           (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+           OR (
+               c.reservation_id IS NULL
+               AND h.status = 'active'
+               AND h.expires_at > clock_timestamp()
+           )
        );
     IF v_capacity_model = 'exclusive' AND v_other_count > 0 THEN
-        RAISE EXCEPTION 'exclusive Resource % has overlapping live capacity', NEW.resource_id
+        RAISE EXCEPTION
+            'exclusive Resource % has overlapping live capacity',
+            NEW.resource_id
             USING ERRCODE = '23P01';
     END IF;
-    IF v_capacity_model = 'units' AND v_other_quantity + NEW.quantity > v_capacity_units THEN
-        RAISE EXCEPTION 'Resource % capacity exceeded: requested %, live %, capacity %',
-            NEW.resource_id, NEW.quantity, v_other_quantity, v_capacity_units
+    IF v_capacity_model = 'units'
+       AND v_other_quantity + NEW.quantity > v_capacity_units THEN
+        RAISE EXCEPTION
+            'Resource % capacity exceeded: requested %, live %, capacity %',
+            NEW.resource_id,
+            NEW.quantity,
+            v_other_quantity,
+            v_capacity_units
             USING ERRCODE = '23P01';
     END IF;
 
@@ -216,17 +243,22 @@ BEGIN
               JOIN request_engine.capacity_claims c
                 ON c.id = link.capacity_claim_id
               LEFT JOIN request_engine.reservations r
-                ON r.organization_id = c.organization_id AND r.id = c.reservation_id
+                ON r.organization_id = c.organization_id
+               AND r.id = c.reservation_id
               LEFT JOIN request_engine.capacity_holds h
-                ON h.organization_id = c.organization_id AND h.id = c.hold_id
+                ON h.organization_id = c.organization_id
+               AND h.id = c.hold_id
              WHERE link.shared_capacity_identity_id = v_shared_capacity_identity_id
                AND c.id <> NEW.id
                AND c.status = 'active'
                AND c.during && NEW.during
                AND (
-                   (c.reservation_id IS NOT NULL AND r.status = 'confirmed') OR
-                   (c.reservation_id IS NULL AND h.status = 'active'
-                    AND h.expires_at > clock_timestamp())
+                   (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+                   OR (
+                       c.reservation_id IS NULL
+                       AND h.status = 'active'
+                       AND h.expires_at > clock_timestamp()
+                   )
                )
         ) INTO v_shared_conflict;
 
@@ -256,7 +288,8 @@ BEGIN
     IF TG_OP = 'UPDATE'
        AND NEW.resource_location_assignment_id
            IS DISTINCT FROM OLD.resource_location_assignment_id THEN
-        RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment provenance is immutable'
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment provenance is immutable'
             USING ERRCODE = '55000';
     END IF;
 
@@ -273,8 +306,9 @@ BEGIN
      WHERE a.organization_id = NEW.organization_id
        AND a.id = NEW.resource_location_assignment_id;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'ResourceLocationAssignment % does not exist for capacity claim',
-            NEW.resource_location_assignment_id USING ERRCODE = '23503';
+        -- Do not expose whether a caller-supplied foreign UUID exists elsewhere.
+        RAISE EXCEPTION 'ResourceLocationAssignment does not exist for capacity claim'
+            USING ERRCODE = '23503';
     END IF;
     IF v_assignment_resource <> NEW.resource_id THEN
         RAISE EXCEPTION
@@ -308,7 +342,10 @@ BEGIN
     END IF;
 
     IF v_owner_found
-       AND (v_owner_location IS NULL OR v_owner_location <> v_assignment_location) THEN
+       AND (
+           v_owner_location IS NULL
+           OR v_owner_location <> v_assignment_location
+       ) THEN
         RAISE EXCEPTION
             'CapacityClaim ResourceLocationAssignment belongs to a different Location '
             'than the Hold/Reservation'
@@ -319,6 +356,11 @@ BEGIN
 END
 $function$;
 
+-- PostgreSQL fires same-kind triggers in name order. The released
+-- capacity_claims_00_guard_tenant_context runs first, so an ordinary tenant
+-- caller cannot make this invoker trigger inspect another tenant's assignment.
+-- The numeric 10 prefix also keeps this validation ahead of the SECURITY
+-- DEFINER capacity_claims_guard_capacity trigger.
 CREATE TRIGGER capacity_claims_10_guard_contextual_assignment
 BEFORE INSERT OR UPDATE OF
     organization_id,
@@ -329,9 +371,12 @@ BEFORE INSERT OR UPDATE OF
     during,
     status
 ON request_engine.capacity_claims
-FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_contextual_assignment();
+FOR EACH ROW
+EXECUTE FUNCTION request_engine.guard_capacity_claim_contextual_assignment();
 
-REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_contextual_assignment() FROM PUBLIC;
+REVOKE ALL ON FUNCTION
+    request_engine.guard_capacity_claim_contextual_assignment()
+FROM PUBLIC;
 
 RESET ROLE;
 RESET search_path;
@@ -343,4 +388,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("F1 shared-capacity guard compatibility is append-only production history")
+    raise RuntimeError(
+        "F1 shared-capacity guard compatibility is append-only production history"
+    )
