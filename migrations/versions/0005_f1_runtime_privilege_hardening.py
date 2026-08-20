@@ -19,6 +19,13 @@ _UPGRADE_SQL = r"""
 SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
+-- Fail closed for future F1 trigger/helper functions too. PostgreSQL's built-in
+-- function default grants EXECUTE to PUBLIC unless the creating role has an
+-- explicit default ACL that removes it.
+ALTER DEFAULT PRIVILEGES FOR ROLE request_engine_schema_owner
+    IN SCHEMA request_engine
+    REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
 -- The released V3 guard has an exact trigger inventory that is part of the
 -- frozen V3 compatibility proof. F1 owns its own equivalent revision primitive
 -- so new aggregates do not silently widen the released V3 catalog contract.
@@ -51,9 +58,9 @@ CREATE TRIGGER booking_context_terms_revision_step
 BEFORE UPDATE ON request_engine.booking_context_terms
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f1_exact_revision_step();
 
--- Trigger helpers are internal implementation details. PostgreSQL grants
--- EXECUTE on newly-created functions to PUBLIC by default, so every F1 helper
--- must explicitly close that default surface.
+-- Trigger helpers are internal implementation details. Existing helpers were
+-- created before the default ACL above, so close their inherited PUBLIC surface
+-- explicitly as well.
 REVOKE ALL ON FUNCTION
     request_engine.guard_location_operational_revision(),
     request_engine.bump_location_operational_revision_from_child(),
