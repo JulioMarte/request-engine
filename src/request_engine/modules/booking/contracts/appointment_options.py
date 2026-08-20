@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
@@ -17,6 +18,15 @@ class DecodedAppointmentOption:
     location_id: UUID | None
     resources: tuple[ResourceChoice, ...]
     expires_at: datetime
+    planned_duration_minutes: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    location_operational_revision: int | None = None
+    configuration_fingerprint: str | None = None
+
+    @property
+    def is_contextual(self) -> bool:
+        return self.configuration_fingerprint is not None
 
 
 class AppointmentOptionCodec(Protocol):
