@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from request_engine.modules.booking.application.errors import (
     AppointmentOptionExpired,
     AppointmentOptionInvalid,
+    AppointmentOptionStale,
     AppointmentUnavailable,
     BookingConfigurationError,
     BookingError,
@@ -42,6 +43,13 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             code="appointment_option_expired",
             message="the appointment option has expired",
             resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
+            details={},
+        )
+    if isinstance(exc, AppointmentOptionStale):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="appointment_option_stale",
+            message="the appointment option no longer matches current booking configuration",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={},
         )
     if isinstance(exc, OfferingVersionNotFound):
