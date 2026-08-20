@@ -19,6 +19,12 @@ purpose is to falsify schema, transaction, authorization, concurrency,
 compatibility, and product invariants before Request Engine begins storing real
 customer data.
 
+Until the first real customer-owned row is accepted into production, F1 schema
+changes are evaluated as evolution of the intended launch schema and contracts,
+not as an online migration of a live installation. This does not relax the
+frozen V3 baseline or compatibility proofs; it prevents us from designing
+around nonexistent production-state constraints.
+
 ## What this permits
 
 Because the project is still greenfield with respect to real data, feature work
