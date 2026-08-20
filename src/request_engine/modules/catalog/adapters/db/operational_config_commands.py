@@ -10,18 +10,16 @@ from request_engine.modules.catalog.application.commands.set_location_operationa
     SetLocationOperationalHoursCommand,
 )
 from request_engine.modules.catalog.application.errors import LocationOperationalRevisionConflict
-from request_engine.modules.tenancy.adapters.db.operational_authority import (
-    require_operational_authority,
-)
-from request_engine.modules.tenancy.contracts.operational_authority import (
-    MANAGE_OPERATIONAL_PROFILE_SCOPE,
-)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
     complete_idempotency,
+)
+from request_engine.platform.security.operational_authority import (
+    MANAGE_OPERATIONAL_PROFILE_SCOPE,
+    require_operational_authority,
 )
 
 

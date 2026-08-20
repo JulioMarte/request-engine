@@ -19,19 +19,17 @@ from request_engine.modules.booking.application.operational_errors import (
     ResourceAvailabilityRevisionConflict,
 )
 from request_engine.modules.booking.domain.availability import require_aware_utc
-from request_engine.modules.tenancy.adapters.db.operational_authority import (
-    require_operational_authority,
-)
-from request_engine.modules.tenancy.contracts.operational_authority import (
-    MANAGE_COMMERCIAL_TERMS_SCOPE,
-    MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
-)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
     complete_idempotency,
+)
+from request_engine.platform.security.operational_authority import (
+    MANAGE_COMMERCIAL_TERMS_SCOPE,
+    MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+    require_operational_authority,
 )
 
 
