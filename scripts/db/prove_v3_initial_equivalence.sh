@@ -120,7 +120,10 @@ url = URL.create(
 print(url.render_as_string(hide_password=False))
 PY
 )"
-MIGRATION_DATABASE_URL="${migration_database_url}" uv run alembic upgrade head
+# This is a historical V3 equivalence proof. Post-V3 revisions are expected to
+# evolve production head, so compare the frozen candidate specifically against
+# the released V3 Alembic revision rather than the repository's moving head.
+MIGRATION_DATABASE_URL="${migration_database_url}" uv run alembic upgrade 0001_initial
 
 python "${repo_root}/scripts/db/v3_schema_fingerprint.py" \
   --database "${candidate_db}" \
