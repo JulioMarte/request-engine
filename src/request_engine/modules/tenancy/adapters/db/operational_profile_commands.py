@@ -7,9 +7,8 @@ from sqlalchemy import text
 from request_engine.modules.tenancy.adapters.db.operational_authority import (
     require_operational_authority,
 )
-from request_engine.modules.tenancy.application.commands.update_organization_operational_profile import (
-    OrganizationOperationalProfile,
-    UpdateOrganizationOperationalProfileCommand,
+from request_engine.modules.tenancy.application.commands import (
+    update_organization_operational_profile as profile_command,
 )
 from request_engine.modules.tenancy.contracts.operational_authority import (
     MANAGE_OPERATIONAL_PROFILE_SCOPE,
@@ -29,8 +28,8 @@ class PostgresOperationalProfileCommands:
 
     async def update_organization_operational_profile(
         self,
-        command: UpdateOrganizationOperationalProfileCommand,
-    ) -> OrganizationOperationalProfile:
+        command: profile_command.UpdateOrganizationOperationalProfileCommand,
+    ) -> profile_command.OrganizationOperationalProfile:
         _validate_profile(command)
         fingerprint = command_fingerprint(
             "tenancy.update_organization_operational_profile",
@@ -92,7 +91,7 @@ class PostgresOperationalProfileCommands:
                 .mappings()
                 .one()
             )
-            profile = OrganizationOperationalProfile(
+            profile = profile_command.OrganizationOperationalProfile(
                 organization_id=cast(UUID, row["id"]),
                 legal_name=cast(str | None, row["legal_name"]),
                 default_timezone=cast(str | None, row["default_timezone"]),
@@ -118,7 +117,9 @@ class PostgresOperationalProfileCommands:
             return profile
 
 
-def _validate_profile(command: UpdateOrganizationOperationalProfileCommand) -> None:
+def _validate_profile(
+    command: profile_command.UpdateOrganizationOperationalProfileCommand,
+) -> None:
     if command.legal_name is not None and not command.legal_name.strip():
         raise ValueError("legal_name cannot be blank")
     if command.default_timezone is not None:
@@ -138,7 +139,9 @@ def _validate_profile(command: UpdateOrganizationOperationalProfileCommand) -> N
         raise ValueError("operational_status must be active or inactive")
 
 
-def _profile_to_json(profile: OrganizationOperationalProfile) -> dict[str, object]:
+def _profile_to_json(
+    profile: profile_command.OrganizationOperationalProfile,
+) -> dict[str, object]:
     return {
         "organization_id": str(profile.organization_id),
         "legal_name": profile.legal_name,
@@ -149,8 +152,10 @@ def _profile_to_json(profile: OrganizationOperationalProfile) -> dict[str, objec
     }
 
 
-def _profile_from_json(value: dict[str, object]) -> OrganizationOperationalProfile:
-    return OrganizationOperationalProfile(
+def _profile_from_json(
+    value: dict[str, object],
+) -> profile_command.OrganizationOperationalProfile:
+    return profile_command.OrganizationOperationalProfile(
         organization_id=UUID(cast(str, value["organization_id"])),
         legal_name=cast(str | None, value.get("legal_name")),
         default_timezone=cast(str | None, value.get("default_timezone")),
