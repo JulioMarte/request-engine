@@ -252,7 +252,7 @@ jobs:
       - name: Require expected production head
         run: |
           uv run alembic current
-          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0002_f1_supply"
+          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0003_f1_context_sources"
       - name: Prove F1 relational schema and tenant boundaries
         run: >-
           uv run pytest tests/integration/f1_operational_profile
