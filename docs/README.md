@@ -2,6 +2,21 @@
 
 This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files should point here rather than duplicate these documents.
 
+## Active post-V3 feature branch
+
+On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, but F1 introduces an explicit post-V3 normative delta.
+
+Read these branch-specific documents before implementing this feature:
+
+1. `v3/15-operational-profile-contextual-supply-contract.md` — **normative F1 post-V3 delta**. It defines Organization operational defaults, Location/contact/geospatial truth, Resource-at-Location assignment, contextual schedule/price/duration, Reservation commercial provenance, authorization, races and backward compatibility.
+2. `v3/13-operational-profile-contextual-supply-plan.md` — active F1 design/implementation plan, phases, test matrix and Definition of Done.
+3. `v3/14-operational-intelligence-roadmap.md` — complete accepted product/design direction for F1–F6. Only F1 is implementation scope of this branch; F2–F6 are preserved future direction.
+4. `adr/0012-contextual-resource-location-supply.md` — durable rationale for introducing Resource-at-Location/contextual booking supply while retaining Resource/CapacityClaim as the capacity model.
+
+For concepts explicitly named by `v3/15-operational-profile-contextual-supply-contract.md`, that post-V3 contract supersedes the corresponding released-baseline sections of `v3/01-capability-contracts.md`, `v3/02-pre-sql-contract.md` and `10-module-ownership-map.md` on this feature branch. Unrelated V3 rules remain authoritative.
+
+This precedence avoids rewriting released V3 history while giving the feature one unambiguous current contract.
+
 ## Current V3 status
 
 Request Engine V3 has completed **Phase 6 — V3 Freeze & Release Proof**.
@@ -27,7 +42,7 @@ When V3 and V2 conflict about product scope, Request semantics, baseline concept
 
 ## Authoritative documents
 
-Use this precedence when rules overlap:
+Outside a branch-specific post-V3 delta, use this precedence when rules overlap:
 
 1. `11-capability-first-v3.md` — product thesis, baseline capabilities and explicit V2 reductions.
 2. `v3/01-capability-contracts.md` — public/application capability semantics for agents, forms, apps and integrations.
@@ -38,6 +53,8 @@ Use this precedence when rules overlap:
 7. `10-module-ownership-map.md` — module ownership.
 8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
 9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
+
+A post-V3 feature contract may explicitly supersede named sections of this baseline precedence without rewriting released history. Such a delta must be indexed above, scoped precisely and accompanied by append-only schema evolution.
 
 Release/freeze provenance documents:
 
@@ -72,6 +89,8 @@ Current accepted decisions include:
 - durable transactional communications and scheduling separated from provider delivery;
 - the minimal V3 booking/capacity model;
 - PostgreSQL RLS as tenant defense-in-depth with narrow cross-tenant worker claim surfaces.
+
+Post-V3 proposed ADRs may remain `Proposed` until implementation/evidence proves the decision. Do not call an ADR accepted merely because a feature branch documents it.
 
 See `adr/README.md`.
 
@@ -108,6 +127,8 @@ The connector must define ownership, contract, trust/tenant context, transaction
 The older numbered canonical documents are retained because design history and invariant references still point to them. Do not perform cosmetic bulk moves that erase provenance or make historical references ambiguous.
 
 New durable domain/schema contracts belong under `docs/v3/` or a successor versioned contract area. Durable rationale belongs in `adr/`. Release-proof history and evidence contracts belong under `docs/release/` and must clearly distinguish historical checkpoints from current status.
+
+Post-release features should prefer an explicit post-V3 delta contract when preserving the released baseline text provides clearer provenance than rewriting the old baseline as though the feature had always existed. The delta must state exactly what it supersedes.
 
 ## PostgreSQL executable surfaces
 
