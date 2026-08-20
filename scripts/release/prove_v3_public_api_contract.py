@@ -207,8 +207,7 @@ def build_report() -> dict[str, object]:
     missing_literal_codes = EXPECTED_LITERAL_ERROR_CODES - literal_codes
     if missing_literal_codes:
         failures.append(
-            "frozen V3 public error codes are missing: "
-            + ", ".join(sorted(missing_literal_codes))
+            "frozen V3 public error codes are missing: " + ", ".join(sorted(missing_literal_codes))
         )
     if shared_codes != EXPECTED_SHARED_ERROR_CODES:
         failures.append("shared HTTP error-code baseline mismatch")
