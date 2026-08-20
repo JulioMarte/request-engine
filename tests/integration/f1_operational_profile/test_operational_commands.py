@@ -1,5 +1,5 @@
 from datetime import time
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,10 +30,23 @@ from request_engine.platform.db.session import SessionFactory
 PgConnection = Connection[Any]
 
 
-def _id(conn: PgConnection, sql: str, params: tuple[object, ...]) -> UUID:
+def _id(conn: PgConnection, sql: LiteralString, params: tuple[object, ...]) -> UUID:
     row = conn.execute(sql, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
+
+
+def _location_revision(conn: PgConnection, organization_id: UUID, location_id: UUID) -> int:
+    row = conn.execute(
+        """
+        SELECT operational_revision
+        FROM request_engine.locations
+        WHERE organization_id = %s AND id = %s
+        """,
+        (organization_id, location_id),
+    ).fetchone()
+    assert row is not None
+    return cast(int, row[0])
 
 
 def _authority_fixture(
@@ -171,17 +184,7 @@ async def test_location_hours_command_rejects_stale_operational_revision(
         location_id,
     ) = _authority_fixture(admin_conn)
     commands = PostgresOperationalConfigCommands(session_factory)
-    initial_revision = cast(
-        int,
-        admin_conn.execute(
-            """
-            SELECT operational_revision
-            FROM request_engine.locations
-            WHERE organization_id = %s AND id = %s
-            """,
-            (organization_id, location_id),
-        ).fetchone()[0],
-    )
+    initial_revision = _location_revision(admin_conn, organization_id, location_id)
 
     state = await set_location_operational_hours(
         commands,
