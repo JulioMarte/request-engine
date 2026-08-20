@@ -87,7 +87,7 @@ def test_released_v3_public_error_codes_remain_available() -> None:
     literal_codes: set[str] = set()
     for path in _ERROR_MODULES:
         literal_codes |= _literal_error_codes(path)
-    assert EXPECTED_LITERAL_ERROR_CODES <= literal_codes
+    assert literal_codes >= EXPECTED_LITERAL_ERROR_CODES
 
     shared_errors = Path("src/request_engine/entrypoints/http/errors.py").read_text(
         encoding="utf-8"
