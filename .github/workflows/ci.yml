@@ -3,7 +3,12 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # F1 is under active pre-PR implementation. Keep this branch-specific so
+    # development can obtain real CI evidence without enabling push CI for every
+    # feature branch. Remove this entry before merge; PR CI remains canonical.
+    branches:
+      - main
+      - feature/operational-profile-contextual-supply
   workflow_dispatch:
 
 permissions:
@@ -209,13 +214,14 @@ jobs:
           --step v3-tests
           --step concurrency-stability
 
-  # Post-release schema evolution is proved from production Alembic history,
-  # without mutating the frozen V3 candidate or its provenance evidence.
+  # This is the active post-baseline product gate. It proves append-only Alembic
+  # evolution, F1 schema/runtime behavior, semantic configuration authority,
+  # stale-option protection, commercial provenance, and V3 booking regression.
   postgres-production-head:
-    name: PostgreSQL 18 production Alembic head
+    name: PostgreSQL 18 F1 operational profile and contextual supply
     needs: python-quality
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:18
@@ -250,24 +256,16 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Resolve test environment
-        run: uv sync --all-groups
-      - name: Upgrade production schema through Alembic
-        run: uv run alembic upgrade head
-      - name: Require expected production head
-        run: |
-          uv run alembic current
-          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0003_f1_context_sources"
-      - name: Prove F1 relational schema and tenant boundaries
-        run: >-
-          uv run pytest tests/integration/f1_operational_profile
-          -q -m postgres --tb=short --durations=20
-      - name: Regress released V3 booking on production head
-        run: >-
-          uv run pytest
-          tests/integration/v3_booking_core
-          tests/integration/v3_booking_commitments
-          -q -m postgres --tb=short --durations=20
+      - name: Run canonical F1 operational profile proof
+        run: bash scripts/ci/run_f1_operational_profile.sh
+      - name: Upload F1 proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f1-operational-profile-proof
+          path: .ci/f1-operational-profile/
+          include-hidden-files: true
+          if-no-files-found: warn
 
   # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
   # conditional, then always run this lightweight aggregate so a failed/skipped
