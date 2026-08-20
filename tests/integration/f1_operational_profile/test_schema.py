@@ -309,9 +309,9 @@ def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(
     )
 
     with pytest.raises(psycopg.errors.CheckViolation), admin_conn.transaction():
-            hold_id = _uuid(
-                admin_conn,
-                """
+        hold_id = _uuid(
+            admin_conn,
+            """
                 INSERT INTO request_engine.capacity_holds (
                     organization_id, offering_version_id, subject_party_id, location_id,
                     during, expires_at
@@ -321,15 +321,15 @@ def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(
                     clock_timestamp() + interval '1 hour'
                 ) RETURNING id
                 """,
-                (
-                    fixture.organization_id,
-                    fixture.offering_version_id,
-                    fixture.party_id,
-                    fixture.location_id,
-                ),
-            )
-            admin_conn.execute(
-                """
+            (
+                fixture.organization_id,
+                fixture.offering_version_id,
+                fixture.party_id,
+                fixture.location_id,
+            ),
+        )
+        admin_conn.execute(
+            """
                 INSERT INTO request_engine.capacity_claims (
                     organization_id, resource_id, requirement_id, hold_id,
                     resource_location_assignment_id, during, quantity
@@ -338,14 +338,14 @@ def test_f1_contextual_claim_uses_assignment_not_legacy_resource_location(
                     tstzrange('2030-06-04T14:00:00+00', '2030-06-04T14:30:00+00', '[)'), 1
                 )
                 """,
-                (
-                    fixture.organization_id,
-                    fixture.resource_id,
-                    fixture.requirement_id,
-                    hold_id,
-                    other_assignment_id,
-                ),
-            )
+            (
+                fixture.organization_id,
+                fixture.resource_id,
+                fixture.requirement_id,
+                hold_id,
+                other_assignment_id,
+            ),
+        )
 
 
 @pytest.mark.postgres
