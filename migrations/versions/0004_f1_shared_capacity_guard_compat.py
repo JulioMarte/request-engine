@@ -86,7 +86,9 @@ BEGIN
            AND r.id = NEW.reservation_id
            AND r.status = 'confirmed';
         IF NOT FOUND THEN
-            RAISE EXCEPTION 'active reservation claim requires confirmed Reservation %', NEW.reservation_id
+            RAISE EXCEPTION
+                'active reservation claim requires confirmed Reservation %',
+                NEW.reservation_id
                 USING ERRCODE = '23514';
         END IF;
 
@@ -103,7 +105,9 @@ BEGIN
                AND h.offering_version_id = v_owner_offering_version
                AND h.during = v_owner_during
         ) THEN
-            RAISE EXCEPTION 'cannot promote expired, terminal, or mismatched CapacityHold %', NEW.hold_id
+            RAISE EXCEPTION
+                'cannot promote expired, terminal, or mismatched CapacityHold %',
+                NEW.hold_id
                 USING ERRCODE = '23514';
         END IF;
     ELSE
@@ -131,7 +135,10 @@ BEGIN
 
     IF NEW.resource_location_assignment_id IS NOT NULL THEN
         SELECT a.resource_id, a.location_id, a.effective_during, a.status
-          INTO v_assignment_resource, v_assignment_location, v_assignment_during, v_assignment_status
+          INTO v_assignment_resource,
+               v_assignment_location,
+               v_assignment_during,
+               v_assignment_status
           FROM request_engine.resource_location_assignments a
          WHERE a.organization_id = NEW.organization_id
            AND a.id = NEW.resource_location_assignment_id;
@@ -140,7 +147,8 @@ BEGIN
                 NEW.resource_location_assignment_id USING ERRCODE = '23503';
         END IF;
         IF v_assignment_resource <> NEW.resource_id THEN
-            RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
+            RAISE EXCEPTION
+                'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
                 USING ERRCODE = '23514';
         END IF;
         IF v_assignment_status <> 'active' THEN
@@ -148,17 +156,22 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
         IF v_owner_location IS NULL OR v_owner_location <> v_assignment_location THEN
-            RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment belongs to a different Location than the Hold/Reservation'
+            RAISE EXCEPTION
+                'CapacityClaim ResourceLocationAssignment belongs to a different Location '
+                'than the Hold/Reservation'
                 USING ERRCODE = '23514';
         END IF;
         IF NOT (v_assignment_during @> NEW.during) THEN
-            RAISE EXCEPTION 'CapacityClaim interval is outside ResourceLocationAssignment effective range'
+            RAISE EXCEPTION
+                'CapacityClaim interval is outside ResourceLocationAssignment effective range'
                 USING ERRCODE = '23514';
         END IF;
     ELSIF v_owner_location IS NOT NULL
        AND v_resource_location IS NOT NULL
        AND v_owner_location <> v_resource_location THEN
-        RAISE EXCEPTION 'Resource % belongs to a different Location than the Hold/Reservation', NEW.resource_id
+        RAISE EXCEPTION
+            'Resource % belongs to a different Location than the Hold/Reservation',
+            NEW.resource_id
             USING ERRCODE = '23514';
     END IF;
 
@@ -172,7 +185,10 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
     IF NEW.quantity <> v_required_quantity THEN
-        RAISE EXCEPTION 'CapacityClaim quantity % does not satisfy requirement quantity %', NEW.quantity, v_required_quantity
+        RAISE EXCEPTION
+            'CapacityClaim quantity % does not satisfy requirement quantity %',
+            NEW.quantity,
+            v_required_quantity
             USING ERRCODE = '23514';
     END IF;
     IF NOT EXISTS (
