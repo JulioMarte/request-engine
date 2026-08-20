@@ -1,9 +1,11 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, time
 from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.catalog.application.queries.get_business_info import (
@@ -165,9 +167,9 @@ async def _read_f1_business_info(session: AsyncSession, organization_id: UUID) -
     )
     location_ids = tuple(cast(UUID, row["id"]) for row in location_rows)
 
-    location_contact_rows = []
-    hours_rows = []
-    exception_rows = []
+    location_contact_rows: Sequence[RowMapping] = ()
+    hours_rows: Sequence[RowMapping] = ()
+    exception_rows: Sequence[RowMapping] = ()
     if location_ids:
         location_contact_rows = (
             (

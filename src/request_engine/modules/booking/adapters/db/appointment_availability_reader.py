@@ -51,6 +51,7 @@ from request_engine.modules.booking.domain.availability import (
 from request_engine.modules.booking.domain.contextual_supply import (
     BaseBookingTerms,
     ConflictingContextualTerms,
+    ContextBookingTerms,
     ContextNotBookable,
     MissingCommercialTerms,
     ResolvedBookingTerms,
@@ -345,15 +346,12 @@ def _build_candidate_resources(
 ) -> tuple[_CandidateResource, ...]:
     candidates: list[_CandidateResource] = []
     for row in rows:
+        requirement_id = cast(UUID, row["requirement_id"])
+        ordinal = cast(int, row["ordinal"])
+        quantity = cast(int, row["quantity"])
         resource_id = cast(UUID, row["resource_id"])
-        common = {
-            "requirement_id": cast(UUID, row["requirement_id"]),
-            "ordinal": cast(int, row["ordinal"]),
-            "quantity": cast(int, row["quantity"]),
-            "resource_id": resource_id,
-            "legacy_location_id": cast(UUID | None, row["location_id"]),
-            "availability_revision": cast(int, row["availability_revision"]),
-        }
+        legacy_location_id = cast(UUID | None, row["location_id"])
+        availability_revision = cast(int, row["availability_revision"])
         capacity_model = CapacityModel(cast(str, row["capacity_model"]))
         capacity_units = cast(int, row["capacity_units"])
 
@@ -369,7 +367,12 @@ def _build_candidate_resources(
                 )
                 candidates.append(
                     _CandidateResource(
-                        **common,
+                        requirement_id=requirement_id,
+                        ordinal=ordinal,
+                        quantity=quantity,
+                        resource_id=resource_id,
+                        legacy_location_id=legacy_location_id,
+                        availability_revision=availability_revision,
                         profile=ResourceAvailability(
                             capacity_model=capacity_model,
                             capacity_units=capacity_units,
@@ -389,7 +392,12 @@ def _build_candidate_resources(
             continue
         candidates.append(
             _CandidateResource(
-                **common,
+                requirement_id=requirement_id,
+                ordinal=ordinal,
+                quantity=quantity,
+                resource_id=resource_id,
+                legacy_location_id=legacy_location_id,
+                availability_revision=availability_revision,
                 profile=ResourceAvailability(
                     capacity_model=capacity_model,
                     capacity_units=capacity_units,
@@ -579,7 +587,7 @@ def _contextual_slot(
     if requested_location_id is None:
         return None
 
-    context_observations = []
+    context_observations: list[ContextBookingTerms | None] = []
     for candidate in combination:
         if candidate.assignment is None:
             context_observations.append(None)
@@ -744,18 +752,14 @@ def _configuration_fingerprint(
     location: LocationObservation,
     combination: tuple[_CandidateResource, ...],
     resolved: ResolvedBookingTerms,
-    context_observations: tuple[object, ...],
+    context_observations: tuple[ContextBookingTerms | None, ...],
 ) -> str:
-    contexts = []
+    contexts: list[dict[str, object] | None] = []
     for observation in context_observations:
         if observation is None:
             contexts.append(None)
         else:
-            typed = cast(object, observation)
-            from request_engine.modules.booking.domain.contextual_supply import ContextBookingTerms
-
-            value = cast(ContextBookingTerms, typed)
-            contexts.append({"id": str(value.id), "revision": value.revision})
+            contexts.append({"id": str(observation.id), "revision": observation.revision})
 
     payload = {
         "offering_version_id": str(offering_version_id),

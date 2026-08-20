@@ -82,8 +82,11 @@ from request_engine.platform.outbox.postgres import append_outbox
 
 
 class _RequirementLike(Protocol):
-    id: UUID
-    ordinal: int
+    @property
+    def id(self) -> UUID: ...
+
+    @property
+    def ordinal(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -793,16 +796,8 @@ def _configuration_fingerprint(
                 "availability_revision": current_availability_revisions[
                     choices[requirement_id].resource_id
                 ],
-                "assignment_id": (
-                    str(selected_assignments[requirement_id].id)
-                    if selected_assignments[requirement_id] is not None
-                    else None
-                ),
-                "assignment_revision": (
-                    selected_assignments[requirement_id].revision
-                    if selected_assignments[requirement_id] is not None
-                    else None
-                ),
+                "assignment_id": _assignment_id(selected_assignments[requirement_id]),
+                "assignment_revision": _assignment_revision(selected_assignments[requirement_id]),
             }
             for requirement_id in ordered_requirement_ids
         ],
@@ -819,6 +814,14 @@ def _configuration_fingerprint(
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _assignment_id(assignment: AssignmentObservation | None) -> str | None:
+    return str(assignment.id) if assignment is not None else None
+
+
+def _assignment_revision(assignment: AssignmentObservation | None) -> int | None:
+    return assignment.revision if assignment is not None else None
 
 
 def _legacy_location_value(resource: LockedResource) -> str | None:
