@@ -1,0 +1,41 @@
+name: Temporary Ruff format
+
+on:
+  push:
+    branches:
+      - feature/operational-profile-contextual-supply
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: ${{ !contains(github.event.head_commit.message, '[ruff-format-fix]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-groups
+      - name: Apply canonical formatter to the remaining file
+        run: uv run ruff format tests/integration/f1_operational_profile/test_schema.py
+      - name: Commit formatting when needed
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/integration/f1_operational_profile/test_schema.py
+          git commit -m "style: format F1 schema test [ruff-format-fix]"
+          git push origin HEAD:feature/operational-profile-contextual-supply
