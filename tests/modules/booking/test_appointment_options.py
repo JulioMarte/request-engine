@@ -7,7 +7,10 @@ import pytest
 from request_engine.modules.booking.adapters.appointment_options import (
     SignedAppointmentOptionCodec,
 )
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.modules.booking.contracts.appointments import (
+    AppointmentSlot,
+    ResourceChoice,
+)
 
 
 _NOW = datetime(2030, 1, 7, 12, tzinfo=UTC)
