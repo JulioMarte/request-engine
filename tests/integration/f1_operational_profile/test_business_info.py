@@ -5,8 +5,12 @@ from uuid import UUID, uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader
-from request_engine.modules.catalog.application.queries.get_business_info import get_business_info
+from request_engine.modules.catalog.adapters.db.business_info_reader import (
+    PostgresBusinessInfoReader,
+)
+from request_engine.modules.catalog.application.queries.get_business_info import (
+    get_business_info,
+)
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
