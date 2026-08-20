@@ -57,6 +57,30 @@ class LocationObservation:
     profile: ResourceAvailability
 
 
+async def f1_contextual_schema_available(session: AsyncSession) -> bool:
+    """Return whether the post-V3 contextual schema is installed.
+
+    Current source code is intentionally still exercised against the frozen V3
+    candidate in release-provenance CI. Schema absence there is a supported
+    compatibility state, not an error or a reason to mutate candidate history.
+    """
+
+    return cast(
+        bool,
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT
+                        to_regclass('request_engine.resource_location_assignments') IS NOT NULL
+                        AND to_regclass('request_engine.offering_version_booking_terms') IS NOT NULL
+                    """
+                )
+            )
+        ).scalar_one(),
+    )
+
+
 async def load_contextualization(
     session: AsyncSession,
     organization_id: UUID,
@@ -64,7 +88,7 @@ async def load_contextualization(
     window_start: datetime,
     window_end: datetime,
 ) -> tuple[set[UUID], dict[UUID, tuple[AssignmentObservation, ...]]]:
-    if not resource_ids:
+    if not resource_ids or not await f1_contextual_schema_available(session):
         return set(), {}
 
     contextualized_rows = (
@@ -384,6 +408,13 @@ async def load_booking_terms(
     window_start: datetime,
     window_end: datetime,
 ) -> tuple[BaseBookingTerms, dict[UUID, tuple[ContextTermObservation, ...]]]:
+    if not await f1_contextual_schema_available(session):
+        return BaseBookingTerms(
+            amount=None,
+            currency=None,
+            planned_duration_minutes=base_duration_minutes,
+        ), {}
+
     base_row = (
         (
             await session.execute(
