@@ -1,4 +1,4 @@
-"""Preserve V3 shared-capacity semantics in the F1 CapacityClaim guard.
+"""Preserve V3 shared capacity while adding F1 claim provenance validation.
 
 Revision ID: 0004_f1_capacity_guard
 Revises: 0003_f1_context_sources
@@ -19,10 +19,12 @@ _UPGRADE_SQL = r"""
 SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
--- F1 extends CapacityClaim with ResourceLocationAssignment provenance.  The
--- released V3 guard also owns the cross-tenant SharedCapacityIdentity conflict
--- check, promotion validation, and linked-claim invariants.  Keep that released
--- behavior intact and add only the contextual Location/assignment branch.
+-- CapacityClaim already has a SECURITY DEFINER guard in released V3 because
+-- shared-capacity conflict detection must see private cross-tenant provenance.
+-- Keep that privileged responsibility narrow.  F1 only changes the legacy
+-- Resource.location_id check when an explicit ResourceLocationAssignment is
+-- present; assignment lookup/validation lives in a separate invoker trigger so
+-- FORCE RLS remains authoritative for tenant-local contextual configuration.
 CREATE OR REPLACE FUNCTION request_engine.guard_capacity_claim()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -45,10 +47,6 @@ DECLARE
     v_promoting_hold boolean;
     v_shared_capacity_identity_id uuid;
     v_shared_conflict boolean;
-    v_assignment_resource uuid;
-    v_assignment_location uuid;
-    v_assignment_during tstzrange;
-    v_assignment_status text;
 BEGIN
     IF NEW.status <> 'active' THEN
         RETURN NEW;
@@ -132,41 +130,8 @@ BEGIN
         RAISE EXCEPTION 'CapacityClaim interval must equal its Hold/Reservation interval'
             USING ERRCODE = '23514';
     END IF;
-
-    IF NEW.resource_location_assignment_id IS NOT NULL THEN
-        SELECT a.resource_id, a.location_id, a.effective_during, a.status
-          INTO v_assignment_resource,
-               v_assignment_location,
-               v_assignment_during,
-               v_assignment_status
-          FROM request_engine.resource_location_assignments a
-         WHERE a.organization_id = NEW.organization_id
-           AND a.id = NEW.resource_location_assignment_id;
-        IF NOT FOUND THEN
-            RAISE EXCEPTION 'ResourceLocationAssignment % does not exist for capacity claim',
-                NEW.resource_location_assignment_id USING ERRCODE = '23503';
-        END IF;
-        IF v_assignment_resource <> NEW.resource_id THEN
-            RAISE EXCEPTION
-                'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
-                USING ERRCODE = '23514';
-        END IF;
-        IF v_assignment_status <> 'active' THEN
-            RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment is not active'
-                USING ERRCODE = '23514';
-        END IF;
-        IF v_owner_location IS NULL OR v_owner_location <> v_assignment_location THEN
-            RAISE EXCEPTION
-                'CapacityClaim ResourceLocationAssignment belongs to a different Location '
-                'than the Hold/Reservation'
-                USING ERRCODE = '23514';
-        END IF;
-        IF NOT (v_assignment_during @> NEW.during) THEN
-            RAISE EXCEPTION
-                'CapacityClaim interval is outside ResourceLocationAssignment effective range'
-                USING ERRCODE = '23514';
-        END IF;
-    ELSIF v_owner_location IS NOT NULL
+    IF NEW.resource_location_assignment_id IS NULL
+       AND v_owner_location IS NOT NULL
        AND v_resource_location IS NOT NULL
        AND v_owner_location <> v_resource_location THEN
         RAISE EXCEPTION
@@ -274,6 +239,99 @@ BEGIN
     RETURN NEW;
 END
 $function$;
+
+CREATE FUNCTION request_engine.guard_capacity_claim_contextual_assignment()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_assignment_resource uuid;
+    v_assignment_location uuid;
+    v_assignment_during tstzrange;
+    v_assignment_status text;
+    v_owner_location uuid;
+    v_owner_found boolean := false;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.resource_location_assignment_id
+           IS DISTINCT FROM OLD.resource_location_assignment_id THEN
+        RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment provenance is immutable'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NEW.status <> 'active' OR NEW.resource_location_assignment_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT a.resource_id, a.location_id, a.effective_during, a.status
+      INTO v_assignment_resource,
+           v_assignment_location,
+           v_assignment_during,
+           v_assignment_status
+      FROM request_engine.resource_location_assignments a
+     WHERE a.organization_id = NEW.organization_id
+       AND a.id = NEW.resource_location_assignment_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ResourceLocationAssignment % does not exist for capacity claim',
+            NEW.resource_location_assignment_id USING ERRCODE = '23503';
+    END IF;
+    IF v_assignment_resource <> NEW.resource_id THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_assignment_status <> 'active' THEN
+        RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment is not active'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT (v_assignment_during @> NEW.during) THEN
+        RAISE EXCEPTION
+            'CapacityClaim interval is outside ResourceLocationAssignment effective range'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.reservation_id IS NOT NULL THEN
+        SELECT r.location_id
+          INTO v_owner_location
+          FROM request_engine.reservations r
+         WHERE r.organization_id = NEW.organization_id
+           AND r.id = NEW.reservation_id;
+        v_owner_found := FOUND;
+    ELSIF NEW.hold_id IS NOT NULL THEN
+        SELECT h.location_id
+          INTO v_owner_location
+          FROM request_engine.capacity_holds h
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id;
+        v_owner_found := FOUND;
+    END IF;
+
+    IF v_owner_found
+       AND (v_owner_location IS NULL OR v_owner_location <> v_assignment_location) THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Location '
+            'than the Hold/Reservation'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+CREATE TRIGGER capacity_claims_10_guard_contextual_assignment
+BEFORE INSERT OR UPDATE OF
+    organization_id,
+    resource_id,
+    hold_id,
+    reservation_id,
+    resource_location_assignment_id,
+    during,
+    status
+ON request_engine.capacity_claims
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_capacity_claim_contextual_assignment();
+
+REVOKE ALL ON FUNCTION request_engine.guard_capacity_claim_contextual_assignment() FROM PUBLIC;
 
 RESET ROLE;
 RESET search_path;
