@@ -281,9 +281,32 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
+    permissions:
+      contents: read
+      statuses: write
     env:
       REQUIRED_NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
       - uses: actions/checkout@v6
       - name: Require successful prerequisite jobs
+        id: aggregate
         run: python scripts/ci/require_successful_needs.py
+      - name: Publish connector-readable aggregate status
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGGREGATE_OUTCOME: ${{ steps.aggregate.outcome }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ "$AGGREGATE_OUTCOME" == "success" ]]; then
+            state=success
+            description="all required Request Engine CI jobs passed"
+          else
+            state=failure
+            description="one or more required Request Engine CI jobs failed"
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context="Request Engine / CI aggregate" \
+            -f description="$description" \
+            -f target_url="$TARGET_URL"
