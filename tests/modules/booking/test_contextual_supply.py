@@ -124,7 +124,10 @@ def test_location_closure_blocks_resource_recurring_interval() -> None:
         required_quantity=1,
     )
 
-    assert all(not (value.start_at < closure.end_at and closure.start_at < value.end_at) for value in intervals)
+    assert all(
+        not (value.start_at < closure.end_at and closure.start_at < value.end_at)
+        for value in intervals
+    )
 
 
 @pytest.mark.unit
