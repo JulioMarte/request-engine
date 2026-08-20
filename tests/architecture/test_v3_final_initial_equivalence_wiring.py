@@ -28,7 +28,8 @@ def test_structural_equivalence_executes_the_reviewed_alembic_baseline() -> None
 
     assert "--require-reviewed-baseline" in structural
     assert "MIGRATION_DATABASE_URL" in structural
-    assert "alembic upgrade head" in structural
+    assert "alembic upgrade 0001_initial" in structural
+    assert "alembic upgrade head" not in structural
     assert 'PGDATABASE="${initial_db}" psql' not in structural
     assert "runpy.run_path" in builder
     assert "from migrations.v3_initial_payload import" not in builder
