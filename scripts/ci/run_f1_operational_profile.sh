@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 ARTIFACT_DIR="${F1_CI_ARTIFACT_DIR:-.ci/f1-operational-profile}"
-EXPECTED_HEAD="0003_f1_context_sources"
+EXPECTED_HEAD="0004_f1_capacity_guard"
 mkdir -p "$ARTIFACT_DIR"
 
 python scripts/ci/normalize_ci_line_endings.py
