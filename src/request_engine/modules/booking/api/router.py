@@ -221,6 +221,10 @@ def create_router(
         capability="appointments.find_slots",
         methods=["GET"],
         response_model=tuple[AppointmentSlotView, ...],
+        # F1 enriches contextual options with price/duration. Legacy V3 options
+        # deliberately leave those fields unset; omitting None preserves the
+        # released V3 JSON shape while still exposing real F1 observations.
+        response_model_exclude_none=True,
     )
     add_capability_route(
         router,
