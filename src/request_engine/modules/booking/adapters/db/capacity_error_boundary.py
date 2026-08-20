@@ -9,8 +9,8 @@ from request_engine.modules.booking.adapters.db.capacity_errors import (
 from request_engine.modules.booking.adapters.db.commitment_commands import (
     PostgresBookingCommitmentCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
+    PostgresContextualReservationCommands,
 )
 from request_engine.modules.booking.adapters.db.slot_offer_capacity import PostgresSlotOfferCapacity
 from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
@@ -43,7 +43,7 @@ class CapacitySafeReservationCommands:
     """Reservation adapter with opaque errors only for true capacity acquisition."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
-        self._delegate = PostgresReservationCommands(session_factory)
+        self._delegate = PostgresContextualReservationCommands(session_factory)
 
     async def book_appointment(self, command: BookAppointmentCommand) -> Reservation:
         try:
