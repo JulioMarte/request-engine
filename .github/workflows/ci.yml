@@ -199,20 +199,16 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Apply immutable V3 candidate
-        run: bash scripts/db/apply_v3_candidate.sh
-      - name: Resolve test environment
-        run: uv sync --all-groups
-      - name: Prove current-code compatibility with frozen V3
-        run: >-
-          python scripts/ci/ci_jobs.py postgres-v3-candidate
-          --step schema-fingerprint
-          --step catalog-audit
-          --step worker-query-plans
-          --step queue-query-plans
-          --step booking-query-plans
-          --step v3-tests
-          --step concurrency-stability
+      - name: Run frozen V3 release compatibility proof
+        run: bash scripts/ci/run_v3_candidate_with_g19.sh
+      - name: Upload frozen V3 compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-candidate-release-proof
+          path: .phase6/
+          include-hidden-files: true
+          if-no-files-found: warn
 
   # This is the active post-baseline product gate. It proves append-only Alembic
   # evolution, F1 schema/runtime behavior, semantic configuration authority,
