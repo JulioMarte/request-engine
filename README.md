@@ -4,21 +4,27 @@ Request Engine is a **headless, multi-tenant operational capability API** for ag
 
 PostgreSQL owns local relational/transactional truth, locks and consistency backstops. Python owns semantic commands/queries, authorization, policy orchestration, external I/O and transaction framing.
 
-The repository is currently in a **pre-baseline capability-first V3 transition**. The V2 SQL design chain remains useful design history but is not the schema to freeze.
+Request Engine V3 has completed its capability-first baseline freeze and release proof. G01–G20 are closed `PASS`, the reviewed Alembic `0001_initial` is structurally/behaviorally/runtime-equivalent to the frozen V3 candidate, and V3 was promoted from `development` to `main` in PR #72. The active development line is therefore **post-V3-baseline**: `0001_initial` is immutable production migration history and future schema evolution is append-only.
+
+The historical V2 SQL design chain and the frozen V3 candidate remain useful executable provenance. Neither is the mutable production migration line.
 
 ## Read first
 
-Start with `docs/README.md`, which defines canonical precedence.
+Start with `docs/README.md`, which defines canonical precedence and current release/baseline status.
 
 Most relevant current documents:
 
 - `docs/11-capability-first-v3.md` — current product thesis, capability semantics and V3 baseline;
-- `docs/12-v3-transition-plan.md` — V2 reduction/migration plan;
-- `docs/v3/sql-disposition.md` — PostgreSQL object disposition before the clean V3 candidate;
+- `docs/v3/01-capability-contracts.md` — public/application capability contracts;
+- `docs/v3/02-pre-sql-contract.md` — cardinalities, transactions, invariants and lock/race contracts;
+- `docs/release/v3-release-gates.md` — canonical G01–G20 release gate registry;
+- `docs/release/v3-current-release-roadmap.md` — V3 freeze/release provenance and post-release status;
 - `docs/07-database-access-contract.md` — Python ↔ PostgreSQL boundary;
 - `docs/09-python-module-architecture.md` — physical Python layout/import boundaries;
 - `docs/10-module-ownership-map.md` — business ownership;
 - `docs/adr/README.md` — durable architectural rationale.
+
+`docs/12-v3-transition-plan.md`, `docs/v3/sql-disposition.md`, and earlier Phase 6 planning/rebaseline documents are transition/history references. They do not override current post-baseline status.
 
 `docs/legacy/**` is historical and non-authoritative.
 
@@ -80,7 +86,7 @@ request-engine/
 │       ├── booking/              # V3 baseline
 │       ├── queue/                # V3 baseline
 │       ├── communications/       # V3 baseline
-│       ├── delivery/             # deferred/incubating
+│       ├── delivery/             # bounded/deferred scope
 │       ├── payments/             # deferred/incubating
 │       └── dispatch/             # deferred/incubating
 ├── migrations/
@@ -164,15 +170,17 @@ Principle:
 
 ## SQL and migrations
 
-The V2.6→V2.10 design chain remains under:
+There are now three intentionally different schema-history surfaces:
 
 ```text
-migrations/sql/design_chain/
+migrations/sql/design_chain/   historical V2 executable design history
+migrations/sql/v3_candidate/   frozen V3 candidate/provenance used by release proof
+migrations/versions/           production Alembic history beginning at 0001_initial
 ```
 
-It is executable pre-production design history, **not production Alembic history and not the V3 baseline candidate**.
+`migrations/versions/0001_initial.py` is the immutable V3 production baseline proven equivalent to the frozen candidate. Do not rewrite, regenerate, squash or reinterpret it after release. Future production schema changes are append-only Alembic revisions (`0002`, `0003`, ... as applicable to repository naming policy).
 
-Do not continue adding V2.x hardening deltas by default. V3 will construct a clean reduced candidate after object disposition and capability contracts are proven. Because no production baseline exists yet, obsolete speculative object shapes do not require compatibility migrations.
+The V2 design chain remains historical evidence and must not receive new V2.x deltas by default. The frozen V3 candidate remains release provenance and must not be treated as the normal place for post-release schema evolution.
 
 See `migrations/README.md` before changing SQL.
 
@@ -202,6 +210,7 @@ Before changing code, a human or agent should be able to answer:
 5. Which locks/races/failure modes must be proven?
 6. Which provider work occurs only after commit?
 7. Which tests demonstrate the invariant rather than merely the happy path?
+8. Does a schema change require a new append-only Alembic migration rather than touching the frozen baseline/candidate?
 
 The V3 north star is intentionally simple:
 
