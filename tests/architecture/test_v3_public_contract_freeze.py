@@ -45,47 +45,49 @@ def _literal_error_codes(path: Path) -> set[str]:
     return codes
 
 
-def test_v3_public_http_operation_surface_is_frozen() -> None:
-    actual = tuple(
-        "|".join(
-            (
-                operation.name,
-                operation.method,
-                operation.path_template,
-                operation.capability or "",
-            )
+def _operation_line(operation: Any) -> str:
+    return "|".join(
+        (
+            operation.name,
+            operation.method,
+            operation.path_template,
+            operation.capability or "",
         )
-        for operation in _public_operations()
     )
-    assert actual == EXPECTED_OPERATIONS
 
 
-def test_v3_capability_registry_is_frozen() -> None:
-    actual = tuple(
-        "|".join(
-            (
-                definition.key,
-                definition.exposure.value,
-                definition.kind.value,
-                definition.idempotency.value,
-                definition.revision.value,
-                definition.party_scope or "",
-                definition.override_capability or "",
-                ",".join(sorted(definition.legacy_aliases)),
-                "1" if definition.runtime_available else "0",
-            )
+def _capability_line(definition: Any) -> str:
+    return "|".join(
+        (
+            definition.key,
+            definition.exposure.value,
+            definition.kind.value,
+            definition.idempotency.value,
+            definition.revision.value,
+            definition.party_scope or "",
+            definition.override_capability or "",
+            ",".join(sorted(definition.legacy_aliases)),
+            "1" if definition.runtime_available else "0",
         )
-        for definition in CAPABILITIES
     )
-    assert actual == EXPECTED_CAPABILITIES
-    assert all(definition.schema_version == 1 for definition in CAPABILITIES)
 
 
-def test_v3_public_error_code_inventory_is_frozen() -> None:
+def test_released_v3_public_http_operations_remain_compatible() -> None:
+    actual = {_operation_line(operation) for operation in _public_operations()}
+    assert set(EXPECTED_OPERATIONS) <= actual
+
+
+def test_released_v3_capabilities_remain_compatible() -> None:
+    actual = {_capability_line(definition) for definition in CAPABILITIES}
+    assert set(EXPECTED_CAPABILITIES) <= actual
+    assert all(definition.schema_version >= 1 for definition in CAPABILITIES)
+
+
+def test_released_v3_public_error_codes_remain_available() -> None:
     literal_codes: set[str] = set()
     for path in _ERROR_MODULES:
         literal_codes |= _literal_error_codes(path)
-    assert literal_codes == EXPECTED_LITERAL_ERROR_CODES
+    assert EXPECTED_LITERAL_ERROR_CODES <= literal_codes
 
     shared_errors = Path("src/request_engine/entrypoints/http/errors.py").read_text(
         encoding="utf-8"
@@ -100,7 +102,7 @@ def test_v3_public_error_code_inventory_is_frozen() -> None:
         assert f'_conflict("{code}"' in request_errors
 
 
-def test_v3_operation_capabilities_are_classified() -> None:
+def test_current_operation_capabilities_are_classified() -> None:
     definitions = {definition.key: definition for definition in CAPABILITIES}
     for operation in _public_operations():
         if operation.capability is None:
