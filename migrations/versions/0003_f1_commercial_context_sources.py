@@ -141,6 +141,7 @@ ON request_engine.reservation_commercial_commitment_context_terms
 TO request_engine_admin;
 
 RESET ROLE;
+RESET search_path;
 """
 
 
