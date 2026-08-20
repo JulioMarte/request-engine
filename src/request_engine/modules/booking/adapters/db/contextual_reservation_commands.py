@@ -1,9 +1,10 @@
 import hashlib
 import json
-from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -21,8 +22,8 @@ from request_engine.modules.booking.adapters.db.contextual_supply import (
     load_location_observations,
 )
 from request_engine.modules.booking.adapters.db.reservation_commands import (
+    LockedResource,
     PostgresReservationCommands,
-    _Requirement,
     load_bookable_offering,
     load_requirements,
     lock_resources,
@@ -45,11 +46,13 @@ from request_engine.modules.booking.application.commands.book_appointment import
 from request_engine.modules.booking.application.commands.cancel_reservation import CancelReservationCommand
 from request_engine.modules.booking.application.errors import (
     AppointmentOptionStale,
-    AppointmentUnavailable,
     InvalidResourceSelection,
 )
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 from request_engine.modules.booking.domain.availability import (
+    AvailabilityException,
+    LiveCapacityClaim,
+    RecurringAvailability,
     ResourceAvailability,
     interval_is_scheduled_available,
     require_aware_utc,
@@ -74,6 +77,20 @@ from request_engine.platform.idempotency.postgres import (
 from request_engine.platform.outbox.postgres import append_outbox
 
 
+class _RequirementLike(Protocol):
+    id: UUID
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ExpectedContext:
+    duration_minutes: int
+    amount: Decimal
+    currency: str
+    location_revision: int
+    configuration_fingerprint: str
+
+
 class PostgresContextualReservationCommands:
     """F1 contextual booking with an untouched released-V3 compatibility path."""
 
@@ -93,38 +110,7 @@ class PostgresContextualReservationCommands:
         expected = _expected_context(command)
         start_at = require_aware_utc(command.start_at, "start_at")
         end_at = start_at + timedelta(minutes=expected.duration_minutes)
-        idempotency_fingerprint = command_fingerprint(
-            "booking.book_appointment.contextual.v1",
-            {
-                "offering_version_id": command.offering_version_id,
-                "subject_party_id": command.subject_party_id,
-                "start_at": start_at,
-                "location_id": command.location_id,
-                "origin_request_id": command.origin_request_id,
-                "resources": [
-                    {
-                        "requirement_id": str(choice.requirement_id),
-                        "resource_id": str(choice.resource_id),
-                        "resource_location_assignment_id": (
-                            str(choice.resource_location_assignment_id)
-                            if choice.resource_location_assignment_id is not None
-                            else None
-                        ),
-                        "assignment_revision": choice.assignment_revision,
-                        "availability_revision": choice.availability_revision,
-                    }
-                    for choice in sorted(
-                        command.resources,
-                        key=lambda item: (str(item.requirement_id), str(item.resource_id)),
-                    )
-                ],
-                "expected_duration_minutes": expected.duration_minutes,
-                "expected_amount": str(expected.amount),
-                "expected_currency": expected.currency,
-                "expected_location_revision": expected.location_revision,
-                "expected_configuration_fingerprint": expected.configuration_fingerprint,
-            },
-        )
+        idempotency_fingerprint = _contextual_command_fingerprint(command, start_at, expected)
 
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
@@ -138,6 +124,11 @@ class PostgresContextualReservationCommands:
             if replay is not None:
                 return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
+            await _lock_offering_version(
+                session,
+                organization_id=command.organization_id,
+                offering_version_id=command.offering_version_id,
+            )
             offering = await load_bookable_offering(
                 session,
                 command.organization_id,
@@ -191,6 +182,11 @@ class PostgresContextualReservationCommands:
                 location_id=None,
             )
 
+            await _lock_selected_assignments(
+                session,
+                organization_id=command.organization_id,
+                choices=choices,
+            )
             current_availability_revisions = await _load_resource_availability_revisions(
                 session,
                 organization_id=command.organization_id,
@@ -217,16 +213,20 @@ class PostgresContextualReservationCommands:
             )
             assignment_ids = tuple(
                 sorted(
-                    {assignment.id for assignment in selected_assignments.values() if assignment},
+                    {
+                        assignment.id
+                        for assignment in selected_assignments.values()
+                        if assignment is not None
+                    },
                     key=str,
                 )
             )
             legacy_resource_ids = tuple(
                 sorted(
                     {
-                        choice.resource_id
-                        for requirement_id, choice in choices.items()
-                        if selected_assignments[requirement_id] is None
+                        choices[requirement_id].resource_id
+                        for requirement_id, assignment in selected_assignments.items()
+                        if assignment is None
                     },
                     key=str,
                 )
@@ -284,7 +284,8 @@ class PostgresContextualReservationCommands:
                 end_at,
             )
             ordered_requirement_ids = tuple(
-                requirement.id for requirement in sorted(requirements.values(), key=lambda row: row.ordinal)
+                requirement.id
+                for requirement in sorted(requirements.values(), key=lambda row: row.ordinal)
             )
             context_observations = _effective_context_observations(
                 ordered_requirement_ids,
@@ -351,84 +352,24 @@ class PostgresContextualReservationCommands:
             if authoritative_fingerprint != expected.configuration_fingerprint:
                 raise AppointmentOptionStale()
 
-            reservation_id = cast(
-                UUID,
-                (
-                    await session.execute(
-                        text(
-                            """
-                            INSERT INTO request_engine.reservations (
-                                organization_id,
-                                offering_version_id,
-                                subject_party_id,
-                                location_id,
-                                origin_request_id,
-                                during,
-                                booking_policy_snapshot
-                            ) VALUES (
-                                :organization_id,
-                                :offering_version_id,
-                                :subject_party_id,
-                                :location_id,
-                                :origin_request_id,
-                                tstzrange(:start_at, :end_at, '[)'),
-                                CAST(:booking_policy AS jsonb)
-                            )
-                            RETURNING id
-                            """
-                        ),
-                        {
-                            "organization_id": command.organization_id,
-                            "offering_version_id": command.offering_version_id,
-                            "subject_party_id": command.subject_party_id,
-                            "location_id": location_id,
-                            "origin_request_id": command.origin_request_id,
-                            "start_at": start_at,
-                            "end_at": end_at,
-                            "booking_policy": json.dumps(policy, separators=(",", ":")),
-                        },
-                    )
-                ).scalar_one(),
+            reservation_id = await _insert_contextual_reservation(
+                session,
+                command=command,
+                location_id=location_id,
+                start_at=start_at,
+                end_at=end_at,
+                booking_policy=policy,
             )
-
-            for requirement in sorted(requirements.values(), key=lambda row: row.ordinal):
-                choice = choices[requirement.id]
-                assignment = selected_assignments[requirement.id]
-                await session.execute(
-                    text(
-                        """
-                        INSERT INTO request_engine.capacity_claims (
-                            organization_id,
-                            resource_id,
-                            requirement_id,
-                            reservation_id,
-                            resource_location_assignment_id,
-                            during,
-                            quantity
-                        ) VALUES (
-                            :organization_id,
-                            :resource_id,
-                            :requirement_id,
-                            :reservation_id,
-                            :resource_location_assignment_id,
-                            tstzrange(:start_at, :end_at, '[)'),
-                            :quantity
-                        )
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "resource_id": choice.resource_id,
-                        "requirement_id": requirement.id,
-                        "reservation_id": reservation_id,
-                        "resource_location_assignment_id": (
-                            assignment.id if assignment is not None else None
-                        ),
-                        "start_at": start_at,
-                        "end_at": end_at,
-                        "quantity": requirement.quantity,
-                    },
-                )
+            await _insert_contextual_claims(
+                session,
+                organization_id=command.organization_id,
+                reservation_id=reservation_id,
+                requirements=requirements,
+                choices=choices,
+                selected_assignments=selected_assignments,
+                start_at=start_at,
+                end_at=end_at,
+            )
 
             context_source_ids = tuple(
                 sorted(
@@ -501,23 +442,6 @@ class PostgresContextualReservationCommands:
             return reservation
 
 
-class _ExpectedContext:
-    def __init__(
-        self,
-        *,
-        duration_minutes: int,
-        amount: Decimal,
-        currency: str,
-        location_revision: int,
-        configuration_fingerprint: str,
-    ) -> None:
-        self.duration_minutes = duration_minutes
-        self.amount = amount
-        self.currency = currency
-        self.location_revision = location_revision
-        self.configuration_fingerprint = configuration_fingerprint
-
-
 def _expected_context(command: BookAppointmentCommand) -> _ExpectedContext:
     duration = command.expected_planned_duration_minutes
     amount = command.expected_amount
@@ -541,6 +465,72 @@ def _expected_context(command: BookAppointmentCommand) -> _ExpectedContext:
         location_revision=location_revision,
         configuration_fingerprint=fingerprint,
     )
+
+
+def _contextual_command_fingerprint(
+    command: BookAppointmentCommand,
+    start_at: datetime,
+    expected: _ExpectedContext,
+) -> str:
+    return command_fingerprint(
+        "booking.book_appointment.contextual.v1",
+        {
+            "offering_version_id": command.offering_version_id,
+            "subject_party_id": command.subject_party_id,
+            "start_at": start_at,
+            "location_id": command.location_id,
+            "origin_request_id": command.origin_request_id,
+            "resources": [
+                {
+                    "requirement_id": str(choice.requirement_id),
+                    "resource_id": str(choice.resource_id),
+                    "resource_location_assignment_id": (
+                        str(choice.resource_location_assignment_id)
+                        if choice.resource_location_assignment_id is not None
+                        else None
+                    ),
+                    "assignment_revision": choice.assignment_revision,
+                    "availability_revision": choice.availability_revision,
+                }
+                for choice in sorted(
+                    command.resources,
+                    key=lambda item: (str(item.requirement_id), str(item.resource_id)),
+                )
+            ],
+            "expected_duration_minutes": expected.duration_minutes,
+            "expected_amount": str(expected.amount),
+            "expected_currency": expected.currency,
+            "expected_location_revision": expected.location_revision,
+            "expected_configuration_fingerprint": expected.configuration_fingerprint,
+        },
+    )
+
+
+async def _lock_offering_version(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    offering_version_id: UUID,
+) -> None:
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.offering_versions
+                WHERE organization_id = :organization_id
+                  AND id = :offering_version_id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "offering_version_id": offering_version_id,
+            },
+        )
+    ).first()
+    if row is None:
+        raise AppointmentOptionStale("OfferingVersion no longer exists")
 
 
 async def _lock_expected_location(
@@ -574,6 +564,46 @@ async def _lock_expected_location(
         raise AppointmentOptionStale("Location operational configuration changed")
 
 
+async def _lock_selected_assignments(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    choices: Mapping[UUID, ResourceChoice],
+) -> None:
+    assignment_ids = tuple(
+        sorted(
+            {
+                choice.resource_location_assignment_id
+                for choice in choices.values()
+                if choice.resource_location_assignment_id is not None
+            },
+            key=str,
+        )
+    )
+    if not assignment_ids:
+        return
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.resource_location_assignments
+                WHERE organization_id = :organization_id
+                  AND id = ANY(CAST(:assignment_ids AS uuid[]))
+                ORDER BY id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "assignment_ids": [str(value) for value in assignment_ids],
+            },
+        )
+    ).all()
+    if len(rows) != len(assignment_ids):
+        raise AppointmentOptionStale("one or more ResourceLocationAssignments changed")
+
+
 async def _load_resource_availability_revisions(
     session: AsyncSession,
     *,
@@ -605,8 +635,8 @@ async def _load_resource_availability_revisions(
 
 
 def _require_expected_resource_revisions(
-    choices: dict[UUID, ResourceChoice],
-    current: dict[UUID, int],
+    choices: Mapping[UUID, ResourceChoice],
+    current: Mapping[UUID, int],
 ) -> None:
     for choice in choices.values():
         expected = choice.availability_revision
@@ -618,11 +648,11 @@ def _require_expected_resource_revisions(
 
 def _resolve_selected_assignments(
     *,
-    choices: dict[UUID, ResourceChoice],
-    requirements: dict[UUID, _Requirement],
-    resources: dict[UUID, object],
+    choices: Mapping[UUID, ResourceChoice],
+    requirements: Mapping[UUID, _RequirementLike],
+    resources: Mapping[UUID, LockedResource],
     contextualized: set[UUID],
-    assignments_by_resource: dict[UUID, tuple[AssignmentObservation, ...]],
+    assignments_by_resource: Mapping[UUID, tuple[AssignmentObservation, ...]],
     location_id: UUID,
     start_at: datetime,
     end_at: datetime,
@@ -637,8 +667,7 @@ def _resolve_selected_assignments(
                 raise InvalidResourceSelection("assignment id/revision must be present together")
             if choice.resource_id in contextualized:
                 raise AppointmentOptionStale("Resource became contextualized")
-            resource = resources[choice.resource_id]
-            legacy_location = cast(UUID | None, getattr(resource, "location_id"))
+            legacy_location = resources[choice.resource_id].location_id
             if legacy_location is not None and legacy_location != location_id:
                 raise AppointmentOptionStale("legacy Resource Location changed")
             resolved[requirement.id] = None
@@ -667,8 +696,8 @@ def _resolve_selected_assignments(
 
 def _effective_context_observations(
     ordered_requirement_ids: tuple[UUID, ...],
-    selected_assignments: dict[UUID, AssignmentObservation | None],
-    context_terms: dict[UUID, tuple[ContextTermObservation, ...]],
+    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    context_terms: Mapping[UUID, tuple[ContextTermObservation, ...]],
     start_at: datetime,
 ) -> tuple[ContextBookingTerms | None, ...]:
     observations: list[ContextBookingTerms | None] = []
@@ -686,22 +715,16 @@ def _effective_context_observations(
 def _build_authoritative_profiles(
     *,
     ordered_requirement_ids: tuple[UUID, ...],
-    choices: dict[UUID, ResourceChoice],
-    selected_assignments: dict[UUID, AssignmentObservation | None],
-    resources: dict[UUID, object],
+    choices: Mapping[UUID, ResourceChoice],
+    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    resources: Mapping[UUID, LockedResource],
     location: LocationObservation,
-    assignment_schedules: dict[UUID, tuple[object, ...]],
-    assignment_exceptions: dict[UUID, tuple[object, ...]],
-    broad_exceptions: dict[UUID, tuple[object, ...]],
-    legacy_schedules: dict[UUID, tuple[object, ...]],
-    live_claims: dict[UUID, tuple[object, ...]],
+    assignment_schedules: Mapping[UUID, tuple[RecurringAvailability, ...]],
+    assignment_exceptions: Mapping[UUID, tuple[AvailabilityException, ...]],
+    broad_exceptions: Mapping[UUID, tuple[AvailabilityException, ...]],
+    legacy_schedules: Mapping[UUID, tuple[RecurringAvailability, ...]],
+    live_claims: Mapping[UUID, tuple[LiveCapacityClaim, ...]],
 ) -> dict[UUID, ResourceAvailability]:
-    from request_engine.modules.booking.domain.availability import (
-        AvailabilityException,
-        LiveCapacityClaim,
-        RecurringAvailability,
-    )
-
     profiles: dict[UUID, ResourceAvailability] = {}
     assignment_by_resource: dict[UUID, UUID | None] = {}
     for requirement_id in ordered_requirement_ids:
@@ -718,35 +741,23 @@ def _build_authoritative_profiles(
             continue
 
         resource = resources[choice.resource_id]
-        capacity_model = getattr(resource, "capacity_model")
-        capacity_units = cast(int, getattr(resource, "capacity_units"))
         if assignment is None:
-            timezone = cast(str, getattr(resource, "default_timezone"))
-            schedules = cast(
-                tuple[RecurringAvailability, ...], legacy_schedules.get(choice.resource_id, ())
-            )
-            exceptions = cast(
-                tuple[AvailabilityException, ...], broad_exceptions.get(choice.resource_id, ())
-            )
+            timezone = resource.default_timezone
+            schedules = legacy_schedules.get(choice.resource_id, ())
+            exceptions = broad_exceptions.get(choice.resource_id, ())
         else:
             timezone = location.timezone
-            schedules = cast(
-                tuple[RecurringAvailability, ...], assignment_schedules.get(assignment.id, ())
-            )
-            exceptions = cast(
-                tuple[AvailabilityException, ...],
-                broad_exceptions.get(choice.resource_id, ())
-                + assignment_exceptions.get(assignment.id, ()),
-            )
+            schedules = assignment_schedules.get(assignment.id, ())
+            exceptions = broad_exceptions.get(
+                choice.resource_id, ()
+            ) + assignment_exceptions.get(assignment.id, ())
         profiles[choice.resource_id] = ResourceAvailability(
-            capacity_model=capacity_model,
-            capacity_units=capacity_units,
+            capacity_model=resource.capacity_model,
+            capacity_units=resource.capacity_units,
             default_timezone=timezone,
             schedules=schedules,
             exceptions=exceptions,
-            live_claims=cast(
-                tuple[LiveCapacityClaim, ...], live_claims.get(choice.resource_id, ())
-            ),
+            live_claims=live_claims.get(choice.resource_id, ()),
         )
     return profiles
 
@@ -756,10 +767,10 @@ def _configuration_fingerprint(
     offering_version_id: UUID,
     location: LocationObservation,
     ordered_requirement_ids: tuple[UUID, ...],
-    choices: dict[UUID, ResourceChoice],
-    resources: dict[UUID, object],
-    current_availability_revisions: dict[UUID, int],
-    selected_assignments: dict[UUID, AssignmentObservation | None],
+    choices: Mapping[UUID, ResourceChoice],
+    resources: Mapping[UUID, LockedResource],
+    current_availability_revisions: Mapping[UUID, int],
+    selected_assignments: Mapping[UUID, AssignmentObservation | None],
     base_terms: BaseBookingTerms,
     context_observations: tuple[ContextBookingTerms | None, ...],
     resolved: ResolvedBookingTerms,
@@ -806,9 +817,124 @@ def _configuration_fingerprint(
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
-def _legacy_location_value(resource: object) -> str | None:
-    location_id = cast(UUID | None, getattr(resource, "location_id"))
-    return str(location_id) if location_id is not None else None
+def _legacy_location_value(resource: LockedResource) -> str | None:
+    return str(resource.location_id) if resource.location_id is not None else None
+
+
+async def _insert_contextual_reservation(
+    session: AsyncSession,
+    *,
+    command: BookAppointmentCommand,
+    location_id: UUID,
+    start_at: datetime,
+    end_at: datetime,
+    booking_policy: dict[str, object],
+) -> UUID:
+    return cast(
+        UUID,
+        (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO request_engine.reservations (
+                        organization_id,
+                        offering_version_id,
+                        subject_party_id,
+                        location_id,
+                        origin_request_id,
+                        during,
+                        booking_policy_snapshot
+                    ) VALUES (
+                        :organization_id,
+                        :offering_version_id,
+                        :subject_party_id,
+                        :location_id,
+                        :origin_request_id,
+                        tstzrange(:start_at, :end_at, '[)'),
+                        CAST(:booking_policy AS jsonb)
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "organization_id": command.organization_id,
+                    "offering_version_id": command.offering_version_id,
+                    "subject_party_id": command.subject_party_id,
+                    "location_id": location_id,
+                    "origin_request_id": command.origin_request_id,
+                    "start_at": start_at,
+                    "end_at": end_at,
+                    "booking_policy": json.dumps(booking_policy, separators=(",", ":")),
+                },
+            )
+        ).scalar_one(),
+    )
+
+
+async def _insert_contextual_claims(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    reservation_id: UUID,
+    requirements: Mapping[UUID, _RequirementLike],
+    choices: Mapping[UUID, ResourceChoice],
+    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    start_at: datetime,
+    end_at: datetime,
+) -> None:
+    for requirement in sorted(requirements.values(), key=lambda row: row.ordinal):
+        choice = choices[requirement.id]
+        assignment = selected_assignments[requirement.id]
+        quantity_row = await session.execute(
+            text(
+                """
+                SELECT quantity
+                FROM request_engine.offering_resource_requirements
+                WHERE organization_id = :organization_id
+                  AND id = :requirement_id
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "requirement_id": requirement.id,
+            },
+        )
+        quantity = cast(int, quantity_row.scalar_one())
+        await session.execute(
+            text(
+                """
+                INSERT INTO request_engine.capacity_claims (
+                    organization_id,
+                    resource_id,
+                    requirement_id,
+                    reservation_id,
+                    resource_location_assignment_id,
+                    during,
+                    quantity
+                ) VALUES (
+                    :organization_id,
+                    :resource_id,
+                    :requirement_id,
+                    :reservation_id,
+                    :resource_location_assignment_id,
+                    tstzrange(:start_at, :end_at, '[)'),
+                    :quantity
+                )
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "resource_id": choice.resource_id,
+                "requirement_id": requirement.id,
+                "reservation_id": reservation_id,
+                "resource_location_assignment_id": (
+                    assignment.id if assignment is not None else None
+                ),
+                "start_at": start_at,
+                "end_at": end_at,
+                "quantity": quantity,
+            },
+        )
 
 
 async def _insert_commercial_commitment(
