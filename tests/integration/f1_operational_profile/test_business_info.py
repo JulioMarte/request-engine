@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, time
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,6 +12,16 @@ from request_engine.platform.db.session import SessionFactory
 PgConnection = Connection[Any]
 
 
+def _uuid_row(
+    conn: PgConnection,
+    statement: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
+    row = conn.execute(statement, params).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -20,19 +30,17 @@ async def test_business_info_exposes_typed_public_operational_truth_only(
     session_factory: SessionFactory,
 ) -> None:
     suffix = uuid4().hex
-    organization_id = cast(
-        UUID,
-        admin_conn.execute(
-            """
-            INSERT INTO request_engine.organizations (
-                organization_key, display_name, legal_name,
-                default_timezone, default_locale, default_currency
-            ) VALUES (%s, 'Clinica Demo', 'Clinica Demo SRL',
-                      'America/Santo_Domingo', 'es-DO', 'DOP')
-            RETURNING id
-            """,
-            (f"clinic-{suffix}",),
-        ).fetchone()[0],
+    organization_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.organizations (
+            organization_key, display_name, legal_name,
+            default_timezone, default_locale, default_currency
+        ) VALUES (%s, 'Clinica Demo', 'Clinica Demo SRL',
+                  'America/Santo_Domingo', 'es-DO', 'DOP')
+        RETURNING id
+        """,
+        (f"clinic-{suffix}",),
     )
     admin_conn.execute(
         """
@@ -44,19 +52,17 @@ async def test_business_info_exposes_typed_public_operational_truth_only(
         """,
         (organization_id, organization_id),
     )
-    location_id = cast(
-        UUID,
-        admin_conn.execute(
-            """
-            INSERT INTO request_engine.locations (
-                organization_id, location_key, display_name, timezone,
-                address_line1, locality, administrative_area, postal_code, country_code
-            ) VALUES (%s, %s, 'Puerto Plata', 'America/Santo_Domingo',
-                      'Av. Demo 123', 'Puerto Plata', 'Puerto Plata', '57000', 'DO')
-            RETURNING id
-            """,
-            (organization_id, f"puerto-plata-{suffix}"),
-        ).fetchone()[0],
+    location_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.locations (
+            organization_id, location_key, display_name, timezone,
+            address_line1, locality, administrative_area, postal_code, country_code
+        ) VALUES (%s, %s, 'Puerto Plata', 'America/Santo_Domingo',
+                  'Av. Demo 123', 'Puerto Plata', 'Puerto Plata', '57000', 'DO')
+        RETURNING id
+        """,
+        (organization_id, f"puerto-plata-{suffix}"),
     )
     admin_conn.execute(
         """
