@@ -204,6 +204,66 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+  # Post-release schema evolution must be proven from production Alembic history,
+  # not by mutating or pretending that the frozen V3 candidate is still the head.
+  postgres-production-head:
+    name: PostgreSQL 18 production Alembic head
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_f1
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_f1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_f1
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_f1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
+      - name: Resolve test environment
+        run: uv sync --all-groups
+      - name: Upgrade production schema through Alembic
+        run: uv run alembic upgrade head
+      - name: Require expected production head
+        run: |
+          uv run alembic current
+          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0002_operational_profile_contextual_supply"
+      - name: Prove F1 relational schema and tenant boundaries
+        run: >-
+          uv run pytest tests/integration/f1_operational_profile
+          -q -m postgres --tb=short --durations=20
+      - name: Regress released V3 booking on production head
+        run: >-
+          uv run pytest
+          tests/integration/v3_booking_core
+          tests/integration/v3_booking_commitments
+          -q -m postgres --tb=short --durations=20
+
   # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
   # conditional, then always run this lightweight aggregate so a failed/skipped
   # prerequisite can never become a non-blocking skipped required check.
@@ -214,6 +274,7 @@ jobs:
       - observability-contract
       - postgres-v3-bootstrap-proof
       - postgres-v3-candidate-proof
+      - postgres-production-head
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
