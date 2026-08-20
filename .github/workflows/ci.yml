@@ -149,8 +149,12 @@ jobs:
       - name: Run canonical V3 bootstrap proof job
         run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
+  # V3 G17-G20 and the exact public-contract freeze are immutable release
+  # evidence bound to the released V3 source. Post-baseline branches must not
+  # regenerate or rewrite that evidence. Instead, run current code against the
+  # frozen candidate to prove backward compatibility.
   postgres-v3-candidate-proof:
-    name: PostgreSQL 18 V3 candidate proof
+    name: PostgreSQL 18 frozen V3 compatibility
     needs:
       - python-quality
       - observability-contract
@@ -177,9 +181,6 @@ jobs:
       PGDATABASE: request_engine_v3
       PGUSER: postgres
       PGPASSWORD: postgres
-      PHASE6_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      PHASE6_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      PHASE6_TESTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -193,16 +194,20 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Run canonical V3 candidate job
-        run: bash scripts/ci/run_v3_candidate_with_g19.sh
-      - name: Upload V3 candidate release proof
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: v3-candidate-release-proof
-          path: .phase6/
-          include-hidden-files: true
-          if-no-files-found: warn
+      - name: Apply immutable V3 candidate
+        run: bash scripts/db/apply_v3_candidate.sh
+      - name: Resolve test environment
+        run: uv sync --all-groups
+      - name: Prove current-code compatibility with frozen V3
+        run: >-
+          python scripts/ci/ci_jobs.py postgres-v3-candidate
+          --step schema-fingerprint
+          --step catalog-audit
+          --step worker-query-plans
+          --step queue-query-plans
+          --step booking-query-plans
+          --step v3-tests
+          --step concurrency-stability
 
   # Post-release schema evolution is proved from production Alembic history,
   # without mutating the frozen V3 candidate or its provenance evidence.
