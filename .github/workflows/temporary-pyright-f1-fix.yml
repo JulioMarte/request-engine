@@ -1,0 +1,136 @@
+name: Temporary F1 Pyright fix
+
+on:
+  push:
+    branches:
+      - feature/operational-profile-contextual-supply
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[pyright-f1-fix]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-groups
+      - name: Apply exact strict-typing rewrites
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"expected pattern not found in {path}: {old[:80]!r}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          availability = Path(
+              "src/request_engine/modules/booking/adapters/db/appointment_availability_reader.py"
+          )
+          replace_once(
+              availability,
+              """    ConflictingContextualTerms,\n    ContextNotBookable,\n""",
+              """    ConflictingContextualTerms,\n    ContextBookingTerms,\n    ContextNotBookable,\n""",
+          )
+          replace_once(
+              availability,
+              '''        resource_id = cast(UUID, row["resource_id"])\n        common = {\n            "requirement_id": cast(UUID, row["requirement_id"]),\n            "ordinal": cast(int, row["ordinal"]),\n            "quantity": cast(int, row["quantity"]),\n            "resource_id": resource_id,\n            "legacy_location_id": cast(UUID | None, row["location_id"]),\n            "availability_revision": cast(int, row["availability_revision"]),\n        }\n''',
+              '''        requirement_id = cast(UUID, row["requirement_id"])\n        ordinal = cast(int, row["ordinal"])\n        quantity = cast(int, row["quantity"])\n        resource_id = cast(UUID, row["resource_id"])\n        legacy_location_id = cast(UUID | None, row["location_id"])\n        availability_revision = cast(int, row["availability_revision"])\n''',
+          )
+          text = availability.read_text(encoding="utf-8")
+          contextual_common = """                        requirement_id=requirement_id,\n                        ordinal=ordinal,\n                        quantity=quantity,\n                        resource_id=resource_id,\n                        legacy_location_id=legacy_location_id,\n                        availability_revision=availability_revision,\n"""
+          legacy_common = """                requirement_id=requirement_id,\n                ordinal=ordinal,\n                quantity=quantity,\n                resource_id=resource_id,\n                legacy_location_id=legacy_location_id,\n                availability_revision=availability_revision,\n"""
+          if text.count("                        **common,\n") != 1:
+              raise SystemExit("expected one contextual **common expansion")
+          if text.count("                **common,\n") != 1:
+              raise SystemExit("expected one legacy **common expansion")
+          text = text.replace("                        **common,\n", contextual_common, 1)
+          text = text.replace("                **common,\n", legacy_common, 1)
+          text = text.replace(
+              "    context_observations = []\n",
+              "    context_observations: list[ContextBookingTerms | None] = []\n",
+              1,
+          )
+          text = text.replace(
+              "    context_observations: tuple[object, ...],\n",
+              "    context_observations: tuple[ContextBookingTerms | None, ...],\n",
+              1,
+          )
+          old_contexts = '''    contexts = []\n    for observation in context_observations:\n        if observation is None:\n            contexts.append(None)\n        else:\n            typed = cast(object, observation)\n            from request_engine.modules.booking.domain.contextual_supply import ContextBookingTerms\n\n            value = cast(ContextBookingTerms, typed)\n            contexts.append({"id": str(value.id), "revision": value.revision})\n'''
+          new_contexts = '''    contexts: list[dict[str, object] | None] = []\n    for observation in context_observations:\n        if observation is None:\n            contexts.append(None)\n        else:\n            contexts.append({"id": str(observation.id), "revision": observation.revision})\n'''
+          if old_contexts not in text:
+              raise SystemExit("expected untyped fingerprint contexts block")
+          availability.write_text(text.replace(old_contexts, new_contexts, 1), encoding="utf-8")
+
+          reservation = Path(
+              "src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py"
+          )
+          replace_once(
+              reservation,
+              '''class _RequirementLike(Protocol):\n    id: UUID\n    ordinal: int\n''',
+              '''class _RequirementLike(Protocol):\n    @property\n    def id(self) -> UUID: ...\n\n    @property\n    def ordinal(self) -> int: ...\n''',
+          )
+          replace_once(
+              reservation,
+              '''                "assignment_id": (\n                    str(selected_assignments[requirement_id].id)\n                    if selected_assignments[requirement_id] is not None\n                    else None\n                ),\n                "assignment_revision": (\n                    selected_assignments[requirement_id].revision\n                    if selected_assignments[requirement_id] is not None\n                    else None\n                ),\n''',
+              '''                "assignment_id": _assignment_id(\n                    selected_assignments[requirement_id]\n                ),\n                "assignment_revision": _assignment_revision(\n                    selected_assignments[requirement_id]\n                ),\n''',
+          )
+          text = reservation.read_text(encoding="utf-8")
+          marker = '''def _legacy_location_value(resource: LockedResource) -> str | None:\n'''
+          helpers = '''def _assignment_id(assignment: AssignmentObservation | None) -> str | None:\n    return str(assignment.id) if assignment is not None else None\n\n\ndef _assignment_revision(assignment: AssignmentObservation | None) -> int | None:\n    return assignment.revision if assignment is not None else None\n\n\n'''
+          if marker not in text:
+              raise SystemExit("expected legacy location helper marker")
+          reservation.write_text(text.replace(marker, helpers + marker, 1), encoding="utf-8")
+
+          business = Path(
+              "src/request_engine/modules/catalog/adapters/db/business_info_reader.py"
+          )
+          replace_once(
+              business,
+              "from collections import defaultdict\n",
+              "from collections import defaultdict\nfrom collections.abc import Sequence\n",
+          )
+          replace_once(
+              business,
+              "from sqlalchemy import text\n",
+              "from sqlalchemy import text\nfrom sqlalchemy.engine import RowMapping\n",
+          )
+          replace_once(
+              business,
+              '''    location_contact_rows = []\n    hours_rows = []\n    exception_rows = []\n''',
+              '''    location_contact_rows: Sequence[RowMapping] = ()\n    hours_rows: Sequence[RowMapping] = ()\n    exception_rows: Sequence[RowMapping] = ()\n''',
+          )
+          PY
+      - name: Apply canonical lint and formatting to touched files
+        run: |
+          uv run ruff check --fix \
+            src/request_engine/modules/booking/adapters/db/appointment_availability_reader.py \
+            src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py \
+            src/request_engine/modules/catalog/adapters/db/business_info_reader.py
+          uv run ruff format \
+            src/request_engine/modules/booking/adapters/db/appointment_availability_reader.py \
+            src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py \
+            src/request_engine/modules/catalog/adapters/db/business_info_reader.py
+      - name: Commit strict-typing fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/request_engine/modules/booking/adapters/db/appointment_availability_reader.py \
+            src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py \
+            src/request_engine/modules/catalog/adapters/db/business_info_reader.py
+          git commit -m "fix: make F1 contextual paths strict-type-safe [pyright-f1-fix]"
+          git push origin HEAD:feature/operational-profile-contextual-supply
