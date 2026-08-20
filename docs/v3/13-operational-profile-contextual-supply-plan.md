@@ -4,9 +4,25 @@ Status: active design/implementation plan for `feature/operational-profile-conte
 
 Base: `development@9665873a90ecbaa52a17b4aff1ec4d1cd4c70573` (post-V3 baseline, after documentation reconciliation PR #74).
 
-This document defines the complete scope, sequencing, design constraints, invariants, implementation phases and acceptance criteria for the first post-V3 feature in the operational-profile/discovery roadmap.
+Normative F1 contract:
 
-It is intentionally narrower than cross-tenant discovery, live service operations, operational projections, recovery communications and the natural-language operational copilot. Those later features depend on the contracts established here.
+```text
+docs/v3/15-operational-profile-contextual-supply-contract.md
+```
+
+Complete F1–F6 product/design direction:
+
+```text
+docs/v3/14-operational-intelligence-roadmap.md
+```
+
+Durable rationale:
+
+```text
+docs/adr/0012-contextual-resource-location-supply.md
+```
+
+This document defines the implementation scope, sequencing, proof obligations and Definition of Done for F1 only. Later cross-tenant discovery, live service operations, operational projections, recovery communications and the natural-language operational copilot are deliberately separate features even though their accepted direction is preserved in the roadmap.
 
 ---
 
@@ -21,19 +37,29 @@ at Clínica Brugal, with any eligible doctor, and what will it cost?
 
 The answer must not require Directus, a CMS, RAG, Memory or manual orchestration across unrelated systems for operational truth.
 
-The system must be able to determine, from Request Engine state alone:
+RE must be able to determine:
 
 ```text
 what service exists
-which version applies
+which OfferingVersion applies
 where it can be delivered
 which Resources are eligible
-when each Resource is actually available at that Location
-which operational hours constrain the service
-which exceptions apply
-how long the visit is planned to take
-what price applies in that context
-whether the resulting concrete option is bookable
+when each Resource actually works at that Location
+which Location hours constrain the service
+which schedule exceptions apply
+how long the appointment is planned to take
+what fixed price applies in that exact context
+whether the concrete option is currently bookable
+```
+
+It must also provide the minimum public operational profile needed to act without a CMS, including:
+
+```text
+business display identity
+Location address
+Location timezone
+Location operational hours
+Location public operational contact endpoints
 ```
 
 Directus remains presentation/content authority. Memory remains learned customer-context authority. Request Engine owns operational truth.
@@ -44,39 +70,62 @@ Core boundary:
 
 ---
 
-## 2. Non-goals
+## 2. F1 scope
 
-This feature does NOT implement:
+F1 implements only the foundational tenant-scoped operational model.
+
+### Included
+
+```text
+minimal Organization operational profile defaults
+Location structured address/timezone/status
+Location public operational contact endpoints
+Location recurring operational hours
+normalized Location latitude/longitude
+Resource-at-Location effective assignment
+Resource-at-Location recurring availability
+Resource schedule exceptions scoped to the affected context
+Offering/OfferingVersion defaults
+contextual Resource + Location + OfferingVersion fixed price/duration
+future effective contextual terms
+historical Reservation price/currency provenance
+normalized time-window slot queries
+stale option/config revalidation
+backward compatibility with released V3 booking
+```
+
+### Explicitly not implemented in F1
 
 ```text
 cross-tenant marketplace/discovery search
-platform-wide discovery tokens
+platform-wide discovery token/authority
 popularity ranking
 Google reviews / Google Business enrichment
+distance/radius marketplace search itself
 live queue workload projection
 same-day adaptive intake closure
 ServiceSession execution telemetry
 emergency / medical-representative operational activities
 patient ETA prediction
 end-of-day shortfall recovery
-rescheduling campaigns
+rescheduling campaigns driven by live shortfall
 natural-language configuration assistant
 EHR/EMR/clinical records
 medical notes, diagnoses or medications
 CRM or CMS functionality
 route optimization
-mobile service-area dispatch
+mobile ServiceArea dispatch
 universal pricing engine
 machine-learned automatic policy mutation
 ```
 
-The schema/contracts must not block those later features, but they must not be implemented speculatively here.
+These are preserved in `14-operational-intelligence-roadmap.md`; they are not lost or silently rejected.
 
 ---
 
 ## 3. Architectural position
 
-This feature extends existing V3 baseline modules rather than creating a universal configuration module.
+F1 extends the existing modular-monolith baseline. It does not create a generic configuration module.
 
 ### `tenancy`
 
@@ -85,10 +134,11 @@ Owns:
 ```text
 Organization identity
 Principal/Representation authority
-minimal operational tenant profile defaults
+minimal operational tenant defaults
+Party / PartyContactPoint identity remains separate
 ```
 
-Candidate Organization operational defaults:
+Organization defaults are typed and narrow:
 
 ```text
 legal_name
@@ -99,150 +149,202 @@ default_currency
 status
 ```
 
-These fields must remain minimal. Do not create an unbounded `operational_config JSONB` god object.
+Do not create an unbounded `operational_config JSONB` god object.
 
 ### `catalog`
 
-Owns stable/versioned commercial and structured business truth:
+Owns:
 
 ```text
-Location
+Location identity/public operational profile
+Location structured address
+Location public operational contact endpoints
+Location operational hours
+Location geospatial coordinates
 Offering
 OfferingVersion
 ResourceCapability vocabulary
 OfferingResourceRequirement
-visit/service variant vocabulary if introduced as Offering-owned configuration
-structured public operational information
+base/default commercial terms
 ```
 
-Location gains first-class geospatial coordinates because future discovery must calculate physical proximity without external geocoding on every query.
+Public Location endpoints are not a CRM profile and are not a substitute for PartyContactPoint identity.
 
 ### `booking`
 
-Owns capacity and concrete Resource availability:
+Owns:
 
 ```text
 Resource
 ResourceCapability assignment
-AvailabilitySchedule
-ScheduleException
+Resource-at-Location assignment
+Resource-at-Location recurring availability
+Resource schedule exceptions
+booking-specific contextual terms
 CapacityHold
 CapacityClaim
 Reservation
 AttendanceResponse
-Resource-at-Location operational assignment if accepted
-contextual availability needed for concrete booking
 ```
 
-The existing V3 rule postponing `ResourceAssignment` is re-opened by a concrete product requirement: the same physician/resource may work at different Locations on different days and may expose different services, prices, durations and schedules in each context. The implementation must prove the new concept is independently mutable execution/availability configuration and not duplicate CapacityClaim truth.
+Resource remains the local capacity/serialization root. CapacityClaim remains the authoritative capacity-consumption ledger.
 
-No new generic `configuration` bounded context is introduced.
+The new Resource-at-Location concept represents eligibility/configuration, not capacity consumption.
 
 ---
 
-## 4. Domain scenarios the feature MUST support
+## 4. Durable model decision
 
-### 4.1 Physician working at multiple locations
+The released V3 baseline explicitly deferred `ResourceAssignment` until a real independently mutable execution/assignment requirement existed.
+
+That requirement now exists:
+
+```text
+one physician/resource
+-> multiple Locations
+-> different days/hours by Location
+-> potentially different bookable Offerings by Location
+-> different fixed price/duration by Resource + Location + OfferingVersion
+```
+
+F1 therefore introduces an explicit effective-dated Resource-at-Location assignment, conceptually/canonically described as:
+
+```text
+ResourceLocationAssignment
+```
+
+until implementation proves the final persisted name.
+
+Hard rules:
+
+```text
+assignment does not consume capacity
+assignment cannot cross Organization boundaries
+ambiguous overlapping effective configuration is forbidden
+retiring assignment cannot rewrite historical Reservation/Claim meaning
+shared-capacity binding still applies to the underlying Resource
+```
+
+ADR 0012 records the rationale and remains `Proposed` until implementation/evidence proves it.
+
+---
+
+## 5. Required domain scenarios
+
+### 5.1 Physician at multiple Locations
 
 ```text
 Dr. Pérez
 
 Clínica Brugal
   Tue/Thu 13:00-17:00
-  Cardiology
+  Cardiology - New Consultation
   DOP 3,500
   45 minutes
 
-Clínica B
+Clinic B
   Fri 08:00-12:00
-  Cardiology
+  Cardiology - New Consultation
   DOP 4,000
   30 minutes
 ```
 
-The model must not store one ambiguous `Resource.schedule` and pretend it applies everywhere.
+RE must never conflate those contexts.
 
-### 4.2 Location operational hours
+### 5.2 Location hours constrain Resource availability
 
 ```text
 Clínica Brugal open 08:00-18:00
 Dr. Pérez present 13:00-17:00
-Cardiology available 13:00-17:00
+bookable interval must fit both
 ```
 
-Final bookable capacity is constrained by all applicable authoritative layers.
+A Resource schedule alone cannot make a physical Location available while the Location is closed unless an explicit exception/additional-hours rule makes the Location operational.
 
-### 4.3 Temporary schedule exception
+### 5.3 Temporary schedule exceptions
 
-Examples:
+Must represent without rewriting recurrence:
 
 ```text
-"This Friday I stop at 2 PM."
-"I will not work next Monday."
-"This Tuesday I will work until 7 PM."
-"Block 12 PM to 1 PM for lunch."
+This Friday I stop at 2 PM.
+I will not work next Monday.
+This Tuesday I will work until 7 PM.
+Block 12 PM to 1 PM for lunch.
 ```
 
-These must be representable as effective-dated exceptions without rewriting the recurring baseline schedule.
+An exception targeted to one Resource/Location context must not accidentally modify that Resource at another Location.
 
-### 4.4 Future price change
+### 5.4 Future price change
 
 ```text
-Current cardiology price: DOP 3,500
-From 2026-09-01: DOP 4,000
+current = DOP 3,500
+from 2026-09-01 = DOP 4,000
 ```
 
-Reservations confirmed before the change retain the commercial commitment under which they were booked. No later configuration edit may retroactively change their agreed price/provenance.
+Fresh bookings after the effective boundary use the new terms. Existing confirmed Reservations preserve the old committed amount/currency.
 
-### 4.5 Different price/duration by Resource + Location
-
-The same OfferingVersion may require contextual commercial/operational terms:
+### 5.5 Different price/duration by Resource + Location
 
 ```text
 Dr. Pérez @ Brugal  = DOP 3,500 / 45m
 Dr. Pérez @ Clinic B = DOP 4,000 / 30m
 ```
 
-The design must decide explicitly whether these are overrides of OfferingVersion defaults, separate effective-dated contextual terms, or a different versioning model. Precedence must be deterministic and explainable.
+Exact contextual terms override OfferingVersion defaults only for that exact effective scope.
 
-### 4.6 Visit/service variants
+### 5.6 Operational visit types
 
-A physician may distinguish operationally:
+F1 does not create a parallel universal `VisitVariant` aggregate.
+
+When an operational visit type has independently meaningful price, duration or booking semantics, model it as a distinct Offering/OfferingVersion that can share a searchable service/category family:
 
 ```text
-new patient consultation
-follow-up
-results review
-procedure
+Cardiology - New Consultation
+Cardiology - Follow-up
+Cardiology - Results Review
 ```
 
-These are not a universal clinical taxonomy. They are tenant/Offering-owned operational variants with explicit planned duration and potentially contextual price. The design must determine whether they are distinct Offerings, OfferingVersions, or versioned child variants. Avoid parallel lifecycle duplication.
+Future live-operation classification may distinguish expected from actual service type, but it must not rewrite the booked OfferingVersion.
 
-### 4.7 Time-window query
+### 5.7 Time-window query
 
-The capability layer must be able to express:
+Natural-language interfaces may understand:
+
+```text
+tomorrow afternoon
+between 1 and 5
+after 2
+```
+
+but F1 Booking receives normalized temporal constraints such as:
 
 ```text
 2026-08-21 13:00-17:00
 ```
 
-for natural-language intents such as:
+Natural-language parsing stays outside Booking.
+
+### 5.8 Public operational contact information
+
+Without Directus, `business.get_info` must be able to provide safe operational facts such as:
 
 ```text
-"tomorrow afternoon"
-"between 1 and 5"
-"after 2"
+Clínica Brugal
+address
+phone/WhatsApp/email endpoints explicitly marked public
+operational hours
+timezone
 ```
 
-Natural-language parsing is outside this feature. Request Engine receives normalized temporal constraints and applies timezone-aware operational rules.
+Possession of a contact endpoint never grants authority.
 
 ---
 
-## 5. Location and geospatial contract
+## 6. Location and geospatial foundation
 
-`Location` must represent a physical operational place, not a Resource's identity.
+`Location` represents a physical operational place.
 
-Candidate fields/concepts:
+Required concepts:
 
 ```text
 id
@@ -250,320 +352,446 @@ organization_id
 name
 status
 timezone
-address fields
-latitude
-longitude
+structured address
+latitude?
+longitude?
 geocoding_source?
 geocoded_at?
-revision/effective state as required
+revision/effective metadata as required
 ```
 
-Requirements:
+Coordinate requirements:
 
-- Coordinates are normalized and authoritative enough for future distance calculations.
-- Coordinates must be validated to legal latitude/longitude ranges.
-- A Location participating in future geospatial discovery must have usable coordinates.
-- Booking must not call Google Maps/Mapbox/etc. to determine distance during ordinary availability queries.
-- External geocoding is an ingestion/configuration concern and must not run while authoritative DB locks are held.
-- Do not introduce `ServiceArea` for physical-clinic discovery. Future `ServiceArea` means an area where a mobile service may be delivered; proximity to a fixed Location is a separate concept.
-- PostGIS adoption is allowed only if justified by the implementation/query plan; do not add it merely because coordinates exist.
+```text
+-90 <= latitude <= 90
+-180 <= longitude <= 180
+both coordinates present or both absent
+```
+
+F1 persists trustworthy normalized coordinates so F2 can calculate proximity without calling Google/Mapbox for every discovery query.
+
+External geocoding is an ingestion/configuration concern and cannot run under authoritative DB locks.
+
+F1 does **not** introduce `ServiceArea` for fixed clinics. Future `ServiceArea` means where a mobile service can actually be delivered; proximity to a fixed Location is a different concept.
+
+PostGIS is optional and must be justified by the F2 query/index plan rather than added speculatively in F1.
 
 ---
 
-## 6. Schedule composition contract
+## 7. Public Location contact endpoints
 
-The final operational availability must be deterministic and explainable.
+A Location may expose `0..N` structured public operational contact endpoints.
 
-The design must formalize the intersection/precedence among at least:
+Initial supported kinds may include:
 
 ```text
-Organization operational defaults (only if operationally meaningful)
+phone
+whatsapp
+email
+```
+
+The accepted schema must provide:
+
+```text
+tenant consistency
+normalization/validation appropriate to kind
+active/public state
+stable purpose/label only if operationally needed
+```
+
+Do not turn this into arbitrary customer/contact management.
+
+PartyContactPoint remains a separate tenancy concept for Parties and communication identity.
+
+---
+
+## 8. Schedule composition
+
+For contextual Resource booking, final potential availability is deterministic:
+
+```text
 Location operational hours
+INTERSECT
 Resource-at-Location recurring availability
-Offering/visit-variant restrictions when required
-ScheduleException
-existing CapacityClaims/Holds/Reservations
+INTERSECT
+explicit Offering/context temporal eligibility when configured
+APPLY
+ScheduleException / additional availability
+THEN
+capacity revalidation against Holds/Claims/Reservations
 ```
 
-Preferred principle:
+### 8.1 Organization hours
+
+Organization may expose general business hours for informational purposes, but multi-location booking must not silently inherit one Organization schedule into every Location.
+
+Physical bookings are constrained by the selected Location.
+
+### 8.2 Exception semantics
+
+Exceptions may:
 
 ```text
-base schedules define potential availability
-exceptions narrow or extend a specific effective period
-capacity claims consume otherwise-valid availability
+remove availability
+shorten a day
+add availability
+extend one day
+block a local sub-range
 ```
 
-No hidden magic inheritance is permitted. If an override system exists, precedence must be documented, testable and returned in provenance where useful.
+They never rewrite the recurring baseline schedule.
 
-Timezones:
+### 8.3 Timezones
 
-- Persistent intervals use timezone-safe timestamps according to existing V3 conventions.
-- Recurring local schedules are interpreted in the owning Location/resource operational timezone.
-- DST behavior must be explicit even if the initial target locale is Dominican Republic.
-- API presentation timezone is not authority for schedule calculation.
+Recurring local schedules are interpreted in the Location IANA timezone.
+
+Concrete authoritative intervals use timezone-aware instants and half-open `[start,end)` semantics.
+
+DST ambiguity/nonexistent local times must be explicit even if the initial Dominican target does not use DST.
+
+Presentation timezone never becomes schedule authority.
 
 ---
 
-## 7. Contextual commercial terms and historical price commitment
+## 9. Contextual commercial terms
 
-This feature must establish a narrow pricing contract without becoming a pricing engine.
+F1 deliberately implements only a narrow deterministic price contract.
 
-Supported initial semantics should cover:
+### Supported
 
 ```text
-base/default OfferingVersion price
-Resource/Location contextual price when explicitly configured
-effective dating
+fixed amount
 currency
+OfferingVersion default
+exact Resource + Location + OfferingVersion effective override
 planned duration
-visit variant contextual terms if accepted
+effective dating
 ```
 
-Explicitly out of scope initially:
+### Resolution precedence
 
 ```text
-percentage formulas
+exact effective Resource + Location + OfferingVersion context
+>
+OfferingVersion base/default
+>
+required term missing => not quoteable/bookable
+```
+
+No hidden arbitrary inheritance graph is allowed.
+
+### Explicitly out of scope
+
+```text
+percentage/expression formulas
 dynamic surge pricing
 insurance adjudication
 coupons/promotions engine
-complex tax calculation
+complex tax engine
 auctions
 ML pricing
-arbitrary expression language
 ```
 
-Reservation history requirement:
+---
 
-A confirmed Reservation must preserve the exact commercial terms required to explain the booking later, including at minimum:
+## 10. Historical Reservation commercial commitment
+
+A confirmed Reservation must preserve enough immutable information to explain later what was agreed.
+
+At minimum:
 
 ```text
+committed amount
 currency
-committed amount or immutable price reference
-pricing/context provenance sufficient to explain why it applied
 OfferingVersion reference
+context/revision/provenance sufficient to explain why those terms applied
 ```
 
-Changing future operational configuration must never mutate the historical commitment of an already-confirmed Reservation.
+Changing future price, schedule, assignment or Location configuration must never retroactively change that historical commitment.
 
-The implementation must explicitly choose between snapshot + provenance and immutable referenced commercial-version records. Do not depend on mutable joins to reconstruct historical price.
+Do not reconstruct historical price exclusively through mutable current joins.
+
+Legacy Reservations created before F1 are not rewritten to invent provenance they never captured.
 
 ---
 
-## 8. Resource-at-Location / contextual supply model
+## 11. `find_slots` and `book` semantics
 
-A core design task is to determine the minimal explicit model for:
+F1 extends existing capability semantics without exposing CRUD internals.
+
+### `business.get_info`
+
+May return safe structured operational data:
 
 ```text
-Resource
-  × Location
-  × OfferingVersion / operational visit variant
-  × effective time
-  × schedule
-  × price/duration/policy overrides
+Organization display identity
+Locations
+addresses
+public Location contact endpoints
+Location hours/timezone
 ```
 
-Candidate conceptual decomposition:
+### `catalog.search_offerings` / `catalog.get_offering`
+
+Remain version-aware and can filter/describe applicable Location/effective service context without promising concrete Resource capacity until Booking resolves it.
+
+### `appointments.find_slots`
+
+Normalized input can include:
 
 ```text
-ResourceLocationAssignment
-  resource_id
-  location_id
-  effective_from/effective_until
-  status
-
-ResourceOfferingContext
-  assignment_id
-  offering_version_id or visit_variant_id
-  effective commercial terms
-  booking-relevant context
-```
-
-Names are provisional.
-
-Hard constraints:
-
-- Do not duplicate CapacityClaim as a second capacity ledger.
-- Do not create independent execution state in this feature.
-- Do not make mutable assignment history capable of rewriting the meaning of existing Reservations/Claims.
-- If assignment/configuration is referenced by authoritative historical state, effective dating/immutability/revision rules must preserve provenance.
-- Cross-module imports must use contracts surfaces.
-- No generic CRUD repository should replace semantic persistence adapters.
-
----
-
-## 9. Public/application capability target
-
-Existing capabilities remain capability-oriented rather than entity CRUD.
-
-This feature should evolve/extend the semantics of:
-
-```text
-business.get_info
-catalog.search_offerings
-catalog.get_offering
-appointments.find_slots
-appointments.book
-```
-
-Desired normalized query example:
-
-```text
-appointments.find_slots(
-  offering = cardiology,
-  location = Clinica Brugal,
-  window = 2026-08-21T13:00..17:00,
-  resource_preference = any
-)
-```
-
-Desired option result may include policy-permitted fields such as:
-
-```text
-option/token
-resource/provider display info
+offering/version
 Location
-start_at
-end_at
+explicit time window
+subject when eligibility depends on it
+resource preference = any or explicit Resource
+presentation timezone
+```
+
+AppointmentOption may include:
+
+```text
+opaque option token/id
+Resource/provider display info when policy allows
+Location
+start/end
 planned duration
 applicable amount/currency
-commercial provenance/reference as appropriate
+opaque configuration observation/fingerprint
 ```
 
-`find_slots` remains advisory and creates no capacity commitment. `appointments.book` revalidates authoritative state and commercial/context rules according to the accepted contract.
+The option is advisory and creates no capacity commitment.
 
-The implementation must decide whether an option token pins an observed price/config revision and what happens when price/config changes between `find_slots` and `book`.
+### `appointments.book`
 
-That race MUST be specified and tested; silent price substitution is not acceptable.
+Inside the authoritative transaction, revalidate:
+
+```text
+tenant/authority
+OfferingVersion state
+ResourceLocationAssignment state
+Location hours
+Resource-at-Location schedule
+exceptions
+contextual terms
+capacity
+shared-capacity root when applicable
+```
+
+Success persists capacity + Reservation + historical commercial commitment coherently.
 
 ---
 
-## 10. Authorization and authority model
+## 12. Stale option policy
 
-This feature remains tenant-scoped.
+This decision is closed for F1:
 
-It does NOT add cross-tenant discovery authority.
+> A material price/context change after `find_slots` causes stale/conflict behavior. `book` never silently substitutes a materially different price.
 
-Actors may eventually include physician, secretary, clinic admin and platform service, but this feature only adds permissions actually required by the implemented commands.
+The caller receives a machine-readable response directing it to obtain fresh options.
+
+The option token/fingerprint must be sufficient to detect relevant material configuration changes.
+
+The same advisory/revalidation principle applies when assignment/schedule/Offering state changes: stale discovery cannot override current authority.
+
+---
+
+## 13. Authorization
+
+F1 is tenant-scoped.
+
+No platform-wide discovery authority is implemented here.
+
+Configuration requires:
+
+```text
+authenticated Principal
+Organization context
+specific Representation/permission for target scope
+```
+
+Future roles are preserved in the roadmap, but F1 adds only permissions required by actual commands.
 
 Rules:
 
-- Possession of IDs never grants authority.
-- Organization remains the security boundary.
-- Resource-specific configuration changes require authenticated Principal + valid Representation/permission semantics.
-- Secretary/doctor fine-grained roles may be prepared only when a concrete command needs them; do not prebuild a universal RBAC product.
-- `request_engine_admin` must not become the normal application path for configuring physician operational state.
-- RLS/tenant context remains defense-in-depth.
-- Natural-language assistant authority is out of scope; later assistants must call the same semantic commands rather than direct DB mutation.
+```text
+IDs do not grant authority
+request_engine_admin is not normal clinic configuration authority
+cross-tenant guessed IDs remain opaque/rejected
+RLS remains defense-in-depth
+future LLM assistant calls semantic commands, never SQL/direct tables
+```
 
 ---
 
-## 11. PostgreSQL / migration rules
+## 14. Candidate semantic commands
 
-This is post-V3 production evolution.
+Names may be refined during implementation, but responsibilities must remain explicit:
+
+```text
+UpdateOrganizationOperationalProfile
+CreateLocation
+UpdateLocationOperationalInfo
+SetLocationOperationalHours
+SetLocationPublicContactEndpoints
+AssignResourceToLocation
+RetireResourceLocationAssignment
+SetResourceLocationAvailability
+CreateResourceScheduleException
+ChangeResourceScheduleException
+ConfigureBookingContextTerms
+ScheduleFutureBookingContextTerms
+```
+
+Each network/agent retryable write defines:
+
+```text
+idempotency
+authority
+expected revision/stale intent behavior
+transaction boundary
+invariants
+machine-readable failures
+audit provenance
+```
+
+No generic CRUD endpoint substitutes for semantic commands.
+
+---
+
+## 15. PostgreSQL and migration rules
+
+F1 is post-V3 append-only evolution.
 
 Non-negotiable:
 
 ```text
 DO NOT edit migrations/versions/0001_initial.py
-DO NOT append product changes to migrations/sql/v3_candidate/
-DO NOT mutate historical V2 design-chain files
+DO NOT append F1 product changes to migrations/sql/v3_candidate/
+DO NOT mutate migrations/sql/design_chain/ history
 ```
 
-Schema evolution uses a new append-only Alembic revision after `0001_initial` according to repository migration policy.
+New schema uses new Alembic revision(s) after the baseline.
 
-Database responsibilities may include:
+PostgreSQL owns/backstops:
 
 ```text
-relational/cardinality constraints
-effective-date integrity where feasible
-tenant ownership consistency
-immutable historical references
-coordinate range checks
+same-Organization relationships
+coordinate structural constraints
+effective-date non-ambiguity
+relational cardinality
+historical-reference protection
 currency/amount structural constraints
-schedule/exception integrity backstops
-race-sensitive uniqueness/exclusion constraints where required
+schedule/context overlap constraints when feasible
+RLS/runtime privilege boundaries
 ```
 
 Python owns:
 
 ```text
 semantic command/query validation
-policy resolution
-context precedence orchestration
+policy/context resolution
 authorization
 transaction framing
-option/price resolution semantics
-external geocoding adapter orchestration if later implemented
+option fingerprint semantics
+external geocoding orchestration
 ```
 
-No external I/O while authoritative DB locks are held.
+No external I/O under authoritative locks.
 
 ---
 
-## 12. Concurrency and race questions that MUST be closed
+## 16. Concurrency/race matrix
 
-Before implementation is considered complete, the design must specify and tests must falsify at least:
+Before F1 is complete, tests must attempt to falsify at least:
 
-1. Price changes after `find_slots` but before `book`.
-2. Resource-location assignment revoked after option discovery but before booking.
-3. Schedule exception created after option discovery but before booking.
-4. Location hours changed while booking is attempted.
-5. Offering/visit variant becomes inactive after discovery.
-6. Concurrent conflicting effective-dated contextual-term writes.
-7. Concurrent schedule edits that would create ambiguous overlapping active configuration.
-8. Existing Reservation remains explainable after assignment/price/schedule changes.
-9. Existing CapacityClaim provenance cannot be invalidated by config mutation.
-10. Two Resources/Locations with same display names never become authority-confused; IDs remain canonical.
-11. Timezone boundary and DST cases do not produce duplicate/invalid intervals.
-12. Cross-tenant guessed IDs are rejected/opaque according to existing security contracts.
+1. price changes after `find_slots` but before `book`;
+2. assignment is retired after discovery but before booking;
+3. schedule exception is added after discovery but before booking;
+4. Location hours change after discovery;
+5. OfferingVersion becomes inactive after discovery;
+6. concurrent overlapping effective contextual-term writes;
+7. concurrent overlapping assignment/schedule writes;
+8. configuration mutation concurrent with Booking;
+9. existing Reservation remains explainable after price/assignment/schedule changes;
+10. existing CapacityClaim provenance cannot be invalidated by config mutation;
+11. duplicate display names cannot create authority confusion;
+12. timezone/DST boundary does not create duplicate/invalid concrete intervals;
+13. cross-tenant guessed IDs remain opaque;
+14. contextual booking cannot bypass shared-capacity contention;
+15. public contact endpoint mutation cannot cross tenant boundaries.
 
-Booking success must always mean the concrete option was revalidated under authoritative current state inside the correct transaction protocol.
+Booking success always means current contextual state and capacity were revalidated under the accepted transaction protocol.
 
 ---
 
-## 13. Data migration/backward compatibility
+## 17. Backward compatibility
 
-The existing V3 baseline contains tenant-local Resources, schedules, Locations and Offering relationships.
+Released V3 already contains Resources, AvailabilitySchedules, ScheduleExceptions, Locations, Offerings, Reservations and Claims.
 
-The implementation plan must include an explicit compatibility strategy:
+Compatibility requirements:
 
 ```text
-existing Resources without contextual assignments
-existing AvailabilitySchedules
-existing Reservations/Claims
-existing Locations without coordinates
-existing OfferingVersions
+existing Resource without contextual assignment
+existing Resource schedule
+existing Reservation/Claim
+existing Location without coordinates
+existing OfferingVersion
 ```
 
-Preferred rule:
+Normative fallback:
 
-- Existing V3 behavior continues to work without requiring immediate backfill of optional new contextual features.
-- New contextual semantics activate only when the relevant configuration exists.
-- No migration may reinterpret old historical Reservations or Claims.
-- Coordinates may be nullable for legacy/non-discovery Locations unless the accepted contract proves a stronger invariant is safe.
+```text
+accepted contextual configuration exists
+  -> use F1 contextual resolution
+else
+  -> preserve released V3 booking behavior
+```
 
-Any mandatory backfill must be deterministic, reviewable and tested on clean + upgraded databases.
+No immediate coordinate backfill is required for legacy Locations not participating in future geospatial discovery.
+
+No migration reinterprets historical Reservations/Claims.
+
+Any required structural backfill must be deterministic and proven on upgrade from `0001_initial`.
 
 ---
 
-## 14. Implementation phases
+## 18. Implementation phases
 
-### Phase A — architecture reconciliation
+### Phase A — documentation/architecture reconciliation
 
-Before schema code:
+Completed on the branch at the design-contract level when all of the following are present and mutually consistent:
 
-1. Compare this feature against current normative documents.
-2. Amend `docs/v3/01-capability-contracts.md` where public semantics change.
-3. Amend `docs/v3/02-pre-sql-contract.md` with cardinalities, transaction/race rules and invariants.
-4. Amend `docs/10-module-ownership-map.md` if Resource-at-Location/contextual commercial ownership changes.
-5. Add/accept an ADR if the ResourceAssignment/contextual-supply decision is sufficiently durable/hard-to-reverse.
-6. Ensure docs describe post-V3 append-only migration rules.
+```text
+13-operational-profile-contextual-supply-plan.md
+14-operational-intelligence-roadmap.md
+15-operational-profile-contextual-supply-contract.md
+ADR 0012
+docs/README.md precedence
+```
 
-No schema implementation should outrun this contract.
+Before schema work, perform one final adversarial review against released V3 contracts and existing implementation to ensure the proposed delta is implementable without hidden circular ownership or invariant regression.
 
-### Phase B — relational schema
+### Phase B — implementation inventory
 
-Implement the minimal accepted entities/columns/constraints in a new Alembic revision.
+Inspect current:
+
+```text
+tenancy Organization model/repos/commands
+catalog Location + OfferingVersion persistence/contracts
+booking Resource + AvailabilitySchedule + ScheduleException
+Reservation persistence
+find_slots/book flow
+shared-capacity integration
+RLS/roles
+Alembic migration conventions
+```
+
+Produce an exact old->new disposition before writing migration code.
+
+### Phase C — relational schema
+
+Implement the minimal accepted schema in append-only Alembic migration(s).
 
 Prove:
 
@@ -573,15 +801,15 @@ upgrade from 0001_initial
 repeat bootstrap
 schema/catalog assertions
 RLS/privilege boundaries
-historical baseline immutability
+baseline history untouched
 ```
 
-### Phase C — domain/application model
+### Phase D — domain/application model
 
 Add only structures required by real behavior:
 
 ```text
-domain value objects/entities
+domain values/entities
 commands
 queries
 ports
@@ -591,179 +819,150 @@ cross-module contracts
 
 Do not create empty architecture folders.
 
-### Phase D — operational configuration commands
+### Phase E — configuration commands
 
-Candidate commands, subject to final naming:
+Implement semantic configuration writes with authority/idempotency/revision/audit contracts.
 
-```text
-UpdateOrganizationOperationalProfile
-Create/UpdateLocationOperationalInfo
-SetLocationOperationalHours
-AssignResourceToLocation
-ChangeResourceLocationAvailability
-CreateScheduleException
-ConfigureOfferingContext
-ScheduleFutureContextualTerms
-RetireResourceLocationAssignment
-```
+### Phase F — query resolution
 
-Each write must define:
+Implement deterministic:
 
 ```text
-authority
-idempotency
-expected revision where needed
-transaction boundary
-invariants
-machine-readable failures
-audit provenance
-```
-
-### Phase E — query resolution
-
-Implement deterministic read resolution for:
-
-```text
-business info
-Offering context
+business operational info
+Location operational info
 Resource-at-Location eligibility
-applicable schedule
-applicable contextual duration/price
+schedule composition
+contextual price/duration resolution
 ```
 
-### Phase F — booking integration
+### Phase G — booking integration
 
-Extend `appointments.find_slots` and `appointments.book` to consume accepted contextual supply contracts without weakening existing capacity locking.
+Extend `appointments.find_slots` and `appointments.book` without weakening capacity locking.
 
-Prove stale-option/config races and historical price commitment.
+Close stale-option/config races and persist commercial commitment.
 
-### Phase G — tests and adversarial proof
+### Phase H — adversarial proof
 
-Run the repository quality/architecture suite plus new focused tests.
+Run quality/architecture/PostgreSQL/application suites plus new F1 tests.
 
-No merge-readiness claim based only on happy-path unit tests.
+No merge-readiness claim based only on happy paths.
 
 ---
 
-## 15. Required test matrix
+## 19. Required test matrix
 
-### Domain/application tests
+### Domain/application
 
-- Organization defaults validation.
-- Location coordinate/timezone validation.
+- Organization default validation.
+- Location address/timezone/coordinate validation.
+- Location public contact endpoint validation.
+- Location operational-hours composition.
 - Resource assigned to one/multiple Locations.
-- Same Resource different schedules by Location.
+- Same Resource different schedule by Location.
 - Same Resource/Offering different price/duration by Location.
-- Future price effective date.
-- Schedule exception remove/extend availability.
-- Visit/service variants.
-- Precedence resolution.
-- Historical Reservation commercial commitment.
+- future effective price.
+- schedule exception remove/extend availability.
+- distinct Offering/OfferingVersion visit types.
+- precedence resolution.
+- historical Reservation commercial commitment.
 
-### PostgreSQL/integration tests
+### PostgreSQL/integration
 
-- Tenant consistency across every new FK/path.
+- same-tenant consistency on every new FK/path.
 - RLS/role restrictions.
-- Effective-dated overlap rejection if model requires it.
-- Historical-reference immutability.
-- Clean migration + upgrade from baseline.
-- Concurrent config changes.
-- Option-staleness races.
-- Booking capacity race remains correct under contextual config.
+- effective-dated overlap rejection.
+- historical-reference immutability.
+- clean migration + upgrade from baseline.
+- concurrent config changes.
+- option-staleness races.
+- Booking capacity race under contextual config.
+- shared-capacity conflict under contextual booking.
 
-### API/capability tests
+### API/capability
 
-- `business.get_info` exposes only public operational fields.
+- `business.get_info` returns only safe public operational fields including contact endpoints.
 - `catalog` returns version/context-correct information.
-- `find_slots` within an explicit 13:00-17:00 window.
+- `find_slots` within explicit 13:00-17:00 window.
 - `find_slots` with `resource=any` resolves eligible providers.
-- Option includes correct Location/duration/price where policy permits.
-- Booking revalidates stale price/schedule/resource context.
-- Machine-readable errors do not leak foreign tenant information.
+- option contains correct Location/duration/price.
+- `book` rejects stale commercial/schedule/resource context.
+- machine-readable errors do not leak foreign tenant information.
 
-### Regression tests
+### Regression
 
-- Existing tenant-local booking remains valid when no new contextual config is present.
-- Existing shared-capacity cross-tenant mutex behavior remains intact.
-- Queue, waitlist, communications and worker assembly behavior remain unchanged unless explicitly touched through a contract.
+- released V3 booking still works without contextual config.
+- cross-tenant shared-capacity mutex remains intact.
+- Queue/waitlist/communications/worker behavior remains unchanged unless touched by an explicit contract.
 
 ---
 
-## 16. Acceptance scenarios
+## 20. Acceptance scenarios
 
-The feature is not complete until all of the following are demonstrable.
-
-### Scenario A
+### A — operational question answered directly
 
 ```text
-"Cardiologist at Clínica Brugal tomorrow between 1 and 5."
+Cardiologist at Clínica Brugal tomorrow between 1 and 5.
 ```
 
-RE returns only Resources actually eligible and available there during that window, with applicable duration and price.
+RE returns only eligible/available Resources with applicable duration and price.
 
-### Scenario B
+### B — same physician, different clinics
 
-Dr. Pérez works at two clinics with different schedules/prices. RE returns the correct context for each Location without conflating them.
+Correct independent schedules and terms are returned for each Location.
 
-### Scenario C
+### C — price history
 
-A future price increase is configured. New bookings after the effective boundary use the new price; existing confirmed Reservations remain historically at the old committed price.
+A future price increase does not change an existing confirmed Reservation's historical committed amount.
 
-### Scenario D
+### D — schedule exception
 
-A one-day exception shortens the physician's schedule. Slots outside the exception-adjusted schedule disappear; recurring schedule remains unchanged for other dates.
+A one-day exception changes only the targeted day/context and leaves recurrence intact.
 
-### Scenario E
+### E — stale option
 
-A stale option discovered before a schedule/price/config change cannot be booked under obsolete assumptions without explicit contract behavior. Booking either re-resolves under a documented accepted rule or returns a machine-readable stale/conflict response.
+A materially changed option cannot be booked under obsolete assumptions and does not silently change price.
 
-### Scenario F
+### F — public operational profile
 
-Legacy V3 Resources without contextual assignments continue existing behavior according to the backward-compatibility contract.
+RE can answer Location address, public contact endpoint(s), hours and timezone without Directus.
+
+### G — legacy compatibility
+
+A released-V3 Resource with no contextual assignment preserves baseline booking behavior.
+
+### H — shared-capacity compatibility
+
+A Resource represented across tenants still cannot be double-booked through the new contextual flow.
 
 ---
 
-## 17. Definition of Done
+## 21. Definition of Done
 
-This feature may be considered ready for merge only when:
+F1 is merge-ready only when:
 
-- normative docs and ownership are reconciled;
-- any durable architecture decision has an ADR;
-- a new append-only Alembic migration implements only the accepted schema;
-- `0001_initial`, frozen V3 candidate and V2 history remain untouched;
-- Python implementation follows module-first boundaries;
-- no unbounded operational-config JSONB god object is introduced;
+- branch docs/precedence are coherent and reviewed;
+- ADR 0012 implementation proof conditions are satisfied;
+- new append-only Alembic migration(s) implement only accepted schema;
+- `0001_initial`, frozen candidate and V2 design history remain untouched;
+- module-first boundaries remain valid;
+- no generic operational-config JSONB object is introduced;
+- Location public contact endpoints remain narrow/public/tenant-safe;
 - Resource-at-Location semantics are explicit and race-safe;
-- schedule precedence/exceptions are deterministic;
+- schedule composition/exceptions are deterministic;
 - contextual price/duration resolution is deterministic;
-- historical Reservation commercial commitments are immutable/explainable;
-- `find_slots` and `book` close stale configuration races;
-- tenant isolation and existing shared-capacity behavior remain intact;
+- historical Reservation commercial commitment is immutable/explainable;
+- stale option/config races are closed;
+- tenant isolation remains intact;
+- shared-capacity behavior remains intact;
 - clean bootstrap + upgrade + architecture + PostgreSQL + application suites pass;
-- adversarial tests cover the race matrix above;
-- documentation clearly marks later discovery/live-operations/copilot work as separate features.
+- adversarial tests cover the race matrix;
+- F2–F6 remain documented but unimplemented in this branch.
 
----
-
-## 18. Roadmap unlocked by this feature
-
-After merge to `development`, branch the next work from the new head:
+After F1 merges, the next intended branches are:
 
 ```text
 feature/geospatial-cross-tenant-discovery
 feature/live-service-operations
 ```
 
-Then:
-
-```text
-live-service-operations
-  -> live-capacity-projection
-  -> operational-recovery-communications
-
-operational-profile/contextual-supply
-  + recovery/config commands
-  -> operational-copilot-control-plane
-```
-
-This branch establishes the vocabulary and authoritative configuration contracts those features must consume. They should not pre-empt or duplicate this feature's source of truth.
+They must branch from the new `development` head and consume, not duplicate, F1 operational truth.
