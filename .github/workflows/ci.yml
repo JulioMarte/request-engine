@@ -204,8 +204,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-  # Post-release schema evolution must be proven from production Alembic history,
-  # not by mutating or pretending that the frozen V3 candidate is still the head.
+  # Post-release schema evolution is proved from production Alembic history,
+  # without mutating the frozen V3 candidate or its provenance evidence.
   postgres-production-head:
     name: PostgreSQL 18 production Alembic head
     needs: python-quality
@@ -252,7 +252,7 @@ jobs:
       - name: Require expected production head
         run: |
           uv run alembic current
-          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0002_operational_profile_contextual_supply"
+          test "$(psql -Atc 'SELECT version_num FROM alembic_version')" = "0002_f1_supply"
       - name: Prove F1 relational schema and tenant boundaries
         run: >-
           uv run pytest tests/integration/f1_operational_profile
