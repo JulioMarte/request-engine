@@ -78,7 +78,6 @@ Add narrow typed operational defaults while retaining `public_profile` for compa
 
 ```text
 legal_name text NULL
-public_display_name text NULL
 default_timezone text NULL
 default_locale text NULL
 default_currency text NULL
@@ -93,7 +92,7 @@ default_currency uses uppercase ISO-style 3-letter code when present
 default timezone/locale are semantic-command validated; timezone is also validated by application ZoneInfo before persistence
 ```
 
-`display_name` remains released-V3 identity. `public_display_name` is an explicit F1 public operational override and must not silently rewrite `display_name`.
+Released `organizations.display_name` is already the canonical public/display identity required by F1. F1 must not add a second competing public display-name field.
 
 ### 3.2 `locations`
 
@@ -125,13 +124,15 @@ operational_revision > 0
 
 `active` and `timezone` remain authoritative released fields.
 
-Location operational revision advances exactly one step for material booking availability mutations, including:
+`operational_revision` is an opaque material-availability change token. It must change whenever Location bookability can change, including:
 
 ```text
 active/timezone changes
 Location recurring-hour writes
 Location-hours exception writes
 ```
+
+It is not required to increment exactly once per high-level command; child-row writes may advance it more than once, as the released V3 Resource availability pattern already does. Consumers compare observation, not arithmetic distance.
 
 Address/contact/coordinate changes do not need to stale an appointment option unless they alter a material booking field; they still remain auditable semantic mutations.
 
@@ -145,7 +146,7 @@ resource_location_assignment_id uuid NULL
 
 Legacy claims remain NULL.
 
-For F1 contextual booking/hold claims the value is required by the supported F1 command path and must point to an assignment that:
+For F1 contextual booking/hold claims the supported F1 command path requires the value and it must point to an assignment that:
 
 ```text
 belongs to the same Organization
@@ -264,9 +265,9 @@ local_start < local_end
 valid_until IS NULL OR valid_from IS NULL OR valid_until >= valid_from
 ```
 
-Writes must serialize against the Location configuration root and bump `locations.operational_revision`.
+Writes serialize against the Location configuration root and advance `locations.operational_revision`.
 
-Overlapping recurring rows are not automatically invalid: multiple windows on the same weekday are a legitimate representation, e.g. `08:00-12:00` and `13:00-17:00`. Application commands normalize/reject ambiguous duplicate intent where required.
+Overlapping recurring rows are not automatically invalid: multiple windows on the same weekday are a legitimate representation, e.g. `08:00-12:00` and `13:00-17:00`. Application commands normalize/reject duplicate or ambiguous intent where required.
 
 ---
 
@@ -315,9 +316,9 @@ EXCLUDE USING gist (
 )
 ```
 
-This deliberately forces a semantic command to express the final one-off Location state instead of stacking contradictory available/unavailable exceptions over the same instant.
+This forces a semantic command to express the final one-off Location state instead of stacking contradictory available/unavailable exceptions over the same instant.
 
-Every write bumps `locations.operational_revision`.
+Every write advances `locations.operational_revision`.
 
 ---
 
@@ -370,11 +371,11 @@ EXCLUDE USING gist (
 )
 ```
 
-Retirement must preserve the historical interval that actually applied. A supported retirement command normally closes an open-ended interval and marks the row retired; it never retargets the row to another Resource or Location.
+Retirement preserves the historical interval that actually applied. A supported retirement command normally closes an open-ended interval and marks the row retired; it never retargets the row to another Resource or Location.
 
-Assignment `revision` uses the existing exact-one-step revision semantics.
+Assignment `revision` uses the existing exact-one-step aggregate revision semantics.
 
-Configuration writes for an assignment lock the underlying Resource in canonical Resource-id order and participate in Resource availability/configuration serialization.
+Configuration writes for an assignment lock the underlying Resource in canonical Resource-id order. Assignment lifecycle changes that alter bookability also advance the underlying `resources.availability_revision` change token.
 
 ---
 
@@ -403,13 +404,15 @@ created_at timestamptz
 
 Timezone is derived through assignment -> Location and is not duplicated.
 
-Every write:
+Every child-row write:
 
 ```text
 proves same Organization through composite FK
-locks the assignment Resource root
-bumps resources.availability_revision exactly one step for the semantic mutation
+locks/updates the assignment Resource root through the database backstop
+advances resources.availability_revision
 ```
+
+The counter may advance once per changed child row; stale detection only requires that a material change cannot preserve the observed token.
 
 The existing `availability_schedules` table remains the legacy Resource-wide recurrence path only.
 
@@ -449,7 +452,7 @@ resource_location_schedule_exceptions for selected assignment
 
 An assignment-specific command never writes `schedule_exceptions`.
 
-Every assignment-exception write bumps `resources.availability_revision`.
+Every assignment-exception row write advances `resources.availability_revision`.
 
 Overlapping broad and narrow exceptions are allowed because they represent distinct explicit scopes. Resolver precedence is safety-oriented:
 
@@ -563,7 +566,7 @@ offering_versions.duration_minutes
 missing required value => not quoteable/bookable
 ```
 
-Context terms mutation participates in assignment/Resource configuration serialization and advances its own exact-one-step revision.
+Context-term mutations serialize against the selected assignment/Resource but use the exact `booking_context_terms.revision` and resolved material values for stale detection. They do not advance the broad Resource availability token merely because an unrelated Offering's price changed.
 
 ### Multi-resource Offering rule
 
@@ -718,14 +721,16 @@ booking_context_terms.revision         ADD
 
 Do not add revisions to every child schedule/exception row.
 
-Child writes bump their owning aggregate/root revision:
+Child writes advance their owning change token:
 
 ```text
 Location hours/exception -> Location operational_revision
 assignment availability/exception -> Resource availability_revision
 assignment lifecycle -> assignment revision + Resource availability_revision when bookability changes
-booking context term mutation -> context revision + Resource availability_revision when effective bookability/commercial state changes
+booking context term mutation -> booking_context_terms revision only; exact term observation handles staleness
 ```
+
+These values are opaque change tokens. Their correctness requirement is that a material mutation cannot leave the relevant observation unchanged; they are not counters whose distance has product semantics.
 
 The application may hash the exact observed IDs/revisions/resolved values into the opaque configuration fingerprint.
 
@@ -823,12 +828,11 @@ Order inside the migration:
 6. create OfferingVersion base terms
 7. create booking contextual terms
 8. create Reservation commercial commitment
-9. constraints/exclusion indexes
-10. exact revision / root-bump / immutability triggers
-11. CapacityClaim contextual provenance guard extension
-12. RLS + FORCE RLS policies
-13. explicit runtime grants
-14. new read views where included in this migration
+9. constraints/exclusion indexes and contextual CapacityClaim FK
+10. revision/root-bump/immutability/context provenance triggers
+11. RLS + FORCE RLS policies
+12. explicit runtime grants
+13. new read views where included in this migration
 ```
 
 No data rewrite is needed to make legacy V3 rows valid.
@@ -886,12 +890,12 @@ overlapping Location exception rejected
 ### Revision/serialization
 
 ```text
-Location hour mutation bumps one Location operational revision
-Location exception mutation bumps one revision
-assignment availability mutation bumps one Resource availability revision
-assignment exception mutation bumps one Resource availability revision
-assignment retirement advances exact revision and stales old observation
-context mutation advances exact revision and stales old observation
+Location-hour mutation changes Location operational revision
+Location-exception mutation changes Location operational revision
+assignment-availability mutation changes Resource availability revision
+assignment-exception mutation changes Resource availability revision
+assignment retirement changes assignment revision and Resource observation
+context mutation changes exact context revision without invalidating unrelated Offering contexts
 ```
 
 ### Historical provenance
