@@ -39,6 +39,11 @@ class SignedAppointmentOptionCodec:
     V1 remains the released V3 slot-selection format. V2 is issued only when an
     AppointmentSlot carries an F1 material configuration fingerprint and binds
     the contextual observations that authoritative booking must revalidate.
+
+    A V2 option may contain a mixed resource selection during the compatibility
+    period: contextual Resources carry assignment provenance while legacy V3
+    Resources carry only their availability revision. This keeps the complete
+    selected set stale-detectable without inventing assignment provenance.
     """
 
     def __init__(
@@ -122,8 +127,10 @@ class SignedAppointmentOptionCodec:
                 {
                     "requirement_id": str(choice.requirement_id),
                     "resource_id": str(choice.resource_id),
-                    "resource_location_assignment_id": str(
-                        choice.resource_location_assignment_id
+                    "resource_location_assignment_id": (
+                        str(choice.resource_location_assignment_id)
+                        if choice.resource_location_assignment_id is not None
+                        else None
                     ),
                     "assignment_revision": choice.assignment_revision,
                     "availability_revision": choice.availability_revision,
@@ -267,13 +274,24 @@ def _validate_contextual_slot(slot: AppointmentSlot) -> None:
         raise ValueError("contextual AppointmentSlot requires configuration fingerprint")
     if not slot.resources:
         raise ValueError("contextual AppointmentSlot requires Resources")
+
+    contextual_count = 0
     for choice in slot.resources:
-        if choice.resource_location_assignment_id is None:
-            raise ValueError("contextual ResourceChoice requires ResourceLocationAssignment")
-        if choice.assignment_revision is None or choice.assignment_revision <= 0:
-            raise ValueError("contextual ResourceChoice requires assignment revision")
         if choice.availability_revision is None or choice.availability_revision <= 0:
             raise ValueError("contextual ResourceChoice requires availability revision")
+        assignment_id = choice.resource_location_assignment_id
+        assignment_revision = choice.assignment_revision
+        if (assignment_id is None) != (assignment_revision is None):
+            raise ValueError(
+                "contextual ResourceChoice assignment id and revision must be present together"
+            )
+        if assignment_revision is not None:
+            if assignment_revision <= 0:
+                raise ValueError("contextual ResourceChoice requires positive assignment revision")
+            contextual_count += 1
+
+    if contextual_count == 0:
+        raise ValueError("aptopt_v2 requires at least one contextual ResourceLocationAssignment")
 
 
 def _resource_fields(
@@ -287,6 +305,7 @@ def _resource_fields(
     resource_items = cast(list[object], resources_raw)
     resources: list[ResourceChoice] = []
     seen_requirements: set[UUID] = set()
+    contextual_count = 0
     for raw in resource_items:
         if not isinstance(raw, dict):
             raise AppointmentOptionInvalid("resource selection is malformed")
@@ -298,20 +317,28 @@ def _resource_fields(
         seen_requirements.add(requirement_id)
 
         if contextual:
+            assignment_id = _optional_uuid_field(item, "resource_location_assignment_id")
+            assignment_revision = _optional_positive_int_field(item, "assignment_revision")
+            if (assignment_id is None) != (assignment_revision is None):
+                raise AppointmentOptionInvalid(
+                    "resource assignment id and revision must be present together"
+                )
+            if assignment_id is not None:
+                contextual_count += 1
             resources.append(
                 ResourceChoice(
                     requirement_id=requirement_id,
                     resource_id=resource_id,
-                    resource_location_assignment_id=_uuid_field(
-                        item, "resource_location_assignment_id"
-                    ),
-                    assignment_revision=_positive_int_field(item, "assignment_revision"),
+                    resource_location_assignment_id=assignment_id,
+                    assignment_revision=assignment_revision,
                     availability_revision=_positive_int_field(item, "availability_revision"),
                 )
             )
         else:
             resources.append(ResourceChoice(requirement_id, resource_id))
 
+    if contextual and contextual_count == 0:
+        raise AppointmentOptionInvalid("aptopt_v2 requires a contextual ResourceLocationAssignment")
     return _sorted_resources(tuple(resources))
 
 
@@ -361,6 +388,18 @@ def _uuid_field(payload: dict[str, object], key: str) -> UUID:
         raise AppointmentOptionInvalid(f"{key} is malformed") from exc
 
 
+def _optional_uuid_field(payload: dict[str, object], key: str) -> UUID | None:
+    raw = payload.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise AppointmentOptionInvalid(f"{key} is malformed")
+    try:
+        return UUID(raw)
+    except ValueError as exc:
+        raise AppointmentOptionInvalid(f"{key} is malformed") from exc
+
+
 def _datetime_field(payload: dict[str, object], key: str) -> datetime:
     raw = payload.get(key)
     if not isinstance(raw, str):
@@ -373,6 +412,15 @@ def _datetime_field(payload: dict[str, object], key: str) -> datetime:
 
 def _positive_int_field(payload: dict[str, object], key: str) -> int:
     raw = payload.get(key)
+    if not isinstance(raw, int) or isinstance(raw, bool) or raw <= 0:
+        raise AppointmentOptionInvalid(f"{key} is malformed")
+    return raw
+
+
+def _optional_positive_int_field(payload: dict[str, object], key: str) -> int | None:
+    raw = payload.get(key)
+    if raw is None:
+        return None
     if not isinstance(raw, int) or isinstance(raw, bool) or raw <= 0:
         raise AppointmentOptionInvalid(f"{key} is malformed")
     return raw
