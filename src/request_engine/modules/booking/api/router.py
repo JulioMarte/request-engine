@@ -121,6 +121,11 @@ def create_router(
                 origin_request_id=body.origin_request_id,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+                expected_planned_duration_minutes=option.planned_duration_minutes,
+                expected_amount=option.amount,
+                expected_currency=option.currency,
+                expected_location_operational_revision=option.location_operational_revision,
+                expected_configuration_fingerprint=option.configuration_fingerprint,
             ),
         )
         return ReservationView.from_contract(reservation)
