@@ -1,7 +1,9 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = ROOT / ".github/workflows/ci.yml"
 WRAPPER = ROOT / "scripts/ci/run_v3_candidate_with_g19.sh"
+COMPATIBILITY_WRAPPER = ROOT / "scripts/ci/run_v3_frozen_compatibility.sh"
 STRUCTURAL = ROOT / "scripts/db/prove_v3_initial_equivalence.sh"
 BUILDER = ROOT / "scripts/db/build_v3_initial_candidate.py"
 BEHAVIORAL = ROOT / "scripts/release/prove_v3_final_initial_equivalence.py"
@@ -61,6 +63,27 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
     finalizer = wrapper.index("finalize_v3_final_initial_equivalence_provenance.py")
     validator = wrapper.index("validate_v3_final_initial_equivalence_artifact_v2.py")
     assert producer < finalizer < validator
+
+
+def test_post_baseline_ci_does_not_regenerate_closed_v3_release_evidence() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    compatibility = COMPATIBILITY_WRAPPER.read_text(encoding="utf-8")
+    compatibility_job = workflow.split("  postgres-v3-candidate-proof:", 1)[1].split(
+        "  postgres-production-head:", 1
+    )[0]
+
+    assert "run_v3_frozen_compatibility.sh" in compatibility_job
+    assert "run_v3_candidate_with_g19.sh" not in compatibility_job
+    assert "v3-frozen-compatibility-proof" in compatibility_job
+    assert 'RELEASED_V3_SHA="07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc"' in compatibility
+    assert 'V3_BASELINE_REVISION="0001_initial"' in compatibility
+    assert 'alembic upgrade "$V3_BASELINE_REVISION"' in compatibility
+    assert "--step public-api-contract" in compatibility
+    assert "--step v3-tests" in compatibility
+    assert "prove_v3_final_release.py" not in compatibility
+    assert "build_v3_evidence_manifest.py" not in compatibility
+    assert "migrations/versions/0001_initial.py" in compatibility
+    assert "scripts/release/v3_public_api_contract_baseline.py" in compatibility
 
 
 def test_structural_proof_only_exports_artifacts_after_catalog_equality() -> None:

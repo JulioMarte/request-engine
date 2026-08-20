@@ -157,7 +157,8 @@ jobs:
   # V3 G17-G20 and the exact public-contract freeze are immutable release
   # evidence bound to the released V3 source. Post-baseline branches must not
   # regenerate or rewrite that evidence. Instead, run current code against the
-  # frozen candidate to prove backward compatibility.
+  # immutable 0001_initial baseline and frozen V3 contract to prove backward
+  # compatibility.
   postgres-v3-candidate-proof:
     name: PostgreSQL 18 frozen V3 compatibility
     needs:
@@ -186,6 +187,8 @@ jobs:
       PGDATABASE: request_engine_v3
       PGUSER: postgres
       PGPASSWORD: postgres
+      PGMAINTENANCE_DB: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_v3
     steps:
       - uses: actions/checkout@v6
         with:
@@ -201,13 +204,13 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Run frozen V3 release compatibility proof
-        run: bash scripts/ci/run_v3_candidate_with_g19.sh
+      - name: Run post-baseline V3 compatibility proof
+        run: bash scripts/ci/run_v3_frozen_compatibility.sh
       - name: Upload frozen V3 compatibility evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v3-candidate-release-proof
+          name: v3-frozen-compatibility-proof
           path: .phase6/
           include-hidden-files: true
           if-no-files-found: warn
