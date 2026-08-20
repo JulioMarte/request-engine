@@ -72,13 +72,7 @@ def find_contextual_resource_intervals(
     step_minutes: int,
     required_quantity: int,
 ) -> tuple[AvailableInterval, ...]:
-    """Return intervals allowed by both Resource context and physical Location.
-
-    Resource availability generates candidate intervals, including explicit
-    additional availability. Location availability is then a hard physical
-    constraint. A Resource-level AVAILABLE exception therefore cannot open a
-    closed Location by itself.
-    """
+    """Return intervals allowed by both Resource context and physical Location."""
 
     resource_intervals = find_resource_intervals(
         profile.resource,
@@ -101,17 +95,17 @@ def find_contextual_resource_intervals(
 
 def resolve_booking_terms(
     base: BaseBookingTerms,
-    contexts: tuple[ContextBookingTerms, ...],
+    contexts: tuple[ContextBookingTerms | None, ...],
 ) -> ResolvedBookingTerms:
-    """Resolve the narrow deterministic F1 commercial/duration contract.
+    """Resolve deterministic F1 terms for every selected Resource context.
 
-    Each selected Resource-at-Location context resolves against the same
-    OfferingVersion defaults. If multiple selected Resources contribute
-    different final values, F1 rejects the configuration rather than inventing
-    a hidden pricing or duration precedence.
+    ``None`` is an explicit selected Resource-at-Location context with no exact
+    override, so it resolves through OfferingVersion defaults and still
+    participates in conflict detection against Resources that do have an exact
+    override.
     """
 
-    if any(not context.bookable for context in contexts):
+    if any(context is not None and not context.bookable for context in contexts):
         raise ContextNotBookable("one or more selected booking contexts are not bookable")
 
     if not contexts:
@@ -130,15 +124,7 @@ def resolve_booking_terms(
         )
 
     resolved = [
-        _require_complete_terms(
-            context.amount if context.amount is not None else base.amount,
-            context.currency if context.currency is not None else base.currency,
-            (
-                context.planned_duration_minutes
-                if context.planned_duration_minutes is not None
-                else base.planned_duration_minutes
-            ),
-        )
+        _resolve_one(base, context)
         for context in contexts
     ]
     first = resolved[0]
@@ -148,13 +134,35 @@ def resolve_booking_terms(
         )
 
     amount, currency, duration = first
+    actual_contexts = tuple(context for context in contexts if context is not None)
     return ResolvedBookingTerms(
         amount=amount,
         currency=currency,
         planned_duration_minutes=duration,
         base_source_id=base.source_id,
-        context_source_ids=tuple(context.id for context in contexts),
-        context_revisions=tuple(context.revision for context in contexts),
+        context_source_ids=tuple(context.id for context in actual_contexts),
+        context_revisions=tuple(context.revision for context in actual_contexts),
+    )
+
+
+def _resolve_one(
+    base: BaseBookingTerms,
+    context: ContextBookingTerms | None,
+) -> tuple[Decimal, str, int]:
+    if context is None:
+        return _require_complete_terms(
+            base.amount,
+            base.currency,
+            base.planned_duration_minutes,
+        )
+    return _require_complete_terms(
+        context.amount if context.amount is not None else base.amount,
+        context.currency if context.currency is not None else base.currency,
+        (
+            context.planned_duration_minutes
+            if context.planned_duration_minutes is not None
+            else base.planned_duration_minutes
+        ),
     )
 
 
