@@ -49,10 +49,7 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
     assert 'SELECTOR = "ci_jobs:postgres-v3-candidate:v3-tests"' in behavioral
     assert "postgres-v3-candidate --step v3-tests" in behavioral
     assert 'V3_BASELINE_REVISION = "0001_initial"' in behavioral
-    assert (
-        '["uv", "run", "alembic", "upgrade", V3_BASELINE_REVISION]'
-        in behavioral
-    )
+    assert '["uv", "run", "alembic", "upgrade", V3_BASELINE_REVISION]' in behavioral
     assert '["uv", "run", "alembic", "upgrade", "head"]' not in behavioral
     assert '["uv", "run", "alembic", "current"]' in behavioral
     assert "final-initial database is not pinned to the released V3 revision" in behavioral
