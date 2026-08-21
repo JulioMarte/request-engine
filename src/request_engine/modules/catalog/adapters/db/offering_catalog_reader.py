@@ -138,7 +138,7 @@ class PostgresOfferingCatalogReader:
                                    AND a.resource_id = r.id
                                    AND a.location_id = :location_id
                                    AND a.status = 'active'
-                                   AND a.effective_during @> :effective_at
+                                   AND a.effective_during @> CAST(:effective_at AS timestamptz)
                                   WHERE r.organization_id = o.organization_id
                                     AND r.active
                               ) < req.quantity
