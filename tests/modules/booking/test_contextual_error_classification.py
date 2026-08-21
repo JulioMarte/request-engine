@@ -33,23 +33,27 @@ def _choice() -> tuple[ResourceChoice, ...]:
     )
 
 
-def _base_command(offering_version_id: UUID) -> dict[str, object]:
-    return {
-        "organization_id": uuid4(),
-        "principal_id": uuid4(),
-        "offering_version_id": offering_version_id,
-        "subject_party_id": uuid4(),
-        "start_at": datetime.now(UTC),
-        "resources": _choice(),
-        "idempotency_key": f"error-classification-{uuid4().hex}",
-    }
+def _legacy_command(offering_version_id: UUID) -> BookAppointmentCommand:
+    return BookAppointmentCommand(
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        offering_version_id=offering_version_id,
+        subject_party_id=uuid4(),
+        start_at=datetime.now(UTC),
+        resources=_choice(),
+        idempotency_key=f"legacy-error-classification-{uuid4().hex}",
+    )
 
 
-@pytest.mark.asyncio
-async def test_contextual_bookable_change_is_classified_as_stale() -> None:
-    offering_version_id = uuid4()
-    command = BookAppointmentCommand(
-        **_base_command(offering_version_id),
+def _contextual_command(offering_version_id: UUID) -> BookAppointmentCommand:
+    return BookAppointmentCommand(
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        offering_version_id=offering_version_id,
+        subject_party_id=uuid4(),
+        start_at=datetime.now(UTC),
+        resources=_choice(),
+        idempotency_key=f"contextual-error-classification-{uuid4().hex}",
         location_id=uuid4(),
         expected_planned_duration_minutes=30,
         expected_amount=Decimal("3500"),
@@ -58,17 +62,17 @@ async def test_contextual_bookable_change_is_classified_as_stale() -> None:
         expected_configuration_fingerprint="observed-context",
     )
 
+
+@pytest.mark.asyncio
+async def test_contextual_bookable_change_is_classified_as_stale() -> None:
     with pytest.raises(AppointmentOptionStale):
-        await book_appointment(_NotBookableHandler(), command)
+        await book_appointment(_NotBookableHandler(), _contextual_command(uuid4()))
 
 
 @pytest.mark.asyncio
 async def test_legacy_bookable_change_preserves_released_error() -> None:
-    offering_version_id = uuid4()
-    command = BookAppointmentCommand(**_base_command(offering_version_id))
-
     with pytest.raises(OfferingVersionNotBookable):
-        await book_appointment(_NotBookableHandler(), command)
+        await book_appointment(_NotBookableHandler(), _legacy_command(uuid4()))
 
 
 def test_contextual_commitment_unsupported_has_machine_readable_http_error() -> None:
