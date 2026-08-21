@@ -28,7 +28,7 @@ from request_engine.modules.booking.application.commands.confirm_capacity_hold i
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
 )
-from request_engine.modules.booking.application.errors import InvalidResourceSelection
+from request_engine.modules.booking.application.errors import ContextualCommitmentUnsupported
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 from request_engine.modules.booking.contracts.holds import CapacityHold
 from request_engine.modules.booking.contracts.slot_offer_capacity import (
@@ -65,7 +65,7 @@ class CapacitySafeBookingCommitmentCommands:
         self._delegate = PostgresBookingCommitmentCommands(session_factory)
 
     async def acquire_capacity_hold(self, command: AcquireCapacityHoldCommand) -> CapacityHold:
-        _reject_contextual_legacy_commitment(command.resources, operation="CapacityHold")
+        _reject_contextual_legacy_commitment(command.resources, operation="capacity hold")
         try:
             return await self._delegate.acquire_capacity_hold(command)
         except IntegrityError as exc:
@@ -130,9 +130,7 @@ def _reject_contextual_legacy_commitment(
     operation: str,
 ) -> None:
     if any(choice.resource_location_assignment_id is not None for choice in resources):
-        raise InvalidResourceSelection(
-            f"contextual ResourceChoices cannot use the legacy {operation} path"
-        )
+        raise ContextualCommitmentUnsupported(operation)
 
 
 def _async_session(transaction: object) -> AsyncSession:
