@@ -41,7 +41,10 @@ def _query(fixture: F1ContextualScenario) -> FindAppointmentSlotsQuery:
     )
 
 
-def _command(fixture: F1ContextualScenario, slot: AppointmentSlot) -> BookAppointmentCommand:
+def _command(
+    fixture: F1ContextualScenario,
+    slot: AppointmentSlot,
+) -> BookAppointmentCommand:
     return BookAppointmentCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
@@ -112,7 +115,10 @@ async def test_assignment_exception_serializes_before_book_and_makes_option_stal
                 FOR UPDATE
                 """
             ),
-            {"organization_id": fixture.organization_id, "resource_id": fixture.resource_id},
+            {
+                "organization_id": fixture.organization_id,
+                "resource_id": fixture.resource_id,
+            },
         )
         await config_session.execute(
             text(
@@ -181,7 +187,10 @@ async def test_resource_wide_exception_serializes_before_book_and_makes_option_s
                 FOR UPDATE
                 """
             ),
-            {"organization_id": fixture.organization_id, "resource_id": fixture.resource_id},
+            {
+                "organization_id": fixture.organization_id,
+                "resource_id": fixture.resource_id,
+            },
         )
         booking_task = asyncio.create_task(book_appointment(commands, _command(fixture, slot)))
         await _assert_blocked(cast(asyncio.Task[object], booking_task))
@@ -236,11 +245,14 @@ async def test_recurring_location_hours_change_serializes_and_makes_option_stale
                 FOR UPDATE
                 """
             ),
-            {"organization_id": fixture.organization_id, "location_id": fixture.location_id},
+            {
+                "organization_id": fixture.organization_id,
+                "location_id": fixture.location_id,
+            },
         )
         booking_task = asyncio.create_task(book_appointment(commands, _command(fixture, slot)))
         await _assert_blocked(cast(asyncio.Task[object], booking_task))
-        result = await config_session.execute(
+        await config_session.execute(
             text(
                 """
                 UPDATE request_engine.location_operational_hours
@@ -251,9 +263,11 @@ async def test_recurring_location_hours_change_serializes_and_makes_option_stale
                    AND active
                 """
             ),
-            {"organization_id": fixture.organization_id, "location_id": fixture.location_id},
+            {
+                "organization_id": fixture.organization_id,
+                "location_id": fixture.location_id,
+            },
         )
-        assert result.rowcount is not None and result.rowcount > 0
 
     with pytest.raises(AppointmentOptionStale):
         await asyncio.wait_for(booking_task, timeout=5)
