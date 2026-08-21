@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+# One-shot development utility. Delete after the generated revision is validated.
 ROOT = Path(__file__).resolve().parents[2]
 VERSIONS = ROOT / "migrations" / "versions"
 PARTS = (
