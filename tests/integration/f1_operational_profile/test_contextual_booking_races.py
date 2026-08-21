@@ -67,7 +67,7 @@ async def _discovered_slot(
     reader = PostgresAppointmentAvailabilityReader(session_factory)
     slots = await find_appointment_slots(reader, _query(fixture))
     assert slots
-    return cast(AppointmentSlot, slots[0])
+    return slots[0]
 
 
 async def _assert_blocked(task: asyncio.Task[object]) -> None:
