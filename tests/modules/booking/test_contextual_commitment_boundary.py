@@ -15,7 +15,7 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     RescheduleReservationCommand,
     reschedule_reservation,
 )
-from request_engine.modules.booking.application.errors import InvalidResourceSelection
+from request_engine.modules.booking.application.errors import ContextualCommitmentUnsupported
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.platform.db.session import SessionFactory
 
@@ -40,7 +40,7 @@ def _contextual_choice() -> tuple[ResourceChoice, ...]:
 @pytest.mark.asyncio
 async def test_contextual_capacity_hold_is_rejected_before_legacy_adapter() -> None:
     now = datetime.now(UTC)
-    with pytest.raises(InvalidResourceSelection, match="CapacityHold"):
+    with pytest.raises(ContextualCommitmentUnsupported, match="capacity hold"):
         await acquire_capacity_hold(
             _handler(),
             AcquireCapacityHoldCommand(
@@ -60,7 +60,7 @@ async def test_contextual_capacity_hold_is_rejected_before_legacy_adapter() -> N
 
 @pytest.mark.asyncio
 async def test_contextual_reschedule_is_rejected_before_legacy_adapter() -> None:
-    with pytest.raises(InvalidResourceSelection, match="reschedule"):
+    with pytest.raises(ContextualCommitmentUnsupported, match="reschedule"):
         await reschedule_reservation(
             _handler(),
             RescheduleReservationCommand(
