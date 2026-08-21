@@ -1,12 +1,18 @@
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import psycopg
 import pytest
 from psycopg import Connection
 
+from tests.integration.f1_operational_profile.scenarios import (
+    F1OperationalScenario,
+    seed_bookable_f1_scenario,
+)
+
 PgConnection = Connection[Any]
+F1ScenarioFactory = Callable[[str], F1OperationalScenario]
 
 
 def _conninfo() -> str:
@@ -30,3 +36,11 @@ def admin_conn(pg_conninfo: str) -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture
+def f1_scenario_factory(admin_conn: PgConnection) -> F1ScenarioFactory:
+    def seed(label: str) -> F1OperationalScenario:
+        return seed_bookable_f1_scenario(admin_conn, label)
+
+    return seed
