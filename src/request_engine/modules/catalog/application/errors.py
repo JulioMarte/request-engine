@@ -10,3 +10,9 @@ class LocationOperationalRevisionConflict(RuntimeError):
         self.location_id = location_id
         self.expected = expected
         self.actual = actual
+
+
+class CatalogConfigurationConflict(RuntimeError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
