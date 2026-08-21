@@ -6,6 +6,10 @@ This folder is the system of record for the current Request Engine product/domai
 
 On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, but F1 introduces an explicit post-V3 normative delta.
 
+Current execution checkpoint:
+
+- `v3/20-operational-profile-contextual-supply-implementation-handoff.md` — **informative current implementation handoff, not a normative contract**. Read it before resuming work on this branch to see what is implemented, what is actually proven, what remains incomplete, the known CI checkpoints and the exact continuation order. It does not change the precedence below.
+
 Read these branch-specific documents before implementing this feature:
 
 1. `v3/16-operational-profile-contextual-supply-clarifications.md` — **highest-precedence F1 clarification on the specifically named points**. It corrects the second adversarial-audit findings: commercial Offering identity vs live workload classification, Location-level schedule exceptions, Resource-wide vs Resource-at-Location exceptions, Organization-as-independent-practice semantics, Organization-level public operational contacts, F2 canonical service classification, and F3 interruption authority direction.
