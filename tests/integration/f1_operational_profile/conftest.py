@@ -6,13 +6,13 @@ import psycopg
 import pytest
 from psycopg import Connection
 
-from tests.integration.f1_operational_profile.scenarios import (
-    F1OperationalScenario,
-    seed_bookable_f1_scenario,
+from tests.integration.f1_operational_profile.dummy_data import (
+    F1ContextualScenario,
+    create_contextual_cardiology_scenario,
 )
 
 PgConnection = Connection[Any]
-F1ScenarioFactory = Callable[[str], F1OperationalScenario]
+F1ScenarioFactory = Callable[[str | None], F1ContextualScenario]
 
 
 def _conninfo() -> str:
@@ -40,7 +40,7 @@ def admin_conn(pg_conninfo: str) -> Iterator[PgConnection]:
 
 @pytest.fixture
 def f1_scenario_factory(admin_conn: PgConnection) -> F1ScenarioFactory:
-    def seed(label: str) -> F1OperationalScenario:
-        return seed_bookable_f1_scenario(admin_conn, label)
+    def seed(label: str | None = None) -> F1ContextualScenario:
+        return create_contextual_cardiology_scenario(admin_conn, key_suffix=label)
 
     return seed
