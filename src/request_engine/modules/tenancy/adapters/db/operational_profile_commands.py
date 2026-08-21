@@ -8,6 +8,9 @@ from request_engine.modules.tenancy.adapters.db.operational_authority import (
     require_operational_authority,
 )
 from request_engine.modules.tenancy.application.commands import (
+    set_organization_public_contacts as contact_command,
+)
+from request_engine.modules.tenancy.application.commands import (
     update_organization_operational_profile as profile_command,
 )
 from request_engine.modules.tenancy.contracts.operational_authority import (
@@ -116,6 +119,127 @@ class PostgresOperationalProfileCommands:
             )
             return profile
 
+    async def set_organization_public_contacts(
+        self,
+        command: contact_command.SetOrganizationPublicContactsCommand,
+    ) -> contact_command.OrganizationPublicContactsState:
+        contacts = tuple(
+            sorted(command.contacts, key=lambda item: (item.channel, item.normalized_value))
+        )
+        fingerprint = command_fingerprint(
+            "tenancy.set_organization_public_contacts",
+            {
+                "authority_party_id": command.authority_party_id,
+                "contacts": [_contact_to_json(item) for item in contacts],
+            },
+        )
+        async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            idempotency_id, replay = await acquire_idempotency(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                capability="tenancy.set_organization_public_contacts",
+                idempotency_key=command.idempotency_key,
+                fingerprint=fingerprint,
+            )
+            if replay is not None:
+                return _contacts_state_from_json(cast(dict[str, object], replay["contacts"]))
+
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
+            exists = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT id
+                        FROM request_engine.organizations
+                        WHERE id = :organization_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"organization_id": command.organization_id},
+                )
+            ).first()
+            if exists is None:
+                raise RuntimeError("Organization is unavailable")
+
+            await session.execute(
+                text(
+                    """
+                    UPDATE request_engine.organization_public_contact_endpoints
+                       SET active = false,
+                           is_public = false,
+                           updated_at = clock_timestamp()
+                     WHERE organization_id = :organization_id
+                       AND (active OR is_public)
+                    """
+                ),
+                {"organization_id": command.organization_id},
+            )
+            for contact in contacts:
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO request_engine.organization_public_contact_endpoints (
+                            organization_id,
+                            channel,
+                            normalized_value,
+                            label,
+                            active,
+                            is_public
+                        ) VALUES (
+                            :organization_id,
+                            :channel,
+                            :normalized_value,
+                            :label,
+                            true,
+                            true
+                        )
+                        ON CONFLICT (organization_id, channel, normalized_value)
+                        DO UPDATE
+                           SET label = EXCLUDED.label,
+                               active = true,
+                               is_public = true,
+                               updated_at = clock_timestamp()
+                        """
+                    ),
+                    {
+                        "organization_id": command.organization_id,
+                        "channel": contact.channel,
+                        "normalized_value": contact.normalized_value,
+                        "label": contact.label.strip() if contact.label is not None else None,
+                    },
+                )
+
+            state = contact_command.OrganizationPublicContactsState(
+                organization_id=command.organization_id,
+                contacts=contacts,
+            )
+            await append_audit(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                command_name="tenancy.set_organization_public_contacts",
+                aggregate_kind="Organization",
+                aggregate_id=command.organization_id,
+                idempotency_id=idempotency_id,
+                details={
+                    "authority": authority.audit_details(),
+                    "public_contact_count": len(contacts),
+                },
+            )
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"contacts": _contacts_state_to_json(state)},
+            )
+            return state
+
 
 def _validate_profile(
     command: profile_command.UpdateOrganizationOperationalProfileCommand,
@@ -162,4 +286,40 @@ def _profile_from_json(
         default_locale=cast(str | None, value.get("default_locale")),
         default_currency=cast(str | None, value.get("default_currency")),
         operational_status=cast(str, value["operational_status"]),
+    )
+
+
+def _contact_to_json(
+    contact: contact_command.OrganizationPublicContactInput,
+) -> dict[str, object]:
+    return {
+        "channel": contact.channel,
+        "normalized_value": contact.normalized_value,
+        "label": contact.label,
+    }
+
+
+def _contacts_state_to_json(
+    state: contact_command.OrganizationPublicContactsState,
+) -> dict[str, object]:
+    return {
+        "organization_id": str(state.organization_id),
+        "contacts": [_contact_to_json(item) for item in state.contacts],
+    }
+
+
+def _contacts_state_from_json(
+    value: dict[str, object],
+) -> contact_command.OrganizationPublicContactsState:
+    raw_contacts = cast(list[dict[str, object]], value["contacts"])
+    return contact_command.OrganizationPublicContactsState(
+        organization_id=UUID(cast(str, value["organization_id"])),
+        contacts=tuple(
+            contact_command.OrganizationPublicContactInput(
+                channel=cast(contact_command.PublicContactChannel, item["channel"]),
+                normalized_value=cast(str, item["normalized_value"]),
+                label=cast(str | None, item.get("label")),
+            )
+            for item in raw_contacts
+        ),
     )
