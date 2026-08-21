@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
   push:
+    # Feature branches are validated by pull_request CI. Keep direct push CI
+    # only for main so implementation branches do not duplicate canonical runs.
     branches:
       - main
   workflow_dispatch:
