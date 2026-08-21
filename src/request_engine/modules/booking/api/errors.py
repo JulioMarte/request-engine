@@ -8,6 +8,7 @@ from request_engine.modules.booking.application.errors import (
     AppointmentUnavailable,
     BookingConfigurationError,
     BookingError,
+    ContextualCommitmentUnsupported,
     InvalidResourceSelection,
     OfferingVersionNotBookable,
     OfferingVersionNotFound,
@@ -116,6 +117,13 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             message=str(exc),
             resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={"reservation_id": str(exc.reservation_id), "status": exc.status},
+        )
+    if isinstance(exc, ContextualCommitmentUnsupported):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="contextual_commitment_unsupported",
+            message="this contextual commitment operation is not supported in F1",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"operation": exc.operation},
         )
     if isinstance(exc, InvalidResourceSelection):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
