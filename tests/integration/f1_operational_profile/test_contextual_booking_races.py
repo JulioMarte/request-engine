@@ -88,6 +88,21 @@ async def test_book_serializes_behind_context_price_change_and_fails_stale(
     commands = PostgresContextualReservationCommands(session_factory)
 
     async with tenant_transaction(session_factory, fixture.organization_id) as config_session:
+        # Match the production commercial lock order: Resource -> Assignment.
+        await config_session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.resources
+                WHERE organization_id = :organization_id AND id = :resource_id
+                FOR UPDATE
+                """
+            ),
+            {
+                "organization_id": fixture.organization_id,
+                "resource_id": fixture.resource_id,
+            },
+        )
         await config_session.execute(
             text(
                 """
