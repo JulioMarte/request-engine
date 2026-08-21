@@ -83,7 +83,7 @@ async def test_contextual_commitment_unsupported_has_machine_readable_http_error
         Request({"type": "http"}),
         ContextualCommitmentUnsupported("reschedule"),
     )
-    payload = cast(dict[str, object], json.loads(response.body))
+    payload = cast(dict[str, object], json.loads(bytes(response.body)))
     error = cast(dict[str, object], payload["error"])
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
