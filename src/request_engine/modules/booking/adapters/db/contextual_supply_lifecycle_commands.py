@@ -19,7 +19,6 @@ from request_engine.modules.booking.application.commands.set_resource_location_a
     SetResourceLocationAvailabilityCommand,
 )
 from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (  # noqa: E501
-    ExceptionKind,
     ResourceLocationScheduleExceptionState,
     SetResourceLocationScheduleExceptionCommand,
 )
