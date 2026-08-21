@@ -16,14 +16,12 @@ from request_engine.modules.catalog.application.commands.configure_offering_vers
     OfferingVersionBookingTermsState,
 )
 from request_engine.modules.catalog.application.commands.set_location_hours_exception import (
-    LocationHoursExceptionKind,
     LocationHoursExceptionState,
     SetLocationHoursExceptionCommand,
 )
 from request_engine.modules.catalog.application.commands.set_location_public_contacts import (
     LocationPublicContactInput,
     LocationPublicContactsState,
-    PublicContactChannel,
     SetLocationPublicContactsCommand,
 )
 from request_engine.modules.catalog.application.commands.update_location_operational_info import (
