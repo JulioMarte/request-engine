@@ -1,18 +1,12 @@
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from typing import Any
 
 import psycopg
-from psycopg import Connection
 import pytest
-
-from tests.integration.f1_operational_profile.dummy_data import (
-    F1ContextualScenario,
-    create_contextual_cardiology_scenario,
-)
+from psycopg import Connection
 
 PgConnection = Connection[Any]
-F1ScenarioFactory = Callable[[str | None], F1ContextualScenario]
 
 
 def _conninfo() -> str:
@@ -36,11 +30,3 @@ def admin_conn(pg_conninfo: str) -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
-
-
-@pytest.fixture
-def f1_scenario_factory(admin_conn: PgConnection) -> F1ScenarioFactory:
-    def seed(label: str | None = None) -> F1ContextualScenario:
-        return create_contextual_cardiology_scenario(admin_conn, key_suffix=label)
-
-    return seed
