@@ -35,7 +35,7 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     reschedule_reservation,
 )
 from request_engine.modules.booking.application.errors import (
-    InvalidResourceSelection,
+    ContextualCommitmentUnsupported,
     ReservationNotFound,
 )
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
@@ -180,9 +180,7 @@ def create_router(
         require_capability(actor, "appointments.reschedule")
         option = option_codec.decode(actor.organization_id, body.option_id)
         if option.is_contextual:
-            raise InvalidResourceSelection(
-                "contextual AppointmentOptions cannot use the legacy reschedule path"
-            )
+            raise ContextualCommitmentUnsupported("reschedule")
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
