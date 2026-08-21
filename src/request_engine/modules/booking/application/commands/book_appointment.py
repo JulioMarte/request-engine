@@ -4,6 +4,11 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.booking.application.errors import (
+    AppointmentOptionStale,
+    OfferingVersionNotBookable,
+    OfferingVersionNotFound,
+)
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 
 
@@ -59,4 +64,9 @@ async def book_appointment(
             or command.expected_location_operational_revision <= 0
         ):
             raise ValueError("contextual booking requires expected Location revision")
-    return await handler.book_appointment(command)
+    try:
+        return await handler.book_appointment(command)
+    except (OfferingVersionNotFound, OfferingVersionNotBookable) as exc:
+        if not command.is_contextual:
+            raise
+        raise AppointmentOptionStale("OfferingVersion availability changed") from exc
