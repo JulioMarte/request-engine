@@ -26,6 +26,7 @@ uv run pytest \
 
 uv run pytest \
   tests/integration/f1_operational_profile/test_business_info.py \
+  tests/integration/f1_operational_profile/test_catalog_contextual_discovery.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/business-info.xml"
 
