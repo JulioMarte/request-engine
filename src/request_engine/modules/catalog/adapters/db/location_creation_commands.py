@@ -53,29 +53,29 @@ class PostgresLocationCreationCommands:
                 "geocoded_at": geocoded_at,
             },
         )
-        try:
-            async with tenant_transaction(
-                self._session_factory,
-                command.organization_id,
-            ) as session:
-                idempotency_id, replay = await acquire_idempotency(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    capability="catalog.create_location",
-                    idempotency_key=command.idempotency_key,
-                    fingerprint=fingerprint,
-                )
-                if replay is not None:
-                    return _state_from_json(cast(dict[str, object], replay["location"]))
+        async with tenant_transaction(
+            self._session_factory,
+            command.organization_id,
+        ) as session:
+            idempotency_id, replay = await acquire_idempotency(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                capability="catalog.create_location",
+                idempotency_key=command.idempotency_key,
+                fingerprint=fingerprint,
+            )
+            if replay is not None:
+                return _state_from_json(cast(dict[str, object], replay["location"]))
 
-                authority = await require_operational_authority(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    authority_party_id=command.authority_party_id,
-                    scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
-                )
+            authority = await require_operational_authority(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                authority_party_id=command.authority_party_id,
+                scope_key=MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            )
+            try:
                 row = (
                     (
                         await session.execute(
@@ -155,31 +155,34 @@ class PostgresLocationCreationCommands:
                     .mappings()
                     .one()
                 )
-                state = _state_from_row(row)
-                await append_audit(
-                    session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    command_name="catalog.create_location",
-                    aggregate_kind="Location",
-                    aggregate_id=state.location_id,
-                    idempotency_id=idempotency_id,
-                    details={
-                        "authority": authority.audit_details(),
-                        "location_key": state.location_key,
-                        "operational_revision": state.operational_revision,
-                    },
-                )
-                await complete_idempotency(
-                    session,
-                    idempotency_id,
-                    {"location": _state_to_json(state)},
-                )
-                return state
-        except IntegrityError as exc:
-            raise CatalogConfigurationConflict(
-                "Location conflicts with existing tenant configuration"
-            ) from exc
+            except IntegrityError as exc:
+                if getattr(exc.orig, "sqlstate", None) == "23505":
+                    raise CatalogConfigurationConflict(
+                        "Location conflicts with existing tenant configuration"
+                    ) from None
+                raise
+
+            state = _state_from_row(row)
+            await append_audit(
+                session,
+                organization_id=command.organization_id,
+                principal_id=command.principal_id,
+                command_name="catalog.create_location",
+                aggregate_kind="Location",
+                aggregate_id=state.location_id,
+                idempotency_id=idempotency_id,
+                details={
+                    "authority": authority.audit_details(),
+                    "location_key": state.location_key,
+                    "operational_revision": state.operational_revision,
+                },
+            )
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"location": _state_to_json(state)},
+            )
+            return state
 
 
 def _validate_timezone(value: str) -> None:
