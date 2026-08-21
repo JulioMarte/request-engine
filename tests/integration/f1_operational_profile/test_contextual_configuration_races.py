@@ -39,6 +39,26 @@ def _resource_revision(conn: PgConnection, fixture: F1ContextualScenario) -> int
     return cast(int, row[0])
 
 
+async def _wait_until_session_blocks(
+    observer: PgConnection,
+    application_name: str,
+) -> None:
+    for _ in range(200):
+        row = observer.execute(
+            """
+            SELECT wait_event_type
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND application_name = %s
+            """,
+            (application_name,),
+        ).fetchone()
+        if row is not None and row[0] == "Lock":
+            return
+        await asyncio.sleep(0.01)
+    pytest.fail(f"{application_name} never reached the database lock barrier")
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -60,12 +80,20 @@ async def test_concurrent_overlapping_context_terms_serialize_and_one_is_rejecte
     first_entered = asyncio.Event()
     release_first = asyncio.Event()
 
-    async def insert_terms(amount: int, hold_open: bool) -> str:
+    async def insert_terms(
+        amount: int,
+        hold_open: bool,
+        application_name: str,
+    ) -> str:
         try:
             async with tenant_transaction(
                 session_factory,
                 fixture.organization_id,
             ) as session:
+                await session.execute(
+                    text("SELECT set_config('application_name', :application_name, true)"),
+                    {"application_name": application_name},
+                )
                 await session.execute(
                     text(
                         """
@@ -104,10 +132,12 @@ async def test_concurrent_overlapping_context_terms_serialize_and_one_is_rejecte
         except IntegrityError:
             return "overlap"
 
-    first = asyncio.create_task(insert_terms(4100, True))
+    first_name = f"f1-context-terms-first-{uuid4().hex}"
+    second_name = f"f1-context-terms-second-{uuid4().hex}"
+    first = asyncio.create_task(insert_terms(4100, True, first_name))
     await asyncio.wait_for(first_entered.wait(), timeout=5)
-    second = asyncio.create_task(insert_terms(4200, False))
-    await asyncio.sleep(0.1)
+    second = asyncio.create_task(insert_terms(4200, False, second_name))
+    await _wait_until_session_blocks(admin_conn, second_name)
     assert not second.done()
     release_first.set()
 
@@ -141,12 +171,19 @@ async def test_concurrent_overlapping_assignments_serialize_and_one_is_rejected(
     first_entered = asyncio.Event()
     release_first = asyncio.Event()
 
-    async def insert_assignment(hold_open: bool) -> str:
+    async def insert_assignment(
+        hold_open: bool,
+        application_name: str,
+    ) -> str:
         try:
             async with tenant_transaction(
                 session_factory,
                 fixture.organization_id,
             ) as session:
+                await session.execute(
+                    text("SELECT set_config('application_name', :application_name, true)"),
+                    {"application_name": application_name},
+                )
                 await session.execute(
                     text(
                         """
@@ -180,10 +217,12 @@ async def test_concurrent_overlapping_assignments_serialize_and_one_is_rejected(
         except IntegrityError:
             return "overlap"
 
-    first = asyncio.create_task(insert_assignment(True))
+    first_name = f"f1-assignment-first-{uuid4().hex}"
+    second_name = f"f1-assignment-second-{uuid4().hex}"
+    first = asyncio.create_task(insert_assignment(True, first_name))
     await asyncio.wait_for(first_entered.wait(), timeout=5)
-    second = asyncio.create_task(insert_assignment(False))
-    await asyncio.sleep(0.1)
+    second = asyncio.create_task(insert_assignment(False, second_name))
+    await _wait_until_session_blocks(admin_conn, second_name)
     assert not second.done()
     release_first.set()
 
