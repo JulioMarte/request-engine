@@ -2,6 +2,22 @@
 
 This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files should point here rather than duplicate these documents.
 
+## Pre-production evolution policy
+
+Request Engine is still in a pre-customer, pre-production evolution phase. The released V3 baseline remains reproducible historical/release provenance, but it is **not a permanent ceiling on current product architecture**.
+
+The normative policy for intentionally superseding old architectural restrictions is:
+
+- `architecture/pre-production-evolution-policy.md` — **normative greenfield/pre-production evolution and adversarial proof policy**. It defines which historical freezes remain provenance, which tests must remain hard, which structural/snapshot tests may evolve, how redundant tests may be consolidated, and the evidence bundle required when a feature deliberately changes architecture.
+
+Key rule:
+
+```text
+freeze the evidence, not the future
+```
+
+Architecture fitness functions are drift detectors and safety guards, not constitutional locks. A newer accepted product/architecture contract may change module edges, capability shapes, schema or other prior assumptions when the protected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
+
 ## Active post-V3 feature branch
 
 On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, while F1 is an explicit post-V3 normative delta.
@@ -31,7 +47,7 @@ v3/14 future roadmap for later features
 released V3 baseline contracts for F1 concepts explicitly superseded by v3/15
 ```
 
-For concepts explicitly named by `v3/15-operational-profile-contextual-supply-contract.md`, that post-V3 contract supersedes the corresponding released-baseline sections of `v3/01-capability-contracts.md`, `v3/02-pre-sql-contract.md` and `10-module-ownership-map.md` on this feature branch. Unrelated V3 rules remain authoritative.
+For concepts explicitly named by `v3/15-operational-profile-contextual-supply-contract.md`, that post-V3 contract supersedes the corresponding released-baseline sections of `v3/01-capability-contracts.md`, `v3/02-pre-sql-contract.md` and `10-module-ownership-map.md` on this feature branch. Unrelated V3 rules remain authoritative unless intentionally superseded under the pre-production evolution policy.
 
 Document 16 no longer changes F1 precedence. It explains why several final F1 rules exist and preserves future F2/F3 audit findings without forcing everyday readers through an amendment chain.
 
@@ -54,9 +70,9 @@ The final promotion proof for PR #72 recorded source `development@9e58368e4ff593
 
 `release/v3-release-gates.md` remains the canonical G01–G20 registry. `release/v3-current-release-roadmap.md` is now a release-closure/provenance document rather than an unfinished execution plan. Older transition/rebaseline documents remain useful history but do not override current post-baseline status.
 
-The historical V2 PostgreSQL design chain remains useful as executable design history. The frozen V3 candidate remains release provenance and an equivalence reference. Neither is the mutable production migration line. Production schema history begins at `migrations/versions/0001_initial.py` and evolves append-only from there.
+The historical V2 PostgreSQL design chain remains useful as executable design history. The frozen V3 candidate remains release provenance and an equivalence reference. Neither is the mutable production migration line. Production schema history begins at `migrations/versions/0001_initial.py` and evolves append-only from there unless a deliberate pre-customer rebaseline is explicitly chosen under the pre-production evolution policy.
 
-When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the baseline, V3 wins. Proven V2 safety patterns remain useful only where the corresponding V3 promise survives.
+When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the baseline, V3 wins for the released V3 historical contract. Current post-V3 product contracts may intentionally supersede V3 according to the pre-production evolution policy.
 
 ## Authoritative documents
 
@@ -70,9 +86,10 @@ Outside a branch-specific post-V3 delta, use this precedence when rules overlap:
 6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
 7. `10-module-ownership-map.md` — module ownership.
 8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
-9. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3.
+9. `architecture/pre-production-evolution-policy.md` — meta-policy for intentional pre-customer evolution when a newer accepted contract supersedes one of the rules above.
+10. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3/current accepted deltas.
 
-A post-V3 feature contract may explicitly supersede named sections of this baseline precedence without rewriting released history. Such a delta must be indexed above, scoped precisely and accompanied by append-only schema evolution.
+A post-V3 feature contract may explicitly supersede named sections of this baseline precedence without rewriting released history. Such a delta must be indexed above, scoped precisely and accompanied by appropriate schema/compatibility evolution plus adversarial proof.
 
 Release/freeze provenance documents:
 
@@ -162,7 +179,7 @@ The production migration line begins at:
 migrations/versions/0001_initial.py
 ```
 
-That baseline was reviewed and proven equivalent to the frozen V3 candidate by G17. It is immutable release history. Post-release schema changes must be represented by new append-only Alembic revisions; do not edit `0001_initial` to make a later feature fit.
+That baseline was reviewed and proven equivalent to the frozen V3 candidate by G17. It is immutable release history under the current append-only migration posture. Post-release schema changes normally use new Alembic revisions. Because Request Engine has no customer-owned production data yet, a deliberate pre-customer rebaseline remains possible only when explicitly justified and documented under `architecture/pre-production-evolution-policy.md`; it must never happen accidentally merely to silence a migration/test failure.
 
 ### Frozen V3 candidate provenance
 
