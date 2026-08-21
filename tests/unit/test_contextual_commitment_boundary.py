@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeBookingCommitmentCommands,
@@ -26,9 +27,18 @@ def _contextual_choice() -> ResourceChoice:
     )
 
 
+def _handler() -> CapacitySafeBookingCommitmentCommands:
+    session_factory = async_sessionmaker(
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
+    return CapacitySafeBookingCommitmentCommands(session_factory)
+
+
 @pytest.mark.asyncio
 async def test_contextual_hold_fails_closed_before_legacy_commitment_adapter() -> None:
-    handler = CapacitySafeBookingCommitmentCommands(lambda: None)  # type: ignore[arg-type]
+    handler = _handler()
     now = datetime(2026, 8, 21, 14, 0, tzinfo=UTC)
 
     with pytest.raises(InvalidResourceSelection, match="contextual CapacityHolds"):
@@ -49,7 +59,7 @@ async def test_contextual_hold_fails_closed_before_legacy_commitment_adapter() -
 
 @pytest.mark.asyncio
 async def test_contextual_reschedule_fails_closed_before_legacy_commitment_adapter() -> None:
-    handler = CapacitySafeBookingCommitmentCommands(lambda: None)  # type: ignore[arg-type]
+    handler = _handler()
 
     with pytest.raises(InvalidResourceSelection, match="contextual reschedule"):
         await handler.reschedule_reservation(
