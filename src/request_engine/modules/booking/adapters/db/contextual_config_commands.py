@@ -274,20 +274,21 @@ class PostgresContextualConfigCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
                 )
-                assignment_row = (
+
+                # The booking transaction locks Resource before
+                # ResourceLocationAssignment. Keep commercial configuration on
+                # the same global order. A joined `FOR UPDATE OF r, a` leaves
+                # row-lock acquisition plan-dependent and can deadlock with an
+                # authoritative booking that already owns the Resource root.
+                identity = (
                     (
                         await session.execute(
                             text(
                                 """
-                                SELECT a.resource_id
-                                FROM request_engine.resource_location_assignments a
-                                JOIN request_engine.resources r
-                                  ON r.organization_id = a.organization_id
-                                 AND r.id = a.resource_id
-                                WHERE a.organization_id = :organization_id
-                                  AND a.id = :assignment_id
-                                  AND r.active
-                                FOR UPDATE OF r, a
+                                SELECT resource_id
+                                FROM request_engine.resource_location_assignments
+                                WHERE organization_id = :organization_id
+                                  AND id = :assignment_id
                                 """
                             ),
                             {
@@ -299,10 +300,68 @@ class PostgresContextualConfigCommands:
                     .mappings()
                     .first()
                 )
-                if assignment_row is None:
+                if identity is None:
                     raise ContextualConfigurationConflict(
                         "ResourceLocationAssignment is missing or not configurable"
                     )
+                resource_id = cast(UUID, identity["resource_id"])
+
+                resource_row = (
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT active
+                                FROM request_engine.resources
+                                WHERE organization_id = :organization_id
+                                  AND id = :resource_id
+                                FOR UPDATE
+                                """
+                            ),
+                            {
+                                "organization_id": command.organization_id,
+                                "resource_id": resource_id,
+                            },
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                if resource_row is None or resource_row["active"] is not True:
+                    raise ContextualConfigurationConflict(
+                        "ResourceLocationAssignment is missing or not configurable"
+                    )
+
+                assignment_row = (
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT resource_id, status
+                                FROM request_engine.resource_location_assignments
+                                WHERE organization_id = :organization_id
+                                  AND id = :assignment_id
+                                FOR UPDATE
+                                """
+                            ),
+                            {
+                                "organization_id": command.organization_id,
+                                "assignment_id": command.resource_location_assignment_id,
+                            },
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                if (
+                    assignment_row is None
+                    or cast(UUID, assignment_row["resource_id"]) != resource_id
+                    or assignment_row["status"] != "active"
+                ):
+                    raise ContextualConfigurationConflict(
+                        "ResourceLocationAssignment is missing or not configurable"
+                    )
+
                 offering = (
                     await session.execute(
                         text(
