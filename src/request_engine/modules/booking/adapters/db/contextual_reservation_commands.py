@@ -954,7 +954,6 @@ async def _insert_commercial_commitment(
     resolved: ResolvedBookingTerms,
     configuration_fingerprint: str,
 ) -> None:
-    primary_context_id = context_source_ids[0] if context_source_ids else None
     await session.execute(
         text(
             """
@@ -962,7 +961,6 @@ async def _insert_commercial_commitment(
                 reservation_id,
                 organization_id,
                 offering_version_booking_terms_id,
-                booking_context_terms_id,
                 amount,
                 currency,
                 planned_duration_minutes,
@@ -971,7 +969,6 @@ async def _insert_commercial_commitment(
                 :reservation_id,
                 :organization_id,
                 :base_terms_id,
-                :primary_context_id,
                 :amount,
                 :currency,
                 :planned_duration_minutes,
@@ -983,7 +980,6 @@ async def _insert_commercial_commitment(
             "reservation_id": reservation_id,
             "organization_id": organization_id,
             "base_terms_id": base_terms.source_id,
-            "primary_context_id": primary_context_id,
             "amount": resolved.amount,
             "currency": resolved.currency,
             "planned_duration_minutes": resolved.planned_duration_minutes,
