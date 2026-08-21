@@ -729,7 +729,7 @@ def _exception_state_from_json(
         assignment_id=UUID(cast(str, value["assignment_id"])),
         start_at=datetime.fromisoformat(cast(str, value["start_at"])),
         end_at=datetime.fromisoformat(cast(str, value["end_at"])),
-        exception_kind=cast(ExceptionKind, kind),
+        exception_kind=kind,
         reason=cast(str | None, value.get("reason")),
         active=cast(bool, value["active"]),
         resource_availability_revision=cast(int, value["resource_availability_revision"]),
