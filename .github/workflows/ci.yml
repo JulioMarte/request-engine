@@ -43,6 +43,10 @@ jobs:
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
           --log-dir .ci/logs
+      - name: Inventory test architecture and evidence metadata
+        run: >-
+          python scripts/ci/audit_test_architecture.py
+          --output .ci/test-architecture.json
       - name: Upload Python quality failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
@@ -156,7 +160,8 @@ jobs:
   # evidence bound to the released V3 source. Post-baseline branches must not
   # regenerate or rewrite that evidence. Instead, run current code against the
   # immutable 0001_initial baseline and frozen V3 contract to prove backward
-  # compatibility.
+  # compatibility. Exact release-artifact semantics live in tests/historical,
+  # outside the current architecture-fitness lane.
   postgres-v3-candidate-proof:
     name: PostgreSQL 18 frozen V3 compatibility
     needs:
@@ -204,6 +209,8 @@ jobs:
         run: psql --version
       - name: Run post-baseline V3 compatibility proof
         run: bash scripts/ci/run_v3_frozen_compatibility.sh
+      - name: Run pinned V3 historical provenance tests
+        run: uv run pytest tests/historical -q --tb=short
       - name: Upload frozen V3 compatibility evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -213,11 +220,11 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-  # This is the active post-baseline product gate. It proves append-only Alembic
-  # evolution, F1 schema/runtime behavior, semantic configuration authority,
-  # stale-option protection, commercial provenance, and V3 booking regression.
+  # This is the active product gate. It follows the accepted repository Alembic
+  # head and proves current operational/contextual behavior plus still-current
+  # booking/capacity guarantees. Feature-era names are not architecture locks.
   postgres-production-head:
-    name: PostgreSQL 18 F1 operational profile and contextual supply
+    name: PostgreSQL 18 current product proof
     needs: python-quality
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -225,23 +232,23 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_DB: request_engine_f1
+          POSTGRES_DB: request_engine_current
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d request_engine_f1"
+          --health-cmd "pg_isready -U postgres -d request_engine_current"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGDATABASE: request_engine_f1
+      PGDATABASE: request_engine_current
       PGUSER: postgres
       PGPASSWORD: postgres
-      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_f1
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_current
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -255,14 +262,14 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Run canonical F1 operational profile proof
-        run: bash scripts/ci/run_f1_operational_profile.sh
-      - name: Upload F1 proof evidence
+      - name: Run canonical current-product proof
+        run: bash scripts/ci/run_current_product.sh
+      - name: Upload current-product proof evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: f1-operational-profile-proof
-          path: .ci/f1-operational-profile/
+          name: current-product-proof
+          path: .ci/current-product/
           include-hidden-files: true
           if-no-files-found: warn
 

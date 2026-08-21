@@ -1,0 +1,91 @@
+schema_version = 1
+status = "normative-current-guarantee-inventory"
+policy = "docs/architecture/pre-production-evolution-policy.md"
+
+# This file inventories guarantees, never exact test filenames. Test-to-guarantee
+# coverage is discovered from test evidence/metadata and may evolve without turning
+# this inventory into another repository-shape snapshot.
+
+[[guarantees]]
+id = "INV-TENANT-001"
+statement = "A tenant cannot observe or mutate another tenant's private rows through supported runtime surfaces, and foreign identifiers remain opaque where privacy requires it."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AUTHORITY-001"
+statement = "Every state-changing or party-scoped operation is authorized by explicit actor/representation authority and cannot gain authority from caller-supplied identifiers."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-ATOMICITY-001"
+statement = "A failed transactional command cannot leave a partially committed business outcome or partially consumed commitment."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = []
+
+[[guarantees]]
+id = "INV-CAPACITY-001"
+statement = "Authoritative committed capacity has one ownership/ledger model and contested operations cannot oversell or create split ownership."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["capacity"]
+
+[[guarantees]]
+id = "INV-IDEMPOTENCY-001"
+statement = "Externally retryable state-changing commands are idempotent within their defined scope and reject conflicting reuse without duplicating effects."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = []
+
+[[guarantees]]
+id = "INV-PROVENANCE-001"
+statement = "Committed historical facts required to explain a business outcome remain reconstructable after mutable configuration or resource state changes."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-WORKER-001"
+statement = "Durable worker processing is safe under crash, retry, duplicate delivery, lease expiry and late/out-of-order execution according to each work family's contract."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-OUTBOX-001"
+statement = "Committed business consequences that cross an asynchronous boundary are durably represented and can be retried/reconciled without silent loss or duplicate authoritative effects."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-PRIVILEGE-001"
+statement = "Runtime database roles and security-definer surfaces retain least privilege, tenant isolation and explicit callable/write authority."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-TEMPORAL-001"
+statement = "Time-based availability and commitments preserve half-open interval, timezone and DST semantics without ambiguous or duplicated ownership."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["temporal", "capacity"]
+
+[[guarantees]]
+id = "FIT-ARCH-001"
+statement = "Current module ownership remains explicit, dependency direction remains understandable and acyclic, and cross-module imports use published connection surfaces rather than internals."
+severity = "critical"
+required_evidence = ["fitness"]
+risk = []
+
+[[guarantees]]
+id = "INV-FAILURE-001"
+statement = "Rejected or failed public/runtime operations expose bounded, reproducible failure semantics without leaking private state or converting semantic rejection into unsafe retry loops."
+severity = "high"
+required_evidence = ["contract", "adversarial"]
+risk = ["security"]
