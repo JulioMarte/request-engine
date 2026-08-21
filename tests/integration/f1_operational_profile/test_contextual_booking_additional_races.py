@@ -17,7 +17,10 @@ from request_engine.modules.booking.application.commands.book_appointment import
     BookAppointmentCommand,
     book_appointment,
 )
-from request_engine.modules.booking.application.errors import AppointmentOptionStale
+from request_engine.modules.booking.application.errors import (
+    AppointmentOptionStale,
+    OfferingVersionNotFound,
+)
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     FindAppointmentSlotsQuery,
     find_appointment_slots,
@@ -331,3 +334,9 @@ async def test_offering_deactivation_serializes_before_book_and_makes_option_sta
     with pytest.raises(AppointmentOptionStale):
         await asyncio.wait_for(booking_task, timeout=5)
     assert _reservation_count(admin_conn, fixture) == 0
+
+    with pytest.raises(OfferingVersionNotFound):
+        await find_appointment_slots(
+            PostgresAppointmentAvailabilityReader(session_factory),
+            _query(fixture),
+        )
