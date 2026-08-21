@@ -32,6 +32,7 @@ uv run pytest \
 uv run pytest \
   tests/integration/f1_operational_profile/test_operational_commands.py \
   tests/integration/f1_operational_profile/test_contextual_config_commands.py \
+  tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/semantic-commands.xml"
 
