@@ -4,37 +4,36 @@ This folder is the system of record for the current Request Engine product/domai
 
 ## Active post-V3 feature branch
 
-On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, but F1 introduces an explicit post-V3 normative delta.
+On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, while F1 is an explicit post-V3 normative delta.
 
-Current execution checkpoint:
+Current execution/status documents:
 
-- `v3/20-operational-profile-contextual-supply-implementation-handoff.md` — **informative current implementation handoff, not a normative contract**. Read it before resuming work on this branch to see what is implemented, what is actually proven, what remains incomplete, the known CI checkpoints and the exact continuation order. It does not change the precedence below.
+- `v3/20-operational-profile-contextual-supply-implementation-handoff.md` — **informative implementation handoff, not a normative contract**. It must reflect the latest implementation/proof checkpoint and remaining P5/P6/P7 work.
+- `v3/21-operational-profile-contextual-supply-documentation-audit.md` — **informative proof/reconciliation record**. It records the Phase H closure evidence and the exact remaining documentation/cleanup/merge-readiness work.
 
-Read these branch-specific documents before implementing this feature:
+Read these branch-specific documents before implementing or reviewing F1:
 
-1. `v3/16-operational-profile-contextual-supply-clarifications.md` — **highest-precedence F1 clarification on the specifically named points**. It corrects the second adversarial-audit findings: commercial Offering identity vs live workload classification, Location-level schedule exceptions, Resource-wide vs Resource-at-Location exceptions, Organization-as-independent-practice semantics, Organization-level public operational contacts, F2 canonical service classification, and F3 interruption authority direction.
-2. `v3/15-operational-profile-contextual-supply-contract.md` — **normative F1 post-V3 delta** except where explicitly superseded by `v3/16`. It defines Organization operational defaults, Location/contact/geospatial truth, Resource-at-Location assignment, contextual schedule/price/duration, Reservation commercial provenance, authorization, races and backward compatibility.
-3. `v3/13-operational-profile-contextual-supply-plan.md` — active F1 design/implementation plan, phases, test matrix and Definition of Done. Where `v3/16` clarifies a named point, the clarification wins until the main contract/plan are consolidated before merge.
-4. `v3/14-operational-intelligence-roadmap.md` — complete accepted product/design direction for F1–F6. Only F1 is implementation scope of this branch; F2–F6 are preserved future direction. `v3/16` records the additional mandatory F2/F3 design questions found during adversarial review.
-5. `adr/0012-contextual-resource-location-supply.md` — durable rationale for introducing Resource-at-Location/contextual booking supply while retaining Resource/CapacityClaim as the capacity model.
+1. `v3/15-operational-profile-contextual-supply-contract.md` — **normative F1 post-V3 delta**. It defines Organization/Location operational truth, public contacts, Location-hours exceptions, Resource-at-Location assignment, broad/narrow Resource exceptions, contextual schedule/price/duration, Reservation commercial provenance, authority, races, `aptopt_v2`, fail-closed contextual hold/reschedule scope and backward compatibility.
+2. `v3/13-operational-profile-contextual-supply-plan.md` — F1 implementation/closure plan, phases, proof matrix and Definition of Done. Closed adversarial clarifications are already incorporated here and in document 15.
+3. `v3/14-operational-intelligence-roadmap.md` — accepted product/design direction for F1–F6. Only F1 is implementation scope of this branch; F2–F6 remain future work.
+4. `v3/16-operational-profile-contextual-supply-clarifications.md` — **historical adversarial-review provenance, no longer a higher-precedence F1 amendment**. Its closed F1 findings have been folded into 15/13; its F2/F3 questions remain future-feature inputs.
+5. `adr/0012-contextual-resource-location-supply.md` — durable rationale for Resource-at-Location/contextual booking supply while retaining Resource/CapacityClaim as the capacity model. Keep it `Proposed` until final cleanup and exact-head merge-readiness proof are complete.
 
 Precedence on this branch:
 
 ```text
-v3/16 clarification, but only for the sections/concepts it explicitly names
-  >
 v3/15 F1 normative post-V3 contract
   >
-v3/13 F1 implementation plan / v3/14 future roadmap as applicable
+v3/13 F1 implementation/closure plan
+  >
+v3/14 future roadmap for later features
   >
 released V3 baseline contracts for F1 concepts explicitly superseded by v3/15
 ```
 
 For concepts explicitly named by `v3/15-operational-profile-contextual-supply-contract.md`, that post-V3 contract supersedes the corresponding released-baseline sections of `v3/01-capability-contracts.md`, `v3/02-pre-sql-contract.md` and `10-module-ownership-map.md` on this feature branch. Unrelated V3 rules remain authoritative.
 
-`v3/16` is intentionally an amendment after a second adversarial audit. Before F1 is declared merge-ready, its closed clarifications should be consolidated into the main F1 contract so normal readers do not need a permanent amendment chain. Until then, `v3/16` is normative for the points it explicitly supersedes.
-
-This precedence avoids rewriting released V3 history while giving the feature one unambiguous current contract.
+Document 16 no longer changes F1 precedence. It explains why several final F1 rules exist and preserves future F2/F3 audit findings without forcing everyday readers through an amendment chain.
 
 ## Current V3 status
 
@@ -149,7 +148,7 @@ New durable domain/schema contracts belong under `docs/v3/` or a successor versi
 
 Post-release features should prefer an explicit post-V3 delta contract when preserving the released baseline text provides clearer provenance than rewriting the old baseline as though the feature had always existed. The delta must state exactly what it supersedes.
 
-Temporary clarification/amendment documents are allowed after adversarial review when they prevent an incorrect implementation from proceeding. They must declare narrow precedence and should be consolidated into the owning normative contract before merge rather than becoming a permanent maze of layered documents.
+Temporary clarification/amendment documents are allowed after adversarial review when they prevent an incorrect implementation from proceeding. Once their closed decisions are folded into the owning contract/plan, demote them to historical provenance rather than leaving a permanent precedence maze.
 
 ## PostgreSQL executable surfaces
 
