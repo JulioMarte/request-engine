@@ -7,6 +7,12 @@ from uuid import UUID, uuid4
 
 from psycopg import Connection
 
+from request_engine.platform.security.operational_authority import (
+    MANAGE_COMMERCIAL_TERMS_SCOPE,
+    MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+    MANAGE_OPERATIONAL_PROFILE_SCOPE,
+)
+
 PgConnection = Connection[Any]
 
 
@@ -16,6 +22,7 @@ class F1ContextualScenario:
 
     organization_id: UUID
     principal_id: UUID
+    authority_party_id: UUID
     subject_party_id: UUID
     location_id: UUID
     offering_version_id: UUID
@@ -40,13 +47,13 @@ def create_contextual_cardiology_scenario(
     *,
     key_suffix: str | None = None,
 ) -> F1ContextualScenario:
-    """Seed a complete cardiology booking scenario for PostgreSQL integration tests.
+    """Seed one complete F1 cardiology world for PostgreSQL integration tests.
 
-    The shape is intentionally stable: one organization, one Dominican clinic,
-    one cardiology offering, one qualified doctor, one effective assignment,
-    Monday operating/availability hours, immutable base terms and a contextual
-    price/duration override. Tests may mutate one fact after creation to prove
-    stale-option, schedule, pricing, authorization, or concurrency behavior.
+    The scenario contains tenant identity/authority, one Dominican clinic,
+    cardiology service terms, one qualified doctor, one effective assignment,
+    Monday operational/Resource availability, and one contextual price/duration
+    override. Tests mutate individual facts to prove stale-option, scheduling,
+    authorization, shared-capacity, and concurrency behavior.
     """
 
     suffix = key_suffix or uuid4().hex
@@ -69,6 +76,43 @@ def create_contextual_cardiology_scenario(
         RETURNING id
         """,
         (organization_id, f"agent-{suffix}"),
+    )
+    authority_party_id = _uuid_row(
+        conn,
+        """
+        INSERT INTO request_engine.parties (organization_id, party_kind, display_name)
+        VALUES (%s, 'organization', %s)
+        RETURNING id
+        """,
+        (organization_id, f"Operations {suffix}"),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.representations (
+            organization_id,
+            principal_id,
+            represented_party_id,
+            scope_key,
+            authority_kind
+        ) VALUES
+            (%s, %s, %s, %s, 'delegated'),
+            (%s, %s, %s, %s, 'delegated'),
+            (%s, %s, %s, %s, 'delegated')
+        """,
+        (
+            organization_id,
+            principal_id,
+            authority_party_id,
+            MANAGE_OPERATIONAL_PROFILE_SCOPE,
+            organization_id,
+            principal_id,
+            authority_party_id,
+            MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
+            organization_id,
+            principal_id,
+            authority_party_id,
+            MANAGE_COMMERCIAL_TERMS_SCOPE,
+        ),
     )
     subject_party_id = _uuid_row(
         conn,
@@ -208,6 +252,7 @@ def create_contextual_cardiology_scenario(
     return F1ContextualScenario(
         organization_id=organization_id,
         principal_id=principal_id,
+        authority_party_id=authority_party_id,
         subject_party_id=subject_party_id,
         location_id=location_id,
         offering_version_id=offering_version_id,
