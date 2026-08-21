@@ -13,7 +13,7 @@ from request_engine.modules.booking.application.commands.acquire_capacity_hold i
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
 )
-from request_engine.modules.booking.application.errors import InvalidResourceSelection
+from request_engine.modules.booking.application.errors import ContextualCommitmentUnsupported
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
 
 
@@ -41,7 +41,7 @@ async def test_contextual_hold_fails_closed_before_legacy_commitment_adapter() -
     handler = _handler()
     now = datetime(2026, 8, 21, 14, 0, tzinfo=UTC)
 
-    with pytest.raises(InvalidResourceSelection, match="legacy CapacityHold path"):
+    with pytest.raises(ContextualCommitmentUnsupported, match="capacity hold"):
         await handler.acquire_capacity_hold(
             AcquireCapacityHoldCommand(
                 organization_id=uuid4(),
@@ -61,7 +61,7 @@ async def test_contextual_hold_fails_closed_before_legacy_commitment_adapter() -
 async def test_contextual_reschedule_fails_closed_before_legacy_commitment_adapter() -> None:
     handler = _handler()
 
-    with pytest.raises(InvalidResourceSelection, match="legacy reschedule path"):
+    with pytest.raises(ContextualCommitmentUnsupported, match="reschedule"):
         await handler.reschedule_reservation(
             RescheduleReservationCommand(
                 organization_id=uuid4(),
