@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -114,7 +115,7 @@ def _contextual_slot() -> AppointmentSlot:
             ),
         ),
         planned_duration_minutes=45,
-        amount=3500,
+        amount=Decimal("3500"),
         currency="DOP",
         location_operational_revision=3,
         configuration_fingerprint="sha256:contextual-reschedule-router",
