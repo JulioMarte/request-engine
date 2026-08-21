@@ -44,6 +44,7 @@ uv run pytest \
 uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_booking.py \
   tests/integration/f1_operational_profile/test_context_only_commercial_booking.py \
+  tests/integration/f1_operational_profile/test_multi_resource_commercial_provenance.py \
   tests/integration/f1_operational_profile/test_contextual_booking_races.py \
   tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py \
   tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py \
