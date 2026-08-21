@@ -102,9 +102,7 @@ async def test_book_serializes_behind_context_price_change_and_fails_stale(
                 "assignment_id": fixture.assignment_id,
             },
         )
-        booking_task = asyncio.create_task(
-            book_appointment(commands, _command(fixture, slot))
-        )
+        booking_task = asyncio.create_task(book_appointment(commands, _command(fixture, slot)))
         await _assert_blocked(cast(asyncio.Task[object], booking_task))
         await config_session.execute(
             text(
@@ -152,9 +150,7 @@ async def test_book_serializes_behind_location_closure_and_fails_stale(
                 "location_id": fixture.location_id,
             },
         )
-        booking_task = asyncio.create_task(
-            book_appointment(commands, _command(fixture, slot))
-        )
+        booking_task = asyncio.create_task(book_appointment(commands, _command(fixture, slot)))
         await _assert_blocked(cast(asyncio.Task[object], booking_task))
         await config_session.execute(
             text(
@@ -238,9 +234,7 @@ async def test_book_serializes_behind_assignment_retirement_and_fails_stale(
                 "assignment_id": fixture.assignment_id,
             },
         )
-        booking_task = asyncio.create_task(
-            book_appointment(commands, _command(fixture, slot))
-        )
+        booking_task = asyncio.create_task(book_appointment(commands, _command(fixture, slot)))
         await _assert_blocked(cast(asyncio.Task[object], booking_task))
         await config_session.execute(
             text(
