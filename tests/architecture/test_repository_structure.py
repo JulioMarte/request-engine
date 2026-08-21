@@ -21,9 +21,7 @@ DEFERRED_MODULES = {
 }
 
 BUSINESS_MODULES = frozenset(
-    path.name
-    for path in MODULES_ROOT.iterdir()
-    if path.is_dir() and not path.name.startswith("__")
+    path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
 )
 
 V3_CANONICAL_DOCS = {
