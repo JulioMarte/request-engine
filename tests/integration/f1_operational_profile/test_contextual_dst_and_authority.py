@@ -22,7 +22,9 @@ from request_engine.modules.tenancy.application.commands.set_organization_public
     set_organization_public_contacts,
 )
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
+from request_engine.platform.security.operational_authority import (
+    OperationalAuthorityRequired,
+)
 
 from .dummy_data import F1ContextualScenario, create_contextual_cardiology_scenario
 
