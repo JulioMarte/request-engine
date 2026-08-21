@@ -49,6 +49,7 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py \
   tests/integration/f1_operational_profile/test_contextual_shared_capacity.py \
   tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py \
+  tests/integration/f1_operational_profile/test_capability_flow.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
