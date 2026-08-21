@@ -28,7 +28,8 @@ from request_engine.modules.booking.application.commands.confirm_capacity_hold i
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
 )
-from request_engine.modules.booking.contracts.appointments import Reservation
+from request_engine.modules.booking.application.errors import InvalidResourceSelection
+from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 from request_engine.modules.booking.contracts.holds import CapacityHold
 from request_engine.modules.booking.contracts.slot_offer_capacity import (
     AcquireSlotOfferHold,
@@ -64,6 +65,7 @@ class CapacitySafeBookingCommitmentCommands:
         self._delegate = PostgresBookingCommitmentCommands(session_factory)
 
     async def acquire_capacity_hold(self, command: AcquireCapacityHoldCommand) -> CapacityHold:
+        _reject_contextual_legacy_commitment(command.resources, operation="CapacityHold")
         try:
             return await self._delegate.acquire_capacity_hold(command)
         except IntegrityError as exc:
@@ -75,6 +77,7 @@ class CapacitySafeBookingCommitmentCommands:
         return await self._delegate.confirm_capacity_hold(command)
 
     async def reschedule_reservation(self, command: RescheduleReservationCommand) -> Reservation:
+        _reject_contextual_legacy_commitment(command.resources, operation="reschedule")
         try:
             return await self._delegate.reschedule_reservation(command)
         except IntegrityError as exc:
@@ -119,6 +122,17 @@ class CapacitySafeSlotOfferCapacity:
         request: ReleaseSlotOfferHold,
     ) -> CapacityHold:
         return await self._delegate.release_slot_offer_hold(transaction, request)
+
+
+def _reject_contextual_legacy_commitment(
+    resources: tuple[ResourceChoice, ...],
+    *,
+    operation: str,
+) -> None:
+    if any(choice.resource_location_assignment_id is not None for choice in resources):
+        raise InvalidResourceSelection(
+            f"contextual ResourceChoices cannot use the legacy {operation} path"
+        )
 
 
 def _async_session(transaction: object) -> AsyncSession:
