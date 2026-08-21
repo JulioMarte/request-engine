@@ -1,0 +1,37 @@
+name: Temporary F1 migration consolidator
+
+on:
+  push:
+    branches:
+      - feature/operational-profile-contextual-supply
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    if: ${{ !contains(github.event.head_commit.message, '[migration-consolidator]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/operational-profile-contextual-supply
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Consolidate provisional F1 migrations
+        run: python scripts/ci/consolidate_f1_migrations.py
+      - name: Verify generated migration parses
+        run: python -m py_compile migrations/versions/0002_operational_profile_contextual_supply.py
+      - name: Commit consolidated migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add migrations/versions scripts/ci/run_f1_operational_profile.sh
+          if git diff --cached --quiet; then
+            echo "No consolidation changes produced"
+            exit 1
+          fi
+          git commit -m "db: consolidate unshipped F1 migrations [migration-consolidator]"
+          git push origin HEAD:feature/operational-profile-contextual-supply
