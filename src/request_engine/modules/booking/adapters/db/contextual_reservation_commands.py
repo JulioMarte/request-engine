@@ -520,24 +520,33 @@ async def _lock_offering_version(
     offering_version_id: UUID,
 ) -> None:
     row = (
-        await session.execute(
-            text(
-                """
-                SELECT id
-                FROM request_engine.offering_versions
-                WHERE organization_id = :organization_id
-                  AND id = :offering_version_id
-                FOR UPDATE
-                """
-            ),
-            {
-                "organization_id": organization_id,
-                "offering_version_id": offering_version_id,
-            },
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT ov.id, o.active AS offering_active
+                    FROM request_engine.offering_versions ov
+                    JOIN request_engine.offerings o
+                      ON o.organization_id = ov.organization_id
+                     AND o.id = ov.offering_id
+                    WHERE ov.organization_id = :organization_id
+                      AND ov.id = :offering_version_id
+                    FOR UPDATE OF o, ov
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "offering_version_id": offering_version_id,
+                },
+            )
         )
-    ).first()
+        .mappings()
+        .first()
+    )
     if row is None:
         raise AppointmentOptionStale("OfferingVersion no longer exists")
+    if row["offering_active"] is not True:
+        raise AppointmentOptionStale("Offering is no longer active")
 
 
 async def _lock_expected_location(
