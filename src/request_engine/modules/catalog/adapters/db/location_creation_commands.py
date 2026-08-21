@@ -48,14 +48,17 @@ class PostgresLocationCreationCommands:
                 "postal_code": command.postal_code,
                 "country_code": command.country_code,
                 "latitude": str(command.latitude) if command.latitude is not None else None,
-                "longitude": str(command.longitude) if command.longitude is not None else None,
+                "longitude": (
+                    str(command.longitude) if command.longitude is not None else None
+                ),
                 "geocoding_source": command.geocoding_source,
                 "geocoded_at": geocoded_at,
             },
         )
         try:
             async with tenant_transaction(
-                self._session_factory, command.organization_id
+                self._session_factory,
+                command.organization_id,
             ) as session:
                 idempotency_id, replay = await acquire_idempotency(
                     session,
@@ -66,7 +69,9 @@ class PostgresLocationCreationCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _state_from_json(cast(dict[str, object], replay["location"]))
+                    return _state_from_json(
+                        cast(dict[str, object], replay["location"])
+                    )
 
                 authority = await require_operational_authority(
                     session,
@@ -148,7 +153,9 @@ class PostgresLocationCreationCommands:
                                 "country_code": command.country_code,
                                 "latitude": command.latitude,
                                 "longitude": command.longitude,
-                                "geocoding_source": _clean_optional(command.geocoding_source),
+                                "geocoding_source": _clean_optional(
+                                    command.geocoding_source
+                                ),
                                 "geocoded_at": geocoded_at,
                             },
                         )
@@ -267,7 +274,9 @@ def _state_from_json(value: dict[str, object]) -> CreatedLocationState:
         longitude=Decimal(cast(str, longitude)) if longitude is not None else None,
         geocoding_source=cast(str | None, value.get("geocoding_source")),
         geocoded_at=(
-            datetime.fromisoformat(cast(str, geocoded_at)) if geocoded_at is not None else None
+            datetime.fromisoformat(cast(str, geocoded_at))
+            if geocoded_at is not None
+            else None
         ),
         operational_revision=cast(int, value["operational_revision"]),
     )
