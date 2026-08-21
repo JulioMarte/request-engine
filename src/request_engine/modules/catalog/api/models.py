@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -129,6 +130,8 @@ class OfferingVersionView(BaseModel):
     bookable: bool
     requestable: bool
     public_data: dict[str, object]
+    amount: Decimal | None = None
+    currency: str | None = None
 
 
 class OfferingView(BaseModel):
@@ -153,5 +156,7 @@ class OfferingView(BaseModel):
                 bookable=version.bookable,
                 requestable=version.requestable,
                 public_data=version.public_data,
+                amount=version.amount,
+                currency=version.currency,
             ),
         )
