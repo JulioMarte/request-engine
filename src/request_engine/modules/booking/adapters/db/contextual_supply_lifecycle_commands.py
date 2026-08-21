@@ -5,6 +5,7 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,7 @@ from request_engine.modules.booking.application.commands.set_resource_location_a
     SetResourceLocationAvailabilityCommand,
 )
 from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
+    ExceptionKind,
     ResourceLocationScheduleExceptionState,
     SetResourceLocationScheduleExceptionCommand,
 )
@@ -76,7 +78,9 @@ class PostgresContextualSupplyLifecycleCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _retired_state_from_json(cast(dict[str, object], replay["assignment"]))
+                    return _retired_state_from_json(
+                        cast(dict[str, object], replay["assignment"])
+                    )
 
                 authority = await require_operational_authority(
                     session,
@@ -177,7 +181,7 @@ class PostgresContextualSupplyLifecycleCommands:
                     {"assignment": _retired_state_to_json(state)},
                 )
                 return state
-        except (IntegrityError, DBAPIError) as exc:
+        except DBAPIError as exc:
             _translate_configuration_db_error(exc)
             raise
 
@@ -207,7 +211,9 @@ class PostgresContextualSupplyLifecycleCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _availability_state_from_json(cast(dict[str, object], replay["availability"]))
+                return _availability_state_from_json(
+                    cast(dict[str, object], replay["availability"])
+                )
 
             authority = await require_operational_authority(
                 session,
@@ -350,7 +356,9 @@ class PostgresContextualSupplyLifecycleCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _exception_state_from_json(cast(dict[str, object], replay["exception"]))
+                    return _exception_state_from_json(
+                        cast(dict[str, object], replay["exception"])
+                    )
 
                 authority = await require_operational_authority(
                     session,
@@ -488,7 +496,7 @@ class PostgresContextualSupplyLifecycleCommands:
                     {"exception": _exception_state_to_json(state)},
                 )
                 return state
-        except (IntegrityError, DBAPIError) as exc:
+        except DBAPIError as exc:
             _translate_configuration_db_error(exc)
             raise
 
@@ -498,7 +506,7 @@ async def _lock_assignment_roots(
     *,
     organization_id: UUID,
     assignment_id: UUID,
-):
+) -> RowMapping:
     identity = (
         (
             await session.execute(
@@ -722,7 +730,7 @@ def _exception_state_from_json(
         assignment_id=UUID(cast(str, value["assignment_id"])),
         start_at=datetime.fromisoformat(cast(str, value["start_at"])),
         end_at=datetime.fromisoformat(cast(str, value["end_at"])),
-        exception_kind=cast("available" | "unavailable", kind),
+        exception_kind=cast(ExceptionKind, kind),
         reason=cast(str | None, value.get("reason")),
         active=cast(bool, value["active"]),
         resource_availability_revision=cast(int, value["resource_availability_revision"]),
