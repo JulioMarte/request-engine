@@ -6,10 +6,10 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (
+from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (  # noqa: E501
     RetiredResourceLocationAssignmentState,
     RetireResourceLocationAssignmentCommand,
 )
@@ -18,7 +18,7 @@ from request_engine.modules.booking.application.commands.set_resource_location_a
     ResourceLocationAvailabilityWindow,
     SetResourceLocationAvailabilityCommand,
 )
-from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
+from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (  # noqa: E501
     ExceptionKind,
     ResourceLocationScheduleExceptionState,
     SetResourceLocationScheduleExceptionCommand,
@@ -78,9 +78,7 @@ class PostgresContextualSupplyLifecycleCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _retired_state_from_json(
-                        cast(dict[str, object], replay["assignment"])
-                    )
+                    return _retired_state_from_json(cast(dict[str, object], replay["assignment"]))
 
                 authority = await require_operational_authority(
                     session,
@@ -356,9 +354,7 @@ class PostgresContextualSupplyLifecycleCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _exception_state_from_json(
-                        cast(dict[str, object], replay["exception"])
-                    )
+                    return _exception_state_from_json(cast(dict[str, object], replay["exception"]))
 
                 authority = await require_operational_authority(
                     session,
@@ -392,7 +388,8 @@ class PostgresContextualSupplyLifecycleCommands:
                             await session.execute(
                                 text(
                                     """
-                                    INSERT INTO request_engine.resource_location_schedule_exceptions (
+                                    INSERT INTO
+                                        request_engine.resource_location_schedule_exceptions (
                                         organization_id,
                                         resource_location_assignment_id,
                                         during,
@@ -581,7 +578,9 @@ async def _lock_assignment_roots(
         .first()
     )
     if row is None:
-        raise ContextualConfigurationConflict("ResourceLocationAssignment disappeared while locking")
+        raise ContextualConfigurationConflict(
+            "ResourceLocationAssignment disappeared while locking"
+        )
     return row
 
 

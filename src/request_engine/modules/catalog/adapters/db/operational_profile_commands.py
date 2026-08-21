@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
-from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (
+from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501
     ConfigureOfferingVersionBookingTermsCommand,
     OfferingVersionBookingTermsState,
 )
@@ -190,9 +190,7 @@ class PostgresOperationalProfileCommands:
                     "authority": authority.audit_details(),
                     "previous_operational_revision": current_revision,
                     "new_operational_revision": state.operational_revision,
-                    "booking_material_change": (
-                        state.operational_revision != current_revision
-                    ),
+                    "booking_material_change": (state.operational_revision != current_revision),
                 },
             )
             await complete_idempotency(
@@ -370,9 +368,7 @@ class PostgresOperationalProfileCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _hours_exception_from_json(
-                        cast(dict[str, object], replay["exception"])
-                    )
+                    return _hours_exception_from_json(cast(dict[str, object], replay["exception"]))
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -653,9 +649,7 @@ async def _lock_location_revision(session, organization_id: UUID, location_id: U
         .first()
     )
     if row is None:
-        raise CatalogConfigurationConflict(
-            "Location is missing or belongs to another Organization"
-        )
+        raise CatalogConfigurationConflict("Location is missing or belongs to another Organization")
     return cast(int, row["operational_revision"])
 
 

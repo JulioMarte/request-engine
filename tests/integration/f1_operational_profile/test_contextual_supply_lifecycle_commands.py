@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime, time
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from psycopg import Connection
@@ -11,7 +11,7 @@ from request_engine.modules.booking.adapters.db.appointment_availability_reader 
 from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_commands import (
     PostgresContextualSupplyLifecycleCommands,
 )
-from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (
+from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (  # noqa: E501
     RetireResourceLocationAssignmentCommand,
     retire_resource_location_assignment,
 )
@@ -20,7 +20,7 @@ from request_engine.modules.booking.application.commands.set_resource_location_a
     SetResourceLocationAvailabilityCommand,
     set_resource_location_availability,
 )
-from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
+from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (  # noqa: E501
     SetResourceLocationScheduleExceptionCommand,
     set_resource_location_schedule_exception,
 )

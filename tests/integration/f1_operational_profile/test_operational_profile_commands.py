@@ -6,11 +6,13 @@ from uuid import UUID, uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader
+from request_engine.modules.catalog.adapters.db.business_info_reader import (
+    PostgresBusinessInfoReader,
+)
 from request_engine.modules.catalog.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
-from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (
+from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501
     ConfigureOfferingVersionBookingTermsCommand,
     configure_offering_version_booking_terms,
 )
@@ -52,9 +54,7 @@ def _location_revision(conn: PgConnection, scenario: F1ContextualScenario) -> in
     return cast(int, row[0])
 
 
-def _new_offering_version_without_terms(
-    conn: PgConnection, scenario: F1ContextualScenario
-) -> UUID:
+def _new_offering_version_without_terms(conn: PgConnection, scenario: F1ContextualScenario) -> UUID:
     offering = conn.execute(
         """
         INSERT INTO request_engine.offerings (

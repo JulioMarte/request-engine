@@ -185,11 +185,7 @@ class PostgresOfferingCatalogReader:
                 .mappings()
                 .first()
             )
-        return (
-            _offering_from_row(row, f1_available=f1_available)
-            if row is not None
-            else None
-        )
+        return _offering_from_row(row, f1_available=f1_available) if row is not None else None
 
 
 async def _f1_catalog_schema_available(session: AsyncSession) -> bool:
