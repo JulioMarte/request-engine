@@ -1,0 +1,98 @@
+name: Temporary F1 hardening formatter
+
+on:
+  push:
+    branches:
+      - feature/operational-profile-contextual-supply
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: ${{ !contains(github.event.head_commit.message, '[skip-f1-format]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/operational-profile-contextual-supply
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: '0.12.5'
+      - run: uv sync --all-groups
+      - name: Apply canonical fixes
+        run: |
+          uv run ruff check . --fix || true
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('src/request_engine/modules/booking/adapters/db/contextual_supply_lifecycle_commands.py'): [
+                  (
+                      'from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (',
+                      'from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (  # noqa: E501',
+                  ),
+                  (
+                      'from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (',
+                      'from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (  # noqa: E501',
+                  ),
+                  (
+                      '                                    INSERT INTO request_engine.resource_location_schedule_exceptions (',
+                      '                                    INSERT INTO\n                                        request_engine.resource_location_schedule_exceptions (',
+                  ),
+                  (
+                      '        raise ContextualConfigurationConflict("ResourceLocationAssignment disappeared while locking")',
+                      '        raise ContextualConfigurationConflict(\n            "ResourceLocationAssignment disappeared while locking"\n        )',
+                  ),
+              ],
+              Path('src/request_engine/modules/catalog/adapters/db/operational_profile_commands.py'): [
+                  (
+                      'from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (',
+                      'from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501',
+                  ),
+              ],
+              Path('tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py'): [
+                  (
+                      'from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (',
+                      'from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (  # noqa: E501',
+                  ),
+                  (
+                      'from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (',
+                      'from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (  # noqa: E501',
+                  ),
+              ],
+              Path('tests/integration/f1_operational_profile/test_operational_profile_commands.py'): [
+                  (
+                      'from request_engine.modules.catalog.adapters.db.business_info_reader import PostgresBusinessInfoReader',
+                      'from request_engine.modules.catalog.adapters.db.business_info_reader import (\n    PostgresBusinessInfoReader,\n)',
+                  ),
+                  (
+                      'from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (',
+                      'from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501',
+                  ),
+              ],
+          }
+          for path, changes in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in changes:
+                  if old not in text:
+                      raise SystemExit(f'missing expected pattern in {path}: {old}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+          uv run ruff format .
+          uv run ruff check .
+          uv run pyright
+      - name: Commit validated formatting fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src tests
+          git commit -m 'style: normalize F1 hardening changes [skip-f1-format]'
+          git push origin HEAD:feature/operational-profile-contextual-supply
