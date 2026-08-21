@@ -65,9 +65,7 @@ async def create_location(
         raise ValueError("timezone is required")
     if (command.latitude is None) != (command.longitude is None):
         raise ValueError("latitude and longitude must be present together")
-    if command.latitude is not None and not (
-        Decimal("-90") <= command.latitude <= Decimal("90")
-    ):
+    if command.latitude is not None and not (Decimal("-90") <= command.latitude <= Decimal("90")):
         raise ValueError("latitude must be between -90 and 90")
     if command.longitude is not None and not (
         Decimal("-180") <= command.longitude <= Decimal("180")
