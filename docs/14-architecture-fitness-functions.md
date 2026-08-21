@@ -6,6 +6,10 @@
 > `10-module-ownership-map.md` y `13-connection-surfaces.md`. Los tests de
 > `tests/architecture/` hacen cumplir estas reglas; no sustituyen los contratos
 > de dominio/transacción.
+>
+> Para evolución intencional de arquitectura en la etapa pre-producción, también
+> aplica `architecture/pre-production-evolution-policy.md`. Las fitness functions
+> detectan drift no revisado; no convierten una arquitectura anterior en inmutable.
 
 ## 1. Purpose
 
@@ -98,6 +102,11 @@ Could this edge create a dependency cycle?
 
 Update the ownership/connection-surface documentation when the answer changes the
 accepted architecture.
+
+An existing allowlist entry is therefore the default policy, not an eternal ban on
+new edges. A feature may change this table when its normative contract demonstrates
+that the old ownership topology is insufficient and the new topology remains
+explicit, acyclic and adversarially proven.
 
 ## 4. Dependency cycles are forbidden
 
@@ -241,6 +250,20 @@ These tests are **fitness functions**, not business correctness tests. PostgreSQ
 race/invariant tests, unit tests and HTTP integration tests remain independently
 required.
 
+A fitness-function failure has two legitimate dispositions:
+
+```text
+UNINTENTIONAL DRIFT
+  repair the implementation to satisfy the accepted architecture
+
+INTENTIONAL ARCHITECTURE EVOLUTION
+  update the normative architecture/ownership/connection-surface contract and
+  adapt or replace the fitness function so it protects the new accepted rule
+```
+
+The second path is not a bypass. It requires the evidence bundle defined by
+`architecture/pre-production-evolution-policy.md`.
+
 ## 8. Failure messages are part of the agent interface
 
 Architecture-test failures should explain:
@@ -258,3 +281,26 @@ current serialized `development` integration state. The correct response is to
 fetch/reconcile with current `origin/development`, set the lane cursor to the actual
 PR head, and rerun required exact-head checks. It is not valid to weaken the test,
 add a bypass branch, retarget the PR to `main`, or stack it on another feature branch.
+
+## 9. Fitness functions must protect intent, not obsolete shape
+
+Architecture CI has lower authority than an intentionally superseding normative
+product/architecture contract.
+
+Exact snapshots and allowlists are useful drift detectors, but they must evolve when
+the accepted architecture evolves. They must not force current Request Engine to
+retain an old module edge inventory, capability inventory, migration-head assumption
+or repository shape merely because that shape was once release-proven.
+
+When changing one of these tests, preserve the reason it existed:
+
+```text
+old structural assertion
+      -> identify protected risk
+      -> define new architecture
+      -> adapt/replace proof against that risk
+      -> add adversarial evidence where the risk is behavioral/concurrent/security-sensitive
+```
+
+Removing an obsolete structural assertion without proving the protected intent is
+invalid. Keeping an obsolete assertion after the contract changed is also invalid.
