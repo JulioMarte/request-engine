@@ -35,14 +35,19 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_operational_profile_commands.py \
   tests/integration/f1_operational_profile/test_contextual_config_commands.py \
   tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py \
+  tests/integration/f1_operational_profile/test_semantic_surface_gaps.py \
+  tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/semantic-commands.xml"
 
 uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_booking.py \
+  tests/integration/f1_operational_profile/test_context_only_commercial_booking.py \
   tests/integration/f1_operational_profile/test_contextual_booking_races.py \
+  tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py \
   tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py \
   tests/integration/f1_operational_profile/test_contextual_shared_capacity.py \
+  tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
