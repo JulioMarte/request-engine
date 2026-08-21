@@ -1,4 +1,9 @@
-EXPECTED_PARTY_AUTHORITY_SURFACE = {
+from request_engine.platform.security.capabilities import CAPABILITIES, CapabilityExposure
+
+# These are compatibility/current-contract minima, not an exhaustive capability
+# inventory. Additive party-scoped capabilities are allowed when they satisfy the
+# generic authority rules below.
+REQUIRED_PARTY_AUTHORITY_SURFACE = {
     "appointments.book": ("appointments.book", "appointments.subject_override"),
     "appointments.read": ("appointments.manage", "appointments.subject_override"),
     "appointments.cancel": ("appointments.manage", "appointments.subject_override"),
@@ -24,24 +29,26 @@ EXPECTED_PARTY_AUTHORITY_SURFACE = {
 }
 
 
-def test_runtime_party_authority_surface_matches_release_inventory() -> None:
-    from request_engine.platform.security.capabilities import CAPABILITIES
-
+def test_required_party_authority_contract_remains_supported() -> None:
     actual = {
         definition.key: (definition.party_scope, definition.override_capability)
         for definition in CAPABILITIES
         if definition.runtime_available and definition.party_scope is not None
     }
-    assert actual == EXPECTED_PARTY_AUTHORITY_SURFACE
+
+    for key, expected in REQUIRED_PARTY_AUTHORITY_SURFACE.items():
+        assert actual.get(key) == expected
 
 
-def test_party_scoped_runtime_capabilities_have_explicit_override_permissions() -> None:
-    from request_engine.platform.security.capabilities import CAPABILITIES
+def test_all_party_scoped_runtime_capabilities_have_explicit_operator_override() -> None:
+    by_key = {definition.key: definition for definition in CAPABILITIES}
 
     for definition in CAPABILITIES:
         if not definition.runtime_available or definition.party_scope is None:
             continue
+        assert definition.exposure is CapabilityExposure.PUBLIC
         assert definition.override_capability is not None
-        override = next(item for item in CAPABILITIES if item.key == definition.override_capability)
+        override = by_key[definition.override_capability]
         assert override.runtime_available is False
+        assert override.exposure is CapabilityExposure.OPERATOR
         assert override.party_scope is None

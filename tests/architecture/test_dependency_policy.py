@@ -5,22 +5,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "request_engine"
 MODULES_ROOT = SRC_ROOT / "modules"
-
-BASELINE_MODULES = frozenset(
-    {
-        "tenancy",
-        "catalog",
-        "requests",
-        "booking",
-        "queue",
-        "communications",
-    }
+ALL_MODULES = frozenset(
+    path.name
+    for path in MODULES_ROOT.iterdir()
+    if path.is_dir() and not path.name.startswith("__")
 )
-DEFERRED_MODULES = frozenset({"delivery", "payments", "dispatch"})
-ALL_MODULES = BASELINE_MODULES | DEFERRED_MODULES
 
 # Approved synchronous Python dependency directions. An allowed edge still has to
 # use the target module's contracts surface; it is permission, not ownership.
+# New business modules must be added here deliberately; discovery of ALL_MODULES
+# prevents an unlisted module from escaping the fitness checks.
 MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "tenancy": frozenset(),
     "catalog": frozenset(),
@@ -129,6 +123,13 @@ def _find_cycle(graph: dict[str, set[str]]) -> tuple[str, ...] | None:
     return None
 
 
+def test_every_business_module_has_an_explicit_dependency_policy() -> None:
+    assert set(MODULE_DEPENDENCY_POLICY) == set(ALL_MODULES), (
+        "Business-module inventory changed without an explicit dependency-policy decision. "
+        f"actual={sorted(ALL_MODULES)} policy={sorted(MODULE_DEPENDENCY_POLICY)}"
+    )
+
+
 def test_cross_module_imports_use_published_contract_surfaces() -> None:
     violations: list[str] = []
     for owner in ALL_MODULES:
@@ -231,8 +232,8 @@ def test_application_layers_do_not_import_module_adapters_or_transport() -> None
     assert not violations, _format_violations(
         "Application layer imported a concrete adapter or transport concern.",
         violations,
-        "Define/use a Protocol at the application boundary. Compose its concrete adapter "
-        "outside the application layer.",
+        "Define/use a Protocol at the application boundary. Concrete PostgreSQL/provider "
+        "construction belongs outside the application layer.",
     )
 
 
