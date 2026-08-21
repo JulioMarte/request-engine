@@ -9,8 +9,8 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.catalog.application.commands.create_location import (
-    CreateLocationCommand,
     CreatedLocationState,
+    CreateLocationCommand,
 )
 from request_engine.modules.catalog.application.errors import CatalogConfigurationConflict
 from request_engine.platform.audit.postgres import append_audit
