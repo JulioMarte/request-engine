@@ -63,6 +63,7 @@ Examples that belong in RE:
 
 ```text
 business display/legal identity needed operationally
+Organization central public operational contact endpoints
 Location address and public operational contact endpoints
 Location timezone/hours
 Location coordinates
@@ -104,6 +105,7 @@ Principal
 Party / PartyContactPoint identity
 Representation / delegated authority
 minimal Organization operational defaults
+Organization public operational contact endpoints
 ```
 
 Organization operational defaults may include:
@@ -117,6 +119,8 @@ default_currency
 status
 ```
 
+Organization public operational contact endpoints are business-level publication state such as a central appointment phone, WhatsApp or email. They are not Party/customer contact identity and do not grant authority.
+
 These are typed fields/value objects. Do not introduce an unbounded `operational_config JSONB` object.
 
 ### 3.2 `catalog`
@@ -126,6 +130,7 @@ Owns:
 ```text
 Location identity and public operational profile
 Location operational hours
+Location-hours exceptions
 Location public operational contact endpoints
 Location geospatial coordinates
 Offering
@@ -148,7 +153,8 @@ Resource
 ResourceCapability assignment
 Resource-at-Location assignment
 Resource-at-Location recurring availability
-Resource schedule exceptions
+Resource-wide schedule exceptions
+Resource-at-Location schedule exceptions
 booking-specific Resource/Location/Offering context
 CapacityHold
 CapacityClaim
@@ -175,6 +181,8 @@ Organization 1 -- 0..1 operational profile/default set
 The implementation may store these fields directly on Organization or in a 1:1 typed relation if migration/ownership considerations justify it.
 
 No arbitrary metadata bag substitutes for typed fields.
+
+An Organization is the tenant/security/administrative boundary; it is not synonymous with a clinic. A valid Organization may represent a multi-physician clinic or an independent physician/practice.
 
 ### 4.2 Location
 
@@ -240,7 +248,9 @@ They describe when the physical Location can normally support operations.
 
 They are interpreted in the Location IANA timezone.
 
-F1 booking options at a physical Location must not extend outside applicable Location operational hours unless an explicit effective exception/additional-hours rule makes that time operationally valid.
+F1 booking options at a physical Location must not extend outside applicable Location operational hours unless an explicit effective Location-hours exception/additional-hours rule makes that time operationally valid.
+
+Recurring Location hours and one-off Location-hours exceptions are different facts. Holiday closure, early close, one-off opening and one-day extended hours are expressed through explicit Location-scoped exceptions rather than by creating one Resource exception per physician.
 
 ### 4.5 Resource-at-Location assignment
 
@@ -295,25 +305,20 @@ ResourceLocationAssignment 1 -- 0..N recurring availability windows
 
 A legacy Resource without contextual assignment may continue using released V3 Resource availability under the backward-compatibility rule in section 14.
 
-### 4.7 Offering variants
+### 4.7 Commercial Offering identity and live workload classification
 
 F1 does **not** introduce a parallel universal `VisitVariant` lifecycle merely because users say “new consultation”, “follow-up” or “results review”.
 
-Initial normative rule:
+`Offering` / `OfferingVersion` is the versioned operational-commercial service the business sells or books. It is not required to be the same identity as a future live-workload classification used to estimate how a service is likely to behave operationally.
 
-> When a visit type has independently meaningful price, planned duration or booking semantics, model it as a distinct Offering/OfferingVersion that can share a searchable category/service family.
-
-Examples:
+When the business genuinely sells/configures distinct services with materially different price, planned duration, eligibility or booking semantics, they may be represented as distinct Offerings/OfferingVersions, for example:
 
 ```text
 Cardiology - New Consultation
 Cardiology - Follow-up
-Cardiology - Results Review
 ```
 
-This preserves existing Offering/OfferingVersion lifecycle/versioning and avoids a second overlapping variant aggregate.
-
-A later feature may introduce a separate operational classification vocabulary for actual live-service observation if evidence requires it; that must not retroactively rewrite the booked OfferingVersion.
+But F1 must not create or rewrite an Offering merely because a future operational observer predicts that an appointment is likely to be a quick results review. A later feature may record expected/actual workload classification without rewriting the booked OfferingVersion.
 
 ### 4.8 Booking contextual terms
 
@@ -415,13 +420,21 @@ For contextual Resources the final candidate interval is valid only if all appli
 Conceptual composition:
 
 ```text
-Location operational hours
+Location recurring operational hours
+APPLY
+Location-level closures/additional-hours exceptions
+=
+effective Location operational availability
+
+then
+
+effective Location operational availability
 INTERSECT
 Resource-at-Location recurring availability
+APPLY
+applicable Resource-wide + assignment-specific exceptions
 INTERSECT
 OfferingVersion/context temporal eligibility when explicitly configured
-APPLY
-ScheduleException / additional-availability exception
 THEN
 capacity revalidation against Holds/Claims/Reservations
 ```
@@ -430,13 +443,23 @@ capacity revalidation against Holds/Claims/Reservations
 
 Organization may expose general business hours for information, but multi-location booking must not silently apply one Organization schedule to every Location.
 
-A physical booking is constrained by its Location operational hours.
+A physical booking is constrained by its effective Location operational availability.
 
-### 6.2 Exceptions
+### 6.2 Resource-wide and Resource-at-Location exceptions are distinct intents
 
-A Resource schedule exception is scoped to the Resource operational context it changes.
+F1 distinguishes:
 
-Examples:
+```text
+Resource-at-Location exception
+  -> affects one explicit ResourceLocationAssignment/context
+
+Resource-wide exception
+  -> affects the Resource across all applicable Location assignments
+```
+
+A command targeting one ResourceLocationAssignment must never silently broaden to unrelated assignments. A Resource-wide exception must be explicit and auditable.
+
+Examples include:
 
 ```text
 closed/unavailable for a date/range
@@ -448,7 +471,7 @@ extend one day until 19:00
 
 An exception does not rewrite the recurring schedule.
 
-For a Resource assigned to multiple Locations, an exception must not accidentally close unrelated Location assignments unless the command explicitly targets a broader accepted scope.
+Resource additional availability cannot make a physical Location bookable while effective Location operational availability is closed.
 
 ### 6.3 Time semantics
 
@@ -469,12 +492,15 @@ May return public structured operational information such as:
 ```text
 Organization display name
 public Organization defaults
+Organization central public operational contact endpoints
 Locations
 Location structured address
 Location public contact endpoints
-Location operational hours
+Location operational hours and effective exceptions
 Location timezone
 ```
+
+Organization-level and Location-level contact endpoints are distinct publication surfaces; neither silently overrides the other.
 
 Coordinates may be returned only when the public contract/policy permits them. F1 does not expose private authority/admin metadata.
 
@@ -543,11 +569,11 @@ Booking revalidates inside the authoritative transaction:
 
 ```text
 Organization/authority
-OfferingVersion active/bookable state
+Offering active state + selected OfferingVersion bookable state
 ResourceLocationAssignment effective state
-Location operational hours
+Location operational hours/exceptions
 Resource-at-Location schedule
-exceptions
+Resource-wide and assignment-specific exceptions
 contextual terms / price observation
 Resource capacity
 shared-capacity roots when the Resource is globally bound
@@ -556,6 +582,20 @@ shared-capacity roots when the Resource is globally bound
 Success means capacity and historical Reservation commercial commitment are persisted coherently.
 
 Failure leaves no partial Reservation/claim/commercial commitment.
+
+### 7.6 Contextual hold/reschedule scope for F1
+
+F1 explicitly supports the contextual commitment path required by its product promise:
+
+```text
+appointments.find_slots -> aptopt_v2 -> appointments.book
+```
+
+F1 does **not** implement contextual `CapacityHold` or contextual Reservation reschedule replacement flows. Passing an `aptopt_v2`/contextual `ResourceChoice` into those released-V3 commitment paths must fail closed with a machine-readable `contextual_commitment_unsupported` result **before** a legacy adapter can drop assignment/schedule/commercial provenance.
+
+Released-V3 `aptopt_v1` hold/reschedule behavior remains compatible and continues through the legacy path.
+
+This fail-closed behavior is an accepted F1 scope decision, not an unfinished requirement. A future feature may add contextual hold/reschedule only by reusing the same assignment, schedule, commercial, stale-option and capacity revalidation semantics as contextual booking.
 
 ---
 
@@ -591,16 +631,21 @@ Final API names may change, but F1 must expose semantic command responsibilities
 
 ```text
 UpdateOrganizationOperationalProfile
+SetOrganizationPublicContactEndpoint(s)
 CreateLocation / UpdateLocationOperationalInfo
 SetLocationOperationalHours
+Create/Change/retire LocationHoursException
 SetLocationPublicContactEndpoint(s)
 AssignResourceToLocation
 RetireResourceLocationAssignment
 SetResourceLocationAvailability
-Create/ChangeResourceScheduleException
+Create/Change ResourceLocationAvailabilityException
+Create/Change explicit Resource-wide AvailabilityException
 ConfigureBookingContextTerms
 ScheduleFutureBookingContextTerms
 ```
+
+`ConfigureBookingContextTerms` may satisfy both immediate and future-effective contextual-term responsibilities when its effective-dating contract is explicit; a duplicate command name is not required merely to represent a future boundary.
 
 Every network/agent-retryable mutation defines:
 
@@ -650,15 +695,19 @@ The implementation/schema must make the following false states impossible or rej
 2. A contextual Offering reference crosses Organizations.
 3. Two effective configurations for the same exact scope ambiguously apply at the same instant.
 4. Resource-at-Location availability exists for a foreign/unrelated assignment.
-5. A Location contact endpoint or operational-hours row belongs to a different Organization than its Location.
-6. A confirmed Reservation's committed price/currency can be rewritten by later configuration changes.
-7. Retiring an assignment destroys or changes the historical meaning of an existing Reservation/CapacityClaim.
-8. Booking succeeds against a Resource assignment that became inactive before the authoritative booking transaction.
-9. Booking succeeds outside current Location/resource schedule after a stale option.
-10. Booking silently changes a presented material price.
-11. Coordinate latitude/longitude values are structurally invalid or only one coordinate is present.
-12. A guessed foreign tenant ID becomes an existence oracle through new contextual queries/errors beyond accepted opaque semantics.
-13. New contextual configuration bypasses the existing shared-capacity mutex for a globally bound Resource.
+5. A Location contact endpoint, operational-hours row or Location-hours exception belongs to a different Organization than its Location.
+6. Organization public operational contacts cross their Organization boundary or grant Party authority.
+7. A Resource-at-Location exception silently affects another assignment.
+8. A Resource-wide exception is inferred from an assignment-scoped mutation instead of being explicit.
+9. A confirmed Reservation's committed price/currency can be rewritten by later configuration changes.
+10. Retiring an assignment destroys or changes the historical meaning of an existing Reservation/CapacityClaim.
+11. Booking succeeds against a Resource assignment that became inactive before the authoritative booking transaction.
+12. Booking succeeds after its parent Offering became inactive or outside current Location/resource schedule after a stale option.
+13. Booking silently changes a presented material price.
+14. Coordinate latitude/longitude values are structurally invalid or only one coordinate is present.
+15. A guessed foreign tenant ID becomes an existence oracle through new contextual queries/errors beyond accepted opaque semantics.
+16. New contextual configuration bypasses the existing shared-capacity mutex for a globally bound Resource.
+17. A contextual hold/reschedule silently falls through to a released-V3 adapter that cannot preserve contextual provenance.
 
 ---
 
@@ -669,14 +718,20 @@ At minimum tests must falsify:
 ```text
 price changes after find_slots before book
 assignment retired after find_slots before book
-schedule exception added after find_slots before book
-Location hours change after find_slots before book
-OfferingVersion deactivated after find_slots before book
+assignment-specific schedule exception added after find_slots before book
+Resource-wide exception added after find_slots before book
+Location-hours exception added after find_slots before book
+recurring Location hours changed after find_slots before book
+parent Offering deactivated after find_slots before book
 concurrent overlapping effective-term writes
 concurrent overlapping assignment/schedule writes
 configuration mutation concurrent with booking
 legacy booking concurrent with new contextual booking
 shared-capacity contention using a contextual Resource
+duplicate human-readable names do not grant authority
+DST gap/fold local times are explicitly rejected/resolved
+foreign-tenant guessed IDs remain opaque
+Organization/Location public-contact mutation remains tenant-local
 ```
 
 Expected outcome for stale discovery/configuration is an opaque machine-readable stale/unavailable/conflict result, never partial state or silent commercial substitution.
@@ -695,7 +750,7 @@ assignment retirement
 schedule change
 Location-hours change
 Resource moved to another Location
-OfferingVersion later deprecated
+Offering later deactivated
 ```
 
 No supported configuration command may retarget historical Reservation/CapacityClaim provenance to make old facts appear to have used new configuration.
@@ -781,9 +836,10 @@ ServiceArea/mobile dispatch
 route optimization
 universal pricing engine
 EHR/clinical records
+contextual CapacityHold/reschedule replacement flows
 ```
 
-Those are preserved in `docs/v3/14-operational-intelligence-roadmap.md` and require separate features.
+Those are preserved in `docs/v3/14-operational-intelligence-roadmap.md` and require separate features where applicable.
 
 ---
 
@@ -824,12 +880,16 @@ A selected option whose price/schedule/assignment changed before booking is reje
 
 ### F — public operational info
 
-`business.get_info` can return the Location address, hours and public operational contact endpoint(s) without querying Directus.
+`business.get_info` can return Organization central public contacts plus Location address, hours and Location-specific public operational contact endpoint(s) without querying Directus.
 
 ### G — legacy regression
 
-A released-V3 Resource without new contextual configuration retains its existing booking behavior.
+A released-V3 Resource without new contextual configuration retains its existing booking behavior, including `aptopt_v1` commitment flows.
 
 ### H — shared-capacity regression
 
 A Resource bound to cross-tenant shared capacity remains protected against overlapping commitments even when booked through new Resource-at-Location contextual supply.
+
+### I — contextual commitment boundary
+
+A contextual `aptopt_v2` can be booked through the authoritative contextual path, while contextual hold/reschedule fails closed and the released `aptopt_v1` reschedule path remains valid.
