@@ -45,7 +45,10 @@ class PostgresOperationalProfileCommands:
                 "operational_status": command.operational_status,
             },
         )
-        async with tenant_transaction(self._session_factory, command.organization_id) as session:
+        async with tenant_transaction(
+            self._session_factory,
+            command.organization_id,
+        ) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -55,7 +58,9 @@ class PostgresOperationalProfileCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _profile_from_json(cast(dict[str, object], replay["profile"]))
+                return _profile_from_json(
+                    cast(dict[str, object], replay["profile"])
+                )
 
             authority = await require_operational_authority(
                 session,
@@ -124,7 +129,10 @@ class PostgresOperationalProfileCommands:
         command: contact_command.SetOrganizationPublicContactsCommand,
     ) -> contact_command.OrganizationPublicContactsState:
         contacts = tuple(
-            sorted(command.contacts, key=lambda item: (item.channel, item.normalized_value))
+            sorted(
+                command.contacts,
+                key=lambda item: (item.channel, item.normalized_value),
+            )
         )
         fingerprint = command_fingerprint(
             "tenancy.set_organization_public_contacts",
@@ -133,7 +141,10 @@ class PostgresOperationalProfileCommands:
                 "contacts": [_contact_to_json(item) for item in contacts],
             },
         )
-        async with tenant_transaction(self._session_factory, command.organization_id) as session:
+        async with tenant_transaction(
+            self._session_factory,
+            command.organization_id,
+        ) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -143,7 +154,9 @@ class PostgresOperationalProfileCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _contacts_state_from_json(cast(dict[str, object], replay["contacts"]))
+                return _contacts_state_from_json(
+                    cast(dict[str, object], replay["contacts"])
+                )
 
             authority = await require_operational_authority(
                 session,
@@ -212,7 +225,11 @@ class PostgresOperationalProfileCommands:
                         "organization_id": command.organization_id,
                         "channel": contact.channel,
                         "normalized_value": contact.normalized_value,
-                        "label": contact.label.strip() if contact.label is not None else None,
+                        "label": (
+                            contact.label.strip()
+                            if contact.label is not None
+                            else None
+                        ),
                     },
                 )
 
