@@ -10,56 +10,53 @@ revision = "0002_f1_supply"
 down_revision = "0001_initial"
 ```
 
-Normative semantic sources remain:
+Normative semantic sources:
 
 ```text
 docs/v3/15-operational-profile-contextual-supply-contract.md
-docs/v3/16-operational-profile-contextual-supply-clarifications.md
-docs/v3/17-operational-profile-contextual-supply-implementation-inventory.md
+docs/v3/13-operational-profile-contextual-supply-plan.md
 docs/adr/0012-contextual-resource-location-supply.md
 ```
 
-Current status/proof sources:
+Historical clarification provenance:
+
+```text
+docs/v3/16-operational-profile-contextual-supply-clarifications.md
+```
+
+Current proof/status sources:
 
 ```text
 docs/v3/20-operational-profile-contextual-supply-implementation-handoff.md
 docs/v3/21-operational-profile-contextual-supply-documentation-audit.md
 ```
 
-This document was originally written before executable migration authoring. It is now reconciled to the consolidated as-built F1 migration.
-
-If this document and the executable migration disagree on a physical column, constraint, trigger, role grant or SQL implementation detail, the migration is the current executable truth and the discrepancy must be fixed here before merge readiness. The migration does **not** override the normative F1 product/transaction semantics in `15/16` merely by existing.
+If this document and the executable migration disagree on a physical column, constraint, trigger, role grant or SQL implementation detail, `0002_f1_supply` is the executable truth and this document must be corrected. SQL does not override F1 product/transaction semantics merely by existing.
 
 ---
 
 ## 1. Greenfield consolidation decision
 
-F1 initially evolved through provisional local revisions `0002 -> 0003 -> 0004 -> 0005` while the schema, shared-capacity guard and runtime ACL were being hardened.
+F1 originally evolved through provisional local revisions while schema, commercial provenance, shared-capacity compatibility and ACLs were being hardened.
 
-Request Engine has not stored production/customer-owned F1 data and those provisional revisions were never deployed. Under the premise documented in:
-
-```text
-docs/v3/19-greenfield-validation-data-premise.md
-```
-
-they were consolidated into one intended launch revision:
+Because no production/customer-owned F1 data or deployed F1 migration history existed, those provisional revisions were consolidated into one intended launch revision:
 
 ```text
-0002_f1_supply
+0001_initial
+  -> 0002_f1_supply
 ```
 
-The consolidated revision contains four concerns that must all remain reviewable/proven:
+The consolidated revision contains:
 
 ```text
-1. base operational/contextual relational schema
-2. commercial-source serialization and multi-source provenance
-3. compatibility with released shared-capacity protection
-4. final F1 runtime ACL/RLS hardening
+1. operational-profile/contextual-supply schema
+2. immutable commercial commitment + multi-source provenance
+3. contextual CapacityClaim assignment provenance
+4. shared-capacity guard compatibility
+5. final F1 RLS/runtime ACL hardening
 ```
 
-This consolidation does not authorize editing the released baseline.
-
-Non-negotiable frozen provenance:
+Frozen/released provenance remains immutable:
 
 ```text
 migrations/versions/0001_initial.py
@@ -83,29 +80,29 @@ capacity_holds
 capacity_claims
 ```
 
-F1 does not bulk invent contextual history for them.
+F1 does not invent contextual history for legacy rows.
 
 Resolver rule:
 
 ```text
-Resource has entered accepted contextual assignment semantics
-  -> explicit ResourceLocationAssignment is required for contextual Location eligibility
+Resource has contextual assignment history
+  -> explicit ResourceLocationAssignment governs contextual Location eligibility
 
 Resource has never entered contextual assignment semantics
-  -> released V3 Resource/location/schedule behavior remains available
+  -> released V3 Resource/Location/schedule fallback remains available
 ```
 
-Once a Resource has contextual assignment history, retirement does not silently restore legacy wildcard Location semantics.
+Retiring contextual assignment history does not silently restore legacy wildcard Location semantics.
 
-Legacy Reservations and CapacityClaims are not retroactively assigned prices or ResourceLocationAssignment provenance they never recorded.
+Legacy Reservations/CapacityClaims are not retroactively assigned prices or assignment provenance they never recorded.
 
 ---
 
-## 3. Existing tables extended in place
+## 3. Existing relations extended
 
 ### 3.1 `organizations`
 
-As built:
+Added:
 
 ```text
 legal_name text NULL
@@ -115,19 +112,17 @@ default_currency text NULL
 operational_status text NOT NULL DEFAULT 'active'
 ```
 
-Structural rules:
+Rules include nonblank optional strings, three-letter currency format and:
 
 ```text
-legal/default string fields are nonblank when present
-default_currency matches ^[A-Z]{3}$ when present
 operational_status IN ('active', 'inactive')
 ```
 
-`organizations.display_name` remains the canonical public/display identity. F1 does not introduce a competing display-name column.
+`organizations.display_name` remains the public/display identity.
 
 ### 3.2 `locations`
 
-As built:
+Added:
 
 ```text
 address_line1 text NULL
@@ -143,7 +138,7 @@ geocoded_at timestamptz NULL
 operational_revision bigint NOT NULL DEFAULT 1
 ```
 
-Structural rules:
+Rules:
 
 ```text
 (latitude IS NULL) = (longitude IS NULL)
@@ -153,21 +148,11 @@ country_code matches ^[A-Z]{2}$ when present
 operational_revision > 0
 ```
 
-Released `active` and `timezone` remain authoritative.
-
-`operational_revision` is a material booking observation token. Material changes include:
-
-```text
-Location active/timezone state
-Location recurring operational-hour writes
-Location-hours exception writes
-```
-
-Address/contact/geocoding edits do not need to stale an AppointmentOption unless they change booking material state.
+Material booking changes advance `operational_revision`. Recurring hours and Location-hours exception children bump the Location root through database triggers.
 
 ### 3.3 `capacity_claims`
 
-As built:
+Added:
 
 ```text
 resource_location_assignment_id uuid NULL
@@ -175,22 +160,15 @@ resource_location_assignment_id uuid NULL
 
 Legacy claims remain `NULL`.
 
-A contextual claim carrying the field must prove:
+A contextual claim must prove same-tenant assignment/Resource/Location consistency and that the assignment contains the claim interval at creation. Later assignment edits may not invalidate existing claim provenance.
 
-```text
-same Organization
-assignment belongs to claim Resource
-assignment Location equals Hold/Reservation Location
-assignment is active at claim creation
-assignment effective range contains claim interval
-assignment provenance cannot later be retargeted
-```
-
-This field is contextual provenance only. `resource_id` remains the capacity root and `CapacityClaim` remains the capacity-consumption ledger.
+This field is provenance only; `resource_id` remains the capacity root.
 
 ---
 
-## 4. Organization public operational contacts
+## 4. Public operational contacts
+
+### 4.1 Organization contacts
 
 Table:
 
@@ -198,7 +176,7 @@ Table:
 organization_public_contact_endpoints
 ```
 
-As-built columns:
+Columns:
 
 ```text
 id uuid PK
@@ -212,9 +190,7 @@ created_at timestamptz NOT NULL
 updated_at timestamptz NOT NULL
 ```
 
-The executable name is **`is_public`**, not the earlier pre-authoring spelling `public`.
-
-Supported initial channels:
+Initial channels:
 
 ```text
 phone
@@ -222,22 +198,11 @@ whatsapp
 email
 ```
 
-Key constraints:
+The executable column name is `is_public`, not `public`.
 
-```text
-UNIQUE (organization_id, id)
-UNIQUE (organization_id, channel, normalized_value)
-normalized_value <> ''
-label nonblank when present
-```
+Semantic mutation is implemented through `SetOrganizationPublicContacts`; this relation is not PartyContactPoint identity.
 
-This relation is independent from `party_contact_points` ownership/lifecycle.
-
-Current implementation gap outside the schema: there is read support, but no dedicated semantic Organization-public-contact mutation command yet. See `20/21`.
-
----
-
-## 5. Location public operational contacts
+### 4.2 Location contacts
 
 Table:
 
@@ -245,36 +210,28 @@ Table:
 location_public_contact_endpoints
 ```
 
-Columns mirror Organization endpoints plus:
+It mirrors the Organization endpoint shape plus:
 
 ```text
 location_id uuid NOT NULL
 ```
 
-Tenant consistency:
+Composite FK guarantees:
 
 ```text
 (organization_id, location_id)
   -> locations(organization_id, id)
 ```
 
-Operational identity:
+Semantic mutation is `SetLocationPublicContacts`.
 
-```text
-UNIQUE (organization_id, location_id, channel, normalized_value)
-```
-
-The as-built semantic command is:
-
-```text
-SetLocationPublicContacts
-```
-
-Possession of an endpoint never grants authority.
+Possession of either endpoint type never grants authority.
 
 ---
 
-## 6. Location recurring operational hours
+## 5. Location operational availability
+
+### 5.1 Recurring hours
 
 Table:
 
@@ -282,38 +239,24 @@ Table:
 location_operational_hours
 ```
 
-As-built columns:
+Columns:
 
 ```text
-id uuid PK
-organization_id uuid NOT NULL
-location_id uuid NOT NULL
-weekday smallint NOT NULL
-local_start time NOT NULL
-local_end time NOT NULL
-valid_from date NULL
-valid_until date NULL
-active boolean NOT NULL DEFAULT true
-created_at timestamptz NOT NULL
+id
+organization_id
+location_id
+weekday
+local_start
+local_end
+valid_from?
+valid_until?
+active
+created_at
 ```
 
-Timezone comes from the owning Location.
+Rules include valid weekday, `local_start < local_end` and tenant-consistent Location FK.
 
-Constraints:
-
-```text
-weekday BETWEEN 0 AND 6
-local_start < local_end
-valid_until IS NULL OR valid_from IS NULL OR valid_until >= valid_from
-```
-
-Child mutations advance `locations.operational_revision` through the Location root.
-
-Multiple non-identical windows on the same weekday are legitimate, e.g. morning/afternoon blocks. Semantic commands own normalized intent.
-
----
-
-## 7. Location-hours exceptions
+### 5.2 One-off Location-hours exceptions
 
 Table:
 
@@ -321,48 +264,37 @@ Table:
 location_hours_exceptions
 ```
 
-As-built columns:
+Columns:
 
 ```text
-id uuid PK
-organization_id uuid NOT NULL
-location_id uuid NOT NULL
-during tstzrange NOT NULL
-exception_kind text NOT NULL
-reason text NULL
-active boolean NOT NULL DEFAULT true
-created_at timestamptz NOT NULL
-updated_at timestamptz NOT NULL
+id
+organization_id
+location_id
+during tstzrange
+exception_kind  # available | unavailable
+reason?
+active
+created_at
+updated_at
 ```
 
-Allowed kinds:
+Ranges are non-empty, bounded and half-open. Active overlapping exceptions for the same exact Location are rejected by GiST exclusion.
 
-```text
-available
-unavailable
-```
+Recurring-hour and exception writes advance `locations.operational_revision`.
 
-Ranges are non-empty, bounded and half-open `[)`.
-
-Active same-Location overlap is rejected using `btree_gist` exclusion.
-
-Cancellation/retirement is represented by `active=false`; supported runtime flows do not require destructive DELETE.
-
-Every effective mutation advances the Location material observation.
-
-Location effective schedule is resolved before Resource availability; Resource additional availability cannot bypass a closed Location.
+Effective physical availability is resolved before Resource availability; Resource additional availability cannot bypass a closed Location.
 
 ---
 
-## 8. Resource-at-Location assignment
+## 6. Resource-at-Location assignment
 
-Canonical persisted entity:
+Table:
 
 ```text
 resource_location_assignments
 ```
 
-As-built columns:
+Columns:
 
 ```text
 id uuid PK
@@ -372,8 +304,8 @@ location_id uuid NOT NULL
 effective_during tstzrange NOT NULL
 status text NOT NULL DEFAULT 'active'
 revision bigint NOT NULL DEFAULT 1
-created_at timestamptz NOT NULL
-updated_at timestamptz NOT NULL
+created_at
+updated_at
 ```
 
 Status:
@@ -383,28 +315,19 @@ active
 retired
 ```
 
-Tenant proof:
+Composite FKs bind Resource and Location to the same Organization.
 
-```text
-(organization_id, resource_id) -> resources(organization_id, id)
-(organization_id, location_id) -> locations(organization_id, id)
-```
+For one exact Resource + Location, overlapping effective ranges are rejected by GiST exclusion.
 
-Same Resource + Location effective intervals cannot overlap, including historical/retired rows, so one exact context is not ambiguous.
+Identity cannot be retargeted. Retired assignments cannot be reactivated.
 
-A Resource may have overlapping assignments to **different** Locations; that is intentional eligibility/configuration and does not itself consume capacity.
+A range edit is rejected if any existing contextual CapacityClaim would fall outside the new range. Assignment lifecycle changes also advance Resource availability observation.
 
-Identity cannot be retargeted between Resource/Location/Organization.
-
-A retired assignment cannot be reactivated.
-
-Most importantly, an assignment effective-range edit is rejected with SQLSTATE `55000` if it would cause any existing contextual `CapacityClaim` to fall outside the assignment range. This protects durable claim provenance.
-
-Assignment lifecycle changes also advance the underlying Resource availability observation.
+Assignment is eligibility/configuration, never capacity consumption.
 
 ---
 
-## 9. Resource-at-Location recurring availability
+## 7. Resource-at-Location recurring availability
 
 Table:
 
@@ -412,36 +335,36 @@ Table:
 resource_location_availability
 ```
 
-As-built columns:
+Columns:
 
 ```text
-id uuid PK
-organization_id uuid NOT NULL
-resource_location_assignment_id uuid NOT NULL
-weekday smallint NOT NULL
-local_start time NOT NULL
-local_end time NOT NULL
-valid_from date NULL
-valid_until date NULL
-active boolean NOT NULL DEFAULT true
-created_at timestamptz NOT NULL
+id
+organization_id
+resource_location_assignment_id
+weekday
+local_start
+local_end
+valid_from?
+valid_until?
+active
+created_at
 ```
 
-Timezone is derived:
+Timezone derives from:
 
 ```text
-assignment -> Location -> timezone
+ResourceLocationAssignment -> Location -> timezone
 ```
 
-Child writes advance the owning Resource's `availability_revision` through a database backstop.
+Child writes advance the owning Resource's availability observation.
 
-Released `availability_schedules` remains the legacy recurrence source for never-contextualized Resources.
+Released `availability_schedules` remains the recurrence source for never-contextualized Resources.
 
 ---
 
-## 10. Resource exception scopes
+## 8. Resource exception scopes
 
-### 10.1 Assignment-specific
+### Assignment-specific
 
 Table:
 
@@ -449,23 +372,9 @@ Table:
 resource_location_schedule_exceptions
 ```
 
-As-built columns:
+Columns include assignment, bounded half-open `during`, `available|unavailable`, reason and active flag. Active overlap for the same assignment is rejected.
 
-```text
-id uuid PK
-organization_id uuid NOT NULL
-resource_location_assignment_id uuid NOT NULL
-during tstzrange NOT NULL
-exception_kind text NOT NULL
-reason text NULL
-active boolean NOT NULL DEFAULT true
-created_at timestamptz NOT NULL
-updated_at timestamptz NOT NULL
-```
-
-Same assignment active overlaps are rejected by exclusion.
-
-### 10.2 Resource-wide
+### Resource-wide
 
 Released V3:
 
@@ -473,30 +382,13 @@ Released V3:
 schedule_exceptions
 ```
 
-remains the Resource-wide source.
+remains the broad Resource-wide source. F1 does not duplicate it.
 
-F1 does not duplicate broad exceptions into a second table.
-
-Effective contextual Resource state composes:
-
-```text
-Resource-wide schedule_exceptions
-+
-assignment-specific resource_location_schedule_exceptions
-```
-
-Safety rule:
-
-```text
-any applicable unavailable rule blocks
-available may add Resource availability only while effective Location availability permits it
-```
-
-Broad and narrow rows may overlap because they are intentionally different scopes.
+Effective contextual Resource state composes both scopes. Broad/narrow overlap is valid because they intentionally represent different intent; an applicable unavailable rule blocks and an available rule still cannot bypass a closed Location.
 
 ---
 
-## 11. OfferingVersion base booking terms
+## 9. OfferingVersion base booking terms
 
 Table:
 
@@ -504,35 +396,26 @@ Table:
 offering_version_booking_terms
 ```
 
-As-built columns:
+Columns:
 
 ```text
-id uuid PK
-organization_id uuid NOT NULL
-offering_version_id uuid NOT NULL
-amount numeric(20,6) NOT NULL
-currency text NOT NULL
-created_at timestamptz NOT NULL
+id
+organization_id
+offering_version_id
+amount numeric(20,6)
+currency text
+created_at
 ```
 
-Rules:
-
-```text
-one row per OfferingVersion
-amount >= 0
-currency matches ^[A-Z]{3}$
-row immutable after insertion
-```
+One row per OfferingVersion, immutable after insertion. Amount is nonnegative and currency matches `^[A-Z]{3}$`.
 
 Default planned duration remains `offering_versions.duration_minutes`.
 
-An OfferingVersion without a base-term row remains a valid legacy row. F1 may still resolve complete price from an exact contextual term.
-
-Base-term configuration serializes against the OfferingVersion root before insertion/deletion.
+A base-term row is optional; a valid context-only price may be completed by exact BookingContextTerms.
 
 ---
 
-## 12. Contextual booking terms
+## 10. Contextual booking terms
 
 Table:
 
@@ -540,25 +423,25 @@ Table:
 booking_context_terms
 ```
 
-As-built columns:
+Columns:
 
 ```text
-id uuid PK
-organization_id uuid NOT NULL
-resource_location_assignment_id uuid NOT NULL
-offering_version_id uuid NOT NULL
-effective_during tstzrange NOT NULL
-amount numeric(20,6) NULL
-currency text NULL
-planned_duration_minutes integer NULL
-bookable boolean NOT NULL DEFAULT true
-active boolean NOT NULL DEFAULT true
-revision bigint NOT NULL DEFAULT 1
-created_at timestamptz NOT NULL
-updated_at timestamptz NOT NULL
+id
+organization_id
+resource_location_assignment_id
+offering_version_id
+effective_during tstzrange
+amount?
+currency?
+planned_duration_minutes?
+bookable
+active
+revision
+created_at
+updated_at
 ```
 
-Structural rules:
+Rules:
 
 ```text
 amount/currency both present or both absent
@@ -566,44 +449,21 @@ amount >= 0 when present
 currency matches ^[A-Z]{3}$ when present
 planned_duration_minutes > 0 when present
 at least one material override exists OR bookable=false
-effective range is non-empty, lower-bounded, half-open [)
+effective range lower-bounded, non-empty and half-open
 revision > 0
 ```
 
-Exact active ambiguity is prevented by GiST exclusion over:
+Exact active overlap for one assignment + OfferingVersion is rejected by GiST exclusion.
 
-```text
-organization_id
-resource_location_assignment_id
-offering_version_id
-effective_during
-```
+Commercial mutation serializes through the assignment's Resource root so booking and configuration cannot cross nondeterministically.
 
-Context mutation serializes against the assignment's Resource root so commercial mutation and authoritative booking cannot cross out of order.
-
-Context-term changes use the exact term revision/source observation rather than broad-staling every Offering on the Resource.
-
-### Multi-resource resolution
-
-Released V3 permits multiple Resource requirements.
-
-F1 has no hidden pricing precedence among selected Resources.
-
-For every selected assignment:
-
-1. resolve its exact contextual term if any;
-2. fall back field-by-field to OfferingVersion defaults;
-3. require complete amount/currency/duration;
-4. require every selected Resource context to resolve to the same final commercial tuple;
-5. otherwise treat the configuration as conflicting/non-bookable.
-
-Every contributing contextual row must be preserved as provenance; do not choose an arbitrary primary context.
+For multi-resource Offerings, every selected context resolves field-by-field against the same OfferingVersion defaults; all selected Resources must converge on one final amount/currency/duration tuple or the option is conflicting/non-bookable.
 
 ---
 
-## 13. Reservation commercial commitment — current as-built model
+## 11. Reservation commercial commitment — final model
 
-### 13.1 Material commitment table
+### 11.1 Material commitment
 
 Table:
 
@@ -611,13 +471,12 @@ Table:
 reservation_commercial_commitments
 ```
 
-Current physical columns:
+Current executable columns:
 
 ```text
-reservation_id uuid PK
+reservation_id uuid PRIMARY KEY
 organization_id uuid NOT NULL
 offering_version_booking_terms_id uuid NULL
-booking_context_terms_id uuid NULL          # residual single-source column
 amount numeric(20,6) NOT NULL
 currency text NOT NULL
 planned_duration_minutes integer NOT NULL
@@ -625,23 +484,15 @@ configuration_fingerprint text NOT NULL
 committed_at timestamptz NOT NULL
 ```
 
-The row is append-only/immutable.
+There is **no direct `booking_context_terms_id` column** in the final consolidated migration.
 
-Material fact:
+The row is immutable and stores the historical material commercial fact directly.
 
-```text
-amount
-currency
-planned_duration_minutes
-configuration_fingerprint
-committed_at
-```
+`offering_version_booking_terms_id` is optional base-source provenance; it is correctly `NULL` for context-only pricing.
 
-is persisted directly so historical explanation never depends exclusively on mutable current configuration.
+### 11.2 Multi-source contextual provenance
 
-### 13.2 Multi-source contextual provenance
-
-Table added by the consolidated migration:
+Table:
 
 ```text
 reservation_commercial_commitment_context_terms
@@ -657,341 +508,103 @@ created_at timestamptz NOT NULL
 PRIMARY KEY (organization_id, reservation_id, booking_context_terms_id)
 ```
 
-It is append-only and tenant-isolated.
+This append-only bridge is the canonical 0..N contextual-source provenance for one Reservation commercial commitment.
 
-This is the canonical as-built representation for **0..N contextual source rows** that contributed to one committed Reservation commercial fact.
+The writer inserts every contributing contextual source; no arbitrary primary context is invented.
 
-The current contextual booking writer inserts every contributing contextual source into this table.
-
-### 13.3 Known P0 inconsistency
-
-The residual direct `reservation_commercial_commitments.booking_context_terms_id` is no longer populated by the current writer, but the current migration still has a row CHECK equivalent to:
-
-```text
-offering_version_booking_terms_id IS NOT NULL
-OR booking_context_terms_id IS NOT NULL
-```
-
-This is incompatible with a valid context-only price when:
-
-```text
-no offering_version_booking_terms row exists
-exact BookingContextTerms supplies amount/currency
-OfferingVersion supplies duration
-```
-
-The resolver supports that F1 contract, but the commitment row can fail before its bridge provenance rows are inserted.
-
-This is a **known correctness blocker**, not a documentation-only discrepancy.
-
-Before merge, preferred greenfield reconciliation is:
-
-```text
-remove obsolete direct booking_context_terms_id unless a concrete use remains
-remove/rework the row-level source CHECK
-keep offering_version_booking_terms_id optional
-keep reservation_commercial_commitment_context_terms as canonical contextual provenance
-prove context-only booking
-prove all multi-resource contextual sources persist
-```
-
-Do not force base terms to exist solely to satisfy the old CHECK; exact-context resolution is an accepted F1 rule.
+The obsolete direct contextual-source field and row-level source-presence CHECK are absent from the final migration, allowing a valid context-only price to persist its material commitment and bridge provenance coherently.
 
 ---
 
-## 14. AppointmentOption stale observation
+## 12. Revision and serialization backstops
 
-No persistent AppointmentOption relation is required.
+F1 intentionally does **not** widen the released V3 revision trigger inventory.
 
-F1 retains signed stateless option architecture and adds:
-
-```text
-aptopt_v2
-```
-
-Material binding includes:
+The consolidated migration defines:
 
 ```text
-organization_id
-offering_version_id
-Location
-start/end
-selected requirement/resource pairs
-assignment IDs/revisions where contextual
-Resource availability revisions
-Location operational_revision
-resolved amount/currency/duration
-material configuration fingerprint
-issued_at/expires_at
+guard_f1_exact_revision_step()
 ```
 
-The booking transaction re-resolves current authoritative state under locks and compares material observation.
+for F1 revisioned aggregates such as ResourceLocationAssignment and BookingContextTerms.
 
-Changes that must stale or invalidate include:
+Other database backstops include:
 
 ```text
-assignment applicability
-Location operational availability
-Resource recurrence/exceptions
-Offering current bookable state
-resolved duration
-resolved amount/currency
-context active/bookable state
+Location operational revision bump from material child writes
+Resource availability revision bump from assignment/schedule children
+assignment identity/range/claim-provenance guard
+context-term scope/resource locking
+OfferingVersion base-term root lock
+contextual CapacityClaim assignment guard
+immutable commercial commitment/provenance triggers
 ```
 
-Non-material public-profile edits do not need to stale an option.
+These backstop, rather than replace, Python-owned semantic orchestration.
 
 ---
 
-## 15. Revision topology
+## 13. Shared-capacity compatibility
 
-As built:
-
-```text
-resources.availability_revision              released; KEEP
-locations.operational_revision               F1
-resource_location_assignments.revision       F1
-booking_context_terms.revision               F1
-```
-
-Location child availability writes advance Location observation.
-
-Assignment availability/exception/lifecycle changes advance Resource availability observation as applicable.
-
-F1 exact-revision aggregates use a dedicated helper:
+Contextual assignment does not alter capacity identity:
 
 ```text
-request_engine.guard_f1_exact_revision_step()
+ResourceLocationAssignment -> eligibility/context
+Resource                   -> capacity root
+CapacityClaim              -> capacity consumption
 ```
 
-This is intentional: F1 does not widen the trigger inventory/behavior of the released frozen-V3 `guard_exact_revision_step()` surface merely for convenience.
+For globally bound Resources, released cross-tenant shared-capacity locking remains additive.
 
-Revision values are opaque observations; arithmetic distance has no product meaning.
+The consolidated migration preserves released capacity protection while adding narrow contextual-assignment provenance validation. Contextual booking is explicitly proven unable to bypass shared-capacity contention.
 
 ---
 
-## 16. Lock and serialization topology
+## 14. RLS and runtime ACL
 
-### Configuration writes
+Every new tenant-owned F1 relation enables and forces RLS using Organization tenant context.
 
-Required order/direction:
+Internal trigger/helper functions have PUBLIC execution revoked.
 
-```text
-authority/tenant validation
-Location root for Location availability changes
-Resource root for Resource/assignment availability changes
-assignment/context rows after Resource root
-OfferingVersion root for immutable base commercial terms
-```
+A key final ACL rule is:
 
-Commercial context writes lock the assignment's Resource root before changing terms.
+> `request_engine_worker` has no direct privileges on authoritative F1 tenant-domain relations.
 
-No external geocoding/provider I/O occurs while authoritative locks are held.
-
-### Contextual booking
-
-Current transaction protocol:
+The migration may contain earlier grant blocks as part of construction ordering, but the final hardening block revokes worker access from:
 
 ```text
-idempotency
-lock/current OfferingVersion
-subject/Location/origin validation
-subject authority
-lock expected Location
-load requirements
-lock selected Resources in canonical order
-validate capabilities
-lock selected assignments
-validate Resource availability observations
-load current contextualization
-compose Location + Resource schedules/exceptions
-load live capacity
-re-resolve commercial terms
-recompute/compare configuration fingerprint
-apply shared-capacity serialization when bound
-insert Reservation
-insert CapacityClaims with assignment provenance
-insert immutable commercial commitment
-insert every contextual-source bridge row
-audit/outbox/idempotency completion
-commit
-```
-
-Context configuration never becomes a capacity mutex.
-
----
-
-## 17. CapacityClaim guard split and shared-capacity compatibility
-
-Released V3 already has privileged shared-capacity visibility requirements that ordinary tenant RLS cannot satisfy.
-
-The consolidated F1 migration preserves the narrow SECURITY DEFINER capacity responsibility while separating tenant-local contextual assignment validation.
-
-Final shape conceptually:
-
-```text
-capacity_claims_00_guard_tenant_context
-  -> tenant context first
-
-capacity_claims_10_guard_contextual_assignment
-  -> invoker-rights assignment/resource/location/effective-range validation
-
-capacity_claims_guard_capacity
-  -> narrow SECURITY DEFINER capacity + cross-tenant shared-capacity check
-```
-
-Why this split matters:
-
-- cross-tenant shared-capacity detection can see the private global provenance it already requires;
-- contextual assignment lookup remains constrained by tenant context/FORCE RLS;
-- a guessed foreign assignment UUID does not become an existence oracle through the privileged capacity function;
-- contextual assignment does not bypass shared-capacity mutex behavior.
-
-Contextual assignment provenance is immutable on an existing claim.
-
----
-
-## 18. RLS and final runtime ACL
-
-Every new tenant-owned F1 relation has `organization_id` and final defense-in-depth behavior:
-
-```text
-ENABLE ROW LEVEL SECURITY
-FORCE ROW LEVEL SECURITY
-USING organization_id = request_engine.current_organization_id()
-WITH CHECK organization_id = request_engine.current_organization_id()
-```
-
-F1 trigger/helper functions also have PUBLIC execute removed. The migration establishes default privileges so future F1 helper functions fail closed unless explicitly granted.
-
-### Final role disposition
-
-The base migration block initially grants new relations to app/worker while objects are assembled, but the final `_RUNTIME_ACL_SQL` hardening block revokes authoritative F1 relation access from:
-
-```text
-request_engine_worker
-```
-
-Final intended authority:
-
-```text
-request_engine_app
-  tenant-domain authoritative handlers according to explicit table grants/RLS
-
-request_engine_worker
-  no direct authoritative F1 relation privileges
-
-request_engine_admin
-  explicit privileged administration, not the normal business configuration path
-
-PUBLIC
-  no F1 relation access / no trigger-helper execution
-```
-
-This preserves Production Worker Assembly's worker-control vs tenant-domain separation.
-
-Any documentation/test that assumes the final worker can directly mutate F1 tables is stale.
-
----
-
-## 19. Index/exclusion plan as built
-
-Important lookup/exclusion support includes:
-
-```text
-resource_location_assignments
-  Resource/status lookup
-  Location/status lookup
-  GiST exact Resource+Location effective-range exclusion
-
-resource_location_availability
-  assignment + weekday + active lookup
-
-resource_location_schedule_exceptions
-  GiST active assignment/range exclusion
-
+organization_public_contact_endpoints
+location_public_contact_endpoints
 location_operational_hours
-  Location + weekday + active lookup
-
 location_hours_exceptions
-  GiST active Location/range exclusion
-
+resource_location_assignments
+resource_location_availability
+resource_location_schedule_exceptions
+offering_version_booking_terms
 booking_context_terms
-  OfferingVersion + active lookup
-  GiST active exact-scope effective-range exclusion
-
-capacity_claims
-  partial assignment-provenance lookup index
+reservation_commercial_commitments
+reservation_commercial_commitment_context_terms
 ```
 
-F1 deliberately does **not** add PostGIS. Distance/radius search belongs to F2 and should drive its own query/index design.
+Tenant-domain handlers use the app/domain session side of Production Worker Assembly. Worker control-plane authority remains separate.
 
 ---
 
-## 20. Migration execution mechanics
+## 15. Semantic write surfaces
 
-`0002_f1_supply` is online-mode only.
+The relational model is not a generic CRUD contract.
 
-The migration uses the live psycopg driver connection/`ClientCursor` for the large base SQL block and Alembic `op.execute` for later hardening blocks.
-
-It explicitly switches to:
-
-```text
-request_engine_schema_owner
-```
-
-for schema creation/hardening and resets role/search path afterward.
-
-The migration is intentionally irreversible through ordinary Alembic downgrade:
-
-```text
-downgrade() -> RuntimeError
-```
-
-because dropping F1 configuration/commercial provenance after real deployment would destroy accepted business state.
-
----
-
-## 21. Upgrade behavior
-
-Upgrade from `0001_initial` preserves:
-
-```text
-existing Organizations
-existing Locations with NULL new structured/geospatial fields
-existing Resources/location_id
-existing legacy Resource recurrence/exceptions
-existing Reservations with no invented commercial commitment
-existing CapacityClaims with assignment provenance NULL
-existing OfferingVersions with no invented base price
-released V3 booking semantics for never-contextualized Resources
-```
-
-No automatic conversion from `resources.location_id` into `resource_location_assignments` occurs. Such conversion would invent historical effective time and could change fallback behavior.
-
----
-
-## 22. Current semantic command mapping
-
-Tenancy:
+Implemented semantic responsibilities include:
 
 ```text
 UpdateOrganizationOperationalProfile
-```
-
-Catalog:
-
-```text
+SetOrganizationPublicContacts
+CreateLocation
 UpdateLocationOperationalInfo
 SetLocationOperationalHours
 SetLocationHoursException
 SetLocationPublicContacts
 ConfigureOfferingVersionBookingTerms
-```
-
-Booking:
-
-```text
 AssignResourceToLocation
 RetireResourceLocationAssignment
 SetResourceLocationAvailability
@@ -999,84 +612,67 @@ SetResourceLocationScheduleException
 ConfigureBookingContextTerms
 ```
 
-Future contextual terms use `ConfigureBookingContextTerms` effective dating; no separate storage/lifecycle is needed merely because the effective start is in the future.
-
-Known semantic-surface gaps:
-
-```text
-CreateLocation ownership/path
-Organization public operational contact mutation
-```
+Authority/idempotency/audit and stale-intent behavior live in application/adapters while PostgreSQL backstops tenant and structural invariants.
 
 ---
 
-## 23. Current PostgreSQL proof
+## 16. Time semantics
 
-The F1 runner includes current dedicated tests for:
+Recurring schedules are wall-clock rules in the owning Location IANA timezone.
 
-```text
-schema/constraints
-RLS/runtime privileges
-business operational info
-catalog contextual discovery
-Organization/Location operational commands
-contextual config/lifecycle commands
-contextual direct booking
-config-vs-book races
-temporal/commercial provenance
-contextual shared-capacity
-released V3 booking regressions
-```
+Concrete authoritative ranges are timezone-aware half-open intervals.
 
-At implementation checkpoint:
+DST nonexistent/ambiguous local instants are explicitly rejected/resolved; server-local timezone never becomes authority.
 
-```text
-9d07068520da48950189ff78b70e80fb1bc1786d
-run 32498624044
-```
-
-the dedicated F1 PostgreSQL job passed on the consolidated migration.
-
-The same run also passed Python quality, V2 design history, repeated V3 bootstrap and observability. The long frozen-V3 compatibility job was cancelled by a later documentation push, so one fresh exact-head complete run is still required before merge readiness.
+This is proven with contextual spring-forward gap and fall-back fold integration tests.
 
 ---
 
-## 24. Remaining schema/proof obligations
+## 17. Proven relational invariants
 
-Before Phase C/H can be considered final rather than merely implemented:
+Canonical F1 tests prove at least:
 
-1. fix the context-only commercial commitment source/CHECK defect in §13.3;
-2. add context-only price booking proof;
-3. confirm multi-resource commitment provenance preserves every contextual source;
-4. keep concurrent overlap/exclusion tests for contextual terms/assignment changes rather than relying only on sequential errors;
-5. keep historical CapacityClaim range-provenance protection green;
-6. keep runtime worker privilege denial green;
-7. run final clean bootstrap/upgrade to exactly `0002_f1_supply` on the final head;
-8. run frozen V3 compatibility to completion on that same final head;
-9. verify frozen baseline files have no content changes.
+```text
+same-tenant composite FKs
+RLS/role isolation
+ResourceLocationAssignment non-overlap
+BookingContextTerms non-overlap
+Location-hours exception non-overlap
+assignment exception non-overlap
+revision-step guards
+Location/Resource material revision propagation
+worker privilege hardening
+internal helper execution hardening
+immutable commercial commitment
+append-only multi-source provenance
+context-only commercial commitment
+CapacityClaim assignment provenance protection
+shared-capacity compatibility
+```
+
+Canonical Phase H implementation proof checkpoint:
+
+```text
+c1966f04c0b36fbe8b5bc41f85bb69e8a6831503
+workflow run 32516044052
+```
+
+All required CI jobs were green on that code checkpoint.
 
 ---
 
-## 25. Phase C disposition
+## 18. Upgrade semantics and completion rule
 
-The fundamental F1 relational architecture remains sound:
+Upgrade:
 
 ```text
-ADD explicit contextual eligibility/configuration
-KEEP released V3 legacy path
-KEEP Resource as capacity root
-KEEP CapacityClaim as capacity ledger
-ADD assignment provenance to contextual claims
-ADD immutable material Reservation commercial commitment
-ADD 0..N contextual commercial-source provenance
-ADD revision/fingerprint stale observations
-KEEP shared-capacity serialization
-KEEP worker/domain privilege split
-NO migration-time invented contextual history
-NO frozen V3 edits
-NO PostGIS in F1
+0001_initial -> 0002_f1_supply
 ```
 
-But Phase C should **not** be called fully closed while the residual single-context commitment column/CHECK can reject a contract-valid context-only commercial booking.
+creates F1 schema without inventing historical contextual facts for released V3 data.
 
-Fix that inconsistency first, prove it, then treat the consolidated schema as the candidate F1 launch revision.
+Because this is an unshipped greenfield F1 revision, its internal design was consolidated before production use. Once deployed, this revision becomes immutable production history like `0001_initial`.
+
+This document is reconciled only while it matches `0002_f1_supply` on table/column names, provenance cardinality, revision/serialization ownership, RLS/runtime ACL, shared-capacity compatibility and legacy fallback semantics.
+
+The final merge-readiness gate remains a fresh exact-head canonical CI run after documentation and repository cleanup. This document must not resurrect removed provisional migrations, obsolete direct contextual-source columns or already-closed semantic gaps.
