@@ -270,7 +270,6 @@ CREATE TABLE request_engine.reservation_commercial_commitments (
     reservation_id uuid PRIMARY KEY,
     organization_id uuid NOT NULL,
     offering_version_booking_terms_id uuid,
-    booking_context_terms_id uuid,
     amount numeric(20,6) NOT NULL,
     currency text NOT NULL,
     planned_duration_minutes integer NOT NULL,
@@ -281,13 +280,10 @@ CREATE TABLE request_engine.reservation_commercial_commitments (
         REFERENCES request_engine.reservations (organization_id, id),
     FOREIGN KEY (organization_id, offering_version_booking_terms_id)
         REFERENCES request_engine.offering_version_booking_terms (organization_id, id),
-    FOREIGN KEY (organization_id, booking_context_terms_id)
-        REFERENCES request_engine.booking_context_terms (organization_id, id),
     CHECK (amount >= 0),
     CHECK (currency ~ '^[A-Z]{3}$'),
     CHECK (planned_duration_minutes > 0),
-    CHECK (configuration_fingerprint <> ''),
-    CHECK (offering_version_booking_terms_id IS NOT NULL OR booking_context_terms_id IS NOT NULL)
+    CHECK (configuration_fingerprint <> '')
 );
 
 ALTER TABLE request_engine.capacity_claims
