@@ -3,8 +3,8 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import psycopg
-import pytest
 from psycopg import Connection
+import pytest
 
 from tests.integration.f1_operational_profile.dummy_data import (
     F1ContextualScenario,
