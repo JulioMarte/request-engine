@@ -58,9 +58,7 @@ class PostgresOperationalProfileCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _profile_from_json(
-                    cast(dict[str, object], replay["profile"])
-                )
+                return _profile_from_json(cast(dict[str, object], replay["profile"]))
 
             authority = await require_operational_authority(
                 session,
@@ -154,9 +152,7 @@ class PostgresOperationalProfileCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _contacts_state_from_json(
-                    cast(dict[str, object], replay["contacts"])
-                )
+                return _contacts_state_from_json(cast(dict[str, object], replay["contacts"]))
 
             authority = await require_operational_authority(
                 session,
@@ -225,11 +221,7 @@ class PostgresOperationalProfileCommands:
                         "organization_id": command.organization_id,
                         "channel": contact.channel,
                         "normalized_value": contact.normalized_value,
-                        "label": (
-                            contact.label.strip()
-                            if contact.label is not None
-                            else None
-                        ),
+                        "label": (contact.label.strip() if contact.label is not None else None),
                     },
                 )
 
