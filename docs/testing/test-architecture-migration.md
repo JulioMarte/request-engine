@@ -150,18 +150,38 @@ Pytest keeps execution markers (`postgres`, `integration`, `e2e`, `concurrency`,
 
 `scripts/ci/audit_test_architecture.py` produces a JSON inventory containing physical scope, explicit/effective evidence metadata, remaining V3-named current files, and feature-era current files. It fails if declared evidence markers disappear or obvious release-provenance tests drift back into `tests/architecture/`.
 
-The inventory deliberately does **not** claim full guarantee coverage yet. Guarantee-to-test proof coverage becomes enforceable only after the surviving current proofs are mapped deliberately; manufacturing green coverage from filename heuristics would defeat the purpose of the migration.
+`docs/testing/current-proof-map.toml` is explicitly non-normative migration evidence that maps every current guarantee to representative surviving proofs and required evidence classes. The normative guarantee inventory remains path-free.
 
-## 8. Remaining migration work after this checkpoint
+## 8. Historical source-owner resolution
+
+The first separated historical-lane run exposed a useful false coupling: `test_v3_adversarial_failure_proof.py` verified G18 source-owner paths against the **current checkout**. After `test_retryable_command_inventory.py` was deliberately adapted/renamed, frozen V3 compatibility still passed, but that historical test failed because the old path no longer existed today.
+
+Disposition: `ADAPT` the historical assertion, not the current architecture.
+
+The corrected proof resolves each declared G18 source-owner path against `candidate_source_commit` from `docs/release/v3-candidate-freeze.json` using Git object lookup. It therefore answers the historical question accurately:
+
+```text
+did this declared source owner exist in the source tree whose V3 evidence was frozen?
+```
+
+It no longer asks the invalid current-product question:
+
+```text
+does current Request Engine still keep every V3 proof at its old path?
+```
+
+This preserves V3 provenance while allowing explicitly dispositioned current tests to evolve.
+
+## 9. Remaining migration work after this checkpoint
 
 ```text
 A  complete semantic inventory of surviving current tests
-B  reconcile current-guarantees.toml against actual proofs
-C  classify critical current tests with evidence/risk markers
+B  continue reconciling current-guarantees.toml against actual proofs as capabilities evolve
+C  classify additional critical current tests with evidence/risk markers where selection value justifies it
 D  disposition remaining exact snapshots in current architecture/contract tests
 E  promote feature-era integration suites by ownership after F1 integration
 F  split critical PR adversarial proof from extended/soak/release proof using measured cost
-G  add proof-coverage enforcement only after mapping is trustworthy
+G  strengthen proof-coverage enforcement only where mappings are trustworthy and non-brittle
 H  evaluate property/state-machine/mutation strengthening for suitable domains
 ```
 

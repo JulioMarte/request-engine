@@ -1,17 +1,36 @@
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/release/prove_v3_adversarial_failure.py"
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts/release/prove_v3_adversarial_failure.py"
+FREEZE = ROOT / "docs/release/v3-candidate-freeze.json"
 SPEC = importlib.util.spec_from_file_location("v3_adversarial_failure", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 proof: ModuleType = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = proof
 SPEC.loader.exec_module(proof)
+
+
+def _frozen_source_commit() -> str:
+    payload = json.loads(FREEZE.read_text(encoding="utf-8"))
+    return str(payload["candidate_source_commit"])
+
+
+def _path_exists_in_frozen_source(path: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{_frozen_source_commit()}:{path}"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
 
 
 def test_g18_declares_exact_required_families_and_all_races() -> None:
@@ -47,14 +66,20 @@ def test_g18_freezes_supporting_artifact_inventory() -> None:
     }
 
 
-def test_g18_every_declared_source_owner_exists() -> None:
+def test_g18_every_declared_source_owner_existed_in_frozen_v3_source() -> None:
     source_owners = {
         owner
         for owners in proof.FAMILY_OWNERS.values()
         for owner in owners
         if not owner.startswith(".phase6/")
     } | {owner for owners in proof.RACE_OWNERS.values() for owner in owners}
-    missing = sorted(owner for owner in source_owners if not (proof.ROOT / owner).is_file())
+
+    # Historical provenance answers whether the declared owner existed in the
+    # source tree whose V3 evidence was frozen. Current head is intentionally
+    # allowed to rename, replace or relocate that proof after an explicit
+    # disposition, so checking ROOT / owner here would turn provenance back into
+    # a current repository-shape freeze.
+    missing = sorted(owner for owner in source_owners if not _path_exists_in_frozen_source(owner))
     assert missing == []
 
 
