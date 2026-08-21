@@ -80,9 +80,7 @@ async def test_foreign_and_random_authority_party_ids_have_same_observable_rejec
                     organization_id=local.organization_id,
                     principal_id=local.principal_id,
                     authority_party_id=authority_party_id,
-                    contacts=(
-                        OrganizationPublicContactInput("phone", "+18095550001"),
-                    ),
+                    contacts=(OrganizationPublicContactInput("phone", "+18095550001"),),
                     idempotency_key=f"opaque-contact-{uuid4().hex}",
                 ),
             )
