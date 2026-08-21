@@ -1,8 +1,12 @@
-"""Add F1 operational profile and contextual supply foundation.
+"""Add F1 operational profile and contextual supply.
 
 Revision ID: 0002_f1_supply
 Revises: 0001_initial
 Create Date: 2026-08-20
+
+This is the greenfield launch revision for F1. The feature had not been
+deployed and no production/customer data existed when its provisional
+0002-0005 development revisions were consolidated.
 """
 
 from collections.abc import Sequence
@@ -16,7 +20,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-_UPGRADE_SQL = r"""
+_BASE_SQL = r"""
 SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
@@ -767,6 +771,584 @@ RESET ROLE;
 RESET search_path;
 """
 
+_COMMERCIAL_PROVENANCE_SQL = r"""
+SET ROLE request_engine_schema_owner;
+SET search_path = request_engine, pg_catalog;
+
+-- Commercial configuration must linearize with authoritative booking without
+-- reusing Resource availability_revision as a broad commercial change token.
+CREATE FUNCTION request_engine.lock_booking_context_terms_resource()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_org uuid;
+    v_assignment uuid;
+    v_resource uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_assignment := OLD.resource_location_assignment_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_assignment := NEW.resource_location_assignment_id;
+    END IF;
+
+    SELECT resource_id
+      INTO v_resource
+      FROM request_engine.resource_location_assignments
+     WHERE organization_id = v_org
+       AND id = v_assignment;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ResourceLocationAssignment % not found while changing booking terms',
+            v_assignment USING ERRCODE = '23503';
+    END IF;
+
+    PERFORM 1
+      FROM request_engine.resources
+     WHERE organization_id = v_org
+       AND id = v_resource
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % not found while changing booking terms', v_resource
+            USING ERRCODE = '23503';
+    END IF;
+
+    RETURN COALESCE(NEW, OLD);
+END
+$function$;
+
+CREATE TRIGGER booking_context_terms_lock_resource
+BEFORE INSERT OR UPDATE OR DELETE ON request_engine.booking_context_terms
+FOR EACH ROW EXECUTE FUNCTION request_engine.lock_booking_context_terms_resource();
+
+CREATE FUNCTION request_engine.lock_offering_version_booking_terms_root()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_org uuid;
+    v_offering_version uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_org := OLD.organization_id;
+        v_offering_version := OLD.offering_version_id;
+    ELSE
+        v_org := NEW.organization_id;
+        v_offering_version := NEW.offering_version_id;
+    END IF;
+
+    PERFORM 1
+      FROM request_engine.offering_versions
+     WHERE organization_id = v_org
+       AND id = v_offering_version
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'OfferingVersion % not found while changing base booking terms',
+            v_offering_version USING ERRCODE = '23503';
+    END IF;
+
+    RETURN COALESCE(NEW, OLD);
+END
+$function$;
+
+CREATE TRIGGER offering_version_booking_terms_lock_root
+BEFORE INSERT OR DELETE ON request_engine.offering_version_booking_terms
+FOR EACH ROW EXECUTE FUNCTION request_engine.lock_offering_version_booking_terms_root();
+
+CREATE TABLE request_engine.reservation_commercial_commitment_context_terms (
+    organization_id uuid NOT NULL,
+    reservation_id uuid NOT NULL,
+    booking_context_terms_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY (organization_id, reservation_id, booking_context_terms_id),
+    FOREIGN KEY (organization_id, reservation_id)
+        REFERENCES request_engine.reservation_commercial_commitments (
+            organization_id, reservation_id
+        ),
+    FOREIGN KEY (organization_id, booking_context_terms_id)
+        REFERENCES request_engine.booking_context_terms (organization_id, id)
+);
+
+COMMENT ON TABLE request_engine.reservation_commercial_commitment_context_terms IS
+    'Append-only provenance linking one committed Reservation commercial fact to every exact contextual term row that contributed to its resolution.';
+
+CREATE TRIGGER reservation_commercial_commitment_context_terms_append_only
+BEFORE UPDATE OR DELETE
+ON request_engine.reservation_commercial_commitment_context_terms
+FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
+
+ALTER TABLE request_engine.reservation_commercial_commitment_context_terms
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE request_engine.reservation_commercial_commitment_context_terms
+    FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY reservation_commercial_commitment_context_terms_tenant_isolation
+ON request_engine.reservation_commercial_commitment_context_terms
+USING (organization_id = request_engine.current_organization_id())
+WITH CHECK (organization_id = request_engine.current_organization_id());
+
+REVOKE ALL ON request_engine.reservation_commercial_commitment_context_terms FROM PUBLIC;
+GRANT SELECT, INSERT
+ON request_engine.reservation_commercial_commitment_context_terms
+TO request_engine_app, request_engine_worker;
+GRANT ALL PRIVILEGES
+ON request_engine.reservation_commercial_commitment_context_terms
+TO request_engine_admin;
+
+RESET ROLE;
+RESET search_path;
+"""
+
+_SHARED_CAPACITY_GUARD_SQL = r"""
+SET ROLE request_engine_schema_owner;
+SET search_path = request_engine, pg_catalog;
+
+-- CapacityClaim already has a SECURITY DEFINER guard in released V3 because
+-- shared-capacity conflict detection must see private cross-tenant provenance.
+-- Keep that privileged responsibility narrow. F1 only changes the legacy
+-- Resource.location_id check when an explicit ResourceLocationAssignment is
+-- present; assignment lookup/validation lives in a separate invoker trigger so
+-- FORCE RLS remains authoritative for tenant-local contextual configuration.
+CREATE OR REPLACE FUNCTION request_engine.guard_capacity_claim()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine, pg_temp
+AS $function$
+DECLARE
+    v_capacity_model text;
+    v_capacity_units integer;
+    v_resource_active boolean;
+    v_resource_location uuid;
+    v_owner_offering_version uuid;
+    v_owner_during tstzrange;
+    v_owner_location uuid;
+    v_requirement_offering_version uuid;
+    v_required_capability uuid;
+    v_required_quantity integer;
+    v_other_quantity bigint;
+    v_other_count bigint;
+    v_promoting_hold boolean;
+    v_shared_capacity_identity_id uuid;
+    v_shared_conflict boolean;
+BEGIN
+    IF NEW.status <> 'active' THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT r.capacity_model, r.capacity_units, r.active, r.location_id
+      INTO v_capacity_model,
+           v_capacity_units,
+           v_resource_active,
+           v_resource_location
+      FROM request_engine.resources r
+     WHERE r.organization_id = NEW.organization_id
+       AND r.id = NEW.resource_id
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Resource % does not exist for capacity claim', NEW.resource_id
+            USING ERRCODE = '23503';
+    END IF;
+    IF NOT v_resource_active THEN
+        RAISE EXCEPTION 'Resource % is inactive', NEW.resource_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF TG_OP = 'UPDATE' AND OLD.resource_id <> NEW.resource_id AND EXISTS (
+        SELECT 1
+          FROM request_engine.shared_capacity_claim_links
+         WHERE capacity_claim_id = OLD.id
+    ) THEN
+        RAISE EXCEPTION
+            'linked CapacityClaim cannot move between Resources; release/recreate it'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NEW.reservation_id IS NOT NULL THEN
+        SELECT r.offering_version_id, r.during, r.location_id
+          INTO v_owner_offering_version, v_owner_during, v_owner_location
+          FROM request_engine.reservations r
+         WHERE r.organization_id = NEW.organization_id
+           AND r.id = NEW.reservation_id
+           AND r.status = 'confirmed';
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'active reservation claim requires confirmed Reservation %',
+                NEW.reservation_id
+                USING ERRCODE = '23514';
+        END IF;
+
+        v_promoting_hold := NEW.hold_id IS NOT NULL AND (
+            TG_OP = 'INSERT' OR OLD.reservation_id IS NULL
+        );
+        IF v_promoting_hold AND NOT EXISTS (
+            SELECT 1
+              FROM request_engine.capacity_holds h
+             WHERE h.organization_id = NEW.organization_id
+               AND h.id = NEW.hold_id
+               AND h.status = 'active'
+               AND h.expires_at > clock_timestamp()
+               AND h.offering_version_id = v_owner_offering_version
+               AND h.during = v_owner_during
+        ) THEN
+            RAISE EXCEPTION
+                'cannot promote expired, terminal, or mismatched CapacityHold %',
+                NEW.hold_id
+                USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        IF NEW.hold_id IS NULL THEN
+            RAISE EXCEPTION 'active hold claim requires CapacityHold'
+                USING ERRCODE = '23514';
+        END IF;
+        SELECT h.offering_version_id, h.during, h.location_id
+          INTO v_owner_offering_version, v_owner_during, v_owner_location
+          FROM request_engine.capacity_holds h
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id
+           AND h.status = 'active'
+           AND h.expires_at > clock_timestamp();
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'active hold claim requires live, unexpired CapacityHold %',
+                NEW.hold_id
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    IF NEW.during <> v_owner_during THEN
+        RAISE EXCEPTION
+            'CapacityClaim interval must equal its Hold/Reservation interval'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW.resource_location_assignment_id IS NULL
+       AND v_owner_location IS NOT NULL
+       AND v_resource_location IS NOT NULL
+       AND v_owner_location <> v_resource_location THEN
+        RAISE EXCEPTION
+            'Resource % belongs to a different Location than the Hold/Reservation',
+            NEW.resource_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT rr.offering_version_id, rr.capability_id, rr.quantity
+      INTO v_requirement_offering_version,
+           v_required_capability,
+           v_required_quantity
+      FROM request_engine.offering_resource_requirements rr
+     WHERE rr.organization_id = NEW.organization_id
+       AND rr.id = NEW.requirement_id;
+    IF NOT FOUND OR v_requirement_offering_version <> v_owner_offering_version THEN
+        RAISE EXCEPTION
+            'CapacityClaim requirement does not belong to the owner OfferingVersion'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW.quantity <> v_required_quantity THEN
+        RAISE EXCEPTION
+            'CapacityClaim quantity % does not satisfy requirement quantity %',
+            NEW.quantity,
+            v_required_quantity
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1
+          FROM request_engine.resource_capability_assignments a
+         WHERE a.organization_id = NEW.organization_id
+           AND a.resource_id = NEW.resource_id
+           AND a.capability_id = v_required_capability
+    ) THEN
+        RAISE EXCEPTION
+            'Resource % does not satisfy required capability',
+            NEW.resource_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT COALESCE(sum(c.quantity), 0), count(*)
+      INTO v_other_quantity, v_other_count
+      FROM request_engine.capacity_claims c
+      LEFT JOIN request_engine.reservations r
+        ON r.organization_id = c.organization_id
+       AND r.id = c.reservation_id
+      LEFT JOIN request_engine.capacity_holds h
+        ON h.organization_id = c.organization_id
+       AND h.id = c.hold_id
+     WHERE c.organization_id = NEW.organization_id
+       AND c.resource_id = NEW.resource_id
+       AND c.status = 'active'
+       AND c.id <> NEW.id
+       AND c.during && NEW.during
+       AND (
+           (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+           OR (
+               c.reservation_id IS NULL
+               AND h.status = 'active'
+               AND h.expires_at > clock_timestamp()
+           )
+       );
+    IF v_capacity_model = 'exclusive' AND v_other_count > 0 THEN
+        RAISE EXCEPTION
+            'exclusive Resource % has overlapping live capacity',
+            NEW.resource_id
+            USING ERRCODE = '23P01';
+    END IF;
+    IF v_capacity_model = 'units'
+       AND v_other_quantity + NEW.quantity > v_capacity_units THEN
+        RAISE EXCEPTION
+            'Resource % capacity exceeded: requested %, live %, capacity %',
+            NEW.resource_id,
+            NEW.quantity,
+            v_other_quantity,
+            v_capacity_units
+            USING ERRCODE = '23P01';
+    END IF;
+
+    SELECT b.shared_capacity_identity_id
+      INTO v_shared_capacity_identity_id
+      FROM request_engine.shared_capacity_bindings b
+     WHERE b.organization_id = NEW.organization_id
+       AND b.resource_id = NEW.resource_id
+       AND b.status = 'active';
+
+    IF v_shared_capacity_identity_id IS NOT NULL THEN
+        PERFORM 1
+          FROM request_engine.shared_capacity_identities
+         WHERE id = v_shared_capacity_identity_id
+           AND status = 'active'
+         FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'capacity unavailable'
+                USING ERRCODE = '23P01';
+        END IF;
+
+        SELECT EXISTS (
+            SELECT 1
+              FROM request_engine.shared_capacity_claim_links link
+              JOIN request_engine.capacity_claims c
+                ON c.id = link.capacity_claim_id
+              LEFT JOIN request_engine.reservations r
+                ON r.organization_id = c.organization_id
+               AND r.id = c.reservation_id
+              LEFT JOIN request_engine.capacity_holds h
+                ON h.organization_id = c.organization_id
+               AND h.id = c.hold_id
+             WHERE link.shared_capacity_identity_id = v_shared_capacity_identity_id
+               AND c.id <> NEW.id
+               AND c.status = 'active'
+               AND c.during && NEW.during
+               AND (
+                   (c.reservation_id IS NOT NULL AND r.status = 'confirmed')
+                   OR (
+                       c.reservation_id IS NULL
+                       AND h.status = 'active'
+                       AND h.expires_at > clock_timestamp()
+                   )
+               )
+        ) INTO v_shared_conflict;
+
+        IF v_shared_conflict THEN
+            RAISE EXCEPTION 'capacity unavailable'
+                USING ERRCODE = '23P01';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+CREATE FUNCTION request_engine.guard_capacity_claim_contextual_assignment()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_assignment_resource uuid;
+    v_assignment_location uuid;
+    v_assignment_during tstzrange;
+    v_assignment_status text;
+    v_owner_location uuid;
+    v_owner_found boolean := false;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.resource_location_assignment_id
+           IS DISTINCT FROM OLD.resource_location_assignment_id THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment provenance is immutable'
+            USING ERRCODE = '55000';
+    END IF;
+
+    IF NEW.status <> 'active' OR NEW.resource_location_assignment_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT a.resource_id, a.location_id, a.effective_during, a.status
+      INTO v_assignment_resource,
+           v_assignment_location,
+           v_assignment_during,
+           v_assignment_status
+      FROM request_engine.resource_location_assignments a
+     WHERE a.organization_id = NEW.organization_id
+       AND a.id = NEW.resource_location_assignment_id;
+    IF NOT FOUND THEN
+        -- Do not expose whether a caller-supplied foreign UUID exists elsewhere.
+        RAISE EXCEPTION 'ResourceLocationAssignment does not exist for capacity claim'
+            USING ERRCODE = '23503';
+    END IF;
+    IF v_assignment_resource <> NEW.resource_id THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Resource'
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_assignment_status <> 'active' THEN
+        RAISE EXCEPTION 'CapacityClaim ResourceLocationAssignment is not active'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT (v_assignment_during @> NEW.during) THEN
+        RAISE EXCEPTION
+            'CapacityClaim interval is outside ResourceLocationAssignment effective range'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF NEW.reservation_id IS NOT NULL THEN
+        SELECT r.location_id
+          INTO v_owner_location
+          FROM request_engine.reservations r
+         WHERE r.organization_id = NEW.organization_id
+           AND r.id = NEW.reservation_id;
+        v_owner_found := FOUND;
+    ELSIF NEW.hold_id IS NOT NULL THEN
+        SELECT h.location_id
+          INTO v_owner_location
+          FROM request_engine.capacity_holds h
+         WHERE h.organization_id = NEW.organization_id
+           AND h.id = NEW.hold_id;
+        v_owner_found := FOUND;
+    END IF;
+
+    IF v_owner_found
+       AND (
+           v_owner_location IS NULL
+           OR v_owner_location <> v_assignment_location
+       ) THEN
+        RAISE EXCEPTION
+            'CapacityClaim ResourceLocationAssignment belongs to a different Location '
+            'than the Hold/Reservation'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+-- PostgreSQL fires same-kind triggers in name order. The released
+-- capacity_claims_00_guard_tenant_context runs first, so an ordinary tenant
+-- caller cannot make this invoker trigger inspect another tenant's assignment.
+-- The numeric 10 prefix also keeps this validation ahead of the SECURITY
+-- DEFINER capacity_claims_guard_capacity trigger.
+CREATE TRIGGER capacity_claims_10_guard_contextual_assignment
+BEFORE INSERT OR UPDATE OF
+    organization_id,
+    resource_id,
+    hold_id,
+    reservation_id,
+    resource_location_assignment_id,
+    during,
+    status
+ON request_engine.capacity_claims
+FOR EACH ROW
+EXECUTE FUNCTION request_engine.guard_capacity_claim_contextual_assignment();
+
+REVOKE ALL ON FUNCTION
+    request_engine.guard_capacity_claim_contextual_assignment()
+FROM PUBLIC;
+
+RESET ROLE;
+RESET search_path;
+"""
+
+_RUNTIME_ACL_SQL = r"""
+SET ROLE request_engine_schema_owner;
+SET search_path = request_engine, pg_catalog;
+
+-- Fail closed for future F1 trigger/helper functions too. PostgreSQL's built-in
+-- function default grants EXECUTE to PUBLIC unless the creating role has an
+-- explicit default ACL that removes it.
+ALTER DEFAULT PRIVILEGES FOR ROLE request_engine_schema_owner
+    IN SCHEMA request_engine
+    REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+-- The released V3 guard has an exact trigger inventory that is part of the
+-- frozen V3 compatibility proof. F1 owns its own equivalent revision primitive
+-- so new aggregates do not silently widen the released V3 catalog contract.
+CREATE FUNCTION request_engine.guard_f1_exact_revision_step()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF NEW.revision = OLD.revision THEN
+        NEW.revision := OLD.revision + 1;
+    ELSIF NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION '% revision must advance exactly one step: old %, attempted %',
+            TG_TABLE_NAME, OLD.revision, NEW.revision
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END
+$function$;
+
+DROP TRIGGER resource_location_assignments_revision_step
+    ON request_engine.resource_location_assignments;
+CREATE TRIGGER resource_location_assignments_revision_step
+BEFORE UPDATE ON request_engine.resource_location_assignments
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f1_exact_revision_step();
+
+DROP TRIGGER booking_context_terms_revision_step
+    ON request_engine.booking_context_terms;
+CREATE TRIGGER booking_context_terms_revision_step
+BEFORE UPDATE ON request_engine.booking_context_terms
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f1_exact_revision_step();
+
+-- Trigger helpers are internal implementation details. Existing helpers were
+-- created before the default ACL above, so close their inherited PUBLIC surface
+-- explicitly as well.
+REVOKE ALL ON FUNCTION
+    request_engine.guard_location_operational_revision(),
+    request_engine.bump_location_operational_revision_from_child(),
+    request_engine.guard_resource_location_assignment(),
+    request_engine.bump_resource_from_assignment(),
+    request_engine.bump_resource_from_assignment_child(),
+    request_engine.guard_booking_context_terms_scope(),
+    request_engine.lock_booking_context_terms_resource(),
+    request_engine.lock_offering_version_booking_terms_root(),
+    request_engine.guard_capacity_claim_contextual_assignment(),
+    request_engine.guard_f1_exact_revision_step()
+FROM PUBLIC;
+
+-- Production Worker Assembly deliberately separates worker-control database
+-- authority from tenant-domain authority. F1 configuration and commercial
+-- provenance are authoritative tenant-domain state, therefore the worker role
+-- receives no direct relation privileges on them. Domain handlers use the
+-- request_engine_app side of the established split instead.
+REVOKE ALL ON TABLE
+    request_engine.organization_public_contact_endpoints,
+    request_engine.location_public_contact_endpoints,
+    request_engine.location_operational_hours,
+    request_engine.location_hours_exceptions,
+    request_engine.resource_location_assignments,
+    request_engine.resource_location_availability,
+    request_engine.resource_location_schedule_exceptions,
+    request_engine.offering_version_booking_terms,
+    request_engine.booking_context_terms,
+    request_engine.reservation_commercial_commitments,
+    request_engine.reservation_commercial_commitment_context_terms
+FROM request_engine_worker;
+
+RESET ROLE;
+RESET search_path;
+"""
+
 
 def upgrade() -> None:
     context = op.get_context()
@@ -779,12 +1361,15 @@ def upgrade() -> None:
     if driver_connection is None:
         raise RuntimeError("F1 migration requires the live psycopg driver connection")
     with ClientCursor(driver_connection) as cursor:
-        cursor.execute(sql.SQL(_UPGRADE_SQL))
+        cursor.execute(sql.SQL(_BASE_SQL))
     bind.exec_driver_sql("RESET ALL")
+    op.execute(_COMMERCIAL_PROVENANCE_SQL)
+    op.execute(_SHARED_CAPACITY_GUARD_SQL)
+    op.execute(_RUNTIME_ACL_SQL)
 
 
 def downgrade() -> None:
     raise RuntimeError(
-        "0002_f1_supply may contain durable F1 configuration/commercial provenance "
+        "0002_f1_supply contains F1 configuration and commercial provenance "
         "and is intentionally irreversible"
     )
