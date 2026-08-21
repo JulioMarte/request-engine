@@ -52,7 +52,71 @@ test_v3_scratch_database_isolation.py
 
 These proofs still answer `what exactly did V3 prove?`; they no longer participate in the current architecture-fitness lane merely because they are Python tests.
 
-## 4. Explicit KEEP decisions in this pass
+`test_v3_release_harness.py` contained one mixed concern: fail-closed behavior of the **current** required CI aggregate. That guarantee received `KEEP` by extracting a current `tests/architecture/test_ci_required_gate.py` proof while the original V3 harness remains historical. This deliberately favors temporary duplicate evidence over silently losing a current safety gate during the split.
+
+## 4. Snapshot/shape adaptations
+
+Three current architecture tests encoded useful guarantees through unnecessarily exact inventories. They received `ADAPT`, not removal:
+
+### Repository/module inventory
+
+Old shape:
+
+```text
+actual business modules == one exact V3-era set
+historical design-chain SQL filenames == one exact list
+```
+
+New proof:
+
+```text
+all discovered business modules have ownership docs
+baseline/deferred labels remain internally consistent
+all discovered modules are inspected by layering/contract rules
+all discovered modules must have an explicit dependency-policy entry
+module dependency graph remains acyclic
+executable SQL remains owned by migrations, not docs
+```
+
+A new module is therefore allowed, but it cannot silently evade architecture enforcement.
+
+### Party-authority inventory
+
+Old shape:
+
+```text
+current party-scoped capability map == exact release inventory
+```
+
+New proof:
+
+```text
+required current compatibility minima remain supported
+AND every current runtime party-scoped capability is public, has an explicit operator override,
+and that override is non-runtime/non-party-scoped
+```
+
+Additive capabilities are allowed only if they satisfy the same authority model.
+
+### Retryable-command inventory
+
+Old shape:
+
+```text
+all externally reachable runtime commands == exact historical set
+```
+
+New proof:
+
+```text
+every externally reachable runtime command requires idempotency
+required caller-selected revision contracts remain required
+server-selected revision for queue.call_next remains explicit
+```
+
+This is stronger against newly added unsafe commands while no longer making command inventory size itself a contract.
+
+## 5. Explicit KEEP decisions in this pass
 
 The following V3-named categories remain current-product evidence for now and are **not** moved merely because their names contain `v3`:
 
@@ -66,7 +130,7 @@ The following V3-named categories remain current-product evidence for now and ar
 
 Their release-era names are historical naming debt, not evidence that the guarantees are historical. Renaming/relocating them is a later promotion step and must not be mixed with provenance extraction when that would obscure behavior changes.
 
-## 5. F1/current-product promotion
+## 6. F1/current-product promotion
 
 `tests/integration/f1_operational_profile/` remains physically feature-local while PR #75 is the active feature branch. Its CI runner is promoted now from an F1-specific product gate to a current-product gate so future migrations/features do not need to preserve `0002_f1_supply` as the permanent Alembic head.
 
@@ -80,19 +144,21 @@ The current-product runner therefore:
 
 After F1 merges, a promotion audit may relocate/rename feature-era suites by ownership. That rename is not required to make the current-product gate semantically correct.
 
-## 6. Evidence metadata
+## 7. Evidence metadata and inventory
 
-Pytest keeps execution markers (`postgres`, `integration`, `e2e`, `concurrency`, etc.) and gains evidence/risk markers (`invariant`, `contract`, `fitness`, `adversarial`, `historical`, plus selected critical risks). `tests/architecture/` and `tests/historical/` receive their evidence marker automatically so classification does not require repetitive decorators.
+Pytest keeps execution markers (`postgres`, `integration`, `e2e`, `concurrency`, etc.) and gains evidence/risk markers (`invariant`, `contract`, `fitness`, `adversarial`, `historical`, plus selected critical risks). `tests/conftest.py` automatically classifies `tests/architecture/` as `fitness` and `tests/historical/` as `historical` without child-conftest import/fixture ambiguity.
 
-The first inventory tool reports physical scope and explicit marker use. It deliberately does **not** claim full guarantee coverage yet. Guarantee-to-test proof coverage becomes enforceable only after the surviving current proofs are mapped deliberately; manufacturing green coverage from filename heuristics would defeat the purpose of the migration.
+`scripts/ci/audit_test_architecture.py` produces a JSON inventory containing physical scope, explicit/effective evidence metadata, remaining V3-named current files, and feature-era current files. It fails if declared evidence markers disappear or obvious release-provenance tests drift back into `tests/architecture/`.
 
-## 7. Remaining migration work after this checkpoint
+The inventory deliberately does **not** claim full guarantee coverage yet. Guarantee-to-test proof coverage becomes enforceable only after the surviving current proofs are mapped deliberately; manufacturing green coverage from filename heuristics would defeat the purpose of the migration.
+
+## 8. Remaining migration work after this checkpoint
 
 ```text
 A  complete semantic inventory of surviving current tests
 B  reconcile current-guarantees.toml against actual proofs
 C  classify critical current tests with evidence/risk markers
-D  disposition exact snapshots still living in current architecture tests
+D  disposition remaining exact snapshots in current architecture/contract tests
 E  promote feature-era integration suites by ownership after F1 integration
 F  split critical PR adversarial proof from extended/soak/release proof using measured cost
 G  add proof-coverage enforcement only after mapping is trustworthy

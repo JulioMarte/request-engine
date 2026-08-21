@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inventory Request Engine tests by physical scope and explicit evidence metadata."""
+"""Inventory Request Engine tests by physical scope and evidence metadata."""
 
 from __future__ import annotations
 
@@ -73,6 +73,15 @@ def _scope(path: Path) -> str:
     return relative.parts[0] if len(relative.parts) > 1 else "root"
 
 
+def _effective_evidence_markers(scope: str, explicit: set[str]) -> set[str]:
+    effective = set(explicit & EVIDENCE_MARKERS)
+    if scope == "architecture":
+        effective.add("fitness")
+    elif scope == "historical":
+        effective.add("historical")
+    return effective
+
+
 def build_inventory() -> tuple[dict[str, object], list[str]]:
     configured = _configured_markers()
     missing_markers = sorted(EVIDENCE_MARKERS - configured)
@@ -81,20 +90,24 @@ def build_inventory() -> tuple[dict[str, object], list[str]]:
     scope_counts: Counter[str] = Counter()
     marker_counts: Counter[str] = Counter()
     contamination: list[str] = []
+    v3_named_current: list[str] = []
+    feature_era_current: list[str] = []
 
     for path in sorted(TEST_ROOT.rglob("test_*.py")):
         relative = path.relative_to(REPO_ROOT).as_posix()
         scope = _scope(path)
-        markers = _explicit_pytest_markers(path)
-        evidence = sorted(markers & EVIDENCE_MARKERS)
+        explicit = _explicit_pytest_markers(path)
+        explicit_evidence = explicit & EVIDENCE_MARKERS
+        effective_evidence = _effective_evidence_markers(scope, explicit)
 
         scope_counts[scope] += 1
-        marker_counts.update(evidence)
+        marker_counts.update(effective_evidence)
         tests.append(
             {
                 "path": relative,
                 "scope": scope,
-                "explicit_evidence_markers": evidence,
+                "explicit_evidence_markers": sorted(explicit_evidence),
+                "effective_evidence_markers": sorted(effective_evidence),
             }
         )
 
@@ -102,6 +115,10 @@ def build_inventory() -> tuple[dict[str, object], list[str]]:
             hint in path.stem for hint in HISTORICAL_ARCHITECTURE_HINTS
         ):
             contamination.append(relative)
+        if scope != "historical" and path.stem.startswith("test_v3_"):
+            v3_named_current.append(relative)
+        if scope != "historical" and any(part.startswith("f1_") for part in path.parts):
+            feature_era_current.append(relative)
 
     failures: list[str] = []
     if missing_markers:
@@ -115,8 +132,10 @@ def build_inventory() -> tuple[dict[str, object], list[str]]:
         "schema_version": 1,
         "test_file_count": len(tests),
         "physical_scope_counts": dict(sorted(scope_counts.items())),
-        "explicit_evidence_marker_counts": dict(sorted(marker_counts.items())),
+        "effective_evidence_marker_counts": dict(sorted(marker_counts.items())),
         "historical_architecture_contamination": contamination,
+        "v3_named_current_files": v3_named_current,
+        "feature_era_current_files": feature_era_current,
         "tests": tests,
     }
     return payload, failures
@@ -138,6 +157,9 @@ def main() -> int:
 
     print(f"test files: {payload['test_file_count']}")
     print(f"physical scopes: {payload['physical_scope_counts']}")
+    print(f"evidence markers: {payload['effective_evidence_marker_counts']}")
+    print(f"current v3-named files: {len(payload['v3_named_current_files'])}")
+    print(f"feature-era current files: {len(payload['feature_era_current_files'])}")
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}")
