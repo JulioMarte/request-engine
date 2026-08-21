@@ -6,6 +6,7 @@ RELEASE_DIR = ROOT / "docs" / "release"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
 CI_G19_WRAPPER = ROOT / "scripts" / "ci" / "run_v3_candidate_with_g19.sh"
+CI_COMPATIBILITY_WRAPPER = ROOT / "scripts" / "ci" / "run_v3_frozen_compatibility.sh"
 MANIFEST = ROOT / "scripts" / "release" / "build_v3_evidence_manifest.py"
 MANIFEST_BASE = ROOT / "scripts" / "release" / "build_v3_evidence_manifest_base.py"
 REQUIRED_RELEASE_DOCS = {
@@ -53,17 +54,18 @@ def test_phase6_scope_keeps_initial_migration_blocked_until_proof() -> None:
     assert "Do not remove the V3 candidate chain until" in text
 
 
-def _ci_sources() -> tuple[str, str, str]:
+def _ci_sources() -> tuple[str, str, str, str]:
     return (
         CI_WORKFLOW.read_text(encoding="utf-8"),
         CI_JOBS.read_text(encoding="utf-8"),
         CI_G19_WRAPPER.read_text(encoding="utf-8"),
+        CI_COMPATIBILITY_WRAPPER.read_text(encoding="utf-8"),
     )
 
 
 def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
     script = ROOT / "scripts" / "db" / "prove_v3_candidate_bootstrap.sh"
-    workflow, jobs, _ = _ci_sources()
+    workflow, jobs, _, _ = _ci_sources()
 
     assert script.is_file()
     assert "postgres-v3-bootstrap-proof:" in workflow
@@ -71,28 +73,31 @@ def test_phase6_repeated_bootstrap_proof_is_wired_to_ci() -> None:
     assert "scripts/db/prove_v3_candidate_bootstrap.sh" in jobs
 
 
-def test_phase6_schema_fingerprint_and_catalog_audit_are_wired_to_ci() -> None:
+def test_phase6_release_proofs_remain_present_and_post_baseline_ci_uses_compatibility() -> None:
     fingerprint = ROOT / "scripts" / "db" / "v3_schema_fingerprint.py"
     audit = ROOT / "scripts" / "db" / "audit_v3_catalog.py"
-    workflow, jobs, wrapper = _ci_sources()
+    workflow, jobs, release_wrapper, compatibility_wrapper = _ci_sources()
 
     assert fingerprint.is_file()
     assert audit.is_file()
-    assert "run_v3_candidate_with_g19.sh" in workflow
-    assert "scripts/ci/ci_jobs.py postgres-v3-candidate" in wrapper
+    assert "scripts/ci/run_v3_frozen_compatibility.sh" in workflow
+    assert "scripts/ci/ci_jobs.py postgres-v3-candidate" in release_wrapper
     assert "scripts/db/v3_schema_fingerprint.py" in jobs
     assert "scripts/db/audit_v3_catalog.py" in jobs
-    assert "v3-candidate-release-proof" in workflow
+    assert "v3-frozen-compatibility-proof" in workflow
+    assert "prove_v3_final_release.py" in release_wrapper
+    assert "prove_v3_final_release.py" not in compatibility_wrapper
+    assert "build_v3_evidence_manifest.py" not in compatibility_wrapper
 
 
-def test_phase6_test_quality_and_stability_proofs_are_wired_to_ci() -> None:
+def test_phase6_test_quality_and_stability_proofs_are_wired_to_release_runner() -> None:
     quality = ROOT / "scripts" / "release" / "audit_v3_test_quality.py"
     collection = ROOT / "scripts" / "release" / "prove_v3_test_collection.py"
     stability = ROOT / "scripts" / "release" / "prove_v3_concurrency_stability.py"
     order = ROOT / "scripts" / "release" / "prove_v3_test_order_independence.py"
     mutation = ROOT / "scripts" / "release" / "run_v3_mutation_probes.py"
     scratch_database = ROOT / "scripts" / "release" / "v3_scratch_database.py"
-    _, jobs, wrapper = _ci_sources()
+    _, jobs, wrapper, _ = _ci_sources()
 
     assert quality.is_file()
     assert collection.is_file()
@@ -142,7 +147,7 @@ def test_phase6_postgres_proofs_reset_data_between_tests() -> None:
 
 
 def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
-    workflow, _, wrapper = _ci_sources()
+    workflow, _, wrapper, compatibility_wrapper = _ci_sources()
 
     assert MANIFEST.is_file()
     assert MANIFEST_BASE.is_file()
@@ -167,3 +172,4 @@ def test_phase6_evidence_manifest_has_a_final_semantic_validity_gate() -> None:
     assert "postgres-v3-candidate-proof:" in workflow
     assert "if: ${{ always() }}" in workflow
     assert "scripts/ci/require_successful_needs.py" in workflow
+    assert "build_v3_evidence_manifest.py" not in compatibility_wrapper
