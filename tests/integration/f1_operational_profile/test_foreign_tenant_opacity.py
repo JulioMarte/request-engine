@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from psycopg import Connection
 
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
@@ -33,16 +35,20 @@ from request_engine.modules.tenancy.application.commands.set_organization_public
     set_organization_public_contacts,
 )
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
+from request_engine.platform.security.operational_authority import (
+    OperationalAuthorityRequired,
+)
 
 from .dummy_data import create_contextual_cardiology_scenario
+
+PgConnection = Connection[Any]
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
 async def test_foreign_and_random_authority_party_ids_have_same_observable_rejection(
-    admin_conn: object,
+    admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
     local = create_contextual_cardiology_scenario(admin_conn)
@@ -86,7 +92,7 @@ async def test_foreign_and_random_authority_party_ids_have_same_observable_rejec
 @pytest.mark.integration
 @pytest.mark.postgres
 async def test_foreign_and_random_location_ids_are_equally_absent_from_discovery(
-    admin_conn: object,
+    admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
     local = create_contextual_cardiology_scenario(admin_conn)
