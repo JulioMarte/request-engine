@@ -1,9 +1,11 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.catalog.application.commands.create_location import (
@@ -203,25 +205,24 @@ def _clean_optional(value: str | None) -> str | None:
     return cleaned or None
 
 
-def _state_from_row(row: object) -> CreatedLocationState:
-    mapping = cast(dict[str, object], row)
+def _state_from_row(row: RowMapping) -> CreatedLocationState:
     return CreatedLocationState(
-        location_id=cast(UUID, mapping["id"]),
-        location_key=cast(str, mapping["location_key"]),
-        display_name=cast(str, mapping["display_name"]),
-        timezone=cast(str, mapping["timezone"]),
-        active=cast(bool, mapping["active"]),
-        address_line1=cast(str | None, mapping["address_line1"]),
-        address_line2=cast(str | None, mapping["address_line2"]),
-        locality=cast(str | None, mapping["locality"]),
-        administrative_area=cast(str | None, mapping["administrative_area"]),
-        postal_code=cast(str | None, mapping["postal_code"]),
-        country_code=cast(str | None, mapping["country_code"]),
-        latitude=cast(object, mapping["latitude"]),
-        longitude=cast(object, mapping["longitude"]),
-        geocoding_source=cast(str | None, mapping["geocoding_source"]),
-        geocoded_at=cast(datetime | None, mapping["geocoded_at"]),
-        operational_revision=cast(int, mapping["operational_revision"]),
+        location_id=cast(UUID, row["id"]),
+        location_key=cast(str, row["location_key"]),
+        display_name=cast(str, row["display_name"]),
+        timezone=cast(str, row["timezone"]),
+        active=cast(bool, row["active"]),
+        address_line1=cast(str | None, row["address_line1"]),
+        address_line2=cast(str | None, row["address_line2"]),
+        locality=cast(str | None, row["locality"]),
+        administrative_area=cast(str | None, row["administrative_area"]),
+        postal_code=cast(str | None, row["postal_code"]),
+        country_code=cast(str | None, row["country_code"]),
+        latitude=cast(Decimal | None, row["latitude"]),
+        longitude=cast(Decimal | None, row["longitude"]),
+        geocoding_source=cast(str | None, row["geocoding_source"]),
+        geocoded_at=cast(datetime | None, row["geocoded_at"]),
+        operational_revision=cast(int, row["operational_revision"]),
     )
 
 
@@ -247,8 +248,6 @@ def _state_to_json(state: CreatedLocationState) -> dict[str, object]:
 
 
 def _state_from_json(value: dict[str, object]) -> CreatedLocationState:
-    from decimal import Decimal
-
     latitude = value.get("latitude")
     longitude = value.get("longitude")
     geocoded_at = value.get("geocoded_at")
