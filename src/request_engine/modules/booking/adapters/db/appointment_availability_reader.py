@@ -102,10 +102,14 @@ class PostgresAppointmentAvailabilityReader:
                     await session.execute(
                         text(
                             """
-                            SELECT duration_minutes, bookable, booking_policy
-                            FROM request_engine.offering_versions
-                            WHERE organization_id = :organization_id
-                              AND id = :offering_version_id
+                            SELECT ov.duration_minutes, ov.bookable, ov.booking_policy
+                            FROM request_engine.offering_versions ov
+                            JOIN request_engine.offerings o
+                              ON o.organization_id = ov.organization_id
+                             AND o.id = ov.offering_id
+                            WHERE ov.organization_id = :organization_id
+                              AND ov.id = :offering_version_id
+                              AND o.active
                             """
                         ),
                         {
