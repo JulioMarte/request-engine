@@ -7,7 +7,9 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (  # noqa: E501
     ConfigureOfferingVersionBookingTermsCommand,
@@ -630,7 +632,11 @@ class PostgresOperationalProfileCommands:
             raise
 
 
-async def _lock_location_revision(session, organization_id: UUID, location_id: UUID) -> int:
+async def _lock_location_revision(
+    session: AsyncSession,
+    organization_id: UUID,
+    location_id: UUID,
+) -> int:
     row = (
         (
             await session.execute(
@@ -653,7 +659,11 @@ async def _lock_location_revision(session, organization_id: UUID, location_id: U
     return cast(int, row["operational_revision"])
 
 
-async def _location_revision(session, organization_id: UUID, location_id: UUID) -> int:
+async def _location_revision(
+    session: AsyncSession,
+    organization_id: UUID,
+    location_id: UUID,
+) -> int:
     return cast(
         int,
         (
@@ -693,7 +703,7 @@ def _clean_optional(value: str | None) -> str | None:
     return cleaned or None
 
 
-def _location_state_from_row(row) -> LocationOperationalInfoState:
+def _location_state_from_row(row: RowMapping) -> LocationOperationalInfoState:
     return LocationOperationalInfoState(
         location_id=cast(UUID, row["id"]),
         timezone=cast(str, row["timezone"]),
@@ -777,7 +787,7 @@ def _contacts_state_from_json(value: dict[str, object]) -> LocationPublicContact
             raise ValueError("stored public contact channel is invalid")
         contacts.append(
             LocationPublicContactInput(
-                channel=cast(PublicContactChannel, channel),
+                channel=channel,
                 normalized_value=cast(str, item["normalized_value"]),
                 label=cast(str | None, item.get("label")),
             )
@@ -810,7 +820,7 @@ def _hours_exception_from_json(value: dict[str, object]) -> LocationHoursExcepti
         location_id=UUID(cast(str, value["location_id"])),
         start_at=datetime.fromisoformat(cast(str, value["start_at"])),
         end_at=datetime.fromisoformat(cast(str, value["end_at"])),
-        exception_kind=cast(LocationHoursExceptionKind, kind),
+        exception_kind=kind,
         reason=cast(str | None, value.get("reason")),
         active=cast(bool, value["active"]),
         operational_revision=cast(int, value["operational_revision"]),
