@@ -278,7 +278,7 @@ async def test_recurring_location_hours_change_serializes_and_makes_option_stale
 @pytest.mark.integration
 @pytest.mark.postgres
 @pytest.mark.concurrency
-async def test_offering_version_bookable_change_serializes_and_makes_option_stale(
+async def test_offering_deactivation_serializes_before_book_and_makes_option_stale(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -290,11 +290,14 @@ async def test_offering_version_bookable_change_serializes_and_makes_option_stal
         await config_session.execute(
             text(
                 """
-                SELECT id
-                FROM request_engine.offering_versions
-                WHERE organization_id = :organization_id
-                  AND id = :offering_version_id
-                FOR UPDATE
+                SELECT o.id
+                FROM request_engine.offerings o
+                JOIN request_engine.offering_versions ov
+                  ON ov.organization_id = o.organization_id
+                 AND ov.offering_id = o.id
+                WHERE ov.organization_id = :organization_id
+                  AND ov.id = :offering_version_id
+                FOR UPDATE OF o
                 """
             ),
             {
@@ -307,10 +310,16 @@ async def test_offering_version_bookable_change_serializes_and_makes_option_stal
         await config_session.execute(
             text(
                 """
-                UPDATE request_engine.offering_versions
-                   SET bookable = false
+                UPDATE request_engine.offerings
+                   SET active = false,
+                       updated_at = clock_timestamp()
                  WHERE organization_id = :organization_id
-                   AND id = :offering_version_id
+                   AND id = (
+                       SELECT offering_id
+                       FROM request_engine.offering_versions
+                       WHERE organization_id = :organization_id
+                         AND id = :offering_version_id
+                   )
                 """
             ),
             {
