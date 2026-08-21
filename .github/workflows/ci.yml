@@ -3,12 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    # F1 is under active pre-PR implementation. Keep this branch-specific so
-    # development can obtain real CI evidence without enabling push CI for every
-    # feature branch. Remove this entry before merge; PR CI remains canonical.
     branches:
       - main
-      - feature/operational-profile-contextual-supply
   workflow_dispatch:
 
 permissions:
