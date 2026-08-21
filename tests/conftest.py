@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, Protocol
 
 import psycopg
@@ -11,6 +12,7 @@ os.environ.setdefault("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY", "x" * 64)
 
 PgConnection = Connection[Any]
 APPLICATION_SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
+TEST_ROOT = Path(__file__).resolve().parent
 
 
 class _PostgresTestNode(Protocol):
@@ -20,6 +22,22 @@ class _PostgresTestNode(Protocol):
 class _FixtureRequest(Protocol):
     @property
     def node(self) -> _PostgresTestNode: ...
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Classify evidence by scope without child conftest/import ambiguity."""
+    for item in items:
+        item_path = Path(item.path).resolve()
+        try:
+            relative = item_path.relative_to(TEST_ROOT)
+        except ValueError:
+            continue
+        if not relative.parts:
+            continue
+        if relative.parts[0] == "architecture":
+            item.add_marker(pytest.mark.fitness)
+        elif relative.parts[0] == "historical":
+            item.add_marker(pytest.mark.historical)
 
 
 def postgres_test_conninfo() -> str:
