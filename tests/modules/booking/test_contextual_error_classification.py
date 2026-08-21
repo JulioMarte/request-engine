@@ -1,11 +1,13 @@
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import status
+from fastapi import Request, status
 
-from request_engine.modules.booking.api.errors import _booking_error
+from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     book_appointment,
@@ -75,9 +77,15 @@ async def test_legacy_bookable_change_preserves_released_error() -> None:
         await book_appointment(_NotBookableHandler(), _legacy_command(uuid4()))
 
 
-def test_contextual_commitment_unsupported_has_machine_readable_http_error() -> None:
-    status_code, body = _booking_error(ContextualCommitmentUnsupported("reschedule"))
+@pytest.mark.asyncio
+async def test_contextual_commitment_unsupported_has_machine_readable_http_error() -> None:
+    response = await booking_error_handler(
+        Request({"type": "http"}),
+        ContextualCommitmentUnsupported("reschedule"),
+    )
+    payload = cast(dict[str, object], json.loads(response.body))
+    error = cast(dict[str, object], payload["error"])
 
-    assert status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert body.code == "contextual_commitment_unsupported"
-    assert body.details == {"operation": "reschedule"}
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert error["code"] == "contextual_commitment_unsupported"
+    assert error["details"] == {"operation": "reschedule"}
