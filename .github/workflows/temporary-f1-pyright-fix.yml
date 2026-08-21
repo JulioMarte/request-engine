@@ -1,0 +1,74 @@
+name: Temporary F1 pyright fix
+
+on:
+  push:
+    branches:
+      - feature/operational-profile-contextual-supply
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, '[skip-f1-pyright]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/operational-profile-contextual-supply
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: '0.12.5'
+      - run: uv sync --all-groups
+      - name: Apply strict typing fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          catalog = Path('src/request_engine/modules/catalog/adapters/db/operational_profile_commands.py')
+          text = catalog.read_text(encoding='utf-8')
+          text = text.replace(
+              'from sqlalchemy import text\nfrom sqlalchemy.exc import DBAPIError, IntegrityError\n',
+              'from sqlalchemy import text\nfrom sqlalchemy.engine import RowMapping\nfrom sqlalchemy.exc import DBAPIError, IntegrityError\nfrom sqlalchemy.ext.asyncio import AsyncSession\n',
+              1,
+          )
+          text = text.replace(
+              'async def _lock_location_revision(session, organization_id: UUID, location_id: UUID) -> int:',
+              'async def _lock_location_revision(\n    session: AsyncSession, organization_id: UUID, location_id: UUID\n) -> int:',
+              1,
+          )
+          text = text.replace(
+              'async def _location_revision(session, organization_id: UUID, location_id: UUID) -> int:',
+              'async def _location_revision(\n    session: AsyncSession, organization_id: UUID, location_id: UUID\n) -> int:',
+              1,
+          )
+          text = text.replace(
+              'def _location_state_from_row(row) -> LocationOperationalInfoState:',
+              'def _location_state_from_row(row: RowMapping) -> LocationOperationalInfoState:',
+              1,
+          )
+          text = text.replace('channel=cast(PublicContactChannel, item["channel"]),', 'channel=item["channel"],')
+          text = text.replace('exception_kind=cast(LocationHoursExceptionKind, value["exception_kind"]),', 'exception_kind=value["exception_kind"],')
+          catalog.write_text(text, encoding='utf-8')
+
+          lifecycle = Path('src/request_engine/modules/booking/adapters/db/contextual_supply_lifecycle_commands.py')
+          text = lifecycle.read_text(encoding='utf-8')
+          text = text.replace('kind=cast(ExceptionKind, value["kind"]),', 'kind=value["kind"],')
+          lifecycle.write_text(text, encoding='utf-8')
+          PY
+          uv run ruff format .
+          uv run ruff check .
+          uv run pyright
+      - name: Commit validated strict typing fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src
+          git commit -m 'fix: type F1 operational helpers [skip-f1-pyright]'
+          git push origin HEAD:feature/operational-profile-contextual-supply
