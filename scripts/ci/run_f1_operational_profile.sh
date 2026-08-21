@@ -2,62 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$ROOT_DIR"
 
-ARTIFACT_DIR="${F1_CI_ARTIFACT_DIR:-.ci/f1-operational-profile}"
-EXPECTED_HEAD="0002_f1_supply"
-mkdir -p "$ARTIFACT_DIR"
-
-python scripts/ci/normalize_ci_line_endings.py
-uv sync --all-groups
-
-uv run alembic upgrade head
-actual_head="$(psql -Atc 'SELECT version_num FROM alembic_version')"
-if [[ "$actual_head" != "$EXPECTED_HEAD" ]]; then
-  echo "unexpected Alembic head: expected $EXPECTED_HEAD, got $actual_head" >&2
-  exit 1
+# Compatibility entrypoint for branch-era/local callers. F1 has been promoted
+# into the current-product proof; do not reintroduce an F1-specific Alembic head
+# or duplicate the test command inventory here.
+if [[ -n "${F1_CI_ARTIFACT_DIR:-}" && -z "${CURRENT_PRODUCT_CI_ARTIFACT_DIR:-}" ]]; then
+  export CURRENT_PRODUCT_CI_ARTIFACT_DIR="$F1_CI_ARTIFACT_DIR"
 fi
 
-uv run pytest \
-  tests/integration/f1_operational_profile/test_schema.py \
-  tests/integration/f1_operational_profile/test_runtime_privileges.py \
-  -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/schema.xml"
-
-uv run pytest \
-  tests/integration/f1_operational_profile/test_business_info.py \
-  tests/integration/f1_operational_profile/test_catalog_contextual_discovery.py \
-  tests/integration/f1_operational_profile/test_foreign_tenant_opacity.py \
-  -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/business-info.xml"
-
-uv run pytest \
-  tests/integration/f1_operational_profile/test_operational_commands.py \
-  tests/integration/f1_operational_profile/test_operational_profile_commands.py \
-  tests/integration/f1_operational_profile/test_contextual_config_commands.py \
-  tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py \
-  tests/integration/f1_operational_profile/test_semantic_surface_gaps.py \
-  tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
-  -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/semantic-commands.xml"
-
-uv run pytest \
-  tests/integration/f1_operational_profile/test_contextual_booking.py \
-  tests/integration/f1_operational_profile/test_context_only_commercial_booking.py \
-  tests/integration/f1_operational_profile/test_multi_resource_commercial_provenance.py \
-  tests/integration/f1_operational_profile/test_contextual_booking_races.py \
-  tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py \
-  tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py \
-  tests/integration/f1_operational_profile/test_contextual_shared_capacity.py \
-  tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py \
-  tests/integration/f1_operational_profile/test_capability_flow.py \
-  -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
-
-# F1 is post-baseline evolution, so the production head must continue to satisfy
-# the released V3 booking contracts rather than replacing them.
-uv run pytest \
-  tests/integration/v3_booking_core \
-  tests/integration/v3_booking_commitments \
-  -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/v3-booking-regression.xml"
+exec bash "$ROOT_DIR/scripts/ci/run_current_product.sh" "$@"
