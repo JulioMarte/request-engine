@@ -1,0 +1,130 @@
+schema_version = 1
+status = "migration-current-proof-map"
+normative = false
+guarantees = "docs/testing/current-guarantees.toml"
+
+# This map is review/migration evidence, not a permanent exact-file constitution.
+# Entries name representative surviving proofs and the evidence class they provide.
+# The normative contract remains current-guarantees.toml. A future rename may update
+# this map without changing the guarantee; removing the final proof for a required
+# evidence class must not.
+
+[[proofs]]
+guarantee = "INV-TENANT-001"
+path = "tests/db/test_v3_tenant_isolation_adversarial.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-TENANT-001"
+path = "tests/integration/f1_operational_profile/test_foreign_tenant_opacity.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/db/test_v3_party_authority_state_adversarial.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py"
+evidence = ["invariant", "security", "temporal"]
+
+[[proofs]]
+guarantee = "INV-ATOMICITY-001"
+path = "tests/integration/v3_booking_commitments/test_g18_adversarial_races.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-ATOMICITY-001"
+path = "tests/integration/f1_operational_profile/test_contextual_booking_races.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-CAPACITY-001"
+path = "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"
+evidence = ["invariant", "adversarial", "concurrency", "capacity"]
+
+[[proofs]]
+guarantee = "INV-CAPACITY-001"
+path = "tests/integration/f1_operational_profile/test_contextual_shared_capacity.py"
+evidence = ["invariant", "capacity"]
+
+[[proofs]]
+guarantee = "INV-IDEMPOTENCY-001"
+path = "tests/integration/v3_first_vertical/test_http_idempotency_failure.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-IDEMPOTENCY-001"
+path = "tests/integration/v3_first_vertical/test_http_request_idempotency_failure.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PROVENANCE-001"
+path = "tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py"
+evidence = ["invariant", "adversarial", "provenance", "temporal"]
+
+[[proofs]]
+guarantee = "INV-PROVENANCE-001"
+path = "tests/integration/v3_reservation_lifecycle/test_reschedule_outbox_release_provenance.py"
+evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/integration/v3_worker_runtime/test_process_crash_recovery.py"
+evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py"
+evidence = ["invariant", "adversarial", "concurrency", "provenance"]
+
+[[proofs]]
+guarantee = "INV-OUTBOX-001"
+path = "tests/e2e/test_outbox_semantics.py"
+evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-OUTBOX-001"
+path = "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"
+evidence = ["invariant", "provenance"]
+
+[[proofs]]
+guarantee = "INV-PRIVILEGE-001"
+path = "tests/db/test_v3_runtime_privilege_closure.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PRIVILEGE-001"
+path = "tests/integration/f1_operational_profile/test_runtime_privileges.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-TEMPORAL-001"
+path = "tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py"
+evidence = ["invariant", "adversarial", "temporal", "capacity"]
+
+[[proofs]]
+guarantee = "INV-TEMPORAL-001"
+path = "tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py"
+evidence = ["invariant", "temporal", "provenance"]
+
+[[proofs]]
+guarantee = "FIT-ARCH-001"
+path = "tests/architecture/test_dependency_policy.py"
+evidence = ["fitness"]
+
+[[proofs]]
+guarantee = "FIT-ARCH-001"
+path = "tests/architecture/test_connection_surfaces.py"
+evidence = ["fitness"]
+
+[[proofs]]
+guarantee = "INV-FAILURE-001"
+path = "tests/architecture/test_http_error_recovery_contract.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-FAILURE-001"
+path = "tests/integration/v3_first_vertical/test_http_input_adversarial.py"
+evidence = ["contract", "adversarial", "security"]
