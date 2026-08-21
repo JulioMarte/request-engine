@@ -124,16 +124,23 @@ def test_g19_manifest_extension_requires_semantically_valid_artifact(tmp_path: P
     assert invalid["status"] == "FAIL"
 
 
-def test_g19_is_mandatory_in_candidate_manifest_and_ci() -> None:
+def test_g19_remains_release_evidence_without_being_regenerated_post_baseline() -> None:
     manifest = (ROOT / "scripts/release/build_v3_evidence_manifest.py").read_text(encoding="utf-8")
-    wrapper = (ROOT / "scripts/ci/run_v3_candidate_with_g19.sh").read_text(encoding="utf-8")
+    release_wrapper = (ROOT / "scripts/ci/run_v3_candidate_with_g19.sh").read_text(
+        encoding="utf-8"
+    )
+    compatibility_wrapper = (
+        ROOT / "scripts/ci/run_v3_frozen_compatibility.sh"
+    ).read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "validate_v3_production_like_bootstrap_artifact.py" in manifest
     assert ".phase6/v3-production-like-bootstrap-proof.json" in manifest
     assert "production_like_bootstrap" in manifest
-    assert "prove_v3_clean_start.py" in wrapper
-    assert "provision_v3_release_runtime.py" in wrapper
-    assert "prove_v3_production_like_bootstrap.py" in wrapper
-    assert "--cleanup" in wrapper
-    assert "run_v3_candidate_with_g19.sh" in workflow
+    assert "prove_v3_clean_start.py" in release_wrapper
+    assert "provision_v3_release_runtime.py" in release_wrapper
+    assert "prove_v3_production_like_bootstrap.py" in release_wrapper
+    assert "--cleanup" in release_wrapper
+    assert "run_v3_frozen_compatibility.sh" in workflow
+    assert "prove_v3_production_like_bootstrap.py" not in compatibility_wrapper
+    assert "build_v3_evidence_manifest.py" not in compatibility_wrapper
