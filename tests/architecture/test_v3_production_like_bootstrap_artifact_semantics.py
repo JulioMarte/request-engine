@@ -126,12 +126,10 @@ def test_g19_manifest_extension_requires_semantically_valid_artifact(tmp_path: P
 
 def test_g19_remains_release_evidence_without_being_regenerated_post_baseline() -> None:
     manifest = (ROOT / "scripts/release/build_v3_evidence_manifest.py").read_text(encoding="utf-8")
-    release_wrapper = (ROOT / "scripts/ci/run_v3_candidate_with_g19.sh").read_text(
+    release_wrapper = (ROOT / "scripts/ci/run_v3_candidate_with_g19.sh").read_text(encoding="utf-8")
+    compatibility_wrapper = (ROOT / "scripts/ci/run_v3_frozen_compatibility.sh").read_text(
         encoding="utf-8"
     )
-    compatibility_wrapper = (
-        ROOT / "scripts/ci/run_v3_frozen_compatibility.sh"
-    ).read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "validate_v3_production_like_bootstrap_artifact.py" in manifest
