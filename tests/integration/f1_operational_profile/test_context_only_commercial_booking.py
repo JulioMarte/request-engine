@@ -20,7 +20,6 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 from request_engine.platform.db.session import SessionFactory
 
 from .dummy_data import create_contextual_cardiology_scenario
@@ -147,7 +146,7 @@ async def test_context_only_price_books_without_fabricating_base_source(
         ),
     )
     assert slots
-    slot = cast(AppointmentSlot, slots[0])
+    slot = slots[0]
     assert slot.amount == Decimal("4200.000000")
     assert slot.currency == "DOP"
     assert slot.planned_duration_minutes == 30
