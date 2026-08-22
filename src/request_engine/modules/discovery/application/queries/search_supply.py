@@ -5,7 +5,10 @@ from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
-from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery, PublishedSlotReader
+from request_engine.modules.booking.contracts.discovery import (
+    PublishedSlotQuery,
+    PublishedSlotReader,
+)
 
 MAX_RADIUS_METERS = 100_000
 MAX_WINDOW = timedelta(days=7)
