@@ -20,3 +20,4 @@ applyTo: "src/**/*.py,tests/**/*.py"
 - No lazy-loading behavior may be required for correctness.
 - Avoid `utils.py`, `helpers.py`, `common.py`, `services.py`, `managers.py` or generic repository dumping grounds.
 - Do not add abstract Unit-of-Work/repository hierarchies that merely wrap SQLAlchemy without a demonstrated domain/application need.
+- Keep Python source/test files near 100 effective code lines. CI allows 101–120 effective lines without failure and blocks new/previously compliant files above 120. Blank lines and comment-only lines do not consume the budget; docstrings do. Existing >120-line debt may not grow. Do not waste tokens splitting a cohesive 102-line file merely to hit exactly 100.
