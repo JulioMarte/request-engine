@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
@@ -8,6 +7,9 @@ from request_engine.modules.discovery.adapters.db import (
     publication_codec,
     publication_scope,
     publication_store,
+)
+from request_engine.modules.discovery.adapters.db.publication_validation import (
+    validated_publication_intent,
 )
 from request_engine.modules.discovery.application.commands.publication import (
     DiscoveryPublicationState,
@@ -34,7 +36,7 @@ class PostgresDiscoveryPublishCommands:
         self._session_factory = session_factory
 
     async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState:
-        start, end, visibility = _validated(command)
+        start, end, visibility = validated_publication_intent(command)
         fingerprint = command_fingerprint(
             "discovery.publish_supply",
             {
@@ -123,20 +125,3 @@ class PostgresDiscoveryPublishCommands:
                     "discovery publication overlaps existing effective publication"
                 ) from None
             raise
-
-
-def _validated(
-    command: PublishDiscoverySupplyCommand,
-) -> tuple[datetime, datetime | None, str]:
-    start = command.effective_start
-    end = command.effective_end
-    if start.tzinfo is None or (end is not None and end.tzinfo is None):
-        raise ValueError("discovery publication dates must be timezone-aware")
-    start = start.astimezone(UTC)
-    end = end.astimezone(UTC) if end is not None else None
-    if end is not None and end <= start:
-        raise ValueError("effective_end must be after effective_start")
-    visibility = command.provider_visibility.strip().lower()
-    if visibility not in {"hidden", "public"}:
-        raise ValueError("provider_visibility must be hidden or public")
-    return start, end, visibility
