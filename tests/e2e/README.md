@@ -20,12 +20,19 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 ## Framework primitives
 
 - `http_surface.py` classifies every currently composed public `/v1` operation. Internal-only commands remain absent from the public registry.
-- `test_public_surface_contract.py` forces OpenAPI to equal the registry and binds every idempotent command to a required `Idempotency-Key` header.
+- `operational_http_surface.py` independently classifies the control-plane `/v1/operations` mutation surface.
+- `test_public_surface_contract.py` and `test_operational_surface_contract.py` force each composed OpenAPI surface to equal its registry and bind idempotent mutations to the required header contract.
 - `test_http_security_matrix.py` proves authentication/capability behavior for the composed public operation surface.
 - `tenant_sandbox.py` creates real Organizations with catalog, capacity, queues, requests, principals, parties, and signed appointment options.
 - `evidence.py` fingerprints every authoritative table, including row content, so rejected-operation proofs can detect partial mutation rather than checking only row counts.
 - `test_http_tenant_isolation_matrix.py` exercises the production tenant/Party boundary using real foreign resources and durable before/after state.
+- `test_operational_authority_matrix.py`, `test_operational_scope_boundaries.py`, and `test_operational_tenant_opacity.py` prove Representation validity, semantic scope separation, foreign-tenant opacity, and rejection without authoritative mutation.
+- `test_operational_idempotency_journey.py` and `test_operational_supply_idempotency.py` prove exact replay and conflicting-key rejection across profile and supply mutation families.
+- `test_operator_to_customer_journey.py` proves operator profile/contact changes are visible through the public business projection.
+- `test_operator_to_booking_journey.py` proves a real operator can configure Location hours, ResourceLocationAssignment availability, and contextual terms through the control-plane and that a public customer can then discover and book that exact supply with durable assignment/commercial provenance.
 - `test_multi_user_journeys.py` proves exclusive-slot contention/recovery, tenant isolation, FIFO queue replay, and the public Request lifecycle.
+- `test_waitlist_user_lifecycle.py` proves public waitlist join/read/leave replay plus durable state and outbox intent.
+- `test_reminder_user_lifecycle.py` proves public ReminderPlan create/read/cancel replay and that cancellation removes pending scheduled work.
 - `test_contextual_booking_journey.py` proves the F1 public contextual happy chain `business -> catalog -> find_slots -> aptopt_v2 -> book` plus exact assignment/commercial provenance.
 - `test_contextual_booking_failures.py` proves stale-option HTTP 409 behavior and fail-closed contextual reschedule with full durable-state non-mutation evidence.
 - `test_contextual_location_separation.py` proves the same Resource may have two Location contexts with distinct schedule/price/duration without cross-context leakage.
@@ -41,8 +48,8 @@ Historical V3 reproducibility may separately execute the released V3 source agai
 
 ## Adding a feature
 
-A feature PR that adds a public endpoint must update the public-operation registry in the same PR. If the OpenAPI surface changes without classification, CI fails. `DurableSnapshot` fingerprints authoritative tables automatically, so rejected operations should preserve durable content as well as cardinality. A new external side effect must add crash-window evidence. A new worker must prove claim disjointness, stale-token fencing, retry/dead-letter behavior, and reclaim after lease expiry.
+A feature PR that adds a public or operational endpoint must update the corresponding operation registry in the same PR. If a composed OpenAPI surface changes without classification, CI fails. `DurableSnapshot` fingerprints authoritative tables automatically, so rejected operations should preserve durable content as well as cardinality. A new external side effect must add crash-window evidence. A new worker must prove claim disjointness, stale-token fencing, retry/dead-letter behavior, and reclaim after lease expiry.
 
-Public features that change the meaning of an existing route still need a production-like journey even when no new endpoint is added. Use narrow integration tests for deterministic races/invariants and E2E for the composed externally observable chain; neither layer substitutes for the other.
+Public or operational features that change the meaning of an existing route still need a production-like journey even when no new endpoint is added. Use narrow integration tests for deterministic races/invariants and E2E for the composed externally observable chain; neither layer substitutes for the other.
 
 Do not weaken these guards to make a new feature pass; extend the evidence framework.
