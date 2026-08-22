@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT_RUNNER = ROOT / "scripts" / "ci" / "run_current_product.sh"
 F1_COMPAT_RUNNER = ROOT / "scripts" / "ci" / "run_f1_operational_profile.sh"
+CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -42,3 +43,17 @@ def test_workflow_separates_current_product_from_historical_provenance() -> None
     assert ".ci/current-product/" in current_job
     assert "uv run pytest tests/historical" in historical_job
     assert "tests/historical" not in python_job
+
+
+def test_python_quality_job_owns_file_budget_canonically() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    ci_jobs = CI_JOBS.read_text(encoding="utf-8")
+    python_job = workflow.split("  python-quality:\n", 1)[1].split(
+        "  observability-contract:\n", 1
+    )[0]
+
+    assert '"file-budget"' in ci_jobs
+    assert "check_python_file_budget.py" in ci_jobs
+    assert "FILE_BUDGET_BASE_REF" in python_job
+    assert "check_python_file_budget.py" not in python_job
+    assert "python scripts/ci/ci_jobs.py python-quality" in python_job
