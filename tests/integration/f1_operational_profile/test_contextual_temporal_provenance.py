@@ -161,7 +161,8 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
     fixture = create_contextual_cardiology_scenario(admin_conn)
     boundary = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
     revision_row = admin_conn.execute(
-        "SELECT revision FROM request_engine.booking_context_terms WHERE id=%s AND organization_id=%s",
+        "SELECT revision FROM request_engine.booking_context_terms "
+        "WHERE id=%s AND organization_id=%s",
         (fixture.context_terms_id, fixture.organization_id),
     ).fetchone()
     assert revision_row is not None
