@@ -15,14 +15,9 @@ from request_engine.entrypoints.http.errors import (
     request_validation_error_handler,
 )
 from request_engine.entrypoints.http.module_composition import install_business_modules
-from request_engine.entrypoints.http.operational_errors import (
-    operational_authority_required_handler,
-    public_contact_validation_error_handler,
-)
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
-from request_engine.platform.public_contacts import PublicContactValidationError
 from request_engine.platform.security.discovery import (
     BaselineTenantCapabilityPolicy,
     TenantCapabilityPolicy,
@@ -36,7 +31,6 @@ from request_engine.platform.security.http import (
     TenantCapabilityActorResolver,
     request_correlation_id,
 )
-from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
 _CORRELATION_HEADER = "X-Correlation-ID"
@@ -91,8 +85,6 @@ def create_app(
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
-    app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
-    app.add_exception_handler(PublicContactValidationError, public_contact_validation_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
     app.include_router(
