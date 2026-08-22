@@ -5,10 +5,13 @@ applyTo: "src/**/*.py,tests/**/*.py"
 # Python implementation rules
 
 - Python is organized module first, layer second; follow `docs/09-python-module-architecture.md`.
+- Use `docs/testing/repository-governance-contract.md` to distinguish HARD semantic/type boundaries from CONTROLLED architecture shape and FLEXIBLE private implementation.
 - Use Python 3.13 typing and keep public boundaries explicit.
 - One authoritative command should have one obvious command file/use-case entry point.
-- Domain types, API/Pydantic schemas and SQLAlchemy persistence mappings are distinct.
-- Cross-module imports use only the target module's `contracts` surface.
+- Domain types, application command/query types, cross-module contracts, API/Pydantic DTOs and SQLAlchemy persistence mappings are distinct.
+- Pydantic business transport types stay at API/configuration boundaries; business-module `domain`, `application`, and `contracts` remain Pydantic-free.
+- HTTP request DTOs use descriptive `*Body`; response/read projections use descriptive `*View`; transport-only query/path models use an explicit suffix such as `*Params`.
+- Cross-module imports use only the target module's `contracts` surface, and those contracts use business language rather than transport/persistence suffixes.
 - Application code defines ports; concrete DB/provider implementations live under the owning module's `adapters/`.
 - Prefer explicit dependency injection from `bootstrap` over service locators or hidden globals.
 - A SQLAlchemy `Session`/`AsyncSession` is transaction-scoped and must not be shared across concurrent tasks.
