@@ -28,6 +28,7 @@ from request_engine.modules.booking.adapters.db.reservation_reader import (
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
 )
+from request_engine.modules.booking.adapters.discovery_slot_reader import PostgresPublishedSlotReader
 from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
@@ -48,9 +49,19 @@ from request_engine.modules.booking.application.operational_errors import (
     ResourceAvailabilityRevisionConflict,
     ResourceLocationAssignmentRevisionConflict,
 )
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
+from request_engine.modules.booking.contracts.discovery import PublishedSlotReader
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
+
+
+def build_published_slot_reader(session_factory: SessionFactory) -> PublishedSlotReader:
+    return PostgresPublishedSlotReader(session_factory)
+
+
+def build_appointment_option_codec(signing_key: bytes) -> AppointmentOptionCodec:
+    return SignedAppointmentOptionCodec(signing_key)
 
 
 def install_http(
