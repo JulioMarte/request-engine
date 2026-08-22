@@ -45,9 +45,10 @@ Before editing, identify the primary owner and read only the canonical material 
 10. `docs/14-architecture-fitness-functions.md` — executable dependency/surface rules enforced by CI.
 11. `docs/testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL rules for architecture shape, DTO/type boundaries, naming, docs, tests and LLM instruction routing.
 12. `docs/testing/README.md` — current test architecture, guarantee registry and proof-map entry point.
-13. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
-14. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
-15. `docs/adr/README.md` — accepted architectural decisions and rationale.
+13. `docs/testing/evidence-authoring-guide.md` — falsifiable-test workflow, realistic dummy data, PostgreSQL proof boundaries and false-positive avoidance when changing tests.
+14. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
+15. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
+16. `docs/adr/README.md` — accepted architectural decisions and rationale.
 
 Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-pre-sql-domain-contract.md` only as V2 source material according to `docs/README.md`. Do not reintroduce a V2 concept V3 explicitly removed/deferred merely because it exists in old docs or SQL.
 
@@ -127,6 +128,28 @@ Architecture tests are executable design constraints, not style suggestions. If 
 
 Do **not** make CI green by automatically widening dependency allowlists, moving business code into `platform`/`common`/`shared`, re-exporting domain/adapters through `contracts`, suppressing the test, or replacing a required atomic transaction with events solely for architectural aesthetics.
 
+## Test evidence discipline
+
+A green test is not automatically evidence. When adding or changing a durable proof, follow `docs/testing/evidence-authoring-guide.md` and the nearest `tests/AGENTS.md`.
+
+Before writing the assertion, identify:
+
+```text
+protected guarantee/risk
+plausible defect that must make the test fail
+real execution boundary needed to expose it
+valid preconditions / realistic dummy-data world
+independent expected outcome / oracle
+authoritative state and important absence of side effects
+canonical CI lane that owns the proof
+```
+
+Do not seed the result that the operation under test is supposed to create. Do not compute the expected answer by calling the same production helper. Do not weaken a proof solely because the current implementation fails it.
+
+When PostgreSQL semantics are part of the claim, use real PostgreSQL 18. Build the minimum complete business-plausible world needed by the scenario rather than magical IDs or impossible partial rows. Direct SQL may establish valid prerequisites, inspect authoritative state, or directly prove a DB constraint/backstop; it must not bypass the authority, RLS, constraint, transaction, lock, or application surface whose behavior is being claimed.
+
+Concurrency evidence uses independent transactions/connections and deterministic synchronization. Do not simulate two contenders inside one transaction or claim a race proof from timing-only sleeps.
+
 ## V3 product-language discipline
 
 - `Request` is new durable business demand needing later processing; cancel/reschedule are Commands by default.
@@ -163,18 +186,17 @@ For booking/capacity, queue selection, waitlist offers, scheduling, communicatio
 
 ## Validation before completion
 
-Run the narrowest relevant checks first, then repository checks when feasible:
+Run the narrowest relevant checks first. Then run the canonical lane that owns the changed proof rather than inventing a parallel validation path.
+
+For Python/architecture/unit/module work, the reusable canonical job is:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest
+python scripts/ci/ci_jobs.py python-quality
 ```
 
-SQL changes also follow `migrations/AGENTS.md` and are validated against PostgreSQL 18.
+It owns the effective-line budget, dependency/environment consistency, Ruff, Pyright, security/dependency checks, architecture tests, unit tests and module tests. PostgreSQL/current-product changes additionally run the appropriate PostgreSQL 18 runner described by `docs/testing/README.md` and the relevant module/migration instructions.
 
-Never claim a check passed unless it actually ran. Report skipped or unavailable checks explicitly.
+Exact-head CI remains the merge evidence. Never claim a check passed unless it actually ran against the intended execution environment; report skipped or unavailable checks explicitly.
 
 ## Documentation rule
 
