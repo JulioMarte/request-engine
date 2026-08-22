@@ -120,6 +120,16 @@ path = "tests/architecture/test_connection_surfaces.py"
 evidence = ["fitness"]
 
 [[proofs]]
+guarantee = "FIT-TYPE-BOUNDARY-001"
+path = "tests/architecture/test_repository_governance_contract.py"
+evidence = ["fitness"]
+
+[[proofs]]
+guarantee = "FIT-REPO-GOV-001"
+path = "tests/architecture/test_repository_governance_contract.py"
+evidence = ["fitness"]
+
+[[proofs]]
 guarantee = "INV-FAILURE-001"
 path = "tests/architecture/test_http_error_recovery_contract.py"
 evidence = ["contract", "adversarial", "security"]
