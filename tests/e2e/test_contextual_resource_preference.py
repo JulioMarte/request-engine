@@ -56,16 +56,12 @@ async def test_find_slots_can_pin_one_eligible_resource_without_leaking_unknown_
     assert pinned_response.status_code == 200
     assert unknown_response.status_code == 200
     any_ids = {
-        choice["resource_id"]
-        for slot in any_response.json()
-        for choice in slot["resources"]
+        choice["resource_id"] for slot in any_response.json() for choice in slot["resources"]
     }
     assert {str(sandbox.resource_id), str(preferred_id)} <= any_ids
     pinned = pinned_response.json()
     assert pinned
-    pinned_ids = {
-        choice["resource_id"] for slot in pinned for choice in slot["resources"]
-    }
+    pinned_ids = {choice["resource_id"] for slot in pinned for choice in slot["resources"]}
     assert pinned_ids == {str(preferred_id)}
     assert {Decimal(str(slot["amount"])) for slot in pinned} == {Decimal("4500")}
     assert unknown_response.json() == []
