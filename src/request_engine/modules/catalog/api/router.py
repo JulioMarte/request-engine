@@ -4,7 +4,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from request_engine.modules.catalog.api.models import BusinessInfoView, OfferingView
+from request_engine.modules.catalog.api.models import BusinessInfoView
+from request_engine.modules.catalog.api.offering_models import OfferingView
 from request_engine.modules.catalog.application.queries.get_business_info import (
     BusinessInfoReader,
     get_business_info,
