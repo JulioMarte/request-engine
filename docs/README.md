@@ -18,6 +18,20 @@ freeze the evidence, not the future
 
 Architecture fitness functions are drift detectors and safety guards, not constitutional locks. A newer accepted product/architecture contract may change module edges, capability shapes, schema or other prior assumptions when the protected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
 
+## Repository and testing governance
+
+Repository flexibility is intentionally asymmetric: semantic boundaries are rigid while private implementation shape remains evolvable.
+
+Canonical testing/governance documents:
+
+- `testing/repository-governance-contract.md` — **normative HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification** for architecture shape, DTO/type boundaries, naming, documentation, tests and LLM instruction routing;
+- `testing/README.md` — testing architecture entry point;
+- `testing/current-guarantees.toml` — normative machine-readable current guarantee inventory; it names guarantees rather than exact test files;
+- `testing/current-proof-map.toml` — non-normative representative proof mapping used to detect evidence gaps without turning filenames into architecture;
+- `testing/test-architecture-migration.md` — migration/disposition ledger for the V3/F1-to-current restructuring.
+
+The repository-governance contract is subordinate to domain/product safety contracts for business semantics but authoritative for how repository structure and tests distinguish rigidity from flexibility. In particular, API/Pydantic DTOs, application Command/Query types, domain values, cross-module contracts and persistence mappings remain distinct boundaries; module `domain`, `application`, and `contracts` remain Pydantic-free; LLM-specific instruction files remain adapters to the canonical documentation/`AGENTS.md` hierarchy rather than independent architecture manuals.
+
 ## Active post-V3 feature branch
 
 On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, while F1 is an explicit post-V3 normative delta.
@@ -86,8 +100,9 @@ Outside a branch-specific post-V3 delta, use this precedence when rules overlap:
 6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
 7. `10-module-ownership-map.md` — module ownership.
 8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
-9. `architecture/pre-production-evolution-policy.md` — meta-policy for intentional pre-customer evolution when a newer accepted contract supersedes one of the rules above.
-10. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3/current accepted deltas.
+9. `testing/repository-governance-contract.md` — repository/test/type/naming/LLM rigidity-versus-flexibility policy; it governs how structural rules are enforced but does not override a higher-precedence business/domain contract.
+10. `architecture/pre-production-evolution-policy.md` — meta-policy for intentional pre-customer evolution when a newer accepted contract supersedes one of the rules above.
+11. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3/current accepted deltas.
 
 A post-V3 feature contract may explicitly supersede named sections of this baseline precedence without rewriting released history. Such a delta must be indexed above, scoped precisely and accompanied by appropriate schema/compatibility evolution plus adversarial proof.
 
@@ -161,7 +176,7 @@ The connector must define ownership, contract, trust/tenant context, transaction
 
 The older numbered canonical documents are retained because design history and invariant references still point to them. Do not perform cosmetic bulk moves that erase provenance or make historical references ambiguous.
 
-New durable domain/schema contracts belong under `docs/v3/` or a successor versioned contract area. Durable rationale belongs in `adr/`. Release-proof history and evidence contracts belong under `docs/release/` and must clearly distinguish historical checkpoints from current status.
+New durable domain/schema contracts belong under `docs/v3/` or a successor versioned contract area. Durable rationale belongs in `adr/`. Release-proof history and evidence contracts belong under `docs/release/` and must clearly distinguish historical checkpoints from current status. Repository/testing governance belongs under `docs/testing/`.
 
 Post-release features should prefer an explicit post-V3 delta contract when preserving the released baseline text provides clearer provenance than rewriting the old baseline as though the feature had always existed. The delta must state exactly what it supersedes.
 
