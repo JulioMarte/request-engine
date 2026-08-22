@@ -31,6 +31,7 @@ async def test_find_slots_can_pin_one_eligible_resource_without_leaking_unknown_
         amount=4500,
         duration_minutes=30,
     )
+    foreign = seed_tenant_sandbox(e2e_admin_conn, "resource-preference-foreign")
     params = {
         "offering_version_id": str(sandbox.offering_version_id),
         "location_id": str(sandbox.location_id),
@@ -38,7 +39,7 @@ async def test_find_slots_can_pin_one_eligible_resource_without_leaking_unknown_
         "window_end": datetime(2030, 1, 7, 16, 0, tzinfo=UTC).isoformat(),
         "limit": 200,
     }
-    async with client_for(e2e_session_factory, sandbox) as client:
+    async with client_for(e2e_session_factory, sandbox, foreign) as client:
         any_response = await client.get(
             "/v1/appointments/slots", params=params, headers=auth(sandbox)
         )
@@ -52,9 +53,15 @@ async def test_find_slots_can_pin_one_eligible_resource_without_leaking_unknown_
             params={**params, "resource_id": str(uuid4())},
             headers=auth(sandbox),
         )
+        foreign_response = await client.get(
+            "/v1/appointments/slots",
+            params={**params, "resource_id": str(foreign.resource_id)},
+            headers=auth(sandbox),
+        )
     assert any_response.status_code == 200
     assert pinned_response.status_code == 200
     assert unknown_response.status_code == 200
+    assert foreign_response.status_code == 200
     any_ids = {
         choice["resource_id"] for slot in any_response.json() for choice in slot["resources"]
     }
@@ -65,3 +72,4 @@ async def test_find_slots_can_pin_one_eligible_resource_without_leaking_unknown_
     assert pinned_ids == {str(preferred_id)}
     assert {Decimal(str(slot["amount"])) for slot in pinned} == {Decimal("4500")}
     assert unknown_response.json() == []
+    assert foreign_response.json() == []
