@@ -134,6 +134,8 @@ Do not create generic business dumping grounds such as `services.py`, `helpers.p
 
 Use semantic operation names that expose intent (`BookAppointment`, `JoinQueue`, `RecordDeliveryResult`) rather than table-mutation language (`SetStatus`, generic `UpdateEntity`) unless the latter is genuinely the accepted business capability.
 
+Keep handwritten Python files near 100 effective code lines. The repository intentionally tolerates 101–120 effective lines; do not split or regenerate a cohesive file just because it reached 102. New or previously compliant files may not exceed 120 effective lines. Blank/comment-only lines do not count, while docstrings do. Existing files already above 120 are ratcheted and may not grow.
+
 ## Commands and persistence
 
 - Authoritative changes are semantic commands and own their transaction orchestration.
