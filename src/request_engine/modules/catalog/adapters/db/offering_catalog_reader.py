@@ -5,8 +5,8 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.catalog.adapters.db import contextual_location_hints as contextual_hints
 from request_engine.modules.catalog.application.queries.search_offerings import (
     OfferingSummary,
     OfferingVersionInfo,
@@ -83,7 +83,7 @@ class PostgresOfferingCatalogReader:
         query: SearchOfferingsQuery,
     ) -> tuple[OfferingSummary, ...]:
         async with tenant_transaction(self._session_factory, query.organization_id) as session:
-            f1_available = await _f1_catalog_schema_available(session)
+            f1_available = await contextual_hints.f1_schema_available(session)
             if query.location_id is not None and not f1_available:
                 return ()
 
@@ -164,7 +164,7 @@ class PostgresOfferingCatalogReader:
         offering_key: str,
     ) -> OfferingSummary | None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
-            f1_available = await _f1_catalog_schema_available(session)
+            f1_available = await contextual_hints.f1_schema_available(session)
             statement = text(
                 (_F1_SEARCH_SELECT if f1_available else _LEGACY_SEARCH_SELECT)
                 + """WHERE o.organization_id = :organization_id
@@ -188,14 +188,14 @@ class PostgresOfferingCatalogReader:
             if row is None:
                 return None
             eligible_location_ids = (
-                await _eligible_location_ids(
+                await contextual_hints.eligible_location_ids(
                     session,
                     organization_id=organization_id,
                     offering_version_id=cast(UUID, row["version_id"]),
                     effective_at=datetime.now(UTC),
                 )
                 if f1_available
-                else ()
+                else None
             )
         return _offering_from_row(
             row,
@@ -204,82 +204,11 @@ class PostgresOfferingCatalogReader:
         )
 
 
-async def _f1_catalog_schema_available(session: AsyncSession) -> bool:
-    return bool(
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT to_regclass('request_engine.resource_location_assignments') IS NOT NULL
-                       AND to_regclass('request_engine.offering_version_booking_terms') IS NOT NULL
-                    """
-                )
-            )
-        ).scalar_one()
-    )
-
-
-async def _eligible_location_ids(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    offering_version_id: UUID,
-    effective_at: datetime,
-) -> tuple[UUID, ...]:
-    rows = (
-        await session.execute(
-            text(
-                """
-                SELECT l.id
-                FROM request_engine.locations l
-                WHERE l.organization_id = :organization_id
-                  AND l.active
-                  AND EXISTS (
-                      SELECT 1
-                      FROM request_engine.offering_resource_requirements req
-                      WHERE req.organization_id = l.organization_id
-                        AND req.offering_version_id = :offering_version_id
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM request_engine.offering_resource_requirements req
-                      WHERE req.organization_id = l.organization_id
-                        AND req.offering_version_id = :offering_version_id
-                        AND (
-                            SELECT count(DISTINCT r.id)
-                            FROM request_engine.resources r
-                            JOIN request_engine.resource_capability_assignments rca
-                              ON rca.organization_id = r.organization_id
-                             AND rca.resource_id = r.id
-                             AND rca.capability_id = req.capability_id
-                            JOIN request_engine.resource_location_assignments a
-                              ON a.organization_id = r.organization_id
-                             AND a.resource_id = r.id
-                             AND a.location_id = l.id
-                             AND a.status = 'active'
-                             AND a.effective_during @> CAST(:effective_at AS timestamptz)
-                            WHERE r.organization_id = l.organization_id
-                              AND r.active
-                        ) < req.quantity
-                  )
-                ORDER BY l.id
-                """
-            ),
-            {
-                "organization_id": organization_id,
-                "offering_version_id": offering_version_id,
-                "effective_at": effective_at.astimezone(UTC),
-            },
-        )
-    ).scalars()
-    return tuple(cast(UUID, value) for value in rows)
-
-
 def _offering_from_row(
     row: RowMapping,
     *,
     f1_available: bool,
-    eligible_location_ids: tuple[UUID, ...] = (),
+    eligible_location_ids: tuple[UUID, ...] | None = None,
 ) -> OfferingSummary:
     return OfferingSummary(
         id=cast(UUID, row["id"]),
