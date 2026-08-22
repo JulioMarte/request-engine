@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from request_engine.modules.booking.adapters.db import resource_schedule_exception_store as store
 from request_engine.modules.booking.application.commands.set_resource_schedule_exception import (
     ResourceScheduleExceptionState,
     SetResourceScheduleExceptionCommand,
@@ -30,8 +30,6 @@ from request_engine.platform.security.operational_authority import (
 
 
 class PostgresResourceScheduleExceptionCommands:
-    """Semantic Resource-wide exception writes over the released V3 relation."""
-
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
@@ -72,7 +70,6 @@ class PostgresResourceScheduleExceptionCommands:
                 )
                 if replay is not None:
                     return _state_from_json(cast(dict[str, object], replay["exception"]))
-
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -80,127 +77,35 @@ class PostgresResourceScheduleExceptionCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
                 )
-                resource = (
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                SELECT id, active, availability_revision
-                                FROM request_engine.resources
-                                WHERE organization_id = :organization_id
-                                  AND id = :resource_id
-                                FOR UPDATE
-                                """
-                            ),
-                            {
-                                "organization_id": command.organization_id,
-                                "resource_id": command.resource_id,
-                            },
-                        )
-                    )
-                    .mappings()
-                    .first()
+                active, current_revision = await store.lock_resource(
+                    session,
+                    organization_id=command.organization_id,
+                    resource_id=command.resource_id,
                 )
-                if resource is None:
-                    raise ContextualConfigurationConflict(
-                        "Resource is missing or belongs to another Organization"
-                    )
-                if not cast(bool, resource["active"]):
+                if not active:
                     raise ContextualConfigurationConflict(
                         "Resource must be active to configure schedule exceptions"
                     )
-                current_revision = cast(int, resource["availability_revision"])
                 if current_revision != command.expected_resource_availability_revision:
                     raise ResourceAvailabilityRevisionConflict(
                         command.resource_id,
                         command.expected_resource_availability_revision,
                         current_revision,
                     )
-
-                if command.exception_id is None:
-                    exception_id = cast(
-                        UUID,
-                        (
-                            await session.execute(
-                                text(
-                                    """
-                                    INSERT INTO request_engine.schedule_exceptions (
-                                        organization_id,
-                                        resource_id,
-                                        during,
-                                        exception_kind,
-                                        reason
-                                    ) VALUES (
-                                        :organization_id,
-                                        :resource_id,
-                                        tstzrange(:start_at, :end_at, '[)'),
-                                        :exception_kind,
-                                        :reason
-                                    )
-                                    RETURNING id
-                                    """
-                                ),
-                                {
-                                    "organization_id": command.organization_id,
-                                    "resource_id": command.resource_id,
-                                    "start_at": start_at,
-                                    "end_at": end_at,
-                                    "exception_kind": command.exception_kind,
-                                    "reason": command.reason,
-                                },
-                            )
-                        ).scalar_one(),
-                    )
-                else:
-                    row = (
-                        await session.execute(
-                            text(
-                                """
-                                UPDATE request_engine.schedule_exceptions
-                                   SET during = tstzrange(:start_at, :end_at, '[)'),
-                                       exception_kind = :exception_kind,
-                                       reason = :reason
-                                 WHERE organization_id = :organization_id
-                                   AND id = :exception_id
-                                   AND resource_id = :resource_id
-                                RETURNING id
-                                """
-                            ),
-                            {
-                                "organization_id": command.organization_id,
-                                "resource_id": command.resource_id,
-                                "exception_id": command.exception_id,
-                                "start_at": start_at,
-                                "end_at": end_at,
-                                "exception_kind": command.exception_kind,
-                                "reason": command.reason,
-                            },
-                        )
-                    ).first()
-                    if row is None:
-                        raise ContextualConfigurationConflict(
-                            "schedule exception is missing or belongs to another Resource"
-                        )
-                    exception_id = command.exception_id
-
-                final_revision = cast(
-                    int,
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                SELECT availability_revision
-                                FROM request_engine.resources
-                                WHERE organization_id = :organization_id
-                                  AND id = :resource_id
-                                """
-                            ),
-                            {
-                                "organization_id": command.organization_id,
-                                "resource_id": command.resource_id,
-                            },
-                        )
-                    ).scalar_one(),
+                exception_id = await store.upsert_exception(
+                    session,
+                    organization_id=command.organization_id,
+                    resource_id=command.resource_id,
+                    exception_id=command.exception_id,
+                    start_at=start_at,
+                    end_at=end_at,
+                    exception_kind=command.exception_kind,
+                    reason=command.reason,
+                )
+                final_revision = await store.availability_revision(
+                    session,
+                    organization_id=command.organization_id,
+                    resource_id=command.resource_id,
                 )
                 state = ResourceScheduleExceptionState(
                     exception_id=exception_id,
@@ -228,9 +133,7 @@ class PostgresResourceScheduleExceptionCommands:
                     },
                 )
                 await complete_idempotency(
-                    session,
-                    idempotency_id,
-                    {"exception": _state_to_json(state)},
+                    session, idempotency_id, {"exception": _state_to_json(state)}
                 )
                 return state
         except DBAPIError as exc:
