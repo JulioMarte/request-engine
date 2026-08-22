@@ -26,7 +26,8 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 - `evidence.py` fingerprints every authoritative table, including row content, so rejected-operation proofs can detect partial mutation rather than checking only row counts.
 - `test_http_tenant_isolation_matrix.py` exercises the production tenant/Party boundary using real foreign resources and durable before/after state.
 - `test_multi_user_journeys.py` proves exclusive-slot contention/recovery, tenant isolation, FIFO queue replay, and the public Request lifecycle.
-- `test_contextual_booking_journey.py` proves the F1 public contextual chain `business -> catalog -> find_slots -> aptopt_v2 -> book`, exact assignment/commercial provenance, stale-option 409 behavior, and fail-closed contextual reschedule with no partial mutation.
+- `test_contextual_booking_journey.py` proves the F1 public contextual happy chain `business -> catalog -> find_slots -> aptopt_v2 -> book` plus exact assignment/commercial provenance.
+- `test_contextual_booking_failures.py` proves stale-option HTTP 409 behavior and fail-closed contextual reschedule with full durable-state non-mutation evidence.
 - `test_contextual_location_separation.py` proves the same Resource may have two Location contexts with distinct schedule/price/duration without cross-context leakage.
 - communication/worker E2E files prove provider ambiguity, poison work, reclaim/fencing, crash windows, ordering and multi-worker contention.
 - `test_worker_scheduling_semantics.py` and `test_outbox_semantics.py` prove `SKIP LOCKED`, lease reclaim, token fencing, retry exhaustion, runtime privilege and durable outbox semantics.

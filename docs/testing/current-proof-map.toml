@@ -41,7 +41,7 @@ evidence = ["invariant", "adversarial", "concurrency"]
 
 [[proofs]]
 guarantee = "INV-ATOMICITY-001"
-path = "tests/e2e/test_contextual_booking_journey.py"
+path = "tests/e2e/test_contextual_booking_failures.py"
 evidence = ["contract", "adversarial"]
 
 [[proofs]]
@@ -156,5 +156,5 @@ evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-FAILURE-001"
-path = "tests/e2e/test_contextual_booking_journey.py"
+path = "tests/e2e/test_contextual_booking_failures.py"
 evidence = ["contract", "adversarial"]
