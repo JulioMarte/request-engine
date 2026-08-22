@@ -69,12 +69,13 @@ Business-module `domain`, `application`, and `contracts` must remain independent
 
 Current HTTP transport naming convention:
 
-- request JSON models: descriptive `*Body`;
+- top-level request JSON models: descriptive `*Body`;
 - response/read projections: descriptive `*View`;
-- future transport-only path/query models: an explicit transport suffix such as `*Params`;
+- transport-only path/query models: an explicit transport suffix such as `*Params`;
+- nested request components may use a descriptive transport-explicit suffix such as `*InputModel`;
 - cross-module `contracts`: business names, never transport/persistence suffixes such as `Body`, `View`, `Row`, `ORM`, or provider-specific SDK names.
 
-Do not rename these categories into ambiguous generic `Model`/`Schema` objects merely to reduce mapping code. The mapping is intentional boundary evidence.
+Do not rename these categories into ambiguous generic `Model`/`Schema` objects merely to reduce mapping code. The mapping is intentional boundary evidence. A nested `*InputModel` is acceptable because its transport role is explicit; the rule is not that every nested object must pretend to be a top-level Body.
 
 ## Connection surfaces
 
