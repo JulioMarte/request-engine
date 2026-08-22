@@ -2,7 +2,7 @@
 
 Applies to `tests/**` in addition to the repository-wide `AGENTS.md`.
 
-Before adding, deleting, moving, or weakening a durable proof, read `docs/testing/README.md` and `docs/testing/repository-governance-contract.md`.
+Before adding, deleting, moving, or weakening a durable proof, read `docs/testing/README.md`, `docs/testing/repository-governance-contract.md`, and `docs/testing/evidence-authoring-guide.md`.
 
 ## Rigidity versus flexibility
 
@@ -19,6 +19,26 @@ Do not interpret "fitness functions may evolve" as permission to relax HARD boun
 
 Conversely, do not turn FLEXIBLE details such as exact test filenames, test counts, private helper names, or internal file splits into permanent architecture contracts.
 
+## Evidence integrity — tests must be able to prove something false
+
+A green test is evidence only when a plausible defect in the claimed behavior would make it fail.
+
+Before authoring a durable test, identify:
+
+```text
+protected guarantee / risk
+plausible defect that must fail the test
+real execution boundary needed to expose it
+valid preconditions / dummy-data world
+independent expected outcome / oracle
+authoritative state and negative side effects to assert
+canonical CI lane that owns the proof
+```
+
+Do not write tests whose setup already manufactures the expected result, whose expected value is computed by the same production helper under test, or whose assertion merely confirms an implementation detail with no independent contract meaning.
+
+For an important bug/race fix, use a mutation mindset: name the small regression that would reintroduce the defect and ensure the proof would turn red under that regression.
+
 ## Test ownership and evidence
 
 - Organize durable feature tests by ownership/scope, not by the historical feature that introduced them. Module-owned tests belong under `tests/modules/<owner>/`; cross-module PostgreSQL contract/invariant tests belong in `tests/db/`; public production-like journeys belong in `tests/e2e/`; dependency/import/repository-governance fitness functions belong in `tests/architecture/`.
@@ -27,13 +47,25 @@ Conversely, do not turn FLEXIBLE details such as exact test filenames, test coun
 - Feature-local integration suites may exist while a feature is under active development. Before/at promotion into the current product, disposition them as durable current proof, historical evidence, replacement, or genuine redundancy rather than accumulating feature-era suites forever.
 - Keep new test files near 100 effective code lines and at or below the 120-line hard maximum. The 101–120 range is deliberate tolerance. Blank/comment-only lines do not count; docstrings do. Existing oversized test files are ratcheted and may not grow.
 
+## PostgreSQL and dummy-data evidence
+
+- Use real PostgreSQL 18 for locks, constraints, transaction isolation, range behavior, `SKIP LOCKED`, privileges/RLS, leases/fencing, and concurrency races. Never claim PostgreSQL correctness from SQLite, an in-memory repository, a mocked Session/connection, or a fake lock.
+- Every `postgres` proof starts and ends from a clean database through `tests/conftest.py`; do not depend on leaked rows, sequence state, or locks from another test.
+- Build the minimum complete valid business world required by the scenario: tenant, actor/authority, subject, offering/version, resource/capability, location/assignment/availability, terms, existing commitments, etc. only as applicable. Prefer named scenario builders over magical IDs or partially initialized rows.
+- Direct SQL may create valid prerequisites, inspect authoritative state, or directly prove a PostgreSQL constraint/backstop. It must not insert the final outcome the command/API is supposed to create, disable triggers/constraints/RLS, seed a success/idempotency result in advance, or construct an impossible state merely to make the assertion pass.
+- When authority, runtime privilege, API, application command, or transaction orchestration is part of the claim, execute the operation under test through that real role/surface. A privileged setup connection does not count as evidence for runtime authorization.
+- Shared builders belong in `tests/fixtures/` only when multiple independent suites truly share the same world. Keep feature-specific builders beside their owning suite; do not create a global mega-fixture.
+- Use unique tenant/business identifiers when collisions could mask isolation errors. Dummy data should be business-plausible enough to exercise real cardinality, authority, timezone, capacity, and lifecycle assumptions.
+
 ## Correctness-sensitive evidence
 
-- Use real PostgreSQL for locks, constraints, transaction isolation, range behavior, `SKIP LOCKED`, privileges, and concurrency races.
 - Do not make a critical concurrency test pass by mocking the database mechanism under test.
-- Race/invariant regressions should reproduce the failing interleaving or enforcement condition before the fix. Prefer explicit synchronization/barriers over timing-only `sleep()` races.
+- Race/invariant regressions should reproduce the failing interleaving or enforcement condition before the fix. Use independent transactions/connections and prefer explicit synchronization/barriers over timing-only `sleep()` races.
+- A race proof asserts winner semantics, loser semantics, and final authoritative state; it should also prove no oversell, duplicate durable effect, partial write, or leaked lock remains.
 - Use pytest markers declared in `pyproject.toml`. Evidence markers complement execution markers; avoid marker noise that does not improve selection or proof meaning.
 - Tests should assert semantic outcomes/invariants, not incidental ORM call sequences or broad snapshots when a smaller semantic assertion is sufficient.
+- Do not assert only an HTTP status for a durable/safety claim. Inspect the relevant durable state and important absence of side effects.
+- Provider test doubles are acceptable only at the external boundary being excluded from scope; the authoritative business/database path must remain real when that is the claim.
 
 ## Architecture/repository proofs
 
@@ -51,4 +83,4 @@ For naming tests, enforce ownership-signaling conventions (`*Body`, `*View`, sem
 
 For LLM/documentation governance, prove that repository/local instruction adapters route to canonical `AGENTS.md`/docs and cannot silently become independent conflicting architecture manuals.
 
-Removing or weakening a failing safety/architecture test requires an explicit KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL disposition tied to the guarantee that remains protected.
+Removing or weakening a failing safety/architecture test requires an explicit KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL disposition tied to the guarantee that remains protected. Never weaken a test solely because the implementation currently fails it.
