@@ -78,9 +78,7 @@ class PostgresContextualTermsSupersessionCommands:
                     terms_id=command.current_context_terms_id,
                 )
                 if revision != command.expected_current_revision:
-                    raise ContextualConfigurationConflict(
-                        "BookingContextTerms revision is stale"
-                    )
+                    raise ContextualConfigurationConflict("BookingContextTerms revision is stale")
                 if cutover <= starts_at or (ends_at is not None and cutover >= ends_at):
                     raise ContextualConfigurationConflict(
                         "cutover must be inside current effective range"
