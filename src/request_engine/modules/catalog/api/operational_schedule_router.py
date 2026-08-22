@@ -72,7 +72,6 @@ def create_operational_schedule_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.put("/locations/{location_id}/hours")
     async def hours(
         location_id: UUID,
         body: HoursBody,
@@ -93,7 +92,6 @@ def create_operational_schedule_router(
             ),
         )
 
-    @router.put("/locations/{location_id}/hours-exceptions")
     async def exception(
         location_id: UUID,
         body: HoursExceptionBody,
@@ -111,7 +109,6 @@ def create_operational_schedule_router(
             ),
         )
 
-    @router.put("/offering-versions/{offering_version_id}/booking-terms")
     async def base_terms(
         offering_version_id: UUID,
         body: BaseTermsBody,
@@ -132,4 +129,9 @@ def create_operational_schedule_router(
             command,
         )
 
+    router.add_api_route("/locations/{location_id}/hours", hours, methods=["PUT"])
+    router.add_api_route("/locations/{location_id}/hours-exceptions", exception, methods=["PUT"])
+    router.add_api_route(
+        "/offering-versions/{offering_version_id}/booking-terms", base_terms, methods=["PUT"]
+    )
     return router
