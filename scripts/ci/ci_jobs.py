@@ -33,6 +33,12 @@ NORMALIZE_SHELL = Step(
 
 JOBS: dict[str, tuple[Step, ...]] = {
     "python-quality": (
+        Step(
+            "file-budget",
+            "Python effective line budget",
+            "python scripts/ci/check_python_file_budget.py "
+            "--base-ref \"${FILE_BUDGET_BASE_REF:-HEAD^}\"",
+        ),
         Step("uv-sync", "Resolve development environment", "uv sync --all-groups"),
         Step("lockfile", "Lockfile consistency", "uv lock --check"),
         Step("ruff-lint", "Ruff lint", "uv run ruff check ."),
