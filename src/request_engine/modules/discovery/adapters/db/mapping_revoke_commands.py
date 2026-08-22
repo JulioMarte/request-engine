@@ -1,7 +1,10 @@
 from typing import cast
 from uuid import UUID
 
-from request_engine.modules.discovery.adapters.db import mapping_codec, mapping_revoke_store
+from request_engine.modules.discovery.adapters.db import (
+    mapping_codec,
+    mapping_revoke_store,
+)
 from request_engine.modules.discovery.application.commands.mapping import (
     OfferingServiceClassificationState,
 )
@@ -77,7 +80,7 @@ class PostgresDiscoveryMappingRevokeCommands:
                 id=cast(UUID, current["id"]),
                 offering_id=command.offering_id,
                 service_classification_id=cast(UUID, current["service_classification_id"]),
-                classification_key="",
+                classification_key=cast(str, current["classification_key"]),
                 status="revoked",
                 revision=cast(int, updated["revision"]),
             )
