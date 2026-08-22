@@ -6,6 +6,26 @@ from uuid import UUID
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
 )
+from request_engine.modules.booking.application.commands.supersede_booking_context_terms import (
+    SupersedeBookingContextTermsCommand,
+)
+
+
+def command_payload(
+    command: SupersedeBookingContextTermsCommand,
+    *,
+    cutover: datetime,
+) -> dict[str, object]:
+    return {
+        "authority_party_id": command.authority_party_id,
+        "current_context_terms_id": command.current_context_terms_id,
+        "expected_current_revision": command.expected_current_revision,
+        "effective_from": cutover,
+        "amount": str(command.amount) if command.amount is not None else None,
+        "currency": command.currency,
+        "planned_duration_minutes": command.planned_duration_minutes,
+        "bookable": command.bookable,
+    }
 
 
 def to_json(state: BookingContextTermsState) -> dict[str, object]:
