@@ -42,7 +42,9 @@ def _headers(openapi: dict[str, object], path: str, method: str) -> dict[str, bo
     for value in cast(list[object], operation.get("parameters", [])):
         parameter = cast(dict[str, object], value)
         if parameter.get("in") == "header":
-            headers[cast(str, parameter["name"]).lower()] = cast(bool, parameter.get("required", False))
+            name = cast(str, parameter["name"]).lower()
+            required = cast(bool, parameter.get("required", False))
+            headers[name] = required
     return headers
 
 
@@ -65,7 +67,8 @@ def test_all_operational_mutations_require_idempotency_header(
 ) -> None:
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
     for operation in OPERATIONAL_HTTP_OPERATIONS:
-        assert _headers(openapi, operation.path_template, operation.method).get("idempotency-key") is True
+        headers = _headers(openapi, operation.path_template, operation.method)
+        assert headers.get("idempotency-key") is True
 
 
 @pytest.mark.e2e
