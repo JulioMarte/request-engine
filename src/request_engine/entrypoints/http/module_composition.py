@@ -6,10 +6,7 @@ from request_engine.modules.communications.api import install_http as install_co
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import (
-    build_party_authority_reader,
-    install_operational_http as install_tenancy_operational_http,
-)
+from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
@@ -23,11 +20,6 @@ def install_business_modules(
     appointment_option_signing_key: bytes,
 ) -> None:
     party_authority_reader = build_party_authority_reader(session_factory)
-    install_tenancy_operational_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_booking_http(
