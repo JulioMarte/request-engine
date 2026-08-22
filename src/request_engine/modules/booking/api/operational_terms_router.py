@@ -54,7 +54,6 @@ def create_operational_terms_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("")
     async def configure(
         body: ContextTermsBody,
         key: IdempotencyKey,
@@ -79,7 +78,6 @@ def create_operational_terms_router(
             command,
         )
 
-    @router.post("/{current_context_terms_id}/supersede")
     async def supersede(
         current_context_terms_id: UUID,
         body: SupersedeTermsBody,
@@ -104,4 +102,6 @@ def create_operational_terms_router(
             command,
         )
 
+    router.add_api_route("", configure, methods=["POST"])
+    router.add_api_route("/{current_context_terms_id}/supersede", supersede, methods=["POST"])
     return router
