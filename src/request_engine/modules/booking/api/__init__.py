@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 
-from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
+from request_engine.modules.booking.adapters.appointment_options import (
+    SignedAppointmentOptionCodec,
+)
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
-from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
+from request_engine.modules.booking.adapters.db.attendance_commands import (
+    PostgresAttendanceCommands,
+)
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeBookingCommitmentCommands,
     CapacitySafeReservationCommands,
@@ -18,7 +22,9 @@ from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_comm
 from request_engine.modules.booking.adapters.db.contextual_terms_supersession_commands import (
     PostgresContextualTermsSupersessionCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.reservation_reader import (
+    PostgresReservationReader,
+)
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
 )
@@ -29,7 +35,9 @@ from request_engine.modules.booking.api.operational_assignment_router import (
 from request_engine.modules.booking.api.operational_exception_router import (
     create_operational_exception_router,
 )
-from request_engine.modules.booking.api.operational_terms_router import create_operational_terms_router
+from request_engine.modules.booking.api.operational_terms_router import (
+    create_operational_terms_router,
+)
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.errors import BookingError
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
