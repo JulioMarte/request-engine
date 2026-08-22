@@ -31,4 +31,4 @@ Current records:
 - `0009-v3-database-contract-convergence.md`
 - `0010-reservation-access-delivery-boundary.md` — proposed boundary to be accepted only after the ReservationAccess implementation and evidence prove it.
 - `0011-cross-tenant-identity-and-shared-capacity.md` — proposed post-freeze direction; not part of the V3 baseline.
-- `0012-contextual-resource-location-supply.md` — proposed post-V3 Resource-at-Location/contextual booking-supply extension; accept only after F1 implementation proves effective dating, stale-option behavior, historical commercial provenance and compatibility with existing/shared capacity.
+- `0012-contextual-resource-location-supply.md` — accepted post-V3 Resource-at-Location/contextual booking-supply architecture, proven by PR #75 exact-head CI and integrated into `development` on 2026-08-22.
