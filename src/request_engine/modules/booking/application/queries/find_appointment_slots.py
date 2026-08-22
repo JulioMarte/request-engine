@@ -13,6 +13,7 @@ class FindAppointmentSlotsQuery:
     window_start: datetime
     window_end: datetime
     location_id: UUID | None = None
+    resource_id: UUID | None = None
     limit: int = 50
 
 
