@@ -43,9 +43,11 @@ Before editing, identify the primary owner and read only the canonical material 
 8. `docs/09-python-module-architecture.md` — physical Python layout/import rules.
 9. `docs/13-connection-surfaces.md` — mandatory boundary/adapter design between layers, modules, DB, workers and providers.
 10. `docs/14-architecture-fitness-functions.md` — executable dependency/surface rules enforced by CI.
-11. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
-12. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
-13. `docs/adr/README.md` — accepted architectural decisions and rationale.
+11. `docs/testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL rules for architecture shape, DTO/type boundaries, naming, docs, tests and LLM instruction routing.
+12. `docs/testing/README.md` — current test architecture, guarantee registry and proof-map entry point.
+13. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
+14. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
+15. `docs/adr/README.md` — accepted architectural decisions and rationale.
 
 Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-pre-sql-domain-contract.md` only as V2 source material according to `docs/README.md`. Do not reintroduce a V2 concept V3 explicitly removed/deferred merely because it exists in old docs or SQL.
 
@@ -59,6 +61,8 @@ Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-p
 - `payments` and `dispatch` remain deferred/incubating. Baseline modules must not depend on them without an accepted architecture change and concrete use case.
 - Cross-module imports use the target module's supported `contracts` surface; never import another module's `domain`, `application`, `adapters`, or `api` internals.
 - Business HTTP routers/models/error mappings belong to the owning module's `api` package. `entrypoints/http` is composition/trust-boundary code, not a parallel business taxonomy.
+- API/Pydantic transport DTOs, application Command/Query types, domain values, cross-module contracts and persistence mappings are distinct boundaries even when fields currently match.
+- Business-module `domain`, `application`, and `contracts` remain Pydantic-free; map transport types at the API boundary.
 - Entrypoints compose modules through published module surfaces and must not reach directly into module DB/provider adapters.
 - Module HTTP routers depend on application `Protocol` surfaces. Concrete DB/provider construction belongs in the module-owned install/composition surface.
 - `platform` contains technical cross-cutting mechanics only. `platform/scheduling` owns durable lease/retry/clock mechanics, not reminder/booking/queue policy.
@@ -71,6 +75,19 @@ Use `docs/00-product-definition.md`, `docs/01-architecture-v2.md` and `docs/02-p
 - Never perform external network I/O while holding authoritative DB locks.
 - n8n/providers are adapters/extensions, not owners of booking/request/queue authority. Their callbacks use authenticated idempotent semantic commands.
 - `request_read.*` is a read contract, never mutation authority. `request_cmd.*` contains narrow consistency primitives, never workflow-sized stored procedures.
+
+## Repository governance classification
+
+When a test or architecture rule appears to block a legitimate change, classify the protected detail before editing the rule:
+
+```text
+HARD        semantic/invariant boundary; fail closed by default
+CONTROLLED  accepted architecture/product shape; explicit evolution decision required
+FLEXIBLE    private implementation detail; do not freeze gratuitously
+HISTORICAL  pinned release provenance; resolve against the historical tree/release
+```
+
+Do not use pre-production flexibility to weaken a HARD boundary. Do not use architecture fitness to freeze FLEXIBLE filenames, counts, private helper names, or internal file splits. `docs/testing/repository-governance-contract.md` is authoritative for this classification.
 
 ## Connection-surface design gate
 
