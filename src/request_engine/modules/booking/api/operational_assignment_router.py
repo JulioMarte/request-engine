@@ -8,15 +8,13 @@ from request_engine.modules.booking.api.operational_assignment_models import (
     AvailabilityBody,
     RetireAssignmentBody,
 )
+from request_engine.modules.booking.application.commands import (
+    retire_resource_location_assignment as retire_assignment,
+)
 from request_engine.modules.booking.application.commands.assign_resource_to_location import (
     AssignResourceToLocationCommand,
     AssignResourceToLocationHandler,
     assign_resource_to_location,
-)
-from request_engine.modules.booking.application.commands.retire_resource_location_assignment import (
-    RetireResourceLocationAssignmentCommand,
-    RetireResourceLocationAssignmentHandler,
-    retire_resource_location_assignment,
 )
 from request_engine.modules.booking.application.commands.set_resource_location_availability import (
     ResourceLocationAvailabilityWindow,
@@ -36,7 +34,7 @@ IdempotencyKey = Annotated[
 def create_operational_assignment_router(
     *,
     assign_handler: AssignResourceToLocationHandler,
-    retire_handler: RetireResourceLocationAssignmentHandler,
+    retire_handler: retire_assignment.RetireResourceLocationAssignmentHandler,
     availability_handler: SetResourceLocationAvailabilityHandler,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
@@ -76,7 +74,7 @@ def create_operational_assignment_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        command = RetireResourceLocationAssignmentCommand(
+        command = retire_assignment.RetireResourceLocationAssignmentCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
             authority_party_id=body.authority_party_id,
@@ -88,7 +86,10 @@ def create_operational_assignment_router(
             ),
             idempotency_key=key,
         )
-        return await retire_resource_location_assignment(retire_handler, command)
+        return await retire_assignment.retire_resource_location_assignment(
+            retire_handler,
+            command,
+        )
 
     @router.put("/{assignment_id}/availability")
     async def availability(
