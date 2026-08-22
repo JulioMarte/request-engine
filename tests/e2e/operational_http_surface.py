@@ -7,8 +7,6 @@ SUPPLY_SCOPE = "operations.manage_supply"
 TERMS_SCOPE = "operations.manage_terms"
 OPAQUE_TARGET = "foreign target is indistinguishable from unavailable target"
 
-Meta = tuple[str, str | None, str, str]
-
 
 @dataclass(frozen=True, slots=True)
 class OperationalHttpOperation:
@@ -65,27 +63,51 @@ _ROUTES = (
     ),
 )
 
-_META: dict[str, Meta] = {
-    "organization.profile": (PROFILE_SCOPE, None, "idempotency conflict only", "Organization profile + audit"),
-    "organization.contacts": (PROFILE_SCOPE, None, "idempotency conflict only", "Organization contacts + audit"),
-    "locations.create": (PROFILE_SCOPE, None, "idempotency conflict only", "Location + audit"),
-    "locations.update": (PROFILE_SCOPE, "Location.operational_revision", "expected operational revision", "Location profile revision + audit"),
-    "locations.contacts": (PROFILE_SCOPE, None, "idempotency conflict only", "Location contacts + audit"),
-    "locations.hours": (PROFILE_SCOPE, "Location.operational_revision", "expected operational revision", "Location hours + revision + audit"),
-    "locations.hours_exception": (PROFILE_SCOPE, "Location.operational_revision", "expected operational revision", "Location hours exception + revision + audit"),
-    "offering_version.booking_terms": (TERMS_SCOPE, None, "idempotency conflict only", "OfferingVersion booking terms + audit"),
-    "resource_assignments.create": (SUPPLY_SCOPE, "Resource.availability_revision", "expected resource availability revision", "ResourceLocationAssignment + resource revision + audit"),
-    "resource_assignments.retire": (SUPPLY_SCOPE, "Assignment.revision + Resource.availability_revision", "expected assignment and resource revisions", "Retired assignment + resource revision + audit"),
-    "resource_assignments.availability": (SUPPLY_SCOPE, "Resource.availability_revision", "expected resource availability revision", "Assignment availability + resource revision + audit"),
-    "resource_assignments.exception": (SUPPLY_SCOPE, "Resource.availability_revision", "expected resource availability revision", "Assignment exception + resource revision + audit"),
-    "resources.exception": (SUPPLY_SCOPE, "Resource.availability_revision", "expected resource availability revision", "Resource exception + resource revision + audit"),
-    "context_terms.create": (TERMS_SCOPE, None, "idempotency/temporal conflict", "BookingContextTerms + audit"),
-    "context_terms.supersede": (TERMS_SCOPE, "BookingContextTerms.revision", "expected current revision", "Terms cutover + successor + audit"),
+_PROFILE_NAMES = frozenset(name for name, _, _ in _ROUTES[:7])
+_SUPPLY_NAMES = frozenset(name for name, _, _ in _ROUTES[8:13])
+_REVISION_OWNERS = {
+    "locations.update": "Location.operational_revision",
+    "locations.hours": "Location.operational_revision",
+    "locations.hours_exception": "Location.operational_revision",
+    "resource_assignments.create": "Resource.availability_revision",
+    "resource_assignments.retire": "Assignment.revision+Resource.availability_revision",
+    "resource_assignments.availability": "Resource.availability_revision",
+    "resource_assignments.exception": "Resource.availability_revision",
+    "resources.exception": "Resource.availability_revision",
+    "context_terms.supersede": "BookingContextTerms.revision",
 }
 
-OPERATIONAL_HTTP_OPERATIONS = tuple(
-    OperationalHttpOperation(name, method, path, *_META[name]) for name, method, path in _ROUTES
-)
+
+def _scope(name: str) -> str:
+    if name in _PROFILE_NAMES:
+        return PROFILE_SCOPE
+    if name in _SUPPLY_NAMES:
+        return SUPPLY_SCOPE
+    return TERMS_SCOPE
+
+
+def _stale(name: str, revision_owner: str | None) -> str:
+    if name == "context_terms.create":
+        return "idempotency_or_temporal_conflict"
+    if name == "resource_assignments.retire":
+        return "expected_assignment_and_resource_revisions"
+    return "expected_revision" if revision_owner else "idempotency_conflict_only"
+
+
+def _operation(name: str, method: str, path: str) -> OperationalHttpOperation:
+    revision_owner = _REVISION_OWNERS.get(name)
+    return OperationalHttpOperation(
+        name=name,
+        method=method,
+        path_template=path,
+        authority_scope=_scope(name),
+        revision_owner=revision_owner,
+        stale_semantics=_stale(name, revision_owner),
+        durable_effect=f"{name}+audit",
+    )
+
+
+OPERATIONAL_HTTP_OPERATIONS = tuple(_operation(*route) for route in _ROUTES)
 
 
 def operational_keys() -> frozenset[tuple[str, str]]:
