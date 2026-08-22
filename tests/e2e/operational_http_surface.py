@@ -73,7 +73,8 @@ _OP_SPECS: tuple[Spec, ...] = (
         "resource_assignments.retire", "POST",
         "/v1/operations/resource-assignments/{assignment_id}/retire", SUPPLY_SCOPE,
         "Assignment.revision + Resource.availability_revision",
-        "expected assignment and resource revisions", "Retired assignment + resource revision + audit",
+        "expected assignment and resource revisions",
+        "Retired assignment + resource revision + audit",
     ),
     (
         "resource_assignments.availability", "PUT",
