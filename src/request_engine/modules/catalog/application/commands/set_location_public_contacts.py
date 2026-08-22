@@ -1,6 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 from uuid import UUID
+
+from request_engine.platform.public_contacts import normalize_public_contact_value
 
 PublicContactChannel = Literal["phone", "whatsapp", "email"]
 
@@ -40,16 +42,15 @@ async def set_location_public_contacts(
 ) -> LocationPublicContactsState:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    contacts: list[LocationPublicContactInput] = []
     seen: set[tuple[str, str]] = set()
     for contact in command.contacts:
-        if contact.channel not in ("phone", "whatsapp", "email"):
-            raise ValueError("unsupported public contact channel")
-        if not contact.normalized_value.strip():
-            raise ValueError("normalized_value is required")
+        normalized = normalize_public_contact_value(contact.channel, contact.normalized_value)
         if contact.label is not None and not contact.label.strip():
             raise ValueError("label cannot be blank")
-        key = (contact.channel, contact.normalized_value)
+        key = (contact.channel, normalized)
         if key in seen:
             raise ValueError("duplicate public contact endpoint")
         seen.add(key)
-    return await handler.set_location_public_contacts(command)
+        contacts.append(replace(contact, normalized_value=normalized))
+    return await handler.set_location_public_contacts(replace(command, contacts=tuple(contacts)))
