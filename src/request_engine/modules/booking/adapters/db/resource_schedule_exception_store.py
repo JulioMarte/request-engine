@@ -9,15 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
+    ResourceAvailabilityRevisionConflict,
 )
 
 
-async def lock_resource(
+async def require_resource_revision(
     session: AsyncSession,
     *,
     organization_id: UUID,
     resource_id: UUID,
-) -> tuple[bool, int]:
+    expected_revision: int,
+) -> int:
     row = (
         (
             await session.execute(
@@ -40,7 +42,16 @@ async def lock_resource(
         raise ContextualConfigurationConflict(
             "Resource is missing or belongs to another Organization"
         )
-    return cast(bool, row["active"]), cast(int, row["availability_revision"])
+    if not cast(bool, row["active"]):
+        raise ContextualConfigurationConflict(
+            "Resource must be active to configure schedule exceptions"
+        )
+    current_revision = cast(int, row["availability_revision"])
+    if current_revision != expected_revision:
+        raise ResourceAvailabilityRevisionConflict(
+            resource_id, expected_revision, current_revision
+        )
+    return current_revision
 
 
 async def upsert_exception(
