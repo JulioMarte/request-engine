@@ -205,8 +205,7 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
     assert future_slot.currency == "DOP"
     assert future_slot.planned_duration_minutes == 60
     assert future_slot.end_at - future_slot.start_at == (
-        datetime(2026, 8, 24, 14, 0, tzinfo=UTC)
-        - datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
+        datetime(2026, 8, 24, 14, 0, tzinfo=UTC) - datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
     )
 
     commands = PostgresContextualReservationCommands(session_factory)
