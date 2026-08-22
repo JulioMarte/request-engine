@@ -22,15 +22,18 @@ docs/testing/current-guarantees.toml
 
 ## 1. Feature status
 
-The accepted F1 implementation scope is complete in code:
+The accepted F1 implementation scope is complete in code subject to the final exact-head CI gate:
 
 ```text
 Organization operational defaults + central public contacts
 Location structured operational profile, contacts, hours and exceptions
 ResourceLocationAssignment lifecycle
 Resource-at-Location recurrence and scoped exceptions
+explicit Resource-wide schedule-exception semantic mutation
 OfferingVersion base terms + contextual fixed terms
 future-effective contextual terms
+catalog detail eligible-Location context hints
+explicit Resource preference or any eligible Resource in find_slots
 aptopt_v2 material observations
 contextual find_slots -> book
 immutable Reservation commercial commitment + 0..N contextual provenance
@@ -82,6 +85,9 @@ F1 additionally owns contextual E2E scenarios for:
 
 ```text
 business -> catalog -> contextual find_slots -> aptopt_v2 -> book
+catalog offering detail -> only eligible contextual Location hints
+find_slots with any eligible Resource vs explicit Resource preference
+unknown Resource preference -> opaque empty result
 exact CapacityClaim assignment provenance
 exact immutable commercial commitment/context source
 stale contextual option -> HTTP 409 refresh_and_retry + zero partial effects
@@ -89,9 +95,47 @@ contextual reschedule -> HTTP 422 fail-closed + zero mutation
 same Resource at two Locations -> distinct schedule/price/duration observations
 ```
 
-Rejected journeys compare a full authoritative-table fingerprint before/after so a 4xx response alone cannot hide partial writes.
+Rejected journeys compare authoritative durable state where mutation safety is the contract; tenant/unknown-ID discovery remains opaque rather than exposing existence.
 
-## 4. Adversarial integration evidence
+## 4. Adversarial capability audit and closure
+
+A later adversarial pass intentionally ignored previous green CI and rebuilt the required-capability inventory from docs 13/15. It found three real product-surface gaps that table/schema existence had hidden:
+
+```text
+1. Resource-wide schedule_exceptions affected availability and booking,
+   but F1 had no supported authority/idempotency/audit command to mutate them.
+
+2. find_slots implemented implicit "any eligible Resource" but no explicit
+   Resource preference even though the plan requires explicit/any selection.
+
+3. catalog.get_offering exposed version defaults but no safe Location/context
+   hint; callers could not learn where the Offering is contextually eligible.
+```
+
+Those gaps are now closed as follows:
+
+```text
+SetResourceScheduleExceptionCommand
+  -> authority + idempotency + expected Resource availability revision
+  -> create/update released schedule_exceptions relation
+  -> audit + tenant transaction
+
+FindAppointmentSlotsQuery.resource_id / GET slots?resource_id=...
+  -> preference is applied before slot generation and limit
+  -> only requirements satisfiable by that Resource are pinned
+  -> other multi-resource requirements remain normally resolvable
+  -> unknown/foreign IDs remain opaque
+
+OfferingSummary.eligible_location_ids
+  -> computed from active Location + all resource requirements
+  -> active/effective ResourceLocationAssignment + capability + quantity
+  -> no fabricated contextual price before concrete Resource/Location context
+  -> omitted on legacy V3 schema to preserve released JSON shape
+```
+
+The file-budget guard rejected the first implementation shape because it grew legacy oversized modules. The correction did **not** weaken that guard: candidate loading, catalog mapping/context hints, Resource-wide persistence/codec/audit, API dependencies and E2E fixtures were split into focused modules.
+
+## 5. Adversarial integration evidence
 
 The narrower PostgreSQL/integration suite continues to attack the defects that are expensive or inappropriate to express only through public HTTP:
 
@@ -100,6 +144,7 @@ price/config mutation vs booking
 assignment retirement vs booking
 Location closure/recurring-hour mutation vs booking
 Resource-wide vs assignment-specific exceptions
+Resource-wide exception command revision/idempotency semantics
 concurrent overlapping context terms/assignments
 stale schedule revisions
 Offering.active deactivation race
@@ -114,7 +159,7 @@ historical assignment provenance immutability
 
 These are current guarantees, not frozen-V3 shape tests.
 
-## 5. Migration posture
+## 6. Migration posture
 
 The branch currently introduces `0002_f1_supply` after released `0001_initial`.
 
@@ -122,7 +167,7 @@ That is the F1 migration shape, but **current-product CI no longer hardcodes `00
 
 This preserves F1 upgrade/bootstrap evidence without turning the revision name into a future architecture freeze.
 
-## 6. Documentation disposition
+## 7. Documentation disposition
 
 Current branch documentation disposition:
 
@@ -140,9 +185,9 @@ Current branch documentation disposition:
 
 The repository-wide pre-production/testing policies supersede old statements that treated exact release-era test inventories, migration heads or architecture snapshots as permanent current-product restrictions.
 
-## 7. Remaining merge gates
+## 8. Remaining merge gates
 
-The branch is ready to leave draft only when the final PR #75 head satisfies all of the following at the same SHA/merge candidate:
+The branch is merge-ready only when the final PR #75 head satisfies all of the following at the same SHA/merge candidate:
 
 ```text
 behind development = 0 or explicit reconciliation completed
@@ -150,6 +195,9 @@ PR remains mergeable
 Python quality + current architecture fitness PASS
 current-product PostgreSQL proof PASS
 production-like tests/e2e PASS inside current-product proof
+new Resource-wide semantic command proof PASS
+new explicit Resource preference E2E PASS
+new catalog eligible-Location hint E2E PASS
 V2 design-history lane PASS
 V3 repeated-bootstrap evidence PASS
 observability contract PASS
@@ -161,6 +209,6 @@ no unrelated product scope leakage
 
 A previously green SHA does not prove a later documentation/test/code SHA. Any commit after the final successful run requires fresh exact-head evidence.
 
-## 8. ADR disposition
+## 9. ADR disposition
 
 ADR 0012 remains `Proposed` until its acceptance condition is actually met. The implementation and proof may be complete before merge; if the ADR itself requires integration/merge, mark it `Accepted` only after that event rather than predicting it in this branch.
