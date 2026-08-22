@@ -82,6 +82,7 @@ def create_router(
         window_start: datetime,
         window_end: datetime,
         location_id: UUID | None = None,
+        resource_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
         require_capability(actor, "appointments.find_slots")
@@ -93,6 +94,7 @@ def create_router(
                 window_start=window_start,
                 window_end=window_end,
                 location_id=location_id,
+                resource_id=resource_id,
                 limit=limit,
             ),
         )
