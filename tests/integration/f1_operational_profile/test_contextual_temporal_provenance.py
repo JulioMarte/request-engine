@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import psycopg
@@ -13,9 +13,16 @@ from request_engine.modules.booking.adapters.db.appointment_availability_reader 
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
     PostgresContextualReservationCommands,
 )
+from request_engine.modules.booking.adapters.db.contextual_terms_supersession_commands import (
+    PostgresContextualTermsSupersessionCommands,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     book_appointment,
+)
+from request_engine.modules.booking.application.commands.supersede_booking_context_terms import (
+    SupersedeBookingContextTermsCommand,
+    supersede_booking_context_terms,
 )
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     FindAppointmentSlotsQuery,
@@ -72,6 +79,22 @@ def _book_command(
         expected_location_operational_revision=slot.location_operational_revision,
         expected_configuration_fingerprint=slot.configuration_fingerprint,
     )
+
+
+def _context_terms_revision(
+    admin_conn: PgConnection,
+    fixture: F1ContextualScenario,
+) -> int:
+    row = admin_conn.execute(
+        """
+        SELECT revision
+        FROM request_engine.booking_context_terms
+        WHERE organization_id = %s AND id = %s
+        """,
+        (fixture.organization_id, fixture.context_terms_id),
+    ).fetchone()
+    assert row is not None
+    return cast(int, row[0])
 
 
 @pytest.mark.asyncio
@@ -154,42 +177,23 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
     fixture = create_contextual_cardiology_scenario(admin_conn)
     boundary = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
 
-    admin_conn.execute(
-        """
-        UPDATE request_engine.booking_context_terms
-           SET effective_during = tstzrange(
-               lower(effective_during), %s::timestamptz, '[)'
-           )
-         WHERE organization_id = %s AND id = %s
-        """,
-        (boundary, fixture.organization_id, fixture.context_terms_id),
-    )
-    future_terms_row = admin_conn.execute(
-        """
-        INSERT INTO request_engine.booking_context_terms (
-            organization_id,
-            resource_location_assignment_id,
-            offering_version_id,
-            effective_during,
-            amount,
-            currency,
-            planned_duration_minutes
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange(%s::timestamptz, NULL, '[)'),
-            5000, 'DOP', 60
-        )
-        RETURNING id
-        """,
-        (
-            fixture.organization_id,
-            fixture.assignment_id,
-            fixture.offering_version_id,
-            boundary,
+    future_terms = await supersede_booking_context_terms(
+        PostgresContextualTermsSupersessionCommands(session_factory),
+        SupersedeBookingContextTermsCommand(
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            authority_party_id=fixture.authority_party_id,
+            current_context_terms_id=fixture.context_terms_id,
+            expected_current_revision=_context_terms_revision(admin_conn, fixture),
+            effective_from=boundary,
+            amount=Decimal("5000"),
+            currency="DOP",
+            planned_duration_minutes=60,
+            bookable=True,
+            idempotency_key=f"temporal-cutover-{uuid4().hex}",
         ),
-    ).fetchone()
-    assert future_terms_row is not None
-    future_terms_id = future_terms_row[0]
+    )
+    future_terms_id = future_terms.context_terms_id
 
     current_slot = await _slot_at(
         fixture,
@@ -211,7 +215,8 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
     assert future_slot.currency == "DOP"
     assert future_slot.planned_duration_minutes == 60
     assert future_slot.end_at - future_slot.start_at == (
-        datetime(2026, 8, 24, 14, 0, tzinfo=UTC) - datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
+        datetime(2026, 8, 24, 14, 0, tzinfo=UTC)
+        - datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
     )
 
     commands = PostgresContextualReservationCommands(session_factory)
