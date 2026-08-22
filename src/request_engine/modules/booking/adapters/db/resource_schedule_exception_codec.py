@@ -4,7 +4,28 @@ from uuid import UUID
 
 from request_engine.modules.booking.application.commands.set_resource_schedule_exception import (
     ResourceScheduleExceptionState,
+    SetResourceScheduleExceptionCommand,
 )
+
+
+def command_payload(
+    command: SetResourceScheduleExceptionCommand,
+    *,
+    start_at: datetime,
+    end_at: datetime,
+) -> dict[str, object]:
+    return {
+        "authority_party_id": command.authority_party_id,
+        "resource_id": command.resource_id,
+        "exception_id": command.exception_id,
+        "start_at": start_at,
+        "end_at": end_at,
+        "exception_kind": command.exception_kind,
+        "reason": command.reason,
+        "expected_resource_availability_revision": (
+            command.expected_resource_availability_revision
+        ),
+    }
 
 
 def to_json(state: ResourceScheduleExceptionState) -> dict[str, object]:
