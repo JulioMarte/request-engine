@@ -52,6 +52,20 @@ def test_f1_internal_helpers_are_not_publicly_executable(admin_conn: PgConnectio
 
 
 @pytest.mark.postgres
+def test_app_can_replace_assignment_availability_under_rls(admin_conn: PgConnection) -> None:
+    row = admin_conn.execute(
+        """
+        SELECT has_table_privilege(
+            'request_engine_app',
+            'request_engine.resource_location_availability',
+            'SELECT,INSERT,UPDATE,DELETE'
+        )
+        """
+    ).fetchone()
+    assert row == (True,)
+
+
+@pytest.mark.postgres
 def test_worker_has_no_direct_f1_authoritative_relation_privileges(
     admin_conn: PgConnection,
 ) -> None:
