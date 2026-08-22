@@ -3,16 +3,24 @@ from typing import cast
 
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.modules.booking.adapters.db import contextual_terms_supersession_codec as codec
-from request_engine.modules.booking.adapters.db import contextual_terms_supersession_locking as locking
-from request_engine.modules.booking.adapters.db import contextual_terms_supersession_store as store
+from request_engine.modules.booking.adapters.db import (
+    contextual_terms_supersession_codec as codec,
+)
+from request_engine.modules.booking.adapters.db import (
+    contextual_terms_supersession_locking as locking,
+)
+from request_engine.modules.booking.adapters.db import (
+    contextual_terms_supersession_store as store,
+)
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
 )
 from request_engine.modules.booking.application.commands.supersede_booking_context_terms import (
     SupersedeBookingContextTermsCommand,
 )
-from request_engine.modules.booking.application.operational_errors import ContextualConfigurationConflict
+from request_engine.modules.booking.application.operational_errors import (
+    ContextualConfigurationConflict,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -40,7 +48,10 @@ class PostgresContextualTermsSupersessionCommands:
             codec.command_payload(command, cutover=cutover),
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory,
+                command.organization_id,
+            ) as session:
                 idem_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -69,7 +80,9 @@ class PostgresContextualTermsSupersessionCommands:
                     terms_id=command.current_context_terms_id,
                 )
                 if revision != command.expected_current_revision:
-                    raise ContextualConfigurationConflict("BookingContextTerms revision is stale")
+                    raise ContextualConfigurationConflict(
+                        "BookingContextTerms revision is stale"
+                    )
                 if cutover <= starts_at or (ends_at is not None and cutover >= ends_at):
                     raise ContextualConfigurationConflict(
                         "cutover must be inside current effective range"
@@ -113,7 +126,11 @@ class PostgresContextualTermsSupersessionCommands:
                         "cutover": cutover.isoformat(),
                     },
                 )
-                await complete_idempotency(session, idem_id, {"terms": codec.to_json(state)})
+                await complete_idempotency(
+                    session,
+                    idem_id,
+                    {"terms": codec.to_json(state)},
+                )
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23P01":
