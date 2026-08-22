@@ -27,21 +27,26 @@ def _insert_representation(
     sandbox: TenantSandbox,
     *,
     scope_key: str,
-    validity: str,
+    expired: bool,
 ) -> None:
+    if expired:
+        valid_from = "clock_timestamp() - interval '2 days'"
+        valid_until = "clock_timestamp() - interval '1 day'"
+    else:
+        valid_from = "clock_timestamp()"
+        valid_until = "clock_timestamp() + interval '1 day'"
     conn.execute(
-        """
+        f"""
         INSERT INTO request_engine.representations (
             organization_id, principal_id, represented_party_id,
-            authority_kind, scope_key, valid_until
-        ) VALUES (%s, %s, %s, 'delegated', %s, clock_timestamp() + %s::interval)
+            authority_kind, scope_key, valid_from, valid_until
+        ) VALUES (%s, %s, %s, 'delegated', %s, {valid_from}, {valid_until})
         """,
         (
             sandbox.organization_id,
             sandbox.principal_id,
             sandbox.party_id,
             scope_key,
-            validity,
         ),
     )
 
@@ -51,21 +56,21 @@ def _insert_representation(
 @pytest.mark.postgres
 @pytest.mark.security
 @pytest.mark.parametrize(
-    ("scope_key", "validity"),
-    [("operations.manage_schedule", "1 day"), ("operations.manage_profile", "-1 day")],
+    ("scope_key", "expired"),
+    [("operations.manage_schedule", False), ("operations.manage_profile", True)],
 )
 async def test_wrong_scope_and_expired_authority_fail_closed_without_mutation(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
     scope_key: str,
-    validity: str,
+    expired: bool,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, f"ops-authority-{uuid4().hex[:6]}")
     _insert_representation(
         e2e_admin_conn,
         sandbox,
         scope_key=scope_key,
-        validity=validity,
+        expired=expired,
     )
     before = e2e_admin_conn.execute(
         "SELECT legal_name FROM request_engine.organizations WHERE id = %s",
