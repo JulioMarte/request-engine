@@ -44,18 +44,7 @@ class PostgresResourceScheduleExceptionCommands:
             raise ValueError("end_at must be after start_at")
         fingerprint = command_fingerprint(
             "booking.set_resource_schedule_exception",
-            {
-                "authority_party_id": command.authority_party_id,
-                "resource_id": command.resource_id,
-                "exception_id": command.exception_id,
-                "start_at": start_at,
-                "end_at": end_at,
-                "exception_kind": command.exception_kind,
-                "reason": command.reason,
-                "expected_resource_availability_revision": (
-                    command.expected_resource_availability_revision
-                ),
-            },
+            codec.command_payload(command, start_at=start_at, end_at=end_at),
         )
         try:
             async with tenant_transaction(
