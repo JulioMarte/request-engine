@@ -87,10 +87,11 @@ def test_business_semantic_layers_do_not_use_pydantic_transport_types() -> None:
 
 def test_http_transport_model_names_make_the_boundary_visible() -> None:
     violations: list[str] = []
-    for models_file in MODULES_ROOT.glob("*/api/models.py"):
-        for class_name in _base_model_classes(models_file):
-            if not class_name.endswith(TRANSPORT_SUFFIXES):
-                violations.append(f"{models_file.relative_to(ROOT)}::{class_name}")
+    for api_root in MODULES_ROOT.glob("*/api"):
+        for path in _python_files(api_root):
+            for class_name in _base_model_classes(path):
+                if not class_name.endswith(TRANSPORT_SUFFIXES):
+                    violations.append(f"{path.relative_to(ROOT)}::{class_name}")
 
     assert violations == [], (
         "HTTP transport Pydantic models must use a transport-explicit suffix "
