@@ -9,6 +9,7 @@ from pathlib import Path
 TARGET_ROOTS = ("src", "tests")
 SOFT_TARGET = 100
 HARD_MAX = 120
+ADOPTION_BASELINE = "900b4e227e435ef88bfb9d20155e355e44a8a633"
 IGNORED_TOKEN_TYPES = {
     tokenize.COMMENT,
     tokenize.NL,
@@ -37,6 +38,11 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def effective_base_ref(base_ref: str) -> str:
+    adopted = _git("merge-base", "--is-ancestor", ADOPTION_BASELINE, base_ref, check=False)
+    return base_ref if adopted.returncode == 0 else ADOPTION_BASELINE
 
 
 def changed_python_files(base_ref: str) -> list[Path]:
@@ -73,13 +79,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="HEAD^")
     args = parser.parse_args()
+    base_ref = effective_base_ref(args.base_ref)
 
     failures: list[str] = []
-    for path in changed_python_files(args.base_ref):
+    for path in changed_python_files(base_ref):
         if not path.is_file():
             continue
         current = effective_code_lines(path.read_text(encoding="utf-8"))
-        previous_source = source_at_ref(args.base_ref, path)
+        previous_source = source_at_ref(base_ref, path)
         previous = effective_code_lines(previous_source) if previous_source is not None else None
         error = violation(path, current, previous)
         if error:
