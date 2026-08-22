@@ -21,7 +21,10 @@ def grant_operational_scopes(conn: PgConnection, sandbox: TenantSandbox) -> None
             INSERT INTO request_engine.representations (
                 organization_id, principal_id, represented_party_id,
                 authority_kind, scope_key, valid_until
-            ) VALUES (%s, %s, %s, 'delegated', %s, clock_timestamp() + interval '1 day')
+            ) VALUES (
+                %s, %s, %s, 'delegated', %s,
+                clock_timestamp() + interval '1 day'
+            )
             """,
             (sandbox.organization_id, sandbox.principal_id, sandbox.party_id, scope),
         )
