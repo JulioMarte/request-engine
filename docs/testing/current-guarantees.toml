@@ -84,6 +84,20 @@ required_evidence = ["fitness"]
 risk = []
 
 [[guarantees]]
+id = "FIT-TYPE-BOUNDARY-001"
+statement = "Business semantic layers, cross-module contracts, persistence mappings and HTTP/provider DTOs remain distinct type boundaries; transport technology and transport/persistence naming cannot silently leak inward."
+severity = "critical"
+required_evidence = ["fitness"]
+risk = []
+
+[[guarantees]]
+id = "FIT-REPO-GOV-001"
+statement = "Repository documentation and LLM instruction routing preserve one discoverable source-of-truth hierarchy, explicit path-local rules and semantic naming/ownership conventions without turning incidental repository shape into immutable snapshots."
+severity = "critical"
+required_evidence = ["fitness"]
+risk = []
+
+[[guarantees]]
 id = "INV-FAILURE-001"
 statement = "Rejected or failed public/runtime operations expose bounded, reproducible failure semantics without leaking private state or converting semantic rejection into unsafe retry loops."
 severity = "high"
