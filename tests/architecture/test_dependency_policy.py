@@ -3,8 +3,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src" / "request_engine"
-MODULES_ROOT = SRC_ROOT / "modules"
+MODULES_ROOT = REPO_ROOT / "src" / "request_engine" / "modules"
 ALL_MODULES = frozenset(
     path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
 )
