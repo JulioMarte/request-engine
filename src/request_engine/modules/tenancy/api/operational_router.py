@@ -4,16 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel
 
-from request_engine.modules.tenancy.application.commands.set_organization_public_contacts import (
-    OrganizationPublicContactInput,
-    SetOrganizationPublicContactsCommand,
-    SetOrganizationPublicContactsHandler,
-    set_organization_public_contacts,
+from request_engine.modules.tenancy.application.commands import (
+    set_organization_public_contacts as contacts_command,
 )
-from request_engine.modules.tenancy.application.commands.update_organization_operational_profile import (
-    UpdateOrganizationOperationalProfileCommand,
-    UpdateOrganizationOperationalProfileHandler,
-    update_organization_operational_profile,
+from request_engine.modules.tenancy.application.commands import (
+    update_organization_operational_profile as profile_command,
 )
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
@@ -46,8 +41,8 @@ class OrganizationContactsBody(BaseModel):
 
 def create_operational_router(
     *,
-    profile_handler: UpdateOrganizationOperationalProfileHandler,
-    contacts_handler: SetOrganizationPublicContactsHandler,
+    profile_handler: profile_command.UpdateOrganizationOperationalProfileHandler,
+    contacts_handler: contacts_command.SetOrganizationPublicContactsHandler,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/operations/organization", tags=["operations"])
@@ -61,19 +56,20 @@ def create_operational_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        return await update_organization_operational_profile(
+        command = profile_command.UpdateOrganizationOperationalProfileCommand(
+            organization_id=current.organization_id,
+            principal_id=current.principal_id,
+            authority_party_id=body.authority_party_id,
+            legal_name=body.legal_name,
+            default_timezone=body.default_timezone,
+            default_locale=body.default_locale,
+            default_currency=body.default_currency,
+            operational_status=body.operational_status,
+            idempotency_key=idempotency_key,
+        )
+        return await profile_command.update_organization_operational_profile(
             profile_handler,
-            UpdateOrganizationOperationalProfileCommand(
-                organization_id=current.organization_id,
-                principal_id=current.principal_id,
-                authority_party_id=body.authority_party_id,
-                legal_name=body.legal_name,
-                default_timezone=body.default_timezone,
-                default_locale=body.default_locale,
-                default_currency=body.default_currency,
-                operational_status=body.operational_status,
-                idempotency_key=idempotency_key,
-            ),
+            command,
         )
 
     @router.put("/contacts")
@@ -83,18 +79,23 @@ def create_operational_router(
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
         contacts = tuple(
-            OrganizationPublicContactInput(item.channel, item.value, item.label)
+            contacts_command.OrganizationPublicContactInput(
+                item.channel,
+                item.value,
+                item.label,
+            )
             for item in body.contacts
         )
-        return await set_organization_public_contacts(
+        command = contacts_command.SetOrganizationPublicContactsCommand(
+            organization_id=current.organization_id,
+            principal_id=current.principal_id,
+            authority_party_id=body.authority_party_id,
+            contacts=contacts,
+            idempotency_key=idempotency_key,
+        )
+        return await contacts_command.set_organization_public_contacts(
             contacts_handler,
-            SetOrganizationPublicContactsCommand(
-                organization_id=current.organization_id,
-                principal_id=current.principal_id,
-                authority_party_id=body.authority_party_id,
-                contacts=contacts,
-                idempotency_key=idempotency_key,
-            ),
+            command,
         )
 
     return router
