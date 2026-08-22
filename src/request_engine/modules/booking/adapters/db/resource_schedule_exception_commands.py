@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import cast
-from uuid import UUID
 
 from sqlalchemy.exc import DBAPIError
 
+from request_engine.modules.booking.adapters.db import (
+    resource_schedule_exception_codec as codec,
+)
 from request_engine.modules.booking.adapters.db import resource_schedule_exception_store as store
 from request_engine.modules.booking.application.commands.set_resource_schedule_exception import (
     ResourceScheduleExceptionState,
@@ -69,7 +70,7 @@ class PostgresResourceScheduleExceptionCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _state_from_json(cast(dict[str, object], replay["exception"]))
+                    return codec.from_json(cast(dict[str, object], replay["exception"]))
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -133,7 +134,7 @@ class PostgresResourceScheduleExceptionCommands:
                     },
                 )
                 await complete_idempotency(
-                    session, idempotency_id, {"exception": _state_to_json(state)}
+                    session, idempotency_id, {"exception": codec.to_json(state)}
                 )
                 return state
         except DBAPIError as exc:
@@ -142,30 +143,3 @@ class PostgresResourceScheduleExceptionCommands:
                     "Resource-wide schedule exception conflicts with authoritative state"
                 ) from None
             raise
-
-
-def _state_to_json(state: ResourceScheduleExceptionState) -> dict[str, object]:
-    return {
-        "exception_id": str(state.exception_id),
-        "resource_id": str(state.resource_id),
-        "start_at": state.start_at.isoformat(),
-        "end_at": state.end_at.isoformat(),
-        "exception_kind": state.exception_kind,
-        "reason": state.reason,
-        "resource_availability_revision": state.resource_availability_revision,
-    }
-
-
-def _state_from_json(value: dict[str, object]) -> ResourceScheduleExceptionState:
-    kind = cast(str, value["exception_kind"])
-    if kind not in ("available", "unavailable"):
-        raise ValueError("stored exception_kind is invalid")
-    return ResourceScheduleExceptionState(
-        exception_id=UUID(cast(str, value["exception_id"])),
-        resource_id=UUID(cast(str, value["resource_id"])),
-        start_at=datetime.fromisoformat(cast(str, value["start_at"])),
-        end_at=datetime.fromisoformat(cast(str, value["end_at"])),
-        exception_kind=kind,
-        reason=cast(str | None, value.get("reason")),
-        resource_availability_revision=cast(int, value["resource_availability_revision"]),
-    )
