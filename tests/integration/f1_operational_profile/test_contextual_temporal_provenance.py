@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -79,22 +79,6 @@ def _book_command(
         expected_location_operational_revision=slot.location_operational_revision,
         expected_configuration_fingerprint=slot.configuration_fingerprint,
     )
-
-
-def _context_terms_revision(
-    admin_conn: PgConnection,
-    fixture: F1ContextualScenario,
-) -> int:
-    row = admin_conn.execute(
-        """
-        SELECT revision
-        FROM request_engine.booking_context_terms
-        WHERE organization_id = %s AND id = %s
-        """,
-        (fixture.organization_id, fixture.context_terms_id),
-    ).fetchone()
-    assert row is not None
-    return cast(int, row[0])
 
 
 @pytest.mark.asyncio
@@ -176,6 +160,11 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
 ) -> None:
     fixture = create_contextual_cardiology_scenario(admin_conn)
     boundary = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+    revision_row = admin_conn.execute(
+        "SELECT revision FROM request_engine.booking_context_terms WHERE organization_id=%s AND id=%s",
+        (fixture.organization_id, fixture.context_terms_id),
+    ).fetchone()
+    assert revision_row is not None
 
     future_terms = await supersede_booking_context_terms(
         PostgresContextualTermsSupersessionCommands(session_factory),
@@ -184,7 +173,7 @@ async def test_future_context_terms_activate_by_effective_date_and_commit_exact_
             principal_id=fixture.principal_id,
             authority_party_id=fixture.authority_party_id,
             current_context_terms_id=fixture.context_terms_id,
-            expected_current_revision=_context_terms_revision(admin_conn, fixture),
+            expected_current_revision=int(revision_row[0]),
             effective_from=boundary,
             amount=Decimal("5000"),
             currency="DOP",
