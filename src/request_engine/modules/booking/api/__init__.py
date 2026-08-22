@@ -61,22 +61,11 @@ def install_http(
     party_authority_reader: PartyAuthorityReader,
     appointment_option_signing_key: bytes,
 ) -> None:
-    """Connect Booking public and operational command surfaces to the HTTP process."""
+    """Connect the public Booking HTTP surface."""
+
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
-    app.add_exception_handler(
-        ResourceAvailabilityRevisionConflict,
-        booking_operational_error_handler,
-    )
-    app.add_exception_handler(
-        ResourceLocationAssignmentRevisionConflict,
-        booking_operational_error_handler,
-    )
-    app.add_exception_handler(
-        ContextualConfigurationConflict,
-        booking_operational_error_handler,
-    )
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
@@ -90,6 +79,22 @@ def install_http(
             actor_resolver=actor_resolver,
         )
     )
+
+
+def install_operational_http(
+    app: FastAPI,
+    *,
+    session_factory: SessionFactory,
+    actor_resolver: ActorResolver,
+) -> None:
+    """Connect Booking configuration commands to the operator HTTP process."""
+
+    for error_type in (
+        ResourceAvailabilityRevisionConflict,
+        ResourceLocationAssignmentRevisionConflict,
+        ContextualConfigurationConflict,
+    ):
+        app.add_exception_handler(error_type, booking_operational_error_handler)
     config = PostgresContextualConfigCommands(session_factory)
     lifecycle = PostgresContextualSupplyLifecycleCommands(session_factory)
     app.include_router(
