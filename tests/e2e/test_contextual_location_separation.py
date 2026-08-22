@@ -65,7 +65,11 @@ def _second_context(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
     return location_id
 
 
-async def _slots(client: AsyncClient, sandbox: TenantSandbox, location_id: UUID) -> list[dict[str, Any]]:
+async def _slots(
+    client: AsyncClient,
+    sandbox: TenantSandbox,
+    location_id: UUID,
+) -> list[dict[str, Any]]:
     response = await client.get(
         "/v1/appointments/slots",
         params={

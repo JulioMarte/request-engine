@@ -47,7 +47,10 @@ async def test_contextual_public_journey_persists_exact_provenance(
 
         catalog = await client.get(
             "/v1/catalog/offerings",
-            params={"location_id": str(sandbox.location_id), "effective_at": "2030-01-07T13:00:00Z"},
+            params={
+                "location_id": str(sandbox.location_id),
+                "effective_at": "2030-01-07T13:00:00Z",
+            },
             headers=auth(sandbox),
         )
         assert catalog.status_code == 200
@@ -126,7 +129,10 @@ async def test_contextual_reschedule_fails_closed_without_mutation(
         before = durable_snapshot(e2e_admin_conn)
         response = await client.post(
             f"/v1/appointments/{reservation['id']}/reschedule",
-            json={"option_id": replacement["option_id"], "expected_revision": reservation["revision"]},
+            json={
+                "option_id": replacement["option_id"],
+                "expected_revision": reservation["revision"],
+            },
             headers=auth(sandbox, idempotency_key=f"reschedule-{uuid4().hex}"),
         )
     assert response.status_code == 422
