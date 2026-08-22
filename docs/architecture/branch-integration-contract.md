@@ -4,6 +4,8 @@ Status: canonical repository workflow policy.
 
 Request Engine uses **one serialized development integration lane**. The purpose is to keep `development` as the only truthful integration state and prevent sibling feature branches from accumulating independently until they become expensive or ambiguous to reconcile.
 
+This policy coordinates integration. It is **not** a product-architecture freeze. Intentional evolution of module boundaries, contracts, schema or capability surfaces is governed by `pre-production-evolution-policy.md` and must be proven on the integrated branch; the lane rule must not be used as a reason to preserve obsolete product design.
+
 ## Canonical lifecycle
 
 For ordinary feature, fix, refactor, test, documentation, release-proof, or agent work:
@@ -100,6 +102,8 @@ git fetch origin
 ```
 
 Do not fix that failure by weakening the test, adding bypass names, targeting `main`, targeting another feature branch, or editing the cursor to a value other than the actual PR head.
+
+This restriction applies to **integration topology**, not to accepted architecture evolution. If a feature legitimately changes product architecture, the branch should still claim the lane and reconcile with `development`; then the affected architecture tests/contracts may evolve together according to the pre-production evolution policy.
 
 ## Emergency exception
 

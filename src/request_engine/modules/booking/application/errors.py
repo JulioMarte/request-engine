@@ -29,10 +29,22 @@ class AppointmentOptionExpired(BookingError):
         super().__init__("AppointmentOption has expired")
 
 
+class AppointmentOptionStale(BookingError):
+    def __init__(self, reason: str = "material booking configuration changed") -> None:
+        super().__init__("AppointmentOption is stale")
+        self.reason = reason
+
+
 class InvalidResourceSelection(BookingError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class ContextualCommitmentUnsupported(BookingError):
+    def __init__(self, operation: str) -> None:
+        super().__init__(f"contextual {operation} is not supported by F1")
+        self.operation = operation
 
 
 class AppointmentUnavailable(BookingError):

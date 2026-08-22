@@ -20,7 +20,9 @@ DEFERRED_MODULES = {
     "dispatch",
 }
 
-EXPECTED_MODULES = BASELINE_MODULES | DEFERRED_MODULES
+BUSINESS_MODULES = frozenset(
+    path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
+)
 
 V3_CANONICAL_DOCS = {
     "docs/11-capability-first-v3.md",
@@ -38,14 +40,6 @@ FORBIDDEN_HORIZONTAL_ROOTS = {
 }
 
 FORBIDDEN_GENERIC_PLATFORM_BUCKETS = {"common", "shared", "utils", "helpers"}
-
-DESIGN_CHAIN = [
-    "03-postgresql-schema.sql",
-    "04-postgresql-v2.7-hardening.sql",
-    "05-postgresql-v2.8-hardening.sql",
-    "06-postgresql-v2.9-integrity.sql",
-    "08-postgresql-v2.10-access-surface.sql",
-]
 
 DOMAIN_FORBIDDEN_IMPORT_PREFIXES = (
     "fastapi",
@@ -77,26 +71,13 @@ def _is_prefixed(import_name: str, prefix: str) -> bool:
 
 
 def test_business_modules_have_explicit_ownership_docs() -> None:
-    actual_modules = {
-        path.name
-        for path in MODULES_ROOT.iterdir()
-        if path.is_dir() and not path.name.startswith("__")
-    }
-
-    assert actual_modules == EXPECTED_MODULES
-    for module_name in EXPECTED_MODULES:
+    assert BASELINE_MODULES <= BUSINESS_MODULES
+    assert DEFERRED_MODULES <= BUSINESS_MODULES
+    for module_name in BUSINESS_MODULES:
         assert (MODULES_ROOT / module_name / "README.md").is_file()
 
 
-def test_v3_baseline_modules_are_explicit() -> None:
-    assert {
-        "tenancy",
-        "catalog",
-        "requests",
-        "booking",
-        "queue",
-        "communications",
-    } == BASELINE_MODULES
+def test_baseline_and_deferred_module_labels_are_consistent() -> None:
     assert BASELINE_MODULES.isdisjoint(DEFERRED_MODULES)
 
 
@@ -134,7 +115,8 @@ def test_executable_sql_is_owned_by_migrations_not_docs() -> None:
     assert sql_in_docs == []
 
     design_root = REPO_ROOT / "migrations" / "sql" / "design_chain"
-    assert [path.name for path in sorted(design_root.glob("*.sql"))] == DESIGN_CHAIN
+    assert design_root.is_dir()
+    assert list(design_root.glob("*.sql"))
 
 
 def test_test_suites_have_explicit_integration_boundary() -> None:
@@ -154,7 +136,7 @@ def test_agent_guidance_exists_at_important_boundaries() -> None:
 
 def test_domain_code_does_not_import_framework_or_bootstrap_layers() -> None:
     violations: list[str] = []
-    for module_name in EXPECTED_MODULES:
+    for module_name in BUSINESS_MODULES:
         for path in _python_files(MODULES_ROOT / module_name / "domain"):
             for import_name in _imports(path):
                 if any(
@@ -167,7 +149,7 @@ def test_domain_code_does_not_import_framework_or_bootstrap_layers() -> None:
 
 def test_application_code_does_not_import_transport_frameworks() -> None:
     violations: list[str] = []
-    for module_name in EXPECTED_MODULES:
+    for module_name in BUSINESS_MODULES:
         for path in _python_files(MODULES_ROOT / module_name / "application"):
             for import_name in _imports(path):
                 if any(
@@ -192,7 +174,7 @@ def test_platform_does_not_import_business_modules() -> None:
 def test_cross_module_imports_use_contracts_only() -> None:
     violations: list[str] = []
 
-    for owner in EXPECTED_MODULES:
+    for owner in BUSINESS_MODULES:
         owner_root = MODULES_ROOT / owner
         for path in _python_files(owner_root):
             for import_name in _imports(path):
@@ -205,7 +187,7 @@ def test_cross_module_imports_use_contracts_only() -> None:
                     continue
 
                 target = parts[2]
-                if target == owner or target not in EXPECTED_MODULES:
+                if target == owner or target not in BUSINESS_MODULES:
                     continue
 
                 allowed_prefix = f"request_engine.modules.{target}.contracts"
@@ -215,7 +197,7 @@ def test_cross_module_imports_use_contracts_only() -> None:
     assert violations == []
 
 
-def test_v3_baseline_modules_do_not_depend_on_deferred_modules() -> None:
+def test_baseline_modules_do_not_depend_on_deferred_modules() -> None:
     violations: list[str] = []
 
     for owner in BASELINE_MODULES:

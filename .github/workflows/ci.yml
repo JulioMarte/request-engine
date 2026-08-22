@@ -3,7 +3,10 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # Feature branches are validated by pull_request CI. Keep direct push CI
+    # only for main so implementation branches do not duplicate canonical runs.
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -36,10 +41,16 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run canonical Python quality job
+        env:
+          FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: >-
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
           --log-dir .ci/logs
+      - name: Inventory test architecture and evidence metadata
+        run: >-
+          python scripts/ci/audit_test_architecture.py
+          --output .ci/test-architecture.json
       - name: Upload Python quality failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
@@ -150,7 +161,7 @@ jobs:
         run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
   postgres-v3-candidate-proof:
-    name: PostgreSQL 18 V3 candidate proof
+    name: PostgreSQL 18 frozen V3 compatibility
     needs:
       - python-quality
       - observability-contract
@@ -177,9 +188,62 @@ jobs:
       PGDATABASE: request_engine_v3
       PGUSER: postgres
       PGPASSWORD: postgres
-      PHASE6_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      PHASE6_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      PHASE6_TESTED_SHA: ${{ github.sha }}
+      PGMAINTENANCE_DB: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_v3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Verify preinstalled PostgreSQL client
+        run: psql --version
+      - name: Run post-baseline V3 compatibility proof
+        run: bash scripts/ci/run_v3_frozen_compatibility.sh
+      - name: Run pinned V3 historical provenance tests
+        run: uv run pytest tests/historical -q --tb=short
+      - name: Upload frozen V3 compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-frozen-compatibility-proof
+          path: .phase6/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  postgres-production-head:
+    name: PostgreSQL 18 current product proof
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_current
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_current"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_current
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_current
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -193,20 +257,17 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Verify preinstalled PostgreSQL client
         run: psql --version
-      - name: Run canonical V3 candidate job
-        run: bash scripts/ci/run_v3_candidate_with_g19.sh
-      - name: Upload V3 candidate release proof
+      - name: Run canonical current-product proof
+        run: bash scripts/ci/run_current_product.sh
+      - name: Upload current-product proof evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v3-candidate-release-proof
-          path: .phase6/
+          name: current-product-proof
+          path: .ci/current-product/
           include-hidden-files: true
           if-no-files-found: warn
 
-  # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
-  # conditional, then always run this lightweight aggregate so a failed/skipped
-  # prerequisite can never become a non-blocking skipped required check.
   postgres-v3-candidate:
     name: PostgreSQL 18 V3 candidate and verticals
     needs:
@@ -214,12 +275,36 @@ jobs:
       - observability-contract
       - postgres-v3-bootstrap-proof
       - postgres-v3-candidate-proof
+      - postgres-production-head
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
+    permissions:
+      contents: read
+      statuses: write
     env:
       REQUIRED_NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
       - uses: actions/checkout@v6
       - name: Require successful prerequisite jobs
+        id: aggregate
         run: python scripts/ci/require_successful_needs.py
+      - name: Publish connector-readable aggregate status
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGGREGATE_OUTCOME: ${{ steps.aggregate.outcome }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ "$AGGREGATE_OUTCOME" == "success" ]]; then
+            state=success
+            description="all required Request Engine CI jobs passed"
+          else
+            state=failure
+            description="one or more required Request Engine CI jobs failed"
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="$state" \
+            -f context="Request Engine / CI aggregate" \
+            -f description="$description" \
+            -f target_url="$TARGET_URL"

@@ -160,6 +160,22 @@ Cancellation, Hold confirmation, SlotOffer acceptance/promotion and release oper
 
 The public Booking API returns the same opaque `appointment_unavailable` response for local and shared contention. The global HTTP integrity handler does not translate arbitrary `23P01` errors into Booking failures.
 
+### Post-V3 contextual booking extension
+
+F1 operational profile/contextual supply extends direct Booking with Resource-at-Location configuration while preserving every shared-capacity rule above.
+
+For a contextual `aptopt_v2` direct booking:
+
+- the tenant-local `Resource` remains the local capacity root;
+- `ResourceLocationAssignment` is eligibility/provenance only and never replaces `CapacityClaim` or `SharedCapacityIdentity` serialization;
+- contextual booking revalidates Offering/Location/assignment/schedule/commercial observations before claim creation;
+- if the Resource has a shared-capacity binding, the existing shared-root lock/contended-capacity path remains mandatory;
+- local and cross-tenant shared contention remain observationally identical at the public Booking error boundary;
+- contextual CapacityHold and contextual Reservation reschedule are deliberately unsupported in F1 and fail closed as `contextual_commitment_unsupported` **before** released-V3 commitment handlers can discard assignment/schedule/commercial provenance;
+- released `aptopt_v1` Hold/reschedule behavior remains unchanged.
+
+This extension changes the Booking/API error boundary only to classify unsupported contextual commitment attempts explicitly. It does not weaken shared-capacity privacy, expose hidden shared-root identity, introduce a second capacity ledger, or reinterpret arbitrary PostgreSQL integrity failures as normal contention.
+
 ## Privacy contract
 
 A tenant must not learn from a shared conflict:
@@ -193,7 +209,9 @@ The branch contains PostgreSQL/application tests for:
 - reschedule rollback and simultaneous inverse-root reschedules;
 - binding activation/revocation races, backfill, historical-link preservation and unsafe different-root rebind rejection;
 - opaque public Booking errors and narrow persistence-level conflict translation;
-- clean PostgreSQL 18 bootstrap, schema fingerprint/catalog audit and generated `0001_initial` equivalence.
+- clean PostgreSQL 18 bootstrap, schema fingerprint/catalog audit and generated `0001_initial` equivalence;
+- contextual direct booking with a globally bound Resource respecting the same hidden shared-capacity mutex;
+- contextual unsupported Hold/reschedule failing closed without falling through to released V3 commitment handlers.
 
 Release/concurrency fixtures that exercise these temporal paths must use deterministic intervals that remain future-relative for the lifetime of the proof corpus. A calendar date that can silently become historical is not valid evidence for SlotOpportunity/Booking availability semantics; the current fixtures therefore use a far-future Monday while preserving the same weekday and Santo Domingo wall-clock schedule relationship.
 

@@ -1,0 +1,74 @@
+from datetime import datetime
+from typing import cast
+from uuid import UUID
+
+from request_engine.modules.booking.application.commands.set_resource_schedule_exception import (
+    ResourceScheduleExceptionState,
+    SetResourceScheduleExceptionCommand,
+)
+
+
+def command_payload(
+    command: SetResourceScheduleExceptionCommand,
+    *,
+    start_at: datetime,
+    end_at: datetime,
+) -> dict[str, object]:
+    return {
+        "authority_party_id": command.authority_party_id,
+        "resource_id": command.resource_id,
+        "exception_id": command.exception_id,
+        "start_at": start_at,
+        "end_at": end_at,
+        "exception_kind": command.exception_kind,
+        "reason": command.reason,
+        "expected_resource_availability_revision": (
+            command.expected_resource_availability_revision
+        ),
+    }
+
+
+def make_state(
+    command: SetResourceScheduleExceptionCommand,
+    *,
+    exception_id: UUID,
+    start_at: datetime,
+    end_at: datetime,
+    resource_availability_revision: int,
+) -> ResourceScheduleExceptionState:
+    return ResourceScheduleExceptionState(
+        exception_id=exception_id,
+        resource_id=command.resource_id,
+        start_at=start_at,
+        end_at=end_at,
+        exception_kind=command.exception_kind,
+        reason=command.reason,
+        resource_availability_revision=resource_availability_revision,
+    )
+
+
+def to_json(state: ResourceScheduleExceptionState) -> dict[str, object]:
+    return {
+        "exception_id": str(state.exception_id),
+        "resource_id": str(state.resource_id),
+        "start_at": state.start_at.isoformat(),
+        "end_at": state.end_at.isoformat(),
+        "exception_kind": state.exception_kind,
+        "reason": state.reason,
+        "resource_availability_revision": state.resource_availability_revision,
+    }
+
+
+def from_json(value: dict[str, object]) -> ResourceScheduleExceptionState:
+    kind = cast(str, value["exception_kind"])
+    if kind not in ("available", "unavailable"):
+        raise ValueError("stored exception_kind is invalid")
+    return ResourceScheduleExceptionState(
+        exception_id=UUID(cast(str, value["exception_id"])),
+        resource_id=UUID(cast(str, value["resource_id"])),
+        start_at=datetime.fromisoformat(cast(str, value["start_at"])),
+        end_at=datetime.fromisoformat(cast(str, value["end_at"])),
+        exception_kind=kind,
+        reason=cast(str | None, value.get("reason")),
+        resource_availability_revision=cast(int, value["resource_availability_revision"]),
+    )

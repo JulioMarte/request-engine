@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -13,6 +14,9 @@ class AppointmentSlotView(BaseModel):
     start_at: datetime
     end_at: datetime
     location_id: UUID | None
+    planned_duration_minutes: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
 
     @classmethod
     def from_contract(cls, slot: AppointmentSlot, *, option_id: str) -> "AppointmentSlotView":
@@ -21,6 +25,9 @@ class AppointmentSlotView(BaseModel):
             start_at=slot.start_at,
             end_at=slot.end_at,
             location_id=slot.location_id,
+            planned_duration_minutes=slot.planned_duration_minutes,
+            amount=slot.amount,
+            currency=slot.currency,
         )
 
 

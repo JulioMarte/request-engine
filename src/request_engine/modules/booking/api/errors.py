@@ -4,9 +4,11 @@ from fastapi.responses import JSONResponse
 from request_engine.modules.booking.application.errors import (
     AppointmentOptionExpired,
     AppointmentOptionInvalid,
+    AppointmentOptionStale,
     AppointmentUnavailable,
     BookingConfigurationError,
     BookingError,
+    ContextualCommitmentUnsupported,
     InvalidResourceSelection,
     OfferingVersionNotBookable,
     OfferingVersionNotFound,
@@ -42,6 +44,13 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             code="appointment_option_expired",
             message="the appointment option has expired",
             resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
+            details={},
+        )
+    if isinstance(exc, AppointmentOptionStale):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="appointment_option_stale",
+            message="the appointment option no longer matches current booking configuration",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={},
         )
     if isinstance(exc, OfferingVersionNotFound):
@@ -108,6 +117,13 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             message=str(exc),
             resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={"reservation_id": str(exc.reservation_id), "status": exc.status},
+        )
+    if isinstance(exc, ContextualCommitmentUnsupported):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="contextual_commitment_unsupported",
+            message="this contextual commitment operation is not supported in F1",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"operation": exc.operation},
         )
     if isinstance(exc, InvalidResourceSelection):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(

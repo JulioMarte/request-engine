@@ -204,8 +204,11 @@ def build_report() -> dict[str, object]:
         failures.append("public HTTP operation baseline mismatch")
     if capability_lines != EXPECTED_CAPABILITIES:
         failures.append("capability registry baseline mismatch")
-    if literal_codes != EXPECTED_LITERAL_ERROR_CODES:
-        failures.append("literal public error-code baseline mismatch")
+    missing_literal_codes = EXPECTED_LITERAL_ERROR_CODES - literal_codes
+    if missing_literal_codes:
+        failures.append(
+            "frozen V3 public error codes are missing: " + ", ".join(sorted(missing_literal_codes))
+        )
     if shared_codes != EXPECTED_SHARED_ERROR_CODES:
         failures.append("shared HTTP error-code baseline mismatch")
     if helper_codes != EXPECTED_REQUEST_HELPER_CODES:

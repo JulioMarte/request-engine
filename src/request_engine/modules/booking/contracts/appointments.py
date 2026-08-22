@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
@@ -19,6 +20,9 @@ class AttendanceStatus(StrEnum):
 class ResourceChoice:
     requirement_id: UUID
     resource_id: UUID
+    resource_location_assignment_id: UUID | None = None
+    assignment_revision: int | None = None
+    availability_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +32,11 @@ class AppointmentSlot:
     end_at: datetime
     location_id: UUID | None
     resources: tuple[ResourceChoice, ...]
+    planned_duration_minutes: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    location_operational_revision: int | None = None
+    configuration_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

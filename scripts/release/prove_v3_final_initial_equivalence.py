@@ -31,6 +31,7 @@ DEFAULT_OUTPUT = ROOT / ".phase6/v3-final-initial-equivalence.json"
 DEFAULT_RUNTIME_ENV = ROOT / ".ci/v3-final-initial-runtime.env"
 DEFAULT_DATABASE = "request_engine_v3_g17_initial"
 SELECTOR = "ci_jobs:postgres-v3-candidate:v3-tests"
+V3_BASELINE_REVISION = "0001_initial"
 
 
 def _run(
@@ -190,14 +191,34 @@ def _install_initial(database: str, initial_sql: Path, env: dict[str, str]) -> N
     target_env = dict(env)
     target_env["PGDATABASE"] = database
     target_env["MIGRATION_DATABASE_URL"] = _migration_database_url(database, target_env)
+
+    # G17 proves the immutable released V3 baseline. Once append-only product
+    # revisions exist, ``head`` no longer means V3 and would silently install
+    # post-V3 objects into the compatibility database. Pin the release revision
+    # explicitly so current runtime/tests are exercised against exactly V3.
     result = _run(
-        ["uv", "run", "alembic", "upgrade", "head"],
+        ["uv", "run", "alembic", "upgrade", V3_BASELINE_REVISION],
         env=target_env,
         capture_output=True,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()
         raise RuntimeError(f"final-initial Alembic install failed: {detail}")
+
+    current = _run(
+        ["uv", "run", "alembic", "current"],
+        env=target_env,
+        capture_output=True,
+    )
+    if current.returncode != 0:
+        detail = current.stderr.strip() or current.stdout.strip()
+        raise RuntimeError(f"could not verify final-initial Alembic revision: {detail}")
+    if V3_BASELINE_REVISION not in current.stdout.split():
+        observed = current.stdout.strip() or "<empty>"
+        raise RuntimeError(
+            "final-initial database is not pinned to the released V3 revision: "
+            f"expected {V3_BASELINE_REVISION}, observed {observed}"
+        )
 
 
 def _provision_runtime(

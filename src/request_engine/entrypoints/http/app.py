@@ -14,13 +14,8 @@ from request_engine.entrypoints.http.errors import (
     integrity_error_handler,
     request_validation_error_handler,
 )
-from request_engine.modules.booking.api import install_http as install_booking_http
-from request_engine.modules.catalog.api import install_http as install_catalog_http
-from request_engine.modules.communications.api import install_http as install_communications_http
+from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
-from request_engine.modules.queue.api import install_http as install_queue_http
-from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.discovery import (
@@ -77,7 +72,6 @@ def create_app(
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
     request_actor_resolver = RequestExecutionActorResolver(actor_resolver)
     execution_actor_resolver = TenantCapabilityActorResolver(request_actor_resolver, policy)
-
     app = FastAPI(
         title="Request Engine",
         version="0.1.0",
@@ -87,47 +81,23 @@ def create_app(
         ),
     )
     app.middleware("http")(_request_execution_context)
-
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(IntegrityError, integrity_error_handler)
-    party_authority_reader = build_party_authority_reader(session_factory)
-
     app.include_router(
         create_capability_router(
             actor_resolver=request_actor_resolver,
             tenant_capability_policy=policy,
         )
     )
-    install_requests_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=execution_actor_resolver,
-    )
-    install_catalog_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=execution_actor_resolver,
-    )
-    install_booking_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=execution_actor_resolver,
-        party_authority_reader=party_authority_reader,
-        appointment_option_signing_key=signing_key,
-    )
-    install_queue_http(
+    install_business_modules(
         app,
         session_factory=session_factory,
         actor_resolver=execution_actor_resolver,
         slot_offer_ports=slot_offer_ports,
-    )
-    install_communications_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=execution_actor_resolver,
+        appointment_option_signing_key=signing_key,
     )
     return app

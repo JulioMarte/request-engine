@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
+from request_engine.modules.booking.api.dependencies import IdempotencyKey
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     AttendanceResponseBody,
@@ -34,7 +35,10 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     RescheduleReservationHandler,
     reschedule_reservation,
 )
-from request_engine.modules.booking.application.errors import ReservationNotFound
+from request_engine.modules.booking.application.errors import (
+    ContextualCommitmentUnsupported,
+    ReservationNotFound,
+)
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     AppointmentAvailabilityReader,
     FindAppointmentSlotsQuery,
@@ -49,11 +53,6 @@ from request_engine.modules.tenancy.contracts.authority import PartyAuthorityRea
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
-
-IdempotencyKey = Annotated[
-    str,
-    Header(alias="Idempotency-Key", min_length=1, max_length=250),
-]
 
 
 def create_router(
@@ -79,6 +78,7 @@ def create_router(
         window_start: datetime,
         window_end: datetime,
         location_id: UUID | None = None,
+        resource_id: UUID | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
         require_capability(actor, "appointments.find_slots")
@@ -90,6 +90,7 @@ def create_router(
                 window_start=window_start,
                 window_end=window_end,
                 location_id=location_id,
+                resource_id=resource_id,
                 limit=limit,
             ),
         )
@@ -121,6 +122,11 @@ def create_router(
                 origin_request_id=body.origin_request_id,
                 idempotency_key=idempotency_key,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+                expected_planned_duration_minutes=option.planned_duration_minutes,
+                expected_amount=option.amount,
+                expected_currency=option.currency,
+                expected_location_operational_revision=option.location_operational_revision,
+                expected_configuration_fingerprint=option.configuration_fingerprint,
             ),
         )
         return ReservationView.from_contract(reservation)
@@ -171,6 +177,8 @@ def create_router(
     ) -> ReservationView:
         require_capability(actor, "appointments.reschedule")
         option = option_codec.decode(actor.organization_id, body.option_id)
+        if option.is_contextual:
+            raise ContextualCommitmentUnsupported("reschedule")
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
@@ -216,6 +224,7 @@ def create_router(
         capability="appointments.find_slots",
         methods=["GET"],
         response_model=tuple[AppointmentSlotView, ...],
+        response_model_exclude_none=True,
     )
     add_capability_route(
         router,

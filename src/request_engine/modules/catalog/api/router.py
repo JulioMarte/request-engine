@@ -1,8 +1,11 @@
+from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from request_engine.modules.catalog.api.models import BusinessInfoView, OfferingView
+from request_engine.modules.catalog.api.models import BusinessInfoView
+from request_engine.modules.catalog.api.offering_models import OfferingView
 from request_engine.modules.catalog.application.queries.get_business_info import (
     BusinessInfoReader,
     get_business_info,
@@ -41,6 +44,8 @@ def create_router(
         search_text: Annotated[str | None, Query(max_length=200)] = None,
         bookable: bool | None = None,
         requestable: bool | None = None,
+        location_id: UUID | None = None,
+        effective_at: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[OfferingView, ...]:
         require_capability(actor, "catalog.search_offerings")
@@ -51,6 +56,8 @@ def create_router(
                 search_text=search_text,
                 bookable=bookable,
                 requestable=requestable,
+                location_id=location_id,
+                effective_at=effective_at,
                 limit=limit,
             ),
         )
@@ -85,6 +92,7 @@ def create_router(
         capability="catalog.search_offerings",
         methods=["GET"],
         response_model=tuple[OfferingView, ...],
+        response_model_exclude_none=True,
     )
     add_capability_route(
         router,
@@ -93,5 +101,6 @@ def create_router(
         capability="catalog.get_offering_details",
         methods=["GET"],
         response_model=OfferingView,
+        response_model_exclude_none=True,
     )
     return router
