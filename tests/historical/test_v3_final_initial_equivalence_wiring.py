@@ -65,7 +65,7 @@ def test_behavioral_equivalence_reuses_the_canonical_v3_tests_step() -> None:
     assert producer < finalizer < validator
 
 
-def test_post_baseline_ci_does_not_regenerate_closed_v3_release_evidence() -> None:
+def test_post_baseline_ci_preserves_closed_v3_evidence_without_freezing_current_code() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     compatibility = COMPATIBILITY_WRAPPER.read_text(encoding="utf-8")
     compatibility_job = workflow.split("  postgres-v3-candidate-proof:", 1)[1].split(
@@ -78,7 +78,8 @@ def test_post_baseline_ci_does_not_regenerate_closed_v3_release_evidence() -> No
     assert 'RELEASED_V3_SHA="07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc"' in compatibility
     assert 'V3_BASELINE_REVISION="0001_initial"' in compatibility
     assert 'alembic upgrade "$V3_BASELINE_REVISION"' in compatibility
-    assert "--step public-api-contract" in compatibility
+    assert "scripts/release/prove_v3_public_api_contract.py" in compatibility
+    assert 'git worktree add --detach "$RELEASE_TREE" "$RELEASED_V3_SHA"' in compatibility
     assert "--step v3-tests" in compatibility
     assert "prove_v3_final_release.py" not in compatibility
     assert "build_v3_evidence_manifest.py" not in compatibility
