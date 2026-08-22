@@ -109,6 +109,23 @@ A repository/adaptor name must express the capability or persistence role it own
 
 Semantic operation names should expose intent (`BookAppointment`, `JoinQueue`, `RecordDeliveryResult`) instead of table mutation (`UpdateReservation`, `SetQueueStatus`) unless the latter is genuinely the business capability.
 
+### Python file budget
+
+Python source and test files should target **100 effective code lines** and have a **120 effective-line hard maximum** for new or previously compliant files.
+
+The budget is based on code-bearing physical lines, not raw file length:
+
+- blank lines do not count;
+- comment-only lines do not count;
+- an inline comment does not add another line beyond the code already on that line;
+- docstrings and other string literals do count because they are Python tokens rather than comments.
+
+The 101–120 range is intentional tolerance. A cohesive 102-line file should not be split or regenerated merely to satisfy an exact 100-line threshold. The purpose is to expose loss of cohesion/ownership, not spend engineering or LLM tokens gaming a number.
+
+Existing files that already exceed 120 effective lines are migration debt, not an excuse for a repository-wide mechanical rewrite. CI applies a ratchet: an oversized existing file may stay the same size or shrink when touched, but it may not grow. New files, and files whose previous version was at or below 120, may not cross the 120-line maximum.
+
+This is a maintainability/ownership fitness rule, not a semantic HARD invariant. If a genuinely cohesive file cannot be kept within this budget, redesign the ownership first; changing the budget itself is a CONTROLLED repository-governance decision rather than a per-file exemption.
+
 ## 4. LLM instruction integrity
 
 Repository instructions are part of the engineering control plane.
