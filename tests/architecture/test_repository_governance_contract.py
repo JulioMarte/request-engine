@@ -54,14 +54,8 @@ def _base_model_classes(path: Path) -> list[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
-        base_names = {
-            base.id
-            for base in node.bases
-            if isinstance(base, ast.Name)
-        } | {
-            base.attr
-            for base in node.bases
-            if isinstance(base, ast.Attribute)
+        base_names = {base.id for base in node.bases if isinstance(base, ast.Name)} | {
+            base.attr for base in node.bases if isinstance(base, ast.Attribute)
         }
         if "BaseModel" in base_names:
             names.append(node.name)
@@ -155,6 +149,30 @@ def test_llm_instruction_adapters_route_through_agents_contracts() -> None:
         "LLM instruction routing drifted. Keep AGENTS.md as the operational contract and "
         "Claude/Gemini files as adapters:\n" + "\n".join(f"- {item}" for item in violations)
     )
+
+
+def test_copilot_adapter_routes_to_current_authority_not_v2_contracts() -> None:
+    copilot = (ROOT / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
+
+    assert "AGENTS.md" in copilot
+    assert "docs/README.md" in copilot
+    assert "docs/testing/repository-governance-contract.md" in copilot
+    assert "docs/v3/02-pre-sql-contract.md" in copilot
+    assert "docs/02-pre-sql-domain-contract.md" not in copilot
+
+
+def test_path_specific_agent_rules_include_type_and_document_governance() -> None:
+    python_rules = (ROOT / ".github" / "instructions" / "python.instructions.md").read_text(
+        encoding="utf-8"
+    )
+    docs_rules = (ROOT / ".github" / "instructions" / "docs.instructions.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "repository-governance-contract.md" in python_rules
+    assert "Pydantic" in python_rules
+    assert "repository-governance-contract.md" in docs_rules
+    assert "docs/README.md" in docs_rules
 
 
 def test_governance_contract_is_discoverable_from_test_and_docs_agent_maps() -> None:
