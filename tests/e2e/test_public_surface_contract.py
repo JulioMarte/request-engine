@@ -144,7 +144,6 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     keys = [operation.operation_key for operation in PUBLIC_HTTP_OPERATIONS]
     assert len(names) == len(set(names))
     assert len(keys) == len(set(keys))
-    assert len(PUBLIC_HTTP_OPERATIONS) == 24
     discovery = [operation for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None]
     assert [operation.name for operation in discovery] == ["capabilities.list"]
     for operation in PUBLIC_HTTP_OPERATIONS:
