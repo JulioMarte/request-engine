@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -18,7 +18,10 @@ from request_engine.modules.tenancy.application.commands.update_organization_ope
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
-IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=250)]
+IdempotencyKey = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=1, max_length=250),
+]
 
 
 class OrganizationProfileBody(BaseModel):
@@ -31,7 +34,7 @@ class OrganizationProfileBody(BaseModel):
 
 
 class PublicContactBody(BaseModel):
-    channel: str
+    channel: Literal["phone", "whatsapp", "email"]
     value: str
     label: str | None = None
 
