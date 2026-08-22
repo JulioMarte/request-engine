@@ -10,6 +10,9 @@ from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_locking as locking,
 )
 from request_engine.modules.booking.adapters.db import (
+    contextual_terms_supersession_result as result,
+)
+from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_store as store,
 )
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
@@ -21,13 +24,8 @@ from request_engine.modules.booking.application.commands.supersede_booking_conte
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
 )
-from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
-from request_engine.platform.idempotency.postgres import (
-    acquire_idempotency,
-    command_fingerprint,
-    complete_idempotency,
-)
+from request_engine.platform.idempotency.postgres import acquire_idempotency, command_fingerprint
 from request_engine.platform.security.operational_authority import (
     MANAGE_COMMERCIAL_TERMS_SCOPE,
     require_operational_authority,
@@ -112,24 +110,13 @@ class PostgresContextualTermsSupersessionCommands:
                     bookable=command.bookable,
                     revision=new_revision,
                 )
-                await append_audit(
+                await result.finalize(
                     session,
-                    organization_id=command.organization_id,
-                    principal_id=command.principal_id,
-                    command_name="booking.supersede_booking_context_terms",
-                    aggregate_kind="BookingContextTerms",
-                    aggregate_id=new_id,
+                    command=command,
+                    authority=authority,
                     idempotency_id=idem_id,
-                    details={
-                        "authority": authority.audit_details(),
-                        "superseded_context_terms_id": str(command.current_context_terms_id),
-                        "cutover": cutover.isoformat(),
-                    },
-                )
-                await complete_idempotency(
-                    session,
-                    idem_id,
-                    {"terms": codec.to_json(state)},
+                    state=state,
+                    cutover=cutover,
                 )
                 return state
         except IntegrityError as exc:
