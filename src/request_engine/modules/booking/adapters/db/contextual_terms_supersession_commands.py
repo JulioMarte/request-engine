@@ -3,12 +3,10 @@ from typing import cast
 
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.modules.booking.adapters.db import (
-    contextual_terms_supersession_codec as codec,
-    contextual_terms_supersession_locking as locking,
-    contextual_terms_supersession_result as result,
-    contextual_terms_supersession_store as store,
-)
+import request_engine.modules.booking.adapters.db.contextual_terms_supersession_codec as codec
+import request_engine.modules.booking.adapters.db.contextual_terms_supersession_locking as locking
+import request_engine.modules.booking.adapters.db.contextual_terms_supersession_result as result
+import request_engine.modules.booking.adapters.db.contextual_terms_supersession_store as store
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
 )
