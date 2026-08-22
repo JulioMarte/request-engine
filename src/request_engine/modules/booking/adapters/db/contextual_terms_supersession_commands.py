@@ -37,16 +37,7 @@ class PostgresContextualTermsSupersessionCommands:
         cutover = command.effective_from.astimezone(UTC)
         fingerprint = command_fingerprint(
             "booking.supersede_booking_context_terms",
-            {
-                "authority_party_id": command.authority_party_id,
-                "current_context_terms_id": command.current_context_terms_id,
-                "expected_current_revision": command.expected_current_revision,
-                "effective_from": cutover,
-                "amount": str(command.amount) if command.amount is not None else None,
-                "currency": command.currency,
-                "planned_duration_minutes": command.planned_duration_minutes,
-                "bookable": command.bookable,
-            },
+            codec.command_payload(command, cutover=cutover),
         )
         try:
             async with tenant_transaction(self._session_factory, command.organization_id) as session:
