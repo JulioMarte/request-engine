@@ -118,6 +118,25 @@ They MUST:
 
 They MUST NOT create multiple sibling merge-ready PRs merely to continue working ahead, retarget a feature branch to `main` to avoid conflicts, or weaken the branch-workflow fitness test when it reports stale/parallel topology.
 
+## Test evidence workflow
+
+Before writing or modifying durable tests, read `docs/testing/README.md`, `docs/testing/evidence-authoring-guide.md`, and the nearest `tests/AGENTS.md`.
+
+Do not treat a green assertion as proof merely because it agrees with the current implementation. Every durable test should identify the guarantee/risk it protects and a plausible defect that would make the test fail. Setup must establish valid preconditions without manufacturing the expected result, and assertions should inspect the authoritative business/database outcome plus important absence of side effects.
+
+For PostgreSQL-dependent behavior:
+
+- use real PostgreSQL 18 for constraints, RLS/privileges, transactions, locks, ranges, leases/fencing, and races;
+- create minimal but complete, business-plausible dummy data rather than magical IDs or impossible partial rows;
+- use direct SQL only for valid setup, authoritative inspection, or direct DB-backstop proofs; never use it to pre-create the command/API outcome or disable the enforcement being tested;
+- when runtime authority/privilege or application orchestration is part of the claim, execute the operation under test through the relevant runtime role/supported surface;
+- use independent transactions and deterministic synchronization for concurrency proofs; do not simulate a race with one transaction or timing-only sleeps;
+- rely on the automatic PostgreSQL isolation in `tests/conftest.py` rather than cross-test shared mutable state.
+
+Feature-local scenario builders may live beside their integration suite. Put a builder under `tests/fixtures/` only when multiple independent suites genuinely share the same valid test world. Do not create a global mega-fixture.
+
+When a test fails, first determine whether the implementation violated the accepted contract or whether the contract intentionally evolved. Do not weaken the test solely to make CI green. A safety/architecture proof that is changed or removed requires an explicit KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL disposition for the protected guarantee.
+
 ## Pull request topology
 
 Allowed normal topology:
