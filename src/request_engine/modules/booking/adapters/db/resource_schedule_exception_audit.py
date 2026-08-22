@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.platform.audit.postgres import append_audit
-from request_engine.platform.security.operational_authority import OperationalAuthority
+from request_engine.platform.security.operational_authority import OperationalAuthorityGrant
 
 
 async def append_resource_exception_audit(
@@ -15,7 +15,7 @@ async def append_resource_exception_audit(
     resource_id: UUID,
     exception_kind: str,
     idempotency_id: UUID,
-    authority: OperationalAuthority,
+    authority: OperationalAuthorityGrant,
     previous_revision: int,
     new_revision: int,
 ) -> None:
