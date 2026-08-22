@@ -17,9 +17,7 @@ def normalize_public_contact_value(channel: str, value: str) -> str:
     if channel in {"phone", "whatsapp"}:
         canonical = _PHONE_SEPARATORS.sub("", cleaned)
         if not _E164.fullmatch(canonical):
-            raise PublicContactValidationError(
-                f"{channel} must be an international E.164 number"
-            )
+            raise PublicContactValidationError(f"{channel} must be an international E.164 number")
         return canonical
     if channel == "email":
         canonical = cleaned.casefold()
