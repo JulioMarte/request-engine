@@ -90,9 +90,7 @@ async def test_resource_wide_exception_is_semantic_idempotent_revisioned_and_eff
     replay = await set_resource_schedule_exception(handler, create_command)
     assert replay == created
     assert created.resource_availability_revision > initial_revision
-    assert datetime(2026, 8, 17, 13, 0, tzinfo=UTC) not in await _slots(
-        scenario, session_factory
-    )
+    assert datetime(2026, 8, 17, 13, 0, tzinfo=UTC) not in await _slots(scenario, session_factory)
 
     changed = await set_resource_schedule_exception(
         handler,
