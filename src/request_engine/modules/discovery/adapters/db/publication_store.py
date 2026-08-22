@@ -1,0 +1,168 @@
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def validate_scope(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    offering_id: UUID,
+    location_id: UUID,
+    resource_id: UUID | None,
+    effective_start: datetime,
+    effective_end: datetime | None,
+) -> bool:
+    row = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT
+                        EXISTS (
+                            SELECT 1 FROM request_engine.offerings o
+                            WHERE o.organization_id = :organization_id
+                              AND o.id = :offering_id AND o.active
+                        ) AS offering_ok,
+                        EXISTS (
+                            SELECT 1 FROM request_engine.locations l
+                            WHERE l.organization_id = :organization_id
+                              AND l.id = :location_id AND l.active
+                        ) AS location_ok,
+                        (:resource_id IS NULL OR EXISTS (
+                            SELECT 1 FROM request_engine.resources r
+                            WHERE r.organization_id = :organization_id
+                              AND r.id = :resource_id AND r.active
+                              AND (
+                                  r.location_id = :location_id
+                                  OR EXISTS (
+                                      SELECT 1
+                                      FROM request_engine.resource_location_assignments a
+                                      WHERE a.organization_id = r.organization_id
+                                        AND a.resource_id = r.id
+                                        AND a.location_id = :location_id
+                                        AND a.status = 'active'
+                                        AND a.effective_during && tstzrange(
+                                            :effective_start, :effective_end, '[)'
+                                        )
+                                  )
+                              )
+                        )) AS resource_ok,
+                        EXISTS (
+                            SELECT 1
+                            FROM request_engine.offering_service_classifications m
+                            JOIN request_engine.service_classifications sc
+                              ON sc.id = m.service_classification_id
+                             AND sc.status = 'active'
+                            WHERE m.organization_id = :organization_id
+                              AND m.offering_id = :offering_id
+                              AND m.status = 'active'
+                        ) AS mapping_ok
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "offering_id": offering_id,
+                    "location_id": location_id,
+                    "resource_id": resource_id,
+                    "effective_start": effective_start,
+                    "effective_end": effective_end,
+                },
+            )
+        )
+        .mappings()
+        .one()
+    )
+    return all(bool(row[key]) for key in ("offering_ok", "location_ok", "resource_ok", "mapping_ok"))
+
+
+async def insert_publication(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    offering_id: UUID,
+    location_id: UUID,
+    resource_id: UUID | None,
+    effective_start: datetime,
+    effective_end: datetime | None,
+    provider_visibility: str,
+) -> RowMapping:
+    return (
+        (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO request_engine.discovery_publications (
+                        organization_id, offering_id, location_id, resource_id,
+                        effective_during, provider_visibility
+                    ) VALUES (
+                        :organization_id, :offering_id, :location_id, :resource_id,
+                        tstzrange(:effective_start, :effective_end, '[)'), :provider_visibility
+                    )
+                    RETURNING id, revision
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "offering_id": offering_id,
+                    "location_id": location_id,
+                    "resource_id": resource_id,
+                    "effective_start": effective_start,
+                    "effective_end": effective_end,
+                    "provider_visibility": provider_visibility,
+                },
+            )
+        )
+        .mappings()
+        .one()
+    )
+
+
+async def lock_publication(
+    session: AsyncSession, organization_id: UUID, publication_id: UUID
+) -> RowMapping | None:
+    return (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, offering_id, location_id, resource_id,
+                           lower(effective_during) AS effective_start,
+                           upper(effective_during) AS effective_end,
+                           provider_visibility, status, revision
+                    FROM request_engine.discovery_publications
+                    WHERE organization_id = :organization_id AND id = :publication_id
+                    FOR UPDATE
+                    """
+                ),
+                {"organization_id": organization_id, "publication_id": publication_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+
+
+async def revoke_publication(
+    session: AsyncSession, organization_id: UUID, publication_id: UUID
+) -> RowMapping:
+    return (
+        (
+            await session.execute(
+                text(
+                    """
+                    UPDATE request_engine.discovery_publications
+                    SET status = 'revoked'
+                    WHERE organization_id = :organization_id AND id = :publication_id
+                    RETURNING revision
+                    """
+                ),
+                {"organization_id": organization_id, "publication_id": publication_id},
+            )
+        )
+        .mappings()
+        .one()
+    )
