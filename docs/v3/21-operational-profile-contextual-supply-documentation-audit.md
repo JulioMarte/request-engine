@@ -52,8 +52,11 @@ The feature was based on `development@9665873a90ecbaa52a17b4aff1ec4d1cd4c70573`.
 | Location structured profile / contacts / hours / exceptions | COMPLETE |
 | ResourceLocationAssignment lifecycle | COMPLETE |
 | Resource-at-Location recurrence / scoped exceptions | COMPLETE |
+| explicit Resource-wide exception semantic mutation | COMPLETE / FINAL CI REQUIRED |
 | Base + contextual fixed commercial terms | COMPLETE |
 | future-effective contextual terms | COMPLETE |
+| catalog detail eligible-Location context hints | COMPLETE / FINAL CI REQUIRED |
+| explicit Resource or any eligible Resource slot selection | COMPLETE / FINAL CI REQUIRED |
 | aptopt_v2 contextual observations | COMPLETE |
 | contextual direct booking | COMPLETE |
 | immutable commercial commitment / 0..N sources | COMPLETE |
@@ -63,6 +66,8 @@ The feature was based on `development@9665873a90ecbaa52a17b4aff1ec4d1cd4c70573`.
 | contextual reschedule | ACCEPTED F1 FAIL-CLOSED |
 | released aptopt_v1 behavior | PRESERVED / REGRESSION-PROTECTED |
 | F2-F6 roadmap capabilities | OUT OF THIS BRANCH |
+
+`COMPLETE / FINAL CI REQUIRED` means the implementation and adversarial test have been added, but this document deliberately does not convert a new, not-yet-tested SHA into merge evidence.
 
 ## 4. Important defects closed during implementation
 
@@ -79,11 +84,38 @@ contextual hold/reschedule could otherwise risk legacy fallthrough
 multi-resource contextual provenance lacked explicit proof
 ```
 
-The current model uses an immutable material commercial commitment plus a 0..N contextual source bridge. `OfferingVersion` remains append-only; `Offering.active` is the mutable parent publication/bookability kill-switch.
+A later capability-first adversarial audit found three additional gaps that previous green CI did not expose:
+
+```text
+Resource-wide schedule exceptions were consumed by planning/booking but had
+no supported semantic mutation command; tests configured them with direct SQL.
+
+find_slots supported only implicit "any eligible Resource" even though the
+accepted plan requires explicit Resource preference as well.
+
+catalog offering detail returned base/version defaults but no safe Location
+eligibility hints for contextual supply.
+```
+
+The fixes are product-surface fixes rather than schema renames:
+
+```text
+SetResourceScheduleExceptionCommand + PostgreSQL adapter
+  authority + idempotency + availability revision guard + audit
+
+FindAppointmentSlotsQuery.resource_id + GET /v1/appointments/slots?resource_id=
+  preference applied before generation/limit; unknown IDs stay opaque
+
+OfferingSummary.eligible_location_ids
+  all-requirement contextual Location eligibility, without pretending that a
+  single contextual price exists before Resource/Location selection
+```
+
+The current model continues to use an immutable material commercial commitment plus a 0..N contextual source bridge. `OfferingVersion` remains append-only; `Offering.active` is the mutable parent publication/bookability kill-switch.
 
 ## 5. Current test-architecture reconciliation
 
-The test-architecture migration correctly separated historical V3 provenance from current-product evolution. One additional gap was found during this audit:
+The test-architecture migration correctly separated historical V3 provenance from current-product evolution. One additional gap was found during the earlier audit:
 
 ```text
 old migrated current-product runner
@@ -95,19 +127,23 @@ That was not acceptable because `tests/e2e/` is explicitly the production-like p
 
 The current-product runner is corrected to include the full PostgreSQL-marked `tests/e2e` suite against current Alembic head.
 
-This is a KEEP/ADAPT decision under the new policy:
+The capability audit then exercised a second architectural guard: initial fixes grew legacy oversized Python files. The file-budget gate rejected that implementation shape. We did not add ignores or increase limits. Instead the new responsibilities were separated into focused modules for candidate sourcing, catalog hints/mapping, Resource-wide persistence/codec/audit, API dependencies and E2E fixture construction.
+
+This is a KEEP/ADAPT/REPAIR decision under the current policy:
 
 ```text
 public production-like evidence guarantee    KEEP
 historical V3 execution ownership            ADAPT
 current-product omission of tests/e2e        REPAIR
+missing F1 semantic/public capabilities       REPAIR
+file-budget architecture guard                KEEP
 ```
 
 No historical freeze is being restored.
 
 ## 6. F1 E2E proof obligations
 
-The feature-specific production-like journeys now attack the following observable contracts:
+The feature-specific production-like journeys attack the following observable contracts:
 
 ### Happy path
 
@@ -122,6 +158,31 @@ POST /v1/appointments
   -> active CapacityClaim with exact ResourceLocationAssignment
   -> immutable commercial commitment
   -> exact contextual source bridge
+```
+
+### Catalog detail contextual hint
+
+```text
+GET /v1/catalog/offerings/{offering_key}
+  -> includes contextual Location with effective eligible supply
+  -> excludes active Location with no eligible assignments
+  -> does not fabricate one contextual price across different Resources
+```
+
+The hint is optional/omitted on legacy V3 schema so released response shape remains compatible.
+
+### Explicit Resource preference
+
+```text
+find_slots without resource_id
+  -> any eligible Resource may be selected
+
+find_slots?resource_id=preferred
+  -> preferred Resource is pinned where it satisfies the requirement
+  -> its exact contextual amount/duration are preserved
+
+find_slots?resource_id=random-or-foreign
+  -> opaque empty result
 ```
 
 ### Stale observation
@@ -166,6 +227,7 @@ price/context change vs book
 assignment retirement vs book
 assignment-specific exception vs book
 Resource-wide exception vs book
+Resource-wide exception semantic command create/update/idempotency/revision behavior
 Location exception / recurring-hours mutation vs book
 Offering.active deactivation vs book
 concurrent context-term writes
@@ -187,11 +249,11 @@ This layered evidence is intentional: E2E proves the composed production-like jo
 
 ### 13 — plan
 
-Still semantically correct. It defines F1 scope, acceptance scenarios and adversarial obligations. The new testing policy changes evidence ownership, not F1 product semantics.
+Still semantically correct. Its explicit/any Resource responsibility and explicit Resource-wide schedule-exception mutation requirement were the source of two findings in the adversarial audit; they are now implemented rather than weakened or renamed away.
 
 ### 15 — normative contract
 
-Still semantically correct. In particular, Acceptance A-I remains authoritative. The newly added multi-location E2E explicitly strengthens Acceptance B evidence.
+Still semantically correct. Location/context hints are represented conservatively as eligible Location IDs; actual contextual commercial terms remain resolved only when enough concrete context exists.
 
 ### 16 — clarifications
 
@@ -207,11 +269,11 @@ Current explanation of the F1 schema. The branch presently introduces `0002_f1_s
 
 ### 20 — handoff
 
-Rewritten to the new current-product / E2E / historical evidence architecture and remaining exact-head gates.
+Reconciled to the capability-first audit, current-product / E2E / historical evidence architecture and remaining exact-head gates.
 
 ### Testing docs
 
-The repository testing policy is now authoritative for where evidence executes and which structural restrictions may evolve. F1 docs should not duplicate those policies.
+The repository testing policy is authoritative for where evidence executes and which structural restrictions may evolve. F1 docs should not duplicate those policies.
 
 ## 9. What is not a merge blocker
 
@@ -237,6 +299,9 @@ The final PR head/merge candidate must prove:
 Python quality and architecture                         PASS
 PostgreSQL current product proof                        PASS
   including tests/e2e                                   PASS
+  including explicit Resource preference                PASS
+  including catalog eligible-Location detail hint       PASS
+  including Resource-wide semantic command              PASS
   including F1 integration                              PASS
   including current booking/capacity regressions        PASS
 PostgreSQL V2 design history                            PASS
