@@ -1,11 +1,11 @@
 from typing import cast
-from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.discovery.adapters.db import (
     publication_codec,
     publication_scope,
+    publication_state,
     publication_store,
 )
 from request_engine.modules.discovery.adapters.db.publication_validation import (
@@ -94,16 +94,12 @@ class PostgresDiscoveryPublishCommands:
                     effective_end=end,
                     provider_visibility=visibility,
                 )
-                state = DiscoveryPublicationState(
-                    id=cast(UUID, row["id"]),
-                    offering_id=command.offering_id,
-                    location_id=command.location_id,
-                    resource_id=command.resource_id,
+                state = publication_state.created_state(
+                    row,
+                    command,
                     effective_start=start,
                     effective_end=end,
                     provider_visibility=visibility,
-                    status="active",
-                    revision=cast(int, row["revision"]),
                 )
                 await append_audit(
                     session,
