@@ -32,7 +32,11 @@ _ROUTES = (
     ("locations.update", "PATCH", "/v1/operations/locations/{location_id}"),
     ("locations.contacts", "PUT", "/v1/operations/locations/{location_id}/contacts"),
     ("locations.hours", "PUT", "/v1/operations/locations/{location_id}/hours"),
-    ("locations.hours_exception", "PUT", "/v1/operations/locations/{location_id}/hours-exceptions"),
+    (
+        "locations.hours_exception",
+        "PUT",
+        "/v1/operations/locations/{location_id}/hours-exceptions",
+    ),
     (
         "offering_version.booking_terms",
         "PUT",
@@ -63,8 +67,6 @@ _ROUTES = (
     ),
 )
 
-_PROFILE_NAMES = frozenset(name for name, _, _ in _ROUTES[:7])
-_SUPPLY_NAMES = frozenset(name for name, _, _ in _ROUTES[8:13])
 _REVISION_OWNERS = {
     "locations.update": "Location.operational_revision",
     "locations.hours": "Location.operational_revision",
@@ -79,9 +81,9 @@ _REVISION_OWNERS = {
 
 
 def _scope(name: str) -> str:
-    if name in _PROFILE_NAMES:
+    if name.startswith(("organization.", "locations.")):
         return PROFILE_SCOPE
-    if name in _SUPPLY_NAMES:
+    if name.startswith(("resource_assignments.", "resources.")):
         return SUPPLY_SCOPE
     return TERMS_SCOPE
 
