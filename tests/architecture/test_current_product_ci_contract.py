@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT_RUNNER = ROOT / "scripts" / "ci" / "run_current_product.sh"
 F1_COMPAT_RUNNER = ROOT / "scripts" / "ci" / "run_f1_operational_profile.sh"
+FROZEN_V3_RUNNER = ROOT / "scripts" / "ci" / "run_v3_frozen_compatibility.sh"
 CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -43,6 +44,17 @@ def test_workflow_separates_current_product_from_historical_provenance() -> None
     assert ".ci/current-product/" in current_job
     assert "uv run pytest tests/historical" in historical_job
     assert "tests/historical" not in python_job
+
+
+def test_frozen_v3_runner_does_not_run_current_behavior_on_stale_schema() -> None:
+    source = FROZEN_V3_RUNNER.read_text(encoding="utf-8")
+
+    assert 'git worktree add --detach "$RELEASE_TREE" "$RELEASED_V3_SHA"' in source
+    assert 'cd "$RELEASE_TREE"' in source
+    assert "--step v3-tests" in source
+    assert "current application code against the exact released V3 database" not in source
+    assert "released V3 tree still reproduce its own" in source
+    assert "run_current_product.sh" not in source
 
 
 def test_python_quality_job_owns_file_budget_canonically() -> None:
