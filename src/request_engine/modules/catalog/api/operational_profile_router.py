@@ -25,7 +25,10 @@ from request_engine.modules.catalog.application.commands.update_location_operati
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
-IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=250)]
+IdempotencyKey = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=1, max_length=250),
+]
 
 
 class LocationBody(BaseModel):
@@ -87,16 +90,62 @@ def create_operational_profile_router(
         return await actor_resolver.resolve_actor(request)
 
     @router.post("")
-    async def create(body: LocationBody, key: IdempotencyKey, current: Annotated[ActorContext, Depends(actor)]) -> object:
-        return await create_location(create_handler, CreateLocationCommand(organization_id=current.organization_id, principal_id=current.principal_id, idempotency_key=key, **body.model_dump()))
+    async def create(
+        body: LocationBody,
+        key: IdempotencyKey,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> object:
+        payload = body.model_dump()
+        return await create_location(
+            create_handler,
+            CreateLocationCommand(
+                organization_id=current.organization_id,
+                principal_id=current.principal_id,
+                idempotency_key=key,
+                **payload,
+            ),
+        )
 
     @router.patch("/{location_id}")
-    async def update(location_id: UUID, body: LocationUpdateBody, key: IdempotencyKey, current: Annotated[ActorContext, Depends(actor)]) -> object:
-        return await update_location_operational_info(update_handler, UpdateLocationOperationalInfoCommand(organization_id=current.organization_id, principal_id=current.principal_id, location_id=location_id, idempotency_key=key, **body.model_dump()))
+    async def update(
+        location_id: UUID,
+        body: LocationUpdateBody,
+        key: IdempotencyKey,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> object:
+        payload = body.model_dump()
+        return await update_location_operational_info(
+            update_handler,
+            UpdateLocationOperationalInfoCommand(
+                organization_id=current.organization_id,
+                principal_id=current.principal_id,
+                location_id=location_id,
+                idempotency_key=key,
+                **payload,
+            ),
+        )
 
     @router.put("/{location_id}/contacts")
-    async def contacts(location_id: UUID, body: LocationContactsBody, key: IdempotencyKey, current: Annotated[ActorContext, Depends(actor)]) -> object:
-        values = tuple(LocationPublicContactInput(item.channel, item.value, item.label) for item in body.contacts)
-        return await set_location_public_contacts(contacts_handler, SetLocationPublicContactsCommand(organization_id=current.organization_id, principal_id=current.principal_id, authority_party_id=body.authority_party_id, location_id=location_id, contacts=values, idempotency_key=key))
+    async def contacts(
+        location_id: UUID,
+        body: LocationContactsBody,
+        key: IdempotencyKey,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> object:
+        values = tuple(
+            LocationPublicContactInput(item.channel, item.value, item.label)
+            for item in body.contacts
+        )
+        return await set_location_public_contacts(
+            contacts_handler,
+            SetLocationPublicContactsCommand(
+                organization_id=current.organization_id,
+                principal_id=current.principal_id,
+                authority_party_id=body.authority_party_id,
+                location_id=location_id,
+                contacts=values,
+                idempotency_key=key,
+            ),
+        )
 
     return router
