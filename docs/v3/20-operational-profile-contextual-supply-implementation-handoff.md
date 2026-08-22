@@ -17,13 +17,13 @@ Testing/evidence semantics are owned by repository testing governance.
 The accepted F1 implementation scope is complete in code:
 
 ```text
-Organization operational defaults + central public contacts
+Organization operational defaults + canonical central public contacts
 Location structured operational profile, contacts, hours and exceptions
 ResourceLocationAssignment lifecycle
 Resource-at-Location recurrence and scoped exceptions
 explicit Resource-wide schedule-exception semantic mutation
 OfferingVersion base terms + contextual fixed terms
-future-effective contextual terms
+future-effective contextual terms through semantic supersession/cutover
 catalog detail eligible-Location context hints
 explicit Resource preference or any eligible Resource in find_slots
 aptopt_v2 material observations
@@ -31,6 +31,8 @@ contextual find_slots -> book
 immutable Reservation commercial commitment + 0..N contextual provenance
 CapacityClaim assignment provenance
 shared-capacity compatibility
+separate authenticated operational/control-plane HTTP composition root
+machine-readable operational HTTP authority/validation/conflict semantics
 contextual hold/reschedule fail-closed boundary
 released aptopt_v1 compatibility
 ```
@@ -39,69 +41,119 @@ No F2-F6 capability is required to close this branch.
 
 ## 2. Adversarial capability audit
 
-A capability-first audit intentionally ignored earlier green CI and rebuilt the required inventory from docs 13/15. It found three real gaps that schema/table existence had hidden:
+A capability-first audit intentionally ignored earlier green CI and rebuilt the required inventory from docs 13/15. The first pass found three product-surface gaps:
 
 ```text
-1. Resource-wide schedule_exceptions affected availability and booking,
+A. Resource-wide schedule_exceptions affected availability and booking,
    but there was no supported semantic mutation command.
 
-2. find_slots supported implicit "any eligible Resource" but no explicit
+B. find_slots supported implicit "any eligible Resource" but no explicit
    Resource preference.
 
-3. catalog offering detail exposed version defaults but no safe contextual
+C. catalog offering detail exposed version defaults but no safe contextual
    Location-eligibility hint.
 ```
 
-All three are now implemented.
+All three were implemented and proven. A deeper closure pass then found four additional integration-quality gaps:
+
+```text
+D. Future-effective contextual terms were proven with direct SQL mutation
+   instead of the supported product path.
+
+E. Administrative /v1/operations routes risked becoming part of the frozen
+   public API when composed into create_app().
+
+F. Expected operational authority, validation and stale-configuration errors
+   could escape without stable HTTP semantics.
+
+G. Public contact values lacked one canonical representation, allowing
+   semantically duplicate phone/WhatsApp/email endpoints.
+```
+
+All four are now closed without weakening file-budget, architecture or compatibility guards.
+
+## 3. Closure details
 
 ### Resource-wide semantic exception mutation
 
-`SetResourceScheduleExceptionCommand` and its PostgreSQL adapter provide:
-
-```text
-tenant transaction
-authority check
-idempotency
-expected Resource availability revision
-create/update of released schedule_exceptions
-audit record
-opaque tenant-safe rejection
-```
+`SetResourceScheduleExceptionCommand` and its PostgreSQL adapter provide tenant authority, idempotency, expected Resource availability revision, create/update behavior over released `schedule_exceptions`, audit and opaque conflict handling.
 
 The initial implementation exceeded repository file budgets. The guard was not weakened; persistence, codec and audit responsibilities were separated into focused modules.
 
 ### Explicit Resource preference
 
-`FindAppointmentSlotsQuery.resource_id` and `GET /v1/appointments/slots?resource_id=...` now support explicit provider/Resource preference.
-
-The preference is applied before contextualization, slot generation and limit so the planner cannot produce a false empty result after generating slots for another eligible Resource. Multi-resource requirements that the selected Resource does not satisfy remain normally resolvable.
-
-Unknown and foreign-tenant Resource IDs produce the same opaque empty discovery result.
+`FindAppointmentSlotsQuery.resource_id` and `GET /v1/appointments/slots?resource_id=...` support explicit Resource preference before contextualization, slot generation and limit. Unknown and foreign-tenant Resource IDs remain equally opaque. Multi-resource requirements not satisfied by the preferred Resource remain normally resolvable.
 
 ### Catalog contextual Location hints
 
-Offering detail now exposes optional `eligible_location_ids` computed from:
+Offering detail exposes optional `eligible_location_ids` derived from active Location, all OfferingVersion resource requirements, matching active Resources/capabilities, active/effective ResourceLocationAssignments and required quantity. It does not fabricate a contextual price before concrete context exists. The field is omitted when F1 schema is unavailable, preserving released V3 JSON shape.
+
+### Semantic future-term supersession
+
+Future-effective contextual terms now use `SupersedeBookingContextTermsCommand` rather than direct test SQL. The command path owns:
 
 ```text
-active Location
-all OfferingVersion resource requirements
-active Resource with matching capability
-active/effective ResourceLocationAssignment
-required quantity
+tenant transaction
+authority
+idempotency + request fingerprint
+expected current revision
+Resource / assignment locking
+atomic old-range cutover + successor insertion
+audit + replay result
+overlap/conflict classification
 ```
 
-It does not fabricate one contextual price before a concrete Resource/Location context exists. The field is omitted when F1 schema is unavailable, preserving released V3 JSON shape.
+The temporal provenance test now uses this product path and retains SQL only for observation/evidence.
 
-## 3. Current-product evidence
+### Canonical public contacts
 
-Canonical successful adversarial closure checkpoint before this documentation-only reconciliation:
+Public contact input is canonicalized before persistence:
 
 ```text
-feature head: ea899e70060441d9247a4226d6949ae6773ca095
-PR CI run:   32569661743
+phone / whatsapp -> international E.164
+email            -> stripped + case-folded canonical address
 ```
 
-That run passed:
+Invalid values produce a typed validation error and canonical duplicates are rejected.
+
+### Separate operational HTTP composition root
+
+Administrative routes are not installed into the public `create_app()` surface. They are composed through `create_operational_app()` with module-owned `install_operational_http()` installers for Tenancy, Catalog and Booking.
+
+Architecture fitness tests now enforce:
+
+```text
+public app does not compose operational_composition
+operational app does not compose module_composition
+HTTP entrypoints may reach modules only through modules.*.api
+entrypoints never reach module adapters
+operational installers remain module-owned connection surfaces
+```
+
+This preserves the frozen public operation registry rather than expanding it merely to make tests green.
+
+### Operational HTTP error semantics
+
+Expected control-plane failures now have stable machine-readable envelopes:
+
+```text
+403 operational_authority_required -> request_authority
+422 public_contact_invalid          -> fix_request
+409 module revision/config conflict -> refresh_and_retry
+```
+
+The implementation intentionally does not catch `ValueError` globally, so programming defects are not misclassified as caller errors.
+
+## 4. Current-product evidence
+
+Canonical successful functional checkpoint before this documentation reconciliation:
+
+```text
+feature head: 89c1ceaedf54760973018750656d5f38da5a3097
+PR CI run:   32577169964
+```
+
+That exact run passed:
 
 ```text
 Python quality and architecture                         PASS
@@ -118,31 +170,36 @@ The current-product proof included:
 ```text
 9 schema/runtime tests
 6 business/catalog/opacity tests
-18 semantic/configuration tests
+21 semantic/configuration tests
 21 contextual booking/race/provenance tests
-144 production-like E2E tests
+146 production-like E2E tests
 31 current booking/capacity regression tests
 ```
 
 Notable explicit proofs include:
 
 ```text
-Resource-wide semantic command create/update/idempotency/revision behavior
-explicit Resource preference + unknown/foreign opacity + booked preferred claim
-catalog offering detail includes only eligible contextual Locations
-multi-resource contextual commercial provenance
-context-only commercial terms
+Resource-wide semantic exception lifecycle
+explicit Resource preference + unknown/foreign opacity + persisted preferred claim
+catalog offering detail eligible contextual Locations
+semantic future-term supersession + temporal source provenance
+canonical duplicate public-contact rejection
+operator HTTP 403/422/409 behavior through runtime PostgreSQL
+public/operator composition-root separation
+multi-resource and context-only commercial provenance
 shared-capacity contention
-config-vs-book races
+configuration-vs-book races
 DST gap/fold
 Offering deactivation race
 stale contextual option refresh-and-retry
 contextual reschedule fail-closed
 ```
 
-## 4. Test architecture
+The E2E suite increased from 144 to 146 because the operational HTTP surface now has production-like authority/validation/conflict coverage.
 
-The durable evidence model is:
+## 5. Test architecture
+
+The durable evidence model remains:
 
 ```text
 CURRENT PRODUCT
@@ -158,38 +215,36 @@ V3 HISTORICAL REPRODUCIBILITY
 
 `scripts/ci/run_current_product.sh` executes the PostgreSQL-marked E2E suite in addition to F1 integration and current booking/capacity regression evidence. Historical V3 proof is pinned separately and does not freeze current architecture.
 
-## 5. File-budget correction
+## 6. File-budget and static-quality closure
 
-The first adversarial fixes were rejected by the Python effective-line budget because they grew legacy oversized modules. We did not increase limits or add ignores.
-
-Responsibilities were extracted into focused modules including:
+No file-budget limit, ignore or architecture guard was loosened. The final functional checkpoint passed:
 
 ```text
-booking/adapters/db/candidate_source.py
-booking/adapters/db/resource_schedule_exception_store.py
-booking/adapters/db/resource_schedule_exception_codec.py
-booking/adapters/db/resource_schedule_exception_audit.py
-catalog/adapters/db/contextual_location_hints.py
-catalog/adapters/db/offering_mapping.py
-catalog/api/offering_models.py
-tests/e2e/contextual_resource_support.py
+Python effective line budget
+Ruff lint
+Ruff format
+Pyright strict
+secret scan
+Python security static analysis
+dependency vulnerability audit
+architecture tests
+test architecture/evidence inventory
 ```
 
-The final Python-quality checkpoint passed file budget, Ruff, formatting, Pyright, security/static checks, architecture tests and unit/module tests.
+Where new responsibilities would have grown oversized modules, they were split into focused files rather than exempted.
 
-## 6. Integration state
+## 7. Integration state
 
-At the adversarial closure checkpoint:
+At the functional checkpoint:
 
 ```text
 base development: 9665873a90ecbaa52a17b4aff1ec4d1cd4c70573
-behind development: 0
 PR #75 mergeable: true
 ```
 
-This documentation reconciliation creates a later head, so the repository rule remains: do not call the branch merge-ready until PR CI is green on that exact later head as well.
+This documentation reconciliation creates a later head. Therefore the run above is evidence for the implementation, not permission to borrow green status for the documentation-inclusive head.
 
-## 7. Documentation disposition
+## 8. Documentation disposition
 
 ```text
 13  implementation/acceptance plan                     CURRENT
@@ -203,17 +258,18 @@ This documentation reconciliation creates a later head, so the repository rule r
 21  documentation/evidence closure audit               CURRENT INFORMATIVE
 ```
 
-## 8. Remaining pre-merge gate
+## 9. Remaining pre-merge gate
 
-Only exact-head evidence remains after any documentation-only reconciliation:
+After these documentation commits require a fresh exact-head PR run and verify:
 
 ```text
 latest branch head == PR head
 behind development = 0
 PR mergeable
 all required PR jobs PASS on that exact head
-no accidental scope leakage
+no unresolved review blocker
+no accidental F2-F6/product scope leakage
 ADR 0012 remains Proposed until its documented integration condition is met
 ```
 
-Any commit after the final successful run invalidates the evidence and requires a fresh exact-head run.
+Any later commit invalidates the exact-head proof and requires a new run.
