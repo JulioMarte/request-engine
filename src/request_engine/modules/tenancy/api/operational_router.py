@@ -50,7 +50,6 @@ def create_operational_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.patch("/profile")
     async def update_profile(
         body: OrganizationProfileBody,
         idempotency_key: IdempotencyKey,
@@ -72,7 +71,6 @@ def create_operational_router(
             command,
         )
 
-    @router.put("/contacts")
     async def set_contacts(
         body: OrganizationContactsBody,
         idempotency_key: IdempotencyKey,
@@ -98,4 +96,6 @@ def create_operational_router(
             command,
         )
 
+    router.add_api_route("/profile", update_profile, methods=["PATCH"])
+    router.add_api_route("/contacts", set_contacts, methods=["PUT"])
     return router
