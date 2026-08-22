@@ -24,7 +24,7 @@ from request_engine.modules.booking.application.commands.supersede_booking_conte
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
 )
-from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.db.session import SessionFactory, tenant_transaction as tx
 from request_engine.platform.idempotency.postgres import acquire_idempotency, command_fingerprint
 from request_engine.platform.security.operational_authority import (
     MANAGE_COMMERCIAL_TERMS_SCOPE,
@@ -46,7 +46,7 @@ class PostgresContextualTermsSupersessionCommands:
             codec.command_payload(command, cutover=cutover),
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tx(self._session_factory, command.organization_id) as session:
                 idem_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
