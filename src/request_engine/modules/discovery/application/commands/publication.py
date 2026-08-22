@@ -42,7 +42,9 @@ class DiscoveryPublicationState:
 
 
 class PublishDiscoverySupplyHandler(Protocol):
-    async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState: ...
+    async def publish(
+        self, command: PublishDiscoverySupplyCommand
+    ) -> DiscoveryPublicationState: ...
 
 
 class RevokeDiscoveryPublicationHandler(Protocol):
