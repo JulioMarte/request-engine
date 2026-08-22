@@ -154,9 +154,7 @@ class PostgresOfferingCatalogReader:
                 + "\nORDER BY o.display_name, o.id\nLIMIT :limit"
             )
             rows = (await session.execute(statement, parameters)).mappings().all()
-        return tuple(
-            offering_mapping.from_row(row, f1_available=f1_available) for row in rows
-        )
+        return tuple(offering_mapping.from_row(row, f1_available=f1_available) for row in rows)
 
     async def get_offering_by_key(
         self,
