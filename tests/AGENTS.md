@@ -25,6 +25,7 @@ Conversely, do not turn FLEXIBLE details such as exact test filenames, test coun
 - `tests/historical/` is reserved for pinned release provenance/compatibility. Historical evidence must not force current Request Engine head to preserve an obsolete implementation shape.
 - Classify what a test proves with pytest markers instead of creating parallel physical trees for `invariant`, `contract`, `adversarial`, or similar evidence classes. Physical location answers who owns the proof; markers answer what evidence it provides.
 - Feature-local integration suites may exist while a feature is under active development. Before/at promotion into the current product, disposition them as durable current proof, historical evidence, replacement, or genuine redundancy rather than accumulating feature-era suites forever.
+- Keep new test files near 100 effective code lines and at or below the 120-line hard maximum. The 101–120 range is deliberate tolerance. Blank/comment-only lines do not count; docstrings do. Existing oversized test files are ratcheted and may not grow.
 
 ## Correctness-sensitive evidence
 
