@@ -17,7 +17,6 @@ from request_engine.modules.booking.application.commands.set_resource_schedule_e
 )
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
-    ResourceAvailabilityRevisionConflict,
 )
 from request_engine.modules.booking.domain.availability import require_aware_utc
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
@@ -69,21 +68,12 @@ class PostgresResourceScheduleExceptionCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_CONTEXTUAL_SUPPLY_SCOPE,
                 )
-                active, current_revision = await store.lock_resource(
+                current_revision = await store.require_resource_revision(
                     session,
                     organization_id=command.organization_id,
                     resource_id=command.resource_id,
+                    expected_revision=command.expected_resource_availability_revision,
                 )
-                if not active:
-                    raise ContextualConfigurationConflict(
-                        "Resource must be active to configure schedule exceptions"
-                    )
-                if current_revision != command.expected_resource_availability_revision:
-                    raise ResourceAvailabilityRevisionConflict(
-                        command.resource_id,
-                        command.expected_resource_availability_revision,
-                        current_revision,
-                    )
                 exception_id = await store.upsert_exception(
                     session,
                     organization_id=command.organization_id,
