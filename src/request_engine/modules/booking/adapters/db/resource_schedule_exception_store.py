@@ -48,9 +48,7 @@ async def require_resource_revision(
         )
     current_revision = cast(int, row["availability_revision"])
     if current_revision != expected_revision:
-        raise ResourceAvailabilityRevisionConflict(
-            resource_id, expected_revision, current_revision
-        )
+        raise ResourceAvailabilityRevisionConflict(resource_id, expected_revision, current_revision)
     return current_revision
 
 
