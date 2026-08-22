@@ -32,6 +32,20 @@ CREATE TABLE request_engine.service_classifications (
     CHECK (revision > 0)
 );
 
+CREATE TABLE request_engine.service_classification_authority_events (
+    id uuid PRIMARY KEY DEFAULT uuidv7(),
+    service_classification_id uuid NOT NULL
+        REFERENCES request_engine.service_classifications(id),
+    action text NOT NULL,
+    authority_ref text NOT NULL,
+    reason text NOT NULL,
+    database_session_user text NOT NULL DEFAULT session_user,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    CHECK (action IN ('created', 'retired')),
+    CHECK (btrim(authority_ref) <> ''),
+    CHECK (btrim(reason) <> '')
+);
+
 CREATE TABLE request_engine.offering_service_classifications (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     organization_id uuid NOT NULL REFERENCES request_engine.organizations(id),
@@ -137,6 +151,9 @@ FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f1_exact_revision_step();
 CREATE TRIGGER service_classifications_touch
 BEFORE UPDATE ON request_engine.service_classifications
 FOR EACH ROW EXECUTE FUNCTION request_engine.touch_updated_at();
+CREATE TRIGGER service_classification_authority_events_append_only
+BEFORE UPDATE OR DELETE ON request_engine.service_classification_authority_events
+FOR EACH ROW EXECUTE FUNCTION request_engine.reject_immutable_mutation();
 CREATE TRIGGER offering_service_classifications_lifecycle
 BEFORE UPDATE ON request_engine.offering_service_classifications
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f2_mapping_lifecycle();
@@ -172,6 +189,7 @@ CREATE POLICY discovery_publications_tenant_policy
 
 REVOKE ALL ON TABLE
     request_engine.service_classifications,
+    request_engine.service_classification_authority_events,
     request_engine.offering_service_classifications,
     request_engine.discovery_publications
 FROM PUBLIC;
@@ -182,11 +200,13 @@ GRANT SELECT, INSERT, UPDATE ON TABLE
 TO request_engine_app;
 GRANT ALL PRIVILEGES ON TABLE
     request_engine.service_classifications,
+    request_engine.service_classification_authority_events,
     request_engine.offering_service_classifications,
     request_engine.discovery_publications
 TO request_engine_admin;
 REVOKE ALL ON TABLE
     request_engine.service_classifications,
+    request_engine.service_classification_authority_events,
     request_engine.offering_service_classifications,
     request_engine.discovery_publications
 FROM request_engine_worker;
@@ -198,6 +218,102 @@ FROM PUBLIC;
 
 RESET ROLE;
 RESET search_path;
+"""
+
+_ADMIN_SQL = r"""
+SET ROLE request_engine_schema_owner;
+SET search_path = request_admin, request_engine, pg_catalog;
+
+CREATE FUNCTION request_admin.create_service_classification(
+    p_classification_key text,
+    p_canonical_name text,
+    p_authority_ref text,
+    p_reason text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_id uuid;
+BEGIN
+    IF btrim(COALESCE(p_authority_ref, '')) = '' OR btrim(COALESCE(p_reason, '')) = '' THEN
+        RAISE EXCEPTION 'authority_ref and reason are required' USING ERRCODE = '22023';
+    END IF;
+    INSERT INTO request_engine.service_classifications (classification_key, canonical_name)
+    VALUES (p_classification_key, p_canonical_name)
+    RETURNING id INTO v_id;
+    INSERT INTO request_engine.service_classification_authority_events (
+        service_classification_id, action, authority_ref, reason
+    ) VALUES (v_id, 'created', p_authority_ref, p_reason);
+    RETURN v_id;
+END
+$function$;
+
+CREATE FUNCTION request_admin.retire_service_classification(
+    p_service_classification_id uuid,
+    p_expected_revision bigint,
+    p_authority_ref text,
+    p_reason text
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_revision bigint;
+    v_status text;
+BEGIN
+    IF btrim(COALESCE(p_authority_ref, '')) = '' OR btrim(COALESCE(p_reason, '')) = '' THEN
+        RAISE EXCEPTION 'authority_ref and reason are required' USING ERRCODE = '22023';
+    END IF;
+    SELECT revision, status INTO v_revision, v_status
+      FROM request_engine.service_classifications
+     WHERE id = p_service_classification_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'ServiceClassification not found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_status <> 'active' OR v_revision <> p_expected_revision THEN
+        RAISE EXCEPTION 'ServiceClassification revision/status conflict' USING ERRCODE = '40001';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM request_engine.offering_service_classifications
+         WHERE service_classification_id = p_service_classification_id
+           AND status = 'active'
+    ) THEN
+        RAISE EXCEPTION 'active Offering mappings still reference ServiceClassification'
+            USING ERRCODE = '55000';
+    END IF;
+    UPDATE request_engine.service_classifications
+       SET status = 'retired', revision = revision + 1
+     WHERE id = p_service_classification_id
+     RETURNING revision INTO v_revision;
+    INSERT INTO request_engine.service_classification_authority_events (
+        service_classification_id, action, authority_ref, reason
+    ) VALUES (p_service_classification_id, 'retired', p_authority_ref, p_reason);
+    RETURN v_revision;
+END
+$function$;
+
+REVOKE ALL ON FUNCTION
+    request_admin.create_service_classification(text, text, text, text),
+    request_admin.retire_service_classification(uuid, bigint, text, text)
+FROM PUBLIC;
+
+RESET ROLE;
+RESET search_path;
+
+ALTER FUNCTION request_admin.create_service_classification(text, text, text, text)
+    OWNER TO request_engine_admin;
+ALTER FUNCTION request_admin.retire_service_classification(uuid, bigint, text, text)
+    OWNER TO request_engine_admin;
+GRANT EXECUTE ON FUNCTION
+    request_admin.create_service_classification(text, text, text, text),
+    request_admin.retire_service_classification(uuid, bigint, text, text)
+TO request_engine_admin;
 """
 
 _READ_SQL = r"""
@@ -313,10 +429,6 @@ REVOKE ALL ON FUNCTION request_engine.search_discovery_candidates(
 RESET ROLE;
 RESET search_path;
 
--- The function is a deliberate cross-tenant privilege boundary. Its owner is
--- the NOLOGIN/BYPASSRLS administrative role, while runtime receives EXECUTE
--- only. The function has no dynamic SQL and returns only publication-approved
--- operational identifiers/public labels needed to compose F2 options.
 ALTER FUNCTION request_engine.search_discovery_candidates(
     text, double precision, double precision, integer, timestamptz, timestamptz, integer
 ) OWNER TO request_engine_admin;
@@ -328,6 +440,7 @@ GRANT EXECUTE ON FUNCTION request_engine.search_discovery_candidates(
 
 def upgrade() -> None:
     op.execute(_SCHEMA_SQL)
+    op.execute(_ADMIN_SQL)
     op.execute(_READ_SQL)
 
 
