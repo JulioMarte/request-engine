@@ -2,9 +2,9 @@
 
 Applies to `src/request_engine/modules/**` in addition to the root `AGENTS.md`.
 
-Before editing a module, read its `README.md`, confirm ownership in `docs/10-module-ownership-map.md`, identify the capability (`Query`, `Command`, `Request`, or scheduled business action), the V3 invariant/promise affected, and every architectural connection surface the change crosses.
+Before editing a module, read its `README.md`, confirm ownership in `docs/10-module-ownership-map.md`, identify the capability (`Query`, `Command`, `Request`, or scheduled business action), the V3/current invariant or promise affected, and every architectural connection surface the change crosses. For repository/type-boundary rules also read `docs/testing/repository-governance-contract.md`.
 
-## V3 module status
+## V3/current module status
 
 Baseline modules:
 
@@ -53,6 +53,28 @@ adapters/db + adapters/providers
 ```
 
 Business transport belongs to the module. `modules/<owner>/api` owns its routers, transport DTOs and business-to-HTTP error mapping. Process entrypoints compose that published API surface; they must not reach into module DB/provider adapters.
+
+## DTO and naming boundary
+
+Transport, business contracts, domain values, and persistence models are deliberately distinct even when their fields happen to match today:
+
+```text
+HTTP request Body      != application Command
+HTTP response View     != domain/cross-module contract
+cross-module contract  != persistence row
+provider SDK type      != business contract
+```
+
+Business-module `domain`, `application`, and `contracts` must remain independent of Pydantic. Pydantic belongs at transport/configuration boundaries, not in business semantics.
+
+Current HTTP transport naming convention:
+
+- request JSON models: descriptive `*Body`;
+- response/read projections: descriptive `*View`;
+- future transport-only path/query models: an explicit transport suffix such as `*Params`;
+- cross-module `contracts`: business names, never transport/persistence suffixes such as `Body`, `View`, `Row`, `ORM`, or provider-specific SDK names.
+
+Do not rename these categories into ambiguous generic `Model`/`Schema` objects merely to reduce mapping code. The mapping is intentional boundary evidence.
 
 ## Connection surfaces
 
@@ -107,7 +129,9 @@ Create folders only when real code needs them. A small module may begin with a f
   README.md
 ```
 
-Do not create generic `services.py`, `helpers.py`, `utils.py`, `common.py`, `managers.py`, or one global repository abstraction to avoid deciding ownership.
+Do not create generic business dumping grounds such as `services.py`, `helpers.py`, `utils.py`, `common.py`, or `managers.py`. Do not use a generic `repositories.py` or shared business `models.py` to avoid deciding ownership. `api/models.py` is acceptable specifically as the module-owned transport DTO boundary; persistence models remain adapter-local and private.
+
+Use semantic operation names that expose intent (`BookAppointment`, `JoinQueue`, `RecordDeliveryResult`) rather than table-mutation language (`SetStatus`, generic `UpdateEntity`) unless the latter is genuinely the accepted business capability.
 
 ## Commands and persistence
 
