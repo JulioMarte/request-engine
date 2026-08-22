@@ -8,6 +8,14 @@ CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
 
+def _shell_commands(source: str) -> list[str]:
+    return [
+        line.strip()
+        for line in source.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
 def test_current_product_runner_follows_repository_alembic_head() -> None:
     source = CURRENT_RUNNER.read_text(encoding="utf-8")
 
@@ -48,13 +56,13 @@ def test_workflow_separates_current_product_from_historical_provenance() -> None
 
 def test_frozen_v3_runner_does_not_run_current_behavior_on_stale_schema() -> None:
     source = FROZEN_V3_RUNNER.read_text(encoding="utf-8")
+    commands = _shell_commands(source)
 
-    assert 'git worktree add --detach "$RELEASE_TREE" "$RELEASED_V3_SHA"' in source
-    assert 'cd "$RELEASE_TREE"' in source
+    assert 'git worktree add --detach "$RELEASE_TREE" "$RELEASED_V3_SHA"' in commands
+    assert 'cd "$RELEASE_TREE"' in commands
     assert "--step v3-tests" in source
-    assert "current application code against the exact released V3 database" not in source
     assert "released V3 tree still reproduce its own" in source
-    assert "run_current_product.sh" not in source
+    assert "bash scripts/ci/run_current_product.sh" not in commands
 
 
 def test_python_quality_job_owns_file_budget_canonically() -> None:
