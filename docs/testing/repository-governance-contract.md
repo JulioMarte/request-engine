@@ -81,12 +81,13 @@ provider SDK type     != domain/application contract
 
 Current transport naming convention:
 
-- HTTP JSON request bodies use a descriptive `*Body` class;
+- top-level HTTP JSON request bodies use a descriptive `*Body` class;
 - HTTP response/read projections use a descriptive `*View` class;
 - transport-only query/path helper models, if introduced, use a transport-explicit suffix such as `*Params` rather than masquerading as a domain entity;
+- nested request components may use a descriptive transport-explicit suffix such as `*InputModel`; they are not required to masquerade as top-level `*Body` objects merely to satisfy a filename/class snapshot;
 - module cross-boundary business values live under `contracts` and use business language rather than `Body`, `View`, `Row`, `ORM`, `Schema`, or provider-specific names.
 
-The suffix itself is not valuable because of spelling; it is valuable because it makes the boundary visible to humans and LLMs. Changing the convention is CONTROLLED and must update this contract and its fitness function together.
+The spelling itself is not the invariant. The invariant is that transport role remains visible and cannot be confused with domain/application/contracts/persistence. Changing the accepted transport naming convention is CONTROLLED and must update this contract and its fitness function together.
 
 Pydantic is a transport/configuration technology. Business-module `domain`, `application`, and cross-module `contracts` must not depend on it. Bootstrap/runtime configuration may use Pydantic where appropriate because that is a technical boundary, not a business DTO boundary.
 
@@ -125,6 +126,8 @@ nearest local instruction file adds stricter path-specific rules
 Important boundaries (`docs`, `migrations`, `src/request_engine/modules`, `tests`) must provide local `AGENTS.md` instructions and matching Claude/Gemini adapters where those tools are supported. Adapter files must route to the local/root `AGENTS.md`; they must not become independent architecture manuals with contradictory rules.
 
 A durable architecture/test rule belongs in canonical documentation first. Agent instructions may summarize it and link to it. If an LLM needs a rule to work safely and repeatedly, that rule should be discoverable from the root instruction map and, when path-sensitive, from the nearest local instruction file.
+
+Historical/current-document tests must distinguish **authority direction** from **mere mention**. A current instruction file may mention an obsolete document precisely to warn an LLM not to use it; fitness should reject stale authority, not the explanatory string itself.
 
 ## 5. Documentation integrity
 
