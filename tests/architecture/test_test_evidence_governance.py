@@ -23,8 +23,7 @@ def test_evidence_guide_requires_falsifiable_real_postgres_proofs() -> None:
     assert "capable of failing" in guide
     assert "real PostgreSQL 18" in guide
     assert "complete and valid business world" in guide
-    assert "Direct SQL" in guide
-    assert "must not pre-create the expected outcome" in guide
+    assert "not** permission to manufacture the result being tested" in guide
     assert "independent connections/Sessions/transactions" in guide
 
 
