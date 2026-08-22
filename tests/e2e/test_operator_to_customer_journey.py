@@ -82,4 +82,4 @@ async def test_operator_configuration_becomes_customer_visible_through_public_ap
     assert business["default_currency"] == "DOP"
     values = {(item["channel"], item["value"]) for item in business["contacts"]}
     assert ("phone", "+18095550199") in values
-    assert ("email", "Info@example.test") in values
+    assert ("email", "info@example.test") in values
