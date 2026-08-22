@@ -45,7 +45,6 @@ def create_operational_profile_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("")
     async def create(
         body: LocationBody,
         key: IdempotencyKey,
@@ -61,7 +60,6 @@ def create_operational_profile_router(
             ),
         )
 
-    @router.patch("/{location_id}")
     async def update(
         location_id: UUID,
         body: LocationUpdateBody,
@@ -79,7 +77,6 @@ def create_operational_profile_router(
             ),
         )
 
-    @router.put("/{location_id}/contacts")
     async def contacts(
         location_id: UUID,
         body: LocationContactsBody,
@@ -102,4 +99,7 @@ def create_operational_profile_router(
             ),
         )
 
+    router.add_api_route("", create, methods=["POST"])
+    router.add_api_route("/{location_id}", update, methods=["PATCH"])
+    router.add_api_route("/{location_id}/contacts", contacts, methods=["PUT"])
     return router
