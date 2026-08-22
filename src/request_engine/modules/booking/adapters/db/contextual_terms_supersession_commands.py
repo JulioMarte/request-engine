@@ -18,8 +18,14 @@ from request_engine.modules.booking.application.commands.supersede_booking_conte
 from request_engine.modules.booking.application.operational_errors import (
     ContextualConfigurationConflict,
 )
-from request_engine.platform.db.session import SessionFactory, tenant_transaction as tx
-from request_engine.platform.idempotency.postgres import acquire_idempotency, command_fingerprint
+from request_engine.platform.db.session import (
+    SessionFactory,
+    tenant_transaction as tx,
+)
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    command_fingerprint,
+)
 from request_engine.platform.security.operational_authority import (
     MANAGE_COMMERCIAL_TERMS_SCOPE,
     require_operational_authority,
