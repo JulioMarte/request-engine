@@ -71,6 +71,11 @@ _ROUTES = (
         "PUT",
         "/v1/operations/discovery/offerings/{offering_id}/classification",
     ),
+    (
+        "discovery.mapping_revoke",
+        "POST",
+        "/v1/operations/discovery/offerings/{offering_id}/classification/revoke",
+    ),
     ("discovery.publish", "POST", "/v1/operations/discovery/publications"),
     (
         "discovery.revoke",
@@ -90,6 +95,7 @@ _REVISION_OWNERS = {
     "resources.exception": "Resource.availability_revision",
     "context_terms.supersede": "BookingContextTerms.revision",
     "discovery.mapping": "OfferingServiceClassification.revision",
+    "discovery.mapping_revoke": "OfferingServiceClassification.revision",
     "discovery.revoke": "DiscoveryPublication.revision",
 }
 
