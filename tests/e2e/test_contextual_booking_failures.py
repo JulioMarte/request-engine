@@ -54,8 +54,9 @@ async def test_stale_contextual_option_is_http_409_without_partial_effects(
             headers=auth(sandbox, idempotency_key=f"stale-{uuid4().hex}"),
         )
     assert response.status_code == 409
-    assert response.json()["code"] == "appointment_option_stale"
-    assert response.json()["resolution"] == "refresh_and_retry"
+    error = response.json()["error"]
+    assert error["code"] == "appointment_option_stale"
+    assert error["resolution"] == "refresh_and_retry"
     assert durable_snapshot(e2e_admin_conn) == before
 
 
@@ -82,5 +83,8 @@ async def test_contextual_reschedule_fails_closed_without_mutation(
             headers=auth(sandbox, idempotency_key=f"reschedule-{uuid4().hex}"),
         )
     assert response.status_code == 422
-    assert response.json()["code"] == "contextual_commitment_unsupported"
+    error = response.json()["error"]
+    assert error["code"] == "contextual_commitment_unsupported"
+    assert error["resolution"] == "fix_request"
+    assert error["details"] == {"operation": "reschedule"}
     assert durable_snapshot(e2e_admin_conn) == before
