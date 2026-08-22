@@ -52,7 +52,6 @@ def create_operational_exception_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.put("/resource-assignments/{assignment_id}/exceptions")
     async def assignment_exception(
         assignment_id: UUID,
         body: ExceptionBody,
@@ -71,7 +70,6 @@ def create_operational_exception_router(
             command,
         )
 
-    @router.put("/resources/{resource_id}/exceptions")
     async def resource_exception(
         resource_id: UUID,
         body: ResourceExceptionBody,
@@ -90,4 +88,8 @@ def create_operational_exception_router(
             command,
         )
 
+    router.add_api_route(
+        "/resource-assignments/{assignment_id}/exceptions", assignment_exception, methods=["PUT"]
+    )
+    router.add_api_route("/resources/{resource_id}/exceptions", resource_exception, methods=["PUT"])
     return router
