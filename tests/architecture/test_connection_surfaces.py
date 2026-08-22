@@ -7,11 +7,16 @@ HTTP_ENTRYPOINT = SRC_ROOT / "entrypoints" / "http"
 MODULES_ROOT = SRC_ROOT / "modules"
 
 HTTP_MODULES = {"requests", "catalog", "booking", "queue"}
+OPERATIONAL_HTTP_MODULES = {"tenancy", "catalog", "booking"}
 ENTRYPOINT_ALLOWED_PYTHON = {
     "__init__.py",
     "app.py",
     "capabilities.py",
     "errors.py",
+    "module_composition.py",
+    "operational_app.py",
+    "operational_composition.py",
+    "operational_errors.py",
     "security.py",
 }
 
@@ -75,3 +80,18 @@ def test_http_module_installers_are_connection_surfaces() -> None:
         assert "def install_http(" in source
         assert "session_factory: SessionFactory" in source
         assert "actor_resolver: ActorResolver" in source
+
+
+def test_operational_http_module_installers_are_connection_surfaces() -> None:
+    for module_name in OPERATIONAL_HTTP_MODULES:
+        source = (MODULES_ROOT / module_name / "api" / "__init__.py").read_text(encoding="utf-8")
+        assert "def install_operational_http(" in source
+        assert "session_factory: SessionFactory" in source
+        assert "actor_resolver: ActorResolver" in source
+
+
+def test_public_and_operational_composition_roots_are_separate() -> None:
+    public_source = (HTTP_ENTRYPOINT / "app.py").read_text(encoding="utf-8")
+    operational_source = (HTTP_ENTRYPOINT / "operational_app.py").read_text(encoding="utf-8")
+    assert "operational_composition" not in public_source
+    assert "module_composition" not in operational_source
