@@ -39,5 +39,6 @@ def test_operational_registry_scope_families_are_explicit() -> None:
     assert by_name["offering_version.booking_terms"].authority_scope == TERMS_SCOPE
     assert by_name["context_terms.supersede"].authority_scope == TERMS_SCOPE
     assert by_name["discovery.mapping"].authority_scope == DISCOVERY_SCOPE
+    assert by_name["discovery.mapping_revoke"].authority_scope == DISCOVERY_SCOPE
     assert by_name["discovery.publish"].authority_scope == DISCOVERY_SCOPE
     assert by_name["discovery.revoke"].authority_scope == DISCOVERY_SCOPE
