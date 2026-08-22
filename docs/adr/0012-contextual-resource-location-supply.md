@@ -1,6 +1,6 @@
 # 0012 — Contextual Resource-at-Location Supply
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -48,7 +48,7 @@ The new configuration must not become a second capacity ledger or an excuse for 
 
 ## Decision
 
-Introduce an explicit effective-dated **Resource-at-Location assignment** concept in Booking, provisionally/canonically described as `ResourceLocationAssignment` until implementation proves the final persisted name.
+Introduce an explicit effective-dated **Resource-at-Location assignment** concept in Booking, canonically persisted as `ResourceLocationAssignment`.
 
 The assignment means:
 
@@ -140,9 +140,11 @@ Rejected. Ownership remains with existing business modules: tenancy for Organiza
 
 Rejected. V3 baseline documents/migration history remain provenance; this decision is a post-V3 extension implemented through append-only contracts/migrations.
 
-## Acceptance condition
+## Acceptance evidence
 
-This ADR remains `Proposed` until the feature implementation proves:
+The acceptance condition was satisfied by PR #75 and its exact-head CI proof before integration into `development`.
+
+Proven properties include:
 
 ```text
 clean + upgraded database paths
@@ -155,4 +157,6 @@ shared-capacity compatibility
 tenant/RLS boundaries
 ```
 
-After that proof and merge, the ADR may be marked `Accepted`.
+The accepted implementation was proven at feature head `2c688634d4e807f6ad909995da2e95bf8269f969` by canonical CI run `32584778096`, then merged into `development` as `929c3f3fba07e258054a34068bdf5aa4db064aa4` on 2026-08-22.
+
+The released `0001_initial` V3 migration remains historical provenance. F1 is integrated append-only through `0002_operational_profile_contextual_supply.py` and `0003_f1_runtime_acl_completion.py`.
