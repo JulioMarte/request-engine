@@ -40,6 +40,11 @@ path = "tests/integration/f1_operational_profile/test_contextual_booking_races.p
 evidence = ["invariant", "adversarial", "concurrency"]
 
 [[proofs]]
+guarantee = "INV-ATOMICITY-001"
+path = "tests/e2e/test_contextual_booking_journey.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
 guarantee = "INV-CAPACITY-001"
 path = "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"
 evidence = ["invariant", "adversarial", "concurrency", "capacity"]
@@ -68,6 +73,11 @@ evidence = ["invariant", "adversarial", "provenance", "temporal"]
 guarantee = "INV-PROVENANCE-001"
 path = "tests/integration/v3_reservation_lifecycle/test_reschedule_outbox_release_provenance.py"
 evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-PROVENANCE-001"
+path = "tests/e2e/test_contextual_booking_journey.py"
+evidence = ["contract", "provenance"]
 
 [[proofs]]
 guarantee = "INV-WORKER-001"
@@ -110,6 +120,11 @@ path = "tests/integration/f1_operational_profile/test_contextual_temporal_proven
 evidence = ["invariant", "temporal", "provenance"]
 
 [[proofs]]
+guarantee = "INV-TEMPORAL-001"
+path = "tests/e2e/test_contextual_location_separation.py"
+evidence = ["contract", "temporal"]
+
+[[proofs]]
 guarantee = "FIT-ARCH-001"
 path = "tests/architecture/test_dependency_policy.py"
 evidence = ["fitness"]
@@ -138,3 +153,8 @@ evidence = ["contract", "adversarial", "security"]
 guarantee = "INV-FAILURE-001"
 path = "tests/integration/v3_first_vertical/test_http_input_adversarial.py"
 evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-FAILURE-001"
+path = "tests/e2e/test_contextual_booking_journey.py"
+evidence = ["contract", "adversarial"]

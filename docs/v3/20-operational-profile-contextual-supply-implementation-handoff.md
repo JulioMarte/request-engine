@@ -2,454 +2,165 @@
 
 Status: current execution handoff for `feature/operational-profile-contextual-supply`.
 
-This document is **informative implementation/status guidance**, not a normative contract.
-
-Normative F1 precedence is now:
+This document is informative status/evidence guidance. Product semantics remain owned by:
 
 ```text
 docs/v3/15-operational-profile-contextual-supply-contract.md
   >
 docs/v3/13-operational-profile-contextual-supply-plan.md
-  >
-docs/v3/14-operational-intelligence-roadmap.md for future features
 ```
 
-`16-operational-profile-contextual-supply-clarifications.md` is historical adversarial-review provenance; its closed F1 findings have been consolidated into 15/13.
-
-Detailed proof/reconciliation record:
+Testing/evidence semantics are owned by:
 
 ```text
-docs/v3/21-operational-profile-contextual-supply-documentation-audit.md
+AGENTS.md
+tests/AGENTS.md
+docs/testing/repository-governance-contract.md
+docs/testing/evidence-authoring-guide.md
+docs/testing/current-guarantees.toml
 ```
 
----
+## 1. Feature status
 
-## 1. Exact proven implementation checkpoint
-
-The canonical Phase H code/proof checkpoint is:
+The accepted F1 implementation scope is complete in code:
 
 ```text
-c1966f04c0b36fbe8b5bc41f85bb69e8a6831503
-workflow run: 32516044052
+Organization operational defaults + central public contacts
+Location structured operational profile, contacts, hours and exceptions
+ResourceLocationAssignment lifecycle
+Resource-at-Location recurrence and scoped exceptions
+OfferingVersion base terms + contextual fixed terms
+future-effective contextual terms
+aptopt_v2 material observations
+contextual find_slots -> book
+immutable Reservation commercial commitment + 0..N contextual provenance
+CapacityClaim assignment provenance
+shared-capacity compatibility
+contextual hold/reschedule fail-closed boundary
+released aptopt_v1 compatibility
 ```
 
-Every required job on that SHA passed:
+No F2-F6 capability is required to close this branch.
+
+## 2. Current test architecture
+
+F1 was implemented while the repository test architecture was being corrected from a release-freeze-oriented layout to guarantee-oriented current-product evidence.
+
+The durable separation is now:
 
 ```text
-Python quality and architecture                         PASS
-PostgreSQL 18 F1 operational profile/contextual supply PASS
-PostgreSQL 18 V2 design history                        PASS
-PostgreSQL 18 V3 repeated bootstrap proof              PASS
-Observability runtime contract                         PASS
-PostgreSQL 18 frozen V3 compatibility                  PASS
-PostgreSQL 18 V3 candidate and verticals aggregate     PASS
+CURRENT PRODUCT
+  current source + current Alembic head
+  integration + PostgreSQL invariants + production-like E2E
+
+V3 PUBLIC COMPATIBILITY
+  current source + frozen V3 public-contract minima
+
+V3 HISTORICAL REPRODUCIBILITY
+  released V3 source + released 0001_initial
 ```
 
-The F1 job asserts the Alembic head is exactly:
+Historical V3 evidence may not require current Request Engine to execute on stale `0001_initial` or retain incidental V3 repository shape.
+
+`tests/integration/f1_operational_profile/` may remain feature-local until PR #75 integrates. Its physical promotion/rename by durable ownership is post-merge cleanup, not a merge blocker. Its guarantees already execute from `scripts/ci/run_current_product.sh`.
+
+## 3. E2E closure correction
+
+During final branch review, one gap was found in the test-architecture migration: `scripts/ci/run_current_product.sh` executed F1 integration and current booking/capacity regression suites but no longer executed `tests/e2e/`.
+
+That would have allowed a false-green current-product gate in which HTTP/runtime journeys silently rotted.
+
+The runner is therefore corrected to execute:
 
 ```text
-0002_f1_supply
+tests/e2e
 ```
 
-Documentation-consolidation commits follow that green code checkpoint. Therefore a **new exact-head canonical run is required after P6 cleanup** before merge readiness, even though Phase H itself is proven.
+against current Alembic head using the existing production-like E2E framework: real PostgreSQL, RLS/runtime roles, HTTP composition, ActorResolver boundary, transactions and durable-state oracles.
 
-Feature base / merge base with `development` remains:
+F1 additionally owns contextual E2E scenarios for:
 
 ```text
-9665873a90ecbaa52a17b4aff1ec4d1cd4c70573
+business -> catalog -> contextual find_slots -> aptopt_v2 -> book
+exact CapacityClaim assignment provenance
+exact immutable commercial commitment/context source
+stale contextual option -> HTTP 409 refresh_and_retry + zero partial effects
+contextual reschedule -> HTTP 422 fail-closed + zero mutation
+same Resource at two Locations -> distinct schedule/price/duration observations
 ```
 
-The branch was still `behind_by = 0` when P5 consolidation began.
+Rejected journeys compare a full authoritative-table fingerprint before/after so a 4xx response alone cannot hide partial writes.
 
----
+## 4. Adversarial integration evidence
 
-## 2. Current phase status
-
-| Phase | Status | Disposition |
-| --- | --- | --- |
-| A — documentation/architecture | COMPLETE; P5 consolidation nearly closed | Contract/plan/roadmap/ADR exist; temporary F1 clarification precedence removed. |
-| B — old→new inventory | COMPLETE | `17` remains historical Phase B evidence. |
-| C — relational schema | COMPLETE + PROVEN | One unshipped `0002_f1_supply`; schema/RLS/ACL/shared-capacity compatibility proven. |
-| D — domain/application model | COMPLETE for F1 | Contextual terms, assignment/schedules, options, commands/errors and booking contracts implemented. |
-| E — semantic configuration commands | COMPLETE for F1 | `CreateLocation` and Organization public contacts are implemented/proven; no remaining semantic-surface blocker. |
-| F — deterministic query resolution | COMPLETE + PROVEN | Business info, catalog Location/effective supply and contextual slot resolution work. |
-| G — direct contextual booking | COMPLETE + PROVEN | `find_slots -> aptopt_v2 -> decode -> book`, stale revalidation, claim provenance and immutable commercial commitment. |
-| G — contextual hold/reschedule | ACCEPTED F1 FAIL-CLOSED SCOPE | Full contextual replacement flows are out of F1; `aptopt_v1` legacy behavior remains valid. |
-| H — adversarial proof | COMPLETE | Closed at `c1966f04...`, run `32516044052`. |
-| P5 — normative docs consolidation | IN PROGRESS / nearly complete | 15/13 consolidated, 16 demoted to history, README precedence simplified, 18/21 reconciled; this handoff is the final status refresh. |
-| P6 — repository cleanup | NEXT | Remove feature-only CI trigger, stale tooling/config references, verify no accidental temporary artifacts. |
-| P7 — exact-head merge readiness | AFTER P6 | Compare development, inspect full CI, final diff and ADR status. |
-
-The feature is **not yet merge-ready** solely because P6/P7 remain.
-
----
-
-## 3. Production migration shape
-
-Current post-V3 production-history delta:
+The narrower PostgreSQL/integration suite continues to attack the defects that are expensive or inappropriate to express only through public HTTP:
 
 ```text
-migrations/versions/0002_operational_profile_contextual_supply.py
-revision = "0002_f1_supply"
-down_revision = "0001_initial"
+price/config mutation vs booking
+assignment retirement vs booking
+Location closure/recurring-hour mutation vs booking
+Resource-wide vs assignment-specific exceptions
+concurrent overlapping context terms/assignments
+stale schedule revisions
+Offering.active deactivation race
+DST gap/fold
+foreign/random ID opacity
+semantic command authority/idempotency
+context-only pricing
+multi-resource commercial provenance
+shared-capacity contention
+historical assignment provenance immutability
 ```
 
-The consolidated unshipped revision contains:
+These are current guarantees, not frozen-V3 shape tests.
+
+## 5. Migration posture
+
+The branch currently introduces `0002_f1_supply` after released `0001_initial`.
+
+That is the F1 migration shape, but **current-product CI no longer hardcodes `0002_f1_supply` as the permanent Request Engine head**. It requires exactly one repository Alembic head, upgrades to `head`, and verifies the database reached that head.
+
+This preserves F1 upgrade/bootstrap evidence without turning the revision name into a future architecture freeze.
+
+## 6. Documentation disposition
+
+Current branch documentation disposition:
 
 ```text
-operational-profile/contextual-supply schema
-commercial source provenance
-contextual CapacityClaim assignment provenance
-shared-capacity guard compatibility
-runtime ACL/RLS hardening
+13  current implementation/acceptance plan             CURRENT
+14  future F2-F6 roadmap                                CURRENT FUTURE DIRECTION
+15  normative F1 product/domain contract                CURRENT
+16  closed adversarial clarification provenance         HISTORICAL INPUT
+17  old->new implementation inventory                   HISTORICAL IMPLEMENTATION EVIDENCE
+18  F1 relational-schema explanation                    CURRENT FOR THIS FEATURE
+19  greenfield validation-data premise                  CURRENT POLICY INPUT
+20  this execution handoff                              CURRENT INFORMATIVE
+21  final documentation/evidence audit                  CURRENT INFORMATIVE
 ```
 
-Released/frozen history remains immutable:
+The repository-wide pre-production/testing policies supersede old statements that treated exact release-era test inventories, migration heads or architecture snapshots as permanent current-product restrictions.
+
+## 7. Remaining merge gates
+
+The branch is ready to leave draft only when the final PR #75 head satisfies all of the following at the same SHA/merge candidate:
 
 ```text
-migrations/versions/0001_initial.py
-migrations/sql/v3_candidate/*
-migrations/sql/v3_initial/*
-migrations/sql/design_chain/*
+behind development = 0 or explicit reconciliation completed
+PR remains mergeable
+Python quality + current architecture fitness PASS
+current-product PostgreSQL proof PASS
+production-like tests/e2e PASS inside current-product proof
+V2 design-history lane PASS
+V3 repeated-bootstrap evidence PASS
+observability contract PASS
+V3 public compatibility + pinned historical provenance PASS
+required aggregate PASS
+final documentation matches the tested code
+no unrelated product scope leakage
 ```
 
-No backfill invents historical contextual assignments or commercial commitments for legacy V3 rows.
+A previously green SHA does not prove a later documentation/test/code SHA. Any commit after the final successful run requires fresh exact-head evidence.
 
----
+## 8. ADR disposition
 
-## 4. Final as-built relational model
-
-Existing relations extended:
-
-```text
-organizations
-  legal_name
-  default_timezone
-  default_locale
-  default_currency
-  operational_status
-
-locations
-  structured address
-  country_code
-  latitude/longitude
-  geocoding provenance
-  operational_revision
-
-capacity_claims
-  nullable resource_location_assignment_id provenance
-```
-
-New F1 relations:
-
-```text
-organization_public_contact_endpoints
-location_public_contact_endpoints
-location_operational_hours
-location_hours_exceptions
-resource_location_assignments
-resource_location_availability
-resource_location_schedule_exceptions
-offering_version_booking_terms
-booking_context_terms
-reservation_commercial_commitments
-reservation_commercial_commitment_context_terms
-```
-
-Important physical facts:
-
-```text
-contact visibility column = is_public
-commercial commitment has NO direct booking_context_terms_id
-contextual provenance = 0..N append-only bridge rows
-F1 owns guard_f1_exact_revision_step instead of widening frozen V3 guard inventory
-request_engine_worker has no final direct privilege on authoritative F1 domain relations
-```
-
-See document 18 for the reconciled schema summary; executable `0002_f1_supply` wins on physical SQL details.
-
----
-
-## 5. Operational truth and schedule composition
-
-Accepted contextual composition:
-
-```text
-Location recurring operational hours
-APPLY Location-hours exceptions
-=
-effective Location availability
-
-INTERSECT Resource-at-Location recurrence
-APPLY Resource-wide + assignment-specific exceptions
-INTERSECT explicit contextual temporal restrictions
-THEN capacity
-```
-
-Rules to preserve:
-
-```text
-Resource additional availability cannot open a closed Location
-assignment-specific mutation never silently broadens
-Resource-wide mutation is explicit/auditable
-recurring wall-clock rules use Location IANA timezone
-concrete instants are timezone-aware half-open intervals
-DST gap/fold behavior is explicit
-```
-
----
-
-## 6. ResourceLocationAssignment semantics
-
-`ResourceLocationAssignment` proves that a Resource may operate at a Location during an effective range. It does **not** consume capacity.
-
-Key invariants:
-
-```text
-same Organization as Resource/Location
-one exact Resource+Location scope cannot have ambiguous overlapping ranges
-retired assignment cannot be reactivated
-identity cannot be retargeted
-range edits cannot invalidate existing CapacityClaim provenance
-assignment lifecycle advances Resource availability observation
-```
-
-Legacy fallback is only for Resources that never entered contextual assignment history. Retiring contextual assignments does not restore legacy wildcard Location eligibility.
-
----
-
-## 7. Commercial resolution and provenance
-
-Resolution order:
-
-```text
-exact ResourceLocationAssignment + OfferingVersion contextual term
->
-OfferingVersion base/default term
->
-missing required amount/currency/duration => not quoteable/bookable
-```
-
-F1 supports context-only commercial resolution:
-
-```text
-no base price row
-+
-context supplies amount/currency
-+
-OfferingVersion supplies duration
-```
-
-Successful contextual booking persists:
-
-```text
-Reservation
-CapacityClaim with exact assignment provenance
-reservation_commercial_commitments material fact
-0..N reservation_commercial_commitment_context_terms source rows
-audit + outbox + idempotency result
-```
-
-No arbitrary “primary” contextual source is chosen for multi-resource bookings.
-
----
-
-## 8. Appointment option versions
-
-Released legacy path:
-
-```text
-aptopt_v1
-```
-
-Contextual path:
-
-```text
-aptopt_v2
-```
-
-`aptopt_v2` binds materially relevant observations including:
-
-```text
-Organization/OfferingVersion
-start/end
-Location
-Resource choices
-ResourceLocationAssignment IDs/revisions
-Resource availability revisions
-planned duration
-amount/currency
-Location operational revision
-configuration fingerprint
-issued/expires
-```
-
-Mixed contextual/legacy Resource choices are represented explicitly; the codec never fabricates assignment IDs for legacy Resources.
-
----
-
-## 9. Offering lifecycle correction
-
-`OfferingVersion` is append-only/versioned. Do **not** create a test or implementation that mutates it merely to simulate deactivation.
-
-Correct mutable kill-switch:
-
-```text
-Offering.active
-```
-
-`find_slots` does not advertise an inactive parent Offering. Contextual booking locks/revalidates parent Offering + selected OfferingVersion, so deactivation and booking serialize deterministically.
-
----
-
-## 10. Contextual hold/reschedule disposition
-
-This is closed F1 scope, not a TODO:
-
-```text
-contextual find_slots -> aptopt_v2 -> book    supported
-contextual CapacityHold                       fail closed
-contextual Reservation reschedule             fail closed
-released aptopt_v1 hold/reschedule             preserved
-```
-
-The fail-closed boundary exists before released-V3 commitment adapters can discard assignment/schedule/commercial provenance.
-
-The HTTP/router error is machine-readable:
-
-```text
-contextual_commitment_unsupported
-```
-
-A future contextual hold/reschedule feature must reuse the contextual stale/config/capacity protocol; never pass `aptopt_v2` straight through V3 semantics.
-
----
-
-## 11. Semantic command surfaces
-
-Implemented/proven responsibilities:
-
-```text
-UpdateOrganizationOperationalProfile
-SetOrganizationPublicContacts
-CreateLocation
-UpdateLocationOperationalInfo
-SetLocationOperationalHours
-SetLocationHoursException
-SetLocationPublicContacts
-ConfigureOfferingVersionBookingTerms
-AssignResourceToLocation
-RetireResourceLocationAssignment
-SetResourceLocationAvailability
-SetResourceLocationScheduleException
-ConfigureBookingContextTerms
-```
-
-These are authority/idempotency/audit surfaces; direct generic CRUD is not the business contract.
-
-`ConfigureBookingContextTerms` already supports future-effective ranges, so a separate scheduling command name is unnecessary.
-
----
-
-## 12. Phase H proof registry summary
-
-Proven in canonical CI:
-
-```text
-price mutation vs book
-assignment retirement vs book
-Location-hours exception vs book
-recurring Location-hours mutation vs book
-assignment-specific exception vs book
-Resource-wide exception vs book
-parent Offering deactivation vs book
-fresh discovery after Offering deactivation
-concurrent context-term overlap writes
-concurrent assignment overlap writes
-concurrent schedule replacement / stale revision
-CapacityClaim assignment provenance immutability
-future contextual terms and exact source provenance
-context-only commercial booking
-multi-source contextual provenance
-contextual shared-capacity contention
-duplicate human-readable names do not grant authority
-DST spring gap / fall fold rejection
-foreign/random authority IDs observationally equivalent
-foreign/random Location IDs equally absent from discovery
-CreateLocation authority/idempotency/tenant safety
-Organization public-contact authority/idempotency/tenant safety
-business.get_info safe public operational truth
-catalog Location/effective-supply filtering
-13:00-17:00 any-eligible contextual slot flow
-find_slots -> aptopt_v2 -> decode -> book
-machine-readable stale aptopt_v2 -> refresh_and_retry
-contextual aptopt_v2 reschedule fail-closed before legacy handler
-legacy aptopt_v1 reschedule still reaches released handler
-released V3 booking regression
-frozen V3 compatibility
-```
-
-Detailed matrix is in document 21.
-
----
-
-## 13. P5 documentation status
-
-Closed F1 adversarial clarifications have been consolidated into 15/13.
-
-```text
-15 normative contract                     reconciled
-13 implementation/closure plan            reconciled
-16 temporary clarification amendment      demoted to historical provenance
-docs/README precedence                    simplified
-18 relational schema                      reconciled to final 0002
-21 proof/audit matrix                      updated to Phase H closure
-20 implementation handoff                 this document
-```
-
-Future F2/F3 questions from the old amendment remain historical inputs for those future feature contracts; they do not reopen F1.
-
----
-
-## 14. Next step — P6 repository cleanup
-
-Do this before final merge-readiness CI:
-
-```text
-1. remove feature/operational-profile-contextual-supply from the push trigger in .github/workflows/ci.yml;
-2. remove the stale Ruff ignore for migrations/versions/0003_f1_commercial_context_sources.py;
-3. search for obsolete provisional 0003/0004/0005 F1 migration references outside intentional history documents;
-4. inspect duplicate commitment-boundary tests and temporary scaffolding, deleting only truly redundant/temporary code;
-5. verify frozen V3/release files were not semantically modified by F1;
-6. compare against current development and reconcile if development moved;
-7. then run P7 exact-head canonical proof.
-```
-
-Do **not** remove adversarial tests merely to reduce file count. They are executable invariants.
-
----
-
-## 15. P7 exact-head merge-readiness gate
-
-On the final cleaned head require:
-
-```text
-compare with development
-behind_by = 0 or explicit reconciliation
-Alembic head = 0002_f1_supply
-Python quality/architecture PASS
-F1 PostgreSQL PASS
-V2 history PASS
-V3 repeated bootstrap PASS
-Observability PASS
-frozen V3 compatibility PASS
-aggregate PASS
-released V3 booking regressions PASS
-no feature-only CI push trigger
-no stale provisional F1 migration tooling reference
-final docs match code
-```
-
-Inspect every prerequisite job, not only the aggregate status.
-
-Only after this exact-head proof should ADR 0012 be considered for `Accepted` and the branch be called merge-ready.
+ADR 0012 remains `Proposed` until its acceptance condition is actually met. The implementation and proof may be complete before merge; if the ADR itself requires integration/merge, mark it `Accepted` only after that event rather than predicting it in this branch.
