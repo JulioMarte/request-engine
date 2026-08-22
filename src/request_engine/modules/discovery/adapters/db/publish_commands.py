@@ -1,10 +1,10 @@
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.modules.discovery.adapters.db import publication_codec, publication_store
+from request_engine.modules.discovery.adapters.db import publication_codec, publication_scope, publication_store
 from request_engine.modules.discovery.application.commands.publication import (
     DiscoveryPublicationState,
     PublishDiscoverySupplyCommand,
@@ -62,7 +62,7 @@ class PostgresDiscoveryPublishCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_DISCOVERY_SCOPE,
                 )
-                if not await publication_store.validate_scope(
+                if not await publication_scope.validate_scope(
                     session,
                     organization_id=command.organization_id,
                     offering_id=command.offering_id,
@@ -108,7 +108,9 @@ class PostgresDiscoveryPublishCommands:
             raise
 
 
-def _validated(command: PublishDiscoverySupplyCommand):
+def _validated(
+    command: PublishDiscoverySupplyCommand,
+) -> tuple[datetime, datetime | None, str]:
     start = command.effective_start
     end = command.effective_end
     if start.tzinfo is None or (end is not None and end.tzinfo is None):
