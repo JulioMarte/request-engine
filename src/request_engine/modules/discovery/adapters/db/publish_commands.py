@@ -4,12 +4,18 @@ from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.modules.discovery.adapters.db import publication_codec, publication_scope, publication_store
+from request_engine.modules.discovery.adapters.db import (
+    publication_codec,
+    publication_scope,
+    publication_store,
+)
 from request_engine.modules.discovery.application.commands.publication import (
     DiscoveryPublicationState,
     PublishDiscoverySupplyCommand,
 )
-from request_engine.modules.discovery.application.errors import DiscoveryConfigurationConflict
+from request_engine.modules.discovery.application.errors import (
+    DiscoveryConfigurationConflict,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -42,7 +48,9 @@ class PostgresDiscoveryPublishCommands:
             },
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idem_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -71,7 +79,9 @@ class PostgresDiscoveryPublishCommands:
                     effective_start=start,
                     effective_end=end,
                 ):
-                    raise DiscoveryConfigurationConflict("discovery publication scope unavailable")
+                    raise DiscoveryConfigurationConflict(
+                        "discovery publication scope unavailable"
+                    )
                 row = await publication_store.insert_publication(
                     session,
                     organization_id=command.organization_id,
@@ -83,16 +93,23 @@ class PostgresDiscoveryPublishCommands:
                     provider_visibility=visibility,
                 )
                 state = DiscoveryPublicationState(
-                    id=cast(UUID, row["id"]), offering_id=command.offering_id,
-                    location_id=command.location_id, resource_id=command.resource_id,
-                    effective_start=start, effective_end=end, provider_visibility=visibility,
-                    status="active", revision=cast(int, row["revision"]),
+                    id=cast(UUID, row["id"]),
+                    offering_id=command.offering_id,
+                    location_id=command.location_id,
+                    resource_id=command.resource_id,
+                    effective_start=start,
+                    effective_end=end,
+                    provider_visibility=visibility,
+                    status="active",
+                    revision=cast(int, row["revision"]),
                 )
                 await append_audit(
-                    session, organization_id=command.organization_id,
+                    session,
+                    organization_id=command.organization_id,
                     principal_id=command.principal_id,
                     command_name="discovery.publish_supply",
-                    aggregate_kind="DiscoveryPublication", aggregate_id=state.id,
+                    aggregate_kind="DiscoveryPublication",
+                    aggregate_id=state.id,
                     idempotency_id=idem_id,
                     details={"authority": authority.audit_details()},
                 )
