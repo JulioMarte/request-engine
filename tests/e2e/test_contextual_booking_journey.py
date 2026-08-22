@@ -39,6 +39,16 @@ async def test_contextual_public_journey_persists_exact_provenance(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox, contextual = _world(e2e_admin_conn)
+    unassigned_location = e2e_admin_conn.execute(
+        """
+        INSERT INTO request_engine.locations (
+            organization_id, location_key, display_name, timezone
+        ) VALUES (%s, %s, 'Unassigned clinic', 'America/Santo_Domingo')
+        RETURNING id
+        """,
+        (sandbox.organization_id, f"unassigned-{uuid4().hex}"),
+    ).fetchone()
+    assert unassigned_location is not None
     async with client_for(e2e_session_factory, sandbox) as client:
         business = await client.get("/v1/business", headers=auth(sandbox))
         assert business.status_code == 200
@@ -53,6 +63,13 @@ async def test_contextual_public_journey_persists_exact_provenance(
         )
         assert catalog.status_code == 200
         assert str(sandbox.offering_id) in {item["id"] for item in catalog.json()}
+        details = await client.get(
+            f"/v1/catalog/offerings/{sandbox.offering_key}",
+            headers=auth(sandbox),
+        )
+        assert details.status_code == 200
+        assert details.json()["eligible_location_ids"] == [str(sandbox.location_id)]
+        assert str(unassigned_location[0]) not in details.json()["eligible_location_ids"]
         slot = await first_slot(client, sandbox)
         assert slot["location_id"] == str(sandbox.location_id)
         assert slot["planned_duration_minutes"] == 45
