@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
-from decimal import Decimal
+from datetime import UTC
 from typing import cast
-from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from request_engine.modules.booking.adapters.db import contextual_terms_supersession_codec as codec
+from request_engine.modules.booking.adapters.db import contextual_terms_supersession_locking as locking
 from request_engine.modules.booking.adapters.db import contextual_terms_supersession_store as store
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
     BookingContextTermsState,
@@ -31,7 +31,8 @@ class PostgresContextualTermsSupersessionCommands:
         self._session_factory = session_factory
 
     async def supersede_booking_context_terms(
-        self, command: SupersedeBookingContextTermsCommand
+        self,
+        command: SupersedeBookingContextTermsCommand,
     ) -> BookingContextTermsState:
         cutover = command.effective_from.astimezone(UTC)
         fingerprint = command_fingerprint(
@@ -58,7 +59,7 @@ class PostgresContextualTermsSupersessionCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _state_from_json(cast(dict[str, object], replay["terms"]))
+                    return codec.from_json(cast(dict[str, object], replay["terms"]))
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -66,12 +67,12 @@ class PostgresContextualTermsSupersessionCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
                 )
-                assignment_id, offering_version_id, _ = await store.lock_identity(
+                assignment_id, offering_version_id = await locking.lock_identity(
                     session,
                     organization_id=command.organization_id,
                     terms_id=command.current_context_terms_id,
                 )
-                starts_at, ends_at, revision = await store.lock_current_range(
+                starts_at, ends_at, revision = await locking.lock_current_range(
                     session,
                     organization_id=command.organization_id,
                     terms_id=command.current_context_terms_id,
@@ -79,7 +80,9 @@ class PostgresContextualTermsSupersessionCommands:
                 if revision != command.expected_current_revision:
                     raise ContextualConfigurationConflict("BookingContextTerms revision is stale")
                 if cutover <= starts_at or (ends_at is not None and cutover >= ends_at):
-                    raise ContextualConfigurationConflict("cutover must be inside current effective range")
+                    raise ContextualConfigurationConflict(
+                        "cutover must be inside current effective range"
+                    )
                 new_id, new_revision = await store.cutover_and_insert(
                     session,
                     organization_id=command.organization_id,
@@ -94,16 +97,16 @@ class PostgresContextualTermsSupersessionCommands:
                     bookable=command.bookable,
                 )
                 state = BookingContextTermsState(
-                    new_id,
-                    assignment_id,
-                    offering_version_id,
-                    cutover,
-                    ends_at,
-                    command.amount,
-                    command.currency,
-                    command.planned_duration_minutes,
-                    command.bookable,
-                    new_revision,
+                    context_terms_id=new_id,
+                    resource_location_assignment_id=assignment_id,
+                    offering_version_id=offering_version_id,
+                    effective_from=cutover,
+                    effective_until=ends_at,
+                    amount=command.amount,
+                    currency=command.currency,
+                    planned_duration_minutes=command.planned_duration_minutes,
+                    bookable=command.bookable,
+                    revision=new_revision,
                 )
                 await append_audit(
                     session,
@@ -119,7 +122,7 @@ class PostgresContextualTermsSupersessionCommands:
                         "cutover": cutover.isoformat(),
                     },
                 )
-                await complete_idempotency(session, idem_id, {"terms": _state_to_json(state)})
+                await complete_idempotency(session, idem_id, {"terms": codec.to_json(state)})
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23P01":
@@ -127,35 +130,3 @@ class PostgresContextualTermsSupersessionCommands:
                     "BookingContextTerms overlap effective configuration"
                 ) from None
             raise
-
-
-def _state_to_json(state: BookingContextTermsState) -> dict[str, object]:
-    return {
-        "context_terms_id": str(state.context_terms_id),
-        "resource_location_assignment_id": str(state.resource_location_assignment_id),
-        "offering_version_id": str(state.offering_version_id),
-        "effective_from": state.effective_from.isoformat(),
-        "effective_until": state.effective_until.isoformat() if state.effective_until else None,
-        "amount": str(state.amount) if state.amount is not None else None,
-        "currency": state.currency,
-        "planned_duration_minutes": state.planned_duration_minutes,
-        "bookable": state.bookable,
-        "revision": state.revision,
-    }
-
-
-def _state_from_json(value: dict[str, object]) -> BookingContextTermsState:
-    end = cast(str | None, value.get("effective_until"))
-    amount = cast(str | None, value.get("amount"))
-    return BookingContextTermsState(
-        UUID(cast(str, value["context_terms_id"])),
-        UUID(cast(str, value["resource_location_assignment_id"])),
-        UUID(cast(str, value["offering_version_id"])),
-        datetime.fromisoformat(cast(str, value["effective_from"])),
-        datetime.fromisoformat(end) if end else None,
-        Decimal(amount) if amount else None,
-        cast(str | None, value.get("currency")),
-        cast(int | None, value.get("planned_duration_minutes")),
-        cast(bool, value["bookable"]),
-        cast(int, value["revision"]),
-    )
