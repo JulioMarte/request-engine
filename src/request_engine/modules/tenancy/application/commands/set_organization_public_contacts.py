@@ -44,7 +44,10 @@ async def set_organization_public_contacts(
     contacts: list[OrganizationPublicContactInput] = []
     seen: set[tuple[str, str]] = set()
     for contact in command.contacts:
-        normalized = normalize_public_contact_value(contact.channel, contact.normalized_value)
+        normalized = normalize_public_contact_value(
+            contact.channel,
+            contact.normalized_value,
+        )
         if contact.label is not None and not contact.label.strip():
             raise ValueError("label cannot be blank")
         key = (contact.channel, normalized)
@@ -52,4 +55,5 @@ async def set_organization_public_contacts(
             raise ValueError("duplicate public contact")
         seen.add(key)
         contacts.append(replace(contact, normalized_value=normalized))
-    return await handler.set_organization_public_contacts(replace(command, contacts=tuple(contacts)))
+    normalized_command = replace(command, contacts=tuple(contacts))
+    return await handler.set_organization_public_contacts(normalized_command)
