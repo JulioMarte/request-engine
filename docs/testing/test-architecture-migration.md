@@ -172,7 +172,38 @@ does current Request Engine still keep every V3 proof at its old path?
 
 This preserves V3 provenance while allowing explicitly dispositioned current tests to evolve.
 
-## 9. Remaining migration work after this checkpoint
+## 9. Frozen V3 execution-boundary disposition
+
+A later exact-head run exposed the same category of false coupling at runtime. The frozen V3 lane installed `0001_initial` but then executed the **current post-V3 application code** and current V3-named integration tests against that deliberately stale schema. After contextual supply changed current scheduling semantics, four still-valid reservation-lifecycle proofs failed because current code correctly expected current scheduling state that `0001_initial` cannot represent.
+
+The protected guarantees were not removed. Their disposition is:
+
+```text
+reservation lifecycle / slot recovery invariants  KEEP in current-product proof
+released V3 behavior reproducibility              HISTORICAL against released V3 tree
+released V3 public API compatibility minima       KEEP against current head
+current-head execution on stale 0001 schema       REMOVE as a false compatibility premise
+```
+
+The historical runner now separates three questions:
+
+```text
+CURRENT PRODUCT
+  current source + current Alembic head
+  -> current lifecycle/capacity/authority guarantees
+
+V3 PUBLIC COMPATIBILITY
+  current source + frozen V3 public-contract baseline
+  -> released operations/capabilities/errors required by compatibility remain present
+
+V3 HISTORICAL REPRODUCIBILITY
+  released V3 source tree + released 0001_initial
+  -> the released behavior still reproduces in its own historical execution boundary
+```
+
+This is an `ADAPT`, not a weakening. Running current application behavior on an intentionally un-upgraded database is not a supported deployment mode and was never an external compatibility promise. Keeping that combination would make historical provenance dictate current internal scheduling implementation. `tests/architecture/test_current_product_ci_contract.py` now protects the separation so the stale-schema/current-code coupling cannot silently return.
+
+## 10. Remaining migration work after this checkpoint
 
 ```text
 A  complete semantic inventory of surviving current tests
