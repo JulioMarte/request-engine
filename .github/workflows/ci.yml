@@ -29,6 +29,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Enforce Python effective line budget
+        env:
+          FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: >-
+          python scripts/ci/check_python_file_budget.py
+          --base-ref "${FILE_BUDGET_BASE_REF:-HEAD^}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
