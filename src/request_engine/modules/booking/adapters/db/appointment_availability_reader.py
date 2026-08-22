@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 
+from request_engine.modules.booking.adapters.db import candidate_source
 from request_engine.modules.booking.adapters.db.contextual_supply import (
     AssignmentObservation,
     ContextTermObservation,
@@ -130,13 +131,15 @@ class PostgresAppointmentAvailabilityReader:
             booking_policy = cast(dict[str, object], offering["booking_policy"])
             step_minutes = slot_step_minutes(booking_policy, base_duration)
 
-            candidate_rows = await _load_candidate_rows(
+            candidate_rows = await candidate_source.load(
                 session,
                 organization_id=query.organization_id,
                 offering_version_id=query.offering_version_id,
             )
             if query.resource_id is not None:
-                candidate_rows = _apply_resource_preference(candidate_rows, query.resource_id)
+                candidate_rows = candidate_source.apply_resource_preference(
+                    candidate_rows, query.resource_id
+                )
             requirement_count = cast(
                 int,
                 (
@@ -282,78 +285,6 @@ class PostgresAppointmentAvailabilityReader:
             base_terms=base_terms,
             context_terms=context_terms,
         )
-
-
-async def _load_candidate_rows(
-    session: object,
-    *,
-    organization_id: UUID,
-    offering_version_id: UUID,
-) -> Sequence[RowMapping]:
-    # AsyncSession is kept structurally local here so the public reader remains
-    # straightforward; SQLAlchemy execute is provided by the concrete session.
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    typed_session = cast(AsyncSession, session)
-    return (
-        (
-            await typed_session.execute(
-                text(
-                    """
-                    SELECT
-                        rr.id AS requirement_id,
-                        rr.ordinal,
-                        rr.quantity,
-                        r.id AS resource_id,
-                        r.location_id,
-                        r.capacity_model,
-                        r.capacity_units,
-                        r.availability_revision,
-                        COALESCE(l.timezone, 'UTC') AS default_timezone
-                    FROM request_engine.offering_resource_requirements rr
-                    JOIN request_engine.resource_capability_assignments a
-                      ON a.organization_id = rr.organization_id
-                     AND a.capability_id = rr.capability_id
-                    JOIN request_engine.resources r
-                      ON r.organization_id = a.organization_id
-                     AND r.id = a.resource_id
-                    LEFT JOIN request_engine.locations l
-                      ON l.organization_id = r.organization_id
-                     AND l.id = r.location_id
-                    WHERE rr.organization_id = :organization_id
-                      AND rr.offering_version_id = :offering_version_id
-                      AND r.active
-                    ORDER BY rr.ordinal, r.id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "offering_version_id": offering_version_id,
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-
-
-def _apply_resource_preference(
-    rows: Sequence[RowMapping],
-    resource_id: UUID,
-) -> tuple[RowMapping, ...]:
-    preferred_requirements = {
-        cast(UUID, row["requirement_id"])
-        for row in rows
-        if cast(UUID, row["resource_id"]) == resource_id
-    }
-    if not preferred_requirements:
-        return ()
-    return tuple(
-        row
-        for row in rows
-        if cast(UUID, row["requirement_id"]) not in preferred_requirements
-        or cast(UUID, row["resource_id"]) == resource_id
-    )
 
 
 def _build_candidate_resources(
