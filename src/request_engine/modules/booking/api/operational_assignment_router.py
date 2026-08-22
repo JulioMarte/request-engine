@@ -60,9 +60,7 @@ def create_operational_assignment_router(
             location_id=body.location_id,
             effective_from=body.effective_from,
             effective_until=body.effective_until,
-            expected_resource_availability_revision=(
-                body.expected_resource_availability_revision
-            ),
+            expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
         return await assign_resource_to_location(assign_handler, command)
@@ -81,9 +79,7 @@ def create_operational_assignment_router(
             assignment_id=assignment_id,
             retired_at=body.retired_at,
             expected_assignment_revision=body.expected_assignment_revision,
-            expected_resource_availability_revision=(
-                body.expected_resource_availability_revision
-            ),
+            expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
         return await retire_assignment.retire_resource_location_assignment(
@@ -114,9 +110,7 @@ def create_operational_assignment_router(
             authority_party_id=body.authority_party_id,
             assignment_id=assignment_id,
             windows=windows,
-            expected_resource_availability_revision=(
-                body.expected_resource_availability_revision
-            ),
+            expected_resource_availability_revision=(body.expected_resource_availability_revision),
             idempotency_key=key,
         )
         return await set_resource_location_availability(availability_handler, command)
