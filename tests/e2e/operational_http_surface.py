@@ -15,23 +15,51 @@ class OperationalHttpOperation:
 
 
 OPERATIONAL_HTTP_OPERATIONS: tuple[OperationalHttpOperation, ...] = (
-    OperationalHttpOperation("organization.profile", "PATCH", "/v1/operations/organization/profile"),
-    OperationalHttpOperation("organization.contacts", "PUT", "/v1/operations/organization/contacts"),
-    OperationalHttpOperation("locations.create", "POST", "/v1/operations/locations"),
-    OperationalHttpOperation("locations.update", "PATCH", "/v1/operations/locations/{location_id}"),
-    OperationalHttpOperation("locations.contacts", "PUT", "/v1/operations/locations/{location_id}/contacts"),
-    OperationalHttpOperation("locations.hours", "PUT", "/v1/operations/locations/{location_id}/hours"),
     OperationalHttpOperation(
-        "locations.hours_exception", "PUT", "/v1/operations/locations/{location_id}/hours-exceptions"
+        "organization.profile",
+        "PATCH",
+        "/v1/operations/organization/profile",
+    ),
+    OperationalHttpOperation(
+        "organization.contacts",
+        "PUT",
+        "/v1/operations/organization/contacts",
+    ),
+    OperationalHttpOperation("locations.create", "POST", "/v1/operations/locations"),
+    OperationalHttpOperation(
+        "locations.update",
+        "PATCH",
+        "/v1/operations/locations/{location_id}",
+    ),
+    OperationalHttpOperation(
+        "locations.contacts",
+        "PUT",
+        "/v1/operations/locations/{location_id}/contacts",
+    ),
+    OperationalHttpOperation(
+        "locations.hours",
+        "PUT",
+        "/v1/operations/locations/{location_id}/hours",
+    ),
+    OperationalHttpOperation(
+        "locations.hours_exception",
+        "PUT",
+        "/v1/operations/locations/{location_id}/hours-exceptions",
     ),
     OperationalHttpOperation(
         "offering_version.booking_terms",
         "PUT",
         "/v1/operations/offering-versions/{offering_version_id}/booking-terms",
     ),
-    OperationalHttpOperation("resource_assignments.create", "POST", "/v1/operations/resource-assignments"),
     OperationalHttpOperation(
-        "resource_assignments.retire", "POST", "/v1/operations/resource-assignments/{assignment_id}/retire"
+        "resource_assignments.create",
+        "POST",
+        "/v1/operations/resource-assignments",
+    ),
+    OperationalHttpOperation(
+        "resource_assignments.retire",
+        "POST",
+        "/v1/operations/resource-assignments/{assignment_id}/retire",
     ),
     OperationalHttpOperation(
         "resource_assignments.availability",
@@ -43,7 +71,11 @@ OPERATIONAL_HTTP_OPERATIONS: tuple[OperationalHttpOperation, ...] = (
         "PUT",
         "/v1/operations/resource-assignments/{assignment_id}/exceptions",
     ),
-    OperationalHttpOperation("resources.exception", "PUT", "/v1/operations/resources/{resource_id}/exceptions"),
+    OperationalHttpOperation(
+        "resources.exception",
+        "PUT",
+        "/v1/operations/resources/{resource_id}/exceptions",
+    ),
     OperationalHttpOperation("context_terms.create", "POST", "/v1/operations/context-terms"),
     OperationalHttpOperation(
         "context_terms.supersede",
