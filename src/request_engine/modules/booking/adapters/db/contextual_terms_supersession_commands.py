@@ -5,14 +5,8 @@ from sqlalchemy.exc import IntegrityError
 
 from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_codec as codec,
-)
-from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_locking as locking,
-)
-from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_result as result,
-)
-from request_engine.modules.booking.adapters.db import (
     contextual_terms_supersession_store as store,
 )
 from request_engine.modules.booking.application.commands.configure_booking_context_terms import (
