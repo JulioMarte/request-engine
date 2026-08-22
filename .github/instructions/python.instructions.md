@@ -6,6 +6,8 @@ applyTo: "src/**/*.py,tests/**/*.py"
 
 - Python is organized module first, layer second; follow `docs/09-python-module-architecture.md`.
 - Use `docs/testing/repository-governance-contract.md` to distinguish HARD semantic/type boundaries from CONTROLLED architecture shape and FLEXIBLE private implementation.
+- When changing tests, follow `docs/testing/evidence-authoring-guide.md`: a green test counts as evidence only when a plausible relevant defect would make it fail.
+- PostgreSQL-dependent proofs use real PostgreSQL and minimal-but-complete realistic dummy data. Direct SQL may establish valid preconditions or prove DB backstops, but must not pre-create the expected outcome, disable enforcement, or bypass the runtime/transaction mechanism being claimed.
 - Use Python 3.13 typing and keep public boundaries explicit.
 - One authoritative command should have one obvious command file/use-case entry point.
 - Domain types, application command/query types, cross-module contracts, API/Pydantic DTOs and SQLAlchemy persistence mappings are distinct.
