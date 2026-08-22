@@ -135,6 +135,8 @@ class PostgresAppointmentAvailabilityReader:
                 organization_id=query.organization_id,
                 offering_version_id=query.offering_version_id,
             )
+            if query.resource_id is not None:
+                candidate_rows = _apply_resource_preference(candidate_rows, query.resource_id)
             requirement_count = cast(
                 int,
                 (
@@ -332,6 +334,25 @@ async def _load_candidate_rows(
         )
         .mappings()
         .all()
+    )
+
+
+def _apply_resource_preference(
+    rows: Sequence[RowMapping],
+    resource_id: UUID,
+) -> tuple[RowMapping, ...]:
+    preferred_requirements = {
+        cast(UUID, row["requirement_id"])
+        for row in rows
+        if cast(UUID, row["resource_id"]) == resource_id
+    }
+    if not preferred_requirements:
+        return ()
+    return tuple(
+        row
+        for row in rows
+        if cast(UUID, row["requirement_id"]) not in preferred_requirements
+        or cast(UUID, row["resource_id"]) == resource_id
     )
 
 
