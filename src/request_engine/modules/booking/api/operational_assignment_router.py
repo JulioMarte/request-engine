@@ -46,7 +46,6 @@ def create_operational_assignment_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("")
     async def assign(
         body: AssignmentBody,
         key: IdempotencyKey,
@@ -65,7 +64,6 @@ def create_operational_assignment_router(
         )
         return await assign_resource_to_location(assign_handler, command)
 
-    @router.post("/{assignment_id}/retire")
     async def retire(
         assignment_id: UUID,
         body: RetireAssignmentBody,
@@ -87,7 +85,6 @@ def create_operational_assignment_router(
             command,
         )
 
-    @router.put("/{assignment_id}/availability")
     async def availability(
         assignment_id: UUID,
         body: AvailabilityBody,
@@ -115,4 +112,7 @@ def create_operational_assignment_router(
         )
         return await set_resource_location_availability(availability_handler, command)
 
+    router.add_api_route("", assign, methods=["POST"])
+    router.add_api_route("/{assignment_id}/retire", retire, methods=["POST"])
+    router.add_api_route("/{assignment_id}/availability", availability, methods=["PUT"])
     return router
