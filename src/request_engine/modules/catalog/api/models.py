@@ -140,6 +140,7 @@ class OfferingView(BaseModel):
     display_name: str
     description: str | None
     latest_version: OfferingVersionView
+    eligible_location_ids: tuple[UUID, ...] = ()
 
     @classmethod
     def from_contract(cls, offering: OfferingSummary) -> "OfferingView":
@@ -159,4 +160,5 @@ class OfferingView(BaseModel):
                 amount=version.amount,
                 currency=version.currency,
             ),
+            eligible_location_ids=offering.eligible_location_ids,
         )
