@@ -39,7 +39,24 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
 ) -> None:
-    """Connect Catalog read and operational command surfaces to the HTTP process."""
+    """Connect the public Catalog read surface to the public HTTP process."""
+
+    app.include_router(
+        create_router(
+            business_reader=PostgresBusinessInfoReader(session_factory),
+            offering_reader=PostgresOfferingCatalogReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+
+
+def install_operational_http(
+    app: FastAPI,
+    *,
+    session_factory: SessionFactory,
+    actor_resolver: ActorResolver,
+) -> None:
+    """Connect Catalog configuration commands to the operator HTTP process."""
 
     app.add_exception_handler(
         LocationOperationalRevisionConflict,
@@ -48,13 +65,6 @@ def install_http(
     app.add_exception_handler(
         CatalogConfigurationConflict,
         catalog_operational_error_handler,
-    )
-    app.include_router(
-        create_router(
-            business_reader=PostgresBusinessInfoReader(session_factory),
-            offering_reader=PostgresOfferingCatalogReader(session_factory),
-            actor_resolver=actor_resolver,
-        )
     )
     profile = PostgresOperationalProfileCommands(session_factory)
     app.include_router(
