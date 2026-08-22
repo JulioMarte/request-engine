@@ -116,8 +116,7 @@ def test_http_transport_model_names_make_the_boundary_visible() -> None:
     assert violations == [], (
         "HTTP transport Pydantic models must use a transport-explicit suffix "
         f"{TRANSPORT_SUFFIXES}; change the convention only with the repository "
-        "governance contract:\n"
-        + "\n".join(f"- {item}" for item in violations)
+        "governance contract:\n" + "\n".join(f"- {item}" for item in violations)
     )
 
 
@@ -170,8 +169,7 @@ def test_modules_do_not_gain_generic_business_dumping_ground_files() -> None:
 
     assert violations == [], (
         "Generic business dumping-ground files erase capability ownership. "
-        "Use a semantic name/layer:\n"
-        + "\n".join(f"- {item}" for item in violations)
+        "Use a semantic name/layer:\n" + "\n".join(f"- {item}" for item in violations)
     )
 
 
