@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
+from request_engine.modules.booking.api.dependencies import IdempotencyKey
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     AttendanceResponseBody,
@@ -52,11 +53,6 @@ from request_engine.modules.tenancy.contracts.authority import PartyAuthorityRea
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
-
-IdempotencyKey = Annotated[
-    str,
-    Header(alias="Idempotency-Key", min_length=1, max_length=250),
-]
 
 
 def create_router(
@@ -228,9 +224,6 @@ def create_router(
         capability="appointments.find_slots",
         methods=["GET"],
         response_model=tuple[AppointmentSlotView, ...],
-        # F1 enriches contextual options with price/duration. Legacy V3 options
-        # deliberately leave those fields unset; omitting None preserves the
-        # released V3 JSON shape while still exposing real F1 observations.
         response_model_exclude_none=True,
     )
     add_capability_route(
