@@ -25,7 +25,7 @@ class DiscoveryPublicationBody(BaseModel):
     provider_visibility: Literal["hidden", "public"] = "hidden"
 
 
-class RevokeDiscoveryPublicationBody(BaseModel):
+class RevokeDiscoveryConfigurationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     authority_party_id: UUID
