@@ -8,7 +8,8 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .contextual_supply_support import add_contextual_resource, contextualize_sandbox
+from .contextual_resource_support import add_contextual_resource
+from .contextual_supply_support import contextualize_sandbox
 from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_for, seed_tenant_sandbox
 
