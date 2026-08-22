@@ -10,6 +10,7 @@ def _source(path: str) -> str:
 
 def test_evidence_authoring_guide_is_discoverable_by_agents_and_contributors() -> None:
     assert (ROOT / GUIDE).is_file()
+    assert "docs/testing/README.md" in _source("AGENTS.md")
     assert GUIDE in _source("tests/AGENTS.md")
     assert GUIDE in _source("CONTRIBUTING.md")
     assert GUIDE in _source(".github/instructions/python.instructions.md")
