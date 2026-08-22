@@ -261,6 +261,7 @@ def test_contract_surfaces_are_dependency_light() -> None:
             f"request_engine.modules.{module}.adapters",
             f"request_engine.modules.{module}.api",
             f"request_engine.modules.{module}.application",
+            f"request_engine.modules.{module}.domain",
             "request_engine.bootstrap",
             "request_engine.entrypoints",
         )
@@ -272,7 +273,30 @@ def test_contract_surfaces_are_dependency_light() -> None:
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert not violations, _format_violations(
-        "Contract surface imported internal/outer-layer implementation.",
+        "Published module contract leaked internal/framework dependencies.",
         violations,
-        "Keep cross-module contracts dependency-light and framework-independent.",
+        "Contracts must remain stable, dependency-light connection surfaces. Map internal domain "
+        "or persistence objects into explicit contract values instead of re-exporting internals.",
+    )
+
+
+def test_database_adapters_do_not_depend_on_http_transport() -> None:
+    violations: list[str] = []
+    for module in ALL_MODULES:
+        db_root = MODULES_ROOT / module / "adapters" / "db"
+        forbidden = (
+            f"request_engine.modules.{module}.api",
+            "request_engine.entrypoints",
+            "fastapi",
+        )
+        for path in _python_files(db_root):
+            for import_name in _imports(path):
+                if _matches_any(import_name, forbidden):
+                    violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
+
+    assert not violations, _format_violations(
+        "Database adapter depends on HTTP transport.",
+        violations,
+        "Map database rows/errors to application/domain contracts inside the DB adapter. HTTP "
+        "DTOs and FastAPI concerns belong outside persistence.",
     )
