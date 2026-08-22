@@ -24,6 +24,7 @@ class OfferingSummary:
     display_name: str
     description: str | None
     latest_version: OfferingVersionInfo
+    eligible_location_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
