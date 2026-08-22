@@ -20,6 +20,7 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 from request_engine.platform.db.session import SessionFactory
 
 from .dummy_data import F1ContextualScenario, create_contextual_cardiology_scenario
@@ -29,7 +30,11 @@ PgConnection = Connection[Any]
 
 def _revision(conn: PgConnection, scenario: F1ContextualScenario) -> int:
     row = conn.execute(
-        "SELECT revision FROM request_engine.booking_context_terms WHERE organization_id=%s AND id=%s",
+        """
+        SELECT revision
+        FROM request_engine.booking_context_terms
+        WHERE organization_id=%s AND id=%s
+        """,
         (scenario.organization_id, scenario.context_terms_id),
     ).fetchone()
     assert row is not None
@@ -40,20 +45,20 @@ async def _slot(
     scenario: F1ContextualScenario,
     session_factory: SessionFactory,
     start: datetime,
-) -> object:
-    return (
-        await find_appointment_slots(
-            PostgresAppointmentAvailabilityReader(session_factory),
-            FindAppointmentSlotsQuery(
-                organization_id=scenario.organization_id,
-                offering_version_id=scenario.offering_version_id,
-                location_id=scenario.location_id,
-                window_start=start,
-                window_end=start.replace(hour=17),
-                limit=20,
-            ),
-        )
-    )[0]
+) -> AppointmentSlot:
+    slots = await find_appointment_slots(
+        PostgresAppointmentAvailabilityReader(session_factory),
+        FindAppointmentSlotsQuery(
+            organization_id=scenario.organization_id,
+            offering_version_id=scenario.offering_version_id,
+            location_id=scenario.location_id,
+            window_start=start,
+            window_end=start.replace(hour=17),
+            limit=20,
+        ),
+    )
+    assert slots
+    return slots[0]
 
 
 @pytest.mark.asyncio
@@ -98,7 +103,21 @@ async def test_future_terms_are_scheduled_through_semantic_cutover(
     assert ranges[1][0] == future.context_terms_id
     assert ranges[1][1] == cutover
 
-    current = cast(Any, await _slot(scenario, session_factory, datetime(2026, 8, 17, 13, tzinfo=UTC)))
-    after = cast(Any, await _slot(scenario, session_factory, datetime(2026, 8, 24, 13, tzinfo=UTC)))
-    assert (current.amount, current.planned_duration_minutes) == (Decimal("4000.000000"), 45)
-    assert (after.amount, after.planned_duration_minutes) == (Decimal("5000.000000"), 60)
+    current = await _slot(
+        scenario,
+        session_factory,
+        datetime(2026, 8, 17, 13, tzinfo=UTC),
+    )
+    after = await _slot(
+        scenario,
+        session_factory,
+        datetime(2026, 8, 24, 13, tzinfo=UTC),
+    )
+    assert (current.amount, current.planned_duration_minutes) == (
+        Decimal("4000.000000"),
+        45,
+    )
+    assert (after.amount, after.planned_duration_minutes) == (
+        Decimal("5000.000000"),
+        60,
+    )
