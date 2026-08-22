@@ -68,6 +68,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
+# Production-like HTTP/runtime journeys are current-product evidence. They run
+# against current Alembic head with real app/worker runtime roles and PostgreSQL;
+# they must not disappear merely because V3 historical execution was separated.
+uv run pytest \
+  tests/e2e \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/e2e.xml"
+
 # These suites were introduced during V3 but protect still-current booking,
 # capacity, revalidation and race guarantees. Keep them in the current-product
 # gate because of the guarantees they prove, not because current architecture is
