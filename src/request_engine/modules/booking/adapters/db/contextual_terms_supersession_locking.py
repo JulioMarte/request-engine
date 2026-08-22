@@ -52,9 +52,7 @@ async def lock_identity(
         )
     ).first()
     if resource is None:
-        raise ContextualConfigurationConflict(
-            "ResourceLocationAssignment is not configurable"
-        )
+        raise ContextualConfigurationConflict("ResourceLocationAssignment is not configurable")
     assignment = (
         await session.execute(
             text(
@@ -65,9 +63,7 @@ async def lock_identity(
         )
     ).first()
     if assignment is None or assignment[0] != "active":
-        raise ContextualConfigurationConflict(
-            "ResourceLocationAssignment is not configurable"
-        )
+        raise ContextualConfigurationConflict("ResourceLocationAssignment is not configurable")
     return assignment_id, cast(UUID, row["offering_version_id"])
 
 
