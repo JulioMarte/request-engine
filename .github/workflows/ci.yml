@@ -31,12 +31,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Enforce Python effective line budget
-        env:
-          FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: >-
-          python scripts/ci/check_python_file_budget.py
-          --base-ref "${FILE_BUDGET_BASE_REF:-HEAD^}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -47,6 +41,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run canonical Python quality job
+        env:
+          FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: >-
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
@@ -164,12 +160,6 @@ jobs:
       - name: Run canonical V3 bootstrap proof job
         run: python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof
 
-  # V3 G17-G20 and the exact public-contract freeze are immutable release
-  # evidence bound to the released V3 source. Post-baseline branches must not
-  # regenerate or rewrite that evidence. Instead, run current code against the
-  # immutable 0001_initial baseline and frozen V3 contract to prove backward
-  # compatibility. Exact release-artifact semantics live in tests/historical,
-  # outside the current architecture-fitness lane.
   postgres-v3-candidate-proof:
     name: PostgreSQL 18 frozen V3 compatibility
     needs:
@@ -228,9 +218,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-  # This is the active product gate. It follows the accepted repository Alembic
-  # head and proves current operational/contextual behavior plus still-current
-  # booking/capacity guarantees. Feature-era names are not architecture locks.
   postgres-production-head:
     name: PostgreSQL 18 current product proof
     needs: python-quality
@@ -281,9 +268,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
-  # This exact job name is ruleset-required. Keep the expensive PostgreSQL proof
-  # conditional, then always run this lightweight aggregate so a failed/skipped
-  # prerequisite can never become a non-blocking skipped required check.
   postgres-v3-candidate:
     name: PostgreSQL 18 V3 candidate and verticals
     needs:
