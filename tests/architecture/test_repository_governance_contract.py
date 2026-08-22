@@ -132,7 +132,10 @@ def test_public_response_models_do_not_expose_internal_business_types() -> None:
                 if not isinstance(node.value, ast.Name):
                     continue
                 origin = origins.get(node.value.id)
-                if origin and any(part in origin for part in FORBIDDEN_PUBLIC_RESPONSE_ORIGIN_PARTS):
+                forbidden_origin = origin and any(
+                    part in origin for part in FORBIDDEN_PUBLIC_RESPONSE_ORIGIN_PARTS
+                )
+                if forbidden_origin:
                     violations.append(
                         f"{path.relative_to(ROOT)} response_model={node.value.id} <- {origin}"
                     )
