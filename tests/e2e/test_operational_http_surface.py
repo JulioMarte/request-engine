@@ -29,7 +29,10 @@ def _grant(
         INSERT INTO request_engine.representations (
             organization_id, principal_id, represented_party_id,
             authority_kind, scope_key, valid_until
-        ) VALUES (%s, %s, %s, 'delegated', %s, clock_timestamp() + interval '1 day')
+        ) VALUES (
+            %s, %s, %s, 'delegated', %s,
+            clock_timestamp() + interval '1 day'
+        )
         """,
         (organization_id, principal_id, authority_party_id, scope_key),
     )
@@ -85,7 +88,11 @@ async def test_operational_http_requires_representation_and_maps_input_errors_wi
         (sandbox.organization_id,),
     ).fetchone()
     contacts = e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.organization_public_contact_endpoints WHERE organization_id = %s",
+        """
+        SELECT count(*)
+        FROM request_engine.organization_public_contact_endpoints
+        WHERE organization_id = %s
+        """,
         (sandbox.organization_id,),
     ).fetchone()
     assert after == before
