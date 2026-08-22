@@ -10,7 +10,7 @@ applyTo: "src/**/*.py,tests/**/*.py"
 - One authoritative command should have one obvious command file/use-case entry point.
 - Domain types, application command/query types, cross-module contracts, API/Pydantic DTOs and SQLAlchemy persistence mappings are distinct.
 - Pydantic business transport types stay at API/configuration boundaries; business-module `domain`, `application`, and `contracts` remain Pydantic-free.
-- HTTP request DTOs use descriptive `*Body`; response/read projections use descriptive `*View`; transport-only query/path models use an explicit suffix such as `*Params`.
+- Top-level HTTP request DTOs use descriptive `*Body`; response/read projections use descriptive `*View`; transport-only query/path models use an explicit suffix such as `*Params`; nested request components may use a descriptive transport-explicit suffix such as `*InputModel`.
 - Cross-module imports use only the target module's `contracts` surface, and those contracts use business language rather than transport/persistence suffixes.
 - Application code defines ports; concrete DB/provider implementations live under the owning module's `adapters/`.
 - Prefer explicit dependency injection from `bootstrap` over service locators or hidden globals.
