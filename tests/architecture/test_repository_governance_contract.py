@@ -17,6 +17,12 @@ IMPORTANT_INSTRUCTION_BOUNDARIES = (
 FORBIDDEN_BUSINESS_LAYER_IMPORTS = ("pydantic",)
 TRANSPORT_SUFFIXES = ("Body", "View", "Params")
 FORBIDDEN_CONTRACT_SUFFIXES = ("Body", "View", "Row", "ORM")
+FORBIDDEN_PUBLIC_RESPONSE_ORIGIN_PARTS = (
+    ".domain",
+    ".application",
+    ".contracts",
+    ".adapters",
+)
 FORBIDDEN_GENERIC_BUSINESS_FILES = {
     "services.py",
     "managers.py",
@@ -32,10 +38,13 @@ def _python_files(root: Path) -> list[Path]:
     return [path for path in root.rglob("*.py") if "__pycache__" not in path.parts]
 
 
+def _tree(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
 def _imports(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imported: list[str] = []
-    for node in ast.walk(tree):
+    for node in ast.walk(_tree(path)):
         if isinstance(node, ast.Import):
             imported.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
@@ -43,15 +52,26 @@ def _imports(path: Path) -> list[str]:
     return imported
 
 
+def _imported_name_origins(path: Path) -> dict[str, str]:
+    origins: dict[str, str] = {}
+    for node in ast.walk(_tree(path)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            prefix = "." * node.level + node.module
+            for alias in node.names:
+                origins[alias.asname or alias.name] = f"{prefix}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                origins[alias.asname or alias.name.split(".")[0]] = alias.name
+    return origins
+
+
 def _class_names(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    return [node.name for node in ast.walk(_tree(path)) if isinstance(node, ast.ClassDef)]
 
 
 def _base_model_classes(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     names: list[str] = []
-    for node in ast.walk(tree):
+    for node in ast.walk(_tree(path)):
         if not isinstance(node, ast.ClassDef):
             continue
         base_names = {base.id for base in node.bases if isinstance(base, ast.Name)} | {
@@ -97,6 +117,29 @@ def test_http_transport_model_names_make_the_boundary_visible() -> None:
         "HTTP transport Pydantic models must use a transport-explicit suffix "
         f"{TRANSPORT_SUFFIXES}; change the convention only with the repository "
         "governance contract:\n"
+        + "\n".join(f"- {item}" for item in violations)
+    )
+
+
+def test_public_response_models_do_not_expose_internal_business_types() -> None:
+    violations: list[str] = []
+    for api_root in MODULES_ROOT.glob("*/api"):
+        for path in _python_files(api_root):
+            origins = _imported_name_origins(path)
+            for node in ast.walk(_tree(path)):
+                if not isinstance(node, ast.keyword) or node.arg != "response_model":
+                    continue
+                if not isinstance(node.value, ast.Name):
+                    continue
+                origin = origins.get(node.value.id)
+                if origin and any(part in origin for part in FORBIDDEN_PUBLIC_RESPONSE_ORIGIN_PARTS):
+                    violations.append(
+                        f"{path.relative_to(ROOT)} response_model={node.value.id} <- {origin}"
+                    )
+
+    assert violations == [], (
+        "Public HTTP response models must be API transport projections, not direct "
+        "domain/application/contracts/adapter types:\n"
         + "\n".join(f"- {item}" for item in violations)
     )
 
@@ -178,10 +221,14 @@ def test_path_specific_agent_rules_include_type_and_document_governance() -> Non
     assert "docs/README.md" in docs_rules
 
 
-def test_governance_contract_is_discoverable_from_test_and_docs_agent_maps() -> None:
-    required_reference = "testing/repository-governance-contract.md"
+def test_governance_contract_is_discoverable_from_canonical_entry_points() -> None:
+    governance_reference = "docs/testing/repository-governance-contract.md"
+    root_agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    docs_readme = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     docs_agents = (ROOT / "docs" / "AGENTS.md").read_text(encoding="utf-8")
     tests_agents = (ROOT / "tests" / "AGENTS.md").read_text(encoding="utf-8")
 
-    assert required_reference in docs_agents
+    assert governance_reference in root_agents
+    assert "testing/repository-governance-contract.md" in docs_readme
+    assert "testing/repository-governance-contract.md" in docs_agents
     assert "repository-governance-contract.md" in tests_agents
