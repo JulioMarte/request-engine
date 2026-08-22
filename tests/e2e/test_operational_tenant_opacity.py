@@ -7,7 +7,13 @@ from request_engine.entrypoints.http.operational_app import create_operational_a
 from request_engine.platform.db.session import SessionFactory
 
 from .operational_support import PgConnection
-from .tenant_sandbox import SandboxResolver, TenantSandbox, actor_for, auth, seed_tenant_sandbox
+from .tenant_sandbox import (
+    SandboxResolver,
+    TenantSandbox,
+    actor_for,
+    auth,
+    seed_tenant_sandbox,
+)
 
 
 def _grant(conn: PgConnection, sandbox: TenantSandbox) -> None:
@@ -16,7 +22,10 @@ def _grant(conn: PgConnection, sandbox: TenantSandbox) -> None:
         INSERT INTO request_engine.representations (
             organization_id, principal_id, represented_party_id,
             authority_kind, scope_key, valid_until
-        ) VALUES (%s, %s, %s, 'delegated', 'operations.manage_profile', clock_timestamp() + interval '1 day')
+        ) VALUES (
+            %s, %s, %s, 'delegated', 'operations.manage_profile',
+            clock_timestamp() + interval '1 day'
+        )
         """,
         (sandbox.organization_id, sandbox.principal_id, sandbox.party_id),
     )
