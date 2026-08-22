@@ -10,6 +10,9 @@ from request_engine.modules.discovery.adapters.db.candidate_reader import (
 from request_engine.modules.discovery.adapters.db.mapping_commands import (
     PostgresDiscoveryMappingCommands,
 )
+from request_engine.modules.discovery.adapters.db.mapping_revoke_commands import (
+    PostgresDiscoveryMappingRevokeCommands,
+)
 from request_engine.modules.discovery.adapters.db.publish_commands import (
     PostgresDiscoveryPublishCommands,
 )
@@ -61,6 +64,7 @@ def install_operational_http(
     app.include_router(
         create_operational_router(
             mapping_handler=PostgresDiscoveryMappingCommands(session_factory),
+            revoke_mapping_handler=PostgresDiscoveryMappingRevokeCommands(session_factory),
             publish_handler=PostgresDiscoveryPublishCommands(session_factory),
             revoke_handler=PostgresDiscoveryRevokeCommands(session_factory),
             actor_resolver=actor_resolver,
