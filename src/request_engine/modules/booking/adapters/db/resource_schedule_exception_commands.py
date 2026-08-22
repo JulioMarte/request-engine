@@ -5,6 +5,9 @@ from typing import cast
 from sqlalchemy.exc import DBAPIError
 
 from request_engine.modules.booking.adapters.db import (
+    resource_schedule_exception_audit as audit,
+)
+from request_engine.modules.booking.adapters.db import (
     resource_schedule_exception_codec as codec,
 )
 from request_engine.modules.booking.adapters.db import resource_schedule_exception_store as store
@@ -17,7 +20,6 @@ from request_engine.modules.booking.application.operational_errors import (
     ResourceAvailabilityRevisionConflict,
 )
 from request_engine.modules.booking.domain.availability import require_aware_utc
-from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
@@ -106,21 +108,17 @@ class PostgresResourceScheduleExceptionCommands:
                     reason=command.reason,
                     resource_availability_revision=final_revision,
                 )
-                await append_audit(
+                await audit.append_resource_exception_audit(
                     session,
                     organization_id=command.organization_id,
                     principal_id=command.principal_id,
-                    command_name="booking.set_resource_schedule_exception",
-                    aggregate_kind="ResourceScheduleException",
-                    aggregate_id=exception_id,
+                    exception_id=exception_id,
+                    resource_id=command.resource_id,
+                    exception_kind=command.exception_kind,
                     idempotency_id=idempotency_id,
-                    details={
-                        "authority": authority.audit_details(),
-                        "resource_id": str(command.resource_id),
-                        "exception_kind": command.exception_kind,
-                        "previous_resource_availability_revision": current_revision,
-                        "new_resource_availability_revision": final_revision,
-                    },
+                    authority=authority,
+                    previous_revision=current_revision,
+                    new_revision=final_revision,
                 )
                 await complete_idempotency(
                     session, idempotency_id, {"exception": codec.to_json(state)}
