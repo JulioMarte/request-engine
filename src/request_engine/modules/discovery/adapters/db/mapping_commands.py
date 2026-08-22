@@ -1,6 +1,9 @@
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from request_engine.modules.discovery.adapters.db import mapping_codec, mapping_store
 from request_engine.modules.discovery.application.commands.mapping import (
     MapOfferingToServiceClassificationCommand,
@@ -71,12 +74,7 @@ class PostgresDiscoveryMappingCommands:
                 session, command.organization_id, command.offering_id
             )
             classification_id = cast(UUID, classification["id"])
-            row = await self._persist(
-                session,
-                command,
-                current,
-                classification_id,
-            )
+            row = await self._persist(session, command, current, classification_id)
             state = OfferingServiceClassificationState(
                 id=cast(UUID, row["id"]),
                 offering_id=command.offering_id,
@@ -100,7 +98,13 @@ class PostgresDiscoveryMappingCommands:
             )
             return state
 
-    async def _persist(self, session, command, current, classification_id):
+    async def _persist(
+        self,
+        session: AsyncSession,
+        command: MapOfferingToServiceClassificationCommand,
+        current: RowMapping | None,
+        classification_id: UUID,
+    ) -> RowMapping:
         if current is None:
             if command.expected_revision is not None:
                 raise DiscoveryConfigurationConflict("mapping does not yet exist")
