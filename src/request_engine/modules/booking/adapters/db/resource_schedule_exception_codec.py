@@ -28,6 +28,25 @@ def command_payload(
     }
 
 
+def make_state(
+    command: SetResourceScheduleExceptionCommand,
+    *,
+    exception_id: UUID,
+    start_at: datetime,
+    end_at: datetime,
+    resource_availability_revision: int,
+) -> ResourceScheduleExceptionState:
+    return ResourceScheduleExceptionState(
+        exception_id=exception_id,
+        resource_id=command.resource_id,
+        start_at=start_at,
+        end_at=end_at,
+        exception_kind=command.exception_kind,
+        reason=command.reason,
+        resource_availability_revision=resource_availability_revision,
+    )
+
+
 def to_json(state: ResourceScheduleExceptionState) -> dict[str, object]:
     return {
         "exception_id": str(state.exception_id),
