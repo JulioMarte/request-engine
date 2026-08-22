@@ -32,6 +32,9 @@ from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
 )
+from request_engine.modules.booking.api.operational_errors import (
+    booking_operational_error_handler,
+)
 from request_engine.modules.booking.api.operational_exception_router import (
     create_operational_exception_router,
 )
@@ -40,6 +43,11 @@ from request_engine.modules.booking.api.operational_terms_router import (
 )
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.errors import BookingError
+from request_engine.modules.booking.application.operational_errors import (
+    ContextualConfigurationConflict,
+    ResourceAvailabilityRevisionConflict,
+    ResourceLocationAssignmentRevisionConflict,
+)
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
@@ -57,6 +65,18 @@ def install_http(
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
+    app.add_exception_handler(
+        ResourceAvailabilityRevisionConflict,
+        booking_operational_error_handler,
+    )
+    app.add_exception_handler(
+        ResourceLocationAssignmentRevisionConflict,
+        booking_operational_error_handler,
+    )
+    app.add_exception_handler(
+        ContextualConfigurationConflict,
+        booking_operational_error_handler,
+    )
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
