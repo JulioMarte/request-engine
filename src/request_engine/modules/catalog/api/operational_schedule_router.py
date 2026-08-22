@@ -6,10 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel
 
-from request_engine.modules.catalog.application.commands.configure_offering_version_booking_terms import (
-    ConfigureOfferingVersionBookingTermsCommand,
-    ConfigureOfferingVersionBookingTermsHandler,
-    configure_offering_version_booking_terms,
+from request_engine.modules.catalog.application.commands import (
+    configure_offering_version_booking_terms as base_terms_command,
 )
 from request_engine.modules.catalog.application.commands.set_location_hours_exception import (
     SetLocationHoursExceptionCommand,
@@ -25,7 +23,10 @@ from request_engine.modules.catalog.application.commands.set_location_operationa
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
-IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=250)]
+IdempotencyKey = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=1, max_length=250),
+]
 
 
 class HoursWindowBody(BaseModel):
@@ -63,7 +64,7 @@ def create_operational_schedule_router(
     *,
     hours_handler: SetLocationOperationalHoursHandler,
     exception_handler: SetLocationHoursExceptionHandler,
-    terms_handler: ConfigureOfferingVersionBookingTermsHandler,
+    terms_handler: base_terms_command.ConfigureOfferingVersionBookingTermsHandler,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/operations", tags=["operations"])
@@ -119,17 +120,18 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        return await configure_offering_version_booking_terms(
+        command = base_terms_command.ConfigureOfferingVersionBookingTermsCommand(
+            organization_id=current.organization_id,
+            principal_id=current.principal_id,
+            authority_party_id=body.authority_party_id,
+            offering_version_id=offering_version_id,
+            amount=body.amount,
+            currency=body.currency,
+            idempotency_key=key,
+        )
+        return await base_terms_command.configure_offering_version_booking_terms(
             terms_handler,
-            ConfigureOfferingVersionBookingTermsCommand(
-                organization_id=current.organization_id,
-                principal_id=current.principal_id,
-                authority_party_id=body.authority_party_id,
-                offering_version_id=offering_version_id,
-                amount=body.amount,
-                currency=body.currency,
-                idempotency_key=key,
-            ),
+            command,
         )
 
     return router
