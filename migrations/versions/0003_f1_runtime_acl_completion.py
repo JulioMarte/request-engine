@@ -22,8 +22,7 @@ def upgrade() -> None:
     # FORCE RLS remains authoritative for tenant isolation, and the worker
     # deliberately receives no F1 relation privilege.
     op.execute(
-        "GRANT DELETE ON TABLE request_engine.resource_location_availability "
-        "TO request_engine_app"
+        "GRANT DELETE ON TABLE request_engine.resource_location_availability TO request_engine_app"
     )
 
 
