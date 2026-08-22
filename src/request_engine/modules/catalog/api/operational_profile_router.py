@@ -1,11 +1,13 @@
-from datetime import datetime
-from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
-from pydantic import BaseModel
 
+from request_engine.modules.catalog.api.operational_profile_models import (
+    LocationBody,
+    LocationContactsBody,
+    LocationUpdateBody,
+)
 from request_engine.modules.catalog.application.commands.create_location import (
     CreateLocationCommand,
     CreateLocationHandler,
@@ -31,52 +33,6 @@ IdempotencyKey = Annotated[
 ]
 
 
-class LocationBody(BaseModel):
-    authority_party_id: UUID
-    location_key: str
-    display_name: str
-    timezone: str
-    active: bool = True
-    address_line1: str | None = None
-    address_line2: str | None = None
-    locality: str | None = None
-    administrative_area: str | None = None
-    postal_code: str | None = None
-    country_code: str | None = None
-    latitude: Decimal | None = None
-    longitude: Decimal | None = None
-    geocoding_source: str | None = None
-    geocoded_at: datetime | None = None
-
-
-class LocationUpdateBody(BaseModel):
-    authority_party_id: UUID
-    timezone: str
-    active: bool
-    expected_operational_revision: int
-    address_line1: str | None = None
-    address_line2: str | None = None
-    locality: str | None = None
-    administrative_area: str | None = None
-    postal_code: str | None = None
-    country_code: str | None = None
-    latitude: Decimal | None = None
-    longitude: Decimal | None = None
-    geocoding_source: str | None = None
-    geocoded_at: datetime | None = None
-
-
-class ContactBody(BaseModel):
-    channel: Literal["phone", "whatsapp", "email"]
-    value: str
-    label: str | None = None
-
-
-class LocationContactsBody(BaseModel):
-    authority_party_id: UUID
-    contacts: tuple[ContactBody, ...]
-
-
 def create_operational_profile_router(
     *,
     create_handler: CreateLocationHandler,
@@ -95,14 +51,13 @@ def create_operational_profile_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        payload = body.model_dump()
         return await create_location(
             create_handler,
             CreateLocationCommand(
                 organization_id=current.organization_id,
                 principal_id=current.principal_id,
                 idempotency_key=key,
-                **payload,
+                **body.model_dump(),
             ),
         )
 
@@ -113,7 +68,6 @@ def create_operational_profile_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        payload = body.model_dump()
         return await update_location_operational_info(
             update_handler,
             UpdateLocationOperationalInfoCommand(
@@ -121,7 +75,7 @@ def create_operational_profile_router(
                 principal_id=current.principal_id,
                 location_id=location_id,
                 idempotency_key=key,
-                **payload,
+                **body.model_dump(),
             ),
         )
 
