@@ -1,12 +1,24 @@
 from fastapi import FastAPI
 
-from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
+from request_engine.modules.booking.contracts.appointment_options import (
+    AppointmentOptionCodec,
+)
 from request_engine.modules.booking.contracts.discovery import PublishedSlotReader
-from request_engine.modules.discovery.adapters.db.candidate_reader import PostgresDiscoveryCandidateReader
-from request_engine.modules.discovery.adapters.db.mapping_commands import PostgresDiscoveryMappingCommands
-from request_engine.modules.discovery.adapters.db.publish_commands import PostgresDiscoveryPublishCommands
-from request_engine.modules.discovery.adapters.db.revoke_commands import PostgresDiscoveryRevokeCommands
-from request_engine.modules.discovery.api.operational_errors import discovery_operational_error_handler
+from request_engine.modules.discovery.adapters.db.candidate_reader import (
+    PostgresDiscoveryCandidateReader,
+)
+from request_engine.modules.discovery.adapters.db.mapping_commands import (
+    PostgresDiscoveryMappingCommands,
+)
+from request_engine.modules.discovery.adapters.db.publish_commands import (
+    PostgresDiscoveryPublishCommands,
+)
+from request_engine.modules.discovery.adapters.db.revoke_commands import (
+    PostgresDiscoveryRevokeCommands,
+)
+from request_engine.modules.discovery.api.operational_errors import (
+    discovery_operational_error_handler,
+)
 from request_engine.modules.discovery.api.operational_router import create_operational_router
 from request_engine.modules.discovery.api.router import create_router
 from request_engine.modules.discovery.application.errors import (
@@ -15,7 +27,9 @@ from request_engine.modules.discovery.application.errors import (
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
-from request_engine.platform.security.platform_discovery import PlatformDiscoveryActorResolver
+from request_engine.platform.security.platform_discovery import (
+    PlatformDiscoveryActorResolver,
+)
 
 
 def install_http(
