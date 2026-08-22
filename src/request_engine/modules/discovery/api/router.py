@@ -2,9 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
-from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
+from request_engine.modules.booking.contracts.appointment_options import (
+    AppointmentOptionCodec,
+)
 from request_engine.modules.booking.contracts.discovery import PublishedSlotReader
-from request_engine.modules.discovery.api.models import DiscoveryOptionView, SearchPublishedSupplyBody
+from request_engine.modules.discovery.api.models import (
+    DiscoveryOptionView,
+    SearchPublishedSupplyBody,
+)
 from request_engine.modules.discovery.application.queries.search_supply import (
     DiscoveryCandidateReader,
     SearchPublishedSupplyQuery,
