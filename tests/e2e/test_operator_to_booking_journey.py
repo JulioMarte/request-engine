@@ -39,7 +39,9 @@ async def test_operator_supply_configuration_drives_customer_slot_and_booking(
             json={
                 "authority_party_id": str(sandbox.party_id),
                 "expected_operational_revision": location_revision,
-                "windows": [{"weekday": 0, "local_start": "08:00:00", "local_end": "17:00:00"}],
+                "windows": [
+                    {"weekday": 0, "local_start": "08:00:00", "local_end": "17:00:00"}
+                ],
             },
         )
         assert hours.status_code == 200, hours.text
@@ -62,8 +64,12 @@ async def test_operator_supply_configuration_drives_customer_slot_and_booking(
             headers=auth(sandbox, idempotency_key=f"availability-{uuid4().hex}"),
             json={
                 "authority_party_id": str(sandbox.party_id),
-                "expected_resource_availability_revision": assignment["resource_availability_revision"],
-                "windows": [{"weekday": 0, "local_start": "09:00:00", "local_end": "12:00:00"}],
+                "expected_resource_availability_revision": assignment[
+                    "resource_availability_revision"
+                ],
+                "windows": [
+                    {"weekday": 0, "local_start": "09:00:00", "local_end": "12:00:00"}
+                ],
             },
         )
         assert availability.status_code == 200, availability.text
@@ -101,7 +107,8 @@ async def test_operator_supply_configuration_drives_customer_slot_and_booking(
     terms_body = cast(dict[str, object], terms.json())
     source = e2e_admin_conn.execute(
         "SELECT booking_context_terms_id FROM "
-        "request_engine.reservation_commercial_commitment_context_terms WHERE reservation_id = %s",
+        "request_engine.reservation_commercial_commitment_context_terms "
+        "WHERE reservation_id = %s",
         (reservation_id,),
     ).fetchone()
     assert claim == (UUID(assignment_id),)
