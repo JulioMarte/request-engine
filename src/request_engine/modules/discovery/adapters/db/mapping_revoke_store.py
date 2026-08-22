@@ -13,12 +13,15 @@ async def lock_mapping(
             await session.execute(
                 text(
                     """
-                    SELECT id, service_classification_id, revision, status
-                    FROM request_engine.offering_service_classifications
-                    WHERE organization_id = :organization_id
-                      AND offering_id = :offering_id
-                      AND status = 'active'
-                    FOR UPDATE
+                    SELECT m.id, m.service_classification_id, m.revision, m.status,
+                           sc.classification_key
+                    FROM request_engine.offering_service_classifications m
+                    JOIN request_engine.service_classifications sc
+                      ON sc.id = m.service_classification_id
+                    WHERE m.organization_id = :organization_id
+                      AND m.offering_id = :offering_id
+                      AND m.status = 'active'
+                    FOR UPDATE OF m
                     """
                 ),
                 {"organization_id": organization_id, "offering_id": offering_id},
