@@ -2,7 +2,7 @@
 
 Status: current informative closure audit for `feature/operational-profile-contextual-supply`.
 
-This audit does not define product semantics. It reconciles the F1 contract with implementation, current testing policy and merge evidence.
+This audit does not define product semantics. It reconciles the normative F1 contract with implementation and executable evidence.
 
 ## 1. Sources of truth
 
@@ -15,17 +15,7 @@ docs/v3/14-operational-intelligence-roadmap.md                 F2-F6 future dire
 docs/adr/0012-contextual-resource-location-supply.md            durable rationale
 ```
 
-Testing/repository governance:
-
-```text
-AGENTS.md
-tests/AGENTS.md
-docs/architecture/pre-production-evolution-policy.md
-docs/testing/repository-governance-contract.md
-docs/testing/evidence-authoring-guide.md
-docs/testing/current-guarantees.toml
-docs/testing/test-architecture-migration.md
-```
+Testing/repository governance remains owned by `AGENTS.md`, `tests/AGENTS.md` and `docs/testing/*`.
 
 Core policy:
 
@@ -33,18 +23,27 @@ Core policy:
 freeze the evidence, not the future
 ```
 
-## 2. Branch topology
-
-Integration vehicle:
+## 2. Integration vehicle
 
 ```text
 PR #75
 feature/operational-profile-contextual-supply -> development
 ```
 
-The feature was based on `development@9665873a90ecbaa52a17b4aff1ec4d1cd4c70573`. Merge readiness always depends on the live compare at review time; an old `behind_by=0` observation is not permanent evidence.
+The feature base remains:
 
-## 3. F1 implementation disposition
+```text
+9665873a90ecbaa52a17b4aff1ec4d1cd4c70573
+```
+
+At the last verified compare before this documentation-only reconciliation:
+
+```text
+behind development: 0
+PR mergeable: true
+```
+
+## 3. Capability disposition
 
 | Area | Disposition |
 | --- | --- |
@@ -52,182 +51,175 @@ The feature was based on `development@9665873a90ecbaa52a17b4aff1ec4d1cd4c70573`.
 | Location structured profile / contacts / hours / exceptions | COMPLETE |
 | ResourceLocationAssignment lifecycle | COMPLETE |
 | Resource-at-Location recurrence / scoped exceptions | COMPLETE |
-| explicit Resource-wide exception semantic mutation | COMPLETE / FINAL CI REQUIRED |
-| Base + contextual fixed commercial terms | COMPLETE |
-| future-effective contextual terms | COMPLETE |
-| catalog detail eligible-Location context hints | COMPLETE / FINAL CI REQUIRED |
-| explicit Resource or any eligible Resource slot selection | COMPLETE / FINAL CI REQUIRED |
-| aptopt_v2 contextual observations | COMPLETE |
-| contextual direct booking | COMPLETE |
-| immutable commercial commitment / 0..N sources | COMPLETE |
-| CapacityClaim assignment provenance | COMPLETE |
-| cross-tenant shared-capacity compatibility | COMPLETE |
+| explicit Resource-wide exception semantic mutation | COMPLETE / PROVEN |
+| Base + contextual fixed commercial terms | COMPLETE / PROVEN |
+| future-effective contextual terms | COMPLETE / PROVEN |
+| catalog detail eligible-Location context hints | COMPLETE / PROVEN |
+| explicit Resource or any eligible Resource slot selection | COMPLETE / PROVEN |
+| aptopt_v2 contextual observations | COMPLETE / PROVEN |
+| contextual direct booking | COMPLETE / PROVEN |
+| immutable commercial commitment / 0..N sources | COMPLETE / PROVEN |
+| CapacityClaim assignment provenance | COMPLETE / PROVEN |
+| cross-tenant shared-capacity compatibility | COMPLETE / PROVEN |
 | contextual hold | ACCEPTED F1 FAIL-CLOSED |
 | contextual reschedule | ACCEPTED F1 FAIL-CLOSED |
 | released aptopt_v1 behavior | PRESERVED / REGRESSION-PROTECTED |
 | F2-F6 roadmap capabilities | OUT OF THIS BRANCH |
 
-`COMPLETE / FINAL CI REQUIRED` means the implementation and adversarial test have been added, but this document deliberately does not convert a new, not-yet-tested SHA into merge evidence.
+## 4. Adversarial capability audit findings
 
-## 4. Important defects closed during implementation
-
-The branch closed several defects/gaps that existed in earlier iterations of the design:
+A later audit deliberately ignored previous green CI and rebuilt the required-capability inventory from docs 13/15. It found three product-surface gaps:
 
 ```text
-obsolete single contextual commercial-source assumption
-missing CreateLocation semantic command
-missing Organization central public-contact command
-OfferingVersion mutation used incorrectly as lifecycle kill-switch
-Offering.active not revalidated by contextual booking
-insufficient stale-option race coverage
-contextual hold/reschedule could otherwise risk legacy fallthrough
-multi-resource contextual provenance lacked explicit proof
+A. Resource-wide schedule exceptions were consumed by planning/booking but
+   had no supported semantic mutation command; tests used direct SQL.
+
+B. find_slots supported implicit "any eligible Resource" but no explicit
+   Resource preference.
+
+C. catalog offering detail returned OfferingVersion defaults but no safe
+   contextual Location eligibility hints.
 ```
 
-A later capability-first adversarial audit found three additional gaps that previous green CI did not expose:
+These were genuine missing capabilities, not naming differences in the database.
+
+## 5. Finding A — Resource-wide exception command
+
+Implemented:
 
 ```text
-Resource-wide schedule exceptions were consumed by planning/booking but had
-no supported semantic mutation command; tests configured them with direct SQL.
-
-find_slots supported only implicit "any eligible Resource" even though the
-accepted plan requires explicit Resource preference as well.
-
-catalog offering detail returned base/version defaults but no safe Location
-eligibility hints for contextual supply.
+SetResourceScheduleExceptionCommand
+PostgresResourceScheduleExceptionCommands
+booking.set_resource_schedule_exception
 ```
 
-The fixes are product-surface fixes rather than schema renames:
+The supported path now owns:
 
 ```text
-SetResourceScheduleExceptionCommand + PostgreSQL adapter
-  authority + idempotency + availability revision guard + audit
+tenant scoping
+operational authority
+idempotency + fingerprint replay
+expected Resource availability revision
+create/update of released request_engine.schedule_exceptions
+audit trail
+conflict classification
+```
 
-FindAppointmentSlotsQuery.resource_id + GET /v1/appointments/slots?resource_id=
-  preference applied before generation/limit; unknown IDs stay opaque
+The adversarial PostgreSQL proof verifies create, replay, update, revision movement, stale-revision rejection and actual availability impact.
 
+The initial adapter exceeded the repository hard file budget. The budget was not weakened. Persistence, state codec and audit were separated into dedicated modules.
+
+## 6. Finding B — explicit Resource preference
+
+Implemented:
+
+```text
+FindAppointmentSlotsQuery.resource_id
+GET /v1/appointments/slots?resource_id=<uuid>
+```
+
+Selection is applied before contextualization/slot generation/limit. This prevents a post-filter false-negative where the planner could generate its limit from other Resources before checking the preferred Resource.
+
+The E2E proof verifies:
+
+```text
+no resource_id -> any eligible Resource remains possible
+preferred Resource -> returned options use the preferred Resource
+preferred Resource contextual price is preserved
+booking the preferred option persists only that Resource claim
+random Resource ID -> HTTP 200 []
+foreign-tenant Resource ID -> same opaque HTTP 200 []
+```
+
+For multi-requirement Offerings, only requirements satisfiable by the preferred Resource are pinned; unrelated requirements remain normally resolvable.
+
+## 7. Finding C — catalog contextual Location hints
+
+Implemented optional:
+
+```text
 OfferingSummary.eligible_location_ids
-  all-requirement contextual Location eligibility, without pretending that a
-  single contextual price exists before Resource/Location selection
+OfferingView.eligible_location_ids
 ```
 
-The current model continues to use an immutable material commercial commitment plus a 0..N contextual source bridge. `OfferingVersion` remains append-only; `Offering.active` is the mutable parent publication/bookability kill-switch.
-
-## 5. Current test-architecture reconciliation
-
-The test-architecture migration correctly separated historical V3 provenance from current-product evolution. One additional gap was found during the earlier audit:
+Eligibility is derived from:
 
 ```text
-old migrated current-product runner
-  F1 integration + booking/capacity regression
-  BUT no tests/e2e
+active Location
+OfferingVersion resource requirements
+active matching Resources
+matching capabilities
+effective active ResourceLocationAssignments
+required quantity
 ```
 
-That was not acceptable because `tests/e2e/` is explicitly the production-like public/runtime evidence layer.
+The detail API intentionally does not fabricate a single contextual amount/duration because those values may differ by Resource and Location.
 
-The current-product runner is corrected to include the full PostgreSQL-marked `tests/e2e` suite against current Alembic head.
+E2E verifies that the actual contextual clinic is returned and an active but unassigned Location is excluded.
 
-The capability audit then exercised a second architectural guard: initial fixes grew legacy oversized Python files. The file-budget gate rejected that implementation shape. We did not add ignores or increase limits. Instead the new responsibilities were separated into focused modules for candidate sourcing, catalog hints/mapping, Resource-wide persistence/codec/audit, API dependencies and E2E fixture construction.
+The field is optional and `None` is omitted by the API when F1 schema is unavailable, preserving the released V3 response shape.
 
-This is a KEEP/ADAPT/REPAIR decision under the current policy:
+## 8. Exact executable evidence
+
+The adversarial closure checkpoint before the final documentation-only commits is:
 
 ```text
-public production-like evidence guarantee    KEEP
-historical V3 execution ownership            ADAPT
-current-product omission of tests/e2e        REPAIR
-missing F1 semantic/public capabilities       REPAIR
-file-budget architecture guard                KEEP
+feature head: ea899e70060441d9247a4226d6949ae6773ca095
+canonical PR CI: 32569661743
 ```
 
-No historical freeze is being restored.
-
-## 6. F1 E2E proof obligations
-
-The feature-specific production-like journeys attack the following observable contracts:
-
-### Happy path
+Every required job passed:
 
 ```text
-GET /v1/business
-GET /v1/catalog/offerings?location_id=...&effective_at=...
-GET /v1/appointments/slots
-  -> contextual amount/currency/duration/location
-  -> signed aptopt_v2
-POST /v1/appointments
-  -> Reservation
-  -> active CapacityClaim with exact ResourceLocationAssignment
-  -> immutable commercial commitment
-  -> exact contextual source bridge
+Python quality and architecture                         PASS
+PostgreSQL 18 current product proof                      PASS
+PostgreSQL 18 V2 design history                          PASS
+PostgreSQL 18 V3 repeated bootstrap proof                PASS
+Observability runtime contract                           PASS
+PostgreSQL 18 frozen V3 compatibility                    PASS
+PostgreSQL 18 V3 candidate and verticals aggregate       PASS
 ```
 
-### Catalog detail contextual hint
+The Python-quality lane explicitly passed:
 
 ```text
-GET /v1/catalog/offerings/{offering_key}
-  -> includes contextual Location with effective eligible supply
-  -> excludes active Location with no eligible assignments
-  -> does not fabricate one contextual price across different Resources
+Python effective line budget
+lockfile consistency
+Ruff lint
+Ruff format
+Pyright
+secret scan
+security static analysis
+dependency vulnerability audit
+architecture tests
+unit tests
+module tests
+test-architecture inventory
 ```
 
-The hint is optional/omitted on legacy V3 schema so released response shape remains compatible.
+No file-budget limit or ignore was loosened to obtain green.
 
-### Explicit Resource preference
+The PostgreSQL current-product proof passed:
 
 ```text
-find_slots without resource_id
-  -> any eligible Resource may be selected
-
-find_slots?resource_id=preferred
-  -> preferred Resource is pinned where it satisfies the requirement
-  -> its exact contextual amount/duration are preserved
-
-find_slots?resource_id=random-or-foreign
-  -> opaque empty result
+9 schema/runtime
+6 business/catalog/opacity
+18 semantic/configuration
+21 contextual booking/race/provenance
+144 production-like E2E
+31 booking/capacity regression
 ```
 
-### Stale observation
+## 9. Important retained adversarial guarantees
 
-```text
-discover option
-mutate authoritative contextual price
-POST old option
-  -> HTTP 409
-  -> appointment_option_stale
-  -> refresh_and_retry
-  -> full authoritative-table snapshot unchanged by rejected request
-```
-
-### Unsupported contextual reschedule
-
-```text
-book contextual Reservation
-obtain contextual replacement option
-POST reschedule
-  -> HTTP 422
-  -> contextual_commitment_unsupported
-  -> full authoritative-table snapshot unchanged
-```
-
-### Same Resource, two Locations
-
-```text
-same Resource
-Location A -> schedule A + DOP 4,000 + 45m
-Location B -> schedule B + DOP 5,200 + 30m
-```
-
-Location-filtered public slot queries must preserve those distinct observations. This directly falsifies accidental assignment/terms conflation rather than relying only on relational cardinality tests.
-
-## 7. Adversarial coverage retained below E2E
-
-Not every important race belongs in a public E2E journey. Current PostgreSQL integration evidence retains targeted proofs for:
+Current evidence continues to cover:
 
 ```text
 price/context change vs book
 assignment retirement vs book
 assignment-specific exception vs book
 Resource-wide exception vs book
-Resource-wide exception semantic command create/update/idempotency/revision behavior
+Resource-wide semantic command lifecycle
 Location exception / recurring-hours mutation vs book
 Offering.active deactivation vs book
 concurrent context-term writes
@@ -239,89 +231,64 @@ multi-resource commercial provenance
 future-effective terms
 DST gap/fold
 foreign/random ID opacity
-semantic command authority/idempotency
+semantic authority/idempotency
 historical assignment provenance immutability
+stale option refresh-and-retry
+contextual reschedule fail-closed
 ```
 
-This layered evidence is intentional: E2E proves the composed production-like journey; narrow adversarial tests provide deterministic localization and race control.
+## 10. Test architecture disposition
 
-## 8. Documentation reconciliation
-
-### 13 — plan
-
-Still semantically correct. Its explicit/any Resource responsibility and explicit Resource-wide schedule-exception mutation requirement were the source of two findings in the adversarial audit; they are now implemented rather than weakened or renamed away.
-
-### 15 — normative contract
-
-Still semantically correct. Location/context hints are represented conservatively as eligible Location IDs; actual contextual commercial terms remain resolved only when enough concrete context exists.
-
-### 16 — clarifications
-
-Historical adversarial-review provenance. It no longer overrides 15/13 after its accepted findings were folded into them.
-
-### 17 — implementation inventory
-
-Historical Phase-B old->new evidence. Do not rewrite it into current status.
-
-### 18 — relational schema
-
-Current explanation of the F1 schema. The branch presently introduces `0002_f1_supply`, but repository-wide current-product CI must not freeze that revision as the permanent future head.
-
-### 20 — handoff
-
-Reconciled to the capability-first audit, current-product / E2E / historical evidence architecture and remaining exact-head gates.
-
-### Testing docs
-
-The repository testing policy is authoritative for where evidence executes and which structural restrictions may evolve. F1 docs should not duplicate those policies.
-
-## 9. What is not a merge blocker
-
-Under the official migration policy, these items may happen after F1 integrates and are not reasons to keep PR #75 open by themselves:
+The durable separation remains:
 
 ```text
-renaming every V3-era current test whose guarantee remains current
-moving every tests/integration/f1_operational_profile file immediately
-fully completing the repository-wide proof-map migration for unrelated capabilities
-property/state-machine expansion unrelated to F1 acceptance
-F2-F6 implementation
+CURRENT PRODUCT
+  current source + current Alembic head
+  current integration + PostgreSQL invariants + production-like E2E
+
+V3 PUBLIC COMPATIBILITY
+  current source + released V3 public minima
+
+V3 HISTORICAL REPRODUCIBILITY
+  released V3 source + released 0001_initial
 ```
 
-Feature-era test relocation must preserve evidence but need not be mixed into the feature merge when the canonical current-product gate already owns those guarantees.
+`scripts/ci/run_current_product.sh` includes `tests/e2e`; therefore HTTP/runtime journeys cannot silently disappear from current-product proof.
 
-## 10. Final exact-head acceptance gate
+The adversarial fixes also validated the file-budget architecture policy. New responsibilities were extracted instead of expanding already oversized modules.
 
-Do not declare the branch merge-ready from an older successful run.
-
-The final PR head/merge candidate must prove:
+## 11. Documentation reconciliation
 
 ```text
-Python quality and architecture                         PASS
-PostgreSQL current product proof                        PASS
-  including tests/e2e                                   PASS
-  including explicit Resource preference                PASS
-  including catalog eligible-Location detail hint       PASS
-  including Resource-wide semantic command              PASS
-  including F1 integration                              PASS
-  including current booking/capacity regressions        PASS
-PostgreSQL V2 design history                            PASS
-PostgreSQL repeated bootstrap                           PASS
-Observability runtime contract                          PASS
-V3 public compatibility / pinned historical provenance PASS
-required aggregate                                      PASS
+13  current implementation/acceptance plan             CURRENT
+14  future F2-F6 roadmap                                CURRENT FUTURE DIRECTION
+15  normative F1 product/domain contract                CURRENT
+16  closed clarification provenance                     HISTORICAL INPUT
+17  old->new inventory                                  HISTORICAL IMPLEMENTATION EVIDENCE
+18  F1 relational schema explanation                    CURRENT FOR F1
+19  greenfield validation-data premise                  CURRENT POLICY INPUT
+20  implementation handoff                              CURRENT INFORMATIVE
+21  this audit                                          CURRENT INFORMATIVE
 ```
 
-Additionally:
+The adversarial findings strengthen 13/15 rather than weakening or renaming away their requirements.
+
+## 12. Final pre-merge rule
+
+The successful run above proves `ea899e70060441d9247a4226d6949ae6773ca095`. The documentation reconciliation itself creates a later commit, so it must not borrow that green status.
+
+Before merge, require a fresh PR run where all required jobs are green on the latest documentation-inclusive branch head, then verify:
 
 ```text
-branch reconciled with current development
+latest branch head == PR head
+behind development = 0
 PR mergeable
-final diff contains no accidental F2-F6/product leakage
-documentation describes the tested architecture
+no accidental F2-F6/product scope leakage
+all required checks green on exact head
 ```
 
-Any commit after that successful exact-head evidence invalidates the gate and requires another run.
+Any later commit invalidates that exact-head proof.
 
-## 11. ADR 0012
+## 13. ADR 0012
 
-Keep `Proposed` until its documented acceptance condition is fulfilled. If the ADR requires both proof and integration, transition it only after merge rather than creating a pre-merge status fiction.
+Keep ADR 0012 `Proposed` until its documented acceptance condition is fulfilled. Because that condition includes integration, do not mark it `Accepted` before merge.
