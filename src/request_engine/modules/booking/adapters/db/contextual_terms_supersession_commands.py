@@ -46,7 +46,10 @@ class PostgresContextualTermsSupersessionCommands:
             command_payload(command, cutover=cutover),
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory,
+                command.organization_id,
+            ) as session:
                 idem_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
