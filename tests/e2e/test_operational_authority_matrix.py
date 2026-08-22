@@ -29,24 +29,26 @@ def _insert_representation(
     scope_key: str,
     expired: bool,
 ) -> None:
-    if expired:
-        valid_from = "clock_timestamp() - interval '2 days'"
-        valid_until = "clock_timestamp() - interval '1 day'"
-    else:
-        valid_from = "clock_timestamp()"
-        valid_until = "clock_timestamp() + interval '1 day'"
     conn.execute(
-        f"""
+        """
         INSERT INTO request_engine.representations (
             organization_id, principal_id, represented_party_id,
             authority_kind, scope_key, valid_from, valid_until
-        ) VALUES (%s, %s, %s, 'delegated', %s, {valid_from}, {valid_until})
+        ) VALUES (
+            %s, %s, %s, 'delegated', %s,
+            CASE WHEN %s THEN clock_timestamp() - interval '2 days'
+                 ELSE clock_timestamp() END,
+            CASE WHEN %s THEN clock_timestamp() - interval '1 day'
+                 ELSE clock_timestamp() + interval '1 day' END
+        )
         """,
         (
             sandbox.organization_id,
             sandbox.principal_id,
             sandbox.party_id,
             scope_key,
+            expired,
+            expired,
         ),
     )
 
