@@ -5,7 +5,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.application.operational_errors import ContextualConfigurationConflict
+from request_engine.modules.booking.application.operational_errors import (
+    ContextualConfigurationConflict,
+)
 
 
 async def lock_identity(
@@ -50,7 +52,9 @@ async def lock_identity(
         )
     ).first()
     if resource is None:
-        raise ContextualConfigurationConflict("ResourceLocationAssignment is not configurable")
+        raise ContextualConfigurationConflict(
+            "ResourceLocationAssignment is not configurable"
+        )
     assignment = (
         await session.execute(
             text(
@@ -61,7 +65,9 @@ async def lock_identity(
         )
     ).first()
     if assignment is None or assignment[0] != "active":
-        raise ContextualConfigurationConflict("ResourceLocationAssignment is not configurable")
+        raise ContextualConfigurationConflict(
+            "ResourceLocationAssignment is not configurable"
+        )
     return assignment_id, cast(UUID, row["offering_version_id"])
 
 
