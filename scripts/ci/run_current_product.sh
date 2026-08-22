@@ -52,6 +52,8 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_contextual_supply_lifecycle_commands.py \
   tests/integration/f1_operational_profile/test_resource_wide_schedule_exception_command.py \
   tests/integration/f1_operational_profile/test_semantic_surface_gaps.py \
+  tests/integration/f1_operational_profile/test_public_contact_normalization.py \
+  tests/integration/f1_operational_profile/test_contextual_terms_supersession.py \
   tests/integration/f1_operational_profile/test_contextual_configuration_races.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/semantic-commands.xml"
