@@ -84,6 +84,7 @@ async def test_contextual_public_journey_persists_exact_provenance(
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
+@pytest.mark.contract
 @pytest.mark.adversarial
 async def test_stale_contextual_option_is_http_409_without_partial_effects(
     e2e_admin_conn: PgConnection,
@@ -112,6 +113,7 @@ async def test_stale_contextual_option_is_http_409_without_partial_effects(
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
+@pytest.mark.contract
 @pytest.mark.adversarial
 async def test_contextual_reschedule_fails_closed_without_mutation(
     e2e_admin_conn: PgConnection,
