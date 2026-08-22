@@ -79,9 +79,7 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
-        windows = tuple(
-            LocationOperationalHoursInput(**item.model_dump()) for item in body.windows
-        )
+        windows = tuple(LocationOperationalHoursInput(**item.model_dump()) for item in body.windows)
         return await set_location_operational_hours(
             hours_handler,
             SetLocationOperationalHoursCommand(
