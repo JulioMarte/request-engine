@@ -1,7 +1,10 @@
 from typing import cast
 from uuid import UUID
 
-from request_engine.modules.discovery.adapters.db import publication_codec, publication_store
+from request_engine.modules.discovery.adapters.db import (
+    publication_codec,
+    publication_store,
+)
 from request_engine.modules.discovery.application.commands.publication import (
     DiscoveryPublicationState,
     RevokeDiscoveryPublicationCommand,
@@ -38,7 +41,9 @@ class PostgresDiscoveryRevokeCommands:
                 "expected_revision": command.expected_revision,
             },
         )
-        async with tenant_transaction(self._session_factory, command.organization_id) as session:
+        async with tenant_transaction(
+            self._session_factory, command.organization_id
+        ) as session:
             idem_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -48,7 +53,9 @@ class PostgresDiscoveryRevokeCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return publication_codec.state_from_json(cast(dict[str, object], replay["state"]))
+                return publication_codec.state_from_json(
+                    cast(dict[str, object], replay["state"])
+                )
             authority = await require_operational_authority(
                 session,
                 organization_id=command.organization_id,
@@ -63,7 +70,11 @@ class PostgresDiscoveryRevokeCommands:
                 raise DiscoveryConfigurationConflict("discovery publication unavailable")
             actual = cast(int, current["revision"])
             if actual != command.expected_revision:
-                raise DiscoveryRevisionConflict(command.publication_id, command.expected_revision, actual)
+                raise DiscoveryRevisionConflict(
+                    command.publication_id,
+                    command.expected_revision,
+                    actual,
+                )
             updated = await publication_store.revoke_publication(
                 session, command.organization_id, command.publication_id
             )
