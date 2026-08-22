@@ -15,7 +15,7 @@ IMPORTANT_INSTRUCTION_BOUNDARIES = (
 )
 
 FORBIDDEN_BUSINESS_LAYER_IMPORTS = ("pydantic",)
-TRANSPORT_SUFFIXES = ("Body", "View", "Params")
+TRANSPORT_SUFFIXES = ("Body", "View", "Params", "InputModel")
 FORBIDDEN_CONTRACT_SUFFIXES = ("Body", "View", "Row", "ORM")
 FORBIDDEN_PUBLIC_RESPONSE_ORIGIN_PARTS = (
     ".domain",
@@ -204,8 +204,8 @@ def test_copilot_adapter_routes_to_current_authority_not_v2_contracts() -> None:
     assert "AGENTS.md" in copilot
     assert "docs/README.md" in copilot
     assert "docs/testing/repository-governance-contract.md" in copilot
-    assert "docs/v3/02-pre-sql-contract.md" in copilot
-    assert "docs/02-pre-sql-domain-contract.md" not in copilot
+    assert "for released V3 invariants use `docs/v3/02-pre-sql-contract.md`" in copilot
+    assert "Do not infer current requirements from `docs/02-pre-sql-domain-contract.md`" in copilot
 
 
 def test_path_specific_agent_rules_include_type_and_document_governance() -> None:
