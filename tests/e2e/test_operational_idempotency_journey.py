@@ -76,7 +76,7 @@ async def test_operator_profile_replay_is_single_effect_and_conflicting_replay_i
     assert row == ("Replay Clinic", "DOP")
     audit_count = e2e_admin_conn.execute(
         """
-        SELECT count(*) FROM request_engine.audit_log
+        SELECT count(*) FROM request_engine.audit_records
         WHERE organization_id = %s
           AND command_name = 'tenancy.update_organization_operational_profile'
         """,
