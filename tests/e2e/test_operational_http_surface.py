@@ -1,5 +1,4 @@
-from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -8,15 +7,21 @@ from request_engine.entrypoints.http.operational_app import create_operational_a
 from request_engine.platform.db.session import SessionFactory
 
 from .operational_support import PgConnection
-from .tenant_sandbox import SandboxResolver, actor_for, auth, seed_tenant_sandbox
+from .tenant_sandbox import (
+    SandboxResolver,
+    TenantSandbox,
+    actor_for,
+    auth,
+    seed_tenant_sandbox,
+)
 
 
 def _grant(
     conn: PgConnection,
     *,
-    organization_id,
-    principal_id,
-    authority_party_id,
+    organization_id: UUID,
+    principal_id: UUID,
+    authority_party_id: UUID,
     scope_key: str,
 ) -> None:
     conn.execute(
@@ -34,7 +39,7 @@ def _grant(
     )
 
 
-def _client(session_factory: SessionFactory, sandbox) -> AsyncClient:
+def _client(session_factory: SessionFactory, sandbox: TenantSandbox) -> AsyncClient:
     resolver = SandboxResolver({sandbox.token: actor_for(sandbox)})
     app = create_operational_app(
         session_factory=session_factory,
