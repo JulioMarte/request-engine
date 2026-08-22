@@ -61,7 +61,25 @@ For database-dependent behavior, read `docs/testing/evidence-authoring-guide.md`
 
 `scripts/ci/ci_jobs.py` is the executable source of truth for named reusable CI jobs such as `python-quality`. The current `python-quality` sequence owns the Python effective-line budget, environment/lock consistency, Ruff, Pyright, security/dependency checks, architecture tests, unit tests and module tests. The workflow passes `FILE_BUDGET_BASE_REF` so the file-budget ratchet can compare the current change with the correct integration base; local execution falls back to `HEAD^`.
 
-Current-product PostgreSQL behavior is orchestrated by `scripts/ci/run_current_product.sh`; frozen release provenance remains in the historical compatibility lane. This separation prevents historical proof from freezing current implementation shape while keeping current guarantees continuously executable.
+PostgreSQL/release evidence is deliberately split by the question being answered:
+
+```text
+current product proof
+  current source + current Alembic head
+  -> current accepted business/invariant behavior
+
+V3 public compatibility proof
+  current source + frozen V3 public-contract baseline
+  -> released V3 compatibility minima still exposed by current head
+
+V3 historical reproducibility
+  released V3 source + released 0001_initial
+  -> historical release behavior still reproduces in its own execution boundary
+```
+
+Current-product PostgreSQL behavior is orchestrated by `scripts/ci/run_current_product.sh`. `scripts/ci/run_v3_frozen_compatibility.sh` owns the latter two V3 questions and must not run current post-V3 application behavior on an intentionally stale V3 database. `tests/historical/` then checks pinned release provenance from the current repository without requiring current source paths/shape to remain frozen.
+
+This separation prevents historical proof from freezing current implementation shape while keeping current guarantees continuously executable. A current regression does not become acceptable merely because historical V3 is green; a historical proof does not gain authority to force current code to support an unpromised stale-schema deployment mode.
 
 The target is not a particular number of tests. The target is explicit coverage of critical risks with strong, localizable, falsifiable evidence while keeping historical release provenance reproducible and unable to freeze current product evolution.
 
