@@ -20,7 +20,10 @@ from request_engine.modules.communications.api import install_http as install_co
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import build_party_authority_reader
+from request_engine.modules.tenancy.api import (
+    build_party_authority_reader,
+    install_operational_http as install_tenancy_operational_http,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.discovery import (
@@ -101,6 +104,11 @@ def create_app(
             actor_resolver=request_actor_resolver,
             tenant_capability_policy=policy,
         )
+    )
+    install_tenancy_operational_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=execution_actor_resolver,
     )
     install_requests_http(
         app,
