@@ -99,13 +99,11 @@ class PostgresResourceScheduleExceptionCommands:
                     organization_id=command.organization_id,
                     resource_id=command.resource_id,
                 )
-                state = ResourceScheduleExceptionState(
+                state = codec.make_state(
+                    command,
                     exception_id=exception_id,
-                    resource_id=command.resource_id,
                     start_at=start_at,
                     end_at=end_at,
-                    exception_kind=command.exception_kind,
-                    reason=command.reason,
                     resource_availability_revision=final_revision,
                 )
                 await audit.append_resource_exception_audit(
