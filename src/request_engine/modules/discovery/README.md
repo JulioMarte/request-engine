@@ -21,7 +21,7 @@ Those remain with Tenancy, Catalog, Booking, or private platform machinery accor
 
 ## Trust boundaries
 
-There are two different runtime surfaces.
+F2 uses three distinct runtime surfaces.
 
 Tenant configuration runs under the normal operational application role and tenant RLS:
 
@@ -31,7 +31,19 @@ operations.manage_discovery
   -> publish/revoke discovery supply
 ```
 
-Platform search runs under a dedicated discovery database credential that inherits only `request_engine_discovery`. That role is `NOBYPASSRLS` and receives no generic tenant-table privileges. It may execute only the protected candidate/handoff functions required by F2.
+Public platform search runs under a dedicated discovery database credential that inherits only `request_engine_discovery`. That role is `NOBYPASSRLS`, has no generic tenant-table privileges, and may execute only the protected candidate/handoff functions required by F2.
+
+Authoritative Booking availability is reached through a separate internal process:
+
+```text
+Request Engine Discovery Availability Gateway
+  credential: request_engine_app
+  capability: discovery.read_published_slots
+  input: exact Publication + Mapping observations
+  output: only publication-fenced Booking slot results
+```
+
+The public Discovery process uses a remote `PublishedSlotReader` client. It cannot be composed with the PostgreSQL Booking reader directly.
 
 The public Discovery process must not receive:
 
@@ -39,12 +51,15 @@ The public Discovery process must not receive:
 request_engine_app's generic SessionFactory
 request_engine_admin credentials
 normal Booking appointment-option signing key
+local PostgresPublishedSlotReader
 generic cross-tenant SELECT authority
 ```
 
+A compromised caller of the internal availability gateway still cannot turn it into a generic tenant oracle: the gateway revalidates the exact tenant Publication id/revision, Mapping id/revision, current OfferingVersion, Location and Resource/null scope before invoking Booking availability.
+
 ## Booking composition
 
-Discovery reuses Booking availability only through `booking.contracts.PublishedSlotReader`.
+Discovery reuses Booking availability only through `booking.contracts.PublishedSlotReader`. The PostgreSQL implementation belongs to the internal Booking gateway process; the public Discovery process sees only the remote port.
 
 Successful F2 output requires contextual F1 supply with deterministic commercial terms. Legacy tenant-local Booking remains supported, but a slot without F1 commercial/configuration provenance is not emitted by F2.
 
@@ -54,7 +69,7 @@ The client receives an opaque random token:
 discoopt_v1.<secret>
 ```
 
-Resource selection and publication/mapping observations stay server-side. The token does not serialize Resource IDs or shared-capacity identity.
+Resource selection and exact Publication/Mapping observations stay server-side. Candidate generation, availability lookup and handoff issuance preserve the same Mapping id/revision; a remap between those stages invalidates the candidate instead of rebinding it silently.
 
 When the user books, normal tenant Booking authority is still required. Booking resolves the handoff under tenant context and PostgreSQL revalidates/fences the exact publication and mapping inside the same Reservation transaction before commitment.
 
