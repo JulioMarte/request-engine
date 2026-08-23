@@ -1,6 +1,7 @@
 import hashlib
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -50,7 +51,7 @@ class PostgresDiscoveryHandoffReader:
         if not isinstance(selection, dict):
             raise AppointmentOptionInvalid("discovery handoff payload is malformed")
         try:
-            option = _decode_selection(selection, organization_id)
+            option = _decode_selection(cast(dict[str, object], selection), organization_id)
         except (KeyError, TypeError, ValueError) as exc:
             raise AppointmentOptionInvalid("discovery handoff payload is malformed") from exc
         return DecodedDiscoveryHandoff(
@@ -74,13 +75,14 @@ def _decode_selection(
     resources_raw = data.get("resources")
     if not isinstance(resources_raw, list) or not resources_raw:
         raise ValueError("resources are malformed")
+    resources = cast(list[object], resources_raw)
     return DecodedAppointmentOption(
         organization_id=organization_id,
         offering_version_id=UUID(str(data["offering_version_id"])),
         start_at=datetime.fromisoformat(str(data["start_at"])),
         end_at=datetime.fromisoformat(str(data["end_at"])),
         location_id=UUID(str(data["location_id"])),
-        resources=tuple(_resource(item) for item in resources_raw),
+        resources=tuple(_resource(item) for item in resources),
         expires_at=datetime.max.replace(tzinfo=UTC),
         planned_duration_minutes=int(str(data["planned_duration_minutes"])),
         amount=Decimal(str(data["amount"])),
@@ -93,12 +95,13 @@ def _decode_selection(
 def _resource(raw: object) -> ResourceChoice:
     if not isinstance(raw, dict):
         raise ValueError("resource is malformed")
-    assignment_raw = raw.get("resource_location_assignment_id")
-    assignment_revision = raw.get("assignment_revision")
-    availability_revision = raw.get("availability_revision")
+    data = cast(dict[str, object], raw)
+    assignment_raw = data.get("resource_location_assignment_id")
+    assignment_revision = data.get("assignment_revision")
+    availability_revision = data.get("availability_revision")
     return ResourceChoice(
-        requirement_id=UUID(str(raw["requirement_id"])),
-        resource_id=UUID(str(raw["resource_id"])),
+        requirement_id=UUID(str(data["requirement_id"])),
+        resource_id=UUID(str(data["resource_id"])),
         resource_location_assignment_id=(UUID(str(assignment_raw)) if assignment_raw else None),
         assignment_revision=(int(str(assignment_revision)) if assignment_revision else None),
         availability_revision=(int(str(availability_revision)) if availability_revision else None),
