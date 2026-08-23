@@ -26,7 +26,7 @@ CREATE TABLE request_engine.service_classifications (
     revision bigint NOT NULL DEFAULT 1,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    CHECK (classification_key ~ '^[a-z0-9]+(?:_[a-z0-9]+)*$'),
+    CHECK (classification_key ~ '^[a-z0-9]+(_[a-z0-9]+)*$'),
     CHECK (btrim(canonical_name) <> ''),
     CHECK (status IN ('active', 'retired')),
     CHECK (revision > 0)
