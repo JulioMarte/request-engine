@@ -1,4 +1,5 @@
 import hashlib
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -26,7 +27,6 @@ class PostgresDiscoveryHandoffIssuer:
         secret = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(secret.encode("ascii")).hexdigest()
         expires_at = datetime.now(UTC) + _TTL
-        selection = _selection(slot)
         async with self._session_factory() as session, session.begin():
             await session.execute(
                 text(
@@ -44,7 +44,7 @@ class PostgresDiscoveryHandoffIssuer:
                     "publication_revision": candidate.publication_revision,
                     "offering_version_id": slot.offering_version_id,
                     "location_id": slot.location_id,
-                    "selection": __import__("json").dumps(selection, separators=(",", ":")),
+                    "selection": json.dumps(_selection(slot), separators=(",", ":")),
                     "expires_at": expires_at,
                 },
             )
