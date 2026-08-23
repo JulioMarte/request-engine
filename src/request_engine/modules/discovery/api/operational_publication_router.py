@@ -32,7 +32,6 @@ def create_publication_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("")
     async def publish(
         body: DiscoveryPublicationBody,
         key: IdempotencyKey,
@@ -48,7 +47,6 @@ def create_publication_router(
             ),
         )
 
-    @router.post("/{publication_id}/revoke")
     async def revoke(
         publication_id: UUID,
         body: RevokeDiscoveryConfigurationBody,
@@ -67,4 +65,6 @@ def create_publication_router(
             ),
         )
 
+    router.add_api_route("", publish, methods=["POST"])
+    router.add_api_route("/{publication_id}/revoke", revoke, methods=["POST"])
     return router
