@@ -21,10 +21,10 @@ def _key(conn: PgConnection, mapping_id: object) -> str:
     return str(row[0])
 
 
-def _count(conn: PgConnection, key: str, longitude: float) -> int:
+def _count(conn: PgConnection, key: str, location_id: object, longitude: float) -> int:
     conn.execute(
-        "UPDATE request_engine.locations SET latitude=0, longitude=%s WHERE active",
-        (longitude,),
+        "UPDATE request_engine.locations SET latitude=0, longitude=%s WHERE id=%s",
+        (longitude, location_id),
     )
     row = conn.execute(
         """
@@ -48,8 +48,8 @@ def test_radius_boundary_is_inclusive_and_rejects_first_point_beyond_it(
     fixture = create_discovery_fixture(admin_conn)
     key = _key(admin_conn, fixture.mapping_id)
 
-    # At the equator, one micro-degree is a fixed arc under the same WGS84-style
-    # mean-earth radius used by the contract. 0.673528 degrees is 74892.9999995 m.
-    assert _count(admin_conn, key, 0.673527) == 1
-    assert _count(admin_conn, key, 0.673528) == 1
-    assert _count(admin_conn, key, 0.673529) == 0
+    # At the equator, one micro-degree is a fixed arc under the same mean-earth
+    # radius used by the F2 contract. 0.673528 degrees is 74892.9999995 m.
+    assert _count(admin_conn, key, fixture.location_id, 0.673527) == 1
+    assert _count(admin_conn, key, fixture.location_id, 0.673528) == 1
+    assert _count(admin_conn, key, fixture.location_id, 0.673529) == 0
