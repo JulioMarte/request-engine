@@ -48,14 +48,16 @@ async def test_discovery_crosses_two_tenants_and_books_selected_handoff(
         )
     assert response.status_code == 200, response.text
     options = cast(list[dict[str, Any]], response.json())
-    organizations = {UUID(item["organization_id"]) for item in options}
-    assert {tenant_a.organization_id, tenant_b.organization_id} <= organizations
+    organizations = {str(item["organization_key"]) for item in options}
+    assert {tenant_a.organization_key, tenant_b.organization_key} <= organizations
     selected = next(
-        item for item in options if item["organization_id"] == str(tenant_a.organization_id)
+        item for item in options if item["organization_key"] == tenant_a.organization_key
     )
     assert str(selected["option_id"]).startswith("discoopt_v1.")
     assert Decimal(str(selected["amount"])) == Decimal("4000")
     assert selected["planned_duration_minutes"] == 45
+    assert "organization_id" not in selected
+    assert "offering_version_id" not in selected
 
     async with client_for(e2e_session_factory, tenant_a) as booking:
         booked = await booking.post(
