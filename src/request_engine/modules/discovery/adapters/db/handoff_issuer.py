@@ -3,8 +3,11 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
+from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidate
@@ -22,45 +25,48 @@ class PostgresDiscoveryHandoffIssuer:
         self,
         candidate: DiscoveryCandidate,
         slot: AppointmentSlot,
-    ) -> str:
-        _require_discoverable_slot(slot)
+    ) -> str | None:
+        selection = _selection(slot)
         secret = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(secret.encode("ascii")).hexdigest()
         expires_at = datetime.now(UTC) + _TTL
-        async with self._session_factory() as session, session.begin():
-            await session.execute(
-                text(
-                    """
-                    SELECT request_engine.issue_discovery_booking_handoff(
-                        :token_hash, :publication_id, :publication_revision,
-                        :offering_version_id, :location_id,
-                        CAST(:selection AS jsonb), :expires_at
-                    )
-                    """
-                ),
-                {
-                    "token_hash": token_hash,
-                    "publication_id": candidate.publication_id,
-                    "publication_revision": candidate.publication_revision,
-                    "offering_version_id": slot.offering_version_id,
-                    "location_id": slot.location_id,
-                    "selection": json.dumps(_selection(slot), separators=(",", ":")),
-                    "expires_at": expires_at,
-                },
-            )
+        try:
+            async with self._session_factory() as session, session.begin():
+                await session.execute(
+                    text(
+                        """
+                        SELECT request_engine.issue_discovery_booking_handoff(
+                            :token_hash, :publication_id, :publication_revision,
+                            :offering_version_id, :location_id,
+                            CAST(:selection AS jsonb), :expires_at
+                        )
+                        """
+                    ),
+                    {
+                        "token_hash": token_hash,
+                        "publication_id": candidate.publication_id,
+                        "publication_revision": candidate.publication_revision,
+                        "offering_version_id": slot.offering_version_id,
+                        "location_id": cast(UUID, slot.location_id),
+                        "selection": json.dumps(selection, separators=(",", ":")),
+                        "expires_at": expires_at,
+                    },
+                )
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "40001":
+                return None
+            raise
         return f"{_PREFIX}.{secret}"
 
 
-def _require_discoverable_slot(slot: AppointmentSlot) -> None:
+def _selection(slot: AppointmentSlot) -> dict[str, object]:
     if slot.location_id is None or slot.configuration_fingerprint is None:
         raise ValueError("F2 discovery requires contextual appointment supply")
     if slot.amount is None or slot.currency is None or slot.planned_duration_minutes is None:
         raise ValueError("F2 discovery requires deterministic commercial terms")
-
-
-def _selection(slot: AppointmentSlot) -> dict[str, object]:
-    amount = slot.amount
-    assert isinstance(amount, Decimal)
+    if slot.location_operational_revision is None:
+        raise ValueError("F2 discovery requires Location revision")
+    amount = cast(Decimal, slot.amount)
     return {
         "offering_version_id": str(slot.offering_version_id),
         "start_at": slot.start_at.isoformat(),
