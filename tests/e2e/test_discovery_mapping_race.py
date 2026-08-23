@@ -29,6 +29,7 @@ async def test_concurrent_first_mapping_has_one_winner_one_loser_and_one_active_
     classification_b = create_classification(e2e_admin_conn, "dermatology")
 
     async with operational_client(e2e_session_factory, tenant) as client:
+
         async def map_to(classification: str) -> object:
             return await client.put(
                 f"/v1/operations/discovery/offerings/{tenant.offering_id}/classification",
