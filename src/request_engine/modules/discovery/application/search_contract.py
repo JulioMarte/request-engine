@@ -13,13 +13,26 @@ _CLASSIFICATION_KEY = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 
 class SearchQueryLike(Protocol):
-    service_classification_key: str
-    origin_latitude: Decimal
-    origin_longitude: Decimal
-    radius_meters: int
-    window_start: datetime
-    window_end: datetime
-    limit: int
+    @property
+    def service_classification_key(self) -> str: ...
+
+    @property
+    def origin_latitude(self) -> Decimal: ...
+
+    @property
+    def origin_longitude(self) -> Decimal: ...
+
+    @property
+    def radius_meters(self) -> int: ...
+
+    @property
+    def window_start(self) -> datetime: ...
+
+    @property
+    def window_end(self) -> datetime: ...
+
+    @property
+    def limit(self) -> int: ...
 
 
 def validate_search_query(query: SearchQueryLike) -> None:
