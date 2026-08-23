@@ -5,6 +5,10 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from request_engine.modules.booking.application.errors import (
+    AppointmentOptionInvalid,
+    AppointmentOptionStale,
+)
 from request_engine.modules.booking.contracts.appointment_options import DecodedAppointmentOption
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.booking.contracts.discovery import DecodedDiscoveryHandoff
@@ -40,25 +44,26 @@ class PostgresDiscoveryHandoffReader:
                 .mappings()
                 .first()
             )
-        if row is None:
-            raise ValueError("discovery option is unavailable")
-        resolved_organization_id = row["organization_id"]
-        if resolved_organization_id != organization_id:
-            raise ValueError("discovery option is unavailable")
+        if row is None or row["organization_id"] != organization_id:
+            raise AppointmentOptionStale("discovery publication or handoff changed")
         selection = row["selection"]
         if not isinstance(selection, dict):
-            raise ValueError("discovery option is malformed")
+            raise AppointmentOptionInvalid("discovery handoff payload is malformed")
+        try:
+            option = _decode_selection(selection, organization_id)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AppointmentOptionInvalid("discovery handoff payload is malformed") from exc
         return DecodedDiscoveryHandoff(
             handoff_id=row["handoff_id"],
             organization_id=organization_id,
-            option=_decode_selection(selection, organization_id),
+            option=option,
         )
 
 
 def _secret(token: str) -> str:
     prefix, separator, secret = token.partition(".")
     if separator != "." or prefix != _PREFIX or len(secret) < 32:
-        raise ValueError("unsupported discovery option format")
+        raise AppointmentOptionInvalid("unsupported discovery option format")
     return secret
 
 
@@ -68,7 +73,7 @@ def _decode_selection(
 ) -> DecodedAppointmentOption:
     resources_raw = data.get("resources")
     if not isinstance(resources_raw, list) or not resources_raw:
-        raise ValueError("discovery option resources are malformed")
+        raise ValueError("resources are malformed")
     return DecodedAppointmentOption(
         organization_id=organization_id,
         offering_version_id=UUID(str(data["offering_version_id"])),
@@ -87,7 +92,7 @@ def _decode_selection(
 
 def _resource(raw: object) -> ResourceChoice:
     if not isinstance(raw, dict):
-        raise ValueError("discovery option resource is malformed")
+        raise ValueError("resource is malformed")
     assignment_raw = raw.get("resource_location_assignment_id")
     assignment_revision = raw.get("assignment_revision")
     availability_revision = raw.get("availability_revision")
