@@ -54,6 +54,7 @@ def test_discovery_runtime_has_no_direct_tenant_relation_privilege(
         "offerings",
         "offering_versions",
         "resources",
+        "resource_public_profiles",
         "service_classifications",
         "offering_service_classifications",
         "discovery_publications",
