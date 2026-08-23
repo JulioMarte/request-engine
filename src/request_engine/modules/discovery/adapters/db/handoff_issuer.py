@@ -2,7 +2,6 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
@@ -74,7 +73,7 @@ def _selection(slot: AppointmentSlot) -> dict[str, object]:
         raise ValueError("F2 discovery requires deterministic commercial terms")
     if slot.location_operational_revision is None:
         raise ValueError("F2 discovery requires Location revision")
-    amount = cast(Decimal, slot.amount)
+    amount = slot.amount
     return {
         "offering_version_id": str(slot.offering_version_id),
         "start_at": slot.start_at.isoformat(),
