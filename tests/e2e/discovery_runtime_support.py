@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from urllib.parse import quote_plus, urlsplit
 from uuid import uuid4
@@ -60,7 +60,7 @@ async def discovery_client(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
     app_database_url: str,
-) -> AsyncIterator[AsyncClient]:
+) -> AsyncGenerator[AsyncClient]:
     role = f"re_e2e_discovery_{secrets.token_hex(6)}"
     password = secrets.token_urlsafe(24)
     create_role = "CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_engine_discovery NOBYPASSRLS"
