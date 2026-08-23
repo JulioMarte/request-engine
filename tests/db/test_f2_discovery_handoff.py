@@ -1,5 +1,5 @@
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -11,28 +11,32 @@ PgConnection = Connection[Any]
 
 
 def _issue_handoff(conn: PgConnection, fixture: DiscoveryFixture) -> UUID:
-    selection = """
-    {
+    resource_id = uuid4()
+    selection = f"""
+    {{
+      "offering_version_id": "{fixture.offering_version_id}",
+      "location_id": "{fixture.location_id}",
       "start_at": "2035-06-01T14:00:00+00:00",
       "end_at": "2035-06-01T14:30:00+00:00",
-      "resources": [],
+      "resources": [{{"resource_id": "{resource_id}"}}],
       "planned_duration_minutes": 30,
       "amount": "3500",
       "currency": "DOP",
       "location_operational_revision": 1,
       "configuration_fingerprint": "sha256:test"
-    }
+    }}
     """
     return uuid_row(
         conn,
         """
         SELECT request_engine.issue_discovery_booking_handoff(
-            repeat('a', 64), %s, 1, %s, %s, %s::jsonb,
+            repeat('a', 64), %s, 1, %s, 1, %s, %s, %s::jsonb,
             clock_timestamp() + interval '10 minutes'
         )
         """,
         (
             fixture.publication_id,
+            fixture.mapping_id,
             fixture.offering_version_id,
             fixture.location_id,
             selection,
@@ -41,9 +45,7 @@ def _issue_handoff(conn: PgConnection, fixture: DiscoveryFixture) -> UUID:
 
 
 def _attempt_reservation(
-    conn: PgConnection,
-    fixture: DiscoveryFixture,
-    handoff_id: UUID,
+    conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID
 ) -> None:
     conn.execute(
         "SELECT set_config('request_engine.organization_id', %s, true)",
@@ -82,20 +84,14 @@ def test_revoked_publication_cannot_commit_discovered_reservation(
         "UPDATE request_engine.discovery_publications SET status = 'revoked' WHERE id = %s",
         (fixture.publication_id,),
     )
-
     with pytest.raises(psycopg.errors.SerializationFailure), admin_conn.transaction():
         _attempt_reservation(admin_conn, fixture, handoff_id)
-
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
         (fixture.organization_id,),
     ).fetchone() == (0,)
     assert admin_conn.execute(
-        """
-        SELECT consumed_reservation_id
-          FROM request_engine.discovery_booking_handoffs
-         WHERE id = %s
-        """,
+        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id = %s",
         (handoff_id,),
     ).fetchone() == (None,)
 
@@ -106,17 +102,11 @@ def test_mapping_replacement_stales_existing_handoff(admin_conn: PgConnection) -
     fixture = create_discovery_fixture(admin_conn)
     handoff_id = _issue_handoff(admin_conn, fixture)
     admin_conn.execute(
-        """
-        UPDATE request_engine.offering_service_classifications
-           SET status = 'revoked'
-         WHERE id = %s
-        """,
+        "UPDATE request_engine.offering_service_classifications SET status = 'revoked' WHERE id = %s",
         (fixture.mapping_id,),
     )
-
     with pytest.raises(psycopg.errors.SerializationFailure), admin_conn.transaction():
         _attempt_reservation(admin_conn, fixture, handoff_id)
-
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
         (fixture.organization_id,),
