@@ -9,11 +9,11 @@ from request_engine.entrypoints.http.errors import (
     http_exception_handler,
     request_validation_error_handler,
 )
-from request_engine.modules.discovery.api import install_http
-from request_engine.modules.discovery.application.availability import RemotePublishedSlotReader
-from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
-from request_engine.modules.discovery.application.queries.search_supply import (
+from request_engine.modules.discovery.api import (
     DiscoveryCandidateReader,
+    DiscoveryHandoffIssuer,
+    RemotePublishedSlotReader,
+    install_http,
 )
 from request_engine.platform.security.http import (
     AuthenticationRequired,
