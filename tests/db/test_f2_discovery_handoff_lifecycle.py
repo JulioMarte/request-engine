@@ -1,5 +1,5 @@
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -11,29 +11,32 @@ PgConnection = Connection[Any]
 
 
 def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> UUID:
-    selection = """
-    {
+    selection = f"""
+    {{
+      "offering_version_id":"{fixture.offering_version_id}",
+      "location_id":"{fixture.location_id}",
       "start_at":"2035-06-01T14:00:00+00:00",
       "end_at":"2035-06-01T14:30:00+00:00",
-      "resources":[],
+      "resources":[{{"resource_id":"{uuid4()}"}}],
       "planned_duration_minutes":30,
       "amount":"3500",
       "currency":"DOP",
       "location_operational_revision":1,
       "configuration_fingerprint":"sha256:test"
-    }
+    }}
     """
     return uuid_row(
         conn,
         """
         SELECT request_engine.issue_discovery_booking_handoff(
-            %s, %s, 1, %s, %s, %s::jsonb,
+            %s, %s, 1, %s, 1, %s, %s, %s::jsonb,
             clock_timestamp() + interval '10 minutes'
         )
         """,
         (
             token_hash,
             fixture.publication_id,
+            fixture.mapping_id,
             fixture.offering_version_id,
             fixture.location_id,
             selection,
@@ -42,9 +45,7 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
 
 
 def _insert_reservation(
-    conn: PgConnection,
-    fixture: DiscoveryFixture,
-    handoff_id: UUID,
+    conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID
 ) -> UUID:
     conn.execute(
         "SELECT set_config('request_engine.organization_id', %s, true)",
@@ -83,13 +84,8 @@ def test_consumed_handoff_remains_resolvable_for_idempotent_replay(
     handoff_id = _handoff(admin_conn, fixture, token_hash)
     with admin_conn.transaction():
         reservation_id = _insert_reservation(admin_conn, fixture, handoff_id)
-
     assert admin_conn.execute(
-        """
-        SELECT consumed_reservation_id
-          FROM request_engine.discovery_booking_handoffs
-         WHERE id = %s
-        """,
+        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id = %s",
         (handoff_id,),
     ).fetchone() == (reservation_id,)
     admin_conn.execute(
@@ -115,10 +111,8 @@ def test_new_offering_version_stales_existing_handoff(admin_conn: PgConnection) 
         """,
         (fixture.organization_id, fixture.offering_id),
     )
-
     with pytest.raises(psycopg.errors.SerializationFailure), admin_conn.transaction():
         _insert_reservation(admin_conn, fixture, handoff_id)
-
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
         (fixture.organization_id,),
