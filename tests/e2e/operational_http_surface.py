@@ -76,6 +76,11 @@ _ROUTES = (
         "POST",
         "/v1/operations/discovery/offerings/{offering_id}/classification/revoke",
     ),
+    (
+        "discovery.resource_public_profile",
+        "PUT",
+        "/v1/operations/discovery/resources/{resource_id}/public-profile",
+    ),
     ("discovery.publish", "POST", "/v1/operations/discovery/publications"),
     (
         "discovery.revoke",
@@ -96,6 +101,7 @@ _REVISION_OWNERS = {
     "context_terms.supersede": "BookingContextTerms.revision",
     "discovery.mapping": "OfferingServiceClassification.revision",
     "discovery.mapping_revoke": "OfferingServiceClassification.revision",
+    "discovery.resource_public_profile": "ResourcePublicProfile.revision",
     "discovery.revoke": "DiscoveryPublication.revision",
 }
 
