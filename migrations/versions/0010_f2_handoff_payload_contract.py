@@ -53,11 +53,13 @@ BEGIN
        OR p_selection IS NULL
        OR COALESCE(jsonb_typeof(p_selection), '') <> 'object'
        OR COALESCE(jsonb_typeof(p_selection->'resources'), '') <> 'array'
-       OR COALESCE(jsonb_array_length(p_selection->'resources'), 0) = 0
        OR NULLIF(btrim(p_selection->>'currency'), '') IS NULL
        OR (p_selection->>'currency') !~ '^[A-Z]{3}$'
        OR NULLIF(btrim(p_selection->>'configuration_fingerprint'), '') IS NULL THEN
         RAISE EXCEPTION 'invalid discovery handoff payload' USING ERRCODE = '22023';
+    END IF;
+    IF jsonb_array_length(p_selection->'resources') = 0 THEN
+        RAISE EXCEPTION 'discovery handoff resources are required' USING ERRCODE = '22023';
     END IF;
     IF p_expected_publication_revision < 1 OR p_expected_mapping_revision < 1 THEN
         RAISE EXCEPTION 'invalid discovery handoff observation' USING ERRCODE = '22023';
