@@ -30,9 +30,7 @@ class PostgresDiscoveryRevokeCommands:
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
-    async def revoke(
-        self, command: RevokeDiscoveryPublicationCommand
-    ) -> DiscoveryPublicationState:
+    async def revoke(self, command: RevokeDiscoveryPublicationCommand) -> DiscoveryPublicationState:
         fingerprint = command_fingerprint(
             "discovery.revoke_publication",
             {
@@ -41,9 +39,7 @@ class PostgresDiscoveryRevokeCommands:
                 "expected_revision": command.expected_revision,
             },
         )
-        async with tenant_transaction(
-            self._session_factory, command.organization_id
-        ) as session:
+        async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idem_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -53,9 +49,7 @@ class PostgresDiscoveryRevokeCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return publication_codec.state_from_json(
-                    cast(dict[str, object], replay["state"])
-                )
+                return publication_codec.state_from_json(cast(dict[str, object], replay["state"]))
             authority = await require_operational_authority(
                 session,
                 organization_id=command.organization_id,
