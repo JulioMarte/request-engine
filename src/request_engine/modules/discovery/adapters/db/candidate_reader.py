@@ -28,7 +28,7 @@ class PostgresDiscoveryCandidateReader:
                         text(
                             """
                             SELECT *
-                            FROM request_engine.search_discovery_candidates(
+                            FROM request_engine.search_discovery_candidates_v2(
                                 :classification_key,
                                 :latitude,
                                 :longitude,
