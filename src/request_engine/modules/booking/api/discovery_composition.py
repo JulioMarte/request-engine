@@ -3,11 +3,13 @@ from request_engine.modules.booking.contracts.discovery import PublishedSlotRead
 from request_engine.platform.db.session import SessionFactory
 
 
-def build_published_slot_reader(domain_session_factory: SessionFactory) -> PublishedSlotReader:
-    """Build the narrow Booking read port used by a trusted discovery gateway.
+def build_internal_discovery_slot_reader(
+    domain_session_factory: SessionFactory,
+) -> PublishedSlotReader:
+    """Build the Booking reader for the internal availability gateway process.
 
-    The public Discovery app receives only this port and never the underlying
-    domain SessionFactory or the normal Booking appointment-option signing key.
+    The returned object closes over request_engine_app credentials and therefore
+    must never be injected directly into the public Discovery process.
     """
 
     return PostgresPublishedSlotReader(domain_session_factory)
