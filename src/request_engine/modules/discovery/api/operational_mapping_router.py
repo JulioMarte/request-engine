@@ -34,7 +34,6 @@ def create_mapping_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    @router.put("/{offering_id}/classification")
     async def map_offering(
         offering_id: UUID,
         body: OfferingClassificationBody,
@@ -54,7 +53,6 @@ def create_mapping_router(
             ),
         )
 
-    @router.post("/{offering_id}/classification/revoke")
     async def revoke_mapping(
         offering_id: UUID,
         body: RevokeDiscoveryConfigurationBody,
@@ -73,4 +71,14 @@ def create_mapping_router(
             ),
         )
 
+    router.add_api_route(
+        "/{offering_id}/classification",
+        map_offering,
+        methods=["PUT"],
+    )
+    router.add_api_route(
+        "/{offering_id}/classification/revoke",
+        revoke_mapping,
+        methods=["POST"],
+    )
     return router
