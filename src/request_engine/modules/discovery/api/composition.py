@@ -7,7 +7,9 @@ from request_engine.modules.discovery.adapters.db.handoff_issuer import (
     PostgresDiscoveryHandoffIssuer,
 )
 from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
-from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidateReader
+from request_engine.modules.discovery.application.queries.search_supply import (
+    DiscoveryCandidateReader,
+)
 from request_engine.platform.db.session import SessionFactory
 
 
