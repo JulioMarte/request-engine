@@ -105,9 +105,7 @@ async def search_published_supply(
             )
         )
         options.extend(
-            DiscoveryOption(candidate, slot)
-            for slot in slots
-            if _is_f2_discoverable(slot)
+            DiscoveryOption(candidate, slot) for slot in slots if _is_f2_discoverable(slot)
         )
 
     options.sort(key=_option_order)
