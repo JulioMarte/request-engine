@@ -55,7 +55,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, request_engine
 AS $function$
 BEGIN
-    IF p_classification_key !~ '^[a-z0-9]+(?:_[a-z0-9]+)*$'
+    IF p_classification_key !~ '^[a-z0-9]+(_[a-z0-9]+)*$'
        OR p_origin_latitude NOT BETWEEN -90 AND 90
        OR p_origin_longitude NOT BETWEEN -180 AND 180
        OR p_radius_meters NOT BETWEEN 1 AND 100000
