@@ -29,7 +29,8 @@ BEGIN
        OR OLD.resource_id IS DISTINCT FROM NEW.resource_id
        OR OLD.effective_during <> NEW.effective_during
        OR OLD.provider_visibility <> NEW.provider_visibility THEN
-        RAISE EXCEPTION 'DiscoveryPublication scope/effective interval/visibility cannot be retargeted'
+        RAISE EXCEPTION
+            'DiscoveryPublication scope/effective interval/visibility cannot be retargeted'
             USING ERRCODE = '23514';
     END IF;
     IF OLD.status = 'revoked' AND NEW.status <> 'revoked' THEN
