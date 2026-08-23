@@ -64,9 +64,8 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
     offering_id = uuid_row(
         conn,
         """
-        INSERT INTO request_engine.offerings (
-            organization_id, offering_key, display_name
-        ) VALUES (%s, %s, 'Cardiology')
+        INSERT INTO request_engine.offerings (organization_id, offering_key, display_name)
+        VALUES (%s, %s, 'Cardiology')
         RETURNING id
         """,
         (organization_id, f"offering-{suffix}"),
@@ -81,18 +80,12 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
         """,
         (organization_id, offering_id),
     )
-    requirement_id, resource_id = create_booking_capacity(
-        conn,
-        organization_id,
-        version_id,
-        suffix,
-    )
+    requirement_id, resource_id = create_booking_capacity(conn, organization_id, version_id, suffix)
     classification_id = uuid_row(
         conn,
         """
-        INSERT INTO request_engine.service_classifications (
-            classification_key, canonical_name
-        ) VALUES (%s, 'Cardiology')
+        INSERT INTO request_engine.service_classifications (classification_key, canonical_name)
+        VALUES (%s, 'Cardiology')
         RETURNING id
         """,
         (f"cardiology_{suffix}",),
