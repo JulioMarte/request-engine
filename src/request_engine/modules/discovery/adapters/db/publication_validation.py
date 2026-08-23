@@ -10,7 +10,7 @@ def validated_publication_intent(
 ) -> tuple[datetime, datetime | None, str]:
     start = command.effective_start
     end = command.effective_end
-    if start.tzinfo is None or (end is not None and end.tzinfo is None):
+    if start.utcoffset() is None or (end is not None and end.utcoffset() is None):
         raise ValueError("discovery publication dates must be timezone-aware")
     start = start.astimezone(UTC)
     end = end.astimezone(UTC) if end is not None else None
