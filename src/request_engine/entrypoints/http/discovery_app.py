@@ -12,7 +12,9 @@ from request_engine.entrypoints.http.errors import (
 from request_engine.modules.discovery.api import install_http
 from request_engine.modules.discovery.application.availability import RemotePublishedSlotReader
 from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
-from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidateReader
+from request_engine.modules.discovery.application.queries.search_supply import (
+    DiscoveryCandidateReader,
+)
 from request_engine.platform.security.http import (
     AuthenticationRequired,
     CapabilityRequired,
