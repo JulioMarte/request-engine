@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def lock_mapping(
-    session: AsyncSession, organization_id: UUID, offering_id: UUID
+    session: AsyncSession,
+    organization_id: UUID,
+    offering_id: UUID,
 ) -> RowMapping | None:
     return (
         (
@@ -16,8 +18,9 @@ async def lock_mapping(
                     SELECT m.id, m.service_classification_id, m.revision, m.status,
                            sc.classification_key
                     FROM request_engine.offering_service_classifications m
-                    JOIN request_engine.service_classifications sc
-                      ON sc.id = m.service_classification_id
+                    JOIN LATERAL request_engine.lookup_service_classification(
+                        m.service_classification_id
+                    ) sc ON true
                     WHERE m.organization_id = :organization_id
                       AND m.offering_id = :offering_id
                       AND m.status = 'active'
@@ -33,7 +36,9 @@ async def lock_mapping(
 
 
 async def revoke_mapping(
-    session: AsyncSession, organization_id: UUID, mapping_id: UUID
+    session: AsyncSession,
+    organization_id: UUID,
+    mapping_id: UUID,
 ) -> RowMapping:
     return (
         (
