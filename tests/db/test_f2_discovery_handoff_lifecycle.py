@@ -2,8 +2,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 from psycopg import Connection
+import pytest
 
 from tests.fixtures.f2_discovery import DiscoveryFixture, create_discovery_fixture, uuid_row
 
@@ -85,7 +85,11 @@ def test_consumed_handoff_remains_resolvable_for_idempotent_replay(
     with admin_conn.transaction():
         reservation_id = _insert_reservation(admin_conn, fixture, handoff_id)
     assert admin_conn.execute(
-        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id = %s",
+        """
+        SELECT consumed_reservation_id
+        FROM request_engine.discovery_booking_handoffs
+        WHERE id = %s
+        """,
         (handoff_id,),
     ).fetchone() == (reservation_id,)
     admin_conn.execute(
