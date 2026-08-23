@@ -81,9 +81,7 @@ class PostgresDiscoveryPublishCommands:
                     effective_start=start,
                     effective_end=end,
                 ):
-                    raise DiscoveryConfigurationConflict(
-                        "discovery publication scope unavailable"
-                    )
+                    raise DiscoveryConfigurationConflict("discovery publication scope unavailable")
                 row = await publication_store.insert_publication(
                     session,
                     organization_id=command.organization_id,
