@@ -176,6 +176,25 @@ For a contextual `aptopt_v2` direct booking:
 
 This extension changes the Booking/API error boundary only to classify unsupported contextual commitment attempts explicitly. It does not weaken shared-capacity privacy, expose hidden shared-root identity, introduce a second capacity ledger, or reinterpret arbitrary PostgreSQL integrity failures as normal contention.
 
+### F2 geospatial cross-tenant discovery extension
+
+F2 discovery is a publication and read/handoff capability; it is **not** a new shared-capacity authority and it does not use `GlobalIdentity`, `SharedCapacityIdentity`, `SharedCapacityBinding` or `SharedCapacityClaimLink` as discovery identifiers.
+
+For a `discoopt_v1` booking selected from cross-tenant discovery:
+
+- Discovery may expose only tenant-authorized published supply and the approved public Organization/Location/Offering projection;
+- concrete Resource selection remains server-side handoff state and hidden provider identity is not serialized into the public token;
+- the handoff preserves exact Publication and Offering-to-classification Mapping observations, but neither fact consumes capacity;
+- normal tenant `appointments.book` authority is still required after selection;
+- Booking resolves the opaque handoff and revalidates Publication/Mapping plus the normal F1 schedule, assignment, terms and Resource observations inside the authoritative booking transaction;
+- `CapacityClaim` remains the only capacity-consumption ledger;
+- if a selected Resource is bound to shared capacity, Booking follows the same local-Resource → hidden-SharedCapacityIdentity lock topology described above before committing the claim;
+- two discoverable tenant-local Resources bound to one real-world shared root therefore still arbitrate on the same hidden mutex;
+- a lost local or cross-tenant shared contention race remains the ordinary opaque `appointment_unavailable` outcome and does not reveal the foreign tenant, Reservation, shared-root identity or GlobalIdentity;
+- publication or classification revocation can make the discovery handoff stale, but it cannot rewrite or bypass already-authoritative shared-capacity provenance.
+
+The dedicated `request_engine_discovery` runtime role has no authority to enumerate private shared-capacity tables and no generic tenant-table authority. The internal Booking availability gateway is publication-fenced and may calculate slots, but only the normal Booking commitment path can create Reservation/CapacityClaim state. F2 therefore adds a discovery trust boundary without weakening ADR 0011/V3 shared-capacity serialization or privacy.
+
 ## Privacy contract
 
 A tenant must not learn from a shared conflict:
@@ -212,6 +231,8 @@ The branch contains PostgreSQL/application tests for:
 - clean PostgreSQL 18 bootstrap, schema fingerprint/catalog audit and generated `0001_initial` equivalence;
 - contextual direct booking with a globally bound Resource respecting the same hidden shared-capacity mutex;
 - contextual unsupported Hold/reschedule failing closed without falling through to released V3 commitment handlers.
+
+F2 adds required evidence that discovery publication cannot become shared-capacity authority, that `discoopt_v1` does not expose hidden Resource/shared-root identifiers, and that discovery-originated concurrent Booking still resolves through the existing hidden shared mutex with one winner and the normal opaque loser semantics.
 
 Release/concurrency fixtures that exercise these temporal paths must use deterministic intervals that remain future-relative for the lifetime of the proof corpus. A calendar date that can silently become historical is not valid evidence for SlotOpportunity/Booking availability semantics; the current fixtures therefore use a far-future Monday while preserving the same weekday and Santo Domingo wall-clock schedule relationship.
 
