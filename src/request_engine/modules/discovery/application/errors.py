@@ -15,3 +15,11 @@ class DiscoveryRevisionConflict(RuntimeError):
         self.aggregate_id = aggregate_id
         self.expected = expected
         self.actual = actual
+
+
+class DiscoverySearchContractError(ValueError):
+    pass
+
+
+class DiscoverySearchTooBroad(DiscoverySearchContractError):
+    pass
