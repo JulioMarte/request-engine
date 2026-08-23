@@ -9,8 +9,8 @@ from request_engine.entrypoints.http.errors import (
     http_exception_handler,
     request_validation_error_handler,
 )
-from request_engine.modules.booking.contracts.discovery import PublishedSlotReader
 from request_engine.modules.discovery.api import install_http
+from request_engine.modules.discovery.application.availability import RemotePublishedSlotReader
 from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
 from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidateReader
 from request_engine.platform.security.http import (
@@ -39,16 +39,14 @@ async def _request_context(
 def create_discovery_app(
     *,
     candidate_reader: DiscoveryCandidateReader,
-    slot_reader: PublishedSlotReader,
+    slot_reader: RemotePublishedSlotReader,
     handoff_issuer: DiscoveryHandoffIssuer,
     actor_resolver: PlatformDiscoveryActorResolver,
 ) -> FastAPI:
-    """Compose discovery only from least-privilege published ports.
+    """Compose the public Discovery process from remote/least-privilege ports only."""
 
-    This process intentionally receives neither request_engine_app's generic
-    SessionFactory nor the normal Booking appointment-option signing key.
-    """
-
+    if slot_reader.trust_boundary != "remote":
+        raise RuntimeError("public Discovery requires a remote Booking availability boundary")
     app = FastAPI(
         title="Request Engine Discovery",
         version="0.1.0",
