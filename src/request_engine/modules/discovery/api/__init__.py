@@ -7,6 +7,9 @@ from request_engine.modules.discovery.adapters.db.mapping_commands import (
 from request_engine.modules.discovery.adapters.db.mapping_revoke_commands import (
     PostgresDiscoveryMappingRevokeCommands,
 )
+from request_engine.modules.discovery.adapters.db.public_profile_commands import (
+    PostgresResourcePublicProfileCommands,
+)
 from request_engine.modules.discovery.adapters.db.publish_commands import (
     PostgresDiscoveryPublishCommands,
 )
@@ -73,6 +76,7 @@ def install_operational_http(
         create_operational_router(
             mapping_handler=PostgresDiscoveryMappingCommands(session_factory),
             revoke_mapping_handler=PostgresDiscoveryMappingRevokeCommands(session_factory),
+            public_profile_handler=PostgresResourcePublicProfileCommands(session_factory),
             publish_handler=PostgresDiscoveryPublishCommands(session_factory),
             revoke_handler=PostgresDiscoveryRevokeCommands(session_factory),
             actor_resolver=actor_resolver,
