@@ -55,10 +55,11 @@ async def test_discovery_shared_capacity_race_has_one_opaque_winner(
         search = await discovery.post("/v1/discovery/supply/search", json=search_body(key))
     assert search.status_code == 200, search.text
     options = cast(list[dict[str, Any]], search.json())
-    selected = {item["organization_id"]: item for item in options}
-    option_a = cast(str, selected[str(tenant_a.organization_id)]["option_id"])
-    option_b = cast(str, selected[str(tenant_b.organization_id)]["option_id"])
+    selected = {item["organization_key"]: item for item in options}
+    option_a = cast(str, selected[tenant_a.organization_key]["option_id"])
+    option_b = cast(str, selected[tenant_b.organization_key]["option_id"])
     assert str(root_id) not in search.text
+    assert "organization_id" not in search.text
 
     async with (
         client_for(e2e_session_factory, tenant_a) as client_a,
