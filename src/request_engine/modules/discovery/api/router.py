@@ -32,7 +32,6 @@ def create_router(
     async def authenticated_actor(request: Request) -> PlatformDiscoveryActor:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("/supply/search", response_model=tuple[DiscoveryOptionView, ...])
     async def search_supply(
         body: SearchPublishedSupplyBody,
         actor: Annotated[PlatformDiscoveryActor, Depends(authenticated_actor)],
@@ -58,4 +57,10 @@ def create_router(
                 views.append(DiscoveryOptionView.from_option(item, option_id))
         return tuple(views)
 
+    router.add_api_route(
+        "/supply/search",
+        search_supply,
+        methods=["POST"],
+        response_model=tuple[DiscoveryOptionView, ...],
+    )
     return router
