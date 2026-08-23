@@ -1,14 +1,10 @@
 from fastapi import FastAPI
 
-from request_engine.modules.booking.adapters.appointment_options import (
-    SignedAppointmentOptionCodec,
-)
+from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
-from request_engine.modules.booking.adapters.db.attendance_commands import (
-    PostgresAttendanceCommands,
-)
+from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeBookingCommitmentCommands,
     CapacitySafeReservationCommands,
@@ -22,25 +18,22 @@ from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_comm
 from request_engine.modules.booking.adapters.db.contextual_terms_supersession_commands import (
     PostgresContextualTermsSupersessionCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_reader import (
-    PostgresReservationReader,
-)
+from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
+)
+from request_engine.modules.booking.adapters.discovery_handoff_reader import (
+    PostgresDiscoveryHandoffReader,
 )
 from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
 )
-from request_engine.modules.booking.api.operational_errors import (
-    booking_operational_error_handler,
-)
+from request_engine.modules.booking.api.operational_errors import booking_operational_error_handler
 from request_engine.modules.booking.api.operational_exception_router import (
     create_operational_exception_router,
 )
-from request_engine.modules.booking.api.operational_terms_router import (
-    create_operational_terms_router,
-)
+from request_engine.modules.booking.api.operational_terms_router import create_operational_terms_router
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.errors import BookingError
 from request_engine.modules.booking.application.operational_errors import (
@@ -70,6 +63,7 @@ def install_http(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
             option_codec=SignedAppointmentOptionCodec(appointment_option_signing_key),
+            discovery_handoff_reader=PostgresDiscoveryHandoffReader(session_factory),
             book_handler=reservations,
             cancel_handler=reservations,
             reschedule_handler=commitments,
