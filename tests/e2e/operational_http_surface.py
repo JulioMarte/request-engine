@@ -35,15 +35,39 @@ _BASE_ROUTES = (
     ("locations.update", "PATCH", "/v1/operations/locations/{location_id}"),
     ("locations.contacts", "PUT", "/v1/operations/locations/{location_id}/contacts"),
     ("locations.hours", "PUT", "/v1/operations/locations/{location_id}/hours"),
-    ("locations.hours_exception", "PUT", "/v1/operations/locations/{location_id}/hours-exceptions"),
-    ("offering_version.booking_terms", "PUT", "/v1/operations/offering-versions/{offering_version_id}/booking-terms"),
+    (
+        "locations.hours_exception",
+        "PUT",
+        "/v1/operations/locations/{location_id}/hours-exceptions",
+    ),
+    (
+        "offering_version.booking_terms",
+        "PUT",
+        "/v1/operations/offering-versions/{offering_version_id}/booking-terms",
+    ),
     ("resource_assignments.create", "POST", "/v1/operations/resource-assignments"),
-    ("resource_assignments.retire", "POST", "/v1/operations/resource-assignments/{assignment_id}/retire"),
-    ("resource_assignments.availability", "PUT", "/v1/operations/resource-assignments/{assignment_id}/availability"),
-    ("resource_assignments.exception", "PUT", "/v1/operations/resource-assignments/{assignment_id}/exceptions"),
+    (
+        "resource_assignments.retire",
+        "POST",
+        "/v1/operations/resource-assignments/{assignment_id}/retire",
+    ),
+    (
+        "resource_assignments.availability",
+        "PUT",
+        "/v1/operations/resource-assignments/{assignment_id}/availability",
+    ),
+    (
+        "resource_assignments.exception",
+        "PUT",
+        "/v1/operations/resource-assignments/{assignment_id}/exceptions",
+    ),
     ("resources.exception", "PUT", "/v1/operations/resources/{resource_id}/exceptions"),
     ("context_terms.create", "POST", "/v1/operations/context-terms"),
-    ("context_terms.supersede", "POST", "/v1/operations/context-terms/{current_context_terms_id}/supersede"),
+    (
+        "context_terms.supersede",
+        "POST",
+        "/v1/operations/context-terms/{current_context_terms_id}/supersede",
+    ),
 )
 
 _REVISION_OWNERS = {
