@@ -34,11 +34,13 @@ async def test_discovery_mapping_replay_is_single_effect_and_conflict_is_non_mut
     async with operational_client(e2e_session_factory, sandbox) as client:
         first = await client.put(
             f"/v1/operations/discovery/offerings/{sandbox.offering_id}/classification",
-            headers=auth(sandbox, idempotency_key=idem), json=body,
+            headers=auth(sandbox, idempotency_key=idem),
+            json=body,
         )
         replay = await client.put(
             f"/v1/operations/discovery/offerings/{sandbox.offering_id}/classification",
-            headers=auth(sandbox, idempotency_key=idem), json=body,
+            headers=auth(sandbox, idempotency_key=idem),
+            json=body,
         )
         conflict = await client.put(
             f"/v1/operations/discovery/offerings/{sandbox.offering_id}/classification",
