@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
+
+if TYPE_CHECKING:
+    from request_engine.modules.discovery.application.queries.search_supply import DiscoveryOption
 
 
 def is_f2_discoverable(slot: AppointmentSlot) -> bool:
@@ -11,11 +18,7 @@ def is_f2_discoverable(slot: AppointmentSlot) -> bool:
     )
 
 
-def option_order(item: object) -> tuple[object, ...]:
-    from request_engine.modules.discovery.application.queries.search_supply import DiscoveryOption
-
-    option = item
-    assert isinstance(option, DiscoveryOption)
+def option_order(option: DiscoveryOption) -> tuple[object, ...]:
     resource_ids = tuple(str(choice.resource_id) for choice in option.slot.resources)
     return (
         option.slot.start_at,
