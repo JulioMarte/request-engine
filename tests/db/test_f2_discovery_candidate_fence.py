@@ -43,7 +43,12 @@ def test_mapping_change_after_search_prevents_handoff_issuance(
       "location_id":"{fixture.location_id}",
       "start_at":"2035-06-01T14:00:00+00:00",
       "end_at":"2035-06-01T14:30:00+00:00",
-      "resources":[{{"resource_id":"{uuid4()}"}}]
+      "resources":[{{"resource_id":"{uuid4()}"}}],
+      "planned_duration_minutes":30,
+      "amount":"3500",
+      "currency":"DOP",
+      "location_operational_revision":1,
+      "configuration_fingerprint":"sha256:test"
     }}
     """
     with pytest.raises(psycopg.errors.SerializationFailure), admin_conn.transaction():
