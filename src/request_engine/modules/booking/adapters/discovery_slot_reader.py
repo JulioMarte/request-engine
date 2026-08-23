@@ -50,9 +50,9 @@ class PostgresPublishedSlotReader:
                          AND m.id = :mapping_id
                          AND m.revision = :mapping_revision
                          AND m.status = 'active'
-                        JOIN request_engine.service_classifications sc
-                          ON sc.id = m.service_classification_id
-                         AND sc.status = 'active'
+                        JOIN LATERAL request_engine.lookup_service_classification(
+                            m.service_classification_id
+                        ) sc ON sc.status = 'active'
                         JOIN request_engine.offering_versions ov
                           ON ov.organization_id = dp.organization_id
                          AND ov.offering_id = dp.offering_id
