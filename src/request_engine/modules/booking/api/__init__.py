@@ -22,6 +22,9 @@ from request_engine.modules.booking.adapters.db.reservation_reader import Postgr
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
 )
+from request_engine.modules.booking.adapters.discovery_error_boundary import (
+    DiscoverySafeBookAppointmentHandler,
+)
 from request_engine.modules.booking.adapters.discovery_handoff_reader import (
     PostgresDiscoveryHandoffReader,
 )
@@ -64,7 +67,7 @@ def install_http(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
             option_codec=SignedAppointmentOptionCodec(appointment_option_signing_key),
             discovery_handoff_reader=PostgresDiscoveryHandoffReader(session_factory),
-            book_handler=reservations,
+            book_handler=DiscoverySafeBookAppointmentHandler(reservations),
             cancel_handler=reservations,
             reschedule_handler=commitments,
             attendance_handler=PostgresAttendanceCommands(session_factory),
