@@ -83,6 +83,12 @@ class PostgresDiscoveryMappingCommands:
                 status="active",
                 revision=cast(int, row["revision"]),
             )
+            details: dict[str, object] = {
+                "authority": authority.audit_details(),
+                "classification_key": key,
+            }
+            if current is not None and cast(UUID, current["id"]) != state.id:
+                details["superseded_mapping_id"] = str(current["id"])
             await append_audit(
                 session,
                 organization_id=command.organization_id,
@@ -91,7 +97,7 @@ class PostgresDiscoveryMappingCommands:
                 aggregate_kind="OfferingServiceClassification",
                 aggregate_id=state.id,
                 idempotency_id=idem_id,
-                details={"authority": authority.audit_details(), "classification_key": key},
+                details=details,
             )
             await complete_idempotency(
                 session, idem_id, {"state": mapping_codec.state_to_json(state)}
@@ -119,5 +125,9 @@ class PostgresDiscoveryMappingCommands:
         if cast(UUID, current["service_classification_id"]) == classification_id:
             return current
         return await mapping_store.replace_mapping(
-            session, command.organization_id, cast(UUID, current["id"]), classification_id
+            session,
+            command.organization_id,
+            command.offering_id,
+            cast(UUID, current["id"]),
+            classification_id,
         )
