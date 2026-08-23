@@ -2,8 +2,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import psycopg
-import pytest
 from psycopg import Connection
+import pytest
 
 from tests.fixtures.f2_discovery import DiscoveryFixture, create_discovery_fixture, uuid_row
 
@@ -91,7 +91,11 @@ def test_revoked_publication_cannot_commit_discovered_reservation(
         (fixture.organization_id,),
     ).fetchone() == (0,)
     assert admin_conn.execute(
-        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id = %s",
+        """
+        SELECT consumed_reservation_id
+        FROM request_engine.discovery_booking_handoffs
+        WHERE id = %s
+        """,
         (handoff_id,),
     ).fetchone() == (None,)
 
@@ -102,7 +106,11 @@ def test_mapping_replacement_stales_existing_handoff(admin_conn: PgConnection) -
     fixture = create_discovery_fixture(admin_conn)
     handoff_id = _issue_handoff(admin_conn, fixture)
     admin_conn.execute(
-        "UPDATE request_engine.offering_service_classifications SET status = 'revoked' WHERE id = %s",
+        """
+        UPDATE request_engine.offering_service_classifications
+        SET status = 'revoked'
+        WHERE id = %s
+        """,
         (fixture.mapping_id,),
     )
     with pytest.raises(psycopg.errors.SerializationFailure), admin_conn.transaction():
