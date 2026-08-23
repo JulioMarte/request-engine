@@ -10,6 +10,10 @@ from request_engine.modules.booking.contracts.appointments import AppointmentSlo
 @dataclass(frozen=True, slots=True)
 class PublishedSlotQuery:
     organization_id: UUID
+    publication_id: UUID
+    publication_revision: int
+    mapping_id: UUID
+    mapping_revision: int
     offering_version_id: UUID
     window_start: datetime
     window_end: datetime
