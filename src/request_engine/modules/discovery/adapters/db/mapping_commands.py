@@ -1,18 +1,16 @@
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy.engine import RowMapping
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from request_engine.modules.discovery.adapters.db import mapping_codec, mapping_store
+from request_engine.modules.discovery.adapters.db import (
+    mapping_codec,
+    mapping_persistence,
+    mapping_store,
+)
 from request_engine.modules.discovery.application.commands.mapping import (
     MapOfferingToServiceClassificationCommand,
     OfferingServiceClassificationState,
 )
-from request_engine.modules.discovery.application.errors import (
-    DiscoveryConfigurationConflict,
-    DiscoveryRevisionConflict,
-)
+from request_engine.modules.discovery.application.errors import DiscoveryConfigurationConflict
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -74,7 +72,9 @@ class PostgresDiscoveryMappingCommands:
                 session, command.organization_id, command.offering_id
             )
             classification_id = cast(UUID, classification["id"])
-            row = await self._persist(session, command, current, classification_id)
+            row = await mapping_persistence.persist_mapping(
+                session, command, current, classification_id
+            )
             state = OfferingServiceClassificationState(
                 id=cast(UUID, row["id"]),
                 offering_id=command.offering_id,
@@ -103,31 +103,3 @@ class PostgresDiscoveryMappingCommands:
                 session, idem_id, {"state": mapping_codec.state_to_json(state)}
             )
             return state
-
-    async def _persist(
-        self,
-        session: AsyncSession,
-        command: MapOfferingToServiceClassificationCommand,
-        current: RowMapping | None,
-        classification_id: UUID,
-    ) -> RowMapping:
-        if current is None:
-            if command.expected_revision is not None:
-                raise DiscoveryConfigurationConflict("mapping does not yet exist")
-            return await mapping_store.insert_mapping(
-                session, command.organization_id, command.offering_id, classification_id
-            )
-        actual = cast(int, current["revision"])
-        if command.expected_revision != actual:
-            raise DiscoveryRevisionConflict(
-                cast(UUID, current["id"]), command.expected_revision or 0, actual
-            )
-        if cast(UUID, current["service_classification_id"]) == classification_id:
-            return current
-        return await mapping_store.replace_mapping(
-            session,
-            command.organization_id,
-            command.offering_id,
-            cast(UUID, current["id"]),
-            classification_id,
-        )
