@@ -1,5 +1,5 @@
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -16,7 +16,10 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
       "location_id":"{fixture.location_id}",
       "start_at":"2035-06-01T14:00:00+00:00",
       "end_at":"2035-06-01T14:30:00+00:00",
-      "resources":[{{"resource_id":"{uuid4()}"}}],
+      "resources":[{{
+        "requirement_id":"{fixture.requirement_id}",
+        "resource_id":"{fixture.resource_id}"
+      }}],
       "planned_duration_minutes":30,
       "amount":"3500",
       "currency":"DOP",
@@ -52,7 +55,7 @@ def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_i
         "SELECT set_config('request_engine.discovery_handoff_id', %s, true)",
         (str(handoff_id),),
     )
-    return uuid_row(
+    reservation_id = uuid_row(
         conn,
         """
         INSERT INTO request_engine.reservations (
@@ -69,6 +72,23 @@ def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_i
             fixture.location_id,
         ),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.capacity_claims (
+            organization_id, resource_id, requirement_id, reservation_id, during, quantity
+        ) VALUES (
+            %s, %s, %s, %s,
+            tstzrange('2035-06-01T14:00:00+00', '2035-06-01T14:30:00+00', '[)'), 1
+        )
+        """,
+        (
+            fixture.organization_id,
+            fixture.resource_id,
+            fixture.requirement_id,
+            reservation_id,
+        ),
+    )
+    return reservation_id
 
 
 @pytest.mark.postgres
