@@ -31,9 +31,7 @@ class Slots:
         self.values = values
         self.queries: list[PublishedSlotQuery] = []
 
-    async def find_published_slots(
-        self, query: PublishedSlotQuery
-    ) -> tuple[AppointmentSlot, ...]:
+    async def find_published_slots(self, query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
         self.queries.append(query)
         return self.values.get(query.organization_id, ())
 
