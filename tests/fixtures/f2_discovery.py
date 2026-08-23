@@ -12,6 +12,7 @@ class DiscoveryFixture:
     organization_id: UUID
     party_id: UUID
     location_id: UUID
+    offering_id: UUID
     offering_version_id: UUID
     mapping_id: UUID
     publication_id: UUID
@@ -27,12 +28,20 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
     suffix = uuid4().hex
     organization_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.organizations (organization_key, display_name) VALUES (%s, 'Discovery Org') RETURNING id",
+        """
+        INSERT INTO request_engine.organizations (organization_key, display_name)
+        VALUES (%s, 'Discovery Org')
+        RETURNING id
+        """,
         (f"org-{suffix}",),
     )
     party_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.parties (organization_id, party_kind, display_name) VALUES (%s, 'person', 'Subject') RETURNING id",
+        """
+        INSERT INTO request_engine.parties (organization_id, party_kind, display_name)
+        VALUES (%s, 'person', 'Subject')
+        RETURNING id
+        """,
         (organization_id,),
     )
     location_id = uuid_row(
@@ -40,28 +49,49 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
         """
         INSERT INTO request_engine.locations (
             organization_id, location_key, display_name, timezone, latitude, longitude
-        ) VALUES (%s, %s, 'Clinic', 'UTC', 19.8, -70.7) RETURNING id
+        ) VALUES (%s, %s, 'Clinic', 'UTC', 19.8, -70.7)
+        RETURNING id
         """,
         (organization_id, f"loc-{suffix}"),
     )
     offering_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.offerings (organization_id, offering_key, display_name) VALUES (%s, %s, 'Cardiology') RETURNING id",
+        """
+        INSERT INTO request_engine.offerings (
+            organization_id, offering_key, display_name
+        ) VALUES (%s, %s, 'Cardiology')
+        RETURNING id
+        """,
         (organization_id, f"offering-{suffix}"),
     )
     version_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.offering_versions (organization_id, offering_id, version, duration_minutes, bookable) VALUES (%s, %s, 1, 30, true) RETURNING id",
+        """
+        INSERT INTO request_engine.offering_versions (
+            organization_id, offering_id, version, duration_minutes, bookable
+        ) VALUES (%s, %s, 1, 30, true)
+        RETURNING id
+        """,
         (organization_id, offering_id),
     )
     classification_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.service_classifications (classification_key, canonical_name) VALUES (%s, 'Cardiology') RETURNING id",
+        """
+        INSERT INTO request_engine.service_classifications (
+            classification_key, canonical_name
+        ) VALUES (%s, 'Cardiology')
+        RETURNING id
+        """,
         (f"cardiology_{suffix}",),
     )
     mapping_id = uuid_row(
         conn,
-        "INSERT INTO request_engine.offering_service_classifications (organization_id, offering_id, service_classification_id) VALUES (%s, %s, %s) RETURNING id",
+        """
+        INSERT INTO request_engine.offering_service_classifications (
+            organization_id, offering_id, service_classification_id
+        ) VALUES (%s, %s, %s)
+        RETURNING id
+        """,
         (organization_id, offering_id, classification_id),
     )
     publication_id = uuid_row(
@@ -72,7 +102,8 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
         ) VALUES (
             %s, %s, %s,
             tstzrange('2035-01-01T00:00:00+00', '2036-01-01T00:00:00+00', '[)')
-        ) RETURNING id
+        )
+        RETURNING id
         """,
         (organization_id, offering_id, location_id),
     )
@@ -80,6 +111,7 @@ def create_discovery_fixture(conn: PgConnection) -> DiscoveryFixture:
         organization_id,
         party_id,
         location_id,
+        offering_id,
         version_id,
         mapping_id,
         publication_id,
