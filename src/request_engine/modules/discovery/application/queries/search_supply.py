@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -9,11 +9,11 @@ from request_engine.modules.booking.contracts.discovery import (
     PublishedSlotQuery,
     PublishedSlotReader,
 )
-
-MAX_RADIUS_METERS = 100_000
-MAX_WINDOW = timedelta(days=7)
-MAX_RESULTS = 100
-MAX_CANDIDATE_SCAN = 500
+from request_engine.modules.discovery.application.errors import DiscoverySearchTooBroad
+from request_engine.modules.discovery.application.search_contract import (
+    MAX_ELIGIBLE_CANDIDATES,
+    validate_search_query,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,14 +71,20 @@ async def search_published_supply(
     validate_search_query(query)
     candidates = await candidate_reader.find_candidates(
         query,
-        scan_limit=min(MAX_CANDIDATE_SCAN, max(query.limit * 10, query.limit)),
+        scan_limit=MAX_ELIGIBLE_CANDIDATES + 1,
     )
+    if len(candidates) > MAX_ELIGIBLE_CANDIDATES:
+        raise DiscoverySearchTooBroad(
+            "discovery search matched too many published candidates; narrow the radius or window"
+        )
+
     options: list[DiscoveryOption] = []
     for candidate in candidates:
         start = max(query.window_start, candidate.publication_start)
-        end = query.window_end
-        if candidate.publication_end is not None:
-            end = min(end, candidate.publication_end)
+        end = min(
+            query.window_end,
+            candidate.publication_end or query.window_end,
+        )
         if end <= start:
             continue
         slots = await slot_reader.find_published_slots(
@@ -92,34 +98,34 @@ async def search_published_supply(
                 limit=query.limit,
             )
         )
-        options.extend(DiscoveryOption(candidate, slot) for slot in slots)
-    options.sort(
-        key=lambda item: (
-            item.slot.start_at,
-            item.candidate.distance_meters,
-            str(item.candidate.organization_id),
-            str(item.candidate.location_id),
-            str(item.candidate.offering_id),
-            str(item.candidate.publication_id),
+        options.extend(
+            DiscoveryOption(candidate, slot)
+            for slot in slots
+            if _is_f2_discoverable(slot)
         )
-    )
+
+    options.sort(key=_option_order)
     return tuple(options[: query.limit])
 
 
-def validate_search_query(query: SearchPublishedSupplyQuery) -> None:
-    if not query.service_classification_key.strip():
-        raise ValueError("service_classification_key is required")
-    if query.origin_latitude < -90 or query.origin_latitude > 90:
-        raise ValueError("origin_latitude must be between -90 and 90")
-    if query.origin_longitude < -180 or query.origin_longitude > 180:
-        raise ValueError("origin_longitude must be between -180 and 180")
-    if not 0 < query.radius_meters <= MAX_RADIUS_METERS:
-        raise ValueError(f"radius_meters must be between 1 and {MAX_RADIUS_METERS}")
-    if query.window_start.tzinfo is None or query.window_end.tzinfo is None:
-        raise ValueError("discovery window datetimes must be timezone-aware")
-    if query.window_end <= query.window_start:
-        raise ValueError("window_end must be after window_start")
-    if query.window_end - query.window_start > MAX_WINDOW:
-        raise ValueError("discovery window cannot exceed 7 days")
-    if not 1 <= query.limit <= MAX_RESULTS:
-        raise ValueError(f"limit must be between 1 and {MAX_RESULTS}")
+def _is_f2_discoverable(slot: AppointmentSlot) -> bool:
+    return (
+        slot.location_id is not None
+        and slot.configuration_fingerprint is not None
+        and slot.planned_duration_minutes is not None
+        and slot.amount is not None
+        and slot.currency is not None
+    )
+
+
+def _option_order(item: DiscoveryOption) -> tuple[object, ...]:
+    resource_ids = tuple(str(choice.resource_id) for choice in item.slot.resources)
+    return (
+        item.slot.start_at,
+        item.candidate.distance_meters,
+        str(item.candidate.organization_id),
+        str(item.candidate.location_id),
+        str(item.candidate.offering_id),
+        resource_ids,
+        str(item.candidate.publication_id),
+    )
