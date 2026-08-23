@@ -3,8 +3,8 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from f2_discovery_fixture import create_discovery_fixture, uuid_row
 from psycopg import Connection
-from tests.fixtures.f2_discovery import create_discovery_fixture, uuid_row
 
 PgConnection = Connection[Any]
 
