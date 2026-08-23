@@ -43,7 +43,8 @@ async def test_consumed_discoopt_replays_same_request_but_rejects_new_mutation(
         )
         second = await booking.post(
             "/v1/appointments",
-            headers=auth(tenant, idempotency_key=f"f2-new-{uuid4().hex}"), json=payload,
+            headers=auth(tenant, idempotency_key=f"f2-new-{uuid4().hex}"),
+            json=payload,
         )
 
     assert first.status_code == 201, first.text
