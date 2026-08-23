@@ -36,9 +36,15 @@ class PostgresDiscoveryHandoffIssuer:
                     text(
                         """
                         SELECT request_engine.issue_discovery_booking_handoff(
-                            :token_hash, :publication_id, :publication_revision,
-                            :offering_version_id, :location_id,
-                            CAST(:selection AS jsonb), :expires_at
+                            :token_hash,
+                            :publication_id,
+                            :publication_revision,
+                            :mapping_id,
+                            :mapping_revision,
+                            :offering_version_id,
+                            :location_id,
+                            CAST(:selection AS jsonb),
+                            :expires_at
                         )
                         """
                     ),
@@ -46,6 +52,8 @@ class PostgresDiscoveryHandoffIssuer:
                         "token_hash": token_hash,
                         "publication_id": candidate.publication_id,
                         "publication_revision": candidate.publication_revision,
+                        "mapping_id": candidate.mapping_id,
+                        "mapping_revision": candidate.mapping_revision,
                         "offering_version_id": slot.offering_version_id,
                         "location_id": cast(UUID, slot.location_id),
                         "selection": json.dumps(selection, separators=(",", ":")),
