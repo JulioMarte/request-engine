@@ -29,11 +29,13 @@ async def test_resource_public_profile_is_authorized_idempotent_and_audited(
     async with operational_client(e2e_session_factory, tenant) as client:
         first = await client.put(
             f"/v1/operations/discovery/resources/{tenant.resource_id}/public-profile",
-            headers=auth(tenant, idempotency_key=key), json=body,
+            headers=auth(tenant, idempotency_key=key),
+            json=body,
         )
         replay = await client.put(
             f"/v1/operations/discovery/resources/{tenant.resource_id}/public-profile",
-            headers=auth(tenant, idempotency_key=key), json=body,
+            headers=auth(tenant, idempotency_key=key),
+            json=body,
         )
     assert first.status_code == 200, first.text
     assert replay.status_code == 200 and replay.json() == first.json()
