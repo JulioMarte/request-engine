@@ -12,9 +12,7 @@ async def active_classification(session: AsyncSession, key: str) -> RowMapping |
                 text(
                     """
                     SELECT id, classification_key
-                    FROM request_engine.service_classifications
-                    WHERE classification_key = :key AND status = 'active'
-                    FOR SHARE
+                    FROM request_engine.lookup_active_service_classification(:key)
                     """
                 ),
                 {"key": key},
@@ -32,7 +30,7 @@ async def lock_offering(session: AsyncSession, organization_id: UUID, offering_i
                 """
                 SELECT 1 FROM request_engine.offerings
                 WHERE organization_id = :organization_id AND id = :offering_id
-                FOR SHARE
+                FOR UPDATE
                 """
             ),
             {"organization_id": organization_id, "offering_id": offering_id},
@@ -66,7 +64,10 @@ async def current_mapping(
 
 
 async def insert_mapping(
-    session: AsyncSession, organization_id: UUID, offering_id: UUID, classification_id: UUID
+    session: AsyncSession,
+    organization_id: UUID,
+    offering_id: UUID,
+    classification_id: UUID,
 ) -> RowMapping:
     return (
         (
@@ -92,26 +93,20 @@ async def insert_mapping(
 
 
 async def replace_mapping(
-    session: AsyncSession, organization_id: UUID, mapping_id: UUID, classification_id: UUID
+    session: AsyncSession,
+    organization_id: UUID,
+    offering_id: UUID,
+    mapping_id: UUID,
+    classification_id: UUID,
 ) -> RowMapping:
-    return (
-        (
-            await session.execute(
-                text(
-                    """
-                    UPDATE request_engine.offering_service_classifications
-                    SET service_classification_id = :classification_id
-                    WHERE id = :id AND organization_id = :organization_id
-                    RETURNING id, revision
-                    """
-                ),
-                {
-                    "classification_id": classification_id,
-                    "id": mapping_id,
-                    "organization_id": organization_id,
-                },
-            )
-        )
-        .mappings()
-        .one()
+    await session.execute(
+        text(
+            """
+            UPDATE request_engine.offering_service_classifications
+            SET status = 'revoked'
+            WHERE id = :id AND organization_id = :organization_id
+            """
+        ),
+        {"id": mapping_id, "organization_id": organization_id},
     )
+    return await insert_mapping(session, organization_id, offering_id, classification_id)
