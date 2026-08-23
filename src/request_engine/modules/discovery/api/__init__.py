@@ -13,12 +13,14 @@ from request_engine.modules.discovery.adapters.db.publish_commands import (
 from request_engine.modules.discovery.adapters.db.revoke_commands import (
     PostgresDiscoveryRevokeCommands,
 )
+from request_engine.modules.discovery.api.errors import discovery_search_error_handler
 from request_engine.modules.discovery.api.operational_errors import discovery_operational_error_handler
 from request_engine.modules.discovery.api.operational_router import create_operational_router
 from request_engine.modules.discovery.api.router import create_router
 from request_engine.modules.discovery.application.errors import (
     DiscoveryConfigurationConflict,
     DiscoveryRevisionConflict,
+    DiscoverySearchContractError,
 )
 from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
 from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidateReader
@@ -35,6 +37,7 @@ def install_http(
     slot_reader: PublishedSlotReader,
     handoff_issuer: DiscoveryHandoffIssuer,
 ) -> None:
+    app.add_exception_handler(DiscoverySearchContractError, discovery_search_error_handler)
     app.include_router(
         create_router(
             candidate_reader=candidate_reader,
