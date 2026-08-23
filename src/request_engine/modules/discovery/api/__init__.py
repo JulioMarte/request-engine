@@ -14,7 +14,9 @@ from request_engine.modules.discovery.adapters.db.revoke_commands import (
     PostgresDiscoveryRevokeCommands,
 )
 from request_engine.modules.discovery.api.errors import discovery_search_error_handler
-from request_engine.modules.discovery.api.operational_errors import discovery_operational_error_handler
+from request_engine.modules.discovery.api.operational_errors import (
+    discovery_operational_error_handler,
+)
 from request_engine.modules.discovery.api.operational_router import create_operational_router
 from request_engine.modules.discovery.api.router import create_router
 from request_engine.modules.discovery.application.errors import (
@@ -23,7 +25,9 @@ from request_engine.modules.discovery.application.errors import (
     DiscoverySearchContractError,
 )
 from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
-from request_engine.modules.discovery.application.queries.search_supply import DiscoveryCandidateReader
+from request_engine.modules.discovery.application.queries.search_supply import (
+    DiscoveryCandidateReader,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.platform_discovery import PlatformDiscoveryActorResolver
