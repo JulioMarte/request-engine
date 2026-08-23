@@ -16,7 +16,9 @@ from request_engine.modules.booking.api.models import (
     ReservationView,
 )
 from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
-from request_engine.modules.booking.application.commands.book_appointment import BookAppointmentHandler
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentHandler,
+)
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     CancelReservationHandler,
