@@ -1,626 +1,443 @@
 # Request Engine — F2 Geospatial Cross-Tenant Discovery Contract
 
-Status: normative integrated contract for `feature/geospatial-cross-tenant-discovery`.
+Status: **normative F2 contract** for `feature/geospatial-cross-tenant-discovery`.
 
-This document is the authoritative F2 contract after adversarial hardening. It incorporates the corrections originally recorded in `25-geospatial-cross-tenant-discovery-hardening.md`; document 25 remains useful as review provenance explaining why those corrections were necessary, but it no longer overrides this contract.
+This document is the sole authoritative F2 product/architecture contract. `25-geospatial-cross-tenant-discovery-hardening.md` is historical adversarial-review provenance only and never overrides this document.
 
-F2 extends the current product beyond the released V3 baseline without rewriting V3 historical evidence. `Organization` remains the tenant boundary, Booking remains the commitment authority, ADR 0011 remains authoritative for hidden shared-capacity serialization, and F1 remains authoritative for operational/contextual supply semantics.
+F2 extends the current post-V3 product without rewriting released V3 evidence. `Organization` remains the tenant boundary, Booking remains commitment authority, ADR 0011 remains authoritative for hidden shared-capacity serialization, and F1 remains authoritative for contextual schedule, assignment, commercial terms and Reservation provenance.
 
 ## 1. Product capability
 
-F2 adds one platform-facing capability:
+F2 lets a platform-facing agent search explicitly published supply across participating Organizations and answer:
 
 ```text
-discovery.search_supply
+what service is available?
+where?
+with whom, when provider publication permits it?
+when?
+at what deterministic price/duration?
 ```
 
-It searches currently valid supply across Organizations that explicitly opted into platform discovery.
-
-A search contains:
+Example public option:
 
 ```text
-canonical service classification
-origin latitude/longitude
-radius
-appointment window
-bounded result limit
+Dr. A
+Clinic X
+27 de Febrero 10, Puerto Plata
+2.1 km
+5:00 PM
+DOP 3,500 / 45 min
 ```
 
-A result may contain only the explicitly approved public projection:
+The user chooses an option. F2 does not select a "best" provider and does not create a second booking/capacity system.
+
+Initial search accepts a **canonical `ServiceClassification.classification_key`**. Natural-language resolution such as `cardiólogo` -> `cardiology` belongs to the agent/NLU layer or a later classification-resolution contract; it is not silently guessed by this transaction boundary.
+
+## 2. Security and authority boundaries
 
 ```text
-Organization public identity
-Location public identity
-Offering public identity
-distance_meters
-appointment start/end
-deterministic planned duration/amount/currency
-opaque discoopt_v1 handoff token
-```
+Organization
+  = tenant security/administrative boundary
 
-Concrete Resource identity is not emitted by the initial F2 contract. Discovery is advisory and never consumes capacity.
+Platform Admin Authority
+  = taxonomy/global administrative lifecycle
 
-## 2. Non-negotiable boundaries
-
-### F2-C01 — tenant ownership remains intact
-
-`Organization` remains the security and administrative owner of tenant Location, Offering, Resource, Party and booking state. Publication grants only the narrow discovery projection defined here.
-
-### F2-C02 — shared capacity is private implementation authority
-
-`GlobalIdentity`, `SharedCapacityIdentity`, bindings and shared-capacity claim links remain private. They are not discovery identifiers, authorization inputs or public output.
-
-### F2-C03 — existence is not publication
-
-Tenant operational data is not discoverable merely because it exists, is active or is visible through that tenant's own API. F2 requires explicit active mapping plus explicit active/effective publication.
-
-### F2-C04 — no generic cross-tenant database authority
-
-The Discovery runtime must not receive `request_engine_admin`, `BYPASSRLS`, generic `request_engine_app` tenant-table authority or arbitrary cross-tenant relation access.
-
-Cross-tenant reads/writes are restricted to purpose-built protected functions that expose only the F2 candidate/handoff contract.
-
-### F2-C05 — Booking remains authoritative
-
-Discovery never creates or mutates Reservation, CapacityClaim, CapacityHold, commercial commitment or shared-capacity provenance. Normal Booking performs the authoritative transactional revalidation and commitment.
-
-## 3. Canonical service classification
-
-### 3.1 ServiceClassification
-
-A platform-owned canonical service classification has:
-
-```text
-id
-classification_key
-canonical_name
-status
-revision
-created_at
-updated_at
-```
-
-`classification_key` is stable, unique and machine-facing, for example:
-
-```text
-cardiology
-dermatology
-general_dentistry
-commercial_refrigeration_repair
-```
-
-It carries no price, schedule or capacity truth.
-
-### 3.2 OfferingServiceClassification
-
-An Organization explicitly maps a tenant `Offering` to one active primary `ServiceClassification`.
-
-F2 does not make fuzzy text, embeddings or LLM classification authoritative. Those systems may propose a classification; the durable mapping is created only through the semantic authority path.
-
-### 3.3 Mapping lifecycle and provenance
-
-Mapping authority requires:
-
-```text
 operations.manage_discovery
+  = tenant-authorized discovery configuration
+
+request_engine_discovery
+  = narrow NOLOGIN/NOBYPASSRLS runtime grant role
+
+Booking
+  = authoritative Reservation/capacity commitment
 ```
 
-A mapping row's Organization and Offering scope are immutable. Reclassification is not an in-place rewrite of `service_classification_id`; it is:
+Cross-tenant discovery MUST NOT receive `request_engine_admin`, generic RLS bypass, a normal tenant application SessionFactory, or arbitrary table authority.
+
+`request_engine_discovery` may execute only the protected search/handoff functions required by F2. It receives no generic tenant table `SELECT/INSERT/UPDATE/DELETE` authority.
+
+Knowledge of a UUID, GlobalIdentity or SharedCapacityIdentity never grants discovery or tenant authority.
+
+## 3. Explicit publication
+
+Operational existence is not discovery authorization:
+
+```text
+exists operationally != published for cross-tenant discovery
+```
+
+A result is eligible only while all required authority state is current:
+
+```text
+active ServiceClassification
++ active Offering -> classification mapping
++ active/effective DiscoveryPublication
++ active Organization / Offering / Location
++ current bookable OfferingVersion
++ valid F1 contextual commercial supply
+```
+
+`DiscoveryPublication` is explicit, tenant-authorized, revocable and auditable. It references operational truth; it does not copy schedule, price or capacity.
+
+One publication row has immutable provenance scope:
+
+```text
+Organization
+Offering
+Location
+Resource/null scope
+effective interval
+provider_visibility
+```
+
+Visibility or scope changes require revoke + new publication. Revocation is monotonic.
+
+Broad and resource-specific publications for the same Organization + Offering + Location MUST NOT overlap in time. PostgreSQL serializes that rule. Different resource-specific publications may coexist when otherwise valid.
+
+Revoked, inactive, expired, unmapped or unpublished supply is invisible to discovery.
+
+## 4. Canonical service classification
+
+`ServiceClassification` is platform taxonomy, not tenant-owned mutable vocabulary.
+
+Tenant Offering mapping is explicit through `OfferingServiceClassification`.
+
+Mapping replacement is monotonic provenance:
 
 ```text
 lock Offering
-revoke old mapping
+revoke previous mapping
 insert replacement mapping
-append supersession/audit provenance
+append audit
 ```
 
-Revocation is monotonic. Concurrent first-mapping attempts serialize through the Offering lock so at most one active mapping survives.
+The active mapping is at most one per Organization + Offering. Concurrent first-mapping attempts serialize through the Offering lock; the final durable state contains one active mapping and rejected contenders leave no partial durable effect.
 
-Tenant runtimes do not receive global taxonomy enumeration authority. Taxonomy lookup and retirement predicates use narrow protected functions. Taxonomy creation/retirement remain platform-admin operations with auditable authority evidence.
+Platform taxonomy lifecycle is available only through narrow `request_admin` functions. Create/retire actions require authority reference + reason and append immutable `service_classification_authority_events`. Tenant runtime may perform only narrow active-key lookup; it cannot enumerate or administer platform taxonomy.
 
-## 4. DiscoveryPublication
+## 5. Public Resource profile and provider visibility
 
-A publication means:
+F2 defines the minimal provider identity required by the original product north star:
 
-> this Organization authorizes this Offering/Location/optional-Resource scope to participate in platform discovery during this effective interval.
+```text
+ResourcePublicProfile
+  Resource
+  public display name
+  optional public role/title/specialty label
+  optional public profile image/reference
+  active
+  revision
+```
 
-It is authorization/provenance, not a cache of Booking truth.
+This profile is a deliberate public projection. It MUST NOT expose:
 
-A publication owns:
+```text
+GlobalIdentity
+SharedCapacityIdentity
+private Resource fields
+capacity ownership internals
+assignment identifiers
+private contact details
+```
+
+Tenant operators configure it through the semantic operational command:
+
+```text
+SetResourcePublicProfile
+PUT /v1/operations/discovery/resources/{resource_id}/public-profile
+operations.manage_discovery
+```
+
+The operation is tenant-scoped, authority-checked, idempotent, optimistic-revision-aware and audited.
+
+`provider_visibility=hidden` emits no concrete provider identity.
+
+`provider_visibility=public` is valid only for a resource-specific publication and emits the provider projection only when an active `ResourcePublicProfile` exists. A missing public profile fails closed by making that public-provider candidate ineligible rather than falling back to private Resource fields.
+
+## 6. Public Location projection
+
+F1 Location remains the source of truth. F2 does not duplicate address data.
+
+The approved public Location projection contains:
+
+```text
+location_key
+display_name
+address_line1?
+address_line2?
+locality?
+administrative_area?
+postal_code?
+country_code?
+```
+
+Coordinates are used to compute distance but raw coordinates do not need to be returned by the initial F2 response.
+
+Public contacts are not part of the initial F2 response. They may be added later only by an explicit publication/projection policy.
+
+## 7. Public discovery response and data minimization
+
+The public response contains only:
+
+```text
+organization_key
+organization_display_name
+offering_key
+offering_display_name
+location_key
+location_display_name
+location_address
+provider?                  # only when explicitly public
+distance_meters
+start_at
+end_at
+planned_duration_minutes
+amount
+currency
+option_id                  # discoopt_v1 opaque handoff
+```
+
+The following relational/internal identifiers MUST NOT cross the public F2 transport boundary merely for implementation convenience:
 
 ```text
 organization_id
 offering_id
+offering_version_id
 location_id
-resource_id?        # optional scope restriction
-effective_during
-status              active | revoked
-provider_visibility hidden | public
-revision
-created_at
-updated_at
+resource_id
+assignment_id
+GlobalIdentity
+SharedCapacityIdentity
 ```
 
-It must not duplicate authoritative operational fields such as price, currency, duration, hours, schedule exceptions, capacity, address, coordinates, display names or appointment slots.
+Those identifiers may remain server-side where required for joins, freshness fences and Booking commitment.
 
-One publication row has immutable Organization, Offering, Location, Resource/null scope, effective interval and provider visibility. Changing visibility or scope requires revoke + new publication. Revocation is monotonic and never rewrites an already committed Reservation.
+Public keys are the initial public identity contract. UUID knowledge never grants authority.
 
-### 4.1 Overlap semantics
+## 8. Geospatial contract
 
-Exact-scope active publication intervals must not overlap.
-
-Additionally, broad publication (`resource_id IS NULL`) and resource-specific publication for the same Organization + Offering + Location must not overlap in time. PostgreSQL serializes this mixed-scope rule with the accepted lock/check protocol. Different resource-specific publications may coexist when otherwise valid.
-
-## 5. Platform discovery runtime authority
-
-F2 uses a platform-facing actor distinct from tenant `ActorContext`:
+Search accepts:
 
 ```text
-PlatformDiscoveryActor
-  principal_id
-  capabilities
-  principal_kind
-  authentication_method
-  correlation_id
-  credential_id?
+origin latitude/longitude
+radius_meters
+window_start/window_end
+limit
 ```
 
-It contains no caller-selected Organization because the operation is intentionally cross-tenant.
+The protected SQL function independently validates the search contract; HTTP validation alone is insufficient for a SECURITY DEFINER surface.
 
-The public Discovery process is composed only from narrow ports:
+Distance uses the F2 great-circle calculation and clamps floating-point intermediate state before `sqrt/asin`.
+
+Eligibility is inclusive:
 
 ```text
-DiscoveryCandidateReader
-PublishedSlotReader
-DiscoveryHandoffIssuer
-PlatformDiscoveryActorResolver
+distance_meters <= radius_meters
 ```
 
-It must not receive:
+Tests MUST attack inside, exact-boundary and first-outside behavior.
 
-```text
-request_engine_app generic SessionFactory
-request_engine_admin credentials
-normal Booking appointment-option signing key
-arbitrary cross-tenant SQL access
-```
+## 9. Availability and ordering
 
-PostgreSQL exposes a dedicated grant role:
+F2 reuses Booking/F1 availability through `PublishedSlotReader`; it does not implement another scheduler.
 
-```text
-request_engine_discovery
-  NOLOGIN
-  NOBYPASSRLS
-```
-
-Deployment credentials may inherit that role. The role receives only EXECUTE on exact protected candidate/handoff functions and no generic tenant-table DML/SELECT. Privileged function bodies remain owned by the trusted schema/admin boundary.
-
-The protected discovery projection must never return Party/customer/patient ids, Reservation ids, CapacityClaim ids, SharedCapacityIdentity ids, GlobalIdentity ids, Representation rows, private audit evidence or unpublished tenant state.
-
-## 6. Search query contract
-
-`SearchPublishedSupplyQuery` contains:
-
-```text
-service_classification_key: str
-origin_latitude: Decimal
-origin_longitude: Decimal
-radius_meters: int
-window_start: datetime
-window_end: datetime
-limit: int
-```
-
-Initial bounds are explicit and enforced at both HTTP/application and protected-SQL boundaries:
-
-```text
--90 <= latitude <= 90
--180 <= longitude <= 180
-0 < radius_meters <= 100_000
-window_start/window_end timezone-aware
-window_end > window_start
-window <= 7 days
-1 <= limit <= 100
-```
-
-The SQL surface independently validates the contract because HTTP validation is not sufficient protection for a SECURITY DEFINER boundary.
-
-## 7. Candidate eligibility
-
-A candidate may enter availability evaluation only when all relevant facts are current:
-
-```text
-ServiceClassification active
-Offering mapping active
-DiscoveryPublication active and effective
-Organization operationally active
-Offering active
-latest OfferingVersion is bookable
-Location active and geocoded
-Location inside requested radius
-publication ownership/scope coherent
-optional published Resource active and same-tenant coherent
-```
-
-Candidate publication does not prove appointment availability.
-
-## 8. Geospatial semantics
-
-Distance is derived objective data using a great-circle/Haversine-equivalent calculation over authoritative F1 coordinates.
-
-```text
-distance_meters >= 0
-inside radius iff distance_meters <= radius_meters
-```
-
-The boundary is inclusive. The SQL calculation clamps the floating-point intermediate to `[0,1]` before `sqrt/asin` so valid extreme-coordinate queries cannot fail from rounding drift.
-
-Distance does not change price, capacity, eligibility or booking priority.
-
-## 9. Availability composition and process boundary
-
-F2 reuses Booking slot semantics; it does not implement a second scheduler.
-
-```text
-published candidate
-      ↓
-internal Booking published-slot gateway
-      ↓
-authoritative F1/Booking availability
-      ↓
-publication Location/Resource scope filter
-      ↓
-DiscoveryOption
-```
-
-The public Discovery process talks to Booking through the remote `PublishedSlotReader` contract. The internal Booking availability process owns normal tenant-domain credentials. Composition rejects injecting a local tenant Booking reader directly into the public Discovery process.
-
-Any future batching/performance optimization must remain behaviorally equivalent to authoritative Booking slot semantics.
-
-## 10. Commercial eligibility
-
-F2 emits only options for which F1 can determine a complete current contextual commitment:
+F2 emits only slots with deterministic:
 
 ```text
 Location
 configuration fingerprint
-location operational revision
-Resource/Location assignment observations
 planned duration
 amount
 currency
 ```
 
-Legacy tenant-local Booking remains supported by the existing API, but supply without the deterministic contextual/commercial provenance required by F2 is excluded from cross-tenant discovery.
-
-F2 does not invent marketplace-specific pricing.
-
-## 11. Global ranking and bounded exhaustive search
-
-Successful responses are globally ordered by:
+Global ordering is:
 
 ```text
-1 earliest appointment start
-2 distance_meters
-3 stable Organization/Location/Offering/Resource/Publication tie-breakers
+1. earliest appointment start
+2. distance_meters
+3. stable Organization/Location/Offering/Resource/Publication tie-breakers
 ```
 
-The system must not choose the nearest N publications before evaluating appointment time because that can omit a farther provider with an earlier valid appointment.
+The current safe implementation evaluates every eligible candidate up to 200. Candidate 201 produces explicit `discovery_search_too_broad` rather than silently truncating before global ranking.
 
-Current implementation therefore uses bounded exhaustive candidate evaluation:
+The current per-candidate HTTP slot evaluation is correctness-first. A future `BatchPublishedSlotReader` is permitted and desirable for latency, but it MUST preserve the same authority boundary, eligibility and global ordering semantics. Performance batching is not part of F2 merge correctness.
 
-```text
-eligible candidates <= 200
-  evaluate every candidate
-  globally sort resulting options
+## 10. Opaque discovery-to-booking handoff
 
-eligible candidates >= 201
-  return 422 discovery_search_too_broad
-```
-
-A future batch adapter may increase/remove the bound only while preserving the same global ranking semantics.
-
-## 12. Opaque `discoopt_v1` handoff
-
-F2 does not expose a normal `aptopt_v1/v2` payload. The public token is:
+Public options use:
 
 ```text
 discoopt_v1.<cryptographically-random-secret>
 ```
 
-Only a SHA-256 hash of the secret is persisted. Concrete selection state remains server-side in `DiscoveryBookingHandoff`, including:
+Only the hash is stored. Server-side `DiscoveryBookingHandoff` retains the concrete internal selection and observed provenance:
 
 ```text
 Organization
-Publication id + observed revision
-Mapping id + observed revision
+Publication id + revision
+Mapping id + revision
 OfferingVersion
 Location
-concrete Booking Resource/assignment selection
+Resource selection
 start/end
 commercial/configuration observations
 expiry
 consumed Reservation provenance
 ```
 
-The token therefore cannot be decoded to recover Resource ids, assignment ids, GlobalIdentity or SharedCapacityIdentity. Authoritative integrity comes from server-side relational state and transactional fences, not caller-controlled token contents.
+The public token MUST NOT serialize Resource, assignment, shared-capacity or global-identity identifiers.
 
-`provider_visibility=hidden` therefore cannot leak concrete Resource identity through token inspection. `provider_visibility=public` does not currently authorize Resource private-field output because F2 has no accepted public Resource-profile projection.
+## 11. Commitment-time freshness
 
-## 13. Discovery-to-Booking transactional fence
+A discovery option is advisory until Booking commits it.
 
-A handoff is advisory until normal tenant Booking executes.
-
-`appointments.book` still requires ordinary Booking capability, subject authority and tenant context. For `discoopt_v1`, Booking:
-
-1. hashes/resolves the handoff under the caller Organization;
-2. reconstructs the internal option from server-side state;
-3. installs only the handoff UUID as task-local execution context;
-4. enters the normal Booking transaction;
-5. propagates the handoff UUID transaction-locally to PostgreSQL;
-6. Reservation INSERT revalidates and locks the exact observed Mapping/Publication facts;
-7. existing Booking/F1 logic revalidates OfferingVersion, schedule, terms, assignment, Resource and capacity;
-8. the same transaction commits Reservation, CapacityClaim/commercial provenance and handoff consumption.
-
-The following split protocol is forbidden:
+Within the authoritative Booking transaction, the system revalidates:
 
 ```text
-validate publication
-COMMIT
-book
-COMMIT
+Publication still active/current revision
+Mapping still active/current revision
+OfferingVersion still current/bookable
+F1 Location schedule and exceptions
+F1 Resource-at-Location assignment
+F1 Resource/assignment availability exceptions
+F1 contextual price/duration terms
+capacity/shared-capacity ownership
+normal subject/Booking authority
 ```
 
-Publication/mapping freshness and Booking commitment share the authoritative transaction boundary, closing the revoke/change TOCTOU window.
+A stale option writes no Reservation, CapacityClaim, commercial commitment or other partial business outcome.
 
-## 14. Handoff lifecycle and idempotency
+This fence MUST protect changes that occur after discovery and before Booking, including schedule closure, contextual terms change, assignment retirement, publication revocation, mapping replacement and newer OfferingVersion creation.
 
-A fresh handoff is short-lived and single-commit-use.
+## 12. Consumption and idempotency
+
+Fresh handoffs are short-lived and single-new-mutation-use.
 
 ```text
-same request + same Idempotency-Key
-  -> safe semantic replay of the prior Reservation
+same HTTP command + same Idempotency-Key
+  -> safe semantic replay of the committed Reservation
 
-same consumed handoff + different new mutation
-  -> stale/unavailable
-  -> no second Reservation or capacity mutation
+same consumed discoopt_v1 + different new mutation
+  -> rejected
+  -> no second Reservation or CapacityClaim
 ```
 
-The consumed Reservation reference is durable same-tenant provenance. Foreign tenants cannot resolve another tenant's handoff.
+All tenant discovery configuration commands require `Idempotency-Key` and must reject conflicting reuse without a second durable effect/audit.
 
-A handoff becomes stale without side effects if any material observed fact is no longer valid, including Publication revocation, Mapping replacement/revocation, newer current OfferingVersion, schedule/assignment/configuration/terms change or lost capacity.
+## 13. Operational command inventory
 
-## 15. Tenant semantic commands
-
-F2 exposes semantic operations rather than CRUD:
+F2 tenant control-plane operations are:
 
 ```text
 MapOfferingToServiceClassification
+RevokeOfferingServiceClassification
+SetResourcePublicProfile
 PublishDiscoverySupply
 RevokeDiscoveryPublication
 ```
 
-They require:
+Current HTTP surface:
 
 ```text
-trusted tenant ActorContext
-operations.manage_discovery
-valid Representation authority
-Idempotency-Key
-revision-aware semantics where applicable
-immutable audit evidence
+PUT  /v1/operations/discovery/offerings/{offering_id}/classification
+POST /v1/operations/discovery/offerings/{offering_id}/classification/revoke
+PUT  /v1/operations/discovery/resources/{resource_id}/public-profile
+POST /v1/operations/discovery/publications
+POST /v1/operations/discovery/publications/{publication_id}/revoke
 ```
 
-Foreign and nonexistent identifiers preserve existing opacity rules. Conflicting replay does not create partial durable state.
+All require `operations.manage_discovery`, tenant opacity, idempotency and durable audit semantics.
 
-## 16. HTTP surfaces
+Foreign and nonexistent targets MUST be semantically opaque. Rejected operations MUST leave authoritative state unchanged.
 
-### Platform Discovery
+## 14. Shared physical capacity
 
-Separate composition root:
+Discovery may expose supply from Organization A and Organization B even when both ultimately reference one hidden physical capacity root.
+
+Discovery MUST NOT reveal that shared root.
+
+If both tenants attempt the same physical capacity concurrently, authoritative Booking/shared-capacity serialization MUST produce at most one committed winner. The loser receives bounded opaque conflict semantics; no oversell or split ownership is allowed.
+
+## 15. Migration posture
+
+F2 is pre-production and is consolidated as one production Alembic revision:
 
 ```text
-Request Engine Discovery
-POST /v1/discovery/supply/search
+0004_geospatial_cross_tenant_discovery
 ```
 
-Search is read-only and does not require `Idempotency-Key`. It requires `discovery.search_supply`.
+Its development SQL-bearing steps remain under `migrations/f2_steps/` as implementation provenance executed by the consolidated revision. They are not separately deployed production migrations.
 
-### Internal Booking availability
+Released V3 `0001` and integrated F1 `0002/0003` remain unchanged.
+
+## 16. Current guarantee inventory
+
+The durable F2 guarantees are recorded in `docs/testing/current-guarantees.toml`, including:
 
 ```text
-POST /internal/v1/discovery/published-slots
+INV-DISCOVERY-PUBLICATION-001
+INV-DISCOVERY-HANDOFF-001
+INV-DISCOVERY-CONCURRENCY-001
 ```
 
-This is a process-internal contract protected by the platform discovery capability boundary and backed by tenant-domain Booking authority unavailable to the public Discovery process.
+Representative surviving proofs are mapped in `docs/testing/current-proof-map.toml`.
 
-### Tenant operations
+Removing/renaming tests is allowed only if the required evidence classes for these guarantees remain represented. The guarantee is frozen; incidental filenames are not.
 
-Discovery mapping/publication mutations live under:
+## 17. Required merge evidence / Definition of Done
+
+F2 is not merge-ready merely because general CI is green. Exact-head evidence MUST demonstrate the feature-specific contract.
+
+Required proof includes at least:
 
 ```text
-/v1/operations/discovery/*
+cross-tenant search sees only explicitly published supply
+revoked/unpublished supply is invisible
+public projection contains approved where/provider fields only
+hidden provider leaks no Resource identity
+public provider requires explicit profile + public publication
+request_engine_discovery is NOLOGIN/NOBYPASSRLS and narrow privilege only
+request_engine_app cannot execute cross-tenant candidate authority
+platform taxonomy create/retire authority + immutable audit
+mapping lifecycle and revoke command
+publication lifecycle and revoke command
+operations.manage_discovery authority failure leaves no partial state
+idempotent replay has one durable effect/audit
+conflicting replay is rejected without mutation
+foreign and nonexistent mutation targets are opaque
+mapping concurrent-first race: winner/loser/final state
+broad-vs-resource-specific publication race: winner/loser/final state
+inclusive geo boundary: inside/exact/outside
+complete global ordering and deterministic tie-break
+201st candidate -> explicit too-broad failure
+Publication stale fence
+Mapping stale fence
+OfferingVersion stale fence
+F1 schedule stale through discoopt_v1
+F1 contextual terms stale through discoopt_v1
+F1 assignment stale through discoopt_v1
+safe consumed-handoff idempotent replay
+same consumed handoff + new mutation rejected
+cross-tenant Discovery -> Booking -> Reservation happy path
+shared physical capacity race across tenants: exactly one commitment
+rejected operations inspect final durable state, not response code alone
 ```
 
-They use the normal operational authority/idempotency/error envelope.
+The exact-head CI run used for merge readiness must run the repository's current quality, migration, PostgreSQL, integration and E2E gates. Previous-head green runs are provenance only.
 
-## 17. Privacy and error semantics
+## 18. Explicit non-goals
 
-Normal absence of supply returns an empty result. Unknown/retired classification, unmapped Offering, unpublished/revoked scope and foreign identifiers must not become existence oracles.
-
-Search-contract and exhaustive-bound failures are explicit 422 outcomes. Candidate invalidation between search observation and handoff issuance omits that candidate rather than producing a 500.
-
-If material state changes after handoff issuance but before Booking, Booking returns ordinary opaque stale/unavailable semantics and creates no Reservation, CapacityClaim, commercial commitment or outbox side effect.
-
-Shared-capacity contention remains an opaque Booking conflict and must not reveal hidden shared-root identity.
-
-## 18. Concurrency contract
-
-F2 adversarial evidence must preserve these outcomes:
-
-### R1 — publish vs publish
-
-At most one conflicting/overlapping active publication wins; loser has deterministic rejection and no partial state.
-
-### R2 — revoke vs discovery
-
-A search may observe a publication before revoke, but a later commit must fail if the publication is no longer valid.
-
-### R3 — revoke vs Booking
-
-If revoke wins before the Booking revalidation/lock boundary, Booking cannot commit. If Booking already crossed the authoritative transaction boundary, later revoke cannot rewrite the Reservation.
-
-### R4 — mapping replacement/revoke
-
-Inactive or superseded mapping cannot authorize new commitment. Previously issued handoffs become stale.
-
-### R5 — terms/schedule/assignment change
-
-Normal F1 revalidation wins. Discovery never silently substitutes a different price, Resource, Location or schedule.
-
-### R6 — shared physical capacity across tenants
-
-Two Organizations may legitimately discover overlapping options backed by the same hidden physical shared-capacity root. Concurrent Booking is serialized by ADR 0011. At most one overlapping commitment wins, and neither Discovery output nor loser error exposes the shared root.
-
-### R7 — concurrent mapping/publication configuration
-
-First mapping and broad-vs-specific publication races serialize to one coherent durable result with monotonic provenance.
-
-## 19. Schema and least-privilege contract
-
-F2 authoritative schema includes at minimum:
+F2 does not add:
 
 ```text
-service_classifications
-service_classification_authority_events
-offering_service_classifications
-discovery_publications
-discovery_booking_handoffs
+a universal recommendation/ranking engine
+a second scheduler or capacity ledger
+live queue/ETA prediction (F3/F4)
+a CRM/CMS/EHR
+a global open tenant catalog
+public shared-capacity/global-identity disclosure
+a natural-language taxonomy mutation API
 ```
 
-plus required audit/supersession/protected-function support.
-
-Database enforcement includes:
-
-```text
-keys and same-tenant composite FKs
-exact revision/lifecycle guards
-monotonic revocation
-publication overlap protection
-RLS/FORCE RLS for tenant-owned relations
-least-privilege runtime grants
-protected candidate projection
-protected handoff issue/read/commit fences
-append-only audit/provenance where required
-```
-
-`request_engine_worker` receives no F2 tenant/configuration authority. `request_engine_app` cannot execute the cross-tenant candidate surface. `request_engine_discovery` receives no generic tenant-table authority.
-
-## 20. Module ownership
-
-`modules/discovery` owns:
-
-```text
-canonical classification integration
-Offering classification mapping
-publication
-cross-tenant published-supply query/projection
-opaque discovery handoff issuance
-```
-
-It does not own tenant operational truth, scheduling, Booking commitment or shared capacity.
-
-Cross-module Python imports remain contracts-only. The public Discovery process cannot collapse the remote Booking trust boundary by injecting normal tenant persistence authority.
-
-## 21. Compatibility posture
-
-F2 preserves:
-
-```text
-existing tenant public API behavior
-F1 operational/contextual-supply behavior
-legacy aptopt_v1 compatibility
-aptopt_v2 tenant Booking behavior
-ADR 0011 shared-capacity opacity/serialization
-V3 historical reproducibility
-```
-
-A tenant with no active F2 mapping/publication behaves as before and contributes no cross-tenant discovery results.
-
-Because Request Engine remains pre-production with no customer-owned data, unreleased F2 development migrations were intentionally consolidated before integration. This does not rewrite released V3 `0001` or integrated F1 `0002/0003` history.
-
-The production-facing F2 Alembic shape is:
-
-```text
-0001_initial
-  -> 0002_operational_profile_contextual_supply
-  -> 0003_f1_runtime_acl_completion
-  -> 0004_geospatial_cross_tenant_discovery
-```
-
-The SQL-bearing provisional F2 steps 0004–0010 are preserved under `migrations/f2_steps/` as implementation provenance but are not independent Alembic revisions. The consolidated `0004` executes those proven steps in order.
-
-## 22. Definition of Done
-
-F2 integration requires exact-head evidence for:
-
-```text
-clean Alembic bootstrap to one F2 head
-classification uniqueness/lifecycle
-taxonomy least privilege and audit
-same-tenant mapping integrity and monotonic replacement
-publication same-tenant integrity
-exact and mixed-scope publication non-overlap/concurrency
-operations.manage_discovery authority
-idempotent replay/conflicting replay
-foreign-vs-nonexistent mutation opacity
-unpublished/revoked invisibility
-geo radius inclusive boundary
-stable global search ordering
-explicit too-broad behavior at candidate bound
-two-or-more Organization discovery
-current F1 schedule/terms composition
-opaque discoopt_v1 provider privacy
-foreign handoff opacity
-Publication/Mapping/OfferingVersion stale fences
-schedule/terms/assignment stale fences
-safe replay of consumed handoff
-new mutation cannot reuse consumed handoff
-normal Booking commitment from discovery handoff
-Reservation + CapacityClaim + commercial provenance + consumed handoff atomicity
-shared-capacity race: one opaque serialized winner
-public/operational legacy regression green
-current-product proof green
-frozen V3 compatibility/provenance green
-```
-
-The merge candidate must preserve rejected-operation non-mutation evidence and winner/loser/final-state evidence for races.
-
-At the consolidation commit `a41afb6164cbc8c51125a68f27176827aebbee15`, CI run #1903 proved Python/architecture, repeated bootstrap, current-product PostgreSQL evidence, V2 history, observability, frozen V3 compatibility and the aggregate V3 candidate/vertical lane green. Final integration still requires exact-head CI after documentation closure.
-
-## 23. Explicit non-goals
-
-F2 does not implement:
-
-```text
-LLM-authoritative taxonomy mapping
-vector/semantic marketplace search as authority
-provider popularity/recommendation ranking
-reviews/ratings ingestion
-mobile ServiceArea polygons
-route/travel-time optimization
-insurance/network adjudication
-coupons/dynamic pricing
-capacity reservation during search
-cross-tenant customer/Party directory
-GlobalIdentity public lookup
-identity merge/split
-live queue/load projection
-public Resource profile beyond an accepted future contract
-```
-
-## 24. Integration state
-
-Implementation phases A–I are closed by code and adversarial evidence. Phase J is limited to documentation reconciliation, exact-head CI and PR readiness review.
-
-`25-geospatial-cross-tenant-discovery-hardening.md` is retained as the adversarial-review rationale that produced the integrated rules above. Where wording differs, this document is authoritative.
+Natural-language service resolution and batch availability are legitimate follow-up improvements, but they are not allowed to weaken canonical classification, publication, privacy or commitment-time revalidation semantics.
