@@ -14,7 +14,11 @@ async def discovery_search_error_handler(
 ) -> JSONResponse:
     if not isinstance(exc, DiscoverySearchContractError):
         raise exc
-    code = "discovery_search_too_broad" if isinstance(exc, DiscoverySearchTooBroad) else "invalid_discovery_search"
+    code = (
+        "discovery_search_too_broad"
+        if isinstance(exc, DiscoverySearchTooBroad)
+        else "invalid_discovery_search"
+    )
     body = ErrorBody(
         code=code,
         message=str(exc),
