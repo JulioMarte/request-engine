@@ -49,7 +49,7 @@ class PublishedSlotQueryBody(BaseModel):
         )
 
 
-class ResourceChoiceWire(BaseModel):
+class ResourceChoiceView(BaseModel):
     requirement_id: UUID
     resource_id: UUID
     resource_location_assignment_id: UUID | None = None
@@ -57,7 +57,7 @@ class ResourceChoiceWire(BaseModel):
     availability_revision: int | None = None
 
     @classmethod
-    def from_contract(cls, choice: ResourceChoice) -> "ResourceChoiceWire":
+    def from_contract(cls, choice: ResourceChoice) -> "ResourceChoiceView":
         return cls(
             requirement_id=choice.requirement_id,
             resource_id=choice.resource_id,
@@ -67,12 +67,12 @@ class ResourceChoiceWire(BaseModel):
         )
 
 
-class PublishedSlotWire(BaseModel):
+class PublishedSlotView(BaseModel):
     offering_version_id: UUID
     start_at: datetime
     end_at: datetime
     location_id: UUID | None
-    resources: tuple[ResourceChoiceWire, ...]
+    resources: tuple[ResourceChoiceView, ...]
     planned_duration_minutes: int | None = None
     amount: Decimal | None = None
     currency: str | None = None
@@ -80,13 +80,13 @@ class PublishedSlotWire(BaseModel):
     configuration_fingerprint: str | None = None
 
     @classmethod
-    def from_contract(cls, slot: AppointmentSlot) -> "PublishedSlotWire":
+    def from_contract(cls, slot: AppointmentSlot) -> "PublishedSlotView":
         return cls(
             offering_version_id=slot.offering_version_id,
             start_at=slot.start_at,
             end_at=slot.end_at,
             location_id=slot.location_id,
-            resources=tuple(ResourceChoiceWire.from_contract(item) for item in slot.resources),
+            resources=tuple(ResourceChoiceView.from_contract(item) for item in slot.resources),
             planned_duration_minutes=slot.planned_duration_minutes,
             amount=slot.amount,
             currency=slot.currency,
