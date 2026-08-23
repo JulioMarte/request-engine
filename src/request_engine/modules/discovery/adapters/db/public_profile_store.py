@@ -37,7 +37,9 @@ def state_from_json(value: dict[str, object]) -> ResourcePublicProfileState:
     )
 
 
-async def lock_resource(session: AsyncSession, command: SetResourcePublicProfileCommand) -> str:
+async def lock_resource(
+    session: AsyncSession, command: SetResourcePublicProfileCommand
+) -> str:
     row = (
         await session.execute(
             text(
@@ -96,7 +98,8 @@ async def upsert_profile(
                 "UPDATE request_engine.resource_public_profiles SET "
                 "display_name=:display,role_label=:role,profile_image_ref=:image,active=true,"
                 "revision=revision+1 WHERE organization_id=:org AND resource_id=:resource "
-                "AND revision=:expected RETURNING display_name,role_label,profile_image_ref,revision"
+                "AND revision=:expected RETURNING display_name,role_label,"
+                "profile_image_ref,revision"
             ),
             values,
         )
