@@ -13,6 +13,7 @@ from .tenant_sandbox import TenantSandbox, auth, client_for, seed_tenant_sandbox
 
 
 def _change_terms(conn: PgConnection, tenant: TenantSandbox, ctx: ContextualSupply) -> None:
+    del tenant
     conn.execute(
         "UPDATE request_engine.booking_context_terms SET amount=4100 WHERE id=%s",
         (ctx.context_terms_id,),
@@ -36,11 +37,18 @@ def _close_schedule(conn: PgConnection, tenant: TenantSandbox, ctx: ContextualSu
 
 
 def _retire_assignment(conn: PgConnection, tenant: TenantSandbox, ctx: ContextualSupply) -> None:
-    del tenant
     conn.execute(
-        "UPDATE request_engine.resource_location_assignments "
-        "SET status='retired', revision=revision+1 WHERE id=%s",
-        (ctx.assignment_id,),
+        """
+        UPDATE request_engine.resource_location_assignments
+           SET status='retired',
+               effective_during=tstzrange(
+                   lower(effective_during),
+                   '2030-01-07T12:00:00+00'::timestamptz,
+                   '[)'
+               )
+         WHERE organization_id=%s AND id=%s
+        """,
+        (tenant.organization_id, ctx.assignment_id),
     )
 
 
