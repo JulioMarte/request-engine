@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -33,17 +32,31 @@ class SearchPublishedSupplyBody(BaseModel):
         return self
 
 
+class PublicLocationAddressView(BaseModel):
+    address_line1: str | None = None
+    address_line2: str | None = None
+    locality: str | None = None
+    administrative_area: str | None = None
+    postal_code: str | None = None
+    country_code: str | None = None
+
+
+class PublicProviderView(BaseModel):
+    resource_key: str
+    display_name: str
+    role_label: str | None = None
+    profile_image_ref: str | None = None
+
+
 class DiscoveryOptionView(BaseModel):
-    organization_id: UUID
     organization_key: str
     organization_display_name: str
-    offering_id: UUID
     offering_key: str
     offering_display_name: str
-    offering_version_id: UUID
-    location_id: UUID
     location_key: str
     location_display_name: str
+    location_address: PublicLocationAddressView
+    provider: PublicProviderView | None
     distance_meters: float
     start_at: datetime
     end_at: datetime
@@ -58,17 +71,34 @@ class DiscoveryOptionView(BaseModel):
         slot = item.slot
         if slot.planned_duration_minutes is None or slot.amount is None or slot.currency is None:
             raise ValueError("discovery option is missing deterministic commercial terms")
+
+        provider: PublicProviderView | None = None
+        if candidate.provider_visibility == "public":
+            if candidate.provider_key is None or candidate.provider_display_name is None:
+                raise ValueError("public provider publication is missing its accepted public profile")
+            provider = PublicProviderView(
+                resource_key=candidate.provider_key,
+                display_name=candidate.provider_display_name,
+                role_label=candidate.provider_role_label,
+                profile_image_ref=candidate.provider_profile_image_ref,
+            )
+
         return cls(
-            organization_id=candidate.organization_id,
             organization_key=candidate.organization_key,
             organization_display_name=candidate.organization_display_name,
-            offering_id=candidate.offering_id,
             offering_key=candidate.offering_key,
             offering_display_name=candidate.offering_display_name,
-            offering_version_id=candidate.offering_version_id,
-            location_id=candidate.location_id,
             location_key=candidate.location_key,
             location_display_name=candidate.location_display_name,
+            location_address=PublicLocationAddressView(
+                address_line1=candidate.location_address_line1,
+                address_line2=candidate.location_address_line2,
+                locality=candidate.location_locality,
+                administrative_area=candidate.location_administrative_area,
+                postal_code=candidate.location_postal_code,
+                country_code=candidate.location_country_code,
+            ),
+            provider=provider,
             distance_meters=candidate.distance_meters,
             start_at=slot.start_at,
             end_at=slot.end_at,
