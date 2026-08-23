@@ -19,6 +19,7 @@ from request_engine.modules.discovery.api.operational_errors import (
 )
 from request_engine.modules.discovery.api.operational_router import create_operational_router
 from request_engine.modules.discovery.api.router import create_router
+from request_engine.modules.discovery.application.availability import RemotePublishedSlotReader
 from request_engine.modules.discovery.application.errors import (
     DiscoveryConfigurationConflict,
     DiscoveryRevisionConflict,
@@ -31,6 +32,14 @@ from request_engine.modules.discovery.application.queries.search_supply import (
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 from request_engine.platform.security.platform_discovery import PlatformDiscoveryActorResolver
+
+__all__ = [
+    "DiscoveryCandidateReader",
+    "DiscoveryHandoffIssuer",
+    "RemotePublishedSlotReader",
+    "install_http",
+    "install_operational_http",
+]
 
 
 def install_http(
