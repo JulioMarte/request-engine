@@ -1,8 +1,9 @@
-from datetime import timedelta
 import re
+from datetime import datetime, timedelta
+from decimal import Decimal
+from typing import Protocol
 
 from request_engine.modules.discovery.application.errors import DiscoverySearchContractError
-from request_engine.modules.discovery.application.queries.search_supply import SearchPublishedSupplyQuery
 
 MAX_RADIUS_METERS = 100_000
 MAX_WINDOW = timedelta(days=7)
@@ -11,7 +12,17 @@ MAX_ELIGIBLE_CANDIDATES = 500
 _CLASSIFICATION_KEY = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 
-def validate_search_query(query: SearchPublishedSupplyQuery) -> None:
+class SearchQueryLike(Protocol):
+    service_classification_key: str
+    origin_latitude: Decimal
+    origin_longitude: Decimal
+    radius_meters: int
+    window_start: datetime
+    window_end: datetime
+    limit: int
+
+
+def validate_search_query(query: SearchQueryLike) -> None:
     if _CLASSIFICATION_KEY.fullmatch(query.service_classification_key) is None:
         raise DiscoverySearchContractError("service_classification_key is invalid")
     if not -90 <= query.origin_latitude <= 90:
