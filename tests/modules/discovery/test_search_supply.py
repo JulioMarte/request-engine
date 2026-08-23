@@ -20,10 +20,7 @@ class Candidates:
         self.values = values
 
     async def find_candidates(
-        self,
-        query: SearchPublishedSupplyQuery,
-        *,
-        scan_limit: int,
+        self, query: SearchPublishedSupplyQuery, *, scan_limit: int
     ) -> tuple[DiscoveryCandidate, ...]:
         del query, scan_limit
         return self.values
@@ -35,8 +32,7 @@ class Slots:
         self.queries: list[PublishedSlotQuery] = []
 
     async def find_published_slots(
-        self,
-        query: PublishedSlotQuery,
+        self, query: PublishedSlotQuery
     ) -> tuple[AppointmentSlot, ...]:
         self.queries.append(query)
         return self.values.get(query.organization_id, ())
@@ -46,6 +42,8 @@ def candidate(distance: float, *, publication_end: datetime | None = None) -> Di
     return DiscoveryCandidate(
         publication_id=uuid4(),
         publication_revision=1,
+        mapping_id=uuid4(),
+        mapping_revision=2,
         organization_id=uuid4(),
         organization_key="org",
         organization_display_name="Org",
@@ -70,15 +68,7 @@ def contextual_slot(item: DiscoveryCandidate, start: datetime) -> AppointmentSlo
         start_at=start,
         end_at=start + timedelta(minutes=30),
         location_id=item.location_id,
-        resources=(
-            ResourceChoice(
-                requirement_id=uuid4(),
-                resource_id=uuid4(),
-                resource_location_assignment_id=uuid4(),
-                assignment_revision=1,
-                availability_revision=1,
-            ),
-        ),
+        resources=(ResourceChoice(uuid4(), uuid4(), uuid4(), 1, 1),),
         planned_duration_minutes=30,
         amount=Decimal("3500"),
         currency="DOP",
@@ -89,20 +79,19 @@ def contextual_slot(item: DiscoveryCandidate, start: datetime) -> AppointmentSlo
 
 def search_query() -> SearchPublishedSupplyQuery:
     return SearchPublishedSupplyQuery(
-        service_classification_key="cardiology",
-        origin_latitude=Decimal("19.8"),
-        origin_longitude=Decimal("-70.7"),
-        radius_meters=10_000,
-        window_start=NOW,
-        window_end=NOW + timedelta(days=1),
-        limit=10,
+        "cardiology",
+        Decimal("19.8"),
+        Decimal("-70.7"),
+        10_000,
+        NOW,
+        NOW + timedelta(days=1),
+        10,
     )
 
 
 @pytest.mark.asyncio
-async def test_search_orders_by_time_then_distance() -> None:
-    near = candidate(100.0)
-    far = candidate(900.0)
+async def test_search_orders_by_time_then_distance_and_preserves_observations() -> None:
+    near, far = candidate(100.0), candidate(900.0)
     same_start = NOW + timedelta(hours=1)
     slots = Slots(
         {
@@ -112,6 +101,10 @@ async def test_search_orders_by_time_then_distance() -> None:
     )
     result = await search_published_supply(Candidates((far, near)), slots, search_query())
     assert [item.candidate.distance_meters for item in result] == [100.0, 900.0]
+    observed = {query.organization_id: query for query in slots.queries}
+    assert observed[near.organization_id].publication_id == near.publication_id
+    assert observed[near.organization_id].mapping_id == near.mapping_id
+    assert observed[near.organization_id].mapping_revision == near.mapping_revision
 
 
 @pytest.mark.asyncio
@@ -126,15 +119,13 @@ async def test_search_clips_availability_to_publication_window() -> None:
 async def test_search_excludes_legacy_slot_without_commercial_provenance() -> None:
     item = candidate(100.0)
     legacy = AppointmentSlot(
-        offering_version_id=item.offering_version_id,
-        start_at=NOW + timedelta(hours=1),
-        end_at=NOW + timedelta(hours=1, minutes=30),
-        location_id=item.location_id,
-        resources=(),
+        item.offering_version_id,
+        NOW + timedelta(hours=1),
+        NOW + timedelta(hours=1, minutes=30),
+        item.location_id,
+        (),
     )
     result = await search_published_supply(
-        Candidates((item,)),
-        Slots({item.organization_id: (legacy,)}),
-        search_query(),
+        Candidates((item,)), Slots({item.organization_id: (legacy,)}), search_query()
     )
     assert result == ()
