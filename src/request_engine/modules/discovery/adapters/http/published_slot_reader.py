@@ -28,7 +28,8 @@ class HttpPublishedSlotReader:
         payload = cast(object, response.json())
         if not isinstance(payload, list):
             raise RuntimeError("discovery availability gateway returned a malformed payload")
-        return tuple(_slot(item) for item in payload)
+        items = cast(list[object], payload)
+        return tuple(_slot(item) for item in items)
 
 
 def _query_payload(query: PublishedSlotQuery) -> dict[str, object]:
@@ -54,12 +55,13 @@ def _slot(raw: object) -> AppointmentSlot:
     resources_raw = data.get("resources")
     if not isinstance(resources_raw, list) or not resources_raw:
         raise RuntimeError("discovery availability resources are malformed")
+    resources = cast(list[object], resources_raw)
     return AppointmentSlot(
         offering_version_id=UUID(str(data["offering_version_id"])),
         start_at=datetime.fromisoformat(str(data["start_at"])),
         end_at=datetime.fromisoformat(str(data["end_at"])),
         location_id=_uuid_or_none(data.get("location_id")),
-        resources=tuple(_resource(item) for item in resources_raw),
+        resources=tuple(_resource(item) for item in resources),
         planned_duration_minutes=_int_or_none(data.get("planned_duration_minutes")),
         amount=_decimal_or_none(data.get("amount")),
         currency=_str_or_none(data.get("currency")),
