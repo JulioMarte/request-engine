@@ -43,9 +43,7 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
     )
 
 
-def _insert_reservation(
-    conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID
-) -> UUID:
+def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID) -> UUID:
     conn.execute(
         "SELECT set_config('request_engine.organization_id', %s, true)",
         (str(fixture.organization_id),),
