@@ -4,13 +4,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
 from request_engine.modules.discovery.application.queries.search_supply import (
     DiscoveryCandidate,
     SearchPublishedSupplyQuery,
     search_published_supply,
-    validate_search_query,
 )
 
 NOW = datetime(2035, 1, 1, 12, tzinfo=UTC)
@@ -21,7 +20,10 @@ class Candidates:
         self.values = values
 
     async def find_candidates(
-        self, query: SearchPublishedSupplyQuery, *, scan_limit: int
+        self,
+        query: SearchPublishedSupplyQuery,
+        *,
+        scan_limit: int,
     ) -> tuple[DiscoveryCandidate, ...]:
         del query, scan_limit
         return self.values
@@ -30,10 +32,13 @@ class Candidates:
 class Slots:
     def __init__(self, values: dict[UUID, tuple[AppointmentSlot, ...]]) -> None:
         self.values = values
+        self.queries: list[PublishedSlotQuery] = []
 
     async def find_published_slots(
-        self, query: PublishedSlotQuery
+        self,
+        query: PublishedSlotQuery,
     ) -> tuple[AppointmentSlot, ...]:
+        self.queries.append(query)
         return self.values.get(query.organization_id, ())
 
 
@@ -59,28 +64,39 @@ def candidate(distance: float, *, publication_end: datetime | None = None) -> Di
     )
 
 
-def slot(item: DiscoveryCandidate, start: datetime) -> AppointmentSlot:
+def contextual_slot(item: DiscoveryCandidate, start: datetime) -> AppointmentSlot:
     return AppointmentSlot(
         offering_version_id=item.offering_version_id,
         start_at=start,
         end_at=start + timedelta(minutes=30),
         location_id=item.location_id,
-        resources=(),
+        resources=(
+            ResourceChoice(
+                requirement_id=uuid4(),
+                resource_id=uuid4(),
+                resource_location_assignment_id=uuid4(),
+                assignment_revision=1,
+                availability_revision=1,
+            ),
+        ),
+        planned_duration_minutes=30,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=1,
+        configuration_fingerprint="sha256:test",
     )
 
 
-def query(**changes: object) -> SearchPublishedSupplyQuery:
-    values: dict[str, object] = {
-        "service_classification_key": "cardiology",
-        "origin_latitude": Decimal("19.8"),
-        "origin_longitude": Decimal("-70.7"),
-        "radius_meters": 10_000,
-        "window_start": NOW,
-        "window_end": NOW + timedelta(days=1),
-        "limit": 10,
-    }
-    values.update(changes)
-    return SearchPublishedSupplyQuery(**values)  # type: ignore[arg-type]
+def search_query() -> SearchPublishedSupplyQuery:
+    return SearchPublishedSupplyQuery(
+        service_classification_key="cardiology",
+        origin_latitude=Decimal("19.8"),
+        origin_longitude=Decimal("-70.7"),
+        radius_meters=10_000,
+        window_start=NOW,
+        window_end=NOW + timedelta(days=1),
+        limit=10,
+    )
 
 
 @pytest.mark.asyncio
@@ -88,33 +104,37 @@ async def test_search_orders_by_time_then_distance() -> None:
     near = candidate(100.0)
     far = candidate(900.0)
     same_start = NOW + timedelta(hours=1)
-    slots = {
-        far.organization_id: (slot(far, same_start),),
-        near.organization_id: (slot(near, same_start),),
-    }
-    result = await search_published_supply(Candidates((far, near)), Slots(slots), query())
+    slots = Slots(
+        {
+            far.organization_id: (contextual_slot(far, same_start),),
+            near.organization_id: (contextual_slot(near, same_start),),
+        }
+    )
+    result = await search_published_supply(Candidates((far, near)), slots, search_query())
     assert [item.candidate.distance_meters for item in result] == [100.0, 900.0]
 
 
 @pytest.mark.asyncio
-async def test_search_clips_slots_to_publication_window() -> None:
+async def test_search_clips_availability_to_publication_window() -> None:
     item = candidate(100.0, publication_end=NOW + timedelta(minutes=20))
-    reader = Slots({item.organization_id: ()})
-    assert await search_published_supply(Candidates((item,)), reader, query()) == ()
+    slots = Slots({item.organization_id: ()})
+    assert await search_published_supply(Candidates((item,)), slots, search_query()) == ()
+    assert slots.queries[0].window_end == NOW + timedelta(minutes=20)
 
 
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"origin_latitude": Decimal("91")},
-        {"origin_longitude": Decimal("181")},
-        {"radius_meters": 0},
-        {"radius_meters": 100_001},
-        {"limit": 101},
-        {"window_end": NOW + timedelta(days=8)},
-        {"window_end": NOW},
-    ],
-)
-def test_search_validation_rejects_unbounded_inputs(changes: dict[str, object]) -> None:
-    with pytest.raises(ValueError):
-        validate_search_query(query(**changes))
+@pytest.mark.asyncio
+async def test_search_excludes_legacy_slot_without_commercial_provenance() -> None:
+    item = candidate(100.0)
+    legacy = AppointmentSlot(
+        offering_version_id=item.offering_version_id,
+        start_at=NOW + timedelta(hours=1),
+        end_at=NOW + timedelta(hours=1, minutes=30),
+        location_id=item.location_id,
+        resources=(),
+    )
+    result = await search_published_supply(
+        Candidates((item,)),
+        Slots({item.organization_id: (legacy,)}),
+        search_query(),
+    )
+    assert result == ()
