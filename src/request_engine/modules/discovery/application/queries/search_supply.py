@@ -31,6 +31,8 @@ class SearchPublishedSupplyQuery:
 class DiscoveryCandidate:
     publication_id: UUID
     publication_revision: int
+    mapping_id: UUID
+    mapping_revision: int
     organization_id: UUID
     organization_key: str
     organization_display_name: str
@@ -90,6 +92,10 @@ async def search_published_supply(
         slots = await slot_reader.find_published_slots(
             PublishedSlotQuery(
                 organization_id=candidate.organization_id,
+                publication_id=candidate.publication_id,
+                publication_revision=candidate.publication_revision,
+                mapping_id=candidate.mapping_id,
+                mapping_revision=candidate.mapping_revision,
                 offering_version_id=candidate.offering_version_id,
                 window_start=start,
                 window_end=end,
