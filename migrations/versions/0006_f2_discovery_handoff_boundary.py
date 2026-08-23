@@ -1,4 +1,4 @@
-"""Add opaque F2 discovery-to-booking handoff and least-privilege read role.
+"""Harden F2 trust boundaries and add opaque discovery booking handoff.
 
 Revision ID: 0006_f2_handoff
 Revises: 0005_f2_discovery_hardening
@@ -23,8 +23,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'request_engine_discovery') THEN
         CREATE ROLE request_engine_discovery NOLOGIN NOBYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'request_engine_discovery_definer') THEN
+        CREATE ROLE request_engine_discovery_definer NOLOGIN BYPASSRLS;
+    END IF;
 END
 $block$;
+
+GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery;
 
 CREATE TABLE request_engine.discovery_booking_handoffs (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
@@ -70,6 +75,219 @@ REVOKE ALL ON TABLE request_engine.discovery_booking_handoffs
     FROM request_engine_app, request_engine_worker, request_engine_discovery;
 GRANT ALL PRIVILEGES ON TABLE request_engine.discovery_booking_handoffs TO request_engine_admin;
 
+GRANT SELECT ON TABLE
+    request_engine.organizations,
+    request_engine.locations,
+    request_engine.offerings,
+    request_engine.offering_versions,
+    request_engine.resources,
+    request_engine.discovery_publications,
+    request_engine.offering_service_classifications,
+    request_engine.service_classifications
+TO request_engine_discovery_definer;
+GRANT SELECT, INSERT, UPDATE ON TABLE request_engine.discovery_booking_handoffs
+TO request_engine_discovery_definer;
+
+CREATE OR REPLACE FUNCTION request_engine.guard_f2_publication_lifecycle()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF OLD.organization_id <> NEW.organization_id
+       OR OLD.offering_id <> NEW.offering_id
+       OR OLD.location_id <> NEW.location_id
+       OR OLD.resource_id IS DISTINCT FROM NEW.resource_id
+       OR OLD.effective_during <> NEW.effective_during
+       OR OLD.provider_visibility <> NEW.provider_visibility THEN
+        RAISE EXCEPTION 'DiscoveryPublication scope/effective interval/visibility is immutable'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.status = 'revoked' AND NEW.status <> 'revoked' THEN
+        RAISE EXCEPTION 'revoked DiscoveryPublication cannot be reactivated'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$function$;
+
+CREATE FUNCTION request_engine.guard_f2_publication_broad_specific_overlap()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_lock_key bigint;
+BEGIN
+    v_lock_key := hashtextextended(
+        NEW.organization_id::text || ':' || NEW.offering_id::text || ':' || NEW.location_id::text,
+        0
+    );
+    PERFORM pg_advisory_xact_lock(v_lock_key);
+    IF NEW.status = 'active' AND EXISTS (
+        SELECT 1
+          FROM request_engine.discovery_publications p
+         WHERE p.organization_id = NEW.organization_id
+           AND p.offering_id = NEW.offering_id
+           AND p.location_id = NEW.location_id
+           AND p.id <> NEW.id
+           AND p.status = 'active'
+           AND p.effective_during && NEW.effective_during
+           AND (p.resource_id IS NULL OR NEW.resource_id IS NULL)
+    ) THEN
+        RAISE EXCEPTION 'broad and resource-specific discovery publications cannot overlap'
+            USING ERRCODE = '23P01';
+    END IF;
+    RETURN NEW;
+END
+$function$;
+CREATE TRIGGER discovery_publications_broad_specific_guard
+BEFORE INSERT OR UPDATE ON request_engine.discovery_publications
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_f2_publication_broad_specific_overlap();
+
+CREATE FUNCTION request_engine.lookup_active_service_classification(p_key text)
+RETURNS TABLE (id uuid, classification_key text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+    SELECT sc.id, sc.classification_key
+      FROM request_engine.service_classifications sc
+     WHERE sc.classification_key = p_key
+       AND sc.status = 'active'
+$function$;
+ALTER FUNCTION request_engine.lookup_active_service_classification(text)
+    OWNER TO request_engine_discovery_definer;
+REVOKE ALL ON FUNCTION request_engine.lookup_active_service_classification(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION request_engine.lookup_active_service_classification(text)
+TO request_engine_app;
+REVOKE SELECT ON TABLE request_engine.service_classifications FROM request_engine_app;
+
+CREATE FUNCTION request_engine.search_discovery_candidates_v2(
+    p_classification_key text,
+    p_origin_latitude double precision,
+    p_origin_longitude double precision,
+    p_radius_meters integer,
+    p_window_start timestamptz,
+    p_window_end timestamptz,
+    p_limit integer
+)
+RETURNS TABLE (
+    publication_id uuid,
+    publication_revision bigint,
+    organization_id uuid,
+    organization_key text,
+    organization_display_name text,
+    offering_id uuid,
+    offering_key text,
+    offering_display_name text,
+    offering_version_id uuid,
+    location_id uuid,
+    location_key text,
+    location_display_name text,
+    resource_id uuid,
+    provider_visibility text,
+    publication_start timestamptz,
+    publication_end timestamptz,
+    distance_meters double precision
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+BEGIN
+    IF p_classification_key !~ '^[a-z0-9]+(?:_[a-z0-9]+)*$'
+       OR p_origin_latitude NOT BETWEEN -90 AND 90
+       OR p_origin_longitude NOT BETWEEN -180 AND 180
+       OR p_radius_meters NOT BETWEEN 1 AND 100000
+       OR p_window_end <= p_window_start
+       OR p_window_end - p_window_start > interval '7 days'
+       OR p_limit NOT BETWEEN 1 AND 501 THEN
+        RAISE EXCEPTION 'invalid discovery search contract' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
+    WITH eligible AS (
+        SELECT
+            dp.id AS publication_id,
+            dp.revision AS publication_revision,
+            org.id AS organization_id,
+            org.organization_key,
+            org.display_name AS organization_display_name,
+            o.id AS offering_id,
+            o.offering_key,
+            o.display_name AS offering_display_name,
+            latest.id AS offering_version_id,
+            l.id AS location_id,
+            l.location_key,
+            l.display_name AS location_display_name,
+            dp.resource_id,
+            dp.provider_visibility,
+            lower(dp.effective_during) AS publication_start,
+            upper(dp.effective_during) AS publication_end,
+            6371008.8 * 2 * asin(sqrt(LEAST(1.0, GREATEST(0.0,
+                power(sin(radians((l.latitude::double precision - p_origin_latitude) / 2)), 2)
+                + cos(radians(p_origin_latitude))
+                * cos(radians(l.latitude::double precision))
+                * power(sin(radians((l.longitude::double precision - p_origin_longitude) / 2)), 2)
+            )))) AS distance_meters
+        FROM request_engine.discovery_publications dp
+        JOIN request_engine.offering_service_classifications map
+          ON map.organization_id = dp.organization_id
+         AND map.offering_id = dp.offering_id
+         AND map.status = 'active'
+        JOIN request_engine.service_classifications sc
+          ON sc.id = map.service_classification_id
+         AND sc.status = 'active'
+         AND sc.classification_key = p_classification_key
+        JOIN request_engine.organizations org
+          ON org.id = dp.organization_id
+         AND org.operational_status = 'active'
+        JOIN request_engine.offerings o
+          ON o.organization_id = dp.organization_id
+         AND o.id = dp.offering_id
+         AND o.active
+        JOIN LATERAL (
+            SELECT ov.id, ov.bookable
+              FROM request_engine.offering_versions ov
+             WHERE ov.organization_id = o.organization_id
+               AND ov.offering_id = o.id
+             ORDER BY ov.version DESC
+             LIMIT 1
+        ) latest ON latest.bookable
+        JOIN request_engine.locations l
+          ON l.organization_id = dp.organization_id
+         AND l.id = dp.location_id
+         AND l.active
+         AND l.latitude IS NOT NULL
+         AND l.longitude IS NOT NULL
+        LEFT JOIN request_engine.resources r
+          ON r.organization_id = dp.organization_id
+         AND r.id = dp.resource_id
+        WHERE dp.status = 'active'
+          AND dp.effective_during && tstzrange(p_window_start, p_window_end, '[)')
+          AND (dp.resource_id IS NULL OR r.active)
+    )
+    SELECT e.*
+      FROM eligible e
+     WHERE e.distance_meters <= p_radius_meters
+     ORDER BY e.distance_meters, e.organization_id, e.location_id, e.offering_id, e.publication_id
+     LIMIT p_limit;
+END
+$function$;
+ALTER FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) OWNER TO request_engine_discovery_definer;
+REVOKE ALL ON FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) TO request_engine_discovery;
+REVOKE EXECUTE ON FUNCTION request_engine.search_discovery_candidates(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) FROM request_engine_app;
+
 CREATE FUNCTION request_engine.issue_discovery_booking_handoff(
     p_token_hash text,
     p_publication_id uuid,
@@ -87,6 +305,8 @@ AS $function$
 DECLARE
     v_publication request_engine.discovery_publications%ROWTYPE;
     v_mapping request_engine.offering_service_classifications%ROWTYPE;
+    v_start timestamptz;
+    v_end timestamptz;
     v_id uuid;
 BEGIN
     IF p_token_hash !~ '^[0-9a-f]{64}$' OR jsonb_typeof(p_selection) <> 'object' THEN
@@ -95,19 +315,31 @@ BEGIN
     IF p_expires_at <= clock_timestamp() OR p_expires_at > clock_timestamp() + interval '15 minutes' THEN
         RAISE EXCEPTION 'invalid discovery handoff expiry' USING ERRCODE = '22023';
     END IF;
+    BEGIN
+        v_start := (p_selection->>'start_at')::timestamptz;
+        v_end := (p_selection->>'end_at')::timestamptz;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION 'invalid discovery handoff interval' USING ERRCODE = '22023';
+    END;
+    IF v_end <= v_start THEN
+        RAISE EXCEPTION 'invalid discovery handoff interval' USING ERRCODE = '22023';
+    END IF;
 
     SELECT * INTO v_publication
       FROM request_engine.discovery_publications
      WHERE id = p_publication_id
        AND status = 'active'
        AND revision = p_expected_publication_revision
-       AND effective_during @> clock_timestamp()
+       AND tstzrange(v_start, v_end, '[)') <@ effective_during
      FOR SHARE;
-    IF NOT FOUND THEN
+    IF NOT FOUND OR v_publication.location_id <> p_location_id THEN
         RAISE EXCEPTION 'discovery publication unavailable' USING ERRCODE = '40001';
     END IF;
-    IF v_publication.location_id <> p_location_id THEN
-        RAISE EXCEPTION 'discovery publication scope changed' USING ERRCODE = '40001';
+    IF v_publication.resource_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(p_selection->'resources') item
+         WHERE item->>'resource_id' = v_publication.resource_id::text
+    ) THEN
+        RAISE EXCEPTION 'discovery selection escaped publication scope' USING ERRCODE = '23514';
     END IF;
 
     SELECT * INTO v_mapping
@@ -142,6 +374,9 @@ BEGIN
     RETURN v_id;
 END
 $function$;
+ALTER FUNCTION request_engine.issue_discovery_booking_handoff(
+    text, uuid, bigint, uuid, uuid, jsonb, timestamptz
+) OWNER TO request_engine_discovery_definer;
 
 CREATE FUNCTION request_engine.read_discovery_booking_handoff(p_token_hash text)
 RETURNS TABLE (handoff_id uuid, organization_id uuid, selection jsonb)
@@ -157,6 +392,8 @@ AS $function$
        AND h.expires_at > clock_timestamp()
        AND h.consumed_reservation_id IS NULL
 $function$;
+ALTER FUNCTION request_engine.read_discovery_booking_handoff(text)
+    OWNER TO request_engine_discovery_definer;
 
 CREATE FUNCTION request_engine.guard_discovery_handoff_reservation()
 RETURNS trigger
@@ -206,7 +443,7 @@ BEGIN
        AND id = v_handoff.publication_id
        AND status = 'active'
        AND revision = v_handoff.publication_revision
-       AND effective_during @> lower(NEW.during)
+       AND NEW.during <@ effective_during
      FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'discovery option stale' USING ERRCODE = '40001';
@@ -225,6 +462,8 @@ BEGIN
     RETURN NEW;
 END
 $function$;
+ALTER FUNCTION request_engine.guard_discovery_handoff_reservation()
+    OWNER TO request_engine_discovery_definer;
 
 CREATE TRIGGER reservations_guard_discovery_handoff
 BEFORE INSERT ON request_engine.reservations
@@ -233,22 +472,14 @@ FOR EACH ROW EXECUTE FUNCTION request_engine.guard_discovery_handoff_reservation
 REVOKE ALL ON FUNCTION
     request_engine.issue_discovery_booking_handoff(text, uuid, bigint, uuid, uuid, jsonb, timestamptz),
     request_engine.read_discovery_booking_handoff(text),
-    request_engine.guard_discovery_handoff_reservation()
+    request_engine.guard_discovery_handoff_reservation(),
+    request_engine.guard_f2_publication_broad_specific_overlap()
 FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION
     request_engine.issue_discovery_booking_handoff(text, uuid, bigint, uuid, uuid, jsonb, timestamptz)
 TO request_engine_discovery;
 GRANT EXECUTE ON FUNCTION request_engine.read_discovery_booking_handoff(text)
 TO request_engine_app;
-
-REVOKE EXECUTE ON FUNCTION request_engine.search_discovery_candidates(
-    text, double precision, double precision, integer, timestamptz, timestamptz, integer
-) FROM request_engine_app;
-GRANT EXECUTE ON FUNCTION request_engine.search_discovery_candidates(
-    text, double precision, double precision, integer, timestamptz, timestamptz, integer
-) TO request_engine_discovery;
-
-REVOKE SELECT ON TABLE request_engine.service_classifications FROM request_engine_app;
 
 RESET ROLE;
 RESET search_path;
