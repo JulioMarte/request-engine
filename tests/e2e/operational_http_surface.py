@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .discovery_operational_surface import DISCOVERY_REVISION_OWNERS, DISCOVERY_ROUTES
+
 PROFILE_SCOPE = "operations.manage_profile"
 SUPPLY_SCOPE = "operations.manage_supply"
 TERMS_SCOPE = "operations.manage_terms"
@@ -26,67 +28,22 @@ class OperationalHttpOperation:
         return self.method, self.path_template
 
 
-_ROUTES = (
+_BASE_ROUTES = (
     ("organization.profile", "PATCH", "/v1/operations/organization/profile"),
     ("organization.contacts", "PUT", "/v1/operations/organization/contacts"),
     ("locations.create", "POST", "/v1/operations/locations"),
     ("locations.update", "PATCH", "/v1/operations/locations/{location_id}"),
     ("locations.contacts", "PUT", "/v1/operations/locations/{location_id}/contacts"),
     ("locations.hours", "PUT", "/v1/operations/locations/{location_id}/hours"),
-    (
-        "locations.hours_exception",
-        "PUT",
-        "/v1/operations/locations/{location_id}/hours-exceptions",
-    ),
-    (
-        "offering_version.booking_terms",
-        "PUT",
-        "/v1/operations/offering-versions/{offering_version_id}/booking-terms",
-    ),
+    ("locations.hours_exception", "PUT", "/v1/operations/locations/{location_id}/hours-exceptions"),
+    ("offering_version.booking_terms", "PUT", "/v1/operations/offering-versions/{offering_version_id}/booking-terms"),
     ("resource_assignments.create", "POST", "/v1/operations/resource-assignments"),
-    (
-        "resource_assignments.retire",
-        "POST",
-        "/v1/operations/resource-assignments/{assignment_id}/retire",
-    ),
-    (
-        "resource_assignments.availability",
-        "PUT",
-        "/v1/operations/resource-assignments/{assignment_id}/availability",
-    ),
-    (
-        "resource_assignments.exception",
-        "PUT",
-        "/v1/operations/resource-assignments/{assignment_id}/exceptions",
-    ),
+    ("resource_assignments.retire", "POST", "/v1/operations/resource-assignments/{assignment_id}/retire"),
+    ("resource_assignments.availability", "PUT", "/v1/operations/resource-assignments/{assignment_id}/availability"),
+    ("resource_assignments.exception", "PUT", "/v1/operations/resource-assignments/{assignment_id}/exceptions"),
     ("resources.exception", "PUT", "/v1/operations/resources/{resource_id}/exceptions"),
     ("context_terms.create", "POST", "/v1/operations/context-terms"),
-    (
-        "context_terms.supersede",
-        "POST",
-        "/v1/operations/context-terms/{current_context_terms_id}/supersede",
-    ),
-    (
-        "discovery.mapping",
-        "PUT",
-        "/v1/operations/discovery/offerings/{offering_id}/classification",
-    ),
-    (
-        "discovery.mapping_revoke",
-        "POST",
-        "/v1/operations/discovery/offerings/{offering_id}/classification/revoke",
-    ),
-    (
-        "discovery.resource_public_profile",
-        "PUT",
-        "/v1/operations/discovery/resources/{resource_id}/public-profile",
-    ),
-    ("discovery.publish", "POST", "/v1/operations/discovery/publications"),
-    (
-        "discovery.revoke",
-        "POST",
-        "/v1/operations/discovery/publications/{publication_id}/revoke",
-    ),
+    ("context_terms.supersede", "POST", "/v1/operations/context-terms/{current_context_terms_id}/supersede"),
 )
 
 _REVISION_OWNERS = {
@@ -99,10 +56,7 @@ _REVISION_OWNERS = {
     "resource_assignments.exception": "Resource.availability_revision",
     "resources.exception": "Resource.availability_revision",
     "context_terms.supersede": "BookingContextTerms.revision",
-    "discovery.mapping": "OfferingServiceClassification.revision",
-    "discovery.mapping_revoke": "OfferingServiceClassification.revision",
-    "discovery.resource_public_profile": "ResourcePublicProfile.revision",
-    "discovery.revoke": "DiscoveryPublication.revision",
+    **DISCOVERY_REVISION_OWNERS,
 }
 
 
@@ -137,7 +91,9 @@ def _operation(name: str, method: str, path: str) -> OperationalHttpOperation:
     )
 
 
-OPERATIONAL_HTTP_OPERATIONS = tuple(_operation(*route) for route in _ROUTES)
+OPERATIONAL_HTTP_OPERATIONS = tuple(
+    _operation(*route) for route in (*_BASE_ROUTES, *DISCOVERY_ROUTES)
+)
 
 
 def operational_keys() -> frozenset[tuple[str, str]]:
