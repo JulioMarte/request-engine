@@ -5,13 +5,13 @@ from psycopg import Connection
 
 PgConnection = Connection[Any]
 
-_SEARCH_V2 = (
+_SEARCH = (
     "request_engine.search_discovery_candidates_v2("
     "text,double precision,double precision,integer,timestamptz,timestamptz,integer)"
 )
 _ISSUE = (
     "request_engine.issue_discovery_booking_handoff("
-    "text,uuid,bigint,uuid,uuid,jsonb,timestamptz)"
+    "text,uuid,bigint,uuid,bigint,uuid,uuid,jsonb,timestamptz)"
 )
 _READ = "request_engine.read_discovery_booking_handoff(text)"
 
@@ -20,11 +20,7 @@ _READ = "request_engine.read_discovery_booking_handoff(text)"
 @pytest.mark.security
 def test_discovery_runtime_role_is_non_login_and_non_bypass(admin_conn: PgConnection) -> None:
     row = admin_conn.execute(
-        """
-        SELECT rolcanlogin, rolbypassrls
-          FROM pg_roles
-         WHERE rolname = 'request_engine_discovery'
-        """
+        "SELECT rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname = 'request_engine_discovery'"
     ).fetchone()
     assert row == (False, False)
 
@@ -39,11 +35,12 @@ def test_discovery_runtime_has_only_narrow_function_authority(admin_conn: PgConn
             has_function_privilege('request_engine_discovery', %s, 'EXECUTE'),
             has_function_privilege('request_engine_discovery', %s, 'EXECUTE'),
             has_function_privilege('request_engine_app', %s, 'EXECUTE'),
+            has_function_privilege('request_engine_app', %s, 'EXECUTE'),
             has_function_privilege('request_engine_app', %s, 'EXECUTE')
         """,
-        (_SEARCH_V2, _ISSUE, _READ, _SEARCH_V2, _READ),
+        (_SEARCH, _ISSUE, _READ, _SEARCH, _ISSUE, _READ),
     ).fetchone()
-    assert row == (True, True, False, False, True)
+    assert row == (True, True, False, False, False, True)
 
 
 @pytest.mark.postgres
@@ -70,9 +67,7 @@ def test_discovery_runtime_has_no_direct_tenant_relation_privilege(
           FROM unnest(%s::text[]) relname
           CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) privilege
          WHERE has_table_privilege(
-             'request_engine_discovery',
-             'request_engine.' || relname,
-             privilege
+             'request_engine_discovery', 'request_engine.' || relname, privilege
          )
          ORDER BY relname, privilege
         """,
@@ -87,9 +82,7 @@ def test_app_cannot_enumerate_platform_taxonomy_directly(admin_conn: PgConnectio
     assert admin_conn.execute(
         """
         SELECT has_table_privilege(
-            'request_engine_app',
-            'request_engine.service_classifications',
-            'SELECT'
+            'request_engine_app', 'request_engine.service_classifications', 'SELECT'
         )
         """
     ).fetchone() == (False,)
