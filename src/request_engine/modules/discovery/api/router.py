@@ -2,14 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
-from request_engine.modules.booking.contracts.appointment_options import (
-    AppointmentOptionCodec,
-)
 from request_engine.modules.booking.contracts.discovery import PublishedSlotReader
-from request_engine.modules.discovery.api.models import (
-    DiscoveryOptionView,
-    SearchPublishedSupplyBody,
-)
+from request_engine.modules.discovery.api.models import DiscoveryOptionView, SearchPublishedSupplyBody
+from request_engine.modules.discovery.application.handoff import DiscoveryHandoffIssuer
 from request_engine.modules.discovery.application.queries.search_supply import (
     DiscoveryCandidateReader,
     SearchPublishedSupplyQuery,
@@ -26,7 +21,7 @@ def create_router(
     *,
     candidate_reader: DiscoveryCandidateReader,
     slot_reader: PublishedSlotReader,
-    option_codec: AppointmentOptionCodec,
+    handoff_issuer: DiscoveryHandoffIssuer,
     actor_resolver: PlatformDiscoveryActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/discovery", tags=["discovery"])
@@ -53,12 +48,10 @@ def create_router(
                 limit=body.limit,
             ),
         )
-        return tuple(
-            DiscoveryOptionView.from_option(
-                item,
-                option_codec.issue(item.candidate.organization_id, item.slot),
-            )
-            for item in options
-        )
+        views: list[DiscoveryOptionView] = []
+        for item in options:
+            option_id = await handoff_issuer.issue_handoff(item.candidate, item.slot)
+            views.append(DiscoveryOptionView.from_option(item, option_id))
+        return tuple(views)
 
     return router
