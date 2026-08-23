@@ -58,6 +58,8 @@ def test_public_provider_projection_requires_explicit_profile_and_publication(
         "UPDATE request_engine.discovery_publications SET status='revoked', revision=revision+1 WHERE id=%s",
         (fixture.publication_id,),
     )
+    assert _search(admin_conn, key) == []
+
     admin_conn.execute(
         """
         INSERT INTO request_engine.resource_public_profiles (
