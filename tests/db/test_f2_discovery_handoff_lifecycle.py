@@ -16,10 +16,8 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
       "location_id":"{fixture.location_id}",
       "start_at":"2035-06-01T14:00:00+00:00",
       "end_at":"2035-06-01T14:30:00+00:00",
-      "resources":[{{
-        "requirement_id":"{fixture.requirement_id}",
-        "resource_id":"{fixture.resource_id}"
-      }}],
+      "resources":[{{"requirement_id":"{fixture.requirement_id}",
+                     "resource_id":"{fixture.resource_id}"}}],
       "planned_duration_minutes":30,
       "amount":"3500",
       "currency":"DOP",
@@ -47,14 +45,8 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
 
 
 def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID) -> UUID:
-    conn.execute(
-        "SELECT set_config('request_engine.organization_id', %s, true)",
-        (str(fixture.organization_id),),
-    )
-    conn.execute(
-        "SELECT set_config('request_engine.discovery_handoff_id', %s, true)",
-        (str(handoff_id),),
-    )
+    conn.execute("SELECT set_config('request_engine.organization_id', %s, true)", (str(fixture.organization_id),))
+    conn.execute("SELECT set_config('request_engine.discovery_handoff_id', %s, true)", (str(handoff_id),))
     reservation_id = uuid_row(
         conn,
         """
@@ -65,12 +57,7 @@ def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_i
             tstzrange('2035-06-01T14:00:00+00', '2035-06-01T14:30:00+00', '[)')
         ) RETURNING id
         """,
-        (
-            fixture.organization_id,
-            fixture.offering_version_id,
-            fixture.party_id,
-            fixture.location_id,
-        ),
+        (fixture.organization_id, fixture.offering_version_id, fixture.party_id, fixture.location_id),
     )
     conn.execute(
         """
@@ -81,12 +68,7 @@ def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_i
             tstzrange('2035-06-01T14:00:00+00', '2035-06-01T14:30:00+00', '[)'), 1
         )
         """,
-        (
-            fixture.organization_id,
-            fixture.resource_id,
-            fixture.requirement_id,
-            reservation_id,
-        ),
+        (fixture.organization_id, fixture.resource_id, fixture.requirement_id, reservation_id),
     )
     return reservation_id
 
@@ -102,11 +84,7 @@ def test_consumed_handoff_remains_resolvable_for_idempotent_replay(
     with admin_conn.transaction():
         reservation_id = _insert_reservation(admin_conn, fixture, handoff_id)
     assert admin_conn.execute(
-        """
-        SELECT consumed_reservation_id
-        FROM request_engine.discovery_booking_handoffs
-        WHERE id = %s
-        """,
+        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id = %s",
         (handoff_id,),
     ).fetchone() == (reservation_id,)
     admin_conn.execute(
