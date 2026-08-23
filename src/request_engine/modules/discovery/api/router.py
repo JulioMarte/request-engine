@@ -51,7 +51,8 @@ def create_router(
         views: list[DiscoveryOptionView] = []
         for item in options:
             option_id = await handoff_issuer.issue_handoff(item.candidate, item.slot)
-            views.append(DiscoveryOptionView.from_option(item, option_id))
+            if option_id is not None:
+                views.append(DiscoveryOptionView.from_option(item, option_id))
         return tuple(views)
 
     return router
