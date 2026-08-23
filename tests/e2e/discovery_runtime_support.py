@@ -41,9 +41,7 @@ class DiscoveryResolver:
             raise AuthenticationRequired
         return PlatformDiscoveryActor(
             principal_id=uuid4(),
-            capabilities=frozenset(
-                {DISCOVERY_SEARCH_CAPABILITY, DISCOVERY_SLOT_READ_CAPABILITY}
-            ),
+            capabilities=frozenset({DISCOVERY_SEARCH_CAPABILITY, DISCOVERY_SLOT_READ_CAPABILITY}),
             authentication_method="e2e",
         )
 
@@ -53,8 +51,7 @@ def _discovery_url(template_url: str, role: str, password: str) -> str:
     host = parsed.hostname or "127.0.0.1"
     port = f":{parsed.port}" if parsed.port is not None else ""
     return (
-        f"postgresql+asyncpg://{quote_plus(role)}:{quote_plus(password)}"
-        f"@{host}{port}{parsed.path}"
+        f"postgresql+asyncpg://{quote_plus(role)}:{quote_plus(password)}@{host}{port}{parsed.path}"
     )
 
 
@@ -66,13 +63,8 @@ async def discovery_client(
 ) -> AsyncIterator[AsyncClient]:
     role = f"re_e2e_discovery_{secrets.token_hex(6)}"
     password = secrets.token_urlsafe(24)
-    create_role = (
-        "CREATE ROLE {} LOGIN PASSWORD {} "
-        "IN ROLE request_engine_discovery NOBYPASSRLS"
-    )
-    admin_conn.execute(
-        sql.SQL(create_role).format(sql.Identifier(role), sql.Literal(password))
-    )
+    create_role = "CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_engine_discovery NOBYPASSRLS"
+    admin_conn.execute(sql.SQL(create_role).format(sql.Identifier(role), sql.Literal(password)))
     engine = create_postgres_engine(_discovery_url(app_database_url, role, password))
     resolver = DiscoveryResolver()
     internal_app = create_discovery_availability_app(
