@@ -1,0 +1,79 @@
+from datetime import datetime
+from decimal import Decimal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
+
+
+class PublishedSlotQueryBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: UUID
+    publication_id: UUID
+    publication_revision: int = Field(ge=1)
+    mapping_id: UUID
+    mapping_revision: int = Field(ge=1)
+    offering_version_id: UUID
+    window_start: datetime
+    window_end: datetime
+    location_id: UUID
+    resource_id: UUID | None = None
+    limit: int = Field(ge=1, le=100)
+
+    def to_contract(self) -> PublishedSlotQuery:
+        return PublishedSlotQuery(
+            organization_id=self.organization_id,
+            publication_id=self.publication_id,
+            publication_revision=self.publication_revision,
+            mapping_id=self.mapping_id,
+            mapping_revision=self.mapping_revision,
+            offering_version_id=self.offering_version_id,
+            window_start=self.window_start,
+            window_end=self.window_end,
+            location_id=self.location_id,
+            resource_id=self.resource_id,
+            limit=self.limit,
+        )
+
+
+class ResourceChoiceWire(BaseModel):
+    requirement_id: UUID
+    resource_id: UUID
+    resource_location_assignment_id: UUID | None = None
+    assignment_revision: int | None = None
+    availability_revision: int | None = None
+
+    @classmethod
+    def from_contract(cls, choice: ResourceChoice) -> "ResourceChoiceWire":
+        return cls(**choice.__dict__)
+
+
+class PublishedSlotWire(BaseModel):
+    offering_version_id: UUID
+    start_at: datetime
+    end_at: datetime
+    location_id: UUID | None
+    resources: tuple[ResourceChoiceWire, ...]
+    planned_duration_minutes: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    location_operational_revision: int | None = None
+    configuration_fingerprint: str | None = None
+
+    @classmethod
+    def from_contract(cls, slot: AppointmentSlot) -> "PublishedSlotWire":
+        return cls(
+            offering_version_id=slot.offering_version_id,
+            start_at=slot.start_at,
+            end_at=slot.end_at,
+            location_id=slot.location_id,
+            resources=tuple(ResourceChoiceWire.from_contract(item) for item in slot.resources),
+            planned_duration_minutes=slot.planned_duration_minutes,
+            amount=slot.amount,
+            currency=slot.currency,
+            location_operational_revision=slot.location_operational_revision,
+            configuration_fingerprint=slot.configuration_fingerprint,
+        )
