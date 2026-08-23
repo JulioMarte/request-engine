@@ -20,7 +20,8 @@ def test_taxonomy_admin_lifecycle_is_narrow_audited_and_append_only(
     classification_id = created[0]
     assert isinstance(classification_id, UUID)
     assert admin_conn.execute(
-        "SELECT action, authority_ref, reason FROM request_engine.service_classification_authority_events "
+        "SELECT action, authority_ref, reason FROM "
+        "request_engine.service_classification_authority_events "
         "WHERE service_classification_id=%s ORDER BY created_at",
         (classification_id,),
     ).fetchall() == [("created", "platform-admin:test", "create proof")]
