@@ -1,11 +1,19 @@
-from typing import Any
+from typing import Any, LiteralString, cast
 from uuid import UUID
 
 from psycopg import Connection
 
-from f2_discovery_fixture import uuid_row
-
 PgConnection = Connection[Any]
+
+
+def _uuid_row(
+    conn: PgConnection,
+    statement: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
+    row = conn.execute(statement, params).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
 
 
 def create_booking_capacity(
@@ -14,7 +22,7 @@ def create_booking_capacity(
     offering_version_id: UUID,
     suffix: str,
 ) -> tuple[UUID, UUID]:
-    capability_id = uuid_row(
+    capability_id = _uuid_row(
         conn,
         """
         INSERT INTO request_engine.resource_capabilities (
@@ -24,7 +32,7 @@ def create_booking_capacity(
         """,
         (organization_id, f"doctor-{suffix}"),
     )
-    requirement_id = uuid_row(
+    requirement_id = _uuid_row(
         conn,
         """
         INSERT INTO request_engine.offering_resource_requirements (
@@ -34,7 +42,7 @@ def create_booking_capacity(
         """,
         (organization_id, offering_version_id, capability_id),
     )
-    resource_id = uuid_row(
+    resource_id = _uuid_row(
         conn,
         """
         INSERT INTO request_engine.resources (
