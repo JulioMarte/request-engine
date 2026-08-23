@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.booking.contracts.appointment_options import DecodedAppointmentOption
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 
 
@@ -22,3 +23,18 @@ class PublishedSlotReader(Protocol):
         self,
         query: PublishedSlotQuery,
     ) -> tuple[AppointmentSlot, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DecodedDiscoveryHandoff:
+    handoff_id: UUID
+    organization_id: UUID
+    option: DecodedAppointmentOption
+
+
+class DiscoveryHandoffReader(Protocol):
+    async def read_handoff(
+        self,
+        organization_id: UUID,
+        token: str,
+    ) -> DecodedDiscoveryHandoff: ...
