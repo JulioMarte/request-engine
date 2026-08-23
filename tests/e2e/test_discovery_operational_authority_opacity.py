@@ -70,7 +70,6 @@ async def test_discovery_foreign_offering_is_as_opaque_as_unknown_and_not_mutate
     assert foreign_result.status_code == 409 == unknown_result.status_code
     assert foreign_result.json()["error"] == unknown_result.json()["error"]
     assert e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.offering_service_classifications "
-        "WHERE offering_id=%s",
+        "SELECT count(*) FROM request_engine.offering_service_classifications WHERE offering_id=%s",
         (foreign.offering_id,),
     ).fetchone() == (0,)
