@@ -66,10 +66,12 @@ async def discovery_client(
 ) -> AsyncIterator[AsyncClient]:
     role = f"re_e2e_discovery_{secrets.token_hex(6)}"
     password = secrets.token_urlsafe(24)
+    create_role = (
+        "CREATE ROLE {} LOGIN PASSWORD {} "
+        "IN ROLE request_engine_discovery NOBYPASSRLS"
+    )
     admin_conn.execute(
-        sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_engine_discovery NOBYPASSRLS").format(
-            sql.Identifier(role), sql.Literal(password)
-        )
+        sql.SQL(create_role).format(sql.Identifier(role), sql.Literal(password))
     )
     engine = create_postgres_engine(_discovery_url(app_database_url, role, password))
     resolver = DiscoveryResolver()
