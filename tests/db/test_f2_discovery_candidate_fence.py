@@ -2,8 +2,8 @@ from typing import Any
 from uuid import uuid4
 
 import psycopg
-import pytest
 from psycopg import Connection
+import pytest
 
 from tests.fixtures.f2_discovery import create_discovery_fixture, uuid_row
 
@@ -26,7 +26,11 @@ def test_mapping_change_after_search_prevents_handoff_issuance(
         (f"dermatology_{uuid4().hex}",),
     )
     admin_conn.execute(
-        "UPDATE request_engine.offering_service_classifications SET status = 'revoked' WHERE id = %s",
+        """
+        UPDATE request_engine.offering_service_classifications
+        SET status = 'revoked'
+        WHERE id = %s
+        """,
         (fixture.mapping_id,),
     )
     admin_conn.execute(
@@ -68,6 +72,10 @@ def test_mapping_change_after_search_prevents_handoff_issuance(
             ),
         )
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.discovery_booking_handoffs WHERE organization_id = %s",
+        """
+        SELECT count(*)
+        FROM request_engine.discovery_booking_handoffs
+        WHERE organization_id = %s
+        """,
         (fixture.organization_id,),
     ).fetchone() == (0,)
