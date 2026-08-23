@@ -17,6 +17,12 @@ queue
 communications
 ```
 
+Active post-V3 modules:
+
+```text
+discovery    # F2 cross-tenant published-supply discovery
+```
+
 Deferred/incubating during transition:
 
 ```text
@@ -25,7 +31,7 @@ payments
 dispatch
 ```
 
-Baseline modules must not import or depend on deferred modules unless a concrete product use case reactivates the concept through an accepted architecture change.
+Baseline and active post-V3 modules must not import or depend on deferred modules unless a concrete product use case reactivates the concept through an accepted architecture change. `discovery` follows the same contracts-only cross-module rule as baseline modules; its public process must not embed Booking's tenant-domain database credential.
 
 ## Dependency boundary
 
