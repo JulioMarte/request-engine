@@ -50,7 +50,11 @@ async def test_discovery_crosses_two_tenants_and_books_selected_handoff(
     options = cast(list[dict[str, Any]], response.json())
     organizations = {UUID(item["organization_id"]) for item in options}
     assert {tenant_a.organization_id, tenant_b.organization_id} <= organizations
-    selected = next(item for item in options if item["organization_id"] == str(tenant_a.organization_id))
+    selected = next(
+        item
+        for item in options
+        if item["organization_id"] == str(tenant_a.organization_id)
+    )
     assert str(selected["option_id"]).startswith("discoopt_v1.")
     assert Decimal(str(selected["amount"])) == Decimal("4000")
     assert selected["planned_duration_minutes"] == 45
