@@ -61,6 +61,8 @@ def _from_row(row: object) -> DiscoveryCandidate:
     return DiscoveryCandidate(
         publication_id=cast(UUID, values["publication_id"]),
         publication_revision=cast(int, values["publication_revision"]),
+        mapping_id=cast(UUID, values["mapping_id"]),
+        mapping_revision=cast(int, values["mapping_revision"]),
         organization_id=cast(UUID, values["organization_id"]),
         organization_key=cast(str, values["organization_key"]),
         organization_display_name=cast(str, values["organization_display_name"]),
