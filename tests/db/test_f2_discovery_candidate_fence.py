@@ -2,9 +2,8 @@ from typing import Any
 from uuid import uuid4
 
 import psycopg
-from psycopg import Connection
 import pytest
-
+from psycopg import Connection
 from tests.fixtures.f2_discovery import create_discovery_fixture, uuid_row
 
 PgConnection = Connection[Any]
