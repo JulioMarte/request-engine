@@ -5,7 +5,10 @@ from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
-from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery, PublishedSlotReader
+from request_engine.modules.booking.contracts.discovery import (
+    PublishedSlotQuery,
+    PublishedSlotReader,
+)
 from request_engine.modules.discovery.application.errors import DiscoverySearchTooBroad
 from request_engine.modules.discovery.application.queries.search_ordering import (
     is_f2_discoverable,
