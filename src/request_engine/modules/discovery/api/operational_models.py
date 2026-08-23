@@ -17,6 +17,16 @@ class OfferingClassificationBody(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class ResourcePublicProfileBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    authority_party_id: UUID
+    display_name: str = Field(min_length=1, max_length=200)
+    role_label: str | None = Field(default=None, min_length=1, max_length=200)
+    profile_image_ref: str | None = Field(default=None, min_length=1, max_length=1000)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class DiscoveryPublicationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
