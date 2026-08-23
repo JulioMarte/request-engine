@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
@@ -22,6 +22,16 @@ class PublishedSlotQueryBody(BaseModel):
     location_id: UUID
     resource_id: UUID | None = None
     limit: int = Field(ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "PublishedSlotQueryBody":
+        if self.window_start.utcoffset() is None or self.window_end.utcoffset() is None:
+            raise ValueError("gateway window must be timezone-aware")
+        if self.window_end <= self.window_start:
+            raise ValueError("gateway window_end must be after window_start")
+        if self.window_end - self.window_start > timedelta(days=7):
+            raise ValueError("gateway window cannot exceed 7 days")
+        return self
 
     def to_contract(self) -> PublishedSlotQuery:
         return PublishedSlotQuery(
