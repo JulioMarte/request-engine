@@ -25,7 +25,6 @@ def create_discovery_availability_router(
     async def authenticated_actor(request: Request) -> PlatformDiscoveryActor:
         return await actor_resolver.resolve_actor(request)
 
-    @router.post("/published-slots", response_model=tuple[PublishedSlotWire, ...])
     async def published_slots(
         body: PublishedSlotQueryBody,
         actor: Annotated[PlatformDiscoveryActor, Depends(authenticated_actor)],
@@ -34,4 +33,10 @@ def create_discovery_availability_router(
         slots = await slot_reader.find_published_slots(body.to_contract())
         return tuple(PublishedSlotWire.from_contract(slot) for slot in slots)
 
+    router.add_api_route(
+        "/published-slots",
+        published_slots,
+        methods=["POST"],
+        response_model=tuple[PublishedSlotWire, ...],
+    )
     return router
