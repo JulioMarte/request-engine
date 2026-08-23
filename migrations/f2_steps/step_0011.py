@@ -145,10 +145,14 @@ BEGIN
             l.country_code AS location_country_code,
             dp.resource_id,
             dp.provider_visibility,
-            CASE WHEN dp.provider_visibility = 'public' THEN r.resource_key END AS provider_key,
-            CASE WHEN dp.provider_visibility = 'public' THEN rpp.display_name END AS provider_display_name,
-            CASE WHEN dp.provider_visibility = 'public' THEN rpp.role_label END AS provider_role_label,
-            CASE WHEN dp.provider_visibility = 'public' THEN rpp.profile_image_ref END AS provider_profile_image_ref,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN r.resource_key END AS provider_key,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.display_name END AS provider_display_name,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.role_label END AS provider_role_label,
+            CASE WHEN dp.provider_visibility = 'public'
+                THEN rpp.profile_image_ref END AS provider_profile_image_ref,
             lower(dp.effective_during) AS publication_start,
             upper(dp.effective_during) AS publication_end,
             6371008.8 * 2 * asin(sqrt(LEAST(1.0, GREATEST(0.0,
