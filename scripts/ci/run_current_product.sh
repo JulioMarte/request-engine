@@ -29,9 +29,7 @@ if [[ "$actual_head" != "$expected_head" ]]; then
   exit 1
 fi
 
-# Current schema/runtime and operational-profile guarantees. These tests remain
-# feature-local while PR #75 is active; after integration they can be promoted
-# by ownership without changing the meaning of this current-product gate.
+# Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
   tests/integration/f1_operational_profile/test_runtime_privileges.py \
@@ -70,6 +68,18 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_capability_flow.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
+
+# F2 is part of current product truth, not a detached feature-local proof. These
+# tests exercise the dedicated discovery role, exact Publication/Mapping fences,
+# opaque handoff lifecycle and stale/no-side-effect commitment behavior against
+# the same PostgreSQL head used by the production-like suites below.
+uv run pytest \
+  tests/db/test_f2_discovery_candidate_fence.py \
+  tests/db/test_f2_discovery_handoff.py \
+  tests/db/test_f2_discovery_handoff_lifecycle.py \
+  tests/db/test_f2_discovery_privileges.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f2-discovery-db.xml"
 
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
