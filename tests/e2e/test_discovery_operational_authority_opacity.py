@@ -28,7 +28,10 @@ async def test_discovery_mapping_requires_manage_discovery_and_leaves_no_partial
         response = await client.put(
             f"/v1/operations/discovery/offerings/{sandbox.offering_id}/classification",
             headers=auth(sandbox, idempotency_key=f"f2-noauth-{uuid4().hex}"),
-            json={"authority_party_id": str(sandbox.party_id), "classification_key": classification},
+            json={
+                "authority_party_id": str(sandbox.party_id),
+                "classification_key": classification,
+            },
         )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "operational_authority_required"
@@ -56,11 +59,13 @@ async def test_discovery_foreign_offering_is_as_opaque_as_unknown_and_not_mutate
     async with operational_client(e2e_session_factory, owner) as client:
         foreign_result = await client.put(
             f"/v1/operations/discovery/offerings/{foreign.offering_id}/classification",
-            headers=auth(owner, idempotency_key=f"f2-foreign-{uuid4().hex}"), json=body,
+            headers=auth(owner, idempotency_key=f"f2-foreign-{uuid4().hex}"),
+            json=body,
         )
         unknown_result = await client.put(
             f"/v1/operations/discovery/offerings/{uuid4()}/classification",
-            headers=auth(owner, idempotency_key=f"f2-unknown-{uuid4().hex}"), json=body,
+            headers=auth(owner, idempotency_key=f"f2-unknown-{uuid4().hex}"),
+            json=body,
         )
     assert foreign_result.status_code == 409 == unknown_result.status_code
     assert foreign_result.json()["error"] == unknown_result.json()["error"]
