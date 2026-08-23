@@ -73,6 +73,7 @@ def _reschedule_endpoint(
     router = create_router(
         availability_reader=unused,
         option_codec=codec,
+        discovery_handoff_reader=unused,
         book_handler=unused,
         cancel_handler=unused,
         reschedule_handler=handler,
