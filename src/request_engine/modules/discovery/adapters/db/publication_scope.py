@@ -53,9 +53,9 @@ async def validate_scope(
                         EXISTS (
                             SELECT 1
                             FROM request_engine.offering_service_classifications m
-                            JOIN request_engine.service_classifications sc
-                              ON sc.id = m.service_classification_id
-                             AND sc.status = 'active'
+                            JOIN LATERAL request_engine.lookup_service_classification(
+                                m.service_classification_id
+                            ) sc ON sc.status = 'active'
                             WHERE m.organization_id = :organization_id
                               AND m.offering_id = :offering_id
                               AND m.status = 'active'
