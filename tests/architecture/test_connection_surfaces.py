@@ -12,6 +12,8 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "__init__.py",
     "app.py",
     "capabilities.py",
+    "discovery_app.py",
+    "discovery_availability_app.py",
     "errors.py",
     "module_composition.py",
     "operational_app.py",
