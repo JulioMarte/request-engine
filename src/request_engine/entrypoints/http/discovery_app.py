@@ -45,7 +45,7 @@ def create_discovery_app(
 ) -> FastAPI:
     """Compose the public Discovery process from remote/least-privilege ports only."""
 
-    if slot_reader.trust_boundary != "remote":
+    if getattr(slot_reader, "trust_boundary", None) != "remote":
         raise RuntimeError("public Discovery requires a remote Booking availability boundary")
     app = FastAPI(
         title="Request Engine Discovery",
