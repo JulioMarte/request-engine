@@ -48,7 +48,13 @@ class ResourceChoiceWire(BaseModel):
 
     @classmethod
     def from_contract(cls, choice: ResourceChoice) -> "ResourceChoiceWire":
-        return cls(**choice.__dict__)
+        return cls(
+            requirement_id=choice.requirement_id,
+            resource_id=choice.resource_id,
+            resource_location_assignment_id=choice.resource_location_assignment_id,
+            assignment_revision=choice.assignment_revision,
+            availability_revision=choice.availability_revision,
+        )
 
 
 class PublishedSlotWire(BaseModel):
