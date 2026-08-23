@@ -14,7 +14,9 @@ from request_engine.entrypoints.http.discovery_app import create_discovery_app
 from request_engine.entrypoints.http.discovery_availability_app import (
     create_discovery_availability_app,
 )
-from request_engine.modules.booking.adapters.discovery_slot_reader import HttpPublishedSlotReader
+from request_engine.modules.discovery.adapters.http.published_slot_reader import (
+    HttpPublishedSlotReader,
+)
 from request_engine.modules.discovery.api.composition import build_discovery_database_ports
 from request_engine.platform.db.session import (
     SessionFactory,
