@@ -75,7 +75,9 @@ class DiscoveryOptionView(BaseModel):
         provider: PublicProviderView | None = None
         if candidate.provider_visibility == "public":
             if candidate.provider_key is None or candidate.provider_display_name is None:
-                raise ValueError("public provider publication is missing its accepted public profile")
+                raise ValueError(
+                    "public provider publication is missing its accepted public profile"
+                )
             provider = PublicProviderView(
                 resource_key=candidate.provider_key,
                 display_name=candidate.provider_display_name,
