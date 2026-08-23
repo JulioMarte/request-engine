@@ -8,7 +8,7 @@ from request_engine.modules.discovery.application.errors import DiscoverySearchC
 MAX_RADIUS_METERS = 100_000
 MAX_WINDOW = timedelta(days=7)
 MAX_RESULTS = 100
-MAX_ELIGIBLE_CANDIDATES = 500
+MAX_ELIGIBLE_CANDIDATES = 200
 _CLASSIFICATION_KEY = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 
