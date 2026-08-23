@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from request_engine.modules.booking.api.dependencies import IdempotencyKey
+from request_engine.modules.booking.api.discovery_booking import book_selected_option
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     AttendanceResponseBody,
@@ -15,11 +16,7 @@ from request_engine.modules.booking.api.models import (
     ReservationView,
 )
 from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-    BookAppointmentHandler,
-    book_appointment,
-)
+from request_engine.modules.booking.application.commands.book_appointment import BookAppointmentHandler
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     CancelReservationHandler,
@@ -48,18 +45,11 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     ReservationReader,
     get_reservation_status,
 )
-from request_engine.modules.booking.contracts.appointment_options import (
-    AppointmentOptionCodec,
-    DecodedAppointmentOption,
-)
+from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
 from request_engine.modules.booking.contracts.discovery import DiscoveryHandoffReader
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.discovery_handoff_context import (
-    reset_discovery_handoff_id,
-    set_discovery_handoff_id,
-)
 from request_engine.platform.security.http import ActorResolver, require_capability
 
 
@@ -117,21 +107,14 @@ def create_router(
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
         require_capability(actor, "appointments.book")
-        option, handoff_id = await _resolve_booking_option(
-            body.option_id,
-            actor.organization_id,
-            option_codec,
-            discovery_handoff_reader,
+        reservation = await book_selected_option(
+            body=body,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            option_codec=option_codec,
+            handoff_reader=discovery_handoff_reader,
+            handler=book_handler,
         )
-        context_token = set_discovery_handoff_id(handoff_id) if handoff_id is not None else None
-        try:
-            reservation = await book_appointment(
-                book_handler,
-                _book_command(body, actor, idempotency_key, option),
-            )
-        finally:
-            if context_token is not None:
-                reset_discovery_handoff_id(context_token)
         return ReservationView.from_contract(reservation)
 
     async def reservation_status(
@@ -220,47 +203,54 @@ def create_router(
         )
         return AttendanceStateView.from_contract(attendance)
 
-    add_capability_route(router, "/slots", slots, capability="appointments.find_slots", methods=["GET"], response_model=tuple[AppointmentSlotView, ...], response_model_exclude_none=True)
-    add_capability_route(router, "", book, capability="appointments.book", methods=["POST"], response_model=ReservationView, status_code=status.HTTP_201_CREATED)
-    add_capability_route(router, "/{reservation_id}", reservation_status, capability="appointments.read", methods=["GET"], response_model=ReservationView)
-    add_capability_route(router, "/{reservation_id}/cancel", cancel, capability="appointments.cancel", methods=["POST"], response_model=ReservationView)
-    add_capability_route(router, "/{reservation_id}/reschedule", reschedule, capability="appointments.reschedule", methods=["POST"], response_model=ReservationView)
-    add_capability_route(router, "/{reservation_id}/attendance", attendance_response, capability="appointments.confirm_attendance", methods=["POST"], response_model=AttendanceStateView)
-    return router
-
-
-async def _resolve_booking_option(
-    token: str,
-    organization_id: UUID,
-    option_codec: AppointmentOptionCodec,
-    handoff_reader: DiscoveryHandoffReader,
-) -> tuple[DecodedAppointmentOption, UUID | None]:
-    if token.startswith("discoopt_v1."):
-        handoff = await handoff_reader.read_handoff(organization_id, token)
-        return handoff.option, handoff.handoff_id
-    return option_codec.decode(organization_id, token), None
-
-
-def _book_command(
-    body: BookAppointmentBody,
-    actor: ActorContext,
-    idempotency_key: str,
-    option: DecodedAppointmentOption,
-) -> BookAppointmentCommand:
-    return BookAppointmentCommand(
-        organization_id=actor.organization_id,
-        principal_id=actor.principal_id,
-        offering_version_id=option.offering_version_id,
-        subject_party_id=body.subject_party_id,
-        start_at=option.start_at,
-        resources=option.resources,
-        location_id=option.location_id,
-        origin_request_id=body.origin_request_id,
-        idempotency_key=idempotency_key,
-        allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
-        expected_planned_duration_minutes=option.planned_duration_minutes,
-        expected_amount=option.amount,
-        expected_currency=option.currency,
-        expected_location_operational_revision=option.location_operational_revision,
-        expected_configuration_fingerprint=option.configuration_fingerprint,
+    add_capability_route(
+        router,
+        "/slots",
+        slots,
+        capability="appointments.find_slots",
+        methods=["GET"],
+        response_model=tuple[AppointmentSlotView, ...],
+        response_model_exclude_none=True,
     )
+    add_capability_route(
+        router,
+        "",
+        book,
+        capability="appointments.book",
+        methods=["POST"],
+        response_model=ReservationView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}",
+        reservation_status,
+        capability="appointments.read",
+        methods=["GET"],
+        response_model=ReservationView,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}/cancel",
+        cancel,
+        capability="appointments.cancel",
+        methods=["POST"],
+        response_model=ReservationView,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}/reschedule",
+        reschedule,
+        capability="appointments.reschedule",
+        methods=["POST"],
+        response_model=ReservationView,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}/attendance",
+        attendance_response,
+        capability="appointments.confirm_attendance",
+        methods=["POST"],
+        response_model=AttendanceStateView,
+    )
+    return router
