@@ -41,7 +41,11 @@ def _handoff(conn: PgConnection, fixture: DiscoveryFixture, token_hash: str) -> 
     )
 
 
-def _insert_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID) -> UUID:
+def _insert_reservation(
+    conn: PgConnection,
+    fixture: DiscoveryFixture,
+    handoff_id: UUID,
+) -> UUID:
     conn.execute(
         "SELECT set_config('request_engine.organization_id', %s, true)",
         (str(fixture.organization_id),),
@@ -77,10 +81,15 @@ def test_consumed_handoff_remains_resolvable_for_idempotent_replay(
     fixture = create_discovery_fixture(admin_conn)
     token_hash = "b" * 64
     handoff_id = _handoff(admin_conn, fixture, token_hash)
-    reservation_id = _insert_reservation(admin_conn, fixture, handoff_id)
+    with admin_conn.transaction():
+        reservation_id = _insert_reservation(admin_conn, fixture, handoff_id)
 
     assert admin_conn.execute(
-        "SELECT consumed_reservation_id FROM request_engine.discovery_booking_handoffs WHERE id=%s",
+        """
+        SELECT consumed_reservation_id
+          FROM request_engine.discovery_booking_handoffs
+         WHERE id = %s
+        """,
         (handoff_id,),
     ).fetchone() == (reservation_id,)
     admin_conn.execute(
@@ -111,6 +120,6 @@ def test_new_offering_version_stales_existing_handoff(admin_conn: PgConnection) 
         _insert_reservation(admin_conn, fixture, handoff_id)
 
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.reservations WHERE organization_id=%s",
+        "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
         (fixture.organization_id,),
     ).fetchone() == (0,)
