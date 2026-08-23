@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.discovery.application.commands.public_profile import (
     ResourcePublicProfileState,
@@ -126,12 +127,12 @@ class PostgresResourcePublicProfileCommands:
             return state
 
     async def _persist(
-        self, session: object, command: SetResourcePublicProfileCommand, current: RowMapping | None
+        self,
+        session: AsyncSession,
+        command: SetResourcePublicProfileCommand,
+        current: RowMapping | None,
     ) -> RowMapping:
-        from sqlalchemy.ext.asyncio import AsyncSession
-
-        db = cast(AsyncSession, session)
-        values = {
+        values: dict[str, object] = {
             "org": command.organization_id,
             "resource": command.resource_id,
             "display": command.display_name.strip(),
@@ -142,7 +143,7 @@ class PostgresResourcePublicProfileCommands:
             if command.expected_revision is not None:
                 raise DiscoveryConfigurationConflict("public profile does not yet exist")
             return (
-                await db.execute(
+                await session.execute(
                     text(
                         "INSERT INTO request_engine.resource_public_profiles "
                         "(organization_id,resource_id,display_name,role_label,profile_image_ref) "
@@ -157,7 +158,7 @@ class PostgresResourcePublicProfileCommands:
             raise DiscoveryRevisionConflict(command.resource_id, command.expected_revision or 0, actual)
         values["expected"] = actual
         return (
-            await db.execute(
+            await session.execute(
                 text(
                     "UPDATE request_engine.resource_public_profiles SET "
                     "display_name=:display,role_label=:role,profile_image_ref=:image,active=true,"
