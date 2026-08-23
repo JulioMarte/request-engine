@@ -43,21 +43,21 @@ class DiscoveryCandidate:
     location_id: UUID
     location_key: str
     location_display_name: str
-    location_address_line1: str | None
-    location_address_line2: str | None
-    location_locality: str | None
-    location_administrative_area: str | None
-    location_postal_code: str | None
-    location_country_code: str | None
     resource_id: UUID | None
     provider_visibility: str
-    provider_key: str | None
-    provider_display_name: str | None
-    provider_role_label: str | None
-    provider_profile_image_ref: str | None
     publication_start: datetime
     publication_end: datetime | None
     distance_meters: float
+    location_address_line1: str | None = None
+    location_address_line2: str | None = None
+    location_locality: str | None = None
+    location_administrative_area: str | None = None
+    location_postal_code: str | None = None
+    location_country_code: str | None = None
+    provider_key: str | None = None
+    provider_display_name: str | None = None
+    provider_role_label: str | None = None
+    provider_profile_image_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
