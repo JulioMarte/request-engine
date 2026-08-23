@@ -43,9 +43,7 @@ def _issue_handoff(conn: PgConnection, fixture: DiscoveryFixture) -> UUID:
     )
 
 
-def _attempt_reservation(
-    conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID
-) -> None:
+def _attempt_reservation(conn: PgConnection, fixture: DiscoveryFixture, handoff_id: UUID) -> None:
     conn.execute(
         "SELECT set_config('request_engine.organization_id', %s, true)",
         (str(fixture.organization_id),),
