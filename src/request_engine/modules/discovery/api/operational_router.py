@@ -3,10 +3,16 @@ from fastapi import APIRouter
 from request_engine.modules.discovery.api.operational_mapping_router import (
     create_mapping_router,
 )
+from request_engine.modules.discovery.api.operational_public_profile_router import (
+    create_public_profile_router,
+)
 from request_engine.modules.discovery.api.operational_publication_router import (
     create_publication_router,
 )
 from request_engine.modules.discovery.application.commands.mapping import MapOfferingHandler
+from request_engine.modules.discovery.application.commands.public_profile import (
+    SetResourcePublicProfileHandler,
+)
 from request_engine.modules.discovery.application.commands.publication import (
     PublishDiscoverySupplyHandler,
     RevokeDiscoveryPublicationHandler,
@@ -21,6 +27,7 @@ def create_operational_router(
     *,
     mapping_handler: MapOfferingHandler,
     revoke_mapping_handler: RevokeOfferingMappingHandler,
+    public_profile_handler: SetResourcePublicProfileHandler,
     publish_handler: PublishDiscoverySupplyHandler,
     revoke_handler: RevokeDiscoveryPublicationHandler,
     actor_resolver: ActorResolver,
@@ -30,6 +37,12 @@ def create_operational_router(
         create_mapping_router(
             mapping_handler=mapping_handler,
             revoke_mapping_handler=revoke_mapping_handler,
+            actor_resolver=actor_resolver,
+        )
+    )
+    router.include_router(
+        create_public_profile_router(
+            handler=public_profile_handler,
             actor_resolver=actor_resolver,
         )
     )
