@@ -1,5 +1,5 @@
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -10,14 +10,16 @@ PgConnection = Connection[Any]
 
 
 def _issue_handoff(conn: PgConnection, fixture: DiscoveryFixture) -> UUID:
-    resource_id = uuid4()
     selection = f"""
     {{
       "offering_version_id": "{fixture.offering_version_id}",
       "location_id": "{fixture.location_id}",
       "start_at": "2035-06-01T14:00:00+00:00",
       "end_at": "2035-06-01T14:30:00+00:00",
-      "resources": [{{"resource_id": "{resource_id}"}}],
+      "resources": [{{
+        "requirement_id": "{fixture.requirement_id}",
+        "resource_id": "{fixture.resource_id}"
+      }}],
       "planned_duration_minutes": 30,
       "amount": "3500",
       "currency": "DOP",
