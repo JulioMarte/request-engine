@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.discovery_handoff_context import (
+    current_discovery_handoff_id,
+)
 from request_engine.platform.security.execution_context import current_actor_context
 
 SessionFactory = async_sessionmaker[AsyncSession]
@@ -39,6 +42,16 @@ async def set_tenant_context(session: AsyncSession, organization_id: UUID) -> No
     await session.execute(
         text("SELECT set_config('request_engine.organization_id', :organization_id, true)"),
         {"organization_id": str(organization_id)},
+    )
+
+
+async def _set_discovery_handoff_context(session: AsyncSession) -> None:
+    handoff_id = current_discovery_handoff_id()
+    if handoff_id is None:
+        return
+    await session.execute(
+        text("SELECT set_config('request_engine.discovery_handoff_id', :handoff_id, true)"),
+        {"handoff_id": str(handoff_id)},
     )
 
 
@@ -83,6 +96,7 @@ async def tenant_transaction(
             await set_actor_context(session, actor)
         else:
             await set_tenant_context(session, organization_id)
+        await _set_discovery_handoff_context(session)
         yield session
 
 
@@ -95,4 +109,5 @@ async def actor_transaction(
 
     async with session_factory() as session, session.begin():
         await set_actor_context(session, actor)
+        await _set_discovery_handoff_context(session)
         yield session
