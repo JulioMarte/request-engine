@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 from psycopg import Connection
@@ -18,7 +18,11 @@ class DiscoveryFixture:
     publication_id: UUID
 
 
-def uuid_row(conn: PgConnection, statement: str, params: tuple[object, ...]) -> UUID:
+def uuid_row(
+    conn: PgConnection,
+    statement: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
     row = conn.execute(statement, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
