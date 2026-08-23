@@ -9,6 +9,7 @@ from request_engine.platform.security.context import PrincipalKind
 from request_engine.platform.security.http import CapabilityRequired, request_correlation_id
 
 DISCOVERY_SEARCH_CAPABILITY = "discovery.search_supply"
+DISCOVERY_SLOT_READ_CAPABILITY = "discovery.read_published_slots"
 
 
 @dataclass(frozen=True, slots=True)
