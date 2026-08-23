@@ -51,11 +51,12 @@ def test_public_provider_projection_requires_explicit_profile_and_publication(
         (fixture.location_id,),
     )
     assert _search(admin_conn, key) == [
-        ('27 de Febrero 10', 'Puerto Plata', 'DO', None, None, None)
+        ("27 de Febrero 10", "Puerto Plata", "DO", None, None, None)
     ]
 
     admin_conn.execute(
-        "UPDATE request_engine.discovery_publications SET status='revoked', revision=revision+1 WHERE id=%s",
+        "UPDATE request_engine.discovery_publications "
+        "SET status='revoked', revision=revision+1 WHERE id=%s",
         (fixture.publication_id,),
     )
     assert _search(admin_conn, key) == []
@@ -82,6 +83,6 @@ def test_public_provider_projection_requires_explicit_profile_and_publication(
     )
     row = _search(admin_conn, key)
     assert len(row) == 1
-    assert row[0][0:3] == ('27 de Febrero 10', 'Puerto Plata', 'DO')
-    assert row[0][4:6] == ('Dr. A', 'Cardiologist')
+    assert row[0][0:3] == ("27 de Febrero 10", "Puerto Plata", "DO")
+    assert row[0][4:6] == ("Dr. A", "Cardiologist")
     assert row[0][3] is not None
