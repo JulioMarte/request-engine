@@ -40,9 +40,12 @@ class HttpPublishedSlotReader:
         )
         response.raise_for_status()
         payload = cast(object, response.json())
-        if not isinstance(payload, list) or len(payload) != len(queries):
+        if not isinstance(payload, list):
             raise RuntimeError("discovery availability batch returned a malformed payload")
-        return tuple(_slots(item) for item in cast(list[object], payload))
+        items = cast(list[object], payload)
+        if len(items) != len(queries):
+            raise RuntimeError("discovery availability batch returned a malformed payload")
+        return tuple(_slots(item) for item in items)
 
 
 def _query_payload(query: PublishedSlotQuery) -> dict[str, object]:
