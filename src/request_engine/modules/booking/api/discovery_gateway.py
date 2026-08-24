@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 
 from request_engine.modules.booking.api.discovery_gateway_models import (
+    PublishedSlotBatchBody,
     PublishedSlotQueryBody,
     PublishedSlotView,
 )
@@ -33,10 +34,29 @@ def create_discovery_availability_router(
         slots = await slot_reader.find_published_slots(body.to_contract())
         return tuple(PublishedSlotView.from_contract(slot) for slot in slots)
 
+    async def published_slots_batch(
+        body: PublishedSlotBatchBody,
+        actor: Annotated[PlatformDiscoveryActor, Depends(authenticated_actor)],
+    ) -> tuple[tuple[PublishedSlotView, ...], ...]:
+        require_platform_discovery_capability(actor, DISCOVERY_SLOT_READ_CAPABILITY)
+        groups = await slot_reader.find_published_slots_batch(
+            tuple(query.to_contract() for query in body.queries)
+        )
+        return tuple(
+            tuple(PublishedSlotView.from_contract(slot) for slot in slots)
+            for slots in groups
+        )
+
     router.add_api_route(
         "/published-slots",
         published_slots,
         methods=["POST"],
         response_model=tuple[PublishedSlotView, ...],
+    )
+    router.add_api_route(
+        "/published-slots/batch",
+        published_slots_batch,
+        methods=["POST"],
+        response_model=tuple[tuple[PublishedSlotView, ...], ...],
     )
     return router
