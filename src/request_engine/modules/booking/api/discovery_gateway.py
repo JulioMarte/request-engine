@@ -43,8 +43,7 @@ def create_discovery_availability_router(
             tuple(query.to_contract() for query in body.queries)
         )
         return tuple(
-            tuple(PublishedSlotView.from_contract(slot) for slot in slots)
-            for slots in groups
+            tuple(PublishedSlotView.from_contract(slot) for slot in slots) for slots in groups
         )
 
     router.add_api_route(
