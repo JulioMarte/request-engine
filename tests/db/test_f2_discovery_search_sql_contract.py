@@ -41,9 +41,8 @@ def test_security_definer_search_rejects_null_contract_inputs_under_discovery_au
 
     with admin_conn.transaction():
         admin_conn.execute("SET LOCAL ROLE request_engine_discovery")
-        with admin_conn.transaction():
-            with pytest.raises(errors.InvalidParameterValue):
-                admin_conn.execute(_SEARCH_SQL, params).fetchone()
+        with admin_conn.transaction(), pytest.raises(errors.InvalidParameterValue):
+            admin_conn.execute(_SEARCH_SQL, params).fetchone()
 
 
 @pytest.mark.postgres
@@ -66,6 +65,5 @@ def test_security_definer_search_rejects_candidate_limit_outside_contract(
 
     with admin_conn.transaction():
         admin_conn.execute("SET LOCAL ROLE request_engine_discovery")
-        with admin_conn.transaction():
-            with pytest.raises(errors.InvalidParameterValue):
-                admin_conn.execute(_SEARCH_SQL, params).fetchone()
+        with admin_conn.transaction(), pytest.raises(errors.InvalidParameterValue):
+            admin_conn.execute(_SEARCH_SQL, params).fetchone()
