@@ -26,16 +26,12 @@ Current post-V3 progression:
 released V3
   -> F1 Operational Profile / Contextual Supply
   -> F2 Geospatial Cross-Tenant Discovery
+  -> F3 Live Service Operations [next]
 ```
 
-F1 is implemented/integrated product architecture. F2 is the active implementation/review scope of:
+F1 and F2 are implemented/integrated product architecture. F2 was proven at exact feature head `647bf19ba7b0f716a472aa1a2e3ca2caae81e1c7` by canonical CI #2035 and merged through PR #77 into `development` as `06efd25067515cf5b4c8c03bc06551de28ad081a` on 2026-08-24.
 
-```text
-feature/geospatial-cross-tenant-discovery
-PR #77
-```
-
-F3-F6 remain roadmap work and must branch from the then-current `development`.
+F3 is the next roadmap feature and must branch from the then-current `development`. F4-F6 remain later roadmap work.
 
 ## 3. Current F1 contracts
 
@@ -94,14 +90,14 @@ Current status:
 
 ```text
 F1  implemented/integrated foundation
-F2  implemented on feature branch; exact-head merge evidence required
-F3  future: Live Service Operations
+F2  implemented/integrated discovery capability
+F3  next: Live Service Operations
 F4  future: Live Capacity Projection
 F5  future: Operational Recovery + Communications
 F6  future: Operational Copilot
 ```
 
-The roadmap is product direction, not permission to implement future features inside the active F2 branch.
+The roadmap is product direction. Each new feature must branch from current `development`, reconcile its own normative contract and earn exact-head merge evidence independently.
 
 ## 6. Testing and guarantee governance
 
@@ -121,7 +117,7 @@ INV-DISCOVERY-HANDOFF-001
 INV-DISCOVERY-CONCURRENCY-001
 ```
 
-A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include the feature-specific evidence classes required by the current guarantee inventory and F2 contract.
+CI #2035 is the authoritative exact-head merge evidence for the F2 feature head that was integrated by PR #77. That evidence is now historical provenance for F2; it must not be reused as Definition-of-Done evidence for F3 or later work.
 
 ## 7. Current precedence
 
