@@ -15,7 +15,12 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _SQL = r"""
-SET ROLE request_engine_admin;
+RESET ROLE;
+ALTER FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) OWNER TO request_engine_schema_owner;
+
+SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
 CREATE OR REPLACE FUNCTION request_engine.search_discovery_candidates_v2(
@@ -188,6 +193,9 @@ GRANT EXECUTE ON FUNCTION request_engine.search_discovery_candidates_v2(
 ) TO request_engine_discovery;
 
 RESET ROLE;
+ALTER FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) OWNER TO request_engine_admin;
 RESET search_path;
 
 SET ROLE request_engine_schema_owner;
