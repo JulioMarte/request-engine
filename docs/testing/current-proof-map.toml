@@ -155,6 +155,11 @@ path = "tests/e2e/test_discovery_publication_validation.py"
 evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/modules/discovery/test_published_slot_batch_reader.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
 guarantee = "INV-DISCOVERY-HANDOFF-001"
 path = "tests/db/test_f2_discovery_handoff.py"
 evidence = ["invariant", "adversarial", "security"]
@@ -183,6 +188,11 @@ evidence = ["invariant", "adversarial", "concurrency"]
 guarantee = "INV-DISCOVERY-CONCURRENCY-001"
 path = "tests/e2e/test_discovery_mapping_race.py"
 evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-CONCURRENCY-001"
+path = "tests/modules/booking/test_discovery_slot_batch.py"
+evidence = ["contract", "adversarial", "concurrency"]
 
 [[proofs]]
 guarantee = "INV-AUTHORITY-001"
