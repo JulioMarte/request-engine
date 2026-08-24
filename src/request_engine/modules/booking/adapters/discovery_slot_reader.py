@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import text
 
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
@@ -9,6 +11,8 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+
+_MAX_CONCURRENT_AVAILABILITY_READS = 8
 
 
 class PostgresPublishedSlotReader:
@@ -35,6 +39,18 @@ class PostgresPublishedSlotReader:
                 limit=query.limit,
             )
         )
+
+    async def find_published_slots_batch(
+        self,
+        queries: tuple[PublishedSlotQuery, ...],
+    ) -> tuple[tuple[AppointmentSlot, ...], ...]:
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_AVAILABILITY_READS)
+
+        async def read(query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
+            async with semaphore:
+                return await self.find_published_slots(query)
+
+        return tuple(await asyncio.gather(*(read(query) for query in queries)))
 
     async def _scope_is_current(self, query: PublishedSlotQuery) -> bool:
         async with tenant_transaction(self._session_factory, query.organization_id) as session:
