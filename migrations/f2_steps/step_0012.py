@@ -1,4 +1,4 @@
-"""Harden F2 publication visibility lifecycle.
+"""Harden F2 publication visibility lifecycle and final authority grants.
 
 Revision ID: 0012_f2_public_projection_hardening
 Revises: 0011_f2_public_projection
@@ -43,6 +43,19 @@ $function$;
 
 RESET ROLE;
 RESET search_path;
+
+-- Reassert the taxonomy authority boundary at the consolidated F2 head. Function
+-- ACLs can be broadened by schema/default privilege evolution after the original
+-- definition; merge evidence must prove the final deployed state, not only the
+-- ACL at the point where the function was first created.
+REVOKE ALL ON FUNCTION
+    request_admin.create_service_classification(text, text, text, text),
+    request_admin.retire_service_classification(uuid, bigint, text, text)
+FROM PUBLIC, request_engine_app, request_engine_worker, request_engine_discovery;
+GRANT EXECUTE ON FUNCTION
+    request_admin.create_service_classification(text, text, text, text),
+    request_admin.retire_service_classification(uuid, bigint, text, text)
+TO request_engine_admin;
 """
 
 
