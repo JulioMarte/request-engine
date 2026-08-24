@@ -81,7 +81,7 @@ id = "INV-DISCOVERY-PUBLICATION-001"
 statement = "Cross-tenant discovery exposes supply only through an explicit active mapping plus effective publication and emits only the approved public Organization, Location, Offering and optional provider projection; tenant existence and private/shared identities never imply discoverability."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
-risk = ["security", "privacy"]
+risk = ["security"]
 
 [[guarantees]]
 id = "INV-DISCOVERY-HANDOFF-001"
