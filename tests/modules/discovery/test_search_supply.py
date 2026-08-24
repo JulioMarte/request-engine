@@ -30,10 +30,18 @@ class Slots:
     def __init__(self, values: dict[UUID, tuple[AppointmentSlot, ...]]) -> None:
         self.values = values
         self.queries: list[PublishedSlotQuery] = []
+        self.batch_calls = 0
 
     async def find_published_slots(self, query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
         self.queries.append(query)
         return self.values.get(query.organization_id, ())
+
+    async def find_published_slots_batch(
+        self, queries: tuple[PublishedSlotQuery, ...]
+    ) -> tuple[tuple[AppointmentSlot, ...], ...]:
+        self.batch_calls += 1
+        self.queries.extend(queries)
+        return tuple(self.values.get(query.organization_id, ()) for query in queries)
 
 
 def candidate(distance: float, *, publication_end: datetime | None = None) -> DiscoveryCandidate:
@@ -88,7 +96,7 @@ def search_query() -> SearchPublishedSupplyQuery:
 
 
 @pytest.mark.asyncio
-async def test_search_orders_by_time_then_distance_and_preserves_observations() -> None:
+async def test_search_orders_by_time_then_distance_and_batches_observations() -> None:
     near, far = candidate(100.0), candidate(900.0)
     same_start = NOW + timedelta(hours=1)
     slots = Slots(
@@ -99,6 +107,7 @@ async def test_search_orders_by_time_then_distance_and_preserves_observations() 
     )
     result = await search_published_supply(Candidates((far, near)), slots, search_query())
     assert [item.candidate.distance_meters for item in result] == [100.0, 900.0]
+    assert slots.batch_calls == 1
     observed = {query.organization_id: query for query in slots.queries}
     assert observed[near.organization_id].publication_id == near.publication_id
     assert observed[near.organization_id].mapping_id == near.mapping_id
@@ -110,6 +119,7 @@ async def test_search_clips_availability_to_publication_window() -> None:
     item = candidate(100.0, publication_end=NOW + timedelta(minutes=20))
     slots = Slots({item.organization_id: ()})
     assert await search_published_supply(Candidates((item,)), slots, search_query()) == ()
+    assert slots.batch_calls == 1
     assert slots.queries[0].window_end == NOW + timedelta(minutes=20)
 
 
