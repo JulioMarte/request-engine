@@ -42,7 +42,7 @@ async def test_public_provider_publication_without_resource_is_validation_error_
         )
 
     assert response.status_code == 422, response.text
-    assert response.json()["detail"][0]["type"] == "value_error"
+    assert "public provider visibility requires resource_id" in response.text
     after = e2e_admin_conn.execute(
         "SELECT count(*) FROM request_engine.discovery_publications WHERE organization_id=%s",
         (tenant.organization_id,),
