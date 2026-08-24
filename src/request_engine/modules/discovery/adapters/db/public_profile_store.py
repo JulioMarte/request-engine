@@ -39,9 +39,7 @@ def state_from_json(value: dict[str, object]) -> ResourcePublicProfileState:
     )
 
 
-async def lock_resource(
-    session: AsyncSession, organization_id: UUID, resource_id: UUID
-) -> str:
+async def lock_resource(session: AsyncSession, organization_id: UUID, resource_id: UUID) -> str:
     row = (
         (
             await session.execute(
