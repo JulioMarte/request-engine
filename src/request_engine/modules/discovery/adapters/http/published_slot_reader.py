@@ -9,6 +9,7 @@ from request_engine.modules.booking.contracts.appointments import AppointmentSlo
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
 
 _ENDPOINT = "/internal/v1/discovery/published-slots"
+_BATCH_ENDPOINT = "/internal/v1/discovery/published-slots/batch"
 
 
 class HttpPublishedSlotReader:
@@ -25,11 +26,23 @@ class HttpPublishedSlotReader:
     ) -> tuple[AppointmentSlot, ...]:
         response = await self._client.post(_ENDPOINT, json=_query_payload(query))
         response.raise_for_status()
+        return _slots(cast(object, response.json()))
+
+    async def find_published_slots_batch(
+        self,
+        queries: tuple[PublishedSlotQuery, ...],
+    ) -> tuple[tuple[AppointmentSlot, ...], ...]:
+        if not queries:
+            return ()
+        response = await self._client.post(
+            _BATCH_ENDPOINT,
+            json={"queries": [_query_payload(query) for query in queries]},
+        )
+        response.raise_for_status()
         payload = cast(object, response.json())
-        if not isinstance(payload, list):
-            raise RuntimeError("discovery availability gateway returned a malformed payload")
-        items = cast(list[object], payload)
-        return tuple(_slot(item) for item in items)
+        if not isinstance(payload, list) or len(payload) != len(queries):
+            raise RuntimeError("discovery availability batch returned a malformed payload")
+        return tuple(_slots(item) for item in cast(list[object], payload))
 
 
 def _query_payload(query: PublishedSlotQuery) -> dict[str, object]:
@@ -46,6 +59,12 @@ def _query_payload(query: PublishedSlotQuery) -> dict[str, object]:
         "resource_id": str(query.resource_id) if query.resource_id is not None else None,
         "limit": query.limit,
     }
+
+
+def _slots(raw: object) -> tuple[AppointmentSlot, ...]:
+    if not isinstance(raw, list):
+        raise RuntimeError("discovery availability gateway returned a malformed payload")
+    return tuple(_slot(item) for item in cast(list[object], raw))
 
 
 def _slot(raw: object) -> AppointmentSlot:
