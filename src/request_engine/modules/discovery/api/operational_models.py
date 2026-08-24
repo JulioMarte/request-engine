@@ -39,7 +39,7 @@ class DiscoveryPublicationBody(BaseModel):
     provider_visibility: Literal["hidden", "public"] = "hidden"
 
     @model_validator(mode="after")
-    def validate_interval(self) -> "DiscoveryPublicationBody":
+    def validate_contract(self) -> "DiscoveryPublicationBody":
         if self.effective_start.utcoffset() is None:
             raise ValueError("effective_start must be timezone-aware")
         if self.effective_end is not None:
@@ -47,6 +47,8 @@ class DiscoveryPublicationBody(BaseModel):
                 raise ValueError("effective_end must be timezone-aware")
             if self.effective_end <= self.effective_start:
                 raise ValueError("effective_end must be after effective_start")
+        if self.provider_visibility == "public" and self.resource_id is None:
+            raise ValueError("public provider visibility requires resource_id")
         return self
 
 
