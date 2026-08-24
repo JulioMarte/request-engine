@@ -17,6 +17,7 @@ class ConcurrencyProbe(PostgresPublishedSlotReader):
     def __init__(self) -> None:
         self.active = 0
         self.max_active = 0
+        self._batch_semaphore = asyncio.Semaphore(8)
 
     async def find_published_slots(self, query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
         del query
@@ -43,9 +44,12 @@ def query() -> PublishedSlotQuery:
 
 
 @pytest.mark.asyncio
-async def test_batch_parallelism_is_bounded_but_not_serial() -> None:
+async def test_batch_parallelism_is_shared_across_concurrent_requests() -> None:
     reader = ConcurrencyProbe()
-    groups = await reader.find_published_slots_batch(tuple(query() for _ in range(24)))
+    batches = await asyncio.gather(
+        reader.find_published_slots_batch(tuple(query() for _ in range(24))),
+        reader.find_published_slots_batch(tuple(query() for _ in range(24))),
+    )
 
-    assert groups == tuple(() for _ in range(24))
+    assert batches == [tuple(() for _ in range(24)), tuple(() for _ in range(24))]
     assert 1 < reader.max_active <= 8
