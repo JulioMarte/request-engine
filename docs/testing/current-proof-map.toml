@@ -125,6 +125,96 @@ path = "tests/e2e/test_contextual_location_separation.py"
 evidence = ["contract", "temporal"]
 
 [[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/db/test_f2_discovery_projection.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/modules/discovery/test_public_projection.py"
+evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/db/test_f2_discovery_radius_boundary.py"
+evidence = ["invariant", "adversarial", "temporal"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/e2e/test_discovery_booking_journey.py"
+evidence = ["contract", "provenance"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/e2e/test_discovery_public_profile_operation.py"
+evidence = ["contract", "security", "provenance"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/e2e/test_discovery_publication_validation.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-PUBLICATION-001"
+path = "tests/modules/discovery/test_published_slot_batch_reader.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-HANDOFF-001"
+path = "tests/db/test_f2_discovery_handoff.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-HANDOFF-001"
+path = "tests/e2e/test_discovery_handoff_context_stale.py"
+evidence = ["contract", "adversarial", "temporal", "provenance"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-HANDOFF-001"
+path = "tests/e2e/test_discovery_handoff_consumption.py"
+evidence = ["contract", "adversarial", "capacity"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-HANDOFF-001"
+path = "tests/e2e/test_discovery_shared_capacity_race.py"
+evidence = ["contract", "adversarial", "concurrency", "capacity", "security"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-CONCURRENCY-001"
+path = "tests/db/test_f2_discovery_publication_race.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-CONCURRENCY-001"
+path = "tests/e2e/test_discovery_mapping_race.py"
+evidence = ["invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-DISCOVERY-CONCURRENCY-001"
+path = "tests/modules/booking/test_discovery_slot_batch.py"
+evidence = ["contract", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/e2e/test_discovery_operational_authority_opacity.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDEMPOTENCY-001"
+path = "tests/e2e/test_discovery_operational_idempotency.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-PRIVILEGE-001"
+path = "tests/db/test_f2_discovery_privileges.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PRIVILEGE-001"
+path = "tests/db/test_f2_taxonomy_lifecycle.py"
+evidence = ["invariant", "adversarial", "security", "provenance"]
+
+[[proofs]]
 guarantee = "FIT-ARCH-001"
 path = "tests/architecture/test_dependency_policy.py"
 evidence = ["fitness"]
@@ -158,3 +248,8 @@ evidence = ["contract", "adversarial", "security"]
 guarantee = "INV-FAILURE-001"
 path = "tests/e2e/test_contextual_booking_failures.py"
 evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-FAILURE-001"
+path = "tests/e2e/test_discovery_publication_validation.py"
+evidence = ["contract", "adversarial", "security"]

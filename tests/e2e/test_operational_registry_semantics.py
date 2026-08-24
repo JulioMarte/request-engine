@@ -3,13 +3,14 @@ from __future__ import annotations
 import pytest
 
 from .operational_http_surface import (
+    DISCOVERY_SCOPE,
     OPERATIONAL_HTTP_OPERATIONS,
     PROFILE_SCOPE,
     SUPPLY_SCOPE,
     TERMS_SCOPE,
 )
 
-_ALLOWED_SCOPES = frozenset({PROFILE_SCOPE, SUPPLY_SCOPE, TERMS_SCOPE})
+_ALLOWED_SCOPES = frozenset({PROFILE_SCOPE, SUPPLY_SCOPE, TERMS_SCOPE, DISCOVERY_SCOPE})
 
 
 @pytest.mark.e2e
@@ -37,3 +38,7 @@ def test_operational_registry_scope_families_are_explicit() -> None:
     assert by_name["resources.exception"].authority_scope == SUPPLY_SCOPE
     assert by_name["offering_version.booking_terms"].authority_scope == TERMS_SCOPE
     assert by_name["context_terms.supersede"].authority_scope == TERMS_SCOPE
+    assert by_name["discovery.mapping"].authority_scope == DISCOVERY_SCOPE
+    assert by_name["discovery.mapping_revoke"].authority_scope == DISCOVERY_SCOPE
+    assert by_name["discovery.publish"].authority_scope == DISCOVERY_SCOPE
+    assert by_name["discovery.revoke"].authority_scope == DISCOVERY_SCOPE

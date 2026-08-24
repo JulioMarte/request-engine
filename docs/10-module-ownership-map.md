@@ -1,25 +1,26 @@
 # Request Engine — module ownership map
 
-> **Estado:** normativo para ownership del backend capability-first V3.
+> **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3 aceptadas/activas.
 >
-> `docs/v3/02-pre-sql-contract.md` define las cardinalidades, serialization roots, transacciones e invariantes que este mapa distribuye entre módulos.
+> `docs/v3/02-pre-sql-contract.md` define las cardinalidades, serialization roots, transacciones e invariantes del baseline; los contratos post-V3 documentan extensiones explícitas sin borrar la provenance anterior.
 
 ## 1. Summary
 
-| Module | V3 status | Primary ownership |
+| Module | Status | Primary ownership |
 |---|---|---|
 | `tenancy` | baseline | Organization, Principal, Party, PartyContactPoint identity, Representation, tenant authority |
 | `catalog` | baseline | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement, structured business info |
 | `requests` | baseline | RequestDefinition/Version, durable Request, participants/correlation, generic extension payload/result boundary |
-| `booking` | baseline | Resource, capability assignment, availability, CapacityHold/Claim, Reservation, AttendanceResponse |
+| `booking` | baseline + F1 | Resource, contextual Resource-at-Location supply, availability, CapacityHold/Claim, Reservation, AttendanceResponse, booking commitment/revalidation |
 | `queue` | baseline | ServiceQueue/QueueEntry, WaitlistEntry, SlotOpportunity, SlotOffer |
 | `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
+| `discovery` | active post-V3 F2 | canonical service mapping, tenant discovery publication, cross-tenant published-supply projection, opaque discovery handoff |
 | `delivery` | deferred | future ServiceSession/Fulfillment/outcome execution domain |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
 | `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
 
-Baseline modules must not depend on deferred modules without a concrete product use case and accepted architecture change.
+Baseline modules must not depend on deferred modules without a concrete product use case and accepted architecture change. Active post-V3 modules obey the same contracts-only dependency rule.
 
 ---
 
@@ -149,6 +150,8 @@ Owns local reservation/capacity truth:
 ```text
 Resource
 Resource ↔ ResourceCapability assignment
+ResourceLocationAssignment + contextual availability (F1)
+BookingContextTerms + immutable commercial commitment provenance (F1)
 AvailabilitySchedule
 ScheduleException
 CapacityHold
@@ -164,15 +167,18 @@ exclusive
 units
 ```
 
-### Closed baseline decisions
+### Closed baseline/current decisions
 
 ```text
 1 Reservation = 1 OfferingVersion + 1 subject Party + 1 interval
 Resource = capacity serialization/lock root
 CapacityClaim = common Hold/Reservation consumption truth
+Discovery never becomes capacity authority
 ```
 
-No baseline:
+F2 may pass an opaque discovery handoff into Booking, but Booking remains the authoritative revalidation and commitment boundary. The handoff constrains/revalidates publication provenance; it does not create another capacity or pricing ledger.
+
+No baseline/current:
 
 ```text
 ReservationItem
@@ -409,6 +415,8 @@ Tracing/metrics/logging. Audit is not telemetry.
 
 Authentication/runtime role/RLS-context plumbing. Representation/business authority remains tenancy/application policy.
 
+Narrow privileged SQL may enforce F1/F2 cross-boundary invariants, but possession of the technical function does not transfer ownership of the underlying business fact to `platform`.
+
 ---
 
 ## 12. Cross-module transaction/event examples
@@ -418,6 +426,8 @@ Authentication/runtime role/RLS-context plumbing. Representation/business author
 Owner: `booking`.
 
 Consumes immutable catalog contracts; Resource/Reservation/claims commit atomically. Confirmation/reminder consequences are emitted after commit.
+
+For a selected F2 `discoopt_v1`, Booking additionally fences the exact DiscoveryPublication/OfferingServiceClassification observation inside the same Reservation transaction before commitment. This is a prerequisite check, not Discovery ownership of Reservation or CapacityClaim.
 
 ### RescheduleReservation
 
@@ -495,3 +505,48 @@ one public operational API
         ≠
 one universal bounded context
 ```
+
+---
+
+## 14. Discovery — active post-V3 F2
+
+Discovery owns the minimum semantics required to expose tenant-authorized supply across Organizations:
+
+```text
+ServiceClassification mapping semantics
+OfferingServiceClassification provenance
+DiscoveryPublication lifecycle
+published cross-tenant candidate projection
+objective geospatial filter/order contract
+opaque discoopt_v1 handoff issuance state
+```
+
+It does **not** own:
+
+```text
+Organization / Representation authority       -> tenancy
+Location / Offering / OfferingVersion truth   -> catalog
+Resource / schedule / contextual terms        -> booking
+Reservation / CapacityClaim                   -> booking
+GlobalIdentity / SharedCapacityIdentity       -> private shared-capacity machinery
+public provider profile                       -> future explicit contract
+```
+
+Runtime topology is intentionally split:
+
+```text
+Public Discovery process
+  request_engine_discovery only
+  candidate projection + handoff issuance
+  remote availability client
+        |
+        v
+Internal Discovery Availability Gateway
+  request_engine_app tenant-domain credential
+  exact Publication/Mapping fence
+  Booking PublishedSlotReader
+```
+
+The public Discovery process must not contain `request_engine_app` credentials or the normal Booking appointment-option signing key. The internal availability gateway is not a generic tenant reader: every call must carry and revalidate exact Publication/Mapping observations before Booking availability is evaluated.
+
+Discovery may import Booking only through supported `contracts`. Booking must not import Discovery adapters/application/domain internals. The discovery-to-booking commitment fence is carried through narrow execution context/PostgreSQL functions so the authoritative Booking transaction can reject revoked/remapped/stale handoffs without reversing module ownership.

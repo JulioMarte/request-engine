@@ -25,7 +25,6 @@ from request_engine.modules.booking.contracts.appointments import (
 from request_engine.platform.security.context import ActorContext
 
 _NOW = datetime(2030, 1, 7, 12, 0, tzinfo=UTC)
-_KEY = b"request-engine-contextual-reschedule-router-test-key"
 
 
 class _RecordingRescheduleHandler:
@@ -51,7 +50,7 @@ class _RecordingRescheduleHandler:
 
 def _codec() -> SignedAppointmentOptionCodec:
     return SignedAppointmentOptionCodec(
-        _KEY,
+        b"request-engine-contextual-reschedule-router-test-key",
         ttl=timedelta(minutes=10),
         now=lambda: _NOW,
     )
@@ -73,6 +72,7 @@ def _reschedule_endpoint(
     router = create_router(
         availability_reader=unused,
         option_codec=codec,
+        discovery_handoff_reader=unused,
         book_handler=unused,
         cancel_handler=unused,
         reschedule_handler=handler,

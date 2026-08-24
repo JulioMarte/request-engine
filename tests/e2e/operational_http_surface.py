@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .discovery_operational_surface import DISCOVERY_REVISION_OWNERS, DISCOVERY_ROUTES
+
 PROFILE_SCOPE = "operations.manage_profile"
 SUPPLY_SCOPE = "operations.manage_supply"
 TERMS_SCOPE = "operations.manage_terms"
+DISCOVERY_SCOPE = "operations.manage_discovery"
 OPAQUE_TARGET = "foreign target is indistinguishable from unavailable target"
 
 
@@ -25,7 +28,7 @@ class OperationalHttpOperation:
         return self.method, self.path_template
 
 
-_ROUTES = (
+_BASE_ROUTES = (
     ("organization.profile", "PATCH", "/v1/operations/organization/profile"),
     ("organization.contacts", "PUT", "/v1/operations/organization/contacts"),
     ("locations.create", "POST", "/v1/operations/locations"),
@@ -77,6 +80,7 @@ _REVISION_OWNERS = {
     "resource_assignments.exception": "Resource.availability_revision",
     "resources.exception": "Resource.availability_revision",
     "context_terms.supersede": "BookingContextTerms.revision",
+    **DISCOVERY_REVISION_OWNERS,
 }
 
 
@@ -85,11 +89,13 @@ def _scope(name: str) -> str:
         return PROFILE_SCOPE
     if name.startswith(("resource_assignments.", "resources.")):
         return SUPPLY_SCOPE
+    if name.startswith("discovery."):
+        return DISCOVERY_SCOPE
     return TERMS_SCOPE
 
 
 def _stale(name: str, revision_owner: str | None) -> str:
-    if name == "context_terms.create":
+    if name in {"context_terms.create", "discovery.publish"}:
         return "idempotency_or_temporal_conflict"
     if name == "resource_assignments.retire":
         return "expected_assignment_and_resource_revisions"
@@ -109,7 +115,9 @@ def _operation(name: str, method: str, path: str) -> OperationalHttpOperation:
     )
 
 
-OPERATIONAL_HTTP_OPERATIONS = tuple(_operation(*route) for route in _ROUTES)
+OPERATIONAL_HTTP_OPERATIONS = tuple(
+    _operation(*route) for route in (*_BASE_ROUTES, *DISCOVERY_ROUTES)
+)
 
 
 def operational_keys() -> frozenset[tuple[str, str]]:

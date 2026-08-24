@@ -1,223 +1,240 @@
 # Request Engine — current documentation
 
-This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files should point here rather than duplicate these documents.
+This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files point here rather than duplicating the contracts.
 
-## Pre-production evolution policy
+## 1. Evolution policy
 
-Request Engine is still in a pre-customer, pre-production evolution phase. The released V3 baseline remains reproducible historical/release provenance, but it is **not a permanent ceiling on current product architecture**.
+Request Engine is still pre-customer and pre-production. Released V3 remains reproducible historical/release provenance, but it is not a ceiling on the current product architecture.
 
-The normative policy for intentionally superseding old architectural restrictions is:
+Normative evolution policy:
 
-- `architecture/pre-production-evolution-policy.md` — **normative greenfield/pre-production evolution and adversarial proof policy**. It defines which historical freezes remain provenance, which tests must remain hard, which structural/snapshot tests may evolve, how redundant tests may be consolidated, and the evidence bundle required when a feature deliberately changes architecture.
+- `architecture/pre-production-evolution-policy.md`
 
-Key rule:
+Core rule:
 
 ```text
 freeze the evidence, not the future
 ```
 
-Architecture fitness functions are drift detectors and safety guards, not constitutional locks. A newer accepted product/architecture contract may change module edges, capability shapes, schema or other prior assumptions when the protected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
+New accepted post-V3 contracts may intentionally supersede historical structural assumptions when the affected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
 
-## Repository and testing governance
+## 2. Current product line
 
-Repository flexibility is intentionally asymmetric: semantic boundaries are rigid while private implementation shape remains evolvable.
+Current post-V3 progression:
+
+```text
+released V3
+  -> F1 Operational Profile / Contextual Supply
+  -> F2 Geospatial Cross-Tenant Discovery
+```
+
+F1 is implemented/integrated product architecture. F2 is the active implementation/review scope of:
+
+```text
+feature/geospatial-cross-tenant-discovery
+PR #77
+```
+
+F3-F6 remain roadmap work and must branch from the then-current `development`.
+
+## 3. Current F1 contracts
+
+F1 is authoritative for Organization/Location operational truth, public contacts, Location hours/exceptions, Resource-at-Location assignment, Resource/assignment availability exceptions, contextual schedule/price/duration, Reservation commercial provenance and the `aptopt_v2` contextual booking contract.
+
+Read:
+
+1. `v3/15-operational-profile-contextual-supply-contract.md` — normative F1 post-V3 contract.
+2. `v3/13-operational-profile-contextual-supply-plan.md` — F1 implementation/closure plan and proof matrix.
+3. `v3/16-operational-profile-contextual-supply-clarifications.md` — historical adversarial-review provenance; it no longer overrides F1.
+4. `adr/0012-contextual-resource-location-supply.md` — durable rationale for contextual Resource-at-Location supply.
+
+## 4. Current F2 contracts
+
+F2 is authoritative for explicit cross-tenant discovery publication, platform service classification, geospatial search, minimal public provider identity, public Location address projection, `discoopt_v1`, discovery-to-Booking freshness fences and cross-tenant discovery privilege boundaries.
+
+Read in this order:
+
+1. `v3/24-geospatial-cross-tenant-discovery-contract.md` — **sole normative F2 product/architecture contract**.
+2. `v3/22-geospatial-cross-tenant-discovery-plan.md` — implementation/closure plan and phased proof intent.
+3. `v3/23-geospatial-cross-tenant-discovery-phase-a-inventory.md` — Phase A disposition/inventory provenance.
+4. `v3/25-geospatial-cross-tenant-discovery-hardening.md` — **historical adversarial-review provenance only**; it never overrides document 24.
+5. `adr/0011-cross-tenant-shared-capacity.md` — shared-capacity identity/serialization rationale that F2 must not leak publicly.
+
+F2 currently provides:
+
+```text
+canonical ServiceClassification mapping
+explicit DiscoveryPublication/revocation
+ResourcePublicProfile for deliberately public providers
+Location public address projection from F1 truth
+geo-radius cross-tenant search
+deterministic price/duration via F1 Booking availability
+opaque discoopt_v1 handoff
+commitment-time Publication/Mapping/OfferingVersion/F1 freshness fences
+shared-physical-capacity safety across tenants
+```
+
+The F2 tenant control-plane operations are:
+
+```text
+MapOfferingToServiceClassification
+RevokeOfferingServiceClassification
+SetResourcePublicProfile
+PublishDiscoverySupply
+RevokeDiscoveryPublication
+```
+
+All require `operations.manage_discovery`, idempotency, tenant opacity and audit semantics.
+
+## 5. Product roadmap
+
+`v3/14-operational-intelligence-roadmap.md` is the accepted direction for F1-F6.
+
+Current status:
+
+```text
+F1  implemented/integrated foundation
+F2  implemented on feature branch; exact-head merge evidence required
+F3  future: Live Service Operations
+F4  future: Live Capacity Projection
+F5  future: Operational Recovery + Communications
+F6  future: Operational Copilot
+```
+
+The roadmap is product direction, not permission to implement future features inside the active F2 branch.
+
+## 6. Testing and guarantee governance
 
 Canonical testing/governance documents:
 
-- `testing/repository-governance-contract.md` — **normative HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification** for architecture shape, DTO/type boundaries, naming, documentation, tests and LLM instruction routing;
-- `testing/README.md` — testing architecture entry point;
-- `testing/current-guarantees.toml` — normative machine-readable current guarantee inventory; it names guarantees rather than exact test files;
-- `testing/current-proof-map.toml` — non-normative representative proof mapping used to detect evidence gaps without turning filenames into architecture;
-- `testing/test-architecture-migration.md` — migration/disposition ledger for the V3/F1-to-current restructuring.
+- `testing/repository-governance-contract.md` — normative HARD / CONTROLLED / FLEXIBLE / HISTORICAL policy.
+- `testing/README.md` — testing architecture entry point.
+- `testing/current-guarantees.toml` — normative machine-readable guarantee inventory.
+- `testing/current-proof-map.toml` — representative proof mapping; filenames are not constitutional.
+- `testing/test-architecture-migration.md` — restructuring/disposition ledger.
 
-The repository-governance contract is subordinate to domain/product safety contracts for business semantics but authoritative for how repository structure and tests distinguish rigidity from flexibility. In particular, API/Pydantic DTOs, application Command/Query types, domain values, cross-module contracts and persistence mappings remain distinct boundaries; module `domain`, `application`, and `contracts` remain Pydantic-free; LLM-specific instruction files remain adapters to the canonical documentation/`AGENTS.md` hierarchy rather than independent architecture manuals.
-
-## Active post-V3 feature branch
-
-On `feature/operational-profile-contextual-supply`, the released V3 baseline remains immutable provenance, while F1 is an explicit post-V3 normative delta.
-
-Current execution/status documents:
-
-- `v3/20-operational-profile-contextual-supply-implementation-handoff.md` — **informative implementation handoff, not a normative contract**. It must reflect the latest implementation/proof checkpoint and remaining P5/P6/P7 work.
-- `v3/21-operational-profile-contextual-supply-documentation-audit.md` — **informative proof/reconciliation record**. It records the Phase H closure evidence and the exact remaining documentation/cleanup/merge-readiness work.
-
-Read these branch-specific documents before implementing or reviewing F1:
-
-1. `v3/15-operational-profile-contextual-supply-contract.md` — **normative F1 post-V3 delta**. It defines Organization/Location operational truth, public contacts, Location-hours exceptions, Resource-at-Location assignment, broad/narrow Resource exceptions, contextual schedule/price/duration, Reservation commercial provenance, authority, races, `aptopt_v2`, fail-closed contextual hold/reschedule scope and backward compatibility.
-2. `v3/13-operational-profile-contextual-supply-plan.md` — F1 implementation/closure plan, phases, proof matrix and Definition of Done. Closed adversarial clarifications are already incorporated here and in document 15.
-3. `v3/14-operational-intelligence-roadmap.md` — accepted product/design direction for F1–F6. Only F1 is implementation scope of this branch; F2–F6 remain future work.
-4. `v3/16-operational-profile-contextual-supply-clarifications.md` — **historical adversarial-review provenance, no longer a higher-precedence F1 amendment**. Its closed F1 findings have been folded into 15/13; its F2/F3 questions remain future-feature inputs.
-5. `adr/0012-contextual-resource-location-supply.md` — durable rationale for Resource-at-Location/contextual booking supply while retaining Resource/CapacityClaim as the capacity model. Keep it `Proposed` until final cleanup and exact-head merge-readiness proof are complete.
-
-Precedence on this branch:
+F2 adds durable guarantees including:
 
 ```text
-v3/15 F1 normative post-V3 contract
-  >
-v3/13 F1 implementation/closure plan
-  >
-v3/14 future roadmap for later features
-  >
-released V3 baseline contracts for F1 concepts explicitly superseded by v3/15
+INV-DISCOVERY-PUBLICATION-001
+INV-DISCOVERY-HANDOFF-001
+INV-DISCOVERY-CONCURRENCY-001
 ```
 
-For concepts explicitly named by `v3/15-operational-profile-contextual-supply-contract.md`, that post-V3 contract supersedes the corresponding released-baseline sections of `v3/01-capability-contracts.md`, `v3/02-pre-sql-contract.md` and `10-module-ownership-map.md` on this feature branch. Unrelated V3 rules remain authoritative unless intentionally superseded under the pre-production evolution policy.
+A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include the feature-specific evidence classes required by the current guarantee inventory and F2 contract.
 
-Document 16 no longer changes F1 precedence. It explains why several final F1 rules exist and preserves future F2/F3 audit findings without forcing everyday readers through an amendment chain.
+## 7. Current precedence
 
-## Current V3 status
+For concepts explicitly owned by F2:
 
-Request Engine V3 has completed **Phase 6 — V3 Freeze & Release Proof**.
+```text
+v3/24 F2 normative contract
+  >
+v3/22 F2 implementation/closure plan
+  >
+v3/14 product roadmap
+  >
+F1 / released V3 contracts where F2 explicitly extends their behavior
+```
+
+Document 25 is provenance and has no higher-precedence role.
+
+For F1 concepts not changed by F2:
+
+```text
+v3/15 F1 normative contract
+  >
+v3/13 F1 plan
+  >
+released V3 baseline sections explicitly superseded by F1
+```
+
+Outside post-V3 deltas, use the baseline precedence:
+
+1. `11-capability-first-v3.md`
+2. `v3/01-capability-contracts.md`
+3. `v3/02-pre-sql-contract.md`
+4. `07-database-access-contract.md`
+5. `09-python-module-architecture.md`
+6. `13-connection-surfaces.md`
+7. `10-module-ownership-map.md`
+8. `14-architecture-fitness-functions.md`
+9. `testing/repository-governance-contract.md`
+10. `architecture/pre-production-evolution-policy.md`
+
+A newer accepted post-V3 contract may explicitly supersede named baseline rules under the pre-production evolution policy without rewriting released history.
+
+## 8. Released V3 provenance
+
+Request Engine V3 completed Phase 6 — V3 Freeze & Release Proof.
 
 Canonical release state:
 
-- G01–G20: `PASS`;
+- G01-G20: PASS;
 - frozen V3 candidate: complete;
-- reviewed Alembic `0001_initial`: complete and proven structurally, behaviorally and runtime-equivalent to the frozen candidate;
-- release evidence: `VALID` / `READY` for the proven promotion candidate;
-- V3 promotion: merged from `development` to `main` in PR #72;
-- released `main` commit: `07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc`;
-- released tree: `4243840442d9b03d731c67ac514b46b1ee7dea7f`;
-- current integration line: post-V3-baseline development.
+- reviewed Alembic `0001_initial`: proven equivalent to the frozen candidate;
+- V3 promotion: merged to `main` in PR #72;
+- released `main` commit: `07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc`.
 
-The final promotion proof for PR #72 recorded source `development@9e58368e4ff593c8537c07de09defaec198d2b55`, tested merge candidate `0d1beea7c527fb5c3fc4bf37db29b04bf0a2d65f`, all G01–G20 `PASS`, `evidence_status: VALID`, `release_status: READY`, and preserved G17 equivalence. PR #73, already integrated into that development source, corrected shallow-CI freeze ancestry so release topology proves the frozen source is an ancestor of the exact tested checkout rather than incorrectly requiring an older `main` base to contain the freeze.
+Release/freeze evidence lives under `docs/release/`, including:
 
-`release/v3-release-gates.md` remains the canonical G01–G20 registry. `release/v3-current-release-roadmap.md` is now a release-closure/provenance document rather than an unfinished execution plan. Older transition/rebaseline documents remain useful history but do not override current post-baseline status.
+- `release/v3-release-gates.md`
+- `release/v3-current-release-roadmap.md`
+- `release/v3-candidate-freeze.json`
+- `release/v3-freeze-scope.md`
+- `release/v3-race-matrix.md`
+- `release/v3-invariant-matrix.md`
+- `release/v3-invariant-proof-registry.json`
+- `release/v3-public-api-contract-freeze.md`
 
-The historical V2 PostgreSQL design chain remains useful as executable design history. The frozen V3 candidate remains release provenance and an equivalence reference. Neither is the mutable production migration line. Production schema history begins at `migrations/versions/0001_initial.py` and evolves append-only from there unless a deliberate pre-customer rebaseline is explicitly chosen under the pre-production evolution policy.
+These are historical/release provenance. Current post-V3 product contracts may deliberately evolve beyond them while preserving the evidence discipline.
 
-When V3 and V2 conflict about product scope, Request semantics, baseline concepts, cardinality, transaction protocol, lock order, invariant ownership or whether a concept belongs in the baseline, V3 wins for the released V3 historical contract. Current post-V3 product contracts may intentionally supersede V3 according to the pre-production evolution policy.
-
-## Authoritative documents
-
-Outside a branch-specific post-V3 delta, use this precedence when rules overlap:
-
-1. `11-capability-first-v3.md` — product thesis, baseline capabilities and explicit V2 reductions.
-2. `v3/01-capability-contracts.md` — public/application capability semantics for agents, forms, apps and integrations.
-3. `v3/02-pre-sql-contract.md` — V3 entities/cardinalities, serialization roots, lock ordering, transaction protocols, invariants and race matrix.
-4. `07-database-access-contract.md` — Python ↔ PostgreSQL boundary where not superseded by V3.
-5. `09-python-module-architecture.md` — physical Python repository/module rules.
-6. `13-connection-surfaces.md` — mandatory contracts between transport, modules, PostgreSQL, workers and providers.
-7. `10-module-ownership-map.md` — module ownership.
-8. `14-architecture-fitness-functions.md` — executable dependency/surface policy enforced by architecture tests.
-9. `testing/repository-governance-contract.md` — repository/test/type/naming/LLM rigidity-versus-flexibility policy; it governs how structural rules are enforced but does not override a higher-precedence business/domain contract.
-10. `architecture/pre-production-evolution-policy.md` — meta-policy for intentional pre-customer evolution when a newer accepted contract supersedes one of the rules above.
-11. `00-product-definition.md`, `01-architecture-v2.md`, `02-pre-sql-domain-contract.md` — V2 source material only where it does not conflict with V3/current accepted deltas.
-
-A post-V3 feature contract may explicitly supersede named sections of this baseline precedence without rewriting released history. Such a delta must be indexed above, scoped precisely and accompanied by appropriate schema/compatibility evolution plus adversarial proof.
-
-Release/freeze provenance documents:
-
-- `release/v3-release-gates.md` — canonical G01–G20 closure registry;
-- `release/v3-current-release-roadmap.md` — Phase 6 closure, G17/G20 provenance and release promotion record;
-- `release/v3-candidate-freeze.json` — frozen candidate identity/provenance;
-- `release/v3-freeze-scope.md` — evidence discipline and freeze rules;
-- `release/v3-race-matrix.md` — release-critical race inventory;
-- `release/v3-invariant-matrix.md` and `release/v3-invariant-proof-registry.json` — V3-I01..V3-I66 proof registry;
-- `release/v3-public-api-contract-freeze.md` — G16 frozen public surface.
-
-Transition/history support documents:
-
-- `12-v3-transition-plan.md` — architectural migration/reduction history, not current execution state;
-- `release/v3-post-merge-rebaseline.md` — historical rebaseline from earlier feature integration;
-- `v3/sql-disposition.md` — historical V2→V3 SQL disposition inventory;
-- earlier Phase 6 planning documents — release-proof history, not present-tense work queues.
-
-The domain/transaction contracts have precedence over implementation convenience. SQL implements accepted contracts; it must not silently redefine them.
-
-## Architecture Decision Records
-
-`adr/` records durable rationale for hard-to-reverse architectural decisions. ADRs explain why the architecture exists; they do not replace the detailed normative contracts above.
-
-Current accepted decisions include:
-
-- modular monolith instead of premature microservices;
-- smart PostgreSQL with Python-owned command orchestration;
-- module-first Python physical organization;
-- repository documentation as the canonical knowledge system for coding agents;
-- capability-first product core instead of a universal workflow/domain model;
-- durable transactional communications and scheduling separated from provider delivery;
-- the minimal V3 booking/capacity model;
-- PostgreSQL RLS as tenant defense-in-depth with narrow cross-tenant worker claim surfaces.
-
-Post-V3 proposed ADRs may remain `Proposed` until implementation/evidence proves the decision. Do not call an ADR accepted merely because a feature branch documents it.
-
-See `adr/README.md`.
-
-## Physical layout clarification
-
-The semantic dependency direction remains:
-
-```text
-entrypoint/adapter
-      ↓
-application command/query
-      ↓
-domain rules + explicit ports
-      ↑
-database/provider adapters
-```
-
-Physical organization is module-first according to `09-python-module-architecture.md`. Business transport is module-owned, while process entrypoints compose published module surfaces rather than reaching into module persistence/provider internals.
-
-Every boundary crossing is also an explicit connection surface according to `13-connection-surfaces.md`:
-
-```text
-BOX A
-  |
- |-|
-  |
-BOX B
-```
-
-The connector must define ownership, contract, trust/tenant context, transaction semantics and failure/retry behavior where applicable. `14-architecture-fitness-functions.md` converts high-value structural rules into CI failures so these surfaces cannot be bypassed silently. This remains one modular monolith and does not imply microservice boundaries.
-
-## Documentation organization policy
-
-The older numbered canonical documents are retained because design history and invariant references still point to them. Do not perform cosmetic bulk moves that erase provenance or make historical references ambiguous.
-
-New durable domain/schema contracts belong under `docs/v3/` or a successor versioned contract area. Durable rationale belongs in `adr/`. Release-proof history and evidence contracts belong under `docs/release/` and must clearly distinguish historical checkpoints from current status. Repository/testing governance belongs under `docs/testing/`.
-
-Post-release features should prefer an explicit post-V3 delta contract when preserving the released baseline text provides clearer provenance than rewriting the old baseline as though the feature had always existed. The delta must state exactly what it supersedes.
-
-Temporary clarification/amendment documents are allowed after adversarial review when they prevent an incorrect implementation from proceeding. Once their closed decisions are folded into the owning contract/plan, demote them to historical provenance rather than leaving a permanent precedence maze.
-
-## PostgreSQL executable surfaces
+## 9. PostgreSQL executable surfaces
 
 Executable SQL does not live in `docs/`.
 
-### Production migration history
-
-The production migration line begins at:
+Production migration history begins at:
 
 ```text
 migrations/versions/0001_initial.py
 ```
 
-That baseline was reviewed and proven equivalent to the frozen V3 candidate by G17. It is immutable release history under the current append-only migration posture. Post-release schema changes normally use new Alembic revisions. Because Request Engine has no customer-owned production data yet, a deliberate pre-customer rebaseline remains possible only when explicitly justified and documented under `architecture/pre-production-evolution-policy.md`; it must never happen accidentally merely to silence a migration/test failure.
-
-### Frozen V3 candidate provenance
-
-The frozen release candidate remains under:
+Released V3 baseline history is immutable. F1 occupies current production revisions `0002/0003`. F2 is consolidated into one pre-production production-line revision:
 
 ```text
-migrations/sql/v3_candidate/
+migrations/versions/0004_geospatial_cross_tenant_discovery.py
 ```
 
-It is retained as the source/provenance side of the V3 freeze and equivalence proof. It is no longer the normal mutable schema-development surface. Do not append post-release product migrations there or reinterpret the frozen candidate as current production history.
+F2 development SQL-bearing steps are retained under `migrations/f2_steps/` and executed by the consolidated revision; they are provenance, not separately deployed production revisions.
 
-### Historical V2 design chain
-
-The historical V2.6→V2.10 chain remains under:
-
-```text
-migrations/sql/design_chain/
-```
-
-Those files are executable design history, not production Alembic history and not the active post-release migration path. CI may continue validating them independently so useful historical SQL does not silently rot.
+Frozen V3 candidate SQL remains under `migrations/sql/v3_candidate/`. Historical V2 design-chain SQL remains under `migrations/sql/design_chain/`.
 
 See `migrations/README.md` before changing SQL.
 
-## Historical material
+## 10. Architecture and connection surfaces
 
-Everything under `legacy/` is historical and non-authoritative. Do not edit, move, delete, reformat, or implement directly from it unless explicitly requested.
+The semantic dependency direction remains:
+
+```text
+entrypoint / adapter
+       ↓
+application command/query
+       ↓
+domain rules + explicit ports
+       ↑
+database/provider adapters
+```
+
+Physical organization is module-first according to `09-python-module-architecture.md`. Cross-module access uses published contracts according to `13-connection-surfaces.md`; process entrypoints compose modules rather than reaching into persistence internals.
+
+Architecture fitness functions are safety/drift detectors, not a ban on intentional evolution under a newer accepted contract.
+
+## 11. Documentation policy
+
+Durable domain/schema contracts belong under `docs/v3/` (or a successor versioned contract area). Durable rationale belongs in `docs/adr/`. Release proof belongs under `docs/release/`. Testing/repository governance belongs under `docs/testing/`.
+
+Temporary hardening/amendment documents may be created during adversarial review. Once their closed decisions are folded into the owning normative contract, they must be demoted to provenance so the repository does not accumulate contradictory precedence chains.
+
+Everything under `legacy/` is historical and non-authoritative unless an explicit task asks to inspect it.
+
+The domain/transaction contracts have precedence over implementation convenience. SQL and Python implement accepted contracts; they must not silently redefine them.

@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from request_engine.modules.booking.api.dependencies import IdempotencyKey
+from request_engine.modules.booking.api.discovery_booking import book_selected_option
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
     AttendanceResponseBody,
@@ -16,9 +17,7 @@ from request_engine.modules.booking.api.models import (
 )
 from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
 from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
     BookAppointmentHandler,
-    book_appointment,
 )
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
@@ -49,6 +48,7 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     get_reservation_status,
 )
 from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
+from request_engine.modules.booking.contracts.discovery import DiscoveryHandoffReader
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
@@ -59,6 +59,7 @@ def create_router(
     *,
     availability_reader: AppointmentAvailabilityReader,
     option_codec: AppointmentOptionCodec,
+    discovery_handoff_reader: DiscoveryHandoffReader,
     book_handler: BookAppointmentHandler,
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
@@ -108,26 +109,13 @@ def create_router(
         idempotency_key: IdempotencyKey,
     ) -> ReservationView:
         require_capability(actor, "appointments.book")
-        option = option_codec.decode(actor.organization_id, body.option_id)
-        reservation = await book_appointment(
-            book_handler,
-            BookAppointmentCommand(
-                organization_id=actor.organization_id,
-                principal_id=actor.principal_id,
-                offering_version_id=option.offering_version_id,
-                subject_party_id=body.subject_party_id,
-                start_at=option.start_at,
-                resources=option.resources,
-                location_id=option.location_id,
-                origin_request_id=body.origin_request_id,
-                idempotency_key=idempotency_key,
-                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
-                expected_planned_duration_minutes=option.planned_duration_minutes,
-                expected_amount=option.amount,
-                expected_currency=option.currency,
-                expected_location_operational_revision=option.location_operational_revision,
-                expected_configuration_fingerprint=option.configuration_fingerprint,
-            ),
+        reservation = await book_selected_option(
+            body=body,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            option_codec=option_codec,
+            handoff_reader=discovery_handoff_reader,
+            handler=book_handler,
         )
         return ReservationView.from_contract(reservation)
 

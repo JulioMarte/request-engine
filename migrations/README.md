@@ -1,94 +1,124 @@
 # Database migrations
 
-This directory owns executable PostgreSQL schema evolution and the retained provenance needed to prove how the V3 production baseline was derived.
+This directory owns executable PostgreSQL schema evolution and the provenance needed to explain how current and historical Request Engine schemas were produced.
 
-## Current state: released V3 baseline
+The governing product-evolution policy is [`docs/architecture/pre-production-evolution-policy.md`](../docs/architecture/pre-production-evolution-policy.md). Its core rule is:
 
-Request Engine V3 has a production schema baseline.
+```text
+freeze the evidence, not the future
+```
 
-There are now three intentionally different SQL/history tracks:
+## Schema/history tracks
 
 ```text
 migrations/sql/design_chain/   historical V2.6→V2.10 executable design history
-migrations/sql/v3_candidate/   frozen V3 candidate used by freeze/equivalence proof
-migrations/versions/           production Alembic history beginning at 0001_initial
+migrations/sql/v3_candidate/   frozen V3 release-candidate provenance
+migrations/versions/           current production-facing Alembic revision line
+migrations/f2_steps/           preserved pre-integration F2 SQL steps, not Alembic revisions
 ```
 
-### Production Alembic history
+## Immutable historical baseline
 
-`migrations/versions/0001_initial.py` is the reviewed V3 production baseline. G17 proved it structurally, behaviorally and at runtime equivalent to the frozen candidate on PostgreSQL 18.
+`migrations/versions/0001_initial.py` is the released V3 production baseline and remains immutable historical migration evidence.
 
-After release, `0001_initial` is immutable migration history:
+Do not rewrite, regenerate or squash `0001_initial`; do not back-port later feature DDL into it. The frozen V3 candidate and release manifests answer:
 
-- do not rewrite, regenerate or squash it;
-- do not edit it to accommodate a later feature;
-- do not back-port post-release candidate deltas into it;
-- represent every later production schema change as a new append-only Alembic revision;
-- preserve upgrade-from-baseline correctness as part of future migration review.
+```text
+what exactly did we prove then?
+```
 
-A clean production-style database should be constructed through Alembic, not by treating the frozen candidate apply script as the normal deployment path.
+Historical proof must not become a permanent restriction on current pre-production product evolution.
 
-### Frozen V3 candidate provenance
+## Current Alembic line
 
-The complete frozen V3 candidate remains under:
+After F1 and F2 integration the intended current-product line is:
+
+```text
+0001_initial
+  -> 0002_operational_profile_contextual_supply
+  -> 0003_f1_runtime_acl_completion
+  -> 0004_geospatial_cross_tenant_discovery
+```
+
+Current CI must prove exactly one repository head and a database upgraded to that head.
+
+## Integrated history vs unreleased feature-local migrations
+
+Once a migration revision is integrated/released as supported history, treat it as append-only unless an explicit repository rebaseline decision says otherwise.
+
+While Request Engine remains greenfield/pre-production with no customer-owned data or external compatibility commitment, unreleased feature-local migration chains may be intentionally consolidated before integration when all of the following hold:
+
+1. the feature has not been deployed to customer-owned data;
+2. consolidation is explicitly allowed by the pre-production evolution policy;
+3. released/integrated historical baselines are not silently rewritten;
+4. the final migration reproduces accepted schema/behavior instead of preserving known-wrong intermediate states;
+5. exact-head bootstrap, current-product and relevant compatibility lanes pass after consolidation;
+6. useful development provenance is retained separately when it improves reviewability.
+
+This is a controlled pre-production rebaseline, not permission to delete failing history or bypass migration safety.
+
+## F2 consolidation
+
+F2 was developed through provisional SQL-bearing steps `0004`–`0012`. Before PR #77 integration those steps are consolidated behind one production-facing revision:
+
+```text
+migrations/versions/0004_geospatial_cross_tenant_discovery.py
+```
+
+The SQL-bearing development steps remain under:
+
+```text
+migrations/f2_steps/
+```
+
+They are ordinary Python support modules, not independent Alembic revisions. Consolidated `0004` executes them in order so the production migration graph remains one F2 revision while preserving reviewable implementation provenance.
+
+The final F2 steps include the minimal `ResourcePublicProfile`, public Location/provider discovery projection, and publication-visibility lifecycle hardening required by the normative F2 contract.
+
+No earlier green workflow is treated as final evidence after these changes. PR #77 merge readiness requires a fresh exact-head run proving the consolidated `0004` plus the complete current test suite.
+
+## Frozen V3 candidate provenance
+
+The frozen V3 candidate remains under:
 
 ```text
 migrations/sql/v3_candidate/
 ```
 
-and can be installed in release-proof/equivalence contexts with:
+and may be installed in release-proof/equivalence contexts with:
 
 ```bash
 bash scripts/db/apply_v3_candidate.sh
 ```
 
-The release freeze binds the complete 43-file candidate inventory plus its source/tree provenance, apply script and schema-fingerprint machinery. That directory is retained because it is the candidate side of the G17/G20 evidence chain.
+It is not the mutable current schema-development line. Do not append post-V3 product changes there or modify frozen files merely to match later Alembic history.
 
-It is **not** the mutable post-release schema-development line. Do not append ordinary post-release migrations there and do not revise frozen files merely to keep them cosmetically aligned with later Alembic history.
+## Historical V2 design chain
 
-The candidate was derived from the canonical V3 contracts and their accepted convergence/hardening work, including:
+The V2.6→V2.10 design chain remains under `migrations/sql/design_chain/` and may continue to execute in its dedicated CI lane so historical SQL knowledge does not silently rot.
 
-- `docs/v3/01-capability-contracts.md`;
-- `docs/v3/02-pre-sql-contract.md`;
-- `docs/v3/03-db-contract-convergence.md`;
-- later accepted V3 authority/concurrency/runtime/reliability contracts and release-proof fixes;
-- `docs/v3/sql-disposition.md` as historical V2→V3 disposition context.
+It is not production Alembic history and should not receive ordinary current-product migrations.
 
-Some documents in that chain describe pre-baseline decisions in the tense in which they were made. Their historical wording does not make the released candidate mutable again.
+## Current schema-evolution requirements
 
-### Historical V2 design chain
-
-The V2.6→V2.10 design chain remains under `migrations/sql/design_chain/` and may continue to be installed in a separate CI job so useful historical SQL knowledge does not silently rot.
-
-It is **not** production Alembic history and must not receive new `v2.11`, `v2.12`, etc. deltas by default.
-
-## Post-baseline schema evolution rule
-
-For every production schema change after V3 release:
+For a schema change intended to become part of supported current history:
 
 1. update the owning canonical domain/architecture contract when semantics or invariants change;
-2. create a new append-only Alembic revision under `migrations/versions/`;
-3. preserve `0001_initial` unchanged;
-4. add/update PostgreSQL-backed tests for affected invariants, races, RLS/privileges and runtime behavior;
-5. prove both fresh bootstrap to head and supported upgrade from the previous production head;
-6. preserve rollback policy explicitly where downgrade is supported; do not fake reversibility for destructive or semantically irreversible migrations;
-7. keep historical `design_chain/` and frozen `v3_candidate/` provenance separate from current production evolution.
+2. choose explicitly between append-only migration and justified pre-production rebaseline;
+3. preserve immutable historical release artifacts that still serve provenance;
+4. add/update PostgreSQL-backed tests for invariants, races, RLS/privileges and runtime behavior;
+5. prove fresh bootstrap to the single current head;
+6. prove supported upgrade paths when a real compatibility obligation exists;
+7. preserve rollback policy explicitly and do not fake reversibility for semantically irreversible changes;
+8. keep historical release/design evidence separate from current-product proof.
 
-The old pre-baseline rule that candidate files could be freely consolidated is closed. Any future deliberate re-baselining would require a new explicit release/migration policy; it must not be inferred from the V3 development process.
+Once real customer-owned data or an external compatibility commitment exists, destructive history changes require explicit data migration, rollback/forward-safety and compatibility analysis.
 
-## V3 baseline proof
+## V3 release provenance
 
-The V3 release closed the baseline gates with:
+The V3 release baseline was closed with G01–G20 evidence, a frozen 43-file candidate inventory, reviewed `0001_initial`, structural fingerprinting, behavioral equivalence proof and production-like runtime-role bootstrap evidence.
 
-- G01–G20 `PASS`;
-- frozen 43-file candidate inventory;
-- reviewed `0001_initial` SQL SHA-256 `502c98fcce5b5480a3e8f34804ce3a61495e679811a3ac6d0be4872107c34c88`;
-- canonical structural fingerprint `8345eec114eb4af2184c0796debece536e27d7fb4851f77811b2721df1afd877`;
-- G17 behavioral proof with 466 tests on candidate and 466 tests on `0001_initial`, zero failures/errors/skips and identical test inventory;
-- production-like runtime-role bootstrap proof;
-- final G20 evidence `VALID` / `READY` for the release promotion candidate.
-
-See `docs/release/v3-release-gates.md` and `docs/release/v3-current-release-roadmap.md` for release provenance.
+See `docs/release/v3-release-gates.md` and `docs/release/v3-current-release-roadmap.md` for that historical release provenance.
 
 ## SQL ownership
 
@@ -103,4 +133,4 @@ request_admin   explicit diagnostics/operations
 
 Python remains owner of business-command orchestration and transaction framing. PostgreSQL protects structural truth, concurrency, leases/fencing and local invariant backstops.
 
-No external/provider I/O occurs while authoritative DB locks are held.
+No external/provider I/O occurs while authoritative database locks are held.
