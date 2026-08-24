@@ -27,6 +27,13 @@ class ResourcePublicProfileBody(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class DeactivateResourcePublicProfileBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authority_party_id: UUID
+    expected_revision: int = Field(ge=1)
+
+
 class DiscoveryPublicationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
