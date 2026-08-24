@@ -81,13 +81,12 @@ def test_taxonomy_admin_lifecycle_is_narrow_audited_and_append_only(
 
     with admin_conn.transaction():
         admin_conn.execute("SET LOCAL ROLE request_engine_admin")
-        with admin_conn.transaction():
-            with pytest.raises(errors.InsufficientPrivilege):
-                admin_conn.execute(
-                    """
-                    INSERT INTO request_engine.service_classification_authority_events (
-                        service_classification_id, action, authority_ref, reason
-                    ) VALUES (%s, 'created', 'fabricated:test', 'must be rejected')
-                    """,
-                    (classification_id,),
-                )
+        with admin_conn.transaction(), pytest.raises(errors.InsufficientPrivilege):
+            admin_conn.execute(
+                """
+                INSERT INTO request_engine.service_classification_authority_events (
+                    service_classification_id, action, authority_ref, reason
+                ) VALUES (%s, 'created', 'fabricated:test', 'must be rejected')
+                """,
+                (classification_id,),
+            )
