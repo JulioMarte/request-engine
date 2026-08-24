@@ -214,9 +214,6 @@ BEGIN
 END
 $function$;
 
-ALTER FUNCTION request_engine.search_discovery_candidates_v2(
-    text, double precision, double precision, integer, timestamptz, timestamptz, integer
-) OWNER TO request_engine_admin;
 REVOKE ALL ON FUNCTION request_engine.search_discovery_candidates_v2(
     text, double precision, double precision, integer, timestamptz, timestamptz, integer
 ) FROM PUBLIC;
@@ -225,6 +222,9 @@ GRANT EXECUTE ON FUNCTION request_engine.search_discovery_candidates_v2(
 ) TO request_engine_discovery;
 
 RESET ROLE;
+ALTER FUNCTION request_engine.search_discovery_candidates_v2(
+    text, double precision, double precision, integer, timestamptz, timestamptz, integer
+) OWNER TO request_engine_admin;
 RESET search_path;
 """
 
