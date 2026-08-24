@@ -69,15 +69,12 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
-# F2 is part of current product truth, not a detached feature-local proof. These
-# tests exercise the dedicated discovery role, exact Publication/Mapping fences,
-# opaque handoff lifecycle and stale/no-side-effect commitment behavior against
-# the same PostgreSQL head used by the production-like suites below.
+# F2 is part of current product truth, not a detached feature-local proof. Run the
+# complete F2 PostgreSQL proof set so the exact-head gate covers candidate and
+# handoff fences, privileges, public projection, publication concurrency, exact
+# radius semantics and taxonomy lifecycle against the production migration head.
 uv run pytest \
-  tests/db/test_f2_discovery_candidate_fence.py \
-  tests/db/test_f2_discovery_handoff.py \
-  tests/db/test_f2_discovery_handoff_lifecycle.py \
-  tests/db/test_f2_discovery_privileges.py \
+  tests/db/test_f2_*.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f2-discovery-db.xml"
 
