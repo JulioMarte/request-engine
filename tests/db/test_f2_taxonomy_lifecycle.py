@@ -41,10 +41,26 @@ def test_taxonomy_admin_lifecycle_is_narrow_audited_and_append_only(
         (classification_id,),
     ).fetchall() == [("created",), ("retired",)]
 
-    assert admin_conn.execute(
-        "SELECT has_function_privilege('request_engine_app', "
-        "'request_admin.create_service_classification(text,text,text,text)', 'EXECUTE')"
-    ).fetchone() == (False,)
+    functions = (
+        "request_admin.create_service_classification(text,text,text,text)",
+        "request_admin.retire_service_classification(uuid,bigint,text,text)",
+    )
+    for runtime_role in (
+        "request_engine_app",
+        "request_engine_worker",
+        "request_engine_discovery",
+    ):
+        for function in functions:
+            assert admin_conn.execute(
+                "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                (runtime_role, function),
+            ).fetchone() == (False,)
+    for function in functions:
+        assert admin_conn.execute(
+            "SELECT has_function_privilege('request_engine_admin', %s, 'EXECUTE')",
+            (function,),
+        ).fetchone() == (True,)
+
     assert admin_conn.execute(
         "SELECT has_table_privilege('request_engine_app', "
         "'request_engine.service_classification_authority_events', 'SELECT')"
