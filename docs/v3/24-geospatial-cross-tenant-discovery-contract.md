@@ -245,9 +245,31 @@ distance_meters <= radius_meters
 
 Tests MUST attack inside, exact-boundary and first-outside behavior.
 
-## 9. Availability and ordering
+## 9. Availability, batching and ordering
 
 F2 reuses Booking/F1 availability through `PublishedSlotReader`; it does not implement another scheduler.
+
+The public Discovery process MUST cross into authoritative Booking availability through a remote process boundary. For one accepted F2 search, all candidate-specific `PublishedSlotQuery` observations MUST be sent through the batch contract rather than one HTTP request per candidate.
+
+Current batch shape:
+
+```text
+Discovery
+  <= 200 accepted candidates
+  -> one find_published_slots_batch(...)
+  -> one authenticated internal HTTP batch request
+Booking availability gateway
+  -> validate 1..200 query items
+  -> evaluate each exact publication/mapping/version scope
+  -> shared bounded concurrency across simultaneous batches
+  -> aligned slot group for each input query
+```
+
+The remote decoder MUST fail closed if the batch payload is malformed or if the number of returned result groups does not equal the number of submitted queries. Result-group order is part of the internal contract so a slot group cannot silently bind to a different Discovery candidate.
+
+Batching MUST NOT weaken the authority/freshness fence. Every batch item still revalidates its exact tenant Publication id/revision, Mapping id/revision, current/latest bookable OfferingVersion, Location and Resource/null scope before invoking tenant-local Booking availability.
+
+The Booking gateway MUST bound database work across the gateway instance rather than granting each simultaneous search an independent concurrency budget. The current implementation uses a shared semaphore with a default ceiling of eight availability reads; the exact tuning value may evolve, but unbounded fan-out is not permitted.
 
 F2 emits only slots with deterministic:
 
@@ -259,7 +281,7 @@ amount
 currency
 ```
 
-Global ordering is:
+Global ordering is applied only after all accepted candidate result groups are flattened and filtered:
 
 ```text
 1. earliest appointment start
@@ -267,9 +289,9 @@ Global ordering is:
 3. stable Organization/Location/Offering/Resource/Publication tie-breakers
 ```
 
-The current safe implementation evaluates every eligible candidate up to 200. Candidate 201 produces explicit `discovery_search_too_broad` rather than silently truncating before global ranking.
+The implementation evaluates every eligible candidate up to 200. Candidate 201 produces explicit `discovery_search_too_broad` rather than silently truncating before global ranking.
 
-The current per-candidate HTTP slot evaluation is correctness-first. A future `BatchPublishedSlotReader` is permitted and desirable for latency, but it MUST preserve the same authority boundary, eligibility and global ordering semantics. Performance batching is not part of F2 merge correctness.
+Batching removes `O(N)` internal HTTP round trips but does not make database cost independent of candidate count. A future grouped/database-native availability implementation is permitted if it preserves the same tenant authority, publication/mapping/latest-version freshness, F1 Booking truth, complete global ordering, failure semantics and bounded resource usage.
 
 ## 10. Opaque discovery-to-booking handoff
 
@@ -431,6 +453,9 @@ broad-vs-resource-specific publication race: winner/loser/final state
 inclusive geo boundary: inside/exact/outside
 complete global ordering and deterministic tie-break
 201st candidate -> explicit too-broad failure
+multiple candidates -> one remote availability batch request
+batch response cardinality mismatch -> fail closed
+simultaneous batches -> shared bounded Booking availability concurrency
 Publication stale fence
 Mapping stale fence
 OfferingVersion stale fence
@@ -460,4 +485,4 @@ public shared-capacity/global-identity disclosure
 a natural-language taxonomy mutation API
 ```
 
-Natural-language service resolution and batch availability are legitimate follow-up improvements, but they are not allowed to weaken canonical classification, publication, privacy or commitment-time revalidation semantics.
+Natural-language service resolution and deeper grouped/database-native availability are legitimate follow-up improvements, but they are not allowed to weaken canonical classification, publication, privacy, bounded resource usage or commitment-time revalidation semantics.
