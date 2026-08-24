@@ -31,8 +31,30 @@ async def test_discovery_crosses_two_tenants_and_books_selected_handoff(
     contextual_a = contextualize_sandbox(e2e_admin_conn, tenant_a)
     contextualize_sandbox(e2e_admin_conn, tenant_b)
     classification_id, classification_key = create_classification(e2e_admin_conn)
+    e2e_admin_conn.execute(
+        """
+        UPDATE request_engine.locations
+           SET address_line1='27 de Febrero 10', locality='Puerto Plata', country_code='DO'
+         WHERE id=%s
+        """,
+        (tenant_a.location_id,),
+    )
+    e2e_admin_conn.execute(
+        """
+        INSERT INTO request_engine.resource_public_profiles (
+            organization_id, resource_id, display_name, role_label
+        ) VALUES (%s, %s, 'Dr. A', 'Cardiologist')
+        """,
+        (tenant_a.organization_id, tenant_a.resource_id),
+    )
     publish_sandbox(
-        e2e_admin_conn, tenant_a, classification_id, latitude=19.8000, longitude=-70.7000
+        e2e_admin_conn,
+        tenant_a,
+        classification_id,
+        latitude=19.8000,
+        longitude=-70.7000,
+        resource_id=tenant_a.resource_id,
+        provider_visibility="public",
     )
     publish_sandbox(
         e2e_admin_conn, tenant_b, classification_id, latitude=19.8005, longitude=-70.7005
@@ -56,8 +78,19 @@ async def test_discovery_crosses_two_tenants_and_books_selected_handoff(
     assert str(selected["option_id"]).startswith("discoopt_v1.")
     assert Decimal(str(selected["amount"])) == Decimal("4000")
     assert selected["planned_duration_minutes"] == 45
+    assert selected["provider"]["display_name"] == "Dr. A"
+    assert selected["provider"]["role_label"] == "Cardiologist"
+    assert selected["location_address"] == {
+        "address_line1": "27 de Febrero 10",
+        "address_line2": None,
+        "locality": "Puerto Plata",
+        "region": None,
+        "postal_code": None,
+        "country_code": "DO",
+    }
     assert "organization_id" not in selected
     assert "offering_version_id" not in selected
+    assert "resource_id" not in selected
 
     async with client_for(e2e_session_factory, tenant_a) as booking:
         booked = await booking.post(
