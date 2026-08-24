@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
 
+_MAX_BATCH_QUERIES = 200
+
 
 class PublishedSlotQueryBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -47,6 +49,15 @@ class PublishedSlotQueryBody(BaseModel):
             resource_id=self.resource_id,
             limit=self.limit,
         )
+
+
+class PublishedSlotBatchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    queries: tuple[PublishedSlotQueryBody, ...] = Field(
+        min_length=1,
+        max_length=_MAX_BATCH_QUERIES,
+    )
 
 
 class ResourceChoiceView(BaseModel):
