@@ -12,15 +12,23 @@ from request_engine.modules.booking.contracts.appointments import AppointmentSlo
 from request_engine.modules.booking.contracts.discovery import PublishedSlotQuery
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
-_MAX_CONCURRENT_AVAILABILITY_READS = 8
+_DEFAULT_MAX_CONCURRENT_AVAILABILITY_READS = 8
 
 
 class PostgresPublishedSlotReader:
     """Booking-owned reader for the internal discovery availability gateway."""
 
-    def __init__(self, session_factory: SessionFactory) -> None:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        *,
+        max_concurrent_reads: int = _DEFAULT_MAX_CONCURRENT_AVAILABILITY_READS,
+    ) -> None:
+        if max_concurrent_reads < 1:
+            raise ValueError("max_concurrent_reads must be positive")
         self._session_factory = session_factory
         self._reader = PostgresAppointmentAvailabilityReader(session_factory)
+        self._batch_semaphore = asyncio.Semaphore(max_concurrent_reads)
 
     async def find_published_slots(
         self,
@@ -44,10 +52,8 @@ class PostgresPublishedSlotReader:
         self,
         queries: tuple[PublishedSlotQuery, ...],
     ) -> tuple[tuple[AppointmentSlot, ...], ...]:
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_AVAILABILITY_READS)
-
         async def read(query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
-            async with semaphore:
+            async with self._batch_semaphore:
                 return await self.find_published_slots(query)
 
         return tuple(await asyncio.gather(*(read(query) for query in queries)))
