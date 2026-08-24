@@ -4,7 +4,7 @@ Revision ID: 0004_f2_discovery
 Revises: 0003_f1_runtime_acl
 Create Date: 2026-08-23
 
-F2 was developed as revisions 0004-0012 before production. The SQL-bearing
+F2 was developed as revisions 0004-0013 before production. The SQL-bearing
 steps are preserved under migrations/f2_steps and executed here in the exact
 order that passed the full current-product and compatibility proof. Alembic
 therefore exposes one F2 revision without rewriting proven schema semantics.
@@ -22,6 +22,7 @@ from migrations.f2_steps import (
     step_0010,
     step_0011,
     step_0012,
+    step_0013,
 )
 
 revision: str = "0004_f2_discovery"
@@ -39,6 +40,7 @@ _STEPS = (
     step_0010,
     step_0011,
     step_0012,
+    step_0013,
 )
 
 
