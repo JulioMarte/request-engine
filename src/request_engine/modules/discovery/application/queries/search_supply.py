@@ -90,30 +90,44 @@ async def search_published_supply(
             "discovery search matched too many published candidates; narrow the radius or window"
         )
 
-    options: list[DiscoveryOption] = []
+    prepared: list[tuple[DiscoveryCandidate, PublishedSlotQuery]] = []
     for candidate in candidates:
         start = max(query.window_start, candidate.publication_start)
         end = min(query.window_end, candidate.publication_end or query.window_end)
         if end <= start:
             continue
-        slots = await slot_reader.find_published_slots(
-            PublishedSlotQuery(
-                organization_id=candidate.organization_id,
-                publication_id=candidate.publication_id,
-                publication_revision=candidate.publication_revision,
-                mapping_id=candidate.mapping_id,
-                mapping_revision=candidate.mapping_revision,
-                offering_version_id=candidate.offering_version_id,
-                window_start=start,
-                window_end=end,
-                location_id=candidate.location_id,
-                resource_id=candidate.resource_id,
-                limit=query.limit,
+        prepared.append(
+            (
+                candidate,
+                PublishedSlotQuery(
+                    organization_id=candidate.organization_id,
+                    publication_id=candidate.publication_id,
+                    publication_revision=candidate.publication_revision,
+                    mapping_id=candidate.mapping_id,
+                    mapping_revision=candidate.mapping_revision,
+                    offering_version_id=candidate.offering_version_id,
+                    window_start=start,
+                    window_end=end,
+                    location_id=candidate.location_id,
+                    resource_id=candidate.resource_id,
+                    limit=query.limit,
+                ),
             )
         )
-        options.extend(
-            DiscoveryOption(candidate, slot) for slot in slots if is_f2_discoverable(slot)
-        )
+    if not prepared:
+        return ()
 
+    slot_groups = await slot_reader.find_published_slots_batch(
+        tuple(item[1] for item in prepared)
+    )
+    if len(slot_groups) != len(prepared):
+        raise RuntimeError("discovery availability batch returned an invalid result count")
+
+    options = [
+        DiscoveryOption(candidate, slot)
+        for (candidate, _), slots in zip(prepared, slot_groups, strict=True)
+        for slot in slots
+        if is_f2_discoverable(slot)
+    ]
     options.sort(key=option_order)
     return tuple(options[: query.limit])
