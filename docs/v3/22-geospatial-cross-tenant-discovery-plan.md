@@ -1,8 +1,8 @@
 # Request Engine — F2 Geospatial Cross-Tenant Discovery Plan
 
-Status: **implementation/closure plan** for `feature/geospatial-cross-tenant-discovery`; architecture implemented, exact-head merge evidence remains the final closure gate.
+Status: **implementation/closure plan** for `feature/geospatial-cross-tenant-discovery`; architecture and closure work are implemented, and merge readiness is determined only by the required CI checks on the current PR head.
 
-This plan records how F2 is delivered against the current post-F1 architecture. The normative behavior is now owned by `24-geospatial-cross-tenant-discovery-contract.md`. If this plan and document 24 conflict, document 24 wins.
+This plan records how F2 is delivered against the current post-F1 architecture. The normative behavior is owned by `24-geospatial-cross-tenant-discovery-contract.md`. If this plan and document 24 conflict, document 24 wins.
 
 ## 1. Mission
 
@@ -72,11 +72,11 @@ NEW minimal ResourcePublicProfile for deliberately public providers
 
 Status: **closed**.
 
-Document 24 now defines:
+Document 24 defines:
 
 - explicit publication;
 - canonical service classification;
-- public provider profile semantics;
+- public provider profile lifecycle and visibility semantics;
 - public Location address projection;
 - approved public DTO/data minimization;
 - geospatial boundary semantics;
@@ -92,7 +92,7 @@ Natural-language service resolution is explicitly separated from the canonical t
 
 ## 5. Phase C — schema and privilege model
 
-Status: **closed in implementation; exact-head migration proof required**.
+Status: **closed in implementation; current-head migration proof is part of the merge gate**.
 
 F2 production schema is consolidated under:
 
@@ -121,17 +121,23 @@ request_engine_discovery
   NOBYPASSRLS
   narrow EXECUTE only
 
+request_engine_app / request_engine_worker / request_engine_discovery
+  no platform taxonomy administration
+  no read authority over taxonomy authority-event provenance
+
 request_engine_app
   no global taxonomy enumeration
   no cross-tenant candidate authority
 
 request_engine_admin
-  narrow platform taxonomy lifecycle
+  narrow platform taxonomy lifecycle and authority provenance
 ```
+
+The consolidated F2 head reasserts taxonomy function/table ACLs so the deployed final state, rather than only the original object-creation point, proves least privilege.
 
 ## 6. Phase D — tenant discovery control plane
 
-Status: **closed in implementation; exact-head E2E proof required**.
+Status: **closed in implementation; current-head E2E proof is part of the merge gate**.
 
 Supported semantic operations:
 
@@ -139,6 +145,7 @@ Supported semantic operations:
 MapOfferingToServiceClassification
 RevokeOfferingServiceClassification
 SetResourcePublicProfile
+DeactivateResourcePublicProfile
 PublishDiscoverySupply
 RevokeDiscoveryPublication
 ```
@@ -149,6 +156,7 @@ HTTP surface:
 PUT  /v1/operations/discovery/offerings/{offering_id}/classification
 POST /v1/operations/discovery/offerings/{offering_id}/classification/revoke
 PUT  /v1/operations/discovery/resources/{resource_id}/public-profile
+POST /v1/operations/discovery/resources/{resource_id}/public-profile/deactivate
 POST /v1/operations/discovery/publications
 POST /v1/operations/discovery/publications/{publication_id}/revoke
 ```
@@ -165,11 +173,15 @@ audit
 no partial durable state on rejection
 ```
 
+`ResourcePublicProfile` now has an explicit deactivate lifecycle. Deactivation is revisioned, idempotent and audited; setting the profile again is the explicit reactivation/update path.
+
+A publication request with `provider_visibility=public` and no `resource_id` is rejected at the semantic/API boundary with HTTP 422 and no durable publication. The PostgreSQL CHECK remains in place as defense in depth.
+
 F2-specific E2E proofs exercise these semantics directly; generic Organization/Location tests are not counted as F2 authority/idempotency evidence.
 
 ## 7. Phase E — public cross-tenant discovery
 
-Status: **closed in implementation; exact-head proof required**.
+Status: **closed in implementation; current-head proof is part of the merge gate**.
 
 Search uses:
 
@@ -185,11 +197,13 @@ The public response is minimized to public keys/display projections, approved Lo
 
 Internal relational UUIDs remain server-side for joins/freshness but are not emitted by the public DTO.
 
-`provider_visibility=public` now has visible product semantics: it requires resource-specific publication plus an active `ResourcePublicProfile` and emits only approved public provider fields.
+`provider_visibility=public` has visible product semantics: it requires resource-specific publication plus an active `ResourcePublicProfile` and emits only approved public provider fields.
+
+The production-like cross-tenant E2E journey now proves the complete north-star chain in one flow: two Organizations are discoverable, the public provider and public Location address are returned through the real discovery HTTP endpoint, internal UUIDs remain absent, and the selected `discoopt_v1` commits the expected Reservation/capacity/commercial provenance.
 
 ## 8. Phase F — Booking handoff and freshness
 
-Status: **closed in implementation; exact-head proof required**.
+Status: **closed in implementation; current-head proof is part of the merge gate**.
 
 `discoopt_v1` is opaque. Server-side handoff state records the exact internal selection/provenance.
 
@@ -217,7 +231,7 @@ same consumed option + different mutation -> rejected, no second commitment
 
 ## 9. Phase G — adversarial concurrency
 
-Status: **closed in test design/implementation; exact-head execution required**.
+Status: **closed in test design/implementation; current-head execution is part of the merge gate**.
 
 Required races include:
 
@@ -241,18 +255,20 @@ cross-tenant shared physical capacity
 
 ## 10. Phase H — boundary and negative proofs
 
-Status: **closed in test implementation; exact-head execution required**.
+Status: **closed in test implementation; all F2 PostgreSQL proofs are owned by the current-product gate**.
 
 Feature-specific evidence covers:
 
 ```text
 request_engine_discovery least privilege
 request_engine_app cross-tenant function denial
-taxonomy admin lifecycle + audit
+taxonomy admin lifecycle + immutable audit + final-head ACLs
 revoked publication invisibility
 hidden provider privacy
 public provider/address projection
 public DTO UUID minimization
+invalid public publication rejected as 422 with no mutation
+public profile set/deactivate lifecycle and audit
 inclusive radius inside/exact/outside
 201st candidate too-broad failure
 Publication stale fence
@@ -263,6 +279,8 @@ foreign/unknown operation opacity
 conflicting idempotency replay
 rejected operation durable-state inspection
 ```
+
+`scripts/ci/run_current_product.sh` runs `tests/db/test_f2_*.py`, so public projection, publication concurrency, exact radius boundary, taxonomy lifecycle and future F2 DB proofs matching that ownership convention cannot silently exist outside the exact-head current-product gate.
 
 ## 11. Phase I — guarantee inventory
 
@@ -280,7 +298,7 @@ Representative F2 proofs are mapped in `docs/testing/current-proof-map.toml`, in
 
 ## 12. Phase J — documentation reconciliation
 
-Status: **closed in branch content; exact-head governance tests required**.
+Status: **closed in branch content; governance tests remain part of the current-head CI gate**.
 
 Reconciled documents include:
 
@@ -289,7 +307,7 @@ Reconciled documents include:
 - contract 24 — sole normative F2 contract;
 - hardening 25 — historical provenance, no precedence contradiction;
 - this plan — current closure state;
-- command inventory — includes mapping revoke and public Resource profile.
+- command inventory — includes mapping revoke plus public Resource profile set/deactivate lifecycle.
 
 ## 13. Performance debt intentionally not blocking F2 correctness
 
@@ -311,7 +329,7 @@ same global ordering
 same stale handoff semantics
 ```
 
-This is a performance follow-up, not a reason to relax F2 merge correctness.
+This is a performance follow-up, not a reason to relax F2 merge correctness. The endpoint should not be described as high-scale performance-ready until this fan-out is addressed.
 
 ## 14. Definition of Done
 
@@ -323,22 +341,26 @@ Checklist:
 [implemented] original product can answer where + with whom when provider is public
 [implemented] explicit publication + revoke
 [implemented] canonical classification + mapping/revoke
-[implemented] public provider profile control-plane operation
+[implemented] public provider profile set/deactivate lifecycle
+[implemented] invalid public publication fails as semantic/API validation, not database 500
 [implemented] public Location address projection
 [implemented] data-minimized public DTO
 [implemented] dedicated discovery runtime role
+[implemented] final-head taxonomy authority ACL hardening
 [implemented] opaque discoopt_v1
 [implemented] stale-safe Booking handoff
 [implemented] shared-capacity safety
 [implemented] F2-specific authority/idempotency/opacity tests
+[implemented] all tests/db/test_f2_*.py are in the current-product CI gate
 [implemented] mapping/publication race tests
 [implemented] exact geo boundary test
+[implemented] production-like provider + address + discovery + Booking E2E
 [implemented] schedule/terms/assignment stale tests
 [implemented] consumed handoff replay/new-mutation proof
-[implemented] taxonomy lifecycle/audit proof
+[implemented] taxonomy lifecycle/audit/final ACL proof
 [implemented] current guarantee inventory + proof map
 [implemented] README/roadmap/contract/hardening reconciliation
-[pending evidence] exact-head CI green after all changes
+[current-head gate] merge only when the GitHub CI checks for the actual PR head are green
 ```
 
-A green run from an earlier SHA is provenance only and does not close this plan.
+A green run from an earlier SHA is provenance only and does not close merge readiness. This document deliberately does not hard-code a SHA or workflow run: changing closure documentation creates a new head, so the authoritative merge evidence is the GitHub check suite attached to the actual PR head.
