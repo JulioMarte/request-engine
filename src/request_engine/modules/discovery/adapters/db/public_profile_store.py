@@ -22,6 +22,7 @@ def state_to_json(state: ResourcePublicProfileState) -> dict[str, object]:
         "display_name": state.display_name,
         "role_label": state.role_label,
         "profile_image_ref": state.profile_image_ref,
+        "active": state.active,
         "revision": state.revision,
     }
 
@@ -33,11 +34,14 @@ def state_from_json(value: dict[str, object]) -> ResourcePublicProfileState:
         display_name=cast(str, value["display_name"]),
         role_label=cast(str | None, value["role_label"]),
         profile_image_ref=cast(str | None, value["profile_image_ref"]),
+        active=cast(bool, value["active"]),
         revision=cast(int, value["revision"]),
     )
 
 
-async def lock_resource(session: AsyncSession, command: SetResourcePublicProfileCommand) -> str:
+async def lock_resource(
+    session: AsyncSession, organization_id: UUID, resource_id: UUID
+) -> str:
     row = (
         (
             await session.execute(
@@ -45,7 +49,7 @@ async def lock_resource(session: AsyncSession, command: SetResourcePublicProfile
                     "SELECT resource_key FROM request_engine.resources "
                     "WHERE organization_id=:org AND id=:resource FOR UPDATE"
                 ),
-                {"org": command.organization_id, "resource": command.resource_id},
+                {"org": organization_id, "resource": resource_id},
             )
         )
         .mappings()
@@ -89,7 +93,7 @@ async def upsert_profile(
                         "INSERT INTO request_engine.resource_public_profiles "
                         "(organization_id,resource_id,display_name,role_label,profile_image_ref) "
                         "VALUES (:org,:resource,:display,:role,:image) "
-                        "RETURNING display_name,role_label,profile_image_ref,revision"
+                        "RETURNING display_name,role_label,profile_image_ref,active,revision"
                     ),
                     values,
                 )
@@ -110,9 +114,54 @@ async def upsert_profile(
                     "display_name=:display,role_label=:role,profile_image_ref=:image,active=true,"
                     "revision=revision+1 WHERE organization_id=:org AND resource_id=:resource "
                     "AND revision=:expected RETURNING display_name,role_label,"
-                    "profile_image_ref,revision"
+                    "profile_image_ref,active,revision"
                 ),
                 values,
+            )
+        )
+        .mappings()
+        .one()
+    )
+
+
+async def deactivate_profile(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    resource_id: UUID,
+    expected_revision: int,
+) -> RowMapping:
+    current = (
+        (
+            await session.execute(
+                text(
+                    "SELECT display_name,role_label,profile_image_ref,active,revision "
+                    "FROM request_engine.resource_public_profiles "
+                    "WHERE organization_id=:org AND resource_id=:resource FOR UPDATE"
+                ),
+                {"org": organization_id, "resource": resource_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if current is None:
+        raise DiscoveryConfigurationConflict("public profile does not exist")
+    actual = cast(int, current["revision"])
+    if expected_revision != actual:
+        raise DiscoveryRevisionConflict(resource_id, expected_revision, actual)
+    if not cast(bool, current["active"]):
+        raise DiscoveryConfigurationConflict("public profile is already inactive")
+    return (
+        (
+            await session.execute(
+                text(
+                    "UPDATE request_engine.resource_public_profiles SET active=false,"
+                    "revision=revision+1 WHERE organization_id=:org AND resource_id=:resource "
+                    "AND revision=:expected RETURNING display_name,role_label,"
+                    "profile_image_ref,active,revision"
+                ),
+                {"org": organization_id, "resource": resource_id, "expected": expected_revision},
             )
         )
         .mappings()
