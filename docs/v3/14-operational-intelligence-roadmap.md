@@ -1,6 +1,6 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1 is implemented/integrated. F2 is implemented on `feature/geospatial-cross-tenant-discovery` and remains subject to exact-head merge evidence. F3-F6 remain future feature scope.
+Status: **accepted product/design direction**. F1 and F2 are implemented/integrated. F3 Live Service Operations is the next feature. F4-F6 remain future feature scope.
 
 This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries.
 
@@ -40,13 +40,13 @@ Request Engine must not become a CRM, CMS, universal RAG store, EHR, universal p
 ## 2. Roadmap structure and current status
 
 ```text
-F1 Operational Profile / Contextual Supply     [implemented]
+F1 Operational Profile / Contextual Supply     [integrated]
         |
         +--------------------+
         v                    v
 F2 Geospatial          F3 Live Service
 Cross-Tenant Discovery    Operations
-[implemented on PR #77]     [future]
+[integrated]                [next]
                              |
                              v
                        F4 Live Capacity
@@ -76,7 +76,7 @@ Assisted configuration:
 F1 + semantic commands -> F6
 ```
 
-F2 is no longer future-only roadmap scope. Its normative contract is `24-geospatial-cross-tenant-discovery-contract.md`.
+F2 is integrated product architecture. Its normative contract is `24-geospatial-cross-tenant-discovery-contract.md`. It was proven at exact feature head `647bf19ba7b0f716a472aa1a2e3ca2caae81e1c7` by CI #2035 and merged through PR #77 into `development` as `06efd25067515cf5b4c8c03bc06551de28ad081a` on 2026-08-24.
 
 ---
 
@@ -115,12 +115,26 @@ F1 intentionally does not perform platform-wide discovery or live queue predicti
 
 # F2 — Geospatial Cross-Tenant Discovery
 
-Status: **implemented on `feature/geospatial-cross-tenant-discovery` / PR #77; exact-head merge evidence required**.
+Status: **implemented/integrated through PR #77**.
+
+Historical implementation branch:
+
+```text
+feature/geospatial-cross-tenant-discovery
+```
 
 Normative contract:
 
 ```text
 docs/v3/24-geospatial-cross-tenant-discovery-contract.md
+```
+
+Merge provenance:
+
+```text
+feature head: 647bf19ba7b0f716a472aa1a2e3ca2caae81e1c7
+exact-head CI: #2035
+integrated development commit: 06efd25067515cf5b4c8c03bc06551de28ad081a
 ```
 
 ## F2.1 Product goal
@@ -188,7 +202,7 @@ Mapping replacement preserves provenance and concurrent first mapping converges 
 
 ## F2.5 Public provider identity
 
-F2 now supports the minimum public provider profile needed to answer "with whom":
+F2 supports the minimum public provider profile needed to answer "with whom":
 
 ```text
 ResourcePublicProfile
@@ -242,23 +256,37 @@ Booking revalidates Publication, Mapping, current OfferingVersion and all F1 sch
 
 Discovery therefore remains advisory and stale-safe.
 
-## F2.9 Performance follow-up
+## F2.9 Availability batching
 
-The correctness-first implementation may perform per-candidate slot reads and rejects searches broader than the safe exhaustive candidate bound.
+The integrated F2 implementation batches accepted discovery candidates across the Discovery-to-Booking process boundary rather than performing one remote availability request per candidate.
 
-A future `BatchPublishedSlotReader` is a desirable latency optimization provided it preserves identical authority, eligibility and ordering semantics. It is not a reason to weaken the F2 correctness contract.
+```text
+Discovery search
+  -> <= 200 accepted candidates
+  -> one PublishedSlotReader batch call
+  -> one authenticated internal HTTP request
+  -> Booking availability gateway
+  -> per-item Publication/Mapping/latest-version fences
+  -> shared process-wide bounded concurrency
+  -> aligned result groups
+  -> complete global ordering
+```
+
+Malformed or cardinality-misaligned batch responses fail closed. This is a latency optimization only; it does not weaken F2 authority, eligibility, freshness or ordering semantics.
 
 ---
 
 # F3 — Live Service Operations
 
-Status: **future**.
+Status: **next feature**.
 
 Planned branch:
 
 ```text
 feature/live-service-operations
 ```
+
+F3 must branch from current `development` after the F2 post-merge documentation closure is integrated. Before SQL or implementation, F3 must reconcile a normative contract and disposition affected current guarantees.
 
 ## F3.1 Core distinction
 
