@@ -56,6 +56,8 @@ Cross-tenant discovery MUST NOT receive `request_engine_admin`, generic RLS bypa
 
 `request_engine_discovery` may execute only the protected search/handoff functions required by F2. It receives no generic tenant table `SELECT/INSERT/UPDATE/DELETE` authority.
 
+Platform taxonomy administration and its authority-event provenance are admin-only surfaces. `request_engine_app`, `request_engine_worker` and `request_engine_discovery` MUST NOT gain EXECUTE on the taxonomy create/retire functions or SELECT on `service_classification_authority_events` through later schema/default-privilege evolution.
+
 Knowledge of a UUID, GlobalIdentity or SharedCapacityIdentity never grants discovery or tenant authority.
 
 ## 3. Explicit publication
@@ -94,6 +96,8 @@ Visibility or scope changes require revoke + new publication. Revocation is mono
 
 Broad and resource-specific publications for the same Organization + Offering + Location MUST NOT overlap in time. PostgreSQL serializes that rule. Different resource-specific publications may coexist when otherwise valid.
 
+`provider_visibility=public` without a concrete `resource_id` is semantically invalid input. The HTTP/control-plane boundary MUST reject it as a validation error before persistence; the PostgreSQL CHECK remains mandatory defense in depth and MUST NOT be weakened to make the API accept the invalid combination.
+
 Revoked, inactive, expired, unmapped or unpublished supply is invisible to discovery.
 
 ## 4. Canonical service classification
@@ -113,7 +117,7 @@ append audit
 
 The active mapping is at most one per Organization + Offering. Concurrent first-mapping attempts serialize through the Offering lock; the final durable state contains one active mapping and rejected contenders leave no partial durable effect.
 
-Platform taxonomy lifecycle is available only through narrow `request_admin` functions. Create/retire actions require authority reference + reason and append immutable `service_classification_authority_events`. Tenant runtime may perform only narrow active-key lookup; it cannot enumerate or administer platform taxonomy.
+Platform taxonomy lifecycle is available only through narrow `request_admin` functions. Create/retire actions require authority reference + reason and append immutable `service_classification_authority_events`. Tenant runtime may perform only narrow active-key lookup; it cannot enumerate or administer platform taxonomy. Exact-head evidence MUST prove the final deployed ACLs, not only the grants present when the functions were originally created.
 
 ## 5. Public Resource profile and provider visibility
 
@@ -140,19 +144,23 @@ assignment identifiers
 private contact details
 ```
 
-Tenant operators configure it through the semantic operational command:
+Tenant operators configure its lifecycle through semantic operational commands:
 
 ```text
 SetResourcePublicProfile
 PUT /v1/operations/discovery/resources/{resource_id}/public-profile
+
+DeactivateResourcePublicProfile
+POST /v1/operations/discovery/resources/{resource_id}/public-profile/deactivate
+
 operations.manage_discovery
 ```
 
-The operation is tenant-scoped, authority-checked, idempotent, optimistic-revision-aware and audited.
+Both operations are tenant-scoped, authority-checked, idempotent, optimistic-revision-aware and audited. Deactivation is an explicit revisioned state transition to `active=false`. A later `SetResourcePublicProfile` is the explicit update/reactivation path and advances revision again; the system MUST NOT silently resurrect a profile through discovery reads.
 
 `provider_visibility=hidden` emits no concrete provider identity.
 
-`provider_visibility=public` is valid only for a resource-specific publication and emits the provider projection only when an active `ResourcePublicProfile` exists. A missing public profile fails closed by making that public-provider candidate ineligible rather than falling back to private Resource fields.
+`provider_visibility=public` is valid only for a resource-specific publication and emits the provider projection only when an active `ResourcePublicProfile` exists. A missing or inactive public profile fails closed by making that public-provider candidate ineligible rather than falling back to private Resource fields.
 
 ## 6. Public Location projection
 
@@ -333,6 +341,7 @@ F2 tenant control-plane operations are:
 MapOfferingToServiceClassification
 RevokeOfferingServiceClassification
 SetResourcePublicProfile
+DeactivateResourcePublicProfile
 PublishDiscoverySupply
 RevokeDiscoveryPublication
 ```
@@ -343,6 +352,7 @@ Current HTTP surface:
 PUT  /v1/operations/discovery/offerings/{offering_id}/classification
 POST /v1/operations/discovery/offerings/{offering_id}/classification/revoke
 PUT  /v1/operations/discovery/resources/{resource_id}/public-profile
+POST /v1/operations/discovery/resources/{resource_id}/public-profile/deactivate
 POST /v1/operations/discovery/publications
 POST /v1/operations/discovery/publications/{publication_id}/revoke
 ```
@@ -350,6 +360,8 @@ POST /v1/operations/discovery/publications/{publication_id}/revoke
 All require `operations.manage_discovery`, tenant opacity, idempotency and durable audit semantics.
 
 Foreign and nonexistent targets MUST be semantically opaque. Rejected operations MUST leave authoritative state unchanged.
+
+Invalid cross-field publication intent such as `provider_visibility=public` with `resource_id=null` MUST be reported as a bounded input/semantic validation failure, not as `500 database_integrity_error`, and MUST leave no publication row.
 
 ## 14. Shared physical capacity
 
@@ -371,6 +383,8 @@ Its development SQL-bearing steps remain under `migrations/f2_steps/` as impleme
 
 Released V3 `0001` and integrated F1 `0002/0003` remain unchanged.
 
+Final F2 migration state MUST reassert the narrow taxonomy function and authority-event ACLs required by this contract so later grants/default privileges cannot make a previously narrow object broad at the actual deployed head.
+
 ## 16. Current guarantee inventory
 
 The durable F2 guarantees are recorded in `docs/testing/current-guarantees.toml`, including:
@@ -389,17 +403,23 @@ Removing/renaming tests is allowed only if the required evidence classes for the
 
 F2 is not merge-ready merely because general CI is green. Exact-head evidence MUST demonstrate the feature-specific contract.
 
+The current-product gate MUST execute the F2 PostgreSQL proof ownership set, including candidate/handoff fences, privileges, public projection, publication concurrency, exact radius behavior and taxonomy lifecycle. A test file that exists but is not executed is not merge evidence.
+
 Required proof includes at least:
 
 ```text
 cross-tenant search sees only explicitly published supply
 revoked/unpublished supply is invisible
 public projection contains approved where/provider fields only
+production-like HTTP discovery returns public provider + address and books that option
 hidden provider leaks no Resource identity
 public provider requires explicit profile + public publication
+public + resource_id=null -> validation failure, not 500, with no durable mutation
+ResourcePublicProfile set/deactivate lifecycle is revisioned, idempotent and audited
 request_engine_discovery is NOLOGIN/NOBYPASSRLS and narrow privilege only
 request_engine_app cannot execute cross-tenant candidate authority
 platform taxonomy create/retire authority + immutable audit
+final deployed taxonomy function/authority-event ACLs exclude app/worker/discovery runtime roles
 mapping lifecycle and revoke command
 publication lifecycle and revoke command
 operations.manage_discovery authority failure leaves no partial state
