@@ -14,6 +14,11 @@ DISCOVERY_ROUTES = (
         "PUT",
         "/v1/operations/discovery/resources/{resource_id}/public-profile",
     ),
+    (
+        "discovery.resource_public_profile_deactivate",
+        "POST",
+        "/v1/operations/discovery/resources/{resource_id}/public-profile/deactivate",
+    ),
     ("discovery.publish", "POST", "/v1/operations/discovery/publications"),
     (
         "discovery.revoke",
@@ -26,5 +31,6 @@ DISCOVERY_REVISION_OWNERS = {
     "discovery.mapping": "OfferingServiceClassification.revision",
     "discovery.mapping_revoke": "OfferingServiceClassification.revision",
     "discovery.resource_public_profile": "ResourcePublicProfile.revision",
+    "discovery.resource_public_profile_deactivate": "ResourcePublicProfile.revision",
     "discovery.revoke": "DiscoveryPublication.revision",
 }
