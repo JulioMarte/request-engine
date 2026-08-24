@@ -199,7 +199,9 @@ Internal relational UUIDs remain server-side for joins/freshness but are not emi
 
 `provider_visibility=public` has visible product semantics: it requires resource-specific publication plus an active `ResourcePublicProfile` and emits only approved public provider fields.
 
-The production-like cross-tenant E2E journey now proves the complete north-star chain in one flow: two Organizations are discoverable, the public provider and public Location address are returned through the real discovery HTTP endpoint, internal UUIDs remain absent, and the selected `discoopt_v1` commits the expected Reservation/capacity/commercial provenance.
+The production-like cross-tenant E2E journey proves the complete north-star chain in one flow: two Organizations are discoverable, the public provider and public Location address are returned through the real discovery HTTP endpoint, internal UUIDs remain absent, and the selected `discoopt_v1` commits the expected Reservation/capacity/commercial provenance.
+
+Availability evaluation is batched across the process boundary. `search_published_supply()` prepares all accepted candidate observations and invokes one `PublishedSlotReader.find_published_slots_batch(...)`; the remote adapter emits one internal HTTP request containing up to the same 200-candidate safety bound. Booking still evaluates every item under authoritative tenant context.
 
 ## 8. Phase F — Booking handoff and freshness
 
@@ -253,6 +255,8 @@ cross-tenant shared physical capacity
   -> loser learns no shared root
 ```
 
+Availability batching has a separate operational concurrency fence: one Booking gateway instance owns a shared bounded semaphore, so concurrent discovery requests do not each receive an independent database-concurrency budget.
+
 ## 10. Phase H — boundary and negative proofs
 
 Status: **closed in test implementation; all F2 PostgreSQL proofs are owned by the current-product gate**.
@@ -271,6 +275,9 @@ invalid public publication rejected as 422 with no mutation
 public profile set/deactivate lifecycle and audit
 inclusive radius inside/exact/outside
 201st candidate too-broad failure
+one remote availability batch for multiple candidates
+malformed/misaligned batch response rejected
+bounded availability concurrency shared across simultaneous batches
 Publication stale fence
 Mapping stale fence
 OfferingVersion stale fence
@@ -307,29 +314,44 @@ Reconciled documents include:
 - contract 24 — sole normative F2 contract;
 - hardening 25 — historical provenance, no precedence contradiction;
 - this plan — current closure state;
+- Discovery module README — batching/process-boundary behavior;
 - command inventory — includes mapping revoke plus public Resource profile set/deactivate lifecycle.
 
-## 13. Performance debt intentionally not blocking F2 correctness
+## 13. Availability batching implemented; residual performance debt
 
-Current `search_published_supply()` may call `PublishedSlotReader` once per candidate and therefore can be latency-heavy near the 200-candidate bound.
+The original per-candidate remote fan-out is closed.
 
-Follow-up direction:
-
-```text
-BatchPublishedSlotReader
-```
-
-It is permitted only if it preserves:
+Current shape:
 
 ```text
-same discovery authority boundary
-same F1 Booking truth
-same eligibility
-same global ordering
-same stale handoff semantics
+Discovery search
+  -> <= 200 accepted candidates
+  -> one PublishedSlotReader batch call
+  -> one internal HTTP request
+  -> Booking gateway
+  -> shared process-wide bounded concurrency (default 8 reads)
+  -> publication-fenced tenant-local Booking availability
+  -> aligned result groups
+  -> unchanged global sort
 ```
 
-This is a performance follow-up, not a reason to relax F2 merge correctness. The endpoint should not be described as high-scale performance-ready until this fan-out is addressed.
+This removes `O(N)` internal HTTP round trips and prevents one search, or many simultaneous searches, from opening an unbounded number of availability reads.
+
+It deliberately does **not** collapse all candidate availability into one cross-tenant SQL query. Each candidate still passes the existing publication/mapping/latest-version fence and normal tenant-local Booking availability path. That residual per-candidate database work is preferable to weakening RLS/authority boundaries merely for speed.
+
+A future grouped/database-native optimization may reduce database round trips further only if it proves the same:
+
+```text
+discovery authority boundary
+F1 Booking truth
+publication/mapping/latest-version freshness
+eligibility
+complete global ordering
+stale handoff semantics
+bounded resource consumption
+```
+
+The endpoint can now be described as having bounded batched remote availability, but not as having constant-cost availability independent of candidate count.
 
 ## 14. Definition of Done
 
@@ -350,6 +372,9 @@ Checklist:
 [implemented] opaque discoopt_v1
 [implemented] stale-safe Booking handoff
 [implemented] shared-capacity safety
+[implemented] one remote availability batch per discovery search
+[implemented] batch request is bounded to the F2 candidate ceiling
+[implemented] Booking availability concurrency is shared/bounded across simultaneous batches
 [implemented] F2-specific authority/idempotency/opacity tests
 [implemented] all tests/db/test_f2_*.py are in the current-product CI gate
 [implemented] mapping/publication race tests
