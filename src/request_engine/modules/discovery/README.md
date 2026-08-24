@@ -39,13 +39,13 @@ Authoritative Booking availability is reached through a separate internal proces
 Request Engine Discovery Availability Gateway
   credential: request_engine_app
   capability: discovery.read_published_slots
-  input: exact Publication + Mapping observations
-  output: only publication-fenced Booking slot results
+  input: batch of exact Publication + Mapping observations
+  output: aligned publication-fenced Booking slot groups
 ```
 
-The public Discovery process uses a remote `PublishedSlotReader` client. It cannot be composed with the PostgreSQL Booking reader directly.
+The public Discovery process uses a remote `PublishedSlotReader` client. One search sends one bounded batch request for all accepted candidates instead of one HTTP request per candidate. The Booking gateway evaluates those queries with a shared bounded-concurrency limiter so simultaneous searches cannot multiply database work without limit.
 
-The public Discovery process must not receive:
+The public Discovery process cannot be composed with the PostgreSQL Booking reader directly and must not receive:
 
 ```text
 request_engine_app's generic SessionFactory
@@ -55,7 +55,7 @@ local PostgresPublishedSlotReader
 generic cross-tenant SELECT authority
 ```
 
-A compromised caller of the internal availability gateway still cannot turn it into a generic tenant oracle: the gateway revalidates the exact tenant Publication id/revision, Mapping id/revision, current OfferingVersion, Location and Resource/null scope before invoking Booking availability.
+A compromised caller of the internal availability gateway still cannot turn it into a generic tenant oracle: every batch item revalidates the exact tenant Publication id/revision, Mapping id/revision, current OfferingVersion, Location and Resource/null scope before invoking Booking availability.
 
 ## Booking composition
 
@@ -69,7 +69,7 @@ The client receives an opaque random token:
 discoopt_v1.<secret>
 ```
 
-Resource selection and exact Publication/Mapping observations stay server-side. Candidate generation, availability lookup and handoff issuance preserve the same Mapping id/revision; a remap between those stages invalidates the candidate instead of rebinding it silently.
+Resource selection and exact Publication/Mapping observations stay server-side. Candidate generation, batched availability lookup and handoff issuance preserve the same Mapping id/revision; a remap between those stages invalidates the candidate instead of rebinding it silently.
 
 When the user books, normal tenant Booking authority is still required. Booking resolves the handoff under tenant context and PostgreSQL revalidates/fences the exact publication and mapping inside the same Reservation transaction before commitment.
 
@@ -83,9 +83,9 @@ distance_meters
 stable tenant/location/offering/resource/publication tie-breakers
 ```
 
-The current implementation exhaustively evaluates at most 200 eligible published candidates. If more than 200 match the geo/time/classification filter, it returns an explicit `discovery_search_too_broad` error rather than silently truncating and presenting an incorrect ranking.
+The implementation exhaustively evaluates at most 200 eligible published candidates. If more than 200 match the geo/time/classification filter, it returns an explicit `discovery_search_too_broad` error rather than silently truncating and presenting an incorrect ranking.
 
-A later batch availability implementation may raise that bound without changing the public ordering semantics.
+Batching removes per-candidate HTTP round trips but does not turn availability into one cross-tenant SQL query. Booking still evaluates each candidate under its authoritative tenant context, with process-wide bounded concurrency. A later database-native/grouped availability optimization may reduce that residual work only if it preserves the same authority, freshness and ordering semantics.
 
 ## Dependency rule
 
