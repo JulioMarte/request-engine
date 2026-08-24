@@ -12,6 +12,11 @@ class LocalSlots:
         del query
         return ()
 
+    async def find_published_slots_batch(
+        self, queries: tuple[PublishedSlotQuery, ...]
+    ) -> tuple[tuple[object, ...], ...]:
+        return tuple(() for _ in queries)
+
 
 class RemoteSlots(LocalSlots):
     trust_boundary: Literal["remote"] = "remote"
