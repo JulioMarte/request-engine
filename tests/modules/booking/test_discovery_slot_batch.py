@@ -18,9 +18,7 @@ class ConcurrencyProbe(PostgresPublishedSlotReader):
         self.active = 0
         self.max_active = 0
 
-    async def find_published_slots(
-        self, query: PublishedSlotQuery
-    ) -> tuple[AppointmentSlot, ...]:
+    async def find_published_slots(self, query: PublishedSlotQuery) -> tuple[AppointmentSlot, ...]:
         del query
         self.active += 1
         self.max_active = max(self.max_active, self.active)
