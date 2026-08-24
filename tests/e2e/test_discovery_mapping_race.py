@@ -2,6 +2,7 @@ import asyncio
 from uuid import uuid4
 
 import pytest
+from httpx import Response
 
 from request_engine.platform.db.session import SessionFactory
 
@@ -30,7 +31,7 @@ async def test_concurrent_first_mapping_has_one_winner_one_loser_and_one_active_
 
     async with operational_client(e2e_session_factory, tenant) as client:
 
-        async def map_to(classification: str) -> object:
+        async def map_to(classification: str) -> Response:
             return await client.put(
                 f"/v1/operations/discovery/offerings/{tenant.offering_id}/classification",
                 headers=auth(tenant, idempotency_key=f"f2-race-{uuid4().hex}"),
