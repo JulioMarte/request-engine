@@ -84,7 +84,7 @@ async def test_discovery_crosses_two_tenants_and_books_selected_handoff(
         "address_line1": "27 de Febrero 10",
         "address_line2": None,
         "locality": "Puerto Plata",
-        "region": None,
+        "administrative_area": None,
         "postal_code": None,
         "country_code": "DO",
     }
