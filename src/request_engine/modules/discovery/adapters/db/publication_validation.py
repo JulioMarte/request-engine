@@ -19,4 +19,6 @@ def validated_publication_intent(
     visibility = command.provider_visibility.strip().lower()
     if visibility not in {"hidden", "public"}:
         raise ValueError("provider_visibility must be hidden or public")
+    if visibility == "public" and command.resource_id is None:
+        raise ValueError("public provider visibility requires resource_id")
     return start, end, visibility
