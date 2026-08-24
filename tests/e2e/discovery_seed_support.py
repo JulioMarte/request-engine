@@ -34,6 +34,8 @@ def publish_sandbox(
     *,
     latitude: float,
     longitude: float,
+    resource_id: UUID | None = None,
+    provider_visibility: str = "hidden",
 ) -> None:
     conn.execute(
         "UPDATE request_engine.locations SET latitude = %s, longitude = %s WHERE id = %s",
@@ -50,13 +52,20 @@ def publish_sandbox(
     conn.execute(
         """
         INSERT INTO request_engine.discovery_publications (
-            organization_id, offering_id, location_id, effective_during
+            organization_id, offering_id, location_id, resource_id,
+            effective_during, provider_visibility
         ) VALUES (
-            %s, %s, %s,
-            tstzrange('2029-01-01T00:00:00+00', '2031-01-01T00:00:00+00', '[)')
+            %s, %s, %s, %s,
+            tstzrange('2029-01-01T00:00:00+00', '2031-01-01T00:00:00+00', '[)'), %s
         )
         """,
-        (sandbox.organization_id, sandbox.offering_id, sandbox.location_id),
+        (
+            sandbox.organization_id,
+            sandbox.offering_id,
+            sandbox.location_id,
+            resource_id,
+            provider_visibility,
+        ),
     )
 
 
