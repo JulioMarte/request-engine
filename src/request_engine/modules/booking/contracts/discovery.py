@@ -28,6 +28,11 @@ class PublishedSlotReader(Protocol):
         query: PublishedSlotQuery,
     ) -> tuple[AppointmentSlot, ...]: ...
 
+    async def find_published_slots_batch(
+        self,
+        queries: tuple[PublishedSlotQuery, ...],
+    ) -> tuple[tuple[AppointmentSlot, ...], ...]: ...
+
 
 @dataclass(frozen=True, slots=True)
 class DecodedDiscoveryHandoff:
