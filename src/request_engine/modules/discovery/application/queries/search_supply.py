@@ -117,9 +117,7 @@ async def search_published_supply(
     if not prepared:
         return ()
 
-    slot_groups = await slot_reader.find_published_slots_batch(
-        tuple(item[1] for item in prepared)
-    )
+    slot_groups = await slot_reader.find_published_slots_batch(tuple(item[1] for item in prepared))
     if len(slot_groups) != len(prepared):
         raise RuntimeError("discovery availability batch returned an invalid result count")
 
