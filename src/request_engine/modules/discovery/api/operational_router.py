@@ -11,7 +11,7 @@ from request_engine.modules.discovery.api.operational_publication_router import 
 )
 from request_engine.modules.discovery.application.commands.mapping import MapOfferingHandler
 from request_engine.modules.discovery.application.commands.public_profile import (
-    SetResourcePublicProfileHandler,
+    ResourcePublicProfileHandler,
 )
 from request_engine.modules.discovery.application.commands.publication import (
     PublishDiscoverySupplyHandler,
@@ -27,7 +27,7 @@ def create_operational_router(
     *,
     mapping_handler: MapOfferingHandler,
     revoke_mapping_handler: RevokeOfferingMappingHandler,
-    public_profile_handler: SetResourcePublicProfileHandler,
+    public_profile_handler: ResourcePublicProfileHandler,
     publish_handler: PublishDiscoverySupplyHandler,
     revoke_handler: RevokeDiscoveryPublicationHandler,
     actor_resolver: ActorResolver,
