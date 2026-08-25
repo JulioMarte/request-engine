@@ -2,8 +2,9 @@
 
 > **Current status: active baseline + F3 live-operations extensions.**
 >
-> Queue owns waiting/admission/calling/no-show and released-slot recovery. Delivery owns actual
-> ServiceSession execution. See `docs/v3/26-live-service-operations-contract.md` and
+> Queue owns waiting/admission/calling/no-show, pre-service expected-workload classification and
+> released-slot recovery. Delivery owns actual ServiceSession execution. See
+> `docs/v3/26-live-service-operations-contract.md` and
 > `docs/v3/28-live-service-operations-integration-amendment.md`.
 
 Queue owns two related but distinct operational capabilities:
@@ -31,8 +32,8 @@ admitted_at
 ```
 
 Current `queue.check_in` admits immediately, so both are written from the same PostgreSQL transaction
-clock. The fields remain distinct so a future explicit arrival-before-admission policy does not need
-to rewrite history.
+clock. F3 schema defaults use `clock_timestamp()` as well; the fields remain distinct so a future
+explicit arrival-before-admission policy does not need to rewrite history.
 
 ### Current QueueEntry lifecycle
 
@@ -42,8 +43,9 @@ WAITING --CallNext--> CALLED --service_session.start--> SERVING --service_sessio
    +--cancel------------+--queue.mark_no_show--> NO_SHOW
 ```
 
-Queue owns `WAITING`, `CALLED`, check-in/walk-in, no-show and FIFO selection. Delivery owns the actual
-execution transitions that make a called entry `SERVING` and eventually `COMPLETED`.
+Queue owns `WAITING`, `CALLED`, check-in/walk-in, no-show, expected-workload classification and FIFO
+selection. Delivery owns the actual execution transitions that make a called entry `SERVING` and
+eventually `COMPLETED`.
 
 `queue_entries.service_started_at` and `completed_at` are compatibility mirrors written atomically
 with Delivery's ServiceSession. They are not independent execution authority.
@@ -51,15 +53,16 @@ with Delivery's ServiceSession. They are not independent execution authority.
 `CALLED -> NO_SHOW` is allowed only while no ServiceSession exists. `SERVING -> NO_SHOW` is invalid.
 Pause/resume does not change QueueEntry from `SERVING`.
 
-### Check-in and walk-in
+### Check-in, walk-in and expected workload
 
-F3 adds staff/operator capability:
+F3 adds staff/operator capabilities:
 
 ```text
 queue.check_in
+queue.classify_expected_workload
 ```
 
-It is distinct from the existing subject-facing `queue.join`.
+They are distinct from the existing subject-facing `queue.join`.
 
 Reservation-backed check-in validates confirmed same-tenant planning context and creates QueueEntry
 without mutating Reservation or CapacityClaim.
@@ -73,6 +76,22 @@ reservation_id = NULL
 No fake Reservation is created. Offering context may come from the Queue or an explicit same-tenant
 Offering.
 
+Expected workload may be known at check-in, but it does not have to be. An operator may assign,
+correct or clear `expected_workload_classification_id` later while the QueueEntry remains `waiting`
+or `called`.
+
+`queue.classify_expected_workload`:
+
+- requires `Idempotency-Key` and `expected_revision`;
+- locks ServiceQueue before QueueEntry;
+- validates non-null workload IDs as active and same-tenant;
+- advances revision and emits audit/outbox only when the classification materially changes;
+- is rejected after service begins or the QueueEntry becomes terminal.
+
+Expected workload is therefore mutable pre-service operational context, not immutable booking truth.
+Once service starts it becomes historical input; actual workload is recorded on Delivery's
+ServiceSession and may legitimately differ.
+
 ### Subject authority
 
 Queue action capability and authority over a Party remain separate decisions.
@@ -81,8 +100,9 @@ Queue action capability and authority over a Party remain separate decisions.
   the authenticated actor has explicit `queue.subject_override`.
 - `GetQueueStatus` and `LeaveQueue` require exact current Representation scope `queue.manage`, unless
   that same explicit operator override is present.
-- `CallNext`, `queue.check_in`, `queue.mark_no_show` and `queue.staff_read` are operator capabilities;
-  possessing a Party UUID never grants authority by itself.
+- `CallNext`, `queue.check_in`, `queue.classify_expected_workload`, `queue.mark_no_show` and
+  `queue.staff_read` are operator capabilities; possessing a Party UUID never grants authority by
+  itself.
 - mutation-time Representation resolution uses the locking Party-authority primitive inside the
   authoritative PostgreSQL transaction where subject authority is required.
 
@@ -105,6 +125,7 @@ queue.leave
 queue.status
 queue.call_next
 queue.check_in
+queue.classify_expected_workload
 queue.mark_no_show
 queue.staff_read
 ```
