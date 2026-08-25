@@ -1,10 +1,7 @@
-from __future__ import annotations
+from uuid import UUID
 
-from typing import Any, cast
-from uuid import UUID, uuid4
-
-from .operational_support import PgConnection
-from .tenant_sandbox import TenantSandbox, actor_for, auth
+from . import operational_support as support
+from .tenant_sandbox import TenantSandbox, actor_for
 
 
 F3_ACCEPTANCE_CAPABILITIES = frozenset(
@@ -32,17 +29,17 @@ def acceptance_actor(sandbox: TenantSandbox):
     )
 
 
-def seed_walk_in_subject(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
+def seed_walk_in_subject(conn: support.PgConnection, sandbox: TenantSandbox) -> UUID:
     row = conn.execute(
         "INSERT INTO request_engine.parties "
-        "(organization_id,party_kind,display_name) VALUES (%s,'person',%s) RETURNING id",
-        (sandbox.organization_id, f"Walk-in {uuid4().hex[:8]}"),
+        "(organization_id,party_kind,display_name) VALUES (%s,'person','Walk-in') RETURNING id",
+        (sandbox.organization_id,),
     ).fetchone()
     assert row is not None
-    return cast(UUID, row[0])
+    return row[0]
 
 
-def reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> Any:
+def reservation_snapshot(conn: support.PgConnection, reservation_id: UUID):
     row = conn.execute(
         "SELECT to_jsonb(r) FROM request_engine.reservations r WHERE id=%s",
         (reservation_id,),
@@ -51,7 +48,7 @@ def reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> Any:
     return row[0]
 
 
-def capacity_claim_snapshot(conn: PgConnection, reservation_id: UUID) -> list[Any]:
+def capacity_claim_snapshot(conn: support.PgConnection, reservation_id: UUID):
     return [
         row[0]
         for row in conn.execute(
@@ -60,18 +57,3 @@ def capacity_claim_snapshot(conn: PgConnection, reservation_id: UUID) -> list[An
             (reservation_id,),
         ).fetchall()
     ]
-
-
-async def create_workload(
-    client: Any,
-    sandbox: TenantSandbox,
-    workload_key: str,
-    display_name: str,
-) -> UUID:
-    response = await client.post(
-        "/v1/live-workloads",
-        json={"workload_key": workload_key, "display_name": display_name},
-        headers=auth(sandbox, idempotency_key=f"workload-{uuid4().hex}"),
-    )
-    assert response.status_code == 201, response.text
-    return UUID(response.json()["id"])
