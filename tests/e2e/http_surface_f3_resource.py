@@ -11,7 +11,7 @@ F3_RESOURCE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         False,
         False,
         TenantIsolationMode.FILTERED,
-        HttpProbe(f"/v1/resource-activities?resource_id={P1}"),
+        HttpProbe("/v1/resource-activities", (("resource_id", P1),)),
     ),
     PublicHttpOperation(
         "resource_activity.start",
