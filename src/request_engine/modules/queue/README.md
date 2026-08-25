@@ -32,8 +32,11 @@ admitted_at
 ```
 
 Current `queue.check_in` admits immediately, so both are written from the same PostgreSQL transaction
-clock. F3 schema defaults use `clock_timestamp()` as well; the fields remain distinct so a future
-explicit arrival-before-admission policy does not need to rewrite history.
+clock. For a direct insert that omits both values, the schema uses one `BEFORE INSERT` initializer
+that reads `clock_timestamp()` once and assigns that same instant to both fields. F3 deliberately
+does not use two independent volatile timestamp defaults because PostgreSQL can evaluate them at
+different instants. If exactly one value is supplied, the omitted value inherits it. The fields
+remain distinct so a future explicit arrival-before-admission policy does not need to rewrite history.
 
 ### Current QueueEntry lifecycle
 
@@ -86,6 +89,8 @@ or `called`.
 - locks ServiceQueue before QueueEntry;
 - validates non-null workload IDs as active and same-tenant;
 - advances revision and emits audit/outbox only when the classification materially changes;
+- rejects conflicting reuse of one idempotency key with a different request fingerprint;
+- does not let a foreign-tenant workload UUID become authority or a tenant-existence oracle;
 - is rejected after service begins or the QueueEntry becomes terminal.
 
 Expected workload is therefore mutable pre-service operational context, not immutable booking truth.
@@ -138,6 +143,9 @@ service_session.pause
 service_session.resume
 service_session.complete
 service_session.read
+resource_activity.start
+resource_activity.end
+resource_activity.read
 ```
 
 ## Customer vs staff reads
@@ -147,6 +155,9 @@ queue timestamps/derived entries-ahead, but never identities or operational deta
 
 Staff live queue uses a separate DTO/projection and may expose operational identity, expected workload
 and actual execution context under `queue.staff_read`.
+
+Delivery's `service_session.read` and `resource_activity.read` reconstruct factual execution/occupation
+after refresh or reconnect; they are not customer Queue DTOs and do not provide F4 predictions.
 
 Do not reuse the staff projection as a customer DTO.
 
