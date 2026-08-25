@@ -1,10 +1,13 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
+)
+from request_engine.modules.delivery.adapters.db.resource_activity_reader import (
+    PostgresResourceActivityReader,
 )
 from request_engine.modules.delivery.api.live_models import (
     EndResourceActivityBody,
@@ -27,12 +30,26 @@ IdempotencyKey = Annotated[
 
 def create_resource_activity_router(
     operations: PostgresLiveServiceOperations,
+    reader: PostgresResourceActivityReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter()
 
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
+
+    async def list_activities(
+        resource_id: UUID,
+        current: Annotated[ActorContext, Depends(actor)],
+        active_only: Annotated[bool, Query()] = True,
+    ) -> list[ResourceActivityView]:
+        require_capability(current, "resource_activity.read")
+        items = await reader.list_for_resource(
+            current.organization_id,
+            resource_id,
+            active_only=active_only,
+        )
+        return [ResourceActivityView.from_contract(item) for item in items]
 
     async def start_activity(
         body: StartResourceActivityBody,
@@ -70,6 +87,14 @@ def create_resource_activity_router(
         )
         return ResourceActivityView.from_contract(result)
 
+    add_capability_route(
+        router,
+        "/resource-activities",
+        list_activities,
+        capability="resource_activity.read",
+        methods=["GET"],
+        response_model=list[ResourceActivityView],
+    )
     add_capability_route(
         router,
         "/resource-activities",
