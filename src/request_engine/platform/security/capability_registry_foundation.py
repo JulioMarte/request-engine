@@ -1,0 +1,83 @@
+from request_engine.platform.security.capability_types import (
+    CapabilityDefinition,
+    CapabilityExposure,
+    RevisionPolicy,
+    command_capability,
+    query_capability,
+)
+
+FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+    query_capability(
+        "business.get_info",
+        CapabilityExposure.PUBLIC,
+        "Read structured public/operational business information.",
+        legacy_aliases=frozenset({"business.read"}),
+    ),
+    query_capability(
+        "catalog.search_offerings",
+        CapabilityExposure.PUBLIC,
+        "Search the tenant offering catalog.",
+        legacy_aliases=frozenset({"catalog.read"}),
+    ),
+    query_capability(
+        "catalog.get_offering_details",
+        CapabilityExposure.PUBLIC,
+        "Read one offering and its exposed version details.",
+        legacy_aliases=frozenset({"catalog.read"}),
+    ),
+    query_capability(
+        "appointments.find_slots",
+        CapabilityExposure.PUBLIC,
+        "Find appointment slots without committing capacity.",
+        legacy_aliases=frozenset({"booking.find_slots"}),
+    ),
+    command_capability(
+        "appointments.book",
+        CapabilityExposure.PUBLIC,
+        "Book an appointment for an authorized subject Party.",
+        party_scope="appointments.book",
+        override_capability="appointments.subject_override",
+        legacy_aliases=frozenset({"booking.book_appointment"}),
+    ),
+    query_capability(
+        "appointments.read",
+        CapabilityExposure.PUBLIC,
+        "Read an appointment for an authorized subject Party.",
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
+        legacy_aliases=frozenset({"booking.read"}),
+    ),
+    command_capability(
+        "appointments.cancel",
+        CapabilityExposure.PUBLIC,
+        "Cancel an appointment for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
+        legacy_aliases=frozenset({"booking.cancel_reservation"}),
+    ),
+    command_capability(
+        "appointments.reschedule",
+        CapabilityExposure.PUBLIC,
+        "Reschedule an appointment for an authorized subject Party.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
+        legacy_aliases=frozenset({"booking.reschedule_reservation"}),
+    ),
+    command_capability(
+        "appointments.confirm_attendance",
+        CapabilityExposure.PUBLIC,
+        "Record the subject Party's accepted or declined attendance response.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
+    ),
+    command_capability(
+        "appointments.subject_override",
+        CapabilityExposure.OPERATOR,
+        "Permission to operate on appointment subjects without delegated Party authority.",
+        legacy_aliases=frozenset({"booking.subject_override"}),
+        runtime_available=False,
+    ),
+)
