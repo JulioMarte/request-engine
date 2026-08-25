@@ -8,10 +8,15 @@ from request_engine.platform.security.context import ActorContext
 
 from .evidence import durable_snapshot
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import (
+    TenantSandbox,
+    auth,
+    client_with_actors,
+    seed_tenant_sandbox,
+)
 
 
-def _seed_live_session(conn: PgConnection, sandbox) -> UUID:
+def _seed_live_session(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
     conn.execute(
         "INSERT INTO request_engine.resource_location_assignments "
         "(organization_id,resource_id,location_id,effective_during) "
