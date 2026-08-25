@@ -46,8 +46,8 @@ async def require_execution_assignment(
         text(
             "SELECT 1 FROM request_engine.resource_location_assignments "
             "WHERE organization_id=:organization_id AND resource_id=:resource_id "
-            "AND location_id=:location_id AND status='active' AND effective_during @> :at "
-            "LIMIT 1"
+            "AND location_id=:location_id AND status='active' "
+            "AND effective_during @> CAST(:at AS timestamptz) LIMIT 1"
         ),
         {
             "organization_id": organization_id,
