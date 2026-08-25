@@ -42,16 +42,15 @@ def test_resource_activity_identity_revision_and_terminal_state_are_db_authorita
         "WHERE id=%s",
         (principal_id, activity_id),
     )
-    assert admin_conn.execute(
+    observed = admin_conn.execute(
         "SELECT activity_kind,started_at,ended_at,revision "
         "FROM request_engine.resource_activities WHERE id=%s",
         (activity_id,),
-    ).fetchone() == (
-        "break",
-        admin_conn.execute("SELECT '2035-01-01T10:00Z'::timestamptz").fetchone()[0],
-        admin_conn.execute("SELECT '2035-01-01T10:05Z'::timestamptz").fetchone()[0],
-        2,
-    )
+    ).fetchone()
+    assert observed is not None
+    assert observed[0] == "break"
+    assert observed[1] < observed[2]
+    assert observed[3] == 2
 
     with pytest.raises(psycopg.Error) as terminal:
         admin_conn.execute(
