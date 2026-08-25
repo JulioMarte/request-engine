@@ -1,6 +1,6 @@
 # F3 — Live Service Operations contract
 
-Status: **normative and implemented on `feature/live-service-operations` / PR #79; exact-head merge evidence required**.
+Status: **normative and implementation-complete on `feature/live-service-operations` / PR #79; final exact-head merge evidence required**.
 
 This contract activates actual service execution without collapsing planning, waiting and execution into one mutable record.
 
@@ -28,7 +28,7 @@ A `ServiceSession` never changes `Reservation.during`, OfferingVersion, booking 
 ## 2. Ownership
 
 - `booking` continues to own Reservation and capacity.
-- `queue` owns ServiceQueue, QueueEntry, FIFO admission/calling, expected-workload classification and no-show state.
+- `queue` owns ServiceQueue, QueueEntry, FIFO admission/calling, expected-workload classification, no-show state, live staff queue reads, bounded queue history and operational workload vocabulary configuration.
 - `delivery` keeps ReservationAccess and is activated for ServiceSession, ServiceSessionInterruption and ResourceActivity.
 - operational workload vocabulary is tenant-scoped configuration consumed by Queue and Delivery. It is **not** F2 `ServiceClassification`; discovery taxonomy and live workload are intentionally independent concepts.
 
@@ -77,7 +77,7 @@ Walk-in:
 
 Both forms produce one QueueEntry and DB-authoritative `arrived_at/admitted_at`.
 
-## 5. Workload classification
+## 5. Workload classification and provisioning
 
 F3 introduces a narrow typed tenant vocabulary:
 
@@ -86,9 +86,31 @@ OperationalWorkloadClassification
   workload_key
   display_name
   active
+  revision
 ```
 
 It deliberately has no arbitrary JSON payload and no prediction/duration model.
+
+The tenant can provision this vocabulary through explicit operator commands:
+
+```text
+workload.list
+workload.create
+workload.update
+workload.deactivate
+```
+
+Lifecycle rules are deliberately narrow:
+
+- `workload_key` is a stable, trimmed tenant-scoped identity and cannot be retargeted after creation;
+- `display_name` may be renamed while the classification is active;
+- update/deactivate require caller-observed `expected_revision`;
+- all workload mutations require `Idempotency-Key`;
+- deactivation preserves historical references; physical DELETE is rejected;
+- an inactive classification is terminal/immutable;
+- list returns active options for new operational use;
+- foreign workload IDs are indistinguishable from unknown IDs at tenant-scoped mutation surfaces;
+- material create/update/deactivate operations append audit and outbox facts.
 
 Expected workload belongs to QueueEntry because it is an operational expectation before execution. It may be unknown at check-in and can be assigned, corrected or cleared later while the QueueEntry is still `waiting` or `called` through `queue.classify_expected_workload`.
 
@@ -226,6 +248,12 @@ queue.classify_expected_workload  operator
 queue.call_next                   operator
 queue.mark_no_show                operator
 queue.staff_read                  operator
+queue.staff_history_read          operator
+
+workload.list                     operator
+workload.create                   operator
+workload.update                   operator
+workload.deactivate               operator
 
 service_session.start             operator
 service_session.pause             operator
@@ -246,7 +274,19 @@ All externally retryable F3 mutations require Idempotency-Key. Commands targetin
 
 Customer queue status may expose only the caller-authorized subject's state, timestamps that belong to that subject, and derived `entries_ahead`. It never returns people ahead, names, other Party IDs, visit/workload information or staff-only execution facts.
 
-Staff live queue view may return the identity required to operate the queue, scheduled context, expected workload, actual Resource/Location and ServiceSession state under `queue.staff_read`.
+The staff **live** queue is deliberately not an accidental history endpoint. Under `queue.staff_read`, it returns only operationally active QueueEntries:
+
+```text
+waiting
+called
+serving
+```
+
+Terminal states (`completed`, `no_show`, `cancelled`) are excluded from the live projection.
+
+Terminal queue history is a separate operator surface under `queue.staff_history_read`. It requires a bounded time window, applies a server-bounded `limit`, and uses a stable cursor for pagination. This keeps “show me the queue now” semantically and operationally distinct from “inspect what happened earlier” without introducing F4/F5 analytics.
+
+The staff DTO/projection may expose the identity required to operate the queue, scheduled context, expected workload, actual Resource/Location and ServiceSession state. Historical paging remains tenant-scoped and does not weaken customer privacy.
 
 `service_session.read` and `resource_activity.read` are staff/operator surfaces. They are designed for factual reconstruction after refresh, reconnect or process restart; they are not customer queue projections.
 
@@ -273,6 +313,9 @@ service_session.resumed.v1
 service_session.completed.v1
 resource_activity.started.v1
 resource_activity.ended.v1
+workload.classification_created.v1
+workload.classification_updated.v1
+workload.classification_deactivated.v1
 ```
 
 Events report committed operational facts; they do not mutate Reservation/capacity truth downstream.
@@ -287,21 +330,24 @@ No F3 body/table adds a general notes JSON/text field.
 
 F3 is the single Alembic revision `0005_live_service_ops` over `0004_f2_discovery`.
 
-Existing QueueEntries are backfilled with `arrived_at = admitted_at`. The final F3 revision owns the single-clock QueueEntry initializer; provisional follow-up F3 migrations used during invariant discovery are not part of the final graph. No historical ServiceSession is fabricated from legacy service timestamps: doing so would assert provenance that F3 cannot prove. Legacy timestamp rows remain historical compatibility facts; new F3 execution truth begins with actual ServiceSession creation.
+Existing QueueEntries are backfilled with `arrived_at = admitted_at`. The final F3 revision owns the single-clock QueueEntry initializer and the append-preserving/revisioned OperationalWorkloadClassification lifecycle guard directly; provisional follow-up F3 migrations used during invariant discovery are not part of the final graph. No historical ServiceSession is fabricated from legacy service timestamps: doing so would assert provenance that F3 cannot prove. Legacy timestamp rows remain historical compatibility facts; new F3 execution truth begins with actual ServiceSession creation.
 
 Historical `0001_initial` and `migrations/sql/v3_candidate/*` are not rewritten.
 
 ## 16. Durable invariants
 
 - Reservation planning, Queue waiting state and Service execution remain independent/reconstructable.
+- the acceptance boundary proves a real Reservation can traverse CheckIn → FIFO/CallNext → StartService → interruption → Resume → Complete without SQL-seeding an intermediate called state;
 - exactly zero or one ServiceSession exists per QueueEntry;
 - QueueEntry/ServiceSession start and completion are transactionally coherent;
 - actual operational timestamps are durable, DB-authoritative and monotonic;
 - implicit immediate arrival/admission uses one DB transition instant rather than two independently evaluated volatile defaults;
 - expected workload may evolve only before service starts; actual workload remains independently reconstructable on ServiceSession;
+- workload vocabulary keys are stable, updates are revisioned, deactivation preserves history and deletion is forbidden;
 - factual ServiceSession duration/interruption state can be reconstructed after reconnect without a frontend timer becoming authority;
 - open/historical ResourceActivity can be reconstructed under the same tenant boundary as its mutations;
 - customer queue projections never reveal another subject's identity/private context;
+- the staff live queue contains only active operational states, while terminal history is separately authorized and bounded;
 - Resource live service/activity conflicts follow the conservative F3 serialization policy;
 - all tenant-owned F3 relations use same-Organization FKs and FORCE RLS.
 
