@@ -21,27 +21,32 @@ def _race(conninfo: str, barrier: Barrier, entry_id: UUID, *, start: bool) -> st
                     (entry_id,),
                 ).fetchone()
                 return "no_show" if row is not None else "lost"
-            now = conn.execute("SELECT clock_timestamp()").fetchone()
-            assert now is not None
+            started = conn.execute(
+                "SELECT called_at + interval '1 minute' FROM request_engine.queue_entries "
+                "WHERE id=%s",
+                (entry_id,),
+            ).fetchone()
+            assert started is not None
             row = conn.execute(
                 "UPDATE request_engine.queue_entries SET status='serving',service_started_at=%s,"
                 "revision=revision+1 WHERE id=%s AND status='called' RETURNING "
                 "organization_id,service_queue_id",
-                (now[0], entry_id),
+                (started[0], entry_id),
             ).fetchone()
             if row is None:
                 return "lost"
             resource = conn.execute(
                 "SELECT resource_id,location_id FROM request_engine.resource_location_assignments "
-                "WHERE organization_id=%s AND status='active' LIMIT 1",
-                (row[0],),
+                "WHERE organization_id=%s AND status='active' "
+                "AND effective_during @> %s::timestamptz LIMIT 1",
+                (row[0], started[0]),
             ).fetchone()
             assert resource is not None
             conn.execute(
                 "INSERT INTO request_engine.service_sessions "
                 "(organization_id,queue_entry_id,resource_id,location_id,started_at) "
                 "VALUES (%s,%s,%s,%s,%s)",
-                (row[0], entry_id, resource[0], resource[1], now[0]),
+                (row[0], entry_id, resource[0], resource[1], started[0]),
             )
             return "start"
     finally:
