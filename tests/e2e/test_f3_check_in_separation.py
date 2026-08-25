@@ -18,15 +18,6 @@ from .tenant_sandbox import (
 )
 
 
-def _json_snapshot(conn: PgConnection, table: str, reservation_id: UUID) -> list[Any]:
-    rows = conn.execute(
-        f"SELECT to_jsonb(t) FROM request_engine.{table} t WHERE reservation_id = %s "
-        "ORDER BY id",
-        (reservation_id,),
-    ).fetchall()
-    return [row[0] for row in rows]
-
-
 def _reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> Any:
     row = conn.execute(
         "SELECT to_jsonb(r) FROM request_engine.reservations r WHERE id = %s",
@@ -34,6 +25,15 @@ def _reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> Any:
     ).fetchone()
     assert row is not None
     return row[0]
+
+
+def _capacity_claim_snapshot(conn: PgConnection, reservation_id: UUID) -> list[Any]:
+    rows = conn.execute(
+        "SELECT to_jsonb(c) FROM request_engine.capacity_claims c "
+        "WHERE reservation_id = %s ORDER BY id",
+        (reservation_id,),
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 def _seed_walk_in_subject(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
@@ -59,24 +59,27 @@ async def test_check_in_keeps_reservation_planning_separate_and_walk_in_reservat
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f3-check-in-separation")
     contextualize_sandbox(e2e_admin_conn, sandbox)
-    actor = actor_for(sandbox)
+    base_actor = actor_for(sandbox)
     actor = ActorContext(
-        organization_id=actor.organization_id,
-        principal_id=actor.principal_id,
-        capabilities=actor.capabilities | frozenset({"queue.check_in"}),
+        organization_id=base_actor.organization_id,
+        principal_id=base_actor.principal_id,
+        capabilities=base_actor.capabilities | frozenset({"queue.check_in"}),
     )
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
         slot = await first_slot(client, sandbox)
         booked = await client.post(
             "/v1/appointments",
-            json={"option_id": str(slot["option_id"]), "subject_party_id": str(sandbox.party_id)},
+            json={
+                "option_id": str(slot["option_id"]),
+                "subject_party_id": str(sandbox.party_id),
+            },
             headers=auth(sandbox, idempotency_key=f"book-{uuid4().hex}"),
         )
         assert booked.status_code == 201, booked.text
         reservation = cast(dict[str, Any], booked.json())
         reservation_id = UUID(reservation["id"])
         before_reservation = _reservation_snapshot(e2e_admin_conn, reservation_id)
-        before_claims = _json_snapshot(e2e_admin_conn, "capacity_claims", reservation_id)
+        before_claims = _capacity_claim_snapshot(e2e_admin_conn, reservation_id)
 
         scheduled = await client.post(
             f"/v1/queues/{sandbox.queue_id}/check-in",
@@ -88,9 +91,8 @@ async def test_check_in_keeps_reservation_planning_separate_and_walk_in_reservat
         )
         assert scheduled.status_code == 201, scheduled.text
         assert scheduled.json()["reservation_id"] == str(reservation_id)
-
         assert _reservation_snapshot(e2e_admin_conn, reservation_id) == before_reservation
-        assert _json_snapshot(e2e_admin_conn, "capacity_claims", reservation_id) == before_claims
+        assert _capacity_claim_snapshot(e2e_admin_conn, reservation_id) == before_claims
 
         walk_in_party_id = _seed_walk_in_subject(e2e_admin_conn, sandbox)
         reservation_count = e2e_admin_conn.execute(
