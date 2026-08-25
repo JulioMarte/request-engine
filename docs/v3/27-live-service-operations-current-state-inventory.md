@@ -11,7 +11,7 @@ without rewriting V3/F1/F2 history.
 | Reservation OfferingVersion/location/commercial provenance | KEEP | never rewritten to match actual service |
 | CapacityClaim | KEEP | capacity ledger remains Booking-owned |
 | `ServiceQueue` | KEEP | FIFO serialization root |
-| `QueueEntry` | ADAPT | waiting/calling truth; arrival + expected workload; execution fields are compatibility mirrors |
+| `QueueEntry` | ADAPT | waiting/calling truth; arrival + mutable pre-service expected workload; execution fields are compatibility mirrors |
 | `QueueEntry.admitted_at` | KEEP | FIFO authority |
 | `QueueEntry.called_at` | KEEP | DB-authoritative call time |
 | `QueueEntry.service_started_at` | ADAPT | compatibility mirror; ServiceSession is execution authority |
@@ -21,6 +21,7 @@ without rewriting V3/F1/F2 history.
 | `queue.call_next` | KEEP | FIFO SQL + ServiceQueue locking preserved |
 | `queue.leave` | KEEP | subject-facing cancellation path |
 | `queue.check_in` | ADD | operator reservation check-in / walk-in admission |
+| `queue.classify_expected_workload` | ADD | operator assign/correct/clear expected workload while waiting/called; revision + idempotency + audit/outbox |
 | `queue.mark_no_show` | ADD | called-only no-show with revision/idempotency/audit/outbox |
 | `queue.staff_read` | ADD | separate operator projection |
 | customer queue status | KEEP + HARDEN | own authorized entry only; no other identity/workload leakage |
@@ -33,6 +34,7 @@ without rewriting V3/F1/F2 history.
 | operational workload vocabulary | ADD | typed tenant-scoped expected/actual classification |
 | arbitrary workload JSONB | REJECTED | no untyped workload vocabulary |
 | frontend elapsed-service timer as authority | REJECTED | DB timestamps are authority |
+| QueueEntry F3 timestamp defaults | ADAPT | `arrived_at` and `admitted_at` defaults use `clock_timestamp()` consistently with transition policy |
 | normal authenticated business API | ADAPT | exact operator F3 capabilities composed into runtime |
 | `0001_initial` | HISTORICAL | untouched |
 | `migrations/sql/v3_candidate/*` | HISTORICAL | untouched |
@@ -53,11 +55,12 @@ without rewriting V3/F1/F2 history.
 | resume vs complete | `tests/db/test_f3_resume_complete_race.py` | paused session cannot silently complete; serialized valid state survives |
 | ResourceActivity lifecycle | `tests/db/test_f3_resource_activity_lifecycle.py` | immutable identity/end semantics + revision discipline |
 | interruption temporal order | `tests/db/test_f3_interruption_temporal.py` | interruption cannot predate/outlive execution |
-| arrival/admission semantics | `tests/db/test_f3_arrival_admission_semantics.py` | DB-authored ordered timestamps |
+| arrival/admission semantics | `tests/db/test_f3_arrival_admission_semantics.py` | DB-authored ordered timestamps and defaults follow the same transition clock semantics |
 | F3 RLS | `tests/db/test_f3_rls_isolation.py` | new tables preserve Organization boundary |
 | F3 SQL authority | `tests/db/test_f3_live_ops_authority.py` | direct-write constraints defend assignment/lifecycle rules |
 | stale StartService revision | `tests/e2e/test_f3_start_service_rejection.py` | 409 + no Session + Queue unchanged + no audit/outbox effect |
 | StartService idempotency | `tests/e2e/test_f3_start_service_idempotency.py` | retry replay does not duplicate execution/effects |
+| expected-workload classification | `tests/e2e/test_f3_expected_workload_classification.py` | classify/reclassify/clear works before service; stale/terminal attempts do not rewrite truth; replay does not duplicate effects |
 | full execution lifecycle | `tests/e2e/test_f3_service_lifecycle.py` | start/pause/resume/complete keeps Queue, Session and interruption coherent |
 | check-in vs planning | `tests/e2e/test_f3_check_in_separation.py` | Reservation/claims unchanged; walk-in creates no Reservation |
 | valid no-show | `tests/e2e/test_f3_no_show.py` | called entry becomes no_show, no Session, exactly one audit/outbox fact |
@@ -81,6 +84,25 @@ lock active ServiceQueue
 
 Reservation-backed check-in does not mutate Reservation/CapacityClaim. Walk-in persists
 `reservation_id = NULL`.
+
+### ClassifyExpectedWorkload
+
+```text
+idempotency
+-> probe QueueEntry only to discover ServiceQueue
+-> lock active ServiceQueue
+-> lock QueueEntry
+-> validate expected revision + WAITING/CALLED
+-> validate optional active same-tenant workload classification
+-> if materially changed: update expected workload + revision
+-> audit/outbox
+-> complete idempotency
+-> one commit
+```
+
+A `null` workload explicitly clears an earlier expectation. Repeating the same semantic value is a
+no-op replay result and does not manufacture a new operational fact. Once service has started or the
+QueueEntry is terminal, expected workload is historical and cannot be rewritten.
 
 ### StartService
 
@@ -134,8 +156,9 @@ F3 is consolidated into:
 ```
 
 Temporary follow-up F3 revisions used while discovering invariants were folded back into `0005`
-before merge. Repeated bootstrap and current-product CI prove the consolidated graph rather than a
-chain of provisional feature migrations.
+before merge. `arrived_at`/`admitted_at` defaults now use `clock_timestamp()` directly in the
+consolidated migration. Repeated bootstrap and current-product CI prove the consolidated graph rather
+than a chain of provisional feature migrations.
 
 ## Documentation precedence
 
