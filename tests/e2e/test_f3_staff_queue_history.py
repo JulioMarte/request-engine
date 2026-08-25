@@ -106,3 +106,13 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
             headers=auth(sandbox),
         )
         assert invalid.status_code == 422
+
+        oversized = await client.get(
+            f"/v1/queues/{sandbox.queue_id}/staff/history",
+            params={
+                "window_start": "2035-01-01T00:00:00+00:00",
+                "window_end": "2035-02-02T00:00:00+00:00",
+            },
+            headers=auth(sandbox),
+        )
+        assert oversized.status_code == 422
