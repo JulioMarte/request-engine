@@ -44,7 +44,7 @@ FIFO queues remain ordered by:
 
 Position is derived. There is no mutable queue-position counter.
 
-`arrived_at` and `admitted_at` are different semantics. F3 initially admits immediately, so new check-ins/walk-ins record both from the same PostgreSQL transaction clock. Schema defaults also use `clock_timestamp()` so direct/defaulted writes cannot silently introduce a different time semantic. The schema keeps the fields separate so a future explicit arrival-before-admission feature does not need to reinterpret history.
+`arrived_at` and `admitted_at` are different semantics. F3 initially admits immediately, so normal check-ins/walk-ins record both from one PostgreSQL transition clock. For direct inserts that omit both values, a `BEFORE INSERT` initializer reads `clock_timestamp()` exactly once and assigns that same instant to both columns. The schema intentionally does **not** use two independent volatile timestamp defaults because PostgreSQL may evaluate them at different instants. If a future explicit arrival-before-admission flow supplies one timestamp while omitting the other, the initializer copies the supplied value rather than inventing a second instant. The fields remain separate so future explicit admission policy does not reinterpret history.
 
 State machine:
 
@@ -101,6 +101,8 @@ That mutation:
 - validates a non-null classification as active and same-tenant;
 - advances QueueEntry revision only when the expected classification materially changes;
 - appends audit/outbox only for a material classification change;
+- rejects conflicting reuse of the same idempotency key with a different request fingerprint;
+- keeps foreign-tenant workload identifiers opaque rather than granting authority through IDs;
 - becomes invalid once service has started or the QueueEntry is otherwise terminal.
 
 After `StartService`, expected workload is historical input and must not be rewritten to match actual execution.
@@ -143,6 +145,8 @@ Actual Resource and Location are required in F3. Start must prove that the Resou
 `started_at` and `completed_at` are PostgreSQL-authoritative timestamps. `scheduled_at` is not duplicated; scheduled time remains derivable from Reservation when one exists.
 
 Legacy `queue_entries.service_started_at/completed_at` remain only as a compatibility projection for `service_queue_status_v1`. F3 commands write them atomically from the same DB timestamp as ServiceSession; Delivery is the authoritative execution source and new read models use ServiceSession.
+
+`service_session.read` returns a factual observation snapshot rather than a prediction. In addition to the durable session facts it exposes an `observed_at` DB instant, interruption history and derived wall-clock, interruption and active-service seconds. For an open pause, elapsed interruption is measured only through that observation instant. These values answer “what has happened as of this read”; they do not estimate remaining service time, ETA or future capacity.
 
 ## 7. Atomic Queue ↔ Delivery transitions
 
@@ -189,7 +193,7 @@ Pause atomically creates the interruption and changes session `active -> paused`
 
 QueueEntry remains `SERVING` while paused.
 
-This supports independent derivation of wall-clock duration, interruption duration and active-service duration without frontend timers.
+The interruption facts and `service_session.read` snapshot make wall-clock duration, interruption duration and active-service duration reconstructable without frontend timers.
 
 ## 9. ResourceActivity
 
@@ -207,6 +211,8 @@ F3 concurrency policy is intentionally conservative:
 - at most one active/paused ServiceSession per Resource;
 - an open ResourceActivity conflicts with starting a ServiceSession on that Resource;
 - an active/paused ServiceSession conflicts with starting ResourceActivity.
+
+`resource_activity.read` is an operator-only tenant-filtered reconstruction surface. It is queried by `resource_id`, defaults to active occupation only and may explicitly include ended history. A foreign or unknown Resource does not become a cross-tenant existence oracle. The read reports persisted occupation facts; it does not project future Resource availability.
 
 Parallel/group service is a future explicit policy, not an accidental F3 behavior.
 
@@ -229,6 +235,7 @@ service_session.read              operator
 
 resource_activity.start           operator
 resource_activity.end             operator
+resource_activity.read            operator
 ```
 
 Existing customer capabilities remain separate (`queue.join`, `queue.status`, `queue.leave`). Caller-supplied Organization IDs never create authority; actor Organization remains runtime scope.
@@ -241,13 +248,15 @@ Customer queue status may expose only the caller-authorized subject's state, tim
 
 Staff live queue view may return the identity required to operate the queue, scheduled context, expected workload, actual Resource/Location and ServiceSession state under `queue.staff_read`.
 
+`service_session.read` and `resource_activity.read` are staff/operator surfaces. They are designed for factual reconstruction after refresh, reconnect or process restart; they are not customer queue projections.
+
 Staff DTOs and customer DTOs remain distinct types.
 
 ## 12. Time and restart semantics
 
-All transition times and F3 QueueEntry time defaults use `clock_timestamp()` inside PostgreSQL transactions. Browser/mobile timers are presentation only.
+All live transition times use PostgreSQL `clock_timestamp()` inside authoritative transactions. Omitted QueueEntry arrival/admission times are initialized from one shared `clock_timestamp()` read, not from two independently evaluated volatile defaults. Browser/mobile timers are presentation only.
 
-Refresh, reconnect, process restart and idempotent retry cannot erase or regenerate arrival, call, service or interruption timestamps.
+Refresh, reconnect, process restart and idempotent retry cannot erase or regenerate arrival, call, service, interruption or ResourceActivity timestamps. Read-time duration fields are explicitly observations derived from durable facts at the read's DB observation instant.
 
 ## 13. Events and audit
 
@@ -276,9 +285,9 @@ No F3 body/table adds a general notes JSON/text field.
 
 ## 15. Migration semantics
 
-F3 is Alembic revision `0005_live_service_ops` over `0004_f2_discovery`.
+F3 is the single Alembic revision `0005_live_service_ops` over `0004_f2_discovery`.
 
-Existing QueueEntries are backfilled with `arrived_at = admitted_at`. No historical ServiceSession is fabricated from legacy service timestamps: doing so would assert provenance that F3 cannot prove. Legacy timestamp rows remain historical compatibility facts; new F3 execution truth begins with actual ServiceSession creation.
+Existing QueueEntries are backfilled with `arrived_at = admitted_at`. The final F3 revision owns the single-clock QueueEntry initializer; provisional follow-up F3 migrations used during invariant discovery are not part of the final graph. No historical ServiceSession is fabricated from legacy service timestamps: doing so would assert provenance that F3 cannot prove. Legacy timestamp rows remain historical compatibility facts; new F3 execution truth begins with actual ServiceSession creation.
 
 Historical `0001_initial` and `migrations/sql/v3_candidate/*` are not rewritten.
 
@@ -288,7 +297,10 @@ Historical `0001_initial` and `migrations/sql/v3_candidate/*` are not rewritten.
 - exactly zero or one ServiceSession exists per QueueEntry;
 - QueueEntry/ServiceSession start and completion are transactionally coherent;
 - actual operational timestamps are durable, DB-authoritative and monotonic;
+- implicit immediate arrival/admission uses one DB transition instant rather than two independently evaluated volatile defaults;
 - expected workload may evolve only before service starts; actual workload remains independently reconstructable on ServiceSession;
+- factual ServiceSession duration/interruption state can be reconstructed after reconnect without a frontend timer becoming authority;
+- open/historical ResourceActivity can be reconstructed under the same tenant boundary as its mutations;
 - customer queue projections never reveal another subject's identity/private context;
 - Resource live service/activity conflicts follow the conservative F3 serialization policy;
 - all tenant-owned F3 relations use same-Organization FKs and FORCE RLS.
