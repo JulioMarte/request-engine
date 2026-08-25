@@ -5,7 +5,6 @@ from uuid import UUID
 
 from request_engine.platform.security.context import ActorContext
 
-
 _ACCEPTANCE_CAPABILITIES = frozenset(
     {
         "queue.check_in",

@@ -5,7 +5,6 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-
 _WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
 
 
