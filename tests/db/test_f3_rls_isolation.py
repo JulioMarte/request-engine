@@ -71,12 +71,12 @@ def test_f3_relations_force_rls_and_hide_foreign_tenant_rows(
             "SELECT set_config('request_engine.organization_id',%s,false)",
             (str(first.organization_id),),
         )
-        assert app_conn.execute(
-            "SELECT id FROM request_engine.service_sessions"
-        ).fetchall() == [(first_session,)]
-        assert app_conn.execute(
-            "SELECT id FROM request_engine.resource_activities"
-        ).fetchall() == [(first_activity,)]
+        assert app_conn.execute("SELECT id FROM request_engine.service_sessions").fetchall() == [
+            (first_session,)
+        ]
+        assert app_conn.execute("SELECT id FROM request_engine.resource_activities").fetchall() == [
+            (first_activity,)
+        ]
         assert app_conn.execute(
             "SELECT count(*) FROM request_engine.service_session_interruptions"
         ).fetchone() == (1,)
