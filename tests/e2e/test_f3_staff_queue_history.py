@@ -41,7 +41,8 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
     actor = type(base_actor)(
         organization_id=base_actor.organization_id,
         principal_id=base_actor.principal_id,
-        capabilities=base_actor.capabilities | frozenset({"queue.staff_read"}),
+        capabilities=base_actor.capabilities
+        | frozenset({"queue.staff_read", "queue.staff_history_read"}),
     )
     terminal_ids = [
         _seed_entry(
