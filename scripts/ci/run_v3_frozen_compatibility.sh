@@ -44,6 +44,8 @@ python scripts/ci/normalize_ci_line_endings.py
 mkdir -p .phase6 .ci
 uv sync --all-groups
 
+# V3 release provenance is closed. Post-baseline work must never make a later
+# feature green by rewriting released migration payloads or frozen evidence.
 git cat-file -e "${RELEASED_V3_SHA}^{commit}"
 IMMUTABLE_V3_PATHS=(
   migrations/versions/0001_initial.py
@@ -61,6 +63,8 @@ if [[ -s "$BASELINE_DIFF" ]]; then
   exit 1
 fi
 
+# The historical database is intentionally pinned to the released V3 schema.
+# Current product behavior belongs to run_current_product.sh and Alembic head.
 uv run alembic upgrade "$V3_BASELINE_REVISION"
 uv run alembic current | tee "$ALEMBIC_CURRENT"
 if ! grep -Eq '(^|[[:space:]])0001_initial([[:space:]]|$)' "$ALEMBIC_CURRENT"; then
@@ -80,6 +84,9 @@ source "$RUNTIME_ENV"
 uv run python scripts/release/prove_v3_public_api_compatibility.py \
   --output "$API_PROOF"
 
+# Historical question: does the released V3 tree still reproduce its own
+# PostgreSQL behavior on its own released schema? Run the released source/tests,
+# not current post-V3 application code, so provenance cannot freeze the future.
 rm -rf "$RELEASE_TREE"
 git worktree add --detach "$RELEASE_TREE" "$RELEASED_V3_SHA"
 (
