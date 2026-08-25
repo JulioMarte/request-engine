@@ -47,6 +47,16 @@ class ServiceSessionInterruption:
 
 
 @dataclass(frozen=True, slots=True)
+class ServiceSessionOperationalSnapshot:
+    session: ServiceSession
+    observed_at: datetime
+    wall_clock_seconds: int
+    interruption_seconds: int
+    active_service_seconds: int
+    interruptions: tuple[ServiceSessionInterruption, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceActivity:
     id: UUID
     resource_id: UUID
