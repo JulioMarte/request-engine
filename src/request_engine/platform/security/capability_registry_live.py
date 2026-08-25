@@ -1,3 +1,6 @@
+from request_engine.platform.security.capability_registry_delivery_live import (
+    LIVE_DELIVERY_CAPABILITIES,
+)
 from request_engine.platform.security.capability_types import (
     CapabilityDefinition,
     CapabilityExposure,
@@ -6,7 +9,7 @@ from request_engine.platform.security.capability_types import (
     query_capability,
 )
 
-LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "queue.list",
         CapabilityExposure.PUBLIC,
@@ -70,54 +73,13 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Permission to operate on queue subjects without delegated Party authority.",
         runtime_available=False,
     ),
-    command_capability(
-        "service_session.start",
-        CapabilityExposure.OPERATOR,
-        "Start actual service for one called QueueEntry on the actual Resource and Location.",
-        revision=RevisionPolicy.REQUIRED,
-    ),
-    command_capability(
-        "service_session.pause",
-        CapabilityExposure.OPERATOR,
-        "Pause an active ServiceSession and persist one interruption.",
-        revision=RevisionPolicy.REQUIRED,
-    ),
-    command_capability(
-        "service_session.resume",
-        CapabilityExposure.OPERATOR,
-        "Resume a paused ServiceSession by closing its exact open interruption.",
-        revision=RevisionPolicy.REQUIRED,
-    ),
-    command_capability(
-        "service_session.complete",
-        CapabilityExposure.OPERATOR,
-        "Complete actual service and its QueueEntry atomically.",
-        revision=RevisionPolicy.REQUIRED,
-    ),
-    query_capability(
-        "service_session.read",
-        CapabilityExposure.OPERATOR,
-        "Read service state, interruption history, and factual elapsed durations.",
-    ),
-    query_capability(
-        "resource_activity.read",
-        CapabilityExposure.OPERATOR,
-        "Reconstruct current or historical non-service occupation for one Resource.",
-    ),
-    command_capability(
-        "resource_activity.start",
-        CapabilityExposure.OPERATOR,
-        "Start non-patient operational occupation of one Resource.",
-    ),
-    command_capability(
-        "resource_activity.end",
-        CapabilityExposure.OPERATOR,
-        "End one open ResourceActivity.",
-        revision=RevisionPolicy.REQUIRED,
-    ),
     query_capability(
         "workload.list",
         CapabilityExposure.OPERATOR,
         "List active operational workload classifications used by live service.",
     ),
+)
+
+LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+    LIVE_QUEUE_CAPABILITIES + LIVE_DELIVERY_CAPABILITIES
 )
