@@ -1,8 +1,6 @@
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import text
-
 from request_engine.modules.queue.adapters.db.live_queue_locking import (
     lock_active_queue,
     lock_queue_entry,
@@ -13,6 +11,10 @@ from request_engine.modules.queue.adapters.db.live_queue_serialization import (
     entry_from_json,
     entry_from_row,
     entry_to_json,
+)
+from request_engine.modules.queue.adapters.db.mark_no_show_persistence import (
+    persist_no_show,
+    require_no_service_session,
 )
 from request_engine.modules.queue.application.errors import (
     QueueEntryNotCancellable,
@@ -77,41 +79,18 @@ async def mark_no_show(
         current = cast(str, row["status"])
         if current != "called":
             raise QueueEntryNotCancellable(command.queue_entry_id, current)
-        exists = (
-            await session.execute(
-                text(
-                    "SELECT 1 FROM request_engine.service_sessions "
-                    "WHERE organization_id=:organization_id AND queue_entry_id=:entry_id"
-                ),
-                {
-                    "organization_id": command.organization_id,
-                    "entry_id": command.queue_entry_id,
-                },
-            )
-        ).first()
-        if exists is not None:
-            raise QueueEntryNotCancellable(
+        await require_no_service_session(
+            session,
+            command.organization_id,
+            command.queue_entry_id,
+        )
+        result = entry_from_row(
+            await persist_no_show(
+                session,
+                command.organization_id,
                 command.queue_entry_id,
-                "service_session_exists",
             )
-        updated = (
-            await session.execute(
-                text(
-                    "UPDATE request_engine.queue_entries "
-                    "SET status='no_show',revision=revision+1,"
-                    "updated_at=clock_timestamp() "
-                    "WHERE organization_id=:organization_id AND id=:entry_id "
-                    "RETURNING id,service_queue_id,subject_party_id,reservation_id,"
-                    "offering_id,status,arrived_at,admitted_at,called_at,"
-                    "expected_workload_classification_id,revision"
-                ),
-                {
-                    "organization_id": command.organization_id,
-                    "entry_id": command.queue_entry_id,
-                },
-            )
-        ).mappings().one()
-        result = entry_from_row(updated)
+        )
         details: dict[str, object] = {"queue_id": str(result.queue_id)}
         await record_queue_fact(
             session,
