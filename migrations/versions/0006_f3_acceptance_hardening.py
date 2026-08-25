@@ -66,4 +66,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("0006 hardens authoritative F3 workload history and is not reversible in place")
+    raise RuntimeError(
+        "0006 hardens authoritative F3 workload history and is not reversible in place"
+    )
