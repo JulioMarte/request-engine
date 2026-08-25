@@ -15,7 +15,9 @@ from request_engine.modules.delivery.adapters.db.live_serialization import (
 )
 from request_engine.modules.delivery.adapters.db.live_session_lock import lock_session_context
 from request_engine.modules.delivery.application.errors import ServiceSessionNotActionable
-from request_engine.modules.delivery.application.service_session_commands import CompleteServiceCommand
+from request_engine.modules.delivery.application.service_session_commands import (
+    CompleteServiceCommand,
+)
 from request_engine.modules.delivery.contracts.service_session import ServiceSession
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -26,7 +28,8 @@ from request_engine.platform.idempotency.postgres import (
 
 
 async def complete_service(
-    session_factory: SessionFactory, command: CompleteServiceCommand
+    session_factory: SessionFactory,
+    command: CompleteServiceCommand,
 ) -> ServiceSession:
     fingerprint = command_fingerprint(
         "service_session.complete",
@@ -48,23 +51,29 @@ async def complete_service(
         if replay is not None:
             return session_from_json(cast(dict[str, object], replay["session"]))
         entry, locked = await lock_session_context(
-            session, command.organization_id, command.service_session_id
+            session,
+            command.organization_id,
+            command.service_session_id,
         )
         require_revision(locked, command.service_session_id, command.expected_revision)
         current = cast(str, locked["status"])
         if current != "active" or entry["status"] != "serving":
             raise ServiceSessionNotActionable(command.service_session_id, current, "complete")
         await require_workload(
-            session, command.organization_id, command.actual_workload_classification_id
+            session,
+            command.organization_id,
+            command.actual_workload_classification_id,
         )
         completed_at = await db_now(session)
         result_row = await session.execute(
             text(
                 "UPDATE request_engine.service_sessions SET status='completed', "
-                "completed_at=:completed_at, actual_workload_classification_id=COALESCE(" 
+                "completed_at=:completed_at, "
+                "actual_workload_classification_id=COALESCE("
                 ":workload_id,actual_workload_classification_id), revision=revision+1, "
-                "updated_at=clock_timestamp() WHERE organization_id=:organization_id AND id=:session_id "
-                "RETURNING id,queue_entry_id,resource_id,location_id," 
+                "updated_at=clock_timestamp() "
+                "WHERE organization_id=:organization_id AND id=:session_id "
+                "RETURNING id,queue_entry_id,resource_id,location_id,"
                 "actual_workload_classification_id,status,started_at,completed_at,revision"
             ),
             {
@@ -78,7 +87,8 @@ async def complete_service(
         await session.execute(
             text(
                 "UPDATE request_engine.queue_entries SET status='completed', "
-                "completed_at=:completed_at, revision=revision+1, updated_at=clock_timestamp() "
+                "completed_at=:completed_at, revision=revision+1, "
+                "updated_at=clock_timestamp() "
                 "WHERE organization_id=:organization_id AND id=:entry_id"
             ),
             {
