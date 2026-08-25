@@ -34,7 +34,7 @@ async def create_workload_classification(
             session,
             organization_id=command.organization_id,
             principal_id=command.principal_id,
-            capability="workload.manage",
+            capability="workload.create",
             idempotency_key=command.idempotency_key,
             fingerprint=fingerprint,
         )
