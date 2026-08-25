@@ -265,6 +265,11 @@ path = "tests/modules/queue/test_live_service_contract.py"
 evidence = ["contract"]
 
 [[proofs]]
+guarantee = "INV-LIVE-OPS-SEPARATION-001"
+path = "tests/e2e/test_f3_check_in_separation.py"
+evidence = ["invariant", "contract", "adversarial", "provenance"]
+
+[[proofs]]
 guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
 path = "tests/db/test_f3_live_ops_invariants.py"
 evidence = ["invariant", "adversarial"]
