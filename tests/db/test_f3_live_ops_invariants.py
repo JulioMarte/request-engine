@@ -64,8 +64,7 @@ def test_execution_preserves_planning_and_expected_vs_actual_classification(
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
     before = admin_conn.execute(
-        "SELECT offering_version_id,during,revision "
-        "FROM request_engine.reservations WHERE id=%s",
+        "SELECT offering_version_id,during,revision FROM request_engine.reservations WHERE id=%s",
         (setup.reservation_id,),
     ).fetchone()
     session_id = _start_service(admin_conn, setup, setup.entry_a_id)
