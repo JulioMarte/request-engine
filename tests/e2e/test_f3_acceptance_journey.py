@@ -7,12 +7,14 @@ from request_engine.platform.db.session import SessionFactory
 
 from .contextual_supply_support import contextualize_sandbox
 from .f3_acceptance_assertions import (
+    acceptance_actor,
     assert_completed_journey,
     capacity_claim_snapshot,
     reservation_snapshot,
+    seed_walk_in_subject,
 )
 from .operational_support import PgConnection
-from .tenant_sandbox import actor_for, auth, client_with_actors, first_slot, seed_tenant_sandbox
+from .tenant_sandbox import auth, client_with_actors, first_slot, seed_tenant_sandbox
 
 
 @pytest.mark.asyncio
@@ -27,23 +29,7 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f3-acceptance")
     contextualize_sandbox(e2e_admin_conn, sandbox)
-    base_actor = actor_for(sandbox)
-    actor = type(base_actor)(
-        organization_id=base_actor.organization_id,
-        principal_id=base_actor.principal_id,
-        capabilities=base_actor.capabilities
-        | frozenset(
-            {
-                "queue.check_in",
-                "queue.staff_read",
-                "service_session.start",
-                "service_session.pause",
-                "service_session.resume",
-                "service_session.complete",
-                "workload.create",
-            }
-        ),
-    )
+    actor = acceptance_actor(sandbox)
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
         expected = await client.post(
             "/v1/live-workloads",
@@ -79,15 +65,10 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
         )
         assert checked_in.status_code == 201, checked_in.text
         entry_id = UUID(checked_in.json()["id"])
-        walk_in_row = e2e_admin_conn.execute(
-            "INSERT INTO request_engine.parties "
-            "(organization_id,party_kind,display_name) VALUES (%s,'person','Walk-in') RETURNING id",
-            (sandbox.organization_id,),
-        ).fetchone()
-        assert walk_in_row is not None
+        walk_in_party = seed_walk_in_subject(e2e_admin_conn, sandbox)
         walk_in = await client.post(
             f"/v1/queues/{sandbox.queue_id}/check-in",
-            json={"subject_party_id": str(walk_in_row[0])},
+            json={"subject_party_id": str(walk_in_party)},
             headers=auth(sandbox, idempotency_key=f"walkin-{uuid4().hex}"),
         )
         assert walk_in.status_code == 201, walk_in.text
