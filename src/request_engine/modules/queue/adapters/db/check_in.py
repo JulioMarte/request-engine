@@ -7,12 +7,7 @@ from sqlalchemy import text
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
 from request_engine.modules.queue.adapters.db.live_queue_recording import record_queue_fact
 from request_engine.modules.queue.adapters.db.live_queue_serialization import entry_from_json, entry_from_row, entry_to_json
-from request_engine.modules.queue.adapters.db.live_queue_validation import (
-    require_active_subject,
-    require_active_workload,
-    require_offering,
-    require_reservation_match,
-)
+from request_engine.modules.queue.adapters.db.live_queue_validation import require_active_subject, require_active_workload, require_offering, require_reservation_match
 from request_engine.modules.queue.application.errors import AlreadyInQueue, TenantReferenceNotUsable
 from request_engine.modules.queue.application.live_commands import CheckInCommand
 from request_engine.modules.queue.contracts.live_queue import LiveQueueEntry
@@ -44,9 +39,7 @@ async def check_in(session_factory: SessionFactory, command: CheckInCommand) -> 
             return entry_from_json(cast(dict[str, object], replay["entry"]))
         queue = await lock_active_queue(session, command.organization_id, command.queue_id)
         await require_active_subject(session, command.organization_id, command.subject_party_id)
-        await require_active_workload(
-            session, command.organization_id, command.expected_workload_classification_id
-        )
+        await require_active_workload(session, command.organization_id, command.expected_workload_classification_id)
         offering_id = command.offering_id or cast(UUID | None, queue["offering_id"])
         if command.reservation_id is not None:
             reservation_offering = await require_reservation_match(
@@ -70,11 +63,8 @@ async def check_in(session_factory: SessionFactory, command: CheckInCommand) -> 
                     "WHERE organization_id=:organization_id AND service_queue_id=:queue_id "
                     "AND subject_party_id=:subject_party_id AND status IN ('waiting','called','serving')"
                 ),
-                {
-                    "organization_id": command.organization_id,
-                    "queue_id": command.queue_id,
-                    "subject_party_id": command.subject_party_id,
-                },
+                {"organization_id": command.organization_id, "queue_id": command.queue_id,
+                 "subject_party_id": command.subject_party_id},
             )
         ).first()
         if exists is not None:
@@ -91,16 +81,10 @@ async def check_in(session_factory: SessionFactory, command: CheckInCommand) -> 
                     "subject_party_id,reservation_id,offering_id,status,arrived_at,admitted_at,called_at,"
                     "expected_workload_classification_id,revision"
                 ),
-                {
-                    "organization_id": command.organization_id,
-                    "queue_id": command.queue_id,
-                    "subject_party_id": command.subject_party_id,
-                    "reservation_id": command.reservation_id,
-                    "offering_id": offering_id,
-                    "arrived_at": now,
-                    "admitted_at": now,
-                    "workload_id": command.expected_workload_classification_id,
-                },
+                {"organization_id": command.organization_id, "queue_id": command.queue_id,
+                 "subject_party_id": command.subject_party_id, "reservation_id": command.reservation_id,
+                 "offering_id": offering_id, "arrived_at": now, "admitted_at": now,
+                 "workload_id": command.expected_workload_classification_id},
             )
         ).mappings().one()
         result = entry_from_row(row)
