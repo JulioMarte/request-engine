@@ -1,7 +1,7 @@
 """Harden F3 live-service invariants before migration consolidation.
 
 Revision ID: 0007_f3_live_hardening
-Revises: 0006_f3_arrival_default
+Revises: 0005_live_service_ops
 Create Date: 2026-08-25
 """
 
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0007_f3_live_hardening"
-down_revision: str | Sequence[str] | None = "0006_f3_arrival_default"
+down_revision: str | Sequence[str] | None = "0005_live_service_ops"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
