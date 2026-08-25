@@ -74,9 +74,7 @@ async def test_foreign_service_session_is_indistinguishable_from_random_id(
         foreign = await client.get(
             f"/v1/service-sessions/{foreign_session}", headers=auth(actor_tenant)
         )
-        random = await client.get(
-            f"/v1/service-sessions/{uuid4()}", headers=auth(actor_tenant)
-        )
+        random = await client.get(f"/v1/service-sessions/{uuid4()}", headers=auth(actor_tenant))
     assert foreign.status_code == random.status_code == 404
     assert foreign.json() == random.json()
     assert str(foreign_session) not in foreign.text
