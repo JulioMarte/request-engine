@@ -4,7 +4,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.delivery.contracts.service_session import (
+    InterruptionKind,
     ResourceActivity,
+    ResourceActivityKind,
     ServiceSession,
 )
 
@@ -20,7 +22,7 @@ class StartServiceBody(BaseModel):
 class PauseServiceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(gt=0)
-    kind: str
+    kind: InterruptionKind
 
 
 class ResumeServiceBody(BaseModel):
@@ -38,7 +40,7 @@ class StartResourceActivityBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     resource_id: UUID
     location_id: UUID | None = None
-    kind: str
+    kind: ResourceActivityKind
 
 
 class EndResourceActivityBody(BaseModel):
