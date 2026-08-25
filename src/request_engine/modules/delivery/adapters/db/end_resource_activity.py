@@ -3,7 +3,11 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from request_engine.modules.delivery.adapters.db.live_common import db_now, lock_resource, require_revision
+from request_engine.modules.delivery.adapters.db.live_common import (
+    db_now,
+    lock_resource,
+    require_revision,
+)
 from request_engine.modules.delivery.adapters.db.live_recording import record_live_fact
 from request_engine.modules.delivery.adapters.db.live_serialization import (
     activity_from_json,
@@ -11,7 +15,9 @@ from request_engine.modules.delivery.adapters.db.live_serialization import (
     activity_to_json,
 )
 from request_engine.modules.delivery.application.errors import ResourceActivityNotFound
-from request_engine.modules.delivery.application.resource_activity_commands import EndResourceActivityCommand
+from request_engine.modules.delivery.application.resource_activity_commands import (
+    EndResourceActivityCommand,
+)
 from request_engine.modules.delivery.contracts.service_session import ResourceActivity
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -22,7 +28,8 @@ from request_engine.platform.idempotency.postgres import (
 
 
 async def end_resource_activity(
-    session_factory: SessionFactory, command: EndResourceActivityCommand
+    session_factory: SessionFactory,
+    command: EndResourceActivityCommand,
 ) -> ResourceActivity:
     fingerprint = command_fingerprint(
         "resource_activity.end",
@@ -60,9 +67,10 @@ async def end_resource_activity(
         row = (
             await session.execute(
                 text(
-                    "SELECT id,resource_id,location_id,activity_kind,started_at,ended_at,revision "
-                    "FROM request_engine.resource_activities "
-                    "WHERE organization_id=:organization_id AND id=:activity_id FOR UPDATE"
+                    "SELECT id,resource_id,location_id,activity_kind,started_at,"
+                    "ended_at,revision FROM request_engine.resource_activities "
+                    "WHERE organization_id=:organization_id "
+                    "AND id=:activity_id FOR UPDATE"
                 ),
                 {
                     "organization_id": command.organization_id,
@@ -80,7 +88,8 @@ async def end_resource_activity(
                     "UPDATE request_engine.resource_activities SET ended_at=:ended_at, "
                     "ended_by_principal_id=:principal_id, revision=revision+1 "
                     "WHERE organization_id=:organization_id AND id=:activity_id "
-                    "RETURNING id,resource_id,location_id,activity_kind,started_at,ended_at,revision"
+                    "RETURNING id,resource_id,location_id,activity_kind,"
+                    "started_at,ended_at,revision"
                 ),
                 {
                     "organization_id": command.organization_id,
