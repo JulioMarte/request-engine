@@ -1,5 +1,5 @@
-from typing import Any
 from uuid import UUID
+from typing import Any
 
 
 F3_ACCEPTANCE_CAPABILITIES = frozenset(
