@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
+from f3_live_ops_fixture import LiveOpsFixture, PgConnection, create_live_ops_fixture
 from f3_live_ops_race_support import create_paused_session
 
 
@@ -18,7 +18,7 @@ def _activity_resource(conn: PgConnection, organization_id: UUID) -> UUID:
     return cast(UUID, row[0])
 
 
-def _seed_activity(conn: PgConnection, setup, principal_id: UUID) -> UUID:
+def _seed_activity(conn: PgConnection, setup: LiveOpsFixture, principal_id: UUID) -> UUID:
     resource_id = _activity_resource(conn, setup.organization_id)
     row = conn.execute(
         "INSERT INTO request_engine.resource_activities "
@@ -47,7 +47,7 @@ def test_f3_relations_force_rls_and_hide_foreign_tenant_rows(
         (second.organization_id,),
     ).fetchone()
     assert second_principal is not None
-    _seed_activity(admin_conn, second, second_principal[0])
+    _seed_activity(admin_conn, second, cast(UUID, second_principal[0]))
 
     names = [
         "operational_workload_classifications",
