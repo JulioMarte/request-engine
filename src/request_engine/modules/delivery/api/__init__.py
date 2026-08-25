@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
 )
+from request_engine.modules.delivery.adapters.db.resource_activity_reader import (
+    PostgresResourceActivityReader,
+)
 from request_engine.modules.delivery.adapters.db.service_session_reader import (
     PostgresServiceSessionReader,
 )
@@ -25,7 +28,8 @@ def install_http(
     app.include_router(
         create_live_service_router(
             operations=PostgresLiveServiceOperations(session_factory),
-            reader=PostgresServiceSessionReader(session_factory),
+            session_reader=PostgresServiceSessionReader(session_factory),
+            activity_reader=PostgresResourceActivityReader(session_factory),
             actor_resolver=actor_resolver,
         )
     )
