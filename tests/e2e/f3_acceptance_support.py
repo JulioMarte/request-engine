@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from . import operational_support as support
-from .tenant_sandbox import TenantSandbox, actor_for
+from . import tenant_sandbox as sandbox_support
 
 
 F3_ACCEPTANCE_CAPABILITIES = frozenset(
@@ -20,8 +20,8 @@ F3_ACCEPTANCE_CAPABILITIES = frozenset(
 )
 
 
-def acceptance_actor(sandbox: TenantSandbox):
-    base = actor_for(sandbox)
+def acceptance_actor(sandbox: sandbox_support.TenantSandbox):
+    base = sandbox_support.actor_for(sandbox)
     return type(base)(
         organization_id=base.organization_id,
         principal_id=base.principal_id,
@@ -29,7 +29,10 @@ def acceptance_actor(sandbox: TenantSandbox):
     )
 
 
-def seed_walk_in_subject(conn: support.PgConnection, sandbox: TenantSandbox) -> UUID:
+def seed_walk_in_subject(
+    conn: support.PgConnection,
+    sandbox: sandbox_support.TenantSandbox,
+) -> UUID:
     row = conn.execute(
         "INSERT INTO request_engine.parties "
         "(organization_id,party_kind,display_name) VALUES (%s,'person','Walk-in') RETURNING id",
