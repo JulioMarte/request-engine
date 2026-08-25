@@ -43,7 +43,15 @@ class StaffQueueEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class StaffQueueHistoryPage:
+    entries: tuple[StaffQueueEntry, ...]
+    next_cursor: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
 class WorkloadClassification:
     id: UUID
     workload_key: str
     display_name: str
+    active: bool
+    revision: int
