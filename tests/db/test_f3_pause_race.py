@@ -21,8 +21,12 @@ def _pause(
     try:
         barrier.wait()
         with conn.transaction():
-            now = conn.execute("SELECT clock_timestamp()").fetchone()
-            assert now is not None
+            started = conn.execute(
+                "SELECT started_at + interval '1 minute' "
+                "FROM request_engine.service_sessions WHERE id=%s",
+                (session_id,),
+            ).fetchone()
+            assert started is not None
             row = conn.execute(
                 "UPDATE request_engine.service_sessions SET status='paused',revision=revision+1 "
                 "WHERE organization_id=%s AND id=%s AND status='active' RETURNING id",
@@ -34,7 +38,7 @@ def _pause(
                 "INSERT INTO request_engine.service_session_interruptions "
                 "(organization_id,service_session_id,kind,started_at,started_by_principal_id) "
                 "VALUES (%s,%s,'break',%s,%s)",
-                (organization_id, session_id, now[0], principal_id),
+                (organization_id, session_id, started[0], principal_id),
             )
             return "paused"
     finally:

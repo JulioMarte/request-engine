@@ -27,13 +27,18 @@ def _resume(
                 (session_id,),
             ).fetchone()
             assert state == ("paused", 2)
-            now = conn.execute("SELECT clock_timestamp()").fetchone()
-            assert now is not None
+            ended_at = conn.execute(
+                "SELECT started_at + interval '1 minute' "
+                "FROM request_engine.service_session_interruptions "
+                "WHERE service_session_id=%s AND ended_at IS NULL",
+                (session_id,),
+            ).fetchone()
+            assert ended_at is not None
             ended = conn.execute(
                 "UPDATE request_engine.service_session_interruptions "
                 "SET ended_at=%s,ended_by_principal_id=%s "
                 "WHERE service_session_id=%s AND ended_at IS NULL RETURNING id",
-                (now[0], principal_id, session_id),
+                (ended_at[0], principal_id, session_id),
             ).fetchone()
             assert ended is not None
             conn.execute(

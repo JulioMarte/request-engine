@@ -143,6 +143,8 @@ RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     v_session_id uuid;
     v_status text;
+    v_started_at timestamptz;
+    v_completed_at timestamptz;
     v_open bigint;
 BEGIN
     IF TG_TABLE_NAME = 'service_sessions' THEN
@@ -150,9 +152,31 @@ BEGIN
     ELSE
         v_session_id := NEW.service_session_id;
     END IF;
-    SELECT status INTO v_status FROM request_engine.service_sessions
+    SELECT status, started_at, completed_at
+      INTO v_status, v_started_at, v_completed_at
+      FROM request_engine.service_sessions
      WHERE organization_id = NEW.organization_id AND id = v_session_id;
     IF NOT FOUND THEN RETURN NEW; END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM request_engine.service_session_interruptions i
+         WHERE i.organization_id = NEW.organization_id
+           AND i.service_session_id = v_session_id
+           AND i.started_at < v_started_at
+    ) THEN
+        RAISE EXCEPTION 'ServiceSession % interruption cannot predate execution', v_session_id
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_completed_at IS NOT NULL AND EXISTS (
+        SELECT 1 FROM request_engine.service_session_interruptions i
+         WHERE i.organization_id = NEW.organization_id
+           AND i.service_session_id = v_session_id
+           AND (i.ended_at IS NULL OR i.ended_at > v_completed_at)
+    ) THEN
+        RAISE EXCEPTION 'ServiceSession % interruption cannot outlive execution', v_session_id
+            USING ERRCODE = '23514';
+    END IF;
+
     SELECT count(*) INTO v_open FROM request_engine.service_session_interruptions
      WHERE organization_id = NEW.organization_id
        AND service_session_id = v_session_id AND ended_at IS NULL;
