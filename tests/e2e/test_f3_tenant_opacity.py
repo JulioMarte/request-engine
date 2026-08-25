@@ -25,8 +25,10 @@ def _seed_live_session(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
     )
     row = conn.execute(
         "INSERT INTO request_engine.queue_entries "
-        "(organization_id,service_queue_id,subject_party_id,status,called_at) "
-        "VALUES (%s,%s,%s,'called','2030-01-07T14:00Z') RETURNING id",
+        "(organization_id,service_queue_id,subject_party_id,status,"
+        "arrived_at,admitted_at,called_at) "
+        "VALUES (%s,%s,%s,'called','2030-01-07T13:59Z','2030-01-07T13:59Z',"
+        "'2030-01-07T14:00Z') RETURNING id",
         (sandbox.organization_id, sandbox.queue_id, sandbox.party_id),
     ).fetchone()
     assert row is not None
