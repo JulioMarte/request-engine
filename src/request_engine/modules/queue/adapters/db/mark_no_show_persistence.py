@@ -31,16 +31,20 @@ async def persist_no_show(
     queue_entry_id: UUID,
 ) -> RowMapping:
     return (
-        await session.execute(
-            text(
-                "UPDATE request_engine.queue_entries "
-                "SET status='no_show',revision=revision+1,"
-                "updated_at=clock_timestamp() "
-                "WHERE organization_id=:organization_id AND id=:entry_id "
-                "RETURNING id,service_queue_id,subject_party_id,reservation_id,"
-                "offering_id,status,arrived_at,admitted_at,called_at,"
-                "expected_workload_classification_id,revision"
-            ),
-            {"organization_id": organization_id, "entry_id": queue_entry_id},
+        (
+            await session.execute(
+                text(
+                    "UPDATE request_engine.queue_entries "
+                    "SET status='no_show',revision=revision+1,"
+                    "updated_at=clock_timestamp() "
+                    "WHERE organization_id=:organization_id AND id=:entry_id "
+                    "RETURNING id,service_queue_id,subject_party_id,reservation_id,"
+                    "offering_id,status,arrived_at,admitted_at,called_at,"
+                    "expected_workload_classification_id,revision"
+                ),
+                {"organization_id": organization_id, "entry_id": queue_entry_id},
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )

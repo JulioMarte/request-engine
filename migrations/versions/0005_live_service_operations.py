@@ -381,4 +381,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("0005 introduces authoritative F3 execution history and is not reversible in place")
+    raise RuntimeError(
+        "0005 introduces authoritative F3 execution history and is not reversible in place"
+    )

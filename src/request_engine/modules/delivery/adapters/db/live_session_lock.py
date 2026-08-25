@@ -19,9 +19,7 @@ async def lock_session_context(
 ) -> tuple[RowMapping, RowMapping]:
     probe = await require_session_probe(session, organization_id, session_id)
     await lock_queue(session, organization_id, cast(UUID, probe["service_queue_id"]))
-    entry = await lock_queue_entry(
-        session, organization_id, cast(UUID, probe["queue_entry_id"])
-    )
+    entry = await lock_queue_entry(session, organization_id, cast(UUID, probe["queue_entry_id"]))
     await lock_resource(session, organization_id, cast(UUID, probe["resource_id"]))
     result = await session.execute(
         text(

@@ -49,9 +49,7 @@ def create_start_complete_router(
                 resource_id=body.resource_id,
                 location_id=body.location_id,
                 expected_queue_revision=body.expected_queue_revision,
-                actual_workload_classification_id=(
-                    body.actual_workload_classification_id
-                ),
+                actual_workload_classification_id=(body.actual_workload_classification_id),
                 idempotency_key=idempotency_key,
             )
         )
@@ -70,9 +68,7 @@ def create_start_complete_router(
                 principal_id=current.principal_id,
                 service_session_id=service_session_id,
                 expected_revision=body.expected_revision,
-                actual_workload_classification_id=(
-                    body.actual_workload_classification_id
-                ),
+                actual_workload_classification_id=(body.actual_workload_classification_id),
                 idempotency_key=idempotency_key,
             )
         )

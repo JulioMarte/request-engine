@@ -41,25 +41,29 @@ async def insert_queue_entry(
     if not isinstance(raw_now, datetime):
         raise RuntimeError("PostgreSQL clock_timestamp() did not return datetime")
     return (
-        await session.execute(
-            text(
-                "INSERT INTO request_engine.queue_entries "
-                "(organization_id,service_queue_id,subject_party_id,reservation_id,"
-                "offering_id,arrived_at,admitted_at,"
-                "expected_workload_classification_id) VALUES "
-                "(:organization_id,:queue_id,:subject_party_id,:reservation_id,"
-                ":offering_id,:now,:now,:workload_id) RETURNING "
-                "id,service_queue_id,subject_party_id,reservation_id,offering_id,status,"
-                "arrived_at,admitted_at,called_at,expected_workload_classification_id,revision"
-            ),
-            {
-                "organization_id": command.organization_id,
-                "queue_id": command.queue_id,
-                "subject_party_id": command.subject_party_id,
-                "reservation_id": command.reservation_id,
-                "offering_id": offering_id,
-                "now": raw_now,
-                "workload_id": command.expected_workload_classification_id,
-            },
+        (
+            await session.execute(
+                text(
+                    "INSERT INTO request_engine.queue_entries "
+                    "(organization_id,service_queue_id,subject_party_id,reservation_id,"
+                    "offering_id,arrived_at,admitted_at,"
+                    "expected_workload_classification_id) VALUES "
+                    "(:organization_id,:queue_id,:subject_party_id,:reservation_id,"
+                    ":offering_id,:now,:now,:workload_id) RETURNING "
+                    "id,service_queue_id,subject_party_id,reservation_id,offering_id,status,"
+                    "arrived_at,admitted_at,called_at,expected_workload_classification_id,revision"
+                ),
+                {
+                    "organization_id": command.organization_id,
+                    "queue_id": command.queue_id,
+                    "subject_party_id": command.subject_party_id,
+                    "reservation_id": command.reservation_id,
+                    "offering_id": offering_id,
+                    "now": raw_now,
+                    "workload_id": command.expected_workload_classification_id,
+                },
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )

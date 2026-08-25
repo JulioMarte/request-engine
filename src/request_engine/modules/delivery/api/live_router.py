@@ -22,8 +22,6 @@ def create_live_service_router(
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["live-service"])
-    router.include_router(
-        create_service_session_router(operations, reader, actor_resolver)
-    )
+    router.include_router(create_service_session_router(operations, reader, actor_resolver))
     router.include_router(create_resource_activity_router(operations, actor_resolver))
     return router

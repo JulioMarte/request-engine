@@ -35,9 +35,7 @@ async def probe_queue_entry(
     return row
 
 
-async def lock_queue(
-    session: AsyncSession, organization_id: UUID, queue_id: UUID
-) -> None:
+async def lock_queue(session: AsyncSession, organization_id: UUID, queue_id: UUID) -> None:
     result = await session.execute(
         text(
             "SELECT id FROM request_engine.service_queues "
@@ -66,9 +64,7 @@ async def lock_queue_entry(
     return row
 
 
-async def lock_resource(
-    session: AsyncSession, organization_id: UUID, resource_id: UUID
-) -> None:
+async def lock_resource(session: AsyncSession, organization_id: UUID, resource_id: UUID) -> None:
     result = await session.execute(
         text(
             "SELECT active FROM request_engine.resources "

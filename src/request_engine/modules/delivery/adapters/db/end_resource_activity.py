@@ -65,40 +65,48 @@ async def end_resource_activity(
             raise ResourceActivityNotFound(command.resource_activity_id)
         await lock_resource(session, command.organization_id, cast(UUID, probe[0]))
         row = (
-            await session.execute(
-                text(
-                    "SELECT id,resource_id,location_id,activity_kind,started_at,"
-                    "ended_at,revision FROM request_engine.resource_activities "
-                    "WHERE organization_id=:organization_id "
-                    "AND id=:activity_id FOR UPDATE"
-                ),
-                {
-                    "organization_id": command.organization_id,
-                    "activity_id": command.resource_activity_id,
-                },
+            (
+                await session.execute(
+                    text(
+                        "SELECT id,resource_id,location_id,activity_kind,started_at,"
+                        "ended_at,revision FROM request_engine.resource_activities "
+                        "WHERE organization_id=:organization_id "
+                        "AND id=:activity_id FOR UPDATE"
+                    ),
+                    {
+                        "organization_id": command.organization_id,
+                        "activity_id": command.resource_activity_id,
+                    },
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         require_revision(row, command.resource_activity_id, command.expected_revision)
         if row["ended_at"] is not None:
             raise ResourceActivityNotFound(command.resource_activity_id)
         ended_at = await db_now(session)
         updated = (
-            await session.execute(
-                text(
-                    "UPDATE request_engine.resource_activities SET ended_at=:ended_at, "
-                    "ended_by_principal_id=:principal_id, revision=revision+1 "
-                    "WHERE organization_id=:organization_id AND id=:activity_id "
-                    "RETURNING id,resource_id,location_id,activity_kind,"
-                    "started_at,ended_at,revision"
-                ),
-                {
-                    "organization_id": command.organization_id,
-                    "activity_id": command.resource_activity_id,
-                    "ended_at": ended_at,
-                    "principal_id": command.principal_id,
-                },
+            (
+                await session.execute(
+                    text(
+                        "UPDATE request_engine.resource_activities SET ended_at=:ended_at, "
+                        "ended_by_principal_id=:principal_id, revision=revision+1 "
+                        "WHERE organization_id=:organization_id AND id=:activity_id "
+                        "RETURNING id,resource_id,location_id,activity_kind,"
+                        "started_at,ended_at,revision"
+                    ),
+                    {
+                        "organization_id": command.organization_id,
+                        "activity_id": command.resource_activity_id,
+                        "ended_at": ended_at,
+                        "principal_id": command.principal_id,
+                    },
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         result = activity_from_row(updated)
         payload = activity_to_json(result)
         await record_live_fact(

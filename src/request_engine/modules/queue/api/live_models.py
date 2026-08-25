@@ -48,9 +48,7 @@ class LiveQueueEntryView(BaseModel):
             arrived_at=item.arrived_at,
             admitted_at=item.admitted_at,
             called_at=item.called_at,
-            expected_workload_classification_id=(
-                item.expected_workload_classification_id
-            ),
+            expected_workload_classification_id=(item.expected_workload_classification_id),
             revision=item.revision,
         )
 

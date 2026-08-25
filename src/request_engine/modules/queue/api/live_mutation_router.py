@@ -49,9 +49,7 @@ def create_live_mutation_router(
                 subject_party_id=body.subject_party_id,
                 reservation_id=body.reservation_id,
                 offering_id=body.offering_id,
-                expected_workload_classification_id=(
-                    body.expected_workload_classification_id
-                ),
+                expected_workload_classification_id=(body.expected_workload_classification_id),
                 idempotency_key=idempotency_key,
             )
         )

@@ -23,9 +23,7 @@ async def require_active_subject(
         raise TenantReferenceNotUsable("subject_party_id", subject_id)
 
 
-async def require_offering(
-    session: AsyncSession, organization_id: UUID, offering_id: UUID
-) -> None:
+async def require_offering(session: AsyncSession, organization_id: UUID, offering_id: UUID) -> None:
     row = (
         await session.execute(
             text(

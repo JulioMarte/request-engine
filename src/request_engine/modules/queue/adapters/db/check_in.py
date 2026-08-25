@@ -40,9 +40,7 @@ async def check_in(
             "subject_party_id": command.subject_party_id,
             "reservation_id": command.reservation_id,
             "offering_id": command.offering_id,
-            "expected_workload_classification_id": (
-                command.expected_workload_classification_id
-            ),
+            "expected_workload_classification_id": (command.expected_workload_classification_id),
         },
     )
     async with tenant_transaction(session_factory, command.organization_id) as session:
