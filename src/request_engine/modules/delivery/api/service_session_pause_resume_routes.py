@@ -15,7 +15,6 @@ from request_engine.modules.delivery.application.service_session_commands import
     PauseServiceCommand,
     ResumeServiceCommand,
 )
-from request_engine.modules.delivery.contracts.service_session import InterruptionKind
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -48,7 +47,7 @@ def create_pause_resume_router(
                 principal_id=current.principal_id,
                 service_session_id=service_session_id,
                 expected_revision=body.expected_revision,
-                kind=InterruptionKind(body.kind),
+                kind=body.kind,
                 idempotency_key=idempotency_key,
             )
         )
