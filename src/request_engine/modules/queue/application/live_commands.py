@@ -18,6 +18,16 @@ class CheckInCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class ClassifyExpectedWorkloadCommand:
+    organization_id: UUID
+    principal_id: UUID
+    queue_entry_id: UUID
+    expected_revision: int
+    expected_workload_classification_id: UUID | None
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
 class MarkNoShowCommand:
     organization_id: UUID
     principal_id: UUID
@@ -28,4 +38,7 @@ class MarkNoShowCommand:
 
 class LiveQueueExecutor(Protocol):
     async def check_in(self, command: CheckInCommand) -> LiveQueueEntry: ...
+    async def classify_expected_workload(
+        self, command: ClassifyExpectedWorkloadCommand
+    ) -> LiveQueueEntry: ...
     async def mark_no_show(self, command: MarkNoShowCommand) -> LiveQueueEntry: ...
