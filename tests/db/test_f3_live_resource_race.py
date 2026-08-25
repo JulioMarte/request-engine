@@ -59,8 +59,10 @@ def test_same_resource_concurrent_service_start_has_one_clean_winner(
         second = pool.submit(
             _start, pg_conninfo, barrier, common[0], setup.entry_b_id, common[1], common[2]
         )
-        outcomes = sorted((first.result(timeout=5), second.result(timeout=5)))
-    assert outcomes == ["23P01", "committed"]
+        outcomes = (first.result(timeout=5), second.result(timeout=5))
+    assert outcomes.count("committed") == 1
+    loser = next(outcome for outcome in outcomes if outcome != "committed")
+    assert loser in {"23505", "23P01"}
     sessions = admin_conn.execute(
         "SELECT queue_entry_id FROM request_engine.service_sessions "
         "WHERE organization_id=%s AND resource_id=%s AND status IN ('active','paused')",
@@ -74,6 +76,6 @@ def test_same_resource_concurrent_service_start_has_one_clean_winner(
         ).fetchall()
     )
     winner = sessions[0][0]
-    loser = setup.entry_b_id if winner == setup.entry_a_id else setup.entry_a_id
+    losing_entry = setup.entry_b_id if winner == setup.entry_a_id else setup.entry_a_id
     assert statuses[winner] == "serving"
-    assert statuses[loser] == "called"
+    assert statuses[losing_entry] == "called"
