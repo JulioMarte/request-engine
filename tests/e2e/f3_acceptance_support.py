@@ -1,7 +1,10 @@
 from uuid import UUID
 
 from .operational_support import PgConnection
-from .tenant_sandbox import actor_for, TenantSandbox
+from .tenant_sandbox import (
+    TenantSandbox,
+    actor_for,
+)
 
 
 F3_ACCEPTANCE_CAPABILITIES = frozenset(
