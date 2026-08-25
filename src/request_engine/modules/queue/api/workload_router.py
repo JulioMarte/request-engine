@@ -39,7 +39,7 @@ def create_workload_router(
         current: Annotated[ActorContext, Depends(actor)],
         idempotency_key: IdempotencyKey,
     ) -> WorkloadClassificationView:
-        require_capability(current, "workload.manage")
+        require_capability(current, "workload.create")
         item = await commands.create_workload(
             CreateWorkloadClassificationCommand(
                 organization_id=current.organization_id,
@@ -57,7 +57,7 @@ def create_workload_router(
         current: Annotated[ActorContext, Depends(actor)],
         idempotency_key: IdempotencyKey,
     ) -> WorkloadClassificationView:
-        require_capability(current, "workload.manage")
+        require_capability(current, "workload.update")
         item = await commands.update_workload(
             UpdateWorkloadClassificationCommand(
                 organization_id=current.organization_id,
@@ -76,7 +76,7 @@ def create_workload_router(
         current: Annotated[ActorContext, Depends(actor)],
         idempotency_key: IdempotencyKey,
     ) -> WorkloadClassificationView:
-        require_capability(current, "workload.manage")
+        require_capability(current, "workload.deactivate")
         item = await commands.deactivate_workload(
             DeactivateWorkloadClassificationCommand(
                 organization_id=current.organization_id,
@@ -92,7 +92,7 @@ def create_workload_router(
         router,
         "/live-workloads",
         create_workload,
-        capability="workload.manage",
+        capability="workload.create",
         methods=["POST"],
         response_model=WorkloadClassificationView,
         status_code=status.HTTP_201_CREATED,
@@ -101,7 +101,7 @@ def create_workload_router(
         router,
         "/live-workloads/{workload_id}/update",
         update_workload,
-        capability="workload.manage",
+        capability="workload.update",
         methods=["POST"],
         response_model=WorkloadClassificationView,
     )
@@ -109,7 +109,7 @@ def create_workload_router(
         router,
         "/live-workloads/{workload_id}/deactivate",
         deactivate_workload,
-        capability="workload.manage",
+        capability="workload.deactivate",
         methods=["POST"],
         response_model=WorkloadClassificationView,
     )
