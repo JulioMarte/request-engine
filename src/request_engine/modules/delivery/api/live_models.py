@@ -108,7 +108,10 @@ class ServiceSessionStatusView(ServiceSessionView):
             wall_clock_seconds=item.wall_clock_seconds,
             interruption_seconds=item.interruption_seconds,
             active_service_seconds=item.active_service_seconds,
-            interruptions=[ServiceSessionInterruptionView.from_contract(i) for i in item.interruptions],
+            interruptions=[
+                ServiceSessionInterruptionView.from_contract(interruption)
+                for interruption in item.interruptions
+            ],
         )
 
 
