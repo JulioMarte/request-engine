@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Any
 
 
@@ -29,7 +28,7 @@ def acceptance_actor(sandbox: Any) -> Any:
     )
 
 
-def seed_walk_in_subject(conn: Any, sandbox: Any) -> UUID:
+def seed_walk_in_subject(conn: Any, sandbox: Any) -> Any:
     row = conn.execute(
         "INSERT INTO request_engine.parties "
         "(organization_id,party_kind,display_name) VALUES (%s,'person','Walk-in') RETURNING id",
@@ -39,7 +38,7 @@ def seed_walk_in_subject(conn: Any, sandbox: Any) -> UUID:
     return row[0]
 
 
-def reservation_snapshot(conn: Any, reservation_id: UUID) -> Any:
+def reservation_snapshot(conn: Any, reservation_id: Any) -> Any:
     row = conn.execute(
         "SELECT to_jsonb(r) FROM request_engine.reservations r WHERE id=%s",
         (reservation_id,),
@@ -48,7 +47,7 @@ def reservation_snapshot(conn: Any, reservation_id: UUID) -> Any:
     return row[0]
 
 
-def capacity_claim_snapshot(conn: Any, reservation_id: UUID) -> list[Any]:
+def capacity_claim_snapshot(conn: Any, reservation_id: Any) -> list[Any]:
     return [
         row[0]
         for row in conn.execute(
