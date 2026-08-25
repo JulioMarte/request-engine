@@ -5,10 +5,7 @@ from uuid import UUID
 from request_engine.platform.security.context import ActorContext
 
 from . import operational_support as support
-from .tenant_sandbox import (
-    TenantSandbox,
-    actor_for,
-)
+from .tenant_sandbox import actor_for, TenantSandbox
 
 
 _ACCEPTANCE_CAPABILITIES = frozenset(
