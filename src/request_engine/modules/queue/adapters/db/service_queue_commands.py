@@ -112,18 +112,12 @@ class PostgresServiceQueueCommands:
                         text(
                             """
                         INSERT INTO request_engine.queue_entries (
-                            organization_id,
-                            service_queue_id,
-                            subject_party_id,
-                            reservation_id,
-                            offering_id
-                        ) VALUES (
-                            :organization_id,
-                            :queue_id,
-                            :subject_party_id,
-                            :reservation_id,
-                            :offering_id
+                            organization_id, service_queue_id, subject_party_id,
+                            reservation_id, offering_id, arrived_at, admitted_at
                         )
+                        SELECT :organization_id, :queue_id, :subject_party_id,
+                               :reservation_id, :offering_id, transition.at, transition.at
+                          FROM (SELECT clock_timestamp() AS at) AS transition
                         RETURNING id, service_queue_id, subject_party_id, status,
                                   admitted_at, called_at, revision
                         """
