@@ -48,6 +48,22 @@ F3_SERVICE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         HttpProbe(f"/v1/queues/{P1}/staff"),
     ),
     PublicHttpOperation(
+        "queue.staff_history",
+        "GET",
+        "/v1/queues/{queue_id}/staff/history",
+        "queue.staff_read",
+        False,
+        False,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queues/{P1}/staff/history",
+            (
+                ("window_start", "2030-01-01T00:00:00+00:00"),
+                ("window_end", "2030-01-02T00:00:00+00:00"),
+            ),
+        ),
+    ),
+    PublicHttpOperation(
         "service_session.start",
         "POST",
         "/v1/queue-entries/{queue_entry_id}/service/start",
