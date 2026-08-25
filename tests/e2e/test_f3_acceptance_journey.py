@@ -108,8 +108,12 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
             headers=auth(sandbox, idempotency_key=f"complete-{uuid4().hex}"),
         )
         assert paused.status_code == resumed.status_code == completed.status_code == 200
-        live = await client.get(f"/v1/queues/{sandbox.queue_id}/staff", headers=auth(sandbox))
-        assert [UUID(item["queue_entry_id"]) for item in live.json()] == [UUID(walk_in.json()["id"])]
+        live = await client.get(
+            f"/v1/queues/{sandbox.queue_id}/staff",
+            headers=auth(sandbox),
+        )
+        live_ids = [UUID(item["queue_entry_id"]) for item in live.json()]
+        assert live_ids == [UUID(walk_in.json()["id"])]
 
     assert reservation_snapshot(e2e_admin_conn, reservation_id) == reservation_before
     assert capacity_claim_snapshot(e2e_admin_conn, reservation_id) == claims_before
