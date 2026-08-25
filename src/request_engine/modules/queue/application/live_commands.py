@@ -2,7 +2,10 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.queue.contracts.live_queue import LiveQueueEntry
+from request_engine.modules.queue.contracts.live_queue import (
+    LiveQueueEntry,
+    WorkloadClassification,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +39,46 @@ class MarkNoShowCommand:
     idempotency_key: str
 
 
+@dataclass(frozen=True, slots=True)
+class CreateWorkloadClassificationCommand:
+    organization_id: UUID
+    principal_id: UUID
+    workload_key: str
+    display_name: str
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateWorkloadClassificationCommand:
+    organization_id: UUID
+    principal_id: UUID
+    workload_id: UUID
+    display_name: str
+    expected_revision: int
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivateWorkloadClassificationCommand:
+    organization_id: UUID
+    principal_id: UUID
+    workload_id: UUID
+    expected_revision: int
+    idempotency_key: str
+
+
 class LiveQueueExecutor(Protocol):
     async def check_in(self, command: CheckInCommand) -> LiveQueueEntry: ...
     async def classify_expected_workload(
         self, command: ClassifyExpectedWorkloadCommand
     ) -> LiveQueueEntry: ...
     async def mark_no_show(self, command: MarkNoShowCommand) -> LiveQueueEntry: ...
+    async def create_workload(
+        self, command: CreateWorkloadClassificationCommand
+    ) -> WorkloadClassification: ...
+    async def update_workload(
+        self, command: UpdateWorkloadClassificationCommand
+    ) -> WorkloadClassification: ...
+    async def deactivate_workload(
+        self, command: DeactivateWorkloadClassificationCommand
+    ) -> WorkloadClassification: ...
