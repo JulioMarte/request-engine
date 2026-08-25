@@ -41,8 +41,8 @@ ALTER TABLE request_engine.queue_entries
 UPDATE request_engine.queue_entries SET arrived_at = admitted_at WHERE arrived_at IS NULL;
 ALTER TABLE request_engine.queue_entries
     ALTER COLUMN arrived_at SET NOT NULL,
-    ALTER COLUMN arrived_at SET DEFAULT statement_timestamp(),
-    ALTER COLUMN admitted_at SET DEFAULT statement_timestamp(),
+    ALTER COLUMN arrived_at SET DEFAULT clock_timestamp(),
+    ALTER COLUMN admitted_at SET DEFAULT clock_timestamp(),
     ADD CONSTRAINT queue_entries_expected_workload_fk
       FOREIGN KEY (organization_id, expected_workload_classification_id)
       REFERENCES request_engine.operational_workload_classifications (organization_id, id),
