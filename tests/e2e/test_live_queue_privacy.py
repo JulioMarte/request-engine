@@ -30,8 +30,10 @@ async def test_customer_queue_status_cannot_reveal_other_subject_or_staff_execut
     other_party = cast(UUID, row[0])
     for party_id in (sandbox.party_id, other_party):
         e2e_admin_conn.execute(
+            "WITH transition AS (SELECT clock_timestamp() AS at) "
             "INSERT INTO request_engine.queue_entries "
-            "(organization_id,service_queue_id,subject_party_id) VALUES (%s,%s,%s)",
+            "(organization_id,service_queue_id,subject_party_id,arrived_at,admitted_at) "
+            "SELECT %s,%s,%s,at,at FROM transition",
             (sandbox.organization_id, sandbox.queue_id, party_id),
         )
     actor = ActorContext(
