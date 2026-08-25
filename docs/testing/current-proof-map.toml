@@ -255,6 +255,11 @@ path = "tests/e2e/test_discovery_publication_validation.py"
 evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-FAILURE-001"
+path = "tests/e2e/test_f3_start_service_rejection.py"
+evidence = ["contract", "adversarial", "provenance"]
+
+[[proofs]]
 guarantee = "INV-LIVE-OPS-SEPARATION-001"
 path = "tests/db/test_f3_live_ops_invariants.py"
 evidence = ["invariant", "adversarial", "provenance"]
@@ -280,9 +285,29 @@ path = "tests/db/test_f3_live_resource_race.py"
 evidence = ["concurrency", "invariant", "adversarial"]
 
 [[proofs]]
+guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
+path = "tests/db/test_f3_start_no_show_race.py"
+evidence = ["invariant", "adversarial", "concurrency", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
+path = "tests/e2e/test_f3_service_lifecycle.py"
+evidence = ["invariant", "contract", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
+path = "tests/e2e/test_f3_no_show.py"
+evidence = ["invariant", "contract", "adversarial", "provenance"]
+
+[[proofs]]
 guarantee = "INV-LIVE-OPS-TEMPORAL-001"
 path = "tests/db/test_f3_live_ops_invariants.py"
 evidence = ["invariant", "adversarial", "temporal"]
+
+[[proofs]]
+guarantee = "INV-LIVE-OPS-TEMPORAL-001"
+path = "tests/db/test_f3_interruption_temporal.py"
+evidence = ["invariant", "adversarial", "temporal", "provenance"]
 
 [[proofs]]
 guarantee = "INV-LIVE-OPS-PRIVACY-001"
@@ -302,4 +327,9 @@ evidence = ["contract"]
 [[proofs]]
 guarantee = "INV-LIVE-OPS-RESOURCE-001"
 path = "tests/db/test_f3_live_resource_race.py"
+evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-OPS-RESOURCE-001"
+path = "tests/db/test_f3_resource_activity_race.py"
 evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
