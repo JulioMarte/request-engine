@@ -1,9 +1,7 @@
 from uuid import UUID
 
-from . import (
-    tenant_sandbox as sandbox_support,
-    operational_support as support,
-)
+from .operational_support import PgConnection
+from .tenant_sandbox import TenantSandbox, actor_for
 
 
 F3_ACCEPTANCE_CAPABILITIES = frozenset(
@@ -22,8 +20,8 @@ F3_ACCEPTANCE_CAPABILITIES = frozenset(
 )
 
 
-def acceptance_actor(sandbox: sandbox_support.TenantSandbox):
-    base = sandbox_support.actor_for(sandbox)
+def acceptance_actor(sandbox: TenantSandbox):
+    base = actor_for(sandbox)
     return type(base)(
         organization_id=base.organization_id,
         principal_id=base.principal_id,
@@ -32,8 +30,8 @@ def acceptance_actor(sandbox: sandbox_support.TenantSandbox):
 
 
 def seed_walk_in_subject(
-    conn: support.PgConnection,
-    sandbox: sandbox_support.TenantSandbox,
+    conn: PgConnection,
+    sandbox: TenantSandbox,
 ) -> UUID:
     row = conn.execute(
         "INSERT INTO request_engine.parties "
@@ -44,7 +42,7 @@ def seed_walk_in_subject(
     return row[0]
 
 
-def reservation_snapshot(conn: support.PgConnection, reservation_id: UUID):
+def reservation_snapshot(conn: PgConnection, reservation_id: UUID):
     row = conn.execute(
         "SELECT to_jsonb(r) FROM request_engine.reservations r WHERE id=%s",
         (reservation_id,),
@@ -53,7 +51,7 @@ def reservation_snapshot(conn: support.PgConnection, reservation_id: UUID):
     return row[0]
 
 
-def capacity_claim_snapshot(conn: support.PgConnection, reservation_id: UUID):
+def capacity_claim_snapshot(conn: PgConnection, reservation_id: UUID):
     return [
         row[0]
         for row in conn.execute(
