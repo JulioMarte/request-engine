@@ -9,7 +9,6 @@ from .contextual_supply_support import contextualize_sandbox
 from .f3_acceptance_support import (
     acceptance_actor,
     capacity_claim_snapshot,
-    create_workload,
     reservation_snapshot,
     seed_walk_in_subject,
 )
@@ -31,8 +30,19 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
     contextualize_sandbox(e2e_admin_conn, sandbox)
     actor = acceptance_actor(sandbox)
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
-        expected_id = await create_workload(client, sandbox, "consultation", "Consultation")
-        actual_id = await create_workload(client, sandbox, "procedure", "Procedure")
+        expected = await client.post(
+            "/v1/live-workloads",
+            json={"workload_key": "consultation", "display_name": "Consultation"},
+            headers=auth(sandbox, idempotency_key=f"expected-{uuid4().hex}"),
+        )
+        actual = await client.post(
+            "/v1/live-workloads",
+            json={"workload_key": "procedure", "display_name": "Procedure"},
+            headers=auth(sandbox, idempotency_key=f"actual-{uuid4().hex}"),
+        )
+        assert expected.status_code == actual.status_code == 201
+        expected_id = UUID(expected.json()["id"])
+        actual_id = UUID(actual.json()["id"])
         slot = await first_slot(client, sandbox)
         booked = await client.post(
             "/v1/appointments",
