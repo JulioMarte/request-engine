@@ -18,6 +18,12 @@ class CheckInBody(BaseModel):
     expected_workload_classification_id: UUID | None = None
 
 
+class ClassifyExpectedWorkloadBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
+    expected_workload_classification_id: UUID | None
+
+
 class MarkNoShowBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(gt=0)
