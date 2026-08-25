@@ -18,9 +18,12 @@ def _called_entry(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
         (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
     )
     row = conn.execute(
+        "WITH transition AS (SELECT clock_timestamp() AS at) "
         "INSERT INTO request_engine.queue_entries "
-        "(organization_id,service_queue_id,subject_party_id,status,called_at) "
-        "VALUES (%s,%s,%s,'called',clock_timestamp()-interval '1 minute') RETURNING id",
+        "(organization_id,service_queue_id,subject_party_id,status,"
+        "arrived_at,admitted_at,called_at) "
+        "SELECT %s,%s,%s,'called',at-interval '2 minutes',at-interval '2 minutes',"
+        "at-interval '1 minute' FROM transition RETURNING id",
         (sandbox.organization_id, sandbox.queue_id, sandbox.party_id),
     ).fetchone()
     assert row is not None
