@@ -70,7 +70,10 @@ async def test_customer_queue_status_cannot_reveal_other_subject_or_staff_execut
     }
     assert forbidden.isdisjoint(payload)
     assert forbidden.isdisjoint(payload.get("entry", {}))
-    assert e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.queue_entries WHERE service_queue_id=%s",
-        (sandbox.queue_id,),
-    ).fetchone() == before
+    assert (
+        e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.queue_entries WHERE service_queue_id=%s",
+            (sandbox.queue_id,),
+        ).fetchone()
+        == before
+    )
