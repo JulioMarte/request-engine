@@ -15,6 +15,19 @@ F3_SERVICE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         HttpProbe(f"/v1/queues/{P1}/check-in", body={"subject_party_id": P2}),
     ),
     PublicHttpOperation(
+        "queue.classify_expected_workload",
+        "POST",
+        "/v1/queue-entries/{queue_entry_id}/expected-workload",
+        "queue.classify_expected_workload",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queue-entries/{P1}/expected-workload",
+            body={"expected_revision": 1, "expected_workload_classification_id": P2},
+        ),
+    ),
+    PublicHttpOperation(
         "queue.mark_no_show",
         "POST",
         "/v1/queue-entries/{queue_entry_id}/no-show",
