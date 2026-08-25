@@ -99,14 +99,14 @@ risk = ["security", "provenance"]
 
 [[guarantees]]
 id = "INV-LIVE-OPS-SEPARATION-001"
-statement = "Reservation planning, QueueEntry waiting/calling state and ServiceSession execution remain independent historical facts; actual execution cannot rewrite booking planning or capacity provenance."
+statement = "Reservation planning, QueueEntry waiting/calling state and ServiceSession execution remain independent historical facts throughout the integrated live-service journey; actual execution cannot rewrite booking planning or capacity provenance."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["provenance"]
 
 [[guarantees]]
 id = "INV-LIVE-OPS-LIFECYCLE-001"
-statement = "QueueEntry and ServiceSession lifecycle transitions remain transactionally coherent: committed serving/completed execution cannot exist on only one side of the Queue-to-Delivery boundary."
+statement = "A real Reservation can traverse CheckIn, FIFO/CallNext, service start, interruption/resume and completion through supported operations while QueueEntry and ServiceSession transitions remain transactionally coherent; committed serving/completed execution cannot exist on only one side of the Queue-to-Delivery boundary."
 severity = "critical"
 required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["provenance"]
@@ -120,14 +120,14 @@ risk = ["temporal", "provenance"]
 
 [[guarantees]]
 id = "INV-LIVE-OPS-PRIVACY-001"
-statement = "Customer queue projections expose only the authorized subject's queue state and derived position; identities, workload and execution details of other subjects remain unavailable."
+statement = "Customer queue projections expose only the authorized subject's safe queue state; the staff live projection contains only active operational states, and terminal history is separately authorized and bounded so neither surface becomes an unbounded or cross-tenant disclosure channel."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
 id = "INV-LIVE-OPS-CLASSIFICATION-001"
-statement = "Expected operational workload and actual observed workload remain independently reconstructable without mutating OfferingVersion or Reservation planning truth."
+statement = "Tenant-defined operational workload vocabulary is provisionable through revisioned, idempotent, append-preserving lifecycle commands; expected workload and actual observed workload remain independently reconstructable without mutating OfferingVersion or Reservation planning truth."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["provenance"]
