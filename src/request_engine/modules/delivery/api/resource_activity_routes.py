@@ -15,7 +15,6 @@ from request_engine.modules.delivery.application.resource_activity_commands impo
     EndResourceActivityCommand,
     StartResourceActivityCommand,
 )
-from request_engine.modules.delivery.contracts.service_session import ResourceActivityKind
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -47,7 +46,7 @@ def create_resource_activity_router(
                 principal_id=current.principal_id,
                 resource_id=body.resource_id,
                 location_id=body.location_id,
-                kind=ResourceActivityKind(body.kind),
+                kind=body.kind,
                 idempotency_key=idempotency_key,
             )
         )
