@@ -95,7 +95,7 @@ async def classify_expected_workload(
                 },
             )
             result = entry_from_row(updated.mappings().one())
-            payload = {
+            payload: dict[str, object] = {
                 "queue_entry_id": str(result.id),
                 "queue_id": str(result.queue_id),
                 "expected_workload_classification_id": (
