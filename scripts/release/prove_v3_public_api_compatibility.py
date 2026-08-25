@@ -19,7 +19,9 @@ def build_report() -> dict[str, object]:
     if _CAPABILITY_MISMATCH in failures and expected <= current:
         failures.remove(_CAPABILITY_MISMATCH)
     report["status"] = "PASS" if not failures else "FAIL"
-    report["compatibility_policy"] = "released V3 capabilities must remain exact; additions are allowed"
+    report["compatibility_policy"] = (
+        "released V3 capabilities must remain exact; additions are allowed"
+    )
     return report
 
 
