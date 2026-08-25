@@ -55,32 +55,40 @@ async def test_expected_workload_can_change_only_before_service(
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
         replay_key = f"classify-{uuid4().hex}"
         first_body = {"expected_revision": 1, "expected_workload_classification_id": str(first)}
-        initial = await client.post(path, json=first_body, headers=auth(sandbox, replay_key))
-        replay = await client.post(path, json=first_body, headers=auth(sandbox, replay_key))
+        initial = await client.post(
+            path,
+            json=first_body,
+            headers=auth(sandbox, idempotency_key=replay_key),
+        )
+        replay = await client.post(
+            path,
+            json=first_body,
+            headers=auth(sandbox, idempotency_key=replay_key),
+        )
         changed = await client.post(
             path,
             json={"expected_revision": 2, "expected_workload_classification_id": str(second)},
-            headers=auth(sandbox, f"reclassify-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"reclassify-{uuid4().hex}"),
         )
         stale = await client.post(
             path,
             json={"expected_revision": 2, "expected_workload_classification_id": str(first)},
-            headers=auth(sandbox, f"stale-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"stale-{uuid4().hex}"),
         )
         cleared = await client.post(
             path,
             json={"expected_revision": 3, "expected_workload_classification_id": None},
-            headers=auth(sandbox, f"clear-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"clear-{uuid4().hex}"),
         )
         no_show = await client.post(
             f"/v1/queue-entries/{entry_id}/no-show",
             json={"expected_revision": 4},
-            headers=auth(sandbox, f"no-show-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"no-show-{uuid4().hex}"),
         )
         too_late = await client.post(
             path,
             json={"expected_revision": 5, "expected_workload_classification_id": str(first)},
-            headers=auth(sandbox, f"late-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"late-{uuid4().hex}"),
         )
 
     assert initial.status_code == 200 and replay.json() == initial.json()
