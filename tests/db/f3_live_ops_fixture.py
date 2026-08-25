@@ -24,6 +24,12 @@ class LiveOpsFixture:
 def create_live_ops_fixture(conn: PgConnection) -> LiveOpsFixture:
     base = create_discovery_fixture(conn)
     suffix = uuid4().hex
+    conn.execute(
+        "INSERT INTO request_engine.resource_location_assignments "
+        "(organization_id,resource_id,location_id,effective_during) "
+        "VALUES (%s,%s,%s,tstzrange('2035-01-01T00:00Z','2036-01-01T00:00Z','[)'))",
+        (base.organization_id, base.resource_id, base.location_id),
+    )
     party_b = uuid_row(
         conn,
         "INSERT INTO request_engine.parties (organization_id,party_kind,display_name) "
