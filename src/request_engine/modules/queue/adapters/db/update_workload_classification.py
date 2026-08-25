@@ -42,7 +42,7 @@ async def update_workload_classification(
             session,
             organization_id=command.organization_id,
             principal_id=command.principal_id,
-            capability="workload.manage",
+            capability="workload.update",
             idempotency_key=command.idempotency_key,
             fingerprint=fingerprint,
         )
