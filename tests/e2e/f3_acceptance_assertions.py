@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from request_engine.platform.security.context import ActorContext
-from tests.e2e.operational_support import PgConnection
-from tests.e2e.tenant_sandbox import TenantSandbox, actor_for
+
+from .tenant_sandbox import TenantSandbox, actor_for
 
 
 _ACCEPTANCE_CAPABILITIES = frozenset(
@@ -29,7 +30,7 @@ def acceptance_actor(sandbox: TenantSandbox) -> ActorContext:
     )
 
 
-def seed_walk_in_subject(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
+def seed_walk_in_subject(conn: Any, sandbox: TenantSandbox) -> UUID:
     row = conn.execute(
         "INSERT INTO request_engine.parties "
         "(organization_id,party_kind,display_name) VALUES (%s,'person','Walk-in') RETURNING id",
@@ -39,7 +40,7 @@ def seed_walk_in_subject(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
     return row[0]
 
 
-def reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> object:
+def reservation_snapshot(conn: Any, reservation_id: UUID) -> object:
     row = conn.execute(
         "SELECT to_jsonb(r) FROM request_engine.reservations r WHERE id=%s",
         (reservation_id,),
@@ -48,10 +49,7 @@ def reservation_snapshot(conn: PgConnection, reservation_id: UUID) -> object:
     return row[0]
 
 
-def capacity_claim_snapshot(
-    conn: PgConnection,
-    reservation_id: UUID,
-) -> list[object]:
+def capacity_claim_snapshot(conn: Any, reservation_id: UUID) -> list[object]:
     return [
         row[0]
         for row in conn.execute(
@@ -63,7 +61,7 @@ def capacity_claim_snapshot(
 
 
 def assert_completed_journey(
-    conn: PgConnection,
+    conn: Any,
     *,
     entry_id: UUID,
     session_id: UUID,
