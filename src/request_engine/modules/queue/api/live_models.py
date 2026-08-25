@@ -3,11 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from request_engine.modules.queue.contracts.live_queue import (
-    LiveQueueEntry,
-    StaffQueueEntry,
-    WorkloadClassification,
-)
+from request_engine.modules.queue.contracts.live_queue import LiveQueueEntry, StaffQueueEntry
 
 
 class CheckInBody(BaseModel):
@@ -54,7 +50,7 @@ class LiveQueueEntryView(BaseModel):
             arrived_at=item.arrived_at,
             admitted_at=item.admitted_at,
             called_at=item.called_at,
-            expected_workload_classification_id=(item.expected_workload_classification_id),
+            expected_workload_classification_id=item.expected_workload_classification_id,
             revision=item.revision,
         )
 
@@ -104,21 +100,4 @@ class StaffQueueEntryView(BaseModel):
             service_completed_at=item.service_completed_at,
             queue_revision=item.queue_revision,
             service_revision=item.service_revision,
-        )
-
-
-class WorkloadClassificationView(BaseModel):
-    id: UUID
-    workload_key: str
-    display_name: str
-
-    @classmethod
-    def from_contract(
-        cls,
-        item: WorkloadClassification,
-    ) -> "WorkloadClassificationView":
-        return cls(
-            id=item.id,
-            workload_key=item.workload_key,
-            display_name=item.display_name,
         )
