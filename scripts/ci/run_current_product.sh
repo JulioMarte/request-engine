@@ -78,6 +78,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f2-discovery-db.xml"
 
+# F3 live-service operations are current product truth. Run the complete F3
+# PostgreSQL proof set so lifecycle, temporal authority, tenant opacity and
+# adversarial races execute against the same accepted migration head.
+uv run pytest \
+  tests/db/test_f3_*.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f3-live-service-db.xml"
+
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
 # they must not disappear merely because V3 historical execution was separated.

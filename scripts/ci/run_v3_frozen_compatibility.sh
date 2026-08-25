@@ -81,7 +81,7 @@ source "$RUNTIME_ENV"
 # Preserve every released V3 API/capability contract exactly while allowing
 # additive post-V3 operations and capabilities. Frozen evidence is provenance,
 # not a ceiling on later product development.
-uv run python scripts/release/prove_v3_public_api_compatibility.py \
+uv run python -m scripts.release.prove_v3_public_api_compatibility \
   --output "$API_PROOF"
 
 # Historical question: does the released V3 tree still reproduce its own
