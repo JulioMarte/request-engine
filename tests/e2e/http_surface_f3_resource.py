@@ -13,7 +13,7 @@ F3_RESOURCE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.NOT_FOUND,
         HttpProbe(
             "/v1/resource-activities",
-            body={"resource_id": P1, "activity_kind": "break"},
+            body={"resource_id": P1, "kind": "break"},
         ),
     ),
     PublicHttpOperation(
