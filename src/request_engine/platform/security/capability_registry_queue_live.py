@@ -76,9 +76,20 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "List active operational workload classifications used by live service.",
     ),
     command_capability(
-        "workload.manage",
+        "workload.create",
         CapabilityExposure.OPERATOR,
-        "Create, rename, and deactivate tenant operational workload classifications.",
-        revision=RevisionPolicy.OPTIONAL,
+        "Create a tenant operational workload classification with a stable key.",
+    ),
+    command_capability(
+        "workload.update",
+        CapabilityExposure.OPERATOR,
+        "Rename an active operational workload classification without changing its stable key.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    command_capability(
+        "workload.deactivate",
+        CapabilityExposure.OPERATOR,
+        "Deactivate an operational workload classification without deleting history.",
+        revision=RevisionPolicy.REQUIRED,
     ),
 )
