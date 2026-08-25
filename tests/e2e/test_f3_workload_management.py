@@ -83,7 +83,7 @@ async def test_workload_vocabulary_is_revisioned_idempotent_and_deactivatable(
         (workload_id,),
     ).fetchone() == ("consultation", "Consult", False, 3)
     assert e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.audit_events "
+        "SELECT count(*) FROM request_engine.audit_records "
         "WHERE organization_id=%s AND aggregate_kind='OperationalWorkloadClassification'",
         (sandbox.organization_id,),
     ).fetchone() == (3,)

@@ -62,7 +62,12 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "queue.staff_read",
         CapabilityExposure.OPERATOR,
-        "Read live queue state and bounded terminal queue history for staff operations.",
+        "Read the active staff live-queue projection.",
+    ),
+    query_capability(
+        "queue.staff_history_read",
+        CapabilityExposure.OPERATOR,
+        "Read bounded terminal queue history for staff operations.",
     ),
     command_capability(
         "queue.subject_override",

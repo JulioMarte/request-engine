@@ -48,10 +48,10 @@ F3_SERVICE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         HttpProbe(f"/v1/queues/{P1}/staff"),
     ),
     PublicHttpOperation(
-        "queue.staff_history",
+        "queue.staff_history_read",
         "GET",
         "/v1/queues/{queue_id}/staff/history",
-        "queue.staff_read",
+        "queue.staff_history_read",
         False,
         False,
         TenantIsolationMode.NOT_FOUND,

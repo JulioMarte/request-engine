@@ -38,7 +38,7 @@ def create_live_read_router(
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
         cursor: Annotated[UUID | None, Query()] = None,
     ) -> StaffQueueHistoryPageView:
-        require_capability(current, "queue.staff_read")
+        require_capability(current, "queue.staff_history_read")
         if window_end <= window_start:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -73,7 +73,7 @@ def create_live_read_router(
         router,
         "/queues/{queue_id}/staff/history",
         staff_history,
-        capability="queue.staff_read",
+        capability="queue.staff_history_read",
         methods=["GET"],
         response_model=StaffQueueHistoryPageView,
     )

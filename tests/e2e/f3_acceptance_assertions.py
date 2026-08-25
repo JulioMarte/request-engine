@@ -9,6 +9,7 @@ _ACCEPTANCE_CAPABILITIES = frozenset(
     {
         "queue.check_in",
         "queue.staff_read",
+        "queue.staff_history_read",
         "service_session.start",
         "service_session.pause",
         "service_session.resume",
