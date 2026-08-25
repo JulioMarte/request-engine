@@ -4,9 +4,8 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .f3_acceptance_support import acceptance_actor
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
 
 
 @pytest.mark.asyncio
@@ -19,7 +18,20 @@ async def test_workload_vocabulary_is_revisioned_idempotent_and_deactivatable(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-management")
-    actor = acceptance_actor(sandbox)
+    base_actor = actor_for(sandbox)
+    actor = type(base_actor)(
+        organization_id=base_actor.organization_id,
+        principal_id=base_actor.principal_id,
+        capabilities=base_actor.capabilities
+        | frozenset(
+            {
+                "workload.list",
+                "workload.create",
+                "workload.update",
+                "workload.deactivate",
+            }
+        ),
+    )
     create_key = f"create-{uuid4().hex}"
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
         created = await client.post(
