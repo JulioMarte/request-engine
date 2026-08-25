@@ -76,10 +76,13 @@ def test_execution_preserves_planning_and_expected_vs_actual_classification(
     ).fetchone()
     assert observed == (setup.expected_workload_id, setup.actual_workload_id)
     assert setup.expected_workload_id != setup.actual_workload_id
-    assert admin_conn.execute(
-        "SELECT offering_version_id,during,revision FROM request_engine.reservations WHERE id=%s",
-        (setup.reservation_id,),
-    ).fetchone() == before
+    assert (
+        admin_conn.execute(
+            "SELECT offering_version_id,during,revision FROM request_engine.reservations WHERE id=%s",
+            (setup.reservation_id,),
+        ).fetchone()
+        == before
+    )
     with pytest.raises(psycopg.Error) as error:
         admin_conn.execute(
             "UPDATE request_engine.service_sessions SET queue_entry_id=%s,revision=revision+1 "
