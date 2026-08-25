@@ -97,7 +97,12 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "service_session.read",
         CapabilityExposure.OPERATOR,
-        "Read actual service execution status and durable interruption duration.",
+        "Read service state, interruption history, and factual elapsed durations.",
+    ),
+    query_capability(
+        "resource_activity.read",
+        CapabilityExposure.OPERATOR,
+        "Reconstruct current or historical non-service occupation for one Resource.",
     ),
     command_capability(
         "resource_activity.start",
