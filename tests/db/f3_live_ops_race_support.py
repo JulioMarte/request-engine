@@ -48,9 +48,12 @@ def create_active_session(conn: PgConnection, setup: LiveOpsFixture, entry_id: U
 def create_paused_session(conn: PgConnection, setup: LiveOpsFixture) -> tuple[UUID, UUID]:
     principal_id = create_principal(conn, setup)
     session_id = create_active_session(conn, setup, setup.entry_a_id)
+    started = conn.execute(
+        "SELECT started_at + interval '1 minute' FROM request_engine.service_sessions WHERE id=%s",
+        (session_id,),
+    ).fetchone()
+    assert started is not None
     with conn.transaction():
-        started = conn.execute("SELECT clock_timestamp()").fetchone()
-        assert started is not None
         conn.execute(
             "UPDATE request_engine.service_sessions SET status='paused',revision=revision+1 "
             "WHERE id=%s",
