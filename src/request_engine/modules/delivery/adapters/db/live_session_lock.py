@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
@@ -39,7 +40,7 @@ async def require_execution_assignment(
     organization_id: UUID,
     resource_id: UUID,
     location_id: UUID,
-    at: object,
+    at: datetime,
 ) -> None:
     result = await session.execute(
         text(
