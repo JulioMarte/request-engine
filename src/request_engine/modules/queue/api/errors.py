@@ -1,6 +1,7 @@
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
+from request_engine.modules.queue.api.live_error_mapping import live_queue_error
 from request_engine.modules.queue.api.waitlist_error_mapping import waitlist_error
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
@@ -14,7 +15,6 @@ from request_engine.modules.queue.application.errors import (
     SubjectAuthorityRequired,
     TenantReferenceNotUsable,
 )
-from request_engine.modules.queue.application.live_errors import QueueEntryNotClassifiable
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
 
@@ -32,6 +32,9 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
     mapped_waitlist = waitlist_error(exc)
     if mapped_waitlist is not None:
         return mapped_waitlist
+    mapped_live = live_queue_error(exc)
+    if mapped_live is not None:
+        return mapped_live
     if isinstance(exc, TenantReferenceNotUsable):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="tenant_reference_not_usable",
@@ -105,13 +108,6 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
                 "queue_id": str(exc.queue_id),
                 "subject_party_id": str(exc.subject_party_id),
             },
-        )
-    if isinstance(exc, QueueEntryNotClassifiable):
-        return status.HTTP_409_CONFLICT, ErrorBody(
-            code="queue_entry_not_classifiable",
-            message="expected workload can only change before service starts",
-            resolution=ErrorResolution.REFRESH_AND_RETRY,
-            details={"entry_id": str(exc.entry_id), "status": exc.status},
         )
     if isinstance(exc, QueueEntryNotCancellable):
         return status.HTTP_409_CONFLICT, ErrorBody(
