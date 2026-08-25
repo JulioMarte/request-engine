@@ -88,7 +88,8 @@ async def test_expected_workload_can_change_only_before_service(
     assert changed.status_code == 200 and changed.json()["revision"] == 3
     assert changed.json()["expected_workload_classification_id"] == str(second)
     assert stale.status_code == 409 and stale.json()["error"]["code"] == "revision_conflict"
-    assert cleared.status_code == 200 and cleared.json()["expected_workload_classification_id"] is None
+    assert cleared.status_code == 200
+    assert cleared.json()["expected_workload_classification_id"] is None
     assert no_show.status_code == 200 and no_show.json()["status"] == "no_show"
     assert too_late.status_code == 409
     assert too_late.json()["error"]["code"] == "queue_entry_not_classifiable"
