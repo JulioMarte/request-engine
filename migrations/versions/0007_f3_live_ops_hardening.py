@@ -83,7 +83,8 @@ BEGIN
     SELECT * INTO v_session FROM request_engine.service_sessions s
      WHERE s.organization_id = NEW.organization_id AND s.queue_entry_id = v_entry_id;
     IF v_session.id IS NULL THEN
-        IF v_entry.status IN ('serving', 'completed') AND v_entry.service_started_at IS NOT NULL THEN
+        IF v_entry.status IN ('serving', 'completed')
+           AND v_entry.service_started_at IS NOT NULL THEN
             RAISE EXCEPTION 'QueueEntry % execution requires ServiceSession', v_entry_id
                 USING ERRCODE = '23514';
         END IF;
