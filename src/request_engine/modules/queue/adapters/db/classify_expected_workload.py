@@ -15,11 +15,9 @@ from request_engine.modules.queue.adapters.db.live_queue_serialization import (
     entry_to_json,
 )
 from request_engine.modules.queue.adapters.db.live_queue_validation import require_active_workload
-from request_engine.modules.queue.application.errors import (
-    QueueEntryNotClassifiable,
-    QueueEntryRevisionConflict,
-)
+from request_engine.modules.queue.application.errors import QueueEntryRevisionConflict
 from request_engine.modules.queue.application.live_commands import ClassifyExpectedWorkloadCommand
+from request_engine.modules.queue.application.live_errors import QueueEntryNotClassifiable
 from request_engine.modules.queue.contracts.live_queue import LiveQueueEntry
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
