@@ -64,7 +64,7 @@ async def test_start_service_idempotent_retry_returns_one_authoritative_session(
             json=body,
             headers=auth(sandbox, idempotency_key=key),
         )
-    assert first.status_code == replay.status_code == 200
+    assert first.status_code == replay.status_code == 201
     assert first.json() == replay.json()
     assert e2e_admin_conn.execute(
         "SELECT count(*) FROM request_engine.service_sessions WHERE queue_entry_id=%s",
