@@ -20,15 +20,16 @@ async def live_service_error_handler(_: Request, exc: Exception) -> JSONResponse
     code = status.HTTP_409_CONFLICT
     resolution = ErrorResolution.REFRESH_AND_RETRY
     error_code = "live_service_conflict"
+    message = str(exc)
     details: dict[str, object] = {}
     if isinstance(exc, ServiceSessionNotFound):
         code = status.HTTP_404_NOT_FOUND
         error_code = "service_session_not_found"
-        details = {"service_session_id": str(exc.service_session_id)}
+        message = "ServiceSession not found"
     elif isinstance(exc, ResourceActivityNotFound):
         code = status.HTTP_404_NOT_FOUND
         error_code = "resource_activity_not_found"
-        details = {"resource_activity_id": str(exc.activity_id)}
+        message = "ResourceActivity not found"
     elif isinstance(exc, LiveServiceRevisionConflict):
         error_code = "revision_conflict"
         details = {
@@ -55,5 +56,5 @@ async def live_service_error_handler(_: Request, exc: Exception) -> JSONResponse
         error_code = "workload_classification_unavailable"
         resolution = ErrorResolution.CHOOSE_ALTERNATIVE
         details = {"workload_classification_id": str(exc.workload_id)}
-    body = ErrorBody(code=error_code, message=str(exc), resolution=resolution, details=details)
+    body = ErrorBody(code=error_code, message=message, resolution=resolution, details=details)
     return JSONResponse(status_code=code, content=ErrorEnvelope(error=body).model_dump(mode="json"))
