@@ -79,8 +79,9 @@ uv run python scripts/release/provision_v3_release_runtime.py \
 source "$RUNTIME_ENV"
 
 # Preserve every released V3 API/capability contract exactly while allowing
-# additive post-V3 operations and capabilities. Frozen evidence is provenance,
-# not a ceiling on later product development.
+# additive post-V3 operations and capabilities. The compatibility wrapper uses
+# scripts/release/prove_v3_public_api_contract.py as the frozen implementation;
+# execute the wrapper as a module so repository-root imports resolve correctly.
 uv run python -m scripts.release.prove_v3_public_api_compatibility \
   --output "$API_PROOF"
 
