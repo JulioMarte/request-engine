@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from httpx import AsyncClient
-
 from request_engine.platform.security.context import ActorContext
 
 from .operational_support import PgConnection
@@ -67,7 +65,7 @@ def capacity_claim_snapshot(conn: PgConnection, reservation_id: UUID) -> list[An
 
 
 async def create_workload(
-    client: AsyncClient,
+    client: Any,
     sandbox: TenantSandbox,
     workload_key: str,
     display_name: str,
