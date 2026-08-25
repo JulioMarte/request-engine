@@ -4,8 +4,8 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .operational_support import PgConnection
 from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
+from .operational_support import PgConnection
 
 
 _WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
