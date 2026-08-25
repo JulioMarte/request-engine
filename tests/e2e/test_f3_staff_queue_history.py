@@ -64,7 +64,10 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
         "limit": 2,
     }
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
-        live = await client.get(f"/v1/queues/{sandbox.queue_id}/staff", headers=auth(sandbox))
+        live = await client.get(
+            f"/v1/queues/{sandbox.queue_id}/staff",
+            headers=auth(sandbox),
+        )
         assert live.status_code == 200, live.text
         assert [UUID(item["queue_entry_id"]) for item in live.json()] == [waiting_id]
 
@@ -75,7 +78,8 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
         )
         assert first.status_code == 200, first.text
         first_body = first.json()
-        assert [UUID(item["queue_entry_id"]) for item in first_body["entries"]] == terminal_ids[:2]
+        first_ids = [UUID(item["queue_entry_id"]) for item in first_body["entries"]]
+        assert first_ids == terminal_ids[:2]
         assert UUID(first_body["next_cursor"]) == terminal_ids[1]
 
         second = await client.get(
@@ -84,12 +88,16 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
             headers=auth(sandbox),
         )
         assert second.status_code == 200, second.text
-        assert [UUID(item["queue_entry_id"]) for item in second.json()["entries"]] == terminal_ids[2:]
+        second_ids = [UUID(item["queue_entry_id"]) for item in second.json()["entries"]]
+        assert second_ids == terminal_ids[2:]
         assert second.json()["next_cursor"] is None
 
         invalid = await client.get(
             f"/v1/queues/{sandbox.queue_id}/staff/history",
-            params={"window_start": params["window_end"], "window_end": params["window_start"]},
+            params={
+                "window_start": params["window_end"],
+                "window_end": params["window_start"],
+            },
             headers=auth(sandbox),
         )
         assert invalid.status_code == 422
