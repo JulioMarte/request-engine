@@ -4,23 +4,26 @@ from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 
 @pytest.mark.postgres
 @pytest.mark.adversarial
-def test_defaulted_queue_timestamps_use_transition_clock_and_preserve_order(
+def test_omitted_queue_timestamps_share_one_transition_clock(
     admin_conn: PgConnection,
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
-    defaults = dict(
-        admin_conn.execute(
-            "SELECT a.attname,pg_get_expr(d.adbin,d.adrelid) "
-            "FROM pg_attribute a JOIN pg_attrdef d "
-            "ON d.adrelid=a.attrelid AND d.adnum=a.attnum "
-            "WHERE a.attrelid='request_engine.queue_entries'::regclass "
-            "AND a.attname IN ('arrived_at','admitted_at')"
-        ).fetchall()
-    )
-    assert defaults == {
-        "arrived_at": "clock_timestamp()",
-        "admitted_at": "clock_timestamp()",
-    }
+    defaults = admin_conn.execute(
+        "SELECT a.attname FROM pg_attribute a JOIN pg_attrdef d "
+        "ON d.adrelid=a.attrelid AND d.adnum=a.attnum "
+        "WHERE a.attrelid='request_engine.queue_entries'::regclass "
+        "AND a.attname IN ('arrived_at','admitted_at')"
+    ).fetchall()
+    assert defaults == []
+    trigger = admin_conn.execute(
+        "SELECT p.proname,pg_get_functiondef(p.oid) "
+        "FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid "
+        "WHERE t.tgrelid='request_engine.queue_entries'::regclass "
+        "AND t.tgname='queue_entries_initialize_times' AND NOT t.tgisinternal"
+    ).fetchone()
+    assert trigger is not None
+    assert trigger[0] == "initialize_queue_entry_times"
+    assert "clock_timestamp()" in trigger[1]
 
     party = admin_conn.execute(
         "INSERT INTO request_engine.parties (organization_id,party_kind,display_name) "
@@ -35,4 +38,5 @@ def test_defaulted_queue_timestamps_use_transition_clock_and_preserve_order(
         (setup.organization_id, setup.queue_id, party[0]),
     ).fetchone()
     assert row is not None
-    assert row[0] <= row[1]
+    assert row[0] is not None
+    assert row[0] == row[1]
