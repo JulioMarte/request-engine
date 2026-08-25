@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from request_engine.platform.security.context import ActorContext
-
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, actor_for, auth
 
@@ -25,9 +23,9 @@ F3_ACCEPTANCE_CAPABILITIES = frozenset(
 )
 
 
-def acceptance_actor(sandbox: TenantSandbox) -> ActorContext:
+def acceptance_actor(sandbox: TenantSandbox):
     base = actor_for(sandbox)
-    return ActorContext(
+    return type(base)(
         organization_id=base.organization_id,
         principal_id=base.principal_id,
         capabilities=base.capabilities | F3_ACCEPTANCE_CAPABILITIES,
