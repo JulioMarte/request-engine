@@ -4,9 +4,11 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .f3_acceptance_support import acceptance_actor
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
+
+
+_WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
 
 
 @pytest.mark.asyncio
@@ -20,10 +22,14 @@ async def test_foreign_workload_id_is_as_unusable_as_unknown_id(
 ) -> None:
     tenant_a = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-a")
     tenant_b = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-b")
-    actors = {
-        tenant_a.token: acceptance_actor(tenant_a),
-        tenant_b.token: acceptance_actor(tenant_b),
-    }
+    actors = {}
+    for tenant in (tenant_a, tenant_b):
+        base_actor = actor_for(tenant)
+        actors[tenant.token] = type(base_actor)(
+            organization_id=base_actor.organization_id,
+            principal_id=base_actor.principal_id,
+            capabilities=base_actor.capabilities | _WORKLOAD_CAPABILITIES,
+        )
     async with client_with_actors(e2e_session_factory, actors) as client:
         created = await client.post(
             "/v1/live-workloads",
