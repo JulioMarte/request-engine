@@ -21,7 +21,7 @@ SET search_path = request_engine, request_read, pg_catalog;
 CREATE OR REPLACE FUNCTION request_engine.guard_live_resource_occupation()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
-    v_at timestamptz;
+    v_validate_assignment boolean;
 BEGIN
     PERFORM 1 FROM request_engine.resources
      WHERE organization_id = NEW.organization_id AND id = NEW.resource_id
@@ -30,14 +30,19 @@ BEGIN
         RAISE EXCEPTION 'Resource % does not exist', NEW.resource_id USING ERRCODE = '23503';
     END IF;
 
-    v_at := NEW.started_at;
-    IF NEW.location_id IS NOT NULL AND NOT EXISTS (
+    v_validate_assignment := TG_OP = 'INSERT';
+    IF TG_OP = 'UPDATE' THEN
+        v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+            OR NEW.location_id IS DISTINCT FROM OLD.location_id
+            OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+    END IF;
+    IF v_validate_assignment AND NEW.location_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM request_engine.resource_location_assignments a
          WHERE a.organization_id = NEW.organization_id
            AND a.resource_id = NEW.resource_id
            AND a.location_id = NEW.location_id
            AND a.status = 'active'
-           AND a.effective_during @> v_at
+           AND a.effective_during @> NEW.started_at
     ) THEN
         RAISE EXCEPTION 'Resource % is not assigned to Location % at execution time',
             NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
