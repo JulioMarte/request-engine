@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -11,6 +11,8 @@ from request_engine.modules.queue.api.workload_models import WorkloadClassificat
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
+
+_MAX_HISTORY_WINDOW = timedelta(days=31)
 
 
 def create_live_read_router(
@@ -39,10 +41,20 @@ def create_live_read_router(
         cursor: Annotated[UUID | None, Query()] = None,
     ) -> StaffQueueHistoryPageView:
         require_capability(current, "queue.staff_history_read")
+        if window_start.utcoffset() is None or window_end.utcoffset() is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="history window timestamps must include a timezone offset",
+            )
         if window_end <= window_start:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="window_end must be after window_start",
+            )
+        if window_end - window_start > _MAX_HISTORY_WINDOW:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="history window cannot exceed 31 days",
             )
         page = await reader.staff_queue_history(
             current.organization_id,
