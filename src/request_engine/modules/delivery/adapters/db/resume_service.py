@@ -2,7 +2,10 @@ from typing import cast
 
 from sqlalchemy import text
 
-from request_engine.modules.delivery.adapters.db.live_common import db_now, require_revision
+from request_engine.modules.delivery.adapters.db.live_common import (
+    db_now,
+    require_revision,
+)
 from request_engine.modules.delivery.adapters.db.live_recording import record_live_fact
 from request_engine.modules.delivery.adapters.db.live_serialization import (
     session_from_json,
@@ -11,7 +14,9 @@ from request_engine.modules.delivery.adapters.db.live_serialization import (
 )
 from request_engine.modules.delivery.adapters.db.live_session_lock import lock_session_context
 from request_engine.modules.delivery.application.errors import ServiceSessionNotActionable
-from request_engine.modules.delivery.application.service_session_commands import ResumeServiceCommand
+from request_engine.modules.delivery.application.service_session_commands import (
+    ResumeServiceCommand,
+)
 from request_engine.modules.delivery.contracts.service_session import ServiceSession
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
