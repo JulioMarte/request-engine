@@ -73,13 +73,6 @@ class QueueEntryNotCancellable(QueueError):
         self.status = status
 
 
-class QueueEntryNotClassifiable(QueueError):
-    def __init__(self, entry_id: UUID, status: str) -> None:
-        super().__init__(f"QueueEntry {entry_id} cannot change expected workload from status {status}")
-        self.entry_id = entry_id
-        self.status = status
-
-
 class OfferingNotAvailableForWaitlist(QueueError):
     def __init__(self, offering_id: UUID) -> None:
         super().__init__(f"Offering {offering_id} is not available for waitlist")
