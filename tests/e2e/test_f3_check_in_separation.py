@@ -107,10 +107,13 @@ async def test_check_in_keeps_reservation_planning_separate_and_walk_in_reservat
 
     assert walk_in.status_code == 201, walk_in.text
     assert walk_in.json()["reservation_id"] is None
-    assert e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
-        (sandbox.organization_id,),
-    ).fetchone() == reservation_count
+    assert (
+        e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.reservations WHERE organization_id = %s",
+            (sandbox.organization_id,),
+        ).fetchone()
+        == reservation_count
+    )
     queue_rows = e2e_admin_conn.execute(
         "SELECT subject_party_id,reservation_id FROM request_engine.queue_entries "
         "WHERE organization_id = %s AND service_queue_id = %s ORDER BY admitted_at,id",
