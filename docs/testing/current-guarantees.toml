@@ -98,6 +98,48 @@ required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["security", "provenance"]
 
 [[guarantees]]
+id = "INV-LIVE-OPS-SEPARATION-001"
+statement = "Reservation planning, QueueEntry waiting/calling state and ServiceSession execution remain independent historical facts; actual execution cannot rewrite booking planning or capacity provenance."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-OPS-LIFECYCLE-001"
+statement = "QueueEntry and ServiceSession lifecycle transitions remain transactionally coherent: committed serving/completed execution cannot exist on only one side of the Queue-to-Delivery boundary."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-OPS-TEMPORAL-001"
+statement = "Arrival, admission, calling, service, interruption and completion timestamps are database-authoritative, durable and ordered according to the accepted live-operation lifecycle."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["temporal", "provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-OPS-PRIVACY-001"
+statement = "Customer queue projections expose only the authorized subject's queue state and derived position; identities, workload and execution details of other subjects remain unavailable."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-LIVE-OPS-CLASSIFICATION-001"
+statement = "Expected operational workload and actual observed workload remain independently reconstructable without mutating OfferingVersion or Reservation planning truth."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-OPS-RESOURCE-001"
+statement = "Actual service and non-patient ResourceActivity obey the accepted live-resource serialization policy so contested operations cannot create overlapping authoritative occupation."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
 id = "FIT-ARCH-001"
 statement = "Current module ownership remains explicit, dependency direction remains understandable and acyclic, and cross-module imports use published connection surfaces rather than internals."
 severity = "critical"
