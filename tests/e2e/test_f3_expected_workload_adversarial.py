@@ -12,8 +12,10 @@ from .tenant_sandbox import TenantSandbox, auth, client_with_actors, seed_tenant
 
 def _entry(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
     row = conn.execute(
+        "WITH transition AS (SELECT clock_timestamp() AS at) "
         "INSERT INTO request_engine.queue_entries "
-        "(organization_id,service_queue_id,subject_party_id) VALUES (%s,%s,%s) RETURNING id",
+        "(organization_id,service_queue_id,subject_party_id,arrived_at,admitted_at) "
+        "SELECT %s,%s,%s,at,at FROM transition RETURNING id",
         (sandbox.organization_id, sandbox.queue_id, sandbox.party_id),
     ).fetchone()
     assert row is not None
