@@ -2,7 +2,13 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from f2_discovery_fixture import create_discovery_fixture
-from f3_live_ops_seed import PgConnection, create_called_entry, create_workload, uuid_row
+from f3_live_ops_seed import (
+    PgConnection,
+    create_called_entry,
+    create_confirmed_reservation,
+    create_workload,
+    uuid_row,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,10 +30,12 @@ class LiveOpsFixture:
 def create_live_ops_fixture(conn: PgConnection) -> LiveOpsFixture:
     base = create_discovery_fixture(conn)
     suffix = uuid4().hex
-    conn.execute(
+    assignment = uuid_row(
+        conn,
         "INSERT INTO request_engine.resource_location_assignments "
         "(organization_id,resource_id,location_id,effective_during) "
-        "VALUES (%s,%s,%s,tstzrange('2035-01-01T00:00Z','2036-01-01T00:00Z','[)'))",
+        "VALUES (%s,%s,%s,tstzrange('2035-01-01T00:00Z','2036-01-01T00:00Z','[)')) "
+        "RETURNING id",
         (base.organization_id, base.resource_id, base.location_id),
     )
     party_b = uuid_row(
@@ -45,13 +53,15 @@ def create_live_ops_fixture(conn: PgConnection) -> LiveOpsFixture:
     )
     expected = create_workload(conn, base.organization_id, f"expected-{suffix}", "Expected")
     actual = create_workload(conn, base.organization_id, f"actual-{suffix}", "Actual")
-    reservation = uuid_row(
+    reservation = create_confirmed_reservation(
         conn,
-        "INSERT INTO request_engine.reservations "
-        "(organization_id,offering_version_id,subject_party_id,during) "
-        "VALUES (%s,%s,%s,tstzrange('2035-01-01T10:00Z','2035-01-01T10:30Z','[)')) "
-        "RETURNING id",
-        (base.organization_id, base.offering_version_id, base.party_id),
+        base.organization_id,
+        base.offering_version_id,
+        base.party_id,
+        base.location_id,
+        base.resource_id,
+        base.requirement_id,
+        assignment,
     )
     entry_a = create_called_entry(
         conn,

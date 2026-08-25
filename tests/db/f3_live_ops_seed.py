@@ -21,6 +21,36 @@ def create_workload(conn: PgConnection, org: UUID, key: str, name: str) -> UUID:
     )
 
 
+def create_confirmed_reservation(
+    conn: PgConnection,
+    org: UUID,
+    offering_version: UUID,
+    party: UUID,
+    location: UUID,
+    resource: UUID,
+    requirement: UUID,
+    assignment: UUID,
+) -> UUID:
+    with conn.transaction():
+        reservation = uuid_row(
+            conn,
+            "INSERT INTO request_engine.reservations "
+            "(organization_id,offering_version_id,subject_party_id,location_id,during) "
+            "VALUES (%s,%s,%s,%s,tstzrange('2035-01-01T10:00Z','2035-01-01T10:30Z','[)')) "
+            "RETURNING id",
+            (org, offering_version, party, location),
+        )
+        conn.execute(
+            "INSERT INTO request_engine.capacity_claims "
+            "(organization_id,resource_id,requirement_id,reservation_id,"
+            "resource_location_assignment_id,during,quantity) "
+            "VALUES (%s,%s,%s,%s,%s,"
+            "tstzrange('2035-01-01T10:00Z','2035-01-01T10:30Z','[)'),1)",
+            (org, resource, requirement, reservation, assignment),
+        )
+    return reservation
+
+
 def create_called_entry(
     conn: PgConnection,
     org: UUID,
