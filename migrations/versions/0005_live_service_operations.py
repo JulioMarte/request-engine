@@ -373,6 +373,7 @@ GRANT ALL PRIVILEGES ON request_engine.operational_workload_classifications,
   request_engine.resource_activities TO request_engine_admin;
 
 RESET ROLE;
+RESET search_path;
 """
 
 
