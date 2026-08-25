@@ -62,7 +62,7 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "queue.staff_read",
         CapabilityExposure.OPERATOR,
-        "Read the privacy-controlled staff live queue projection.",
+        "Read live queue state and bounded terminal queue history for staff operations.",
     ),
     command_capability(
         "queue.subject_override",
@@ -74,5 +74,11 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "workload.list",
         CapabilityExposure.OPERATOR,
         "List active operational workload classifications used by live service.",
+    ),
+    command_capability(
+        "workload.manage",
+        CapabilityExposure.OPERATOR,
+        "Create, rename, and deactivate tenant operational workload classifications.",
+        revision=RevisionPolicy.OPTIONAL,
     ),
 )
