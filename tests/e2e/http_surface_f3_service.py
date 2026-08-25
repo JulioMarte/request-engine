@@ -1,0 +1,52 @@
+from .http_surface import HttpProbe, PublicHttpOperation, TenantIsolationMode
+
+P1 = "00000000-0000-4000-8000-000000000001"
+P2 = "00000000-0000-4000-8000-000000000002"
+
+F3_SERVICE_OPERATIONS: tuple[PublicHttpOperation, ...] = (
+    PublicHttpOperation(
+        "queue.check_in", "POST", "/v1/queues/{queue_id}/check-in", "queue.check_in",
+        True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/queues/{P1}/check-in", body={"subject_party_id": P2}),
+    ),
+    PublicHttpOperation(
+        "queue.mark_no_show", "POST", "/v1/queue-entries/{queue_entry_id}/no-show",
+        "queue.mark_no_show", True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/queue-entries/{P1}/no-show", body={"expected_revision": 1}),
+    ),
+    PublicHttpOperation(
+        "queue.staff_read", "GET", "/v1/queues/{queue_id}/staff", "queue.staff_read",
+        False, False, TenantIsolationMode.NOT_FOUND, HttpProbe(f"/v1/queues/{P1}/staff"),
+    ),
+    PublicHttpOperation(
+        "service_session.start", "POST", "/v1/queue-entries/{queue_entry_id}/service/start",
+        "service_session.start", True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queue-entries/{P1}/service/start",
+            body={"resource_id": P1, "location_id": P2, "expected_queue_revision": 1},
+        ),
+    ),
+    PublicHttpOperation(
+        "service_session.read", "GET", "/v1/service-sessions/{service_session_id}",
+        "service_session.read", False, False, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/service-sessions/{P1}"),
+    ),
+    PublicHttpOperation(
+        "service_session.pause", "POST", "/v1/service-sessions/{service_session_id}/pause",
+        "service_session.pause", True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/service-sessions/{P1}/pause",
+            body={"expected_revision": 1, "kind": "break"},
+        ),
+    ),
+    PublicHttpOperation(
+        "service_session.resume", "POST", "/v1/service-sessions/{service_session_id}/resume",
+        "service_session.resume", True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/service-sessions/{P1}/resume", body={"expected_revision": 1}),
+    ),
+    PublicHttpOperation(
+        "service_session.complete", "POST", "/v1/service-sessions/{service_session_id}/complete",
+        "service_session.complete", True, True, TenantIsolationMode.NOT_FOUND,
+        HttpProbe(f"/v1/service-sessions/{P1}/complete", body={"expected_revision": 1}),
+    ),
+)
