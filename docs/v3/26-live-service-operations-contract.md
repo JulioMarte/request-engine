@@ -1,6 +1,6 @@
 # F3 — Live Service Operations contract
 
-Status: **normative for `feature/live-service-operations`**.
+Status: **normative and implemented on `feature/live-service-operations` / PR #79; exact-head merge evidence required**.
 
 This contract activates actual service execution without collapsing planning, waiting and execution into one mutable record.
 
@@ -28,7 +28,7 @@ A `ServiceSession` never changes `Reservation.during`, OfferingVersion, booking 
 ## 2. Ownership
 
 - `booking` continues to own Reservation and capacity.
-- `queue` owns ServiceQueue, QueueEntry, FIFO admission/calling and no-show state.
+- `queue` owns ServiceQueue, QueueEntry, FIFO admission/calling, expected-workload classification and no-show state.
 - `delivery` keeps ReservationAccess and is activated for ServiceSession, ServiceSessionInterruption and ResourceActivity.
 - operational workload vocabulary is tenant-scoped configuration consumed by Queue and Delivery. It is **not** F2 `ServiceClassification`; discovery taxonomy and live workload are intentionally independent concepts.
 
@@ -44,7 +44,7 @@ FIFO queues remain ordered by:
 
 Position is derived. There is no mutable queue-position counter.
 
-`arrived_at` and `admitted_at` are different semantics. F3 initially admits immediately, so new check-ins/walk-ins record both from the same PostgreSQL transaction clock. The schema keeps them separate so a future explicit arrival-before-admission feature does not need to reinterpret history.
+`arrived_at` and `admitted_at` are different semantics. F3 initially admits immediately, so new check-ins/walk-ins record both from the same PostgreSQL transaction clock. Schema defaults also use `clock_timestamp()` so direct/defaulted writes cannot silently introduce a different time semantic. The schema keeps the fields separate so a future explicit arrival-before-admission feature does not need to reinterpret history.
 
 State machine:
 
@@ -90,7 +90,22 @@ OperationalWorkloadClassification
 
 It deliberately has no arbitrary JSON payload and no prediction/duration model.
 
-Expected workload is captured on QueueEntry because it exists before execution. Actual workload is captured on ServiceSession because it is an observation of execution.
+Expected workload belongs to QueueEntry because it is an operational expectation before execution. It may be unknown at check-in and can be assigned, corrected or cleared later while the QueueEntry is still `waiting` or `called` through `queue.classify_expected_workload`.
+
+That mutation:
+
+- is operator-only;
+- requires `Idempotency-Key`;
+- requires the caller-observed QueueEntry `expected_revision`;
+- locks ServiceQueue then QueueEntry;
+- validates a non-null classification as active and same-tenant;
+- advances QueueEntry revision only when the expected classification materially changes;
+- appends audit/outbox only for a material classification change;
+- becomes invalid once service has started or the QueueEntry is otherwise terminal.
+
+After `StartService`, expected workload is historical input and must not be rewritten to match actual execution.
+
+Actual workload belongs to ServiceSession because it is an observation of execution.
 
 Therefore this is valid and reconstructable:
 
@@ -200,19 +215,20 @@ Parallel/group service is a future explicit policy, not an accidental F3 behavio
 Exact runtime capabilities:
 
 ```text
-queue.check_in              operator
-queue.call_next             operator
-queue.mark_no_show          operator
-queue.staff_read            operator
+queue.check_in                    operator
+queue.classify_expected_workload  operator
+queue.call_next                   operator
+queue.mark_no_show                operator
+queue.staff_read                  operator
 
-service_session.start       operator
-service_session.pause       operator
-service_session.resume      operator
-service_session.complete    operator
-service_session.read        operator
+service_session.start             operator
+service_session.pause             operator
+service_session.resume            operator
+service_session.complete          operator
+service_session.read              operator
 
-resource_activity.start     operator
-resource_activity.end       operator
+resource_activity.start           operator
+resource_activity.end             operator
 ```
 
 Existing customer capabilities remain separate (`queue.join`, `queue.status`, `queue.leave`). Caller-supplied Organization IDs never create authority; actor Organization remains runtime scope.
@@ -229,7 +245,7 @@ Staff DTOs and customer DTOs remain distinct types.
 
 ## 12. Time and restart semantics
 
-All transition times use `clock_timestamp()` inside PostgreSQL transactions. Browser/mobile timers are presentation only.
+All transition times and F3 QueueEntry time defaults use `clock_timestamp()` inside PostgreSQL transactions. Browser/mobile timers are presentation only.
 
 Refresh, reconnect, process restart and idempotent retry cannot erase or regenerate arrival, call, service or interruption timestamps.
 
@@ -239,7 +255,8 @@ Material mutations append audit. Durable events are emitted for:
 
 ```text
 queue.entry_checked_in.v1
-queue.entry_called.v1              # existing
+queue.entry_called.v1                      # existing
+queue.entry_expected_workload_classified.v1
 queue.entry_no_show.v1
 service_session.started.v1
 service_session.paused.v1
@@ -271,7 +288,7 @@ Historical `0001_initial` and `migrations/sql/v3_candidate/*` are not rewritten.
 - exactly zero or one ServiceSession exists per QueueEntry;
 - QueueEntry/ServiceSession start and completion are transactionally coherent;
 - actual operational timestamps are durable, DB-authoritative and monotonic;
-- expected and actual workload classifications remain independently reconstructable;
+- expected workload may evolve only before service starts; actual workload remains independently reconstructable on ServiceSession;
 - customer queue projections never reveal another subject's identity/private context;
 - Resource live service/activity conflicts follow the conservative F3 serialization policy;
 - all tenant-owned F3 relations use same-Organization FKs and FORCE RLS.
