@@ -7,15 +7,14 @@ from request_engine.modules.delivery.adapters.db.live_service_operations import 
     PostgresLiveServiceOperations,
 )
 from request_engine.modules.delivery.api.live_models import (
-    EndResourceActivityBody,
-    ResourceActivityView,
-    StartResourceActivityBody,
+    CompleteServiceBody,
+    ServiceSessionView,
+    StartServiceBody,
 )
-from request_engine.modules.delivery.application.resource_activity_commands import (
-    EndResourceActivityCommand,
-    StartResourceActivityCommand,
+from request_engine.modules.delivery.application.service_session_commands import (
+    CompleteServiceCommand,
+    StartServiceCommand,
 )
-from request_engine.modules.delivery.contracts.service_session import ResourceActivityKind
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -26,7 +25,7 @@ IdempotencyKey = Annotated[
 ]
 
 
-def create_resource_activity_router(
+def create_start_complete_router(
     operations: PostgresLiveServiceOperations,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
@@ -35,57 +34,65 @@ def create_resource_activity_router(
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    async def start_activity(
-        body: StartResourceActivityBody,
+    async def start(
+        queue_entry_id: UUID,
+        body: StartServiceBody,
         current: Annotated[ActorContext, Depends(actor)],
         idempotency_key: IdempotencyKey,
-    ) -> ResourceActivityView:
-        require_capability(current, "resource_activity.start")
-        result = await operations.start_resource_activity(
-            StartResourceActivityCommand(
+    ) -> ServiceSessionView:
+        require_capability(current, "service_session.start")
+        item = await operations.start_service(
+            StartServiceCommand(
                 organization_id=current.organization_id,
                 principal_id=current.principal_id,
+                queue_entry_id=queue_entry_id,
                 resource_id=body.resource_id,
                 location_id=body.location_id,
-                kind=ResourceActivityKind(body.kind),
+                expected_queue_revision=body.expected_queue_revision,
+                actual_workload_classification_id=(
+                    body.actual_workload_classification_id
+                ),
                 idempotency_key=idempotency_key,
             )
         )
-        return ResourceActivityView.from_contract(result)
+        return ServiceSessionView.from_contract(item)
 
-    async def end_activity(
-        resource_activity_id: UUID,
-        body: EndResourceActivityBody,
+    async def complete(
+        service_session_id: UUID,
+        body: CompleteServiceBody,
         current: Annotated[ActorContext, Depends(actor)],
         idempotency_key: IdempotencyKey,
-    ) -> ResourceActivityView:
-        require_capability(current, "resource_activity.end")
-        result = await operations.end_resource_activity(
-            EndResourceActivityCommand(
+    ) -> ServiceSessionView:
+        require_capability(current, "service_session.complete")
+        item = await operations.complete_service(
+            CompleteServiceCommand(
                 organization_id=current.organization_id,
                 principal_id=current.principal_id,
-                resource_activity_id=resource_activity_id,
+                service_session_id=service_session_id,
                 expected_revision=body.expected_revision,
+                actual_workload_classification_id=(
+                    body.actual_workload_classification_id
+                ),
                 idempotency_key=idempotency_key,
             )
         )
-        return ResourceActivityView.from_contract(result)
+        return ServiceSessionView.from_contract(item)
 
     add_capability_route(
         router,
-        "/resource-activities",
-        start_activity,
-        capability="resource_activity.start",
+        "/queue-entries/{queue_entry_id}/service/start",
+        start,
+        capability="service_session.start",
         methods=["POST"],
-        response_model=ResourceActivityView,
+        response_model=ServiceSessionView,
         status_code=status.HTTP_201_CREATED,
     )
     add_capability_route(
         router,
-        "/resource-activities/{resource_activity_id}/end",
-        end_activity,
-        capability="resource_activity.end",
+        "/service-sessions/{service_session_id}/complete",
+        complete,
+        capability="service_session.complete",
         methods=["POST"],
-        response_model=ResourceActivityView,
+        response_model=ServiceSessionView,
     )
     return router

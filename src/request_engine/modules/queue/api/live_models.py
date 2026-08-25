@@ -38,12 +38,19 @@ class LiveQueueEntryView(BaseModel):
 
     @classmethod
     def from_contract(cls, item: LiveQueueEntry) -> "LiveQueueEntryView":
-        return cls(**item.__dict__) if hasattr(item, "__dict__") else cls(
-            id=item.id, queue_id=item.queue_id, subject_party_id=item.subject_party_id,
-            reservation_id=item.reservation_id, offering_id=item.offering_id,
-            status=item.status, arrived_at=item.arrived_at, admitted_at=item.admitted_at,
+        return cls(
+            id=item.id,
+            queue_id=item.queue_id,
+            subject_party_id=item.subject_party_id,
+            reservation_id=item.reservation_id,
+            offering_id=item.offering_id,
+            status=item.status,
+            arrived_at=item.arrived_at,
+            admitted_at=item.admitted_at,
             called_at=item.called_at,
-            expected_workload_classification_id=item.expected_workload_classification_id,
+            expected_workload_classification_id=(
+                item.expected_workload_classification_id
+            ),
             revision=item.revision,
         )
 
@@ -73,16 +80,26 @@ class StaffQueueEntryView(BaseModel):
     @classmethod
     def from_contract(cls, item: StaffQueueEntry) -> "StaffQueueEntryView":
         return cls(
-            queue_entry_id=item.queue_entry_id, queue_id=item.queue_id,
-            subject_party_id=item.subject_party_id, subject_display_name=item.subject_display_name,
-            reservation_id=item.reservation_id, status=item.status, scheduled_at=item.scheduled_at,
-            arrived_at=item.arrived_at, admitted_at=item.admitted_at, called_at=item.called_at,
+            queue_entry_id=item.queue_entry_id,
+            queue_id=item.queue_id,
+            subject_party_id=item.subject_party_id,
+            subject_display_name=item.subject_display_name,
+            reservation_id=item.reservation_id,
+            status=item.status,
+            scheduled_at=item.scheduled_at,
+            arrived_at=item.arrived_at,
+            admitted_at=item.admitted_at,
+            called_at=item.called_at,
             expected_workload_key=item.expected_workload_key,
-            service_session_id=item.service_session_id, service_status=item.service_status,
-            actual_resource_id=item.actual_resource_id, actual_location_id=item.actual_location_id,
+            service_session_id=item.service_session_id,
+            service_status=item.service_status,
+            actual_resource_id=item.actual_resource_id,
+            actual_location_id=item.actual_location_id,
             actual_workload_key=item.actual_workload_key,
-            service_started_at=item.service_started_at, service_completed_at=item.service_completed_at,
-            queue_revision=item.queue_revision, service_revision=item.service_revision,
+            service_started_at=item.service_started_at,
+            service_completed_at=item.service_completed_at,
+            queue_revision=item.queue_revision,
+            service_revision=item.service_revision,
         )
 
 
@@ -92,5 +109,12 @@ class WorkloadClassificationView(BaseModel):
     display_name: str
 
     @classmethod
-    def from_contract(cls, item: WorkloadClassification) -> "WorkloadClassificationView":
-        return cls(id=item.id, workload_key=item.workload_key, display_name=item.display_name)
+    def from_contract(
+        cls,
+        item: WorkloadClassification,
+    ) -> "WorkloadClassificationView":
+        return cls(
+            id=item.id,
+            workload_key=item.workload_key,
+            display_name=item.display_name,
+        )

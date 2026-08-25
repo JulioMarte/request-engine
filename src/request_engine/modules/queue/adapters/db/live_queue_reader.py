@@ -3,8 +3,12 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 
-from request_engine.modules.queue.contracts.live_queue import StaffQueueEntry, WorkloadClassification
+from request_engine.modules.queue.contracts.live_queue import (
+    StaffQueueEntry,
+    WorkloadClassification,
+)
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
 
@@ -13,7 +17,9 @@ class PostgresLiveQueueReader:
         self._session_factory = session_factory
 
     async def staff_queue(
-        self, organization_id: UUID, queue_id: UUID
+        self,
+        organization_id: UUID,
+        queue_id: UUID,
     ) -> tuple[StaffQueueEntry, ...]:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             rows = (
@@ -24,12 +30,14 @@ class PostgresLiveQueueReader:
                             SELECT queue_entry_id, queue_id, subject_party_id,
                                    subject_display_name, reservation_id, status,
                                    scheduled_at, arrived_at, admitted_at, called_at,
-                                   expected_workload_key, service_session_id, service_status,
-                                   actual_resource_id, actual_location_id, actual_workload_key,
+                                   expected_workload_key, service_session_id,
+                                   service_status, actual_resource_id,
+                                   actual_location_id, actual_workload_key,
                                    service_started_at, service_completed_at,
                                    queue_revision, service_revision
                               FROM request_read.live_service_staff_v1
-                             WHERE organization_id = :organization_id AND queue_id = :queue_id
+                             WHERE organization_id = :organization_id
+                               AND queue_id = :queue_id
                                AND queue_entry_id IS NOT NULL
                              ORDER BY admitted_at, queue_entry_id
                             """
@@ -42,7 +50,10 @@ class PostgresLiveQueueReader:
             )
         return tuple(_staff_entry(row) for row in rows)
 
-    async def workloads(self, organization_id: UUID) -> tuple[WorkloadClassification, ...]:
+    async def workloads(
+        self,
+        organization_id: UUID,
+    ) -> tuple[WorkloadClassification, ...]:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             rows = (
                 (
@@ -71,10 +82,7 @@ class PostgresLiveQueueReader:
         )
 
 
-def _staff_entry(row: object) -> StaffQueueEntry:
-    from sqlalchemy.engine import RowMapping
-
-    item = cast(RowMapping, row)
+def _staff_entry(item: RowMapping) -> StaffQueueEntry:
     return StaffQueueEntry(
         queue_entry_id=cast(UUID, item["queue_entry_id"]),
         queue_id=cast(UUID, item["queue_id"]),

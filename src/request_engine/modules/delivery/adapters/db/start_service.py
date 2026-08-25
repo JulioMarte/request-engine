@@ -15,11 +15,13 @@ from request_engine.modules.delivery.adapters.db.live_common import (
 from request_engine.modules.delivery.adapters.db.live_recording import record_live_fact
 from request_engine.modules.delivery.adapters.db.live_serialization import (
     session_from_json,
-    session_from_row,
     session_to_json,
 )
 from request_engine.modules.delivery.adapters.db.live_session_lock import (
     require_execution_assignment,
+)
+from request_engine.modules.delivery.adapters.db.start_service_persistence import (
+    insert_service_session,
 )
 from request_engine.modules.delivery.application.errors import QueueEntryNotCallable
 from request_engine.modules.delivery.application.service_session_commands import StartServiceCommand
@@ -33,7 +35,8 @@ from request_engine.platform.idempotency.postgres import (
 
 
 async def start_service(
-    session_factory: SessionFactory, command: StartServiceCommand
+    session_factory: SessionFactory,
+    command: StartServiceCommand,
 ) -> ServiceSession:
     fingerprint = command_fingerprint(
         "service_session.start",
@@ -56,12 +59,27 @@ async def start_service(
         )
         if replay is not None:
             return session_from_json(cast(dict[str, object], replay["session"]))
-        probe = await probe_queue_entry(session, command.organization_id, command.queue_entry_id)
-        await lock_queue(session, command.organization_id, cast(UUID, probe["service_queue_id"]))
-        entry = await lock_queue_entry(session, command.organization_id, command.queue_entry_id)
+        probe = await probe_queue_entry(
+            session,
+            command.organization_id,
+            command.queue_entry_id,
+        )
+        await lock_queue(
+            session,
+            command.organization_id,
+            cast(UUID, probe["service_queue_id"]),
+        )
+        entry = await lock_queue_entry(
+            session,
+            command.organization_id,
+            command.queue_entry_id,
+        )
         require_revision(entry, command.queue_entry_id, command.expected_queue_revision)
         if entry["status"] != "called":
-            raise QueueEntryNotCallable(command.queue_entry_id, cast(str, entry["status"]))
+            raise QueueEntryNotCallable(
+                command.queue_entry_id,
+                cast(str, entry["status"]),
+            )
         await lock_resource(session, command.organization_id, command.resource_id)
         started_at = await db_now(session)
         await require_execution_assignment(
@@ -72,40 +90,35 @@ async def start_service(
             at=started_at,
         )
         await require_workload(
-            session, command.organization_id, command.actual_workload_classification_id
+            session,
+            command.organization_id,
+            command.actual_workload_classification_id,
         )
-        result = await _insert_session(session, command, started_at)
+        result = await insert_service_session(session, command, started_at)
         await session.execute(
             text(
                 "UPDATE request_engine.queue_entries SET status='serving', "
-                "service_started_at=:started_at, completed_at=NULL, revision=revision+1, "
-                "updated_at=clock_timestamp() WHERE organization_id=:organization_id AND id=:entry_id"
+                "service_started_at=:started_at, completed_at=NULL, "
+                "revision=revision+1, updated_at=clock_timestamp() "
+                "WHERE organization_id=:organization_id AND id=:entry_id"
             ),
-            {"organization_id": command.organization_id, "entry_id": command.queue_entry_id,
-             "started_at": result.started_at},
+            {
+                "organization_id": command.organization_id,
+                "entry_id": command.queue_entry_id,
+                "started_at": result.started_at,
+            },
         )
         payload = session_to_json(result)
         await record_live_fact(
-            session, organization_id=command.organization_id, principal_id=command.principal_id,
-            idempotency_id=idem, command_name="service_session.start",
-            aggregate_kind="ServiceSession", aggregate_id=result.id,
-            event_type="service_session.started.v1", payload=payload,
+            session,
+            organization_id=command.organization_id,
+            principal_id=command.principal_id,
+            idempotency_id=idem,
+            command_name="service_session.start",
+            aggregate_kind="ServiceSession",
+            aggregate_id=result.id,
+            event_type="service_session.started.v1",
+            payload=payload,
         )
         await complete_idempotency(session, idem, {"session": payload})
         return result
-
-
-async def _insert_session(session: object, command: StartServiceCommand, started_at: object) -> ServiceSession:
-    result = await session.execute(  # type: ignore[attr-defined]
-        text(
-            "INSERT INTO request_engine.service_sessions "
-            "(organization_id,queue_entry_id,resource_id,location_id,actual_workload_classification_id,started_at) "
-            "VALUES (:organization_id,:entry_id,:resource_id,:location_id,:workload_id,:started_at) "
-            "RETURNING id,queue_entry_id,resource_id,location_id,actual_workload_classification_id,status," 
-            "started_at,completed_at,revision"
-        ),
-        {"organization_id": command.organization_id, "entry_id": command.queue_entry_id,
-         "resource_id": command.resource_id, "location_id": command.location_id,
-         "workload_id": command.actual_workload_classification_id, "started_at": started_at},
-    )
-    return session_from_row(result.mappings().one())

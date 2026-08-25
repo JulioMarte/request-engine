@@ -22,7 +22,8 @@ from request_engine.platform.idempotency.postgres import (
 
 
 async def resume_service(
-    session_factory: SessionFactory, command: ResumeServiceCommand
+    session_factory: SessionFactory,
+    command: ResumeServiceCommand,
 ) -> ServiceSession:
     fingerprint = command_fingerprint(
         "service_session.resume",
@@ -43,7 +44,9 @@ async def resume_service(
         if replay is not None:
             return session_from_json(cast(dict[str, object], replay["session"]))
         _, locked = await lock_session_context(
-            session, command.organization_id, command.service_session_id
+            session,
+            command.organization_id,
+            command.service_session_id,
         )
         require_revision(locked, command.service_session_id, command.expected_revision)
         current = cast(str, locked["status"])
@@ -54,8 +57,9 @@ async def resume_service(
             text(
                 "UPDATE request_engine.service_session_interruptions "
                 "SET ended_at=:ended_at, ended_by_principal_id=:principal_id "
-                "WHERE organization_id=:organization_id AND service_session_id=:session_id "
-                "AND ended_at IS NULL RETURNING id"
+                "WHERE organization_id=:organization_id "
+                "AND service_session_id=:session_id AND ended_at IS NULL "
+                "RETURNING id"
             ),
             {
                 "organization_id": command.organization_id,
@@ -66,16 +70,22 @@ async def resume_service(
         )
         if ended.first() is None:
             raise ServiceSessionNotActionable(
-                command.service_session_id, current, "resume_without_interruption"
+                command.service_session_id,
+                current,
+                "resume_without_interruption",
             )
         result_row = await session.execute(
             text(
-                "UPDATE request_engine.service_sessions SET status='active', revision=revision+1, "
-                "updated_at=clock_timestamp() WHERE organization_id=:organization_id AND id=:session_id "
-                "RETURNING id,queue_entry_id,resource_id,location_id," 
+                "UPDATE request_engine.service_sessions SET status='active', "
+                "revision=revision+1, updated_at=clock_timestamp() "
+                "WHERE organization_id=:organization_id AND id=:session_id "
+                "RETURNING id,queue_entry_id,resource_id,location_id,"
                 "actual_workload_classification_id,status,started_at,completed_at,revision"
             ),
-            {"organization_id": command.organization_id, "session_id": command.service_session_id},
+            {
+                "organization_id": command.organization_id,
+                "session_id": command.service_session_id,
+            },
         )
         result = session_from_row(result_row.mappings().one())
         payload = {**session_to_json(result), "transitioned_at": resumed_at.isoformat()}

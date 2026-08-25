@@ -9,8 +9,12 @@ from request_engine.modules.delivery.adapters.db.live_serialization import (
     activity_from_row,
     activity_to_json,
 )
-from request_engine.modules.delivery.adapters.db.live_session_lock import require_execution_assignment
-from request_engine.modules.delivery.application.resource_activity_commands import StartResourceActivityCommand
+from request_engine.modules.delivery.adapters.db.live_session_lock import (
+    require_execution_assignment,
+)
+from request_engine.modules.delivery.application.resource_activity_commands import (
+    StartResourceActivityCommand,
+)
 from request_engine.modules.delivery.contracts.service_session import ResourceActivity
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -21,7 +25,8 @@ from request_engine.platform.idempotency.postgres import (
 
 
 async def start_resource_activity(
-    session_factory: SessionFactory, command: StartResourceActivityCommand
+    session_factory: SessionFactory,
+    command: StartResourceActivityCommand,
 ) -> ResourceActivity:
     fingerprint = command_fingerprint(
         "resource_activity.start",
@@ -58,7 +63,8 @@ async def start_resource_activity(
                 "(organization_id,resource_id,location_id,activity_kind,started_at,"
                 "started_by_principal_id) VALUES "
                 "(:organization_id,:resource_id,:location_id,:kind,:started_at,:principal_id) "
-                "RETURNING id,resource_id,location_id,activity_kind,started_at,ended_at,revision"
+                "RETURNING id,resource_id,location_id,activity_kind,"
+                "started_at,ended_at,revision"
             ),
             {
                 "organization_id": command.organization_id,
