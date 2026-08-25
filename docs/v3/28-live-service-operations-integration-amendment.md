@@ -54,6 +54,7 @@ Queue owns:
 ServiceQueue
 QueueEntry
 check-in / walk-in admission
+expected-workload classification before service
 FIFO CallNext
 called state
 MarkNoShow
@@ -77,13 +78,22 @@ WAITING --CallNext--> CALLED --service_session.start--> SERVING
 `CALLED -> NO_SHOW` is valid only before a ServiceSession exists. `SERVING -> NO_SHOW` is invalid.
 Pause/resume changes ServiceSession state and interruption facts while QueueEntry stays `SERVING`.
 
-## 4. Check-in and walk-in amendment
+Expected workload is pre-service Queue context rather than booking truth. It may be assigned,
+corrected or cleared while a QueueEntry is `waiting` or `called`; after execution starts it is
+historical input and cannot be rewritten to match actual workload.
 
-F3 adds operator capability `queue.check_in`, distinct from subject-facing `queue.join`.
+## 4. Check-in, walk-in and classification amendment
+
+F3 adds operator capabilities `queue.check_in` and `queue.classify_expected_workload`, distinct from
+subject-facing `queue.join`.
 
 A Reservation-backed check-in references existing planning truth but does not mutate Reservation or
 CapacityClaim. A walk-in creates a QueueEntry with `reservation_id = NULL`; no fake Reservation is
 created to make the live queue fit booking semantics.
+
+Expected workload may be supplied at check-in or determined later. The later classification command
+requires Idempotency-Key + expected QueueEntry revision, validates a non-null classification against
+the active same-tenant workload vocabulary, and is valid only before service begins.
 
 ## 5. Resource occupation amendment
 
@@ -105,6 +115,7 @@ Operator-facing F3 capabilities are:
 
 ```text
 queue.check_in
+queue.classify_expected_workload
 queue.call_next
 queue.mark_no_show
 queue.staff_read
@@ -128,8 +139,9 @@ server-selected `CallNext` and creation commands.
 local PostgreSQL transaction. Queue and Delivery commit together or neither commits. Material live
 mutations append audit/outbox in that same transaction.
 
-Arrival/admission/call/service/interruption/activity timestamps are PostgreSQL-authoritative. F3 does
-not derive authoritative elapsed time from browser/mobile timers.
+Arrival/admission/call/service/interruption/activity timestamps are PostgreSQL-authoritative. F3
+transition paths and QueueEntry F3 defaults use `clock_timestamp()`; authoritative elapsed time is
+not derived from browser/mobile timers.
 
 ## 8. Documentation interpretation
 
