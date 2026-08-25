@@ -130,6 +130,8 @@ CREATE TABLE request_engine.resource_activities (
       REFERENCES request_engine.principals (organization_id, id),
     CHECK (activity_kind IN ('break', 'emergency', 'administrative', 'other_operational')),
     CHECK (ended_at IS NULL OR ended_at >= started_at),
+    CONSTRAINT resource_activities_end_actor_ck
+      CHECK ((ended_at IS NULL) = (ended_by_principal_id IS NULL)),
     CHECK (revision > 0)
 );
 CREATE UNIQUE INDEX resource_activities_one_open_resource_uq
@@ -213,6 +215,31 @@ FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_resource_occupation();
 CREATE TRIGGER resource_activities_guard_resource_occupation
 BEFORE INSERT OR UPDATE OF resource_id, ended_at ON request_engine.resource_activities
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_live_resource_occupation();
+
+CREATE FUNCTION request_engine.guard_resource_activity_transition()
+RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    IF OLD.organization_id IS DISTINCT FROM NEW.organization_id
+       OR OLD.resource_id IS DISTINCT FROM NEW.resource_id
+       OR OLD.location_id IS DISTINCT FROM NEW.location_id
+       OR OLD.activity_kind IS DISTINCT FROM NEW.activity_kind
+       OR OLD.started_at IS DISTINCT FROM NEW.started_at THEN
+        RAISE EXCEPTION 'ResourceActivity identity cannot be retargeted'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.ended_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN
+        RAISE EXCEPTION 'ended ResourceActivity is immutable' USING ERRCODE = '23514';
+    END IF;
+    IF NEW IS DISTINCT FROM OLD AND NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION 'ResourceActivity revision must advance exactly one step'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$function$;
+CREATE TRIGGER resource_activities_guard_transition
+BEFORE UPDATE ON request_engine.resource_activities
+FOR EACH ROW EXECUTE FUNCTION request_engine.guard_resource_activity_transition();
 
 CREATE FUNCTION request_engine.guard_service_session_transition()
 RETURNS trigger
