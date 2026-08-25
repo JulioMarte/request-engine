@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.context import ActorContext
 
 _WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
 
@@ -21,10 +22,10 @@ async def test_foreign_workload_id_is_as_unusable_as_unknown_id(
 
     tenant_a = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-a")
     tenant_b = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-b")
-    actors = {}
+    actors: dict[str, ActorContext] = {}
     for tenant in (tenant_a, tenant_b):
         base_actor = actor_for(tenant)
-        actors[tenant.token] = type(base_actor)(
+        actors[tenant.token] = ActorContext(
             organization_id=base_actor.organization_id,
             principal_id=base_actor.principal_id,
             capabilities=base_actor.capabilities | _WORKLOAD_CAPABILITIES,
@@ -38,7 +39,7 @@ async def test_foreign_workload_id_is_as_unusable_as_unknown_id(
         assert created.status_code == 201, created.text
         foreign_id = UUID(created.json()["id"])
         unknown_id = uuid4()
-        responses = []
+        responses: list[Any] = []
         for workload_id in (foreign_id, unknown_id):
             response = await client.post(
                 f"/v1/live-workloads/{workload_id}/update",
