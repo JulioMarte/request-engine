@@ -5,8 +5,6 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
-
 
 _WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
 
@@ -20,6 +18,8 @@ async def test_foreign_workload_id_is_as_unusable_as_unknown_id(
     e2e_admin_conn: Any,
     e2e_session_factory: SessionFactory,
 ) -> None:
+    from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
+
     tenant_a = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-a")
     tenant_b = seed_tenant_sandbox(e2e_admin_conn, "f3-workload-b")
     actors = {}
