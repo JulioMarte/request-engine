@@ -3,9 +3,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from request_engine.platform.db.session import SessionFactory
-
-from .operational_support import PgConnection
-from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
+from tests.e2e.operational_support import PgConnection
+from tests.e2e.tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
 
 
 _WORKLOAD_CAPABILITIES = frozenset({"workload.list", "workload.create", "workload.update"})
