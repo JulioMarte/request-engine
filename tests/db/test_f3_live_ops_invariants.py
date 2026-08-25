@@ -25,8 +25,12 @@ def _start_service(
             "actual_workload_classification_id,started_at) VALUES (%s,%s,%s,%s,%s,%s) "
             "RETURNING id",
             (
-                setup.organization_id, entry_id, setup.resource_id, setup.location_id,
-                setup.actual_workload_id, started[0],
+                setup.organization_id,
+                entry_id,
+                setup.resource_id,
+                setup.location_id,
+                setup.actual_workload_id,
+                started[0],
             ),
         ).fetchone()
         assert row is not None
@@ -100,7 +104,8 @@ def test_live_operation_temporal_constraints_reject_reversed_time(admin_conn: Pg
     with pytest.raises(psycopg.Error) as completion_error:
         admin_conn.execute(
             "INSERT INTO request_engine.service_sessions "
-            "(organization_id,queue_entry_id,resource_id,location_id,status,started_at,completed_at) "
+            "(organization_id,queue_entry_id,resource_id,location_id,status,"
+            "started_at,completed_at) "
             "VALUES (%s,%s,%s,%s,'completed','2035-01-01T10:00Z','2035-01-01T09:59Z')",
             (setup.organization_id, setup.entry_a_id, setup.resource_id, setup.location_id),
         )
