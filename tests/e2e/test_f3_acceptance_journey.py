@@ -6,6 +6,7 @@ import pytest
 from request_engine.platform.db.session import SessionFactory
 
 from .contextual_supply_support import contextualize_sandbox
+from .f3_acceptance_assertions import assert_completed_journey
 from .f3_acceptance_support import (
     acceptance_actor,
     capacity_claim_snapshot,
@@ -53,7 +54,6 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
         reservation_id = UUID(cast(dict[str, Any], booked.json())["id"])
         reservation_before = reservation_snapshot(e2e_admin_conn, reservation_id)
         claims_before = capacity_claim_snapshot(e2e_admin_conn, reservation_id)
-
         checked_in = await client.post(
             f"/v1/queues/{sandbox.queue_id}/check-in",
             json={
@@ -72,7 +72,6 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
             headers=auth(sandbox, idempotency_key=f"walkin-{uuid4().hex}"),
         )
         assert walk_in.status_code == 201, walk_in.text
-
         called = await client.post(
             f"/v1/queues/{sandbox.queue_id}/call-next",
             headers=auth(sandbox, idempotency_key=f"call-{uuid4().hex}"),
@@ -109,30 +108,15 @@ async def test_reservation_to_completed_service_is_one_authoritative_f3_journey(
             headers=auth(sandbox, idempotency_key=f"complete-{uuid4().hex}"),
         )
         assert paused.status_code == resumed.status_code == completed.status_code == 200
-        live = await client.get(
-            f"/v1/queues/{sandbox.queue_id}/staff",
-            headers=auth(sandbox),
-        )
-        live_ids = [UUID(item["queue_entry_id"]) for item in live.json()]
-        assert live_ids == [UUID(walk_in.json()["id"])]
+        live = await client.get(f"/v1/queues/{sandbox.queue_id}/staff", headers=auth(sandbox))
+        assert [UUID(item["queue_entry_id"]) for item in live.json()] == [UUID(walk_in.json()["id"])]
 
     assert reservation_snapshot(e2e_admin_conn, reservation_id) == reservation_before
     assert capacity_claim_snapshot(e2e_admin_conn, reservation_id) == claims_before
-    queue_state = e2e_admin_conn.execute(
-        "SELECT status,expected_workload_classification_id "
-        "FROM request_engine.queue_entries WHERE id=%s",
-        (entry_id,),
-    ).fetchone()
-    assert queue_state == ("completed", expected_id)
-    session = e2e_admin_conn.execute(
-        "SELECT status,actual_workload_classification_id "
-        "FROM request_engine.service_sessions WHERE id=%s",
-        (session_id,),
-    ).fetchone()
-    assert session == ("completed", actual_id) and actual_id != expected_id
-    interruption = e2e_admin_conn.execute(
-        "SELECT kind,ended_at IS NOT NULL "
-        "FROM request_engine.service_session_interruptions WHERE service_session_id=%s",
-        (session_id,),
-    ).fetchone()
-    assert interruption == ("administrative", True)
+    assert_completed_journey(
+        e2e_admin_conn,
+        entry_id=entry_id,
+        session_id=session_id,
+        expected_workload_id=expected_id,
+        actual_workload_id=actual_id,
+    )
