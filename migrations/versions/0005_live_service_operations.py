@@ -41,7 +41,8 @@ ALTER TABLE request_engine.queue_entries
 UPDATE request_engine.queue_entries SET arrived_at = admitted_at WHERE arrived_at IS NULL;
 ALTER TABLE request_engine.queue_entries
     ALTER COLUMN arrived_at SET NOT NULL,
-    ALTER COLUMN arrived_at SET DEFAULT clock_timestamp(),
+    ALTER COLUMN arrived_at SET DEFAULT statement_timestamp(),
+    ALTER COLUMN admitted_at SET DEFAULT statement_timestamp(),
     ADD CONSTRAINT queue_entries_expected_workload_fk
       FOREIGN KEY (organization_id, expected_workload_classification_id)
       REFERENCES request_engine.operational_workload_classifications (organization_id, id),
@@ -136,37 +137,72 @@ CREATE UNIQUE INDEX resource_activities_one_open_resource_uq
   WHERE ended_at IS NULL;
 
 CREATE FUNCTION request_engine.guard_live_resource_occupation()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
+RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
-    v_resource uuid;
-    v_org uuid;
+    v_validate_assignment boolean;
 BEGIN
-    v_resource := NEW.resource_id;
-    v_org := NEW.organization_id;
     PERFORM 1 FROM request_engine.resources
-      WHERE organization_id = v_org AND id = v_resource FOR UPDATE;
+     WHERE organization_id = NEW.organization_id AND id = NEW.resource_id
+     FOR UPDATE;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Resource % does not exist', v_resource USING ERRCODE = '23503';
+        RAISE EXCEPTION 'Resource % does not exist', NEW.resource_id USING ERRCODE = '23503';
     END IF;
 
-    IF TG_TABLE_NAME = 'service_sessions' AND NEW.status IN ('active', 'paused') THEN
-        IF EXISTS (
+    IF TG_TABLE_NAME = 'service_sessions' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at execution time',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status IN ('active', 'paused') AND EXISTS (
             SELECT 1 FROM request_engine.resource_activities a
-             WHERE a.organization_id = v_org AND a.resource_id = v_resource
-               AND a.ended_at IS NULL
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id AND a.ended_at IS NULL
         ) THEN
-            RAISE EXCEPTION 'Resource % has an open ResourceActivity', v_resource USING ERRCODE = '23P01';
+            RAISE EXCEPTION 'Resource % has an open ResourceActivity', NEW.resource_id
+                USING ERRCODE = '23P01';
         END IF;
-    ELSIF TG_TABLE_NAME = 'resource_activities' AND NEW.ended_at IS NULL THEN
-        IF EXISTS (
+    ELSIF TG_TABLE_NAME = 'resource_activities' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NEW.location_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at activity start',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.ended_at IS NULL AND EXISTS (
             SELECT 1 FROM request_engine.service_sessions s
-             WHERE s.organization_id = v_org AND s.resource_id = v_resource
-               AND s.status IN ('active', 'paused')
+             WHERE s.organization_id = NEW.organization_id
+               AND s.resource_id = NEW.resource_id AND s.status IN ('active', 'paused')
         ) THEN
-            RAISE EXCEPTION 'Resource % has a live ServiceSession', v_resource USING ERRCODE = '23P01';
+            RAISE EXCEPTION 'Resource % has a live ServiceSession', NEW.resource_id
+                USING ERRCODE = '23P01';
         END IF;
+    ELSE
+        RAISE EXCEPTION 'guard_live_resource_occupation attached to unsupported relation %',
+            TG_TABLE_NAME USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
 END
@@ -208,39 +244,45 @@ BEFORE UPDATE ON request_engine.service_sessions
 FOR EACH ROW EXECUTE FUNCTION request_engine.guard_service_session_transition();
 
 CREATE FUNCTION request_engine.assert_service_queue_coherence()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
+RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     v_entry request_engine.queue_entries%ROWTYPE;
     v_session request_engine.service_sessions%ROWTYPE;
     v_entry_id uuid;
 BEGIN
-    v_entry_id := CASE WHEN TG_TABLE_NAME = 'service_sessions' THEN NEW.queue_entry_id ELSE NEW.id END;
+    IF TG_TABLE_NAME = 'service_sessions' THEN
+        v_entry_id := NEW.queue_entry_id;
+    ELSE
+        v_entry_id := NEW.id;
+    END IF;
     SELECT * INTO v_entry FROM request_engine.queue_entries e
-      WHERE e.organization_id = NEW.organization_id AND e.id = v_entry_id;
+     WHERE e.organization_id = NEW.organization_id AND e.id = v_entry_id;
     SELECT * INTO v_session FROM request_engine.service_sessions s
-      WHERE s.organization_id = NEW.organization_id AND s.queue_entry_id = v_entry_id;
-
+     WHERE s.organization_id = NEW.organization_id AND s.queue_entry_id = v_entry_id;
     IF v_session.id IS NULL THEN
-        IF v_entry.status IN ('serving', 'completed') AND v_entry.service_started_at IS NOT NULL THEN
-            RAISE EXCEPTION 'QueueEntry % live/completed execution requires ServiceSession', v_entry_id
+        IF v_entry.status IN ('serving', 'completed')
+           AND v_entry.service_started_at IS NOT NULL THEN
+            RAISE EXCEPTION 'QueueEntry % execution requires ServiceSession', v_entry_id
                 USING ERRCODE = '23514';
         END IF;
         RETURN NEW;
     END IF;
-
+    IF v_entry.called_at IS NULL OR v_session.started_at < v_entry.called_at THEN
+        RAISE EXCEPTION 'ServiceSession % cannot start before QueueEntry is called', v_session.id
+            USING ERRCODE = '23514';
+    END IF;
     IF v_session.status IN ('active', 'paused') AND v_entry.status <> 'serving' THEN
-        RAISE EXCEPTION 'live ServiceSession % requires SERVING QueueEntry', v_session.id USING ERRCODE = '23514';
+        RAISE EXCEPTION 'live ServiceSession % requires SERVING QueueEntry', v_session.id
+            USING ERRCODE = '23514';
     END IF;
     IF v_session.status = 'completed' AND v_entry.status <> 'completed' THEN
-        RAISE EXCEPTION 'completed ServiceSession % requires COMPLETED QueueEntry', v_session.id USING ERRCODE = '23514';
+        RAISE EXCEPTION 'completed ServiceSession % requires COMPLETED QueueEntry', v_session.id
+            USING ERRCODE = '23514';
     END IF;
-    IF v_entry.service_started_at IS DISTINCT FROM v_session.started_at THEN
-        RAISE EXCEPTION 'QueueEntry compatibility start must equal ServiceSession start' USING ERRCODE = '23514';
-    END IF;
-    IF v_entry.completed_at IS DISTINCT FROM v_session.completed_at THEN
-        RAISE EXCEPTION 'QueueEntry compatibility completion must equal ServiceSession completion' USING ERRCODE = '23514';
+    IF v_entry.service_started_at IS DISTINCT FROM v_session.started_at
+       OR v_entry.completed_at IS DISTINCT FROM v_session.completed_at THEN
+        RAISE EXCEPTION 'QueueEntry compatibility timestamps must equal ServiceSession timestamps'
+            USING ERRCODE = '23514';
     END IF;
     IF v_entry.status = 'no_show' THEN
         RAISE EXCEPTION 'NO_SHOW QueueEntry cannot have a ServiceSession' USING ERRCODE = '23514';
@@ -258,25 +300,50 @@ DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION request_engine.assert_service_queue_coherence();
 
 CREATE FUNCTION request_engine.assert_session_interruption_coherence()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
+RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     v_session_id uuid;
     v_status text;
+    v_started_at timestamptz;
+    v_completed_at timestamptz;
     v_open bigint;
 BEGIN
-    v_session_id := CASE WHEN TG_TABLE_NAME = 'service_sessions' THEN NEW.id ELSE NEW.service_session_id END;
-    SELECT status INTO v_status FROM request_engine.service_sessions
-      WHERE organization_id = NEW.organization_id AND id = v_session_id;
-    IF NOT FOUND THEN RETURN NEW; END IF;
-    SELECT count(*) INTO v_open FROM request_engine.service_session_interruptions
-      WHERE organization_id = NEW.organization_id AND service_session_id = v_session_id AND ended_at IS NULL;
-    IF v_status = 'paused' AND v_open <> 1 THEN
-        RAISE EXCEPTION 'paused ServiceSession % requires exactly one open interruption', v_session_id USING ERRCODE = '23514';
+    IF TG_TABLE_NAME = 'service_sessions' THEN
+        v_session_id := NEW.id;
+    ELSE
+        v_session_id := NEW.service_session_id;
     END IF;
-    IF v_status <> 'paused' AND v_open <> 0 THEN
-        RAISE EXCEPTION 'non-paused ServiceSession % cannot have an open interruption', v_session_id USING ERRCODE = '23514';
+    SELECT status, started_at, completed_at
+      INTO v_status, v_started_at, v_completed_at
+      FROM request_engine.service_sessions
+     WHERE organization_id = NEW.organization_id AND id = v_session_id;
+    IF NOT FOUND THEN RETURN NEW; END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM request_engine.service_session_interruptions i
+         WHERE i.organization_id = NEW.organization_id
+           AND i.service_session_id = v_session_id
+           AND i.started_at < v_started_at
+    ) THEN
+        RAISE EXCEPTION 'ServiceSession % interruption cannot predate execution', v_session_id
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_completed_at IS NOT NULL AND EXISTS (
+        SELECT 1 FROM request_engine.service_session_interruptions i
+         WHERE i.organization_id = NEW.organization_id
+           AND i.service_session_id = v_session_id
+           AND (i.ended_at IS NULL OR i.ended_at > v_completed_at)
+    ) THEN
+        RAISE EXCEPTION 'ServiceSession % interruption cannot outlive execution', v_session_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT count(*) INTO v_open FROM request_engine.service_session_interruptions
+     WHERE organization_id = NEW.organization_id
+       AND service_session_id = v_session_id AND ended_at IS NULL;
+    IF (v_status = 'paused' AND v_open <> 1) OR (v_status <> 'paused' AND v_open <> 0) THEN
+        RAISE EXCEPTION 'ServiceSession % interruption state is incoherent', v_session_id
+            USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
 END
@@ -303,7 +370,8 @@ CREATE POLICY service_sessions_tenant_policy ON request_engine.service_sessions
   WITH CHECK (organization_id = request_engine.current_organization_id());
 ALTER TABLE request_engine.service_session_interruptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE request_engine.service_session_interruptions FORCE ROW LEVEL SECURITY;
-CREATE POLICY service_session_interruptions_tenant_policy ON request_engine.service_session_interruptions
+CREATE POLICY service_session_interruptions_tenant_policy
+  ON request_engine.service_session_interruptions
   USING (organization_id = request_engine.current_organization_id())
   WITH CHECK (organization_id = request_engine.current_organization_id());
 ALTER TABLE request_engine.resource_activities ENABLE ROW LEVEL SECURITY;
