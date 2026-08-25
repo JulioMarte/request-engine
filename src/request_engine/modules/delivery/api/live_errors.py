@@ -9,6 +9,7 @@ from request_engine.modules.delivery.application.errors import (
     ResourceExecutionUnavailable,
     ServiceSessionNotActionable,
     ServiceSessionNotFound,
+    WorkloadClassificationUnavailable,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
@@ -49,5 +50,10 @@ async def live_service_error_handler(_: Request, exc: Exception) -> JSONResponse
         error_code = "resource_execution_unavailable"
         resolution = ErrorResolution.CHOOSE_ALTERNATIVE
         details = {"resource_id": str(exc.resource_id), "reason": exc.reason}
+    elif isinstance(exc, WorkloadClassificationUnavailable):
+        code = status.HTTP_422_UNPROCESSABLE_CONTENT
+        error_code = "workload_classification_unavailable"
+        resolution = ErrorResolution.CHOOSE_ALTERNATIVE
+        details = {"workload_classification_id": str(exc.workload_id)}
     body = ErrorBody(code=error_code, message=str(exc), resolution=resolution, details=details)
     return JSONResponse(status_code=code, content=ErrorEnvelope(error=body).model_dump(mode="json"))

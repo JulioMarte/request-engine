@@ -11,6 +11,7 @@ from request_engine.modules.delivery.application.errors import (
     QueueEntryNotCallable,
     ResourceExecutionUnavailable,
     ServiceSessionNotFound,
+    WorkloadClassificationUnavailable,
 )
 
 
@@ -90,7 +91,7 @@ async def require_workload(
         {"organization_id": organization_id, "workload_id": workload_id},
     )
     if result.first() is None:
-        raise ValueError("operational workload classification is missing or inactive")
+        raise WorkloadClassificationUnavailable(workload_id)
 
 
 def require_revision(row: RowMapping, aggregate_id: UUID, expected: int) -> None:

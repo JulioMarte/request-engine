@@ -43,6 +43,12 @@ class ResourceExecutionUnavailable(LiveServiceError):
         self.reason = reason
 
 
+class WorkloadClassificationUnavailable(LiveServiceError):
+    def __init__(self, workload_id: UUID) -> None:
+        super().__init__(f"Operational workload classification {workload_id} is unavailable")
+        self.workload_id = workload_id
+
+
 class ResourceActivityNotFound(LiveServiceError):
     def __init__(self, activity_id: UUID) -> None:
         super().__init__(f"ResourceActivity {activity_id} not found")
