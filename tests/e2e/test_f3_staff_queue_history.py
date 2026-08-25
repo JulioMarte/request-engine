@@ -5,9 +5,8 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .f3_acceptance_support import acceptance_actor
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import actor_for, auth, client_with_actors, seed_tenant_sandbox
 
 
 def _seed_entry(
@@ -38,7 +37,12 @@ async def test_staff_live_queue_excludes_terminals_and_history_is_paginated(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f3-staff-history")
-    actor = acceptance_actor(sandbox)
+    base_actor = actor_for(sandbox)
+    actor = type(base_actor)(
+        organization_id=base_actor.organization_id,
+        principal_id=base_actor.principal_id,
+        capabilities=base_actor.capabilities | frozenset({"queue.staff_read"}),
+    )
     terminal_ids = [
         _seed_entry(
             e2e_admin_conn,
