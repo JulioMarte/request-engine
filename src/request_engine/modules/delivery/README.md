@@ -127,6 +127,10 @@ Current F3 policy is conservative:
 - live ServiceSession conflicts with starting ResourceActivity;
 - both paths serialize through the Resource row.
 
+`resource_activity.read` is the operator reconstruction surface for this state. It is tenant-filtered,
+queries one Resource, defaults to open activity only and can include ended history when requested.
+It reports persisted occupation rather than projecting future availability.
+
 Parallel/group execution requires a future explicit policy change.
 
 ## Live execution capabilities
@@ -139,11 +143,16 @@ service_session.complete
 service_session.read
 resource_activity.start
 resource_activity.end
+resource_activity.read
 ```
 
 Every externally retryable mutation requires Idempotency-Key. Commands targeting an existing
 mutable object require expected revision; creation commands use idempotency plus authoritative
 locking instead.
+
+`service_session.read` returns a factual observation snapshot. It includes durable interruption facts
+plus DB-observed wall-clock, interruption and active-service duration. These values describe elapsed
+facts as of `observed_at`; they are not ETA, remaining-workload or future-capacity predictions.
 
 ## Delivery policy contract
 
@@ -205,6 +214,9 @@ F3 uses separate read models:
 
 - customer queue status: subject-safe queue state only;
 - staff live queue: operational identity + expected/actual execution context;
-- ServiceSession read: Delivery execution facts.
+- ServiceSession read: factual Delivery execution snapshot including interruption history/durations;
+- ResourceActivity read: tenant-filtered current/history occupation for one Resource.
 
-No read DTO should collapse planning, waiting and execution into one universal record.
+The latter two are operator reconstruction surfaces intended to survive refresh, reconnect and
+process restart. No read DTO should collapse planning, waiting and execution into one universal
+record, and no factual read may silently become an F4 forecast.
