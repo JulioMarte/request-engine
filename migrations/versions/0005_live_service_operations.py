@@ -41,12 +41,34 @@ ALTER TABLE request_engine.queue_entries
 UPDATE request_engine.queue_entries SET arrived_at = admitted_at WHERE arrived_at IS NULL;
 ALTER TABLE request_engine.queue_entries
     ALTER COLUMN arrived_at SET NOT NULL,
-    ALTER COLUMN arrived_at SET DEFAULT clock_timestamp(),
-    ALTER COLUMN admitted_at SET DEFAULT clock_timestamp(),
+    ALTER COLUMN admitted_at DROP DEFAULT,
     ADD CONSTRAINT queue_entries_expected_workload_fk
       FOREIGN KEY (organization_id, expected_workload_classification_id)
       REFERENCES request_engine.operational_workload_classifications (organization_id, id),
     ADD CONSTRAINT queue_entries_arrival_order_ck CHECK (arrived_at <= admitted_at);
+
+CREATE FUNCTION request_engine.initialize_queue_entry_times()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_now timestamptz;
+BEGIN
+    IF NEW.arrived_at IS NULL AND NEW.admitted_at IS NULL THEN
+        v_now := clock_timestamp();
+        NEW.arrived_at := v_now;
+        NEW.admitted_at := v_now;
+    ELSIF NEW.arrived_at IS NULL THEN
+        NEW.arrived_at := NEW.admitted_at;
+    ELSIF NEW.admitted_at IS NULL THEN
+        NEW.admitted_at := NEW.arrived_at;
+    END IF;
+    RETURN NEW;
+END
+$function$;
+CREATE TRIGGER queue_entries_initialize_times
+BEFORE INSERT ON request_engine.queue_entries
+FOR EACH ROW EXECUTE FUNCTION request_engine.initialize_queue_entry_times();
 
 CREATE TABLE request_engine.service_sessions (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
