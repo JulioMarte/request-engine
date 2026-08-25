@@ -30,26 +30,25 @@ BEGIN
         RAISE EXCEPTION 'Resource % does not exist', NEW.resource_id USING ERRCODE = '23503';
     END IF;
 
-    v_validate_assignment := TG_OP = 'INSERT';
-    IF TG_OP = 'UPDATE' THEN
-        v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
-            OR NEW.location_id IS DISTINCT FROM OLD.location_id
-            OR NEW.started_at IS DISTINCT FROM OLD.started_at;
-    END IF;
-    IF v_validate_assignment AND NEW.location_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM request_engine.resource_location_assignments a
-         WHERE a.organization_id = NEW.organization_id
-           AND a.resource_id = NEW.resource_id
-           AND a.location_id = NEW.location_id
-           AND a.status = 'active'
-           AND a.effective_during @> NEW.started_at
-    ) THEN
-        RAISE EXCEPTION 'Resource % is not assigned to Location % at execution time',
-            NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
-    END IF;
-
-    IF TG_TABLE_NAME = 'service_sessions' AND NEW.status IN ('active', 'paused') THEN
-        IF EXISTS (
+    IF TG_TABLE_NAME = 'service_sessions' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at execution time',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.status IN ('active', 'paused') AND EXISTS (
             SELECT 1 FROM request_engine.resource_activities a
              WHERE a.organization_id = NEW.organization_id
                AND a.resource_id = NEW.resource_id AND a.ended_at IS NULL
@@ -57,8 +56,25 @@ BEGIN
             RAISE EXCEPTION 'Resource % has an open ResourceActivity', NEW.resource_id
                 USING ERRCODE = '23P01';
         END IF;
-    ELSIF TG_TABLE_NAME = 'resource_activities' AND NEW.ended_at IS NULL THEN
-        IF EXISTS (
+    ELSIF TG_TABLE_NAME = 'resource_activities' THEN
+        v_validate_assignment := TG_OP = 'INSERT';
+        IF TG_OP = 'UPDATE' THEN
+            v_validate_assignment := NEW.resource_id IS DISTINCT FROM OLD.resource_id
+                OR NEW.location_id IS DISTINCT FROM OLD.location_id
+                OR NEW.started_at IS DISTINCT FROM OLD.started_at;
+        END IF;
+        IF v_validate_assignment AND NEW.location_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM request_engine.resource_location_assignments a
+             WHERE a.organization_id = NEW.organization_id
+               AND a.resource_id = NEW.resource_id
+               AND a.location_id = NEW.location_id
+               AND a.status = 'active'
+               AND a.effective_during @> NEW.started_at
+        ) THEN
+            RAISE EXCEPTION 'Resource % is not assigned to Location % at activity start',
+                NEW.resource_id, NEW.location_id USING ERRCODE = '23514';
+        END IF;
+        IF NEW.ended_at IS NULL AND EXISTS (
             SELECT 1 FROM request_engine.service_sessions s
              WHERE s.organization_id = NEW.organization_id
                AND s.resource_id = NEW.resource_id AND s.status IN ('active', 'paused')
@@ -66,6 +82,9 @@ BEGIN
             RAISE EXCEPTION 'Resource % has a live ServiceSession', NEW.resource_id
                 USING ERRCODE = '23P01';
         END IF;
+    ELSE
+        RAISE EXCEPTION 'guard_live_resource_occupation attached to unsupported relation %',
+            TG_TABLE_NAME USING ERRCODE = '55000';
     END IF;
     RETURN NEW;
 END

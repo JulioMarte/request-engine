@@ -5,6 +5,8 @@ import psycopg
 import pytest
 from f3_live_ops_fixture import LiveOpsFixture, PgConnection, create_live_ops_fixture
 
+EXECUTION_AT = "2035-01-01T09:30Z"
+
 
 def _start_service(
     conn: PgConnection,
@@ -12,12 +14,10 @@ def _start_service(
     entry_id: UUID,
 ) -> UUID:
     with conn.transaction():
-        started = conn.execute("SELECT clock_timestamp()").fetchone()
-        assert started is not None
         conn.execute(
-            "UPDATE request_engine.queue_entries SET status='serving',service_started_at=%s,"
-            "revision=revision+1 WHERE id=%s",
-            (started[0], entry_id),
+            "UPDATE request_engine.queue_entries SET status='serving',"
+            "service_started_at=%s,revision=revision+1 WHERE id=%s",
+            (EXECUTION_AT, entry_id),
         )
         row = conn.execute(
             "INSERT INTO request_engine.service_sessions "
@@ -30,7 +30,7 @@ def _start_service(
                 setup.resource_id,
                 setup.location_id,
                 setup.actual_workload_id,
-                started[0],
+                EXECUTION_AT,
             ),
         ).fetchone()
         assert row is not None
@@ -47,8 +47,14 @@ def test_service_session_cannot_commit_without_matching_queue_lifecycle(
         admin_conn.execute(
             "INSERT INTO request_engine.service_sessions "
             "(organization_id,queue_entry_id,resource_id,location_id,started_at) "
-            "VALUES (%s,%s,%s,%s,clock_timestamp())",
-            (setup.organization_id, setup.entry_a_id, setup.resource_id, setup.location_id),
+            "VALUES (%s,%s,%s,%s,%s)",
+            (
+                setup.organization_id,
+                setup.entry_a_id,
+                setup.resource_id,
+                setup.location_id,
+                EXECUTION_AT,
+            ),
         )
     assert error.value.sqlstate == "23514"
     assert admin_conn.execute(

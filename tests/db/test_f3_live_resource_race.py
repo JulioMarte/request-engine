@@ -8,6 +8,8 @@ import pytest
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from psycopg import Connection
 
+EXECUTION_AT = "2035-01-01T09:30Z"
+
 
 def _start(
     conninfo: str,
@@ -21,18 +23,16 @@ def _start(
     try:
         barrier.wait()
         with conn.transaction():
-            started = conn.execute("SELECT clock_timestamp()").fetchone()
-            assert started is not None
             conn.execute(
-                "UPDATE request_engine.queue_entries SET status='serving',service_started_at=%s,"
-                "revision=revision+1 WHERE id=%s",
-                (started[0], entry_id),
+                "UPDATE request_engine.queue_entries SET status='serving',"
+                "service_started_at=%s,revision=revision+1 WHERE id=%s",
+                (EXECUTION_AT, entry_id),
             )
             conn.execute(
                 "INSERT INTO request_engine.service_sessions "
                 "(organization_id,queue_entry_id,resource_id,location_id,started_at) "
                 "VALUES (%s,%s,%s,%s,%s)",
-                (organization_id, entry_id, resource_id, location_id, started[0]),
+                (organization_id, entry_id, resource_id, location_id, EXECUTION_AT),
             )
         return "committed"
     except psycopg.Error as exc:
