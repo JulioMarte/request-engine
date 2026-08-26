@@ -78,12 +78,13 @@ def test_interruption_history_is_append_preserving(admin_conn: PgConnection) -> 
         (session_id,),
     )
     admin_conn.execute("COMMIT")
+    rewrite_end_sql = """
+        UPDATE request_engine.service_session_interruptions
+        SET ended_at=%s
+        WHERE id=%s
+    """
     with pytest.raises(psycopg.errors.CheckViolation):
-        admin_conn.execute(
-            "UPDATE request_engine.service_session_interruptions "
-            "SET ended_at=%s WHERE id=%s",
-            (COMPLETED_AT, interruption_id),
-        )
+        admin_conn.execute(rewrite_end_sql, (COMPLETED_AT, interruption_id))
     with pytest.raises(psycopg.errors.CheckViolation):
         admin_conn.execute(
             "DELETE FROM request_engine.service_session_interruptions WHERE id=%s",
