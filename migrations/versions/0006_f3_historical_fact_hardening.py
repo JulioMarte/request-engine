@@ -52,7 +52,8 @@ BEGIN
     IF OLD.ended_at IS NULL AND (
         NEW.ended_at IS NULL OR NEW.ended_by_principal_id IS NULL
     ) AND NEW IS DISTINCT FROM OLD THEN
-        RAISE EXCEPTION 'ServiceSessionInterruption may only transition atomically from open to ended'
+        RAISE EXCEPTION
+            'ServiceSessionInterruption may only transition atomically from open to ended'
             USING ERRCODE = '23514';
     END IF;
 
