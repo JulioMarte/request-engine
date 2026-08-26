@@ -54,6 +54,20 @@ def effects(
     return audit[0], outbox[0]
 
 
+def idempotency_state(
+    conn: PgConnection,
+    organization_id: UUID,
+    principal_id: UUID,
+    key: str,
+) -> str | None:
+    row = conn.execute(
+        "SELECT status FROM request_engine.idempotency_records "
+        "WHERE organization_id=%s AND principal_id=%s AND idempotency_key=%s",
+        (organization_id, principal_id, key),
+    ).fetchone()
+    return None if row is None else row[0]
+
+
 def assert_one_winner(
     results: Sequence[object],
     result_types: tuple[type, ...],
