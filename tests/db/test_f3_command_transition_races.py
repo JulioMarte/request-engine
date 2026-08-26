@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from f3_command_race_support import assert_one_winner, effects
+from f3_command_race_support import align_fixture_to_db_clock, assert_one_winner, effects
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from f3_live_ops_race_support import create_active_session, create_principal
 
@@ -32,6 +32,7 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
+    align_fixture_to_db_clock(admin_conn, setup)
     principal = create_principal(admin_conn, setup)
     delivery = PostgresLiveServiceOperations(command_session_factory)
     queue = PostgresLiveQueueCommands(command_session_factory)
@@ -60,13 +61,14 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         (setup.entry_a_id,),
     ).fetchone()
     assert row is not None and sessions is not None
+    no_show_effect = ("queue.mark_no_show", "queue.entry_no_show.v1")
     if row[0] == "serving":
         assert sessions == (1,)
         winner = ("service_session.start", "service_session.started.v1")
-        loser = ("queue.mark_no_show", "queue.entry.no_show.v1")
+        loser = no_show_effect
     else:
         assert row[0] == "no_show" and sessions == (0,)
-        winner = ("queue.mark_no_show", "queue.entry.no_show.v1")
+        winner = no_show_effect
         loser = ("service_session.start", "service_session.started.v1")
     assert effects(admin_conn, setup.organization_id, *winner) == (1, 1)
     assert effects(admin_conn, setup.organization_id, *loser) == (0, 0)
@@ -80,6 +82,7 @@ async def test_pause_pause_commands_create_one_interruption_and_one_effect(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
+    align_fixture_to_db_clock(admin_conn, setup)
     principal = create_principal(admin_conn, setup)
     session_id = create_active_session(admin_conn, setup, setup.entry_a_id)
     operations = PostgresLiveServiceOperations(command_session_factory)
