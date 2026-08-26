@@ -1,4 +1,5 @@
-from uuid import uuid4
+from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -23,8 +24,16 @@ pytestmark = [
 async def _seed_foreign_policies(
     client: AsyncClient,
     foreign: TenantSandbox,
-) -> tuple[str, str]:
-    headers = auth(foreign, idempotency_key=f"f4-opacity-scope-{uuid4().hex}")
+) -> tuple[UUID, tuple[str, str]]:
+    workload = await client.post(
+        "/v1/live-workloads",
+        json={"workload_key": "opacity-foreign", "display_name": "Opacity Foreign"},
+        headers=auth(foreign, idempotency_key=f"f4-opacity-workload-{uuid4().hex}"),
+    )
+    assert workload.status_code == 201, workload.text
+    workload_body = cast(dict[str, object], workload.json())
+    workload_id = UUID(cast(str, workload_body["id"]))
+
     scope = await client.post(
         "/v1/live-capacity/projection-policies",
         json={
@@ -32,18 +41,17 @@ async def _seed_foreign_policies(
             "resource_id": str(foreign.resource_id),
             "location_id": str(foreign.location_id),
         },
-        headers=headers,
+        headers=auth(foreign, idempotency_key=f"f4-opacity-scope-{uuid4().hex}"),
     )
     estimate = await client.post(
         "/v1/live-capacity/workload-estimate-policies",
-        json={
-            "workload_classification_id": str(foreign.expected_workload_id),
-            "duration_seconds": 1200,
-        },
+        json={"workload_classification_id": str(workload_id), "duration_seconds": 1200},
         headers=auth(foreign, idempotency_key=f"f4-opacity-estimate-{uuid4().hex}"),
     )
     assert scope.status_code == estimate.status_code == 201
-    return scope.json()["id"], estimate.json()["id"]
+    scope_body = cast(dict[str, object], scope.json())
+    estimate_body = cast(dict[str, object], estimate.json())
+    return workload_id, (cast(str, scope_body["id"]), cast(str, estimate_body["id"]))
 
 
 async def test_f4_public_http_cannot_distinguish_foreign_from_unknown_ids(
@@ -58,15 +66,25 @@ async def test_f4_public_http_cannot_distinguish_foreign_from_unknown_ids(
     unknown = (uuid4(), uuid4(), uuid4())
 
     async with client_with_actors(e2e_session_factory, actors) as client:
-        foreign_policy_ids = await _seed_foreign_policies(client, foreign)
+        foreign_workload_id, foreign_policy_ids = await _seed_foreign_policies(client, foreign)
         pairs = await policy_probe_pairs(
             client,
             local,
             foreign,
+            foreign_workload_id,
             foreign_policy_ids,
             unknown,
         )
-        pairs.extend(await read_probe_pairs(client, local, foreign, unknown[0], unknown[1]))
+        pairs.extend(
+            await read_probe_pairs(
+                client,
+                local,
+                foreign,
+                foreign_workload_id,
+                unknown[0],
+                unknown[1],
+            )
+        )
 
     assert len(pairs) == 7
     for foreign_response, unknown_response in pairs:
