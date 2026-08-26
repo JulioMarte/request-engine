@@ -77,7 +77,7 @@ def create_workload_policy_router(
 
     add_capability_route(
         router,
-        "/live-capacity/workload-estimate-policies",
+        "/v1/live-capacity/workload-estimate-policies",
         create_policy,
         capability="live_capacity.configure_estimate",
         methods=["POST"],
@@ -86,10 +86,11 @@ def create_workload_policy_router(
     )
     add_capability_route(
         router,
-        "/live-capacity/workload-estimate-policies/{policy_id}",
+        "/v1/live-capacity/workload-estimate-policies/{policy_id}",
         update_policy,
         capability="live_capacity.configure_estimate",
         methods=["POST"],
+        operation_id="live_capacity_configure_estimate_update",
         response_model=WorkloadEstimatePolicyView,
     )
     return router
