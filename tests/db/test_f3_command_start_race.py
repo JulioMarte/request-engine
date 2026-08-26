@@ -70,7 +70,11 @@ async def test_start_service_command_race_has_one_effectful_winner(
             (setup.entry_a_id, setup.entry_b_id),
         ).fetchall()
     )
-    losing_entry = setup.entry_b_id if winner.queue_entry_id == setup.entry_a_id else setup.entry_a_id
+    losing_entry = (
+        setup.entry_b_id
+        if winner.queue_entry_id == setup.entry_a_id
+        else setup.entry_a_id
+    )
     assert statuses[winner.queue_entry_id] == "serving"
     assert statuses[losing_entry] == "called"
 
