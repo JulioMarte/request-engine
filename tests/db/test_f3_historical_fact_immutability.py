@@ -1,6 +1,8 @@
+from uuid import UUID
+
 import psycopg
 import pytest
-from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
+from f3_live_ops_fixture import LiveOpsFixture, PgConnection, create_live_ops_fixture
 from f3_live_ops_race_support import create_principal
 
 EXECUTION_AT = "2035-01-01T09:30Z"
@@ -9,7 +11,7 @@ RESUMED_AT = "2035-01-01T09:45Z"
 COMPLETED_AT = "2035-01-01T10:00Z"
 
 
-def _start_session(conn: PgConnection) -> tuple[object, object, object]:
+def _start_session(conn: PgConnection) -> tuple[LiveOpsFixture, UUID, UUID]:
     setup = create_live_ops_fixture(conn)
     principal_id = create_principal(conn, setup)
     conn.execute("BEGIN")
@@ -34,11 +36,13 @@ def _start_session(conn: PgConnection) -> tuple[object, object, object]:
             ),
         ).fetchone()
         assert row is not None
+        session_id = row[0]
+        assert isinstance(session_id, UUID)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
         raise
-    return setup, principal_id, row[0]
+    return setup, principal_id, session_id
 
 
 @pytest.mark.postgres
