@@ -784,6 +784,16 @@ def main() -> int:
         remove("network", network)
     host_dirty = capture(["git", "status", "--porcelain", "--untracked-files=no"], root)
     aggregate = all(item["status"] == "PASS" for item in results) and not host_dirty
+    total_job_seconds = round(
+        sum(
+            float(seconds)
+            for item in results
+            if isinstance((seconds := item.get("seconds")), (int, float))
+        ),
+        3,
+    )
+    total_minutes, total_seconds = divmod(int(round(total_job_seconds)), 60)
+    total_job_duration = f"{total_minutes}m {total_seconds:02d}s"
     failure_report = write_failure_report(run_dir, branch=branch, sha=sha, results=results)
     summary = {
         "schema_version": 4,
@@ -803,6 +813,8 @@ def main() -> int:
         "refresh_images": args.refresh_images,
         "verbose": args.verbose,
         "jobs": results,
+        "total_job_seconds": total_job_seconds,
+        "total_job_duration": total_job_duration,
         "failure_report": str(failure_report) if failure_report else None,
         "host_tracked_worktree_dirty_after_run": host_dirty,
     }
@@ -819,6 +831,7 @@ def main() -> int:
         seconds = item.get("seconds")
         timing = f" ({seconds:.1f}s)" if isinstance(seconds, float) else ""
         print(f"{item['status']:>4}  {item['job']}{timing}", flush=True)
+    print(f"Total executed test time: {total_job_duration}", flush=True)
     print(f"Exact tested SHA: {sha}", flush=True)
     if failure_report:
         print(f"Single failure report to share: {failure_report}", flush=True)
