@@ -80,6 +80,4 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         winner_key, loser_key = no_show_key, start_key
     assert effects(admin_conn, setup.organization_id, *winner) == (1, 1)
     assert effects(admin_conn, setup.organization_id, *loser) == (0, 0)
-    assert_idempotency_outcome(
-        admin_conn, setup.organization_id, principal, winner_key, loser_key
-    )
+    assert_idempotency_outcome(admin_conn, setup.organization_id, principal, winner_key, loser_key)
