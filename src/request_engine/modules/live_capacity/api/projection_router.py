@@ -41,7 +41,7 @@ def create_projection_router(
 
     add_capability_route(
         router,
-        "/live-capacity/queues/{service_queue_id}",
+        "/v1/live-capacity/queues/{service_queue_id}",
         read_projection,
         capability="live_capacity.read",
         methods=["GET"],
