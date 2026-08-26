@@ -1,0 +1,4 @@
+**
+!scripts/
+!scripts/ci/
+!scripts/ci/Dockerfile.local-ci

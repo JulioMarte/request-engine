@@ -2,15 +2,24 @@ FROM python:3.13-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_VERSION=0.12.5
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         bash \
         ca-certificates \
+        curl \
         git \
-        postgresql-client \
-    && rm -rf /var/lib/apt/lists/* \
-    && python -m pip install uv==0.12.5
+        gnupg \
+    && mkdir -p /usr/share/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends postgresql-client-18 \
+    && python -m pip install "uv==${UV_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

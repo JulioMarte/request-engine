@@ -12,6 +12,7 @@ venv/
 .coverage
 htmlcov/
 .local-ci/
+.ci/
 .phase6/
 
 # Environment / secrets

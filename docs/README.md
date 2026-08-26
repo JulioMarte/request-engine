@@ -1,6 +1,6 @@
 # Request Engine — current documentation
 
-This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files point here rather than duplicating the contracts.
+This folder is the system of record for the current Request Engine product/domain/architecture design. Agent instruction files point here rather than duplicating contracts.
 
 ## 1. Evolution policy
 
@@ -16,7 +16,7 @@ Core rule:
 freeze the evidence, not the future
 ```
 
-New accepted post-V3 contracts may intentionally supersede historical structural assumptions when the affected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
+New accepted post-V3 contracts may intentionally supersede historical structural assumptions when affected invariants are dispositioned and replaced with equal-or-stronger adversarial proof.
 
 ## 2. Current product line
 
@@ -26,67 +26,97 @@ Current post-V3 progression:
 released V3
   -> F1 Operational Profile / Contextual Supply
   -> F2 Geospatial Cross-Tenant Discovery
+  -> F3 Live Service Operations
+  -> F4 Live Capacity Projection [active]
 ```
 
-F1 is implemented/integrated product architecture. F2 is the active implementation/review scope of:
+F1-F3 are implemented predecessor architecture. The active feature scope is:
 
 ```text
-feature/geospatial-cross-tenant-discovery
-PR #77
+feature/live-capacity-projection
 ```
 
-F3-F6 remain roadmap work and must branch from the then-current `development`.
+F5-F6 remain roadmap work and must branch from the then-current `development` after their predecessor contracts/evidence are integrated.
 
 ## 3. Current F1 contracts
 
-F1 is authoritative for Organization/Location operational truth, public contacts, Location hours/exceptions, Resource-at-Location assignment, Resource/assignment availability exceptions, contextual schedule/price/duration, Reservation commercial provenance and the `aptopt_v2` contextual booking contract.
+F1 is authoritative for Organization/Location operational truth, public contacts, Location hours/exceptions, Resource-at-Location assignment, Resource/assignment availability exceptions, contextual schedule/price/duration, Reservation commercial provenance and the contextual booking contract.
 
 Read:
 
 1. `v3/15-operational-profile-contextual-supply-contract.md` — normative F1 post-V3 contract.
 2. `v3/13-operational-profile-contextual-supply-plan.md` — F1 implementation/closure plan and proof matrix.
-3. `v3/16-operational-profile-contextual-supply-clarifications.md` — historical adversarial-review provenance; it no longer overrides F1.
-4. `adr/0012-contextual-resource-location-supply.md` — durable rationale for contextual Resource-at-Location supply.
+3. `v3/16-operational-profile-contextual-supply-clarifications.md` — historical adversarial-review provenance.
+4. `adr/0012-contextual-resource-location-supply.md` — durable contextual Resource-at-Location rationale.
 
 ## 4. Current F2 contracts
 
-F2 is authoritative for explicit cross-tenant discovery publication, platform service classification, geospatial search, minimal public provider identity, public Location address projection, `discoopt_v1`, discovery-to-Booking freshness fences and cross-tenant discovery privilege boundaries.
+F2 owns explicit cross-tenant discovery publication, platform service classification, geospatial search, minimal public provider identity, public Location projection, opaque discovery handoff and discovery-to-Booking freshness/privilege boundaries.
+
+Primary documents:
+
+1. `v3/24-geospatial-cross-tenant-discovery-contract.md` — normative F2 contract.
+2. `v3/22-geospatial-cross-tenant-discovery-plan.md` — implementation/closure provenance.
+3. `v3/23-geospatial-cross-tenant-discovery-phase-a-inventory.md` — Phase A disposition provenance.
+4. `v3/25-geospatial-cross-tenant-discovery-hardening.md` — historical adversarial-review provenance.
+5. `adr/0011-cross-tenant-shared-capacity.md` — shared-capacity identity/serialization rationale.
+
+Booking remains commitment authority after discovery.
+
+## 5. Current F3 contracts
+
+F3 activates live service operations while preserving:
+
+```text
+Reservation    = planning/commitment truth
+QueueEntry     = arrival/wait/call truth
+ServiceSession = actual execution truth
+```
+
+Read:
+
+1. `v3/26-live-service-operations-contract.md` — normative F3 contract.
+2. `v3/27-live-service-operations-current-state-inventory.md` — integrated old→new/evidence inventory.
+3. `v3/28-live-service-operations-integration-amendment.md` — explicit amendment of older V3 baseline statements.
+4. `10-module-ownership-map.md` — current Queue/Delivery ownership.
+
+F3 provides expected vs actual workload facts, ServiceSession execution, interruptions, ResourceActivity and DB-authoritative operational timestamps. It intentionally does not own ETA/capacity prediction.
+
+The supported F3 migration line ends at `0006_f3_historical_fact_hardening`; older text claiming all F3 behavior ended at `0005` is superseded by the reconciled current contract/inventory and migration README.
+
+## 6. Active F4 contracts
+
+F4 is the active implementation scope.
 
 Read in this order:
 
-1. `v3/24-geospatial-cross-tenant-discovery-contract.md` — **sole normative F2 product/architecture contract**.
-2. `v3/22-geospatial-cross-tenant-discovery-plan.md` — implementation/closure plan and phased proof intent.
-3. `v3/23-geospatial-cross-tenant-discovery-phase-a-inventory.md` — Phase A disposition/inventory provenance.
-4. `v3/25-geospatial-cross-tenant-discovery-hardening.md` — **historical adversarial-review provenance only**; it never overrides document 24.
-5. `adr/0011-cross-tenant-shared-capacity.md` — shared-capacity identity/serialization rationale that F2 must not leak publicly.
+1. `v3/29-live-capacity-projection-contract.md` — **normative F4 target contract**.
+2. `v3/30-live-capacity-projection-current-state-inventory.md` — F4 old→new implementation disposition.
+3. `v3/14-operational-intelligence-roadmap.md` — cross-feature product sequencing/boundaries.
+4. F1/F3 contracts above for authoritative predecessor facts.
 
-F2 currently provides:
-
-```text
-canonical ServiceClassification mapping
-explicit DiscoveryPublication/revocation
-ResourcePublicProfile for deliberately public providers
-Location public address projection from F1 truth
-geo-radius cross-tenant search
-deterministic price/duration via F1 Booking availability
-opaque discoopt_v1 handoff
-commitment-time Publication/Mapping/OfferingVersion/F1 freshness fences
-shared-physical-capacity safety across tenants
-```
-
-The F2 tenant control-plane operations are:
+F4 core rule:
 
 ```text
-MapOfferingToServiceClassification
-RevokeOfferingServiceClassification
-SetResourcePublicProfile
-PublishDiscoverySupply
-RevokeDiscoveryPublication
+live capacity projection
+=
+remaining workload
+projected over
+remaining effective operational time
 ```
 
-All require `operations.manage_discovery`, idempotency, tenant opacity and audit semantics.
+F4 keeps distinct:
 
-## 5. Product roadmap
+```text
+scheduled_capacity
+live_intake_capacity
+```
+
+and remains advisory. It does not become CapacityClaim authority, does not persist ETA/queue position as authoritative counters, and does not silently mutate planning/workload policy from observed history.
+
+The initial contract deliberately uses an explicit ServiceQueue + Resource + Location projection scope and leaves multi-resource queue optimization outside F4.
+
+## 7. Product roadmap
 
 `v3/14-operational-intelligence-roadmap.md` is the accepted direction for F1-F6.
 
@@ -94,59 +124,53 @@ Current status:
 
 ```text
 F1  implemented/integrated foundation
-F2  implemented on feature branch; exact-head merge evidence required
-F3  future: Live Service Operations
-F4  future: Live Capacity Projection
+F2  implemented predecessor discovery
+F3  implemented predecessor live operations
+F4  active: Live Capacity Projection
 F5  future: Operational Recovery + Communications
 F6  future: Operational Copilot
 ```
 
-The roadmap is product direction, not permission to implement future features inside the active F2 branch.
+The roadmap is product direction. `v3/29` defines F4 normative implementation semantics.
 
-## 6. Testing and guarantee governance
+## 8. Testing and guarantee governance
 
 Canonical testing/governance documents:
 
-- `testing/repository-governance-contract.md` — normative HARD / CONTROLLED / FLEXIBLE / HISTORICAL policy.
-- `testing/README.md` — testing architecture entry point.
-- `testing/current-guarantees.toml` — normative machine-readable guarantee inventory.
-- `testing/current-proof-map.toml` — representative proof mapping; filenames are not constitutional.
-- `testing/test-architecture-migration.md` — restructuring/disposition ledger.
+- `testing/repository-governance-contract.md`
+- `testing/README.md`
+- `testing/current-guarantees.toml`
+- `testing/current-proof-map.toml`
+- `testing/test-architecture-migration.md`
 
-F2 adds durable guarantees including:
+A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include feature-specific evidence required by the current guarantee inventory and owning contract.
 
-```text
-INV-DISCOVERY-PUBLICATION-001
-INV-DISCOVERY-HANDOFF-001
-INV-DISCOVERY-CONCURRENCY-001
-```
+F4 must add durable guarantees/proofs for projection separation, workload provenance, temporal consistency, Reservation/Queue/ServiceSession deduplication and staff/customer/tenant privacy before closure.
 
-A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include the feature-specific evidence classes required by the current guarantee inventory and F2 contract.
+## 9. Current precedence
 
-## 7. Current precedence
-
-For concepts explicitly owned by F2:
+For F4 projection concepts:
 
 ```text
-v3/24 F2 normative contract
+v3/29 F4 normative contract
   >
-v3/22 F2 implementation/closure plan
+v3/30 F4 implementation inventory
   >
 v3/14 product roadmap
   >
-F1 / released V3 contracts where F2 explicitly extends their behavior
+F1/F3 contracts only where F4 consumes their facts
 ```
 
-Document 25 is provenance and has no higher-precedence role.
+F4 does not supersede Booking/Queue/Delivery ownership of their authoritative facts.
 
-For F1 concepts not changed by F2:
+For F3 execution concepts:
 
 ```text
-v3/15 F1 normative contract
+v3/28 F3 integration amendment + v3/26 F3 contract
   >
-v3/13 F1 plan
+v3/27 explanatory inventory
   >
-released V3 baseline sections explicitly superseded by F1
+older V3 baseline statements that explicitly deferred execution
 ```
 
 Outside post-V3 deltas, use the baseline precedence:
@@ -164,56 +188,34 @@ Outside post-V3 deltas, use the baseline precedence:
 
 A newer accepted post-V3 contract may explicitly supersede named baseline rules under the pre-production evolution policy without rewriting released history.
 
-## 8. Released V3 provenance
+## 10. Released V3 provenance
 
-Request Engine V3 completed Phase 6 — V3 Freeze & Release Proof.
+Request Engine V3 completed Phase 6 — V3 Freeze & Release Proof. Release/freeze evidence lives under `docs/release/` and remains historical provenance.
 
-Canonical release state:
+Current post-V3 product contracts may deliberately evolve beyond that baseline while preserving evidence discipline.
 
-- G01-G20: PASS;
-- frozen V3 candidate: complete;
-- reviewed Alembic `0001_initial`: proven equivalent to the frozen candidate;
-- V3 promotion: merged to `main` in PR #72;
-- released `main` commit: `07da8be8625cf67a44e8a0e2ebd8c42f7b6206fc`.
-
-Release/freeze evidence lives under `docs/release/`, including:
-
-- `release/v3-release-gates.md`
-- `release/v3-current-release-roadmap.md`
-- `release/v3-candidate-freeze.json`
-- `release/v3-freeze-scope.md`
-- `release/v3-race-matrix.md`
-- `release/v3-invariant-matrix.md`
-- `release/v3-invariant-proof-registry.json`
-- `release/v3-public-api-contract-freeze.md`
-
-These are historical/release provenance. Current post-V3 product contracts may deliberately evolve beyond them while preserving the evidence discipline.
-
-## 9. PostgreSQL executable surfaces
+## 11. PostgreSQL executable surfaces
 
 Executable SQL does not live in `docs/`.
 
-Production migration history begins at:
+Current production-facing Alembic history before F4 SQL is:
 
 ```text
-migrations/versions/0001_initial.py
+0001_initial
+  -> 0002_operational_profile_contextual_supply
+  -> 0003_f1_runtime_acl_completion
+  -> 0004_geospatial_cross_tenant_discovery
+  -> 0005_live_service_operations
+  -> 0006_f3_historical_fact_hardening
 ```
 
-Released V3 baseline history is immutable. F1 occupies current production revisions `0002/0003`. F2 is consolidated into one pre-production production-line revision:
-
-```text
-migrations/versions/0004_geospatial_cross_tenant_discovery.py
-```
-
-F2 development SQL-bearing steps are retained under `migrations/f2_steps/` and executed by the consolidated revision; they are provenance, not separately deployed production revisions.
-
-Frozen V3 candidate SQL remains under `migrations/sql/v3_candidate/`. Historical V2 design-chain SQL remains under `migrations/sql/design_chain/`.
+F2 development SQL-bearing steps remain under `migrations/f2_steps/` as provenance/support modules. Frozen V3 candidate SQL remains under `migrations/sql/v3_candidate/`; historical V2 design-chain SQL remains under `migrations/sql/design_chain/`.
 
 See `migrations/README.md` before changing SQL.
 
-## 10. Architecture and connection surfaces
+## 12. Architecture and connection surfaces
 
-The semantic dependency direction remains:
+Semantic dependency direction remains:
 
 ```text
 entrypoint / adapter
@@ -225,15 +227,17 @@ domain rules + explicit ports
 database/provider adapters
 ```
 
-Physical organization is module-first according to `09-python-module-architecture.md`. Cross-module access uses published contracts according to `13-connection-surfaces.md`; process entrypoints compose modules rather than reaching into persistence internals.
+Physical organization is module-first according to `09-python-module-architecture.md`. Cross-module access uses published contracts according to `13-connection-surfaces.md`.
+
+For F4 specifically, `live_capacity` consumes narrow Booking/Queue/Delivery contracts/read surfaces. It must not import those modules' adapters/application internals.
 
 Architecture fitness functions are safety/drift detectors, not a ban on intentional evolution under a newer accepted contract.
 
-## 11. Documentation policy
+## 13. Documentation policy
 
 Durable domain/schema contracts belong under `docs/v3/` (or a successor versioned contract area). Durable rationale belongs in `docs/adr/`. Release proof belongs under `docs/release/`. Testing/repository governance belongs under `docs/testing/`.
 
-Temporary hardening/amendment documents may be created during adversarial review. Once their closed decisions are folded into the owning normative contract, they must be demoted to provenance so the repository does not accumulate contradictory precedence chains.
+Temporary hardening/amendment documents may be created during adversarial review. Once closed decisions are folded into the owning normative contract, they are provenance rather than competing specifications.
 
 Everything under `legacy/` is historical and non-authoritative unless an explicit task asks to inspect it.
 

@@ -11,6 +11,11 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
 
+from .http_surface_contract_support import (
+    expected_operation_id,
+    header_parameters,
+    operation_contract,
+)
 from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
@@ -39,34 +44,6 @@ def _public_operations(openapi: dict[str, object]) -> frozenset[tuple[str, str]]
     return frozenset(operations)
 
 
-def _operation_contract(openapi: dict[str, object], *, path: str, method: str) -> dict[str, object]:
-    paths_value = openapi.get("paths")
-    assert isinstance(paths_value, dict)
-    paths = cast(dict[str, object], paths_value)
-    path_value = paths[path]
-    assert isinstance(path_value, dict)
-    operation_value = cast(dict[str, object], path_value)[method.lower()]
-    assert isinstance(operation_value, dict)
-    return cast(dict[str, object], operation_value)
-
-
-def _header_parameters(operation_contract: dict[str, object]) -> dict[str, bool]:
-    parameters_value = operation_contract.get("parameters", [])
-    assert isinstance(parameters_value, list)
-    headers: dict[str, bool] = {}
-    for parameter_value in cast(list[object], parameters_value):
-        assert isinstance(parameter_value, dict)
-        parameter = cast(dict[str, object], parameter_value)
-        if parameter.get("in") != "header":
-            continue
-        name = parameter.get("name")
-        required = parameter.get("required", False)
-        assert isinstance(name, str)
-        assert isinstance(required, bool)
-        headers[name.lower()] = required
-    return headers
-
-
 def _app(e2e_session_factory: SessionFactory):
     return create_app(
         session_factory=e2e_session_factory,
@@ -92,10 +69,10 @@ async def test_idempotency_registry_matches_required_openapi_headers(
 ) -> None:
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
     for operation in PUBLIC_HTTP_OPERATIONS:
-        contract = _operation_contract(
+        contract = operation_contract(
             openapi, path=operation.path_template, method=operation.method
         )
-        headers = _header_parameters(contract)
+        headers = header_parameters(contract)
         if operation.idempotency_required:
             assert headers.get("idempotency-key") is True, operation.name
         else:
@@ -116,10 +93,10 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
 
         definition = capability_definition(operation.capability)
         assert definition is not None
-        contract = _operation_contract(
+        contract = operation_contract(
             openapi, path=operation.path_template, method=operation.method
         )
-        assert contract["operationId"] == definition.key.replace(".", "_")
+        assert contract["operationId"] == expected_operation_id(operation.name, definition)
         assert contract["x-request-engine-capability"] == definition.key
         assert contract["x-request-engine-schema-version"] == definition.schema_version
         assert contract["x-request-engine-idempotency"] == definition.idempotency.value

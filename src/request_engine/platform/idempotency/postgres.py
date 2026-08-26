@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections.abc import Mapping
 from typing import Protocol, cast, runtime_checkable
 from uuid import UUID
 
@@ -15,7 +16,7 @@ class _HasSqlState(Protocol):
     sqlstate: str | None
 
 
-def command_fingerprint(capability: str, values: dict[str, object]) -> str:
+def command_fingerprint(capability: str, values: Mapping[str, object]) -> str:
     """Hash a canonical command payload for idempotency-key reuse protection."""
 
     canonical = json.dumps(

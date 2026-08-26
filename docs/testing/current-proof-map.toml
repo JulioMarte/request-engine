@@ -378,3 +378,63 @@ evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
 guarantee = "INV-LIVE-OPS-RESOURCE-001"
 path = "tests/db/test_f3_resource_activity_race.py"
 evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-SEPARATION-001"
+path = "tests/modules/live_capacity/test_capacity_separation.py"
+evidence = ["invariant", "contract", "adversarial", "capacity"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-SEPARATION-001"
+path = "tests/e2e/test_f4_live_capacity_journey.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PROJECTION-001"
+path = "tests/e2e/test_f4_live_capacity_journey.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PROJECTION-001"
+path = "tests/db/test_f4_projection_scope_validation.py"
+evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-WORKLOAD-001"
+path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
+evidence = ["invariant", "contract", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-WORKLOAD-001"
+path = "tests/db/test_f4_historical_duration_source.py"
+evidence = ["invariant", "adversarial", "temporal", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-TEMPORAL-001"
+path = "tests/db/test_f4_customer_projection_snapshot.py"
+evidence = ["invariant", "contract", "adversarial", "temporal"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-TEMPORAL-001"
+path = "tests/modules/live_capacity/test_projection.py"
+evidence = ["invariant", "contract", "adversarial", "temporal", "capacity"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-DEDUP-001"
+path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-DEDUP-001"
+path = "tests/modules/live_capacity/test_deduplication.py"
+evidence = ["invariant", "contract", "adversarial", "capacity"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
+path = "tests/db/test_f4_customer_projection_authority.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
+path = "tests/db/test_f4_rls_isolation.py"
+evidence = ["invariant", "adversarial", "security"]

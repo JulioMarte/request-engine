@@ -1,0 +1,57 @@
+from dataclasses import dataclass
+from typing import cast
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from request_engine.modules.booking.domain.availability import CapacityModel
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionResource:
+    location_id: UUID | None
+    capacity_model: CapacityModel
+    capacity_units: int
+    timezone: str
+
+    @property
+    def supports_sequential_projection(self) -> bool:
+        return self.capacity_model is CapacityModel.EXCLUSIVE and self.capacity_units == 1
+
+
+async def load_projection_resource(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    resource_id: UUID,
+) -> ProjectionResource | None:
+    row = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT r.location_id, r.capacity_model, r.capacity_units,
+                           COALESCE(l.timezone, 'UTC') AS timezone
+                    FROM request_engine.resources r
+                    LEFT JOIN request_engine.locations l
+                      ON l.organization_id = r.organization_id AND l.id = r.location_id
+                    WHERE r.organization_id = :organization_id
+                      AND r.id = :resource_id
+                      AND r.active
+                    """
+                ),
+                {"organization_id": organization_id, "resource_id": resource_id},
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    return ProjectionResource(
+        location_id=cast(UUID | None, row["location_id"]),
+        capacity_model=CapacityModel(cast(str, row["capacity_model"])),
+        capacity_units=cast(int, row["capacity_units"]),
+        timezone=cast(str, row["timezone"]),
+    )

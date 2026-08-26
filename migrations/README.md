@@ -21,24 +21,22 @@ migrations/f2_steps/           preserved pre-integration F2 SQL steps, not Alemb
 
 `migrations/versions/0001_initial.py` is the released V3 production baseline and remains immutable historical migration evidence.
 
-Do not rewrite, regenerate or squash `0001_initial`; do not back-port later feature DDL into it. The frozen V3 candidate and release manifests answer:
-
-```text
-what exactly did we prove then?
-```
-
-Historical proof must not become a permanent restriction on current pre-production product evolution.
+Do not rewrite, regenerate or squash `0001_initial`; do not back-port later feature DDL into it. Historical proof answers what was proven then; it must not become a permanent restriction on current pre-production product evolution.
 
 ## Current Alembic line
 
-After F1 and F2 integration the intended current-product line is:
+Before F4 introduces any SQL, the actual integrated production-facing line is:
 
 ```text
 0001_initial
   -> 0002_operational_profile_contextual_supply
   -> 0003_f1_runtime_acl_completion
   -> 0004_geospatial_cross_tenant_discovery
+  -> 0005_live_service_operations
+  -> 0006_f3_historical_fact_hardening
 ```
+
+`0006_f3_historical_fact_hardening` is the current predecessor head for F4 unless an explicit repository rebaseline occurs before the F4 migration is created.
 
 Current CI must prove exactly one repository head and a database upgraded to that head.
 
@@ -59,23 +57,29 @@ This is a controlled pre-production rebaseline, not permission to delete failing
 
 ## F2 consolidation
 
-F2 was developed through provisional SQL-bearing steps `0004`–`0012`. Before PR #77 integration those steps are consolidated behind one production-facing revision:
+F2 development SQL-bearing steps are preserved under `migrations/f2_steps/` and composed by:
 
 ```text
 migrations/versions/0004_geospatial_cross_tenant_discovery.py
 ```
 
-The SQL-bearing development steps remain under:
+Those support modules are provenance, not independent Alembic revisions.
+
+## F3 integration and historical-fact hardening
+
+F3 entered the supported migration line as:
 
 ```text
-migrations/f2_steps/
+0004_geospatial_cross_tenant_discovery
+  -> 0005_live_service_operations
+  -> 0006_f3_historical_fact_hardening
 ```
 
-They are ordinary Python support modules, not independent Alembic revisions. Consolidated `0004` executes them in order so the production migration graph remains one F2 revision while preserving reviewable implementation provenance.
+`0005_live_service_operations` introduces the live Queue/Delivery schema and primary F3 invariants.
 
-The final F2 steps include the minimal `ResourcePublicProfile`, public Location/provider discovery projection, and publication-visibility lifecycle hardening required by the normative F2 contract.
+`0006_f3_historical_fact_hardening` is a real append-only successor created after adversarial review to strengthen the immutability/append-preservation of historical execution facts, including completed ServiceSession and ServiceSessionInterruption history. It is not provisional history and must not be described as having been consolidated into `0005`.
 
-No earlier green workflow is treated as final evidence after these changes. PR #77 merge readiness requires a fresh exact-head run proving the consolidated `0004` plus the complete current test suite.
+F4 may add the next revision only after its normative schema semantics are accepted. The migration must declare the actual then-current head as `down_revision`.
 
 ## Frozen V3 candidate provenance
 
@@ -112,13 +116,15 @@ For a schema change intended to become part of supported current history:
 7. preserve rollback policy explicitly and do not fake reversibility for semantically irreversible changes;
 8. keep historical release/design evidence separate from current-product proof.
 
+For F4 specifically, prediction/read-model values such as ETA, queue position and remaining live capacity must not be persisted as authoritative counters merely for migration convenience. F4 schema persistence is limited to accepted configuration/policy/supporting structures unless its normative contract is explicitly amended.
+
 Once real customer-owned data or an external compatibility commitment exists, destructive history changes require explicit data migration, rollback/forward-safety and compatibility analysis.
 
 ## V3 release provenance
 
-The V3 release baseline was closed with G01–G20 evidence, a frozen 43-file candidate inventory, reviewed `0001_initial`, structural fingerprinting, behavioral equivalence proof and production-like runtime-role bootstrap evidence.
+The V3 release baseline was closed with G01–G20 evidence, a frozen candidate inventory, reviewed `0001_initial`, structural fingerprinting, behavioral equivalence proof and production-like runtime-role bootstrap evidence.
 
-See `docs/release/v3-release-gates.md` and `docs/release/v3-current-release-roadmap.md` for that historical release provenance.
+See `docs/release/v3-release-gates.md` and `docs/release/v3-current-release-roadmap.md` for historical release provenance.
 
 ## SQL ownership
 
