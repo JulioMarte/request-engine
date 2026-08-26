@@ -1,290 +1,238 @@
 # Request Engine — F4 Live Capacity Projection Current-State Inventory
 
-Status: **implementation planning / old-to-new disposition for `feature/live-capacity-projection`**.
+Status: **implemented hardening / closure pending exact-remote local verification** on `feature/live-capacity-projection`.
 
 Normative target: `29-live-capacity-projection-contract.md`.
 
-This document records what F4 inherits, what it consumes, what it must add, and what it explicitly rejects/defer. It is not a claim that F4 is already implemented.
+This document records the implemented F4 disposition against the integrated F3 baseline. It is no longer an implementation-planning document. F4 is materially built; the remaining release gate is executable local evidence at the exact remote HEAD plus correction of any failures that evidence exposes.
 
-## 1. Starting point
+## 1. Authority boundary
 
-`feature/live-capacity-projection` starts from the integrated F3 product baseline. F1 provides contextual supply/planning truth; F3 provides live Queue and Delivery facts.
+F4 is an advisory/read-model bounded context. It consumes authoritative Booking, Queue and Delivery facts through published narrow contracts and does not become authority for any of them.
 
-The real migration lineage includes F3 historical-fact hardening after `0005_live_service_ops`; F4 migration work must use the actual repository head as predecessor.
+```text
+Booking owns Reservation / CapacityClaim / schedule and contextual planning truth.
+Queue owns QueueEntry and queue lifecycle truth.
+Delivery owns ServiceSession / interruption / ResourceActivity truth.
+live_capacity owns projection configuration and deterministic advisory derivation.
+```
 
-## 2. Old -> new disposition
+Projection reads and intake evaluation do not create/release CapacityClaims, rewrite Reservations, mutate QueueEntries/ServiceSessions, or persist ETA/headroom as authoritative counters.
 
-| Existing/new surface | Disposition | F4 treatment |
+## 2. Implemented old -> new disposition
+
+| Existing/new surface | Disposition | Implemented F4 treatment |
 |---|---|---|
-| `Reservation` | KEEP + CONSUME | Planning/provenance and same-day future workload; never rewritten by projection. |
-| `CapacityClaim` | KEEP + CONSUME | Remains commitment/capacity authority. Projection never creates/releases claims. |
-| Resource schedules/availability | KEEP + CONSUME | Booking/F1 continues to own effective availability composition. |
-| Resource-at-Location assignment schedules | KEEP + CONSUME | Consumed through a published narrow planning contract. |
-| Resource/assignment exceptions | KEEP + CONSUME | Must affect remaining effective operational intervals. |
-| Location hours/exceptions | KEEP + CONSUME | Must affect projection horizon. |
-| contextual Offering duration | KEEP + FALLBACK | May be a planned-duration fallback when F4 has no stronger workload estimate. |
-| `ServiceQueue` | KEEP + CONSUME | Live queue scope remains Queue-owned. |
-| `QueueEntry` | KEEP + CONSUME | Waiting/called truth, timestamps and expected workload. |
-| FIFO admission ordering | KEEP + CONSUME | Projection may derive entries ahead; it does not persist position. |
-| expected workload classification | KEEP + CONSUME | Pre-service estimate input; no predictive duration added to classification identity. |
-| `ServiceSession` | KEEP + CONSUME | Current execution and completed history. |
-| actual workload classification | KEEP + CONSUME | Historical execution evidence. |
-| `ServiceSessionInterruption` | KEEP + CONSUME | Closed intervals excluded from active service; open intervals may make ETA indeterminate. |
-| `ResourceActivity` | KEEP + CONSUME | Resource occupation is operational fact, not patient service. |
-| F3 observational duration snapshot | KEEP + CONSUME | `active_service_seconds` is preferred historical productive-duration evidence. |
-| `OperationalWorkloadClassification` | KEEP | Vocabulary only; do not add learned/predictive mutable duration semantics. |
-| workload-estimate policy | ADD | Separate F4 configuration with provenance/revision semantics. |
+| `Reservation` | KEEP + CONSUME | Same-day future planning workload and planned-duration fallback; never rewritten by F4. |
+| `CapacityClaim` | KEEP + CONSUME | Remains commitment/capacity authority; F4 never creates/releases claims. |
+| effective Resource/Location availability | KEEP + CONSUME | Booking composes the authoritative remaining operational intervals. |
+| contextual Offering duration | KEEP + FALLBACK | Applicable planned duration is the last known fallback before `unknown`. |
+| `ServiceQueue` | KEEP + CONSUME | Explicit projection scope includes Queue + Resource + Location. |
+| `QueueEntry` | KEEP + CONSUME | Waiting/called/serving representation, ordering and expected workload. |
+| completed reservation-backed QueueEntry | KEEP + CONSUME NARROW FACT | Used only to prevent a completed-early service from reappearing as unfinished live Reservation workload. |
+| `ServiceSession` | KEEP + CONSUME | Active execution supersedes QueueEntry for remaining workload; completed sessions feed bounded history. |
+| `ServiceSessionInterruption` | KEEP + CONSUME | Closed time is excluded from productive duration; open interruption makes projection indeterminate. |
+| `ResourceActivity` | KEEP + CONSUME | Open-ended occupation makes projection indeterminate rather than inventing an end. |
+| workload-estimate policy | ADD | Separate revisioned/idempotent F4 configuration with audit/outbox semantics. |
 | projection-scope policy | ADD | Explicit Queue + Resource + Location baseline mapping. |
-| `live_capacity` bounded context | ADD | Owns projection semantics/configuration/read contracts. |
-| persisted queue position | REJECT | Derived on read. |
-| persisted ETA as authority | REJECT | Derived advisory state. |
-| persisted remaining-capacity counter | REJECT | Derived advisory state. |
-| automatic policy learning/mutation | REJECT | Observations may influence projection/recommendation, not silently mutate policy. |
-| multi-resource queue optimizer | DEFER | Not hidden inside F4 ETA. |
-| stop-intake automation | DEFER F5 | F4 only evaluates/advises. |
-| delay communications | DEFER F5 | F4 produces facts/projections only. |
-| recovery/rescheduling | DEFER F5 | Explicit later workflow. |
+| `live_capacity` bounded context | ADD | Owns projection semantics/configuration/read contracts only. |
+| persisted queue position / ETA / live counter | REJECT | Derived on read. |
+| automatic policy learning | REJECT | History informs estimates but does not silently mutate policy. |
+| stop-intake automation / recovery / delay communications | DEFER F5 | F4 evaluates and explains; it does not execute recovery policy. |
 
-## 3. Source-module contract gaps
+## 3. Published source contracts
+
+F4 consumes only supported module contracts:
+
+```text
+booking.contracts.live_capacity
+queue.contracts.live_capacity
+delivery.contracts.live_capacity
+```
 
 ### Booking
 
-Current Booking/F1 implementation owns the complex availability composition F4 needs. F4 must not import Booking adapters directly.
+Publishes one coherent operational-availability snapshot containing the configured Resource/Location scope, remaining effective intervals and same-day planned Reservation workload.
 
-Required narrow published read capability, conceptually:
-
-```text
-ResourceOperationalAvailabilitySnapshot
-  resource_id
-  location_id
-  observed_at
-  remaining effective intervals
-  same-day planning/commitment context as required
-```
-
-Exact contract shape is implementation-owned, but it must preserve Booking authority and avoid duplicating F1 composition logic.
+Booking remains responsible for schedule, Location, assignment, exception and capacity-claim composition. F4 does not reimplement F1 availability logic.
 
 ### Queue
 
-Current staff queue DTOs include identity/presentation fields that projection does not require. Publish/construct a narrower projection source, conceptually:
-
-```text
-QueueProjectionEntry
-  queue_entry_id
-  reservation_id?
-  offering_id?
-  status
-  arrived_at
-  admitted_at
-  called_at?
-  expected_workload_classification_id?
-```
-
-No customer identity is needed to calculate capacity.
+Publishes active projection entries without customer presentation data. For the finite set of same-day planned Reservation IDs supplied by the composition layer, Queue also publishes which of those Reservations already have a completed QueueEntry. This bounded terminal fact is necessary because F3 intentionally preserves Reservation planning truth after actual service completes.
 
 ### Delivery
 
-F4 needs:
+Publishes active Resource execution/occupation and bounded completed ServiceSession duration observations. Historical productive duration excludes closed interruption time.
+
+## 4. Workload estimate policy
+
+Implemented deterministic precedence:
 
 ```text
-current Resource execution/occupation snapshot
-bounded completed ServiceSession history
-active-service duration evidence
-actual workload classification
+same Resource + actual workload history
+-> tenant workload history
+-> configured workload-estimate policy
+-> applicable planned Reservation duration
+-> unknown
 ```
 
-Expose through a narrow Delivery contract/read surface rather than private adapter imports.
+History is bounded/deterministic and does not mutate configured policy. Unknown is represented explicitly; it is never converted to zero or an arbitrary average.
 
-## 4. New F4 module
+When a Reservation has already checked in, its planned duration follows the QueueEntry or active ServiceSession that wins deduplication as estimate provenance only. The Reservation itself is not retained as a second live work item.
 
-Target:
+## 5. Remaining-work deduplication
+
+Implemented precedence:
 
 ```text
-src/request_engine/modules/live_capacity/
-  contracts/
-  application/
-    queries/
-    commands/      # configuration only
-    ports/
-  adapters/
-    db/
-  api/
-  README.md
+active ServiceSession > QueueEntry > Reservation
 ```
 
-The exact private split remains flexible. HARD boundary: cross-module access goes through published contracts/read surfaces and no circular ownership is introduced.
-
-## 5. Projection engine responsibilities
-
-Prefer a pure deterministic domain/application core for:
+Important terminal rule:
 
 ```text
-resolve_workload_estimate
-calculate_remaining_current_service
-build_remaining_workload
-project_workload_over_intervals
-estimate_queue_starts
-calculate_projected_end
-calculate_live_headroom
-evaluate_intake
+completed reservation-backed QueueEntry
+    -> Reservation remains visible to scheduled planning truth
+    -> Reservation contributes zero unfinished live workload
 ```
 
-It should accept explicit facts and produce explicit results/provenance without SQLAlchemy/FastAPI/Pydantic dependence in the calculation core.
+This rule closes the early-completion case where a confirmed future Reservation would otherwise reappear after its QueueEntry/ServiceSession became terminal.
 
-## 6. Database change disposition
+## 6. Scheduled capacity versus live intake capacity
 
-Expected new migration: next revision after the actual current Alembic head, not after a stale documented predecessor.
+F4 now preserves the contractually required distinction explicitly.
 
-Likely additions:
+Staff projection exposes:
 
 ```text
-live capacity projection policy/configuration
-workload estimate policy/configuration
-RLS / FORCE RLS
-least-privilege grants
-indexes supporting bounded historical reads
-narrow read views/functions if they materially improve ownership/security
+scheduled_committed_workload_seconds
+scheduled_headroom_seconds
+projected_remaining_workload_seconds
+live_intake_headroom_seconds
+live_vs_scheduled_headroom_delta_seconds
 ```
 
-Do not add projection-state counters/tables in the initial implementation.
+`live_headroom_seconds` remains a compatibility alias for `live_intake_headroom_seconds`.
 
-Potential historical query index shape should be validated against actual query plans, e.g. Resource + actual workload + completed-at for completed sessions.
-
-## 7. Read consistency
-
-Projection composition should run in one read-only coherent PostgreSQL snapshot with one DB-sourced `observed_at`.
-
-Do not take Queue/Capacity mutation locks for advisory reads. Test that projection reads do not unnecessarily serialize normal CheckIn/CallNext/Start/Complete/Booking paths.
-
-## 8. API/capability target
-
-Likely staff surfaces:
+The delta is:
 
 ```text
-live_capacity.read
-live_capacity.evaluate_intake
+live_intake_headroom_seconds - scheduled_headroom_seconds
 ```
 
-Likely customer-safe surface:
+Negative means live reality is consuming more projected work than scheduled commitments alone imply. Positive means live operations are ahead of the still-preserved planning view. Neither value changes Booking authority.
+
+## 7. Temporal projection behavior
+
+The projection engine:
+
+- obtains one PostgreSQL-sourced `observed_at`;
+- composes Booking, Queue and Delivery inside one coherent read snapshot;
+- projects sequentially over possibly discontinuous remaining effective intervals;
+- subtracts elapsed productive time from the current ServiceSession estimate;
+- excludes closed interruption duration from productive historical evidence;
+- returns explicit `indeterminate` state for open ServiceSession interruption or open ResourceActivity;
+- does not take mutation/capacity ownership merely to read advisory state.
+
+## 8. API surfaces
+
+Implemented independently typed surfaces:
 
 ```text
-live_capacity.customer_read
+staff live-capacity projection
+read-only intake evaluation
+customer-safe queue projection
 ```
 
-Final names must align with capability-registry conventions and existing HTTP operation naming.
+The customer DTO is not produced by serializing the staff DTO and deleting fields. It exposes only approved self-relative projection data and does not disclose other customers, workload classifications, operational causes or historical samples.
 
-Staff and customer response models remain separate contracts.
+## 9. Persistence and security
 
-## 9. Deduplication matrix
-
-| State | Remaining-work representation |
-|---|---|
-| same-day Reservation, no live QueueEntry | planned Reservation workload |
-| Reservation + waiting/called QueueEntry | QueueEntry workload only |
-| QueueEntry + active ServiceSession | ServiceSession remaining workload only |
-| walk-in waiting/called | QueueEntry workload |
-| completed service | zero |
-| no-show | zero |
-
-Tests must falsify each important boundary rather than merely snapshot the implementation.
-
-## 10. Estimate provenance matrix
-
-| Evidence | Preferred meaning |
-|---|---|
-| sufficient same Resource + actual workload history | strongest observed operational estimate |
-| sufficient tenant workload history | observed fallback |
-| configured workload policy | explicit policy fallback |
-| applicable planned/contextual duration | planning fallback |
-| none | unknown; no fabricated ETA |
-
-Observed estimates do not mutate configured policy.
-
-## 11. Uncertainty matrix
-
-| Condition | Expected projection behavior |
-|---|---|
-| all required durations and intervals known | concrete projection |
-| one future workload duration unknown | partial/unknown downstream projection |
-| open ServiceSession interruption, unknown end | explicit indeterminate/blocking state |
-| open ResourceActivity, unknown end | explicit indeterminate/blocking state |
-| no remaining effective availability | known no-headroom result |
-| invalid/missing projection configuration | semantic configuration failure |
-
-Do not encode false certainty as zero duration or arbitrary average.
-
-## 12. Required evidence ownership
-
-### `tests/modules/live_capacity/`
-
-Pure contract/domain projection behavior, estimator fallback, provenance, interval projection and DTO/application semantics.
-
-### `tests/db/`
-
-Cross-module PostgreSQL invariants, RLS/privileges, migration/backstop behavior, temporal snapshot and concurrency where database semantics are the guarantee.
-
-### `tests/e2e/`
-
-Production-like staff/customer journeys, deduplication, live mutation -> reprojection, privacy and no-authority-mutation proof.
-
-### `tests/architecture/`
-
-Module dependency/cross-contract boundaries and type separation where new surfaces require coverage.
-
-## 13. Required regression/evidence scenarios
-
-At minimum:
+F4 migration lineage follows the actual integrated F3 head:
 
 ```text
-scheduled capacity differs from live capacity without planning mutation
-projection cannot create/release CapacityClaim
-Reservation already checked in is counted once
-active ServiceSession supersedes QueueEntry for remaining-work calculation
-walk-in contributes without Reservation
-future same-day Reservation contributes before check-in
-completed/no-show work contributes zero
-active-service elapsed time reduces remaining estimate
-interruption seconds do not count as productive service
-open interruption/activity yields explicit uncertainty
-Location early close reduces horizon
-additional-hours exception extends horizon
-Resource/assignment exception creates discontinuous availability
-history estimator is bounded/deterministic
-insufficient history follows documented fallback
-history never mutates configured policy
-unknown duration never fabricates ETA
-cross-tenant projection/history is opaque
-customer projection exposes no other-customer/private operational data
-one projection uses one DB observation snapshot
-projection read does not take mutation/capacity locks
-configuration race preserves revision semantics
-fresh migration bootstrap succeeds
-upgrade from actual predecessor head succeeds
+0006_f3_fact_hardening
+-> 0007_live_capacity
 ```
 
-## 14. Implementation sequence
+F4 configuration tables include revision/idempotency behavior, RLS/FORCE RLS and least-privilege evidence. Existing PostgreSQL evidence covers projection-scope/workload-policy revision races, validation, RLS, customer authority/snapshot semantics and historical-duration source behavior.
+
+## 10. Durable guarantees
+
+The normative current guarantee inventory now includes:
 
 ```text
-A. reconcile inherited documentation/migration truth
-B. freeze F4 normative contract
-C. complete this old->new inventory against code
-D. register durable guarantees/evidence plan
-E. introduce live_capacity module boundary
-F. publish narrow Booking/Queue/Delivery source contracts
-G. implement pure deterministic projection engine
-H. implement projection/workload configuration policies
-I. add F4 migration/RLS/indexes
-J. add staff projection read
-K. add read-only intake evaluation
-L. add independently safe customer ETA read
-M. add PostgreSQL/module/E2E/architecture evidence
-N. update current-guarantees + current-proof-map
-O. reconcile roadmap/README/ownership/migration docs
-P. exact-head CI
+INV-LIVE-CAPACITY-SEPARATION-001
+INV-LIVE-CAPACITY-PROJECTION-001
+INV-LIVE-CAPACITY-WORKLOAD-001
+INV-LIVE-CAPACITY-TEMPORAL-001
+INV-LIVE-CAPACITY-DEDUP-001
+INV-LIVE-CAPACITY-PRIVACY-001
 ```
 
-## 15. Definition-of-Done gate
+Representative evidence is reconciled in `docs/testing/current-proof-map.toml`. The guarantee inventory is normative; the proof map remains updateable evidence mapping rather than an immutable filename snapshot.
 
-Do not call F4 complete merely because an endpoint returns queue position or ETA.
+## 11. Acceptance evidence
 
-F4 closes only when the repository proves that it can derive explainable remaining-workload/time projections from authoritative current facts, preserve planning/live/execution separation, represent uncertainty explicitly, enforce privacy/tenant boundaries, and leave Booking/Queue/Delivery authority unchanged.
+`tests/e2e/test_f4_live_capacity_journey.py` remains the focused staff/intake/customer read-only/privacy journey.
+
+`tests/e2e/test_f4_operational_day_acceptance.py` composes the operational-day behavior that the original smoke journey did not prove:
+
+```text
+two future same-day Reservations
+-> first Reservation check-in with no configured estimate
+-> planned-duration fallback transfers to QueueEntry
+-> additional walk-in with configured workload estimate
+-> scheduled and live headroom diverge explicitly
+-> CallNext
+-> active ServiceSession supersedes QueueEntry
+-> open interruption makes projection indeterminate
+-> resume restores calculable projection
+-> completion recomputes live workload
+-> completed-early Reservation does not reappear live
+-> scheduled planning truth remains preserved
+-> Reservation and CapacityClaim durable state remain unchanged by projection reads/service composition
+```
+
+Historical estimator bounds/source, discontinuous interval projection, elapsed-current-service semantics, open ResourceActivity uncertainty, customer authority and RLS remain covered by narrower DB/module evidence where those guarantees are more directly falsifiable than by one oversized E2E scenario.
+
+## 12. Local exact-head closure runner
+
+GitHub Actions is not the closure authority for this branch. Use:
+
+```bash
+bash scripts/ci/run_f4_local_closure.sh
+```
+
+The runner deliberately:
+
+1. requires a checked-out branch;
+2. refuses a dirty working tree so forced synchronization cannot silently destroy local work;
+3. fetches current remote refs;
+4. force-synchronizes the clean local branch to `origin/<current-branch>` with `git reset --hard`;
+5. verifies exact local/remote SHA equality and cleanliness;
+6. runs the Python quality/architecture/unit/module lane with file-budget comparison against `origin/development` by default;
+7. runs the canonical current-product PostgreSQL/integration/E2E proof.
+
+`FILE_BUDGET_BASE_REF` may be supplied explicitly when intentionally validating against another integration base.
+
+## 13. Remaining closure gate
+
+Do **not** call F4 merge-ready solely from repository inspection.
+
+The current branch must still produce a completely green local exact-remote closure run. Any failures from that run are blockers until understood and corrected. PR #80 therefore remains Draft.
+
+Once the local run is green, perform one final adversarial review of:
+
+```text
+planning vs live separation
+completed-early service suppression
+dedup and fallback provenance
+single-snapshot temporal semantics
+customer privacy / tenant opacity
+configuration races
+projection read no-authority/no-lock behavior
+migration bootstrap and upgrade lineage
+```
+
+Only then is F4 eligible to leave Draft and merge.
