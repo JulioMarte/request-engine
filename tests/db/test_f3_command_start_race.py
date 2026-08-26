@@ -8,6 +8,7 @@ from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
 )
+from request_engine.modules.delivery.application.errors import ResourceExecutionUnavailable
 from request_engine.modules.delivery.application.service_session_commands import StartServiceCommand
 from request_engine.modules.delivery.contracts.service_session import ServiceSession
 from request_engine.platform.db.session import SessionFactory
@@ -33,7 +34,7 @@ async def test_start_service_command_race_has_one_effectful_winner(
     command_session_factory: SessionFactory,
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
-    align_fixture_to_db_clock(admin_conn, setup)
+    revisions = align_fixture_to_db_clock(admin_conn, setup)
     principal_id = _principal(admin_conn, setup.organization_id)
     operations = PostgresLiveServiceOperations(command_session_factory)
     commands = (
@@ -43,7 +44,7 @@ async def test_start_service_command_race_has_one_effectful_winner(
             queue_entry_id=entry_id,
             resource_id=setup.resource_id,
             location_id=setup.location_id,
-            expected_queue_revision=1,
+            expected_queue_revision=revisions[entry_id],
             idempotency_key=f"start-race-{index}",
             actual_workload_classification_id=setup.actual_workload_id,
         )
@@ -59,6 +60,7 @@ async def test_start_service_command_race_has_one_effectful_winner(
     detail = repr(results)
     assert len(winners) == 1, detail
     assert len(losers) == 1, detail
+    assert isinstance(losers[0], ResourceExecutionUnavailable), detail
 
     winner = winners[0]
     rows = admin_conn.execute(
