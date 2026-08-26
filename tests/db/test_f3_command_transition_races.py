@@ -1,7 +1,12 @@
 import asyncio
 
 import pytest
-from f3_command_race_support import align_fixture_to_db_clock, assert_one_winner, effects
+from f3_command_race_support import (
+    align_fixture_to_db_clock,
+    assert_idempotency_outcome,
+    assert_one_winner,
+    effects,
+)
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from f3_live_ops_race_support import create_active_session, create_principal
 
@@ -37,6 +42,8 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
     principal = create_principal(admin_conn, setup)
     delivery = PostgresLiveServiceOperations(command_session_factory)
     queue = PostgresLiveQueueCommands(command_session_factory)
+    start_key = "command-start-no-show-start"
+    no_show_key = "command-start-no-show-no-show"
     start = StartServiceCommand(
         setup.organization_id,
         principal,
@@ -44,7 +51,7 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         setup.resource_id,
         setup.location_id,
         expected_revision,
-        "command-start-no-show-start",
+        start_key,
         setup.actual_workload_id,
     )
     no_show = MarkNoShowCommand(
@@ -52,7 +59,7 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         principal,
         setup.entry_a_id,
         expected_revision,
-        "command-start-no-show-no-show",
+        no_show_key,
     )
     results = await asyncio.gather(
         delivery.start_service(start), queue.mark_no_show(no_show), return_exceptions=True
@@ -71,12 +78,17 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         assert sessions == (1,)
         winner = ("service_session.start", "service_session.started.v1")
         loser = no_show_effect
+        winner_key, loser_key = start_key, no_show_key
     else:
         assert row[0] == "no_show" and sessions == (0,)
         winner = no_show_effect
         loser = ("service_session.start", "service_session.started.v1")
+        winner_key, loser_key = no_show_key, start_key
     assert effects(admin_conn, setup.organization_id, *winner) == (1, 1)
     assert effects(admin_conn, setup.organization_id, *loser) == (0, 0)
+    assert_idempotency_outcome(
+        admin_conn, setup.organization_id, principal, winner_key, loser_key
+    )
 
 
 @pytest.mark.asyncio
@@ -91,6 +103,7 @@ async def test_pause_pause_commands_create_one_interruption_and_one_effect(
     principal = create_principal(admin_conn, setup)
     session_id = create_active_session(admin_conn, setup, setup.entry_a_id)
     operations = PostgresLiveServiceOperations(command_session_factory)
+    keys = ("pause-race-1", "pause-race-2")
     commands = [
         PauseServiceCommand(
             setup.organization_id,
@@ -98,14 +111,16 @@ async def test_pause_pause_commands_create_one_interruption_and_one_effect(
             session_id,
             1,
             InterruptionKind.BREAK,
-            f"pause-race-{index}",
+            key,
         )
-        for index in (1, 2)
+        for key in keys
     ]
     results = await asyncio.gather(
         *(operations.pause_service(command) for command in commands), return_exceptions=True
     )
     assert_one_winner(results, (ServiceSession,))
+    winner_index = next(i for i, result in enumerate(results) if isinstance(result, ServiceSession))
+    loser_index = 1 - winner_index
     session = admin_conn.execute(
         "SELECT status,revision FROM request_engine.service_sessions WHERE id=%s", (session_id,)
     ).fetchone()
@@ -118,3 +133,6 @@ async def test_pause_pause_commands_create_one_interruption_and_one_effect(
     assert effects(
         admin_conn, setup.organization_id, "service_session.pause", "service_session.paused.v1"
     ) == (1, 1)
+    assert_idempotency_outcome(
+        admin_conn, setup.organization_id, principal, keys[winner_index], keys[loser_index]
+    )
