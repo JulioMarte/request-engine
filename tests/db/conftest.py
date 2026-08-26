@@ -61,9 +61,7 @@ async def command_session_factory() -> AsyncIterator[SessionFactory]:
                 "NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}"
             ).format(sql.Identifier(role_name), sql.Literal(role_password))
         )
-        admin.execute(
-            sql.SQL("GRANT request_engine_app TO {}").format(sql.Identifier(role_name))
-        )
+        admin.execute(sql.SQL("GRANT request_engine_app TO {}").format(sql.Identifier(role_name)))
     finally:
         admin.close()
 
