@@ -66,9 +66,7 @@ async def test_f4_public_http_cannot_distinguish_foreign_from_unknown_ids(
             foreign_policy_ids,
             unknown,
         )
-        pairs.extend(
-            await read_probe_pairs(client, local, foreign, unknown[0], unknown[1])
-        )
+        pairs.extend(await read_probe_pairs(client, local, foreign, unknown[0], unknown[1]))
 
     assert len(pairs) == 7
     for foreign_response, unknown_response in pairs:
