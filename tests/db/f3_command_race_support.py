@@ -4,8 +4,11 @@ from uuid import UUID
 from f3_live_ops_fixture import LiveOpsFixture, PgConnection
 
 
-def align_fixture_to_db_clock(conn: PgConnection, setup: LiveOpsFixture) -> None:
-    """Move command-race setup around PostgreSQL's real clock without changing revisions."""
+def align_fixture_to_db_clock(
+    conn: PgConnection,
+    setup: LiveOpsFixture,
+) -> dict[UUID, int]:
+    """Move command-race setup around PostgreSQL's real clock and return revisions."""
 
     conn.execute(
         "UPDATE request_engine.resource_location_assignments "
@@ -24,6 +27,11 @@ def align_fixture_to_db_clock(conn: PgConnection, setup: LiveOpsFixture) -> None
         "FROM observed WHERE entry.id IN (%s,%s)",
         (setup.entry_a_id, setup.entry_b_id),
     )
+    rows = conn.execute(
+        "SELECT id,revision FROM request_engine.queue_entries WHERE id IN (%s,%s)",
+        (setup.entry_a_id, setup.entry_b_id),
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}
 
 
 def effects(
