@@ -249,13 +249,10 @@ def docker_ready() -> tuple[str, str]:
     if check.returncode != 0:
         detail = (check.stderr or check.stdout).strip()
         raise LocalCIError(
-            "Docker engine unavailable. Start Docker Desktop with Linux containers.\n"
-            + detail
+            "Docker engine unavailable. Start Docker Desktop with Linux containers.\n" + detail
         )
     os_type = capture(["docker", "info", "--format", "{{.OSType}}"])
-    architecture = capture(
-        ["docker", "info", "--format", "{{.Architecture}}"]
-    )
+    architecture = capture(["docker", "info", "--format", "{{.Architecture}}"])
     if os_type != "linux":
         raise LocalCIError("Docker must use Linux containers to reproduce GitHub CI.")
     version = check.stdout.strip()
@@ -268,9 +265,7 @@ def image_exists(image: str) -> bool:
 
 
 def image_id(image: str) -> str:
-    return capture(
-        ["docker", "image", "inspect", "--format", "{{.Id}}", image]
-    )
+    return capture(["docker", "image", "inspect", "--format", "{{.Id}}", image])
 
 
 def runner_image_tag(root: Path) -> str:
@@ -398,9 +393,7 @@ def start_postgres(name: str, network: str, config: tuple[str, str, str]) -> Non
         raise LocalCIError(f"Could not start {name}")
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        ready = quiet(
-            ["docker", "exec", name, "pg_isready", "-U", user, "-d", database]
-        )
+        ready = quiet(["docker", "exec", name, "pg_isready", "-U", user, "-d", database])
         if ready == 0:
             return
         time.sleep(1)
@@ -629,11 +622,7 @@ def main() -> int:
         )
         status_by_job: dict[str, str] = {}
         for job in JOBS:
-            blocked = [
-                name
-                for name in job.depends_on
-                if status_by_job.get(name) != "PASS"
-            ]
+            blocked = [name for name in job.depends_on if status_by_job.get(name) != "PASS"]
             if blocked:
                 result: dict[str, object] = {
                     "job": job.key,
