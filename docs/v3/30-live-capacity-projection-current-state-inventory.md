@@ -1,10 +1,10 @@
 # Request Engine — F4 Live Capacity Projection Current-State Inventory
 
-Status: **implemented hardening / closure pending exact-remote local verification** on `feature/live-capacity-projection`.
+Status: **implemented hardening / final adversarial closure verification** on `feature/live-capacity-projection`.
 
 Normative target: `29-live-capacity-projection-contract.md`.
 
-This document records the implemented F4 disposition against the integrated F3 baseline. It is no longer an implementation-planning document. F4 is materially built; the remaining release gate is executable local evidence at the exact remote HEAD plus correction of any failures that evidence exposes.
+This document records the implemented F4 disposition against the integrated F3 baseline. F4 is materially built and has produced a completely green exact-remote local CI run. Final closure still requires the adversarial contract/evidence review to remain green after any hardening changes produced by that review.
 
 ## 1. Authority boundary
 
@@ -144,6 +144,8 @@ read-only intake evaluation
 customer-safe queue projection
 ```
 
+All F4 public routes live under `/v1/live-capacity/...` and are included in the current public HTTP surface registry. Create/update policy routes may share authorization capabilities, but each HTTP operation has a unique OpenAPI `operationId`.
+
 The customer DTO is not produced by serializing the staff DTO and deleting fields. It exposes only approved self-relative projection data and does not disclose other customers, workload classifications, operational causes or historical samples.
 
 ## 9. Persistence and security
@@ -156,6 +158,8 @@ F4 migration lineage follows the actual integrated F3 head:
 ```
 
 F4 configuration tables include revision/idempotency behavior, RLS/FORCE RLS and least-privilege evidence. Existing PostgreSQL evidence covers projection-scope/workload-policy revision races, validation, RLS, customer authority/snapshot semantics and historical-duration source behavior.
+
+The final adversarial review also identified that the generic legacy HTTP tenant matrix does not consume `http_surface_current.py`. Rather than silently assuming DB/source evidence was equivalent to public-route evidence, F4 adds a dedicated E2E opacity proof that compares existing foreign identifiers with unknown identifiers across all seven F4 HTTP operations. Foreign existence must not produce a distinguishable status/error signature.
 
 ## 10. Durable guarantees
 
@@ -174,7 +178,7 @@ Representative evidence is reconciled in `docs/testing/current-proof-map.toml`. 
 
 ## 11. Acceptance evidence
 
-`tests/e2e/test_f4_live_capacity_journey.py` remains the focused staff/intake/customer read-only/privacy journey.
+`tests/e2e/test_f4_live_capacity_journey.py` is the focused staff/intake/customer read-only/privacy journey.
 
 `tests/e2e/test_f4_operational_day_acceptance.py` composes the operational-day behavior that the original smoke journey did not prove:
 
@@ -185,6 +189,7 @@ two future same-day Reservations
 -> additional walk-in with configured workload estimate
 -> scheduled and live headroom diverge explicitly
 -> CallNext
+-> Resource-at-Location execution assignment becomes active at the service boundary
 -> active ServiceSession supersedes QueueEntry
 -> open interruption makes projection indeterminate
 -> resume restores calculable projection
@@ -194,35 +199,47 @@ two future same-day Reservations
 -> Reservation and CapacityClaim durable state remain unchanged by projection reads/service composition
 ```
 
+`tests/e2e/test_f4_http_tenant_opacity.py` exercises all seven public F4 operations as foreign-existing versus unknown identifier pairs so public HTTP behavior cannot reveal cross-tenant existence.
+
 Historical estimator bounds/source, discontinuous interval projection, elapsed-current-service semantics, open ResourceActivity uncertainty, customer authority and RLS remain covered by narrower DB/module evidence where those guarantees are more directly falsifiable than by one oversized E2E scenario.
 
 ## 12. Local exact-head closure runner
 
-GitHub Actions is not the closure authority for this branch. Use:
+GitHub Actions is not the closure authority for this branch. The canonical Windows-friendly command is:
 
 ```bash
-bash scripts/ci/run_f4_local_closure.sh
+python scripts/ci/run_local_ci.py
 ```
 
-The runner deliberately:
+The runner:
 
-1. requires a checked-out branch;
-2. refuses a dirty working tree so forced synchronization cannot silently destroy local work;
-3. fetches current remote refs;
-4. force-synchronizes the clean local branch to `origin/<current-branch>` with `git reset --hard`;
-5. verifies exact local/remote SHA equality and cleanliness;
-6. runs the Python quality/architecture/unit/module lane with file-budget comparison against `origin/development` by default;
-7. runs the canonical current-product PostgreSQL/integration/E2E proof.
+1. refuses a dirty tracked working tree before destructive synchronization;
+2. fetches current remote refs and force-synchronizes to `origin/<branch>`;
+3. re-executes from the exact synchronized SHA and verifies the workflow blob;
+4. runs jobs in Linux-native Docker workspaces with PostgreSQL 18 where required;
+5. preserves canonical quality, observability, historical V2/V3, current-product and frozen V3 candidate proof lanes;
+6. emits concise actionable failure diagnostics plus machine-readable evidence.
 
-`FILE_BUDGET_BASE_REF` may be supplied explicitly when intentionally validating against another integration base.
+The exact-remote run completed successfully at:
+
+```text
+SHA: 8caa5e5693a0119e1072d8cd9403d47e141684a3
+python-quality: PASS
+observability-contract: PASS
+postgres-v2-history: PASS
+postgres-v3-bootstrap-proof: PASS
+postgres-production-head: PASS
+postgres-v3-candidate-proof: PASS
+total executed job time: 8m 19s
+```
+
+That run is valid evidence for its exact SHA. Any commit produced by the final adversarial review requires a new exact-head run before promotion.
 
 ## 13. Remaining closure gate
 
-Do **not** call F4 merge-ready solely from repository inspection.
+The initial exact-head CI gate is closed at `8caa5e5693a0119e1072d8cd9403d47e141684a3`.
 
-The current branch must still produce a completely green local exact-remote closure run. Any failures from that run are blockers until understood and corrected. PR #80 therefore remains Draft.
-
-Once the local run is green, perform one final adversarial review of:
+The final adversarial review covers:
 
 ```text
 planning vs live separation
@@ -235,4 +252,6 @@ projection read no-authority/no-lock behavior
 migration bootstrap and upgrade lineage
 ```
 
-Only then is F4 eligible to leave Draft and merge.
+The review found one evidence hardening gap: the new F4 public routes were frozen by the current HTTP registry but were not included in the generic legacy cross-tenant E2E matrix. Dedicated F4 HTTP opacity evidence was therefore added rather than treating lower-level RLS/source proofs as sufficient public-route evidence.
+
+Because that hardening changes HEAD, F4 remains Draft until a completely green `python scripts/ci/run_local_ci.py` run proves the new exact remote SHA. Only then is F4 eligible to leave Draft and merge.
