@@ -64,8 +64,7 @@ if [[ -s "$BASELINE_DIFF" ]]; then
 fi
 
 # The historical database is intentionally pinned to the released V3 schema.
-# Current product behavior is never tested against this stale schema; current
-# behavior belongs to run_current_product.sh and the repository Alembic head.
+# Current product behavior belongs to run_current_product.sh and Alembic head.
 uv run alembic upgrade "$V3_BASELINE_REVISION"
 uv run alembic current | tee "$ALEMBIC_CURRENT"
 if ! grep -Eq '(^|[[:space:]])0001_initial([[:space:]]|$)' "$ALEMBIC_CURRENT"; then
@@ -79,10 +78,11 @@ uv run python scripts/release/provision_v3_release_runtime.py \
 # shellcheck disable=SC1090
 source "$RUNTIME_ENV"
 
-# Compatibility question: does current head still expose the released V3 public
-# contract? This proof reads the current application surface against the frozen
-# contract baseline and allows only the compatibility behavior encoded there.
-uv run python scripts/release/prove_v3_public_api_contract.py \
+# Preserve every released V3 API/capability contract exactly while allowing
+# additive post-V3 operations and capabilities. The compatibility wrapper uses
+# scripts/release/prove_v3_public_api_contract.py as the frozen implementation;
+# execute the wrapper as a module so repository-root imports resolve correctly.
+uv run python -m scripts.release.prove_v3_public_api_compatibility \
   --output "$API_PROOF"
 
 # Historical question: does the released V3 tree still reproduce its own

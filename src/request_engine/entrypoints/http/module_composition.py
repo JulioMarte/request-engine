@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.communications.api import install_http as install_communications_http
+from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.requests.api import install_http as install_requests_http
@@ -34,6 +35,11 @@ def install_business_modules(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         slot_offer_ports=slot_offer_ports,
+    )
+    install_delivery_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
     )
     install_communications_http(
         app,

@@ -1,6 +1,6 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1 is implemented/integrated. F2 is implemented on `feature/geospatial-cross-tenant-discovery` and remains subject to exact-head merge evidence. F3-F6 remain future feature scope.
+Status: **accepted product/design direction**. F1 is implemented/integrated. F2 is implemented on `feature/geospatial-cross-tenant-discovery` and remains subject to exact-head merge evidence. F3 is implemented on `feature/live-service-operations` / PR #79 and remains subject to exact-head merge evidence. F4-F6 remain future feature scope.
 
 This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries.
 
@@ -46,7 +46,7 @@ F1 Operational Profile / Contextual Supply     [implemented]
         v                    v
 F2 Geospatial          F3 Live Service
 Cross-Tenant Discovery    Operations
-[implemented on PR #77]     [future]
+[implemented on PR #77] [implemented on PR #79]
                              |
                              v
                        F4 Live Capacity
@@ -77,6 +77,7 @@ F1 + semantic commands -> F6
 ```
 
 F2 is no longer future-only roadmap scope. Its normative contract is `24-geospatial-cross-tenant-discovery-contract.md`.
+F3 is no longer future-only roadmap scope. Its normative contract is `26-live-service-operations-contract.md` and its implementation/evidence inventory is `27-live-service-operations-current-state-inventory.md`.
 
 ---
 
@@ -252,12 +253,18 @@ A future `BatchPublishedSlotReader` is a desirable latency optimization provided
 
 # F3 — Live Service Operations
 
-Status: **future**.
+Status: **implemented on `feature/live-service-operations` / PR #79; exact-head merge evidence required**.
 
-Planned branch:
+Implementation branch:
 
 ```text
 feature/live-service-operations
+```
+
+Normative contract:
+
+```text
+docs/v3/26-live-service-operations-contract.md
 ```
 
 ## F3.1 Core distinction
@@ -291,20 +298,23 @@ The appointment remains planning context; arrival determines live queue position
 
 ## F3.3 Staff control surface
 
-Typical authorized actions:
+Implemented authorized actions include:
 
 ```text
 check in
-classify expected visit
+classify / reclassify / clear expected workload before service
 add walk-in
 call next
 start service
+pause / resume service
 complete service
 mark no-show
-start/end interruption or ResourceActivity
+start/end ResourceActivity
 ```
 
-The staff records real-world observations; RE derives elapsed duration, waiting time, queue position and projections.
+Expected-workload classification is deliberately independent from check-in: staff may first record that a person arrived and only afterward determine or correct the expected operational workload while the entry is still waiting/called. Once service starts, expected workload is historical input and actual workload belongs to ServiceSession.
+
+The staff records real-world observations. RE persists the facts required to derive elapsed duration, waiting time, queue position and later projections. Predictive interpretation remains F4.
 
 ## F3.4 Actual timestamps
 
@@ -319,15 +329,15 @@ service_started_at
 service_completed_at
 ```
 
-Refresh/disconnect must not erase operational truth.
+F3 transition paths and QueueEntry F3 defaults use PostgreSQL `clock_timestamp()`. Refresh/disconnect must not erase operational truth.
 
 ## F3.5 Expected vs actual service type
 
-F1 operational visit variants may define expected workload. F3 should allow expected and actual service classifications to differ without rewriting history to make predictions look correct.
+Expected workload is Queue-owned pre-service operational context and may be explicitly corrected while waiting/called. Actual workload is Delivery-owned execution evidence on ServiceSession. They may differ without rewriting Reservation, OfferingVersion or prior expected history to make predictions look correct.
 
 ## F3.6 Walk-ins and interruptions
 
-Walk-ins may enter the live queue when policy permits. Physician/staff interruptions such as emergency, break or administrative activity are operational facts and should not be disguised as patient consultations.
+Walk-ins may enter the live queue when policy permits. Physician/staff interruptions such as emergency, break or administrative activity are operational facts and are not disguised as patient consultations.
 
 ## F3.7 Clinical-data boundary
 
@@ -336,6 +346,21 @@ RE may know that a subject was served, by what operational service, where, by wh
 ## F3.8 Queue privacy
 
 Staff may see identities required to operate the queue. Patient-facing status may expose counts/position/ETA, never names/private details of people ahead.
+
+## F3.9 Delivery state for F4
+
+F3 intentionally persists the factual ingredients F4 needs:
+
+```text
+arrival/admission/call timestamps
+expected workload
+actual workload
+service start/completion
+interruption intervals
+resource occupation intervals
+```
+
+F3 does not claim that every derived duration or capacity projection is a separately persisted authoritative field. F4 may compute projections from these facts without mutating them.
 
 ---
 

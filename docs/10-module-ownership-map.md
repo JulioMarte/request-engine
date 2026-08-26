@@ -1,10 +1,14 @@
 # Request Engine — module ownership map
 
-> **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3 aceptadas/activas.
+> **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3
+> actualmente activas.
 >
-> `docs/v3/02-pre-sql-contract.md` define las cardinalidades, serialization roots, transacciones e invariantes del baseline; los contratos post-V3 documentan extensiones explícitas sin borrar la provenance anterior.
+> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 no reescriben
+> esa provenance: la modifican explícitamente mediante contratos posteriores. Para F3 ver
+> `docs/v3/26-live-service-operations-contract.md` y
+> `docs/v3/28-live-service-operations-integration-amendment.md`.
 
-## 1. Summary
+## 1. Current summary
 
 | Module | Status | Primary ownership |
 |---|---|---|
@@ -12,15 +16,16 @@
 | `catalog` | baseline | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement, structured business info |
 | `requests` | baseline | RequestDefinition/Version, durable Request, participants/correlation, generic extension payload/result boundary |
 | `booking` | baseline + F1 | Resource, contextual Resource-at-Location supply, availability, CapacityHold/Claim, Reservation, AttendanceResponse, booking commitment/revalidation |
-| `queue` | baseline | ServiceQueue/QueueEntry, WaitlistEntry, SlotOpportunity, SlotOffer |
+| `queue` | baseline + F3 | ServiceQueue/QueueEntry waiting/calling/no-show, check-in/walk-in, FIFO, WaitlistEntry/SlotOpportunity/SlotOffer |
 | `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
-| `discovery` | active post-V3 F2 | canonical service mapping, tenant discovery publication, cross-tenant published-supply projection, opaque discovery handoff |
-| `delivery` | deferred | future ServiceSession/Fulfillment/outcome execution domain |
+| `discovery` | active post-V3 F2 | canonical service mapping, publication, cross-tenant discovery projection, opaque discovery handoff |
+| `delivery` | active post-V3 | ReservationAccess plus F3 ServiceSession, ServiceSessionInterruption, ResourceActivity and actual execution truth |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
 | `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
 
-Baseline modules must not depend on deferred modules without a concrete product use case and accepted architecture change. Active post-V3 modules obey the same contracts-only dependency rule.
+Active modules depend across boundaries through contracts/composition, not by importing another
+module's adapters/application internals.
 
 ---
 
@@ -41,11 +46,10 @@ Responsibilities:
 - hard Organization boundary;
 - authenticated actor identity mapping;
 - on-behalf-of authority/delegation/revocation;
-- minimal tenant-scoped contact identity needed by operational modules.
+- minimal tenant-scoped contact identity required by operational modules.
 
-A Party/contact point is not a CRM profile. Participant role, phone/email ownership, public IDs and channel correlation never grant authority implicitly.
-
-`communications` owns channel delivery/purpose/preference policy; `tenancy` owns the Party/contact identity being addressed.
+A Party/contact point is not a CRM profile. Participant role, phone/email ownership, public IDs and
+channel correlation never grant authority implicitly.
 
 ---
 
@@ -59,40 +63,19 @@ Offering
 OfferingVersion
 ResourceCapability
 OfferingResourceRequirement
-structured business/public-hours information where authoritative
+structured public/business configuration where authoritative
 ```
 
 `OfferingVersion` is immutable once referenced by authoritative state.
 
-A baseline `OfferingResourceRequirement` is an immutable child/configuration of OfferingVersion:
-
-```text
-one mandatory ResourceCapability
-+ units quantity
-```
-
-Multiple rows are ANDed.
-
-There is no baseline reusable `ResourceRequirementTemplate`, OR/k-of-n expression graph, CapacityPool or late-binding optimizer.
-
-Expected Queries:
-
-```text
-GetBusinessInfo
-SearchOfferings
-GetOfferingDetails
-GetLocations
-```
-
-Booking consumes catalog requirement/version contracts and resolves them to concrete Resources. Runtime claims never mutate catalog history.
+Catalog describes what can be offered/configured. Booking resolves that configuration to concrete
+capacity. Delivery consumes immutable delivery/access configuration but does not own OfferingVersion.
 
 ---
 
 ## 4. Requests
 
-Owns durable **new business demand requiring later processing**.
-
-Owns:
+Owns durable **new business demand requiring later processing**:
 
 ```text
 RequestDefinition
@@ -102,146 +85,119 @@ RequestParticipant
 ExternalCorrelation
 ```
 
-Examples:
+Typical commands/queries:
 
 ```text
-request_quote
-request_callback
-request_service
-website_contact
+requests.submit
+requests.get
+requests.record_result
+requests.complete
+requests.cancel
 ```
 
-`RequestDefinitionVersion` supplies the exact versioned generic input/result contract. Validated extensibility payload/result may use JSONB here.
-
-### Explicit non-ownership
-
-No baseline:
-
-```text
-RequestType as mutation-command taxonomy
-IntakeDefinition / IntakeSubmission parallel lifecycle
-OfferingSelection / RequestItem generic graph
-OutcomeScope
-universal Workflow
-```
-
-A form representing new demand submits a Request directly against a RequestDefinitionVersion. Draft/partial-form lifecycle can become a separate capability later if proven.
-
-Cancel/reschedule/attendance/queue mutations belong to their native domains by default, regardless of whether an LLM/chat initiated them.
-
-Commands/Queries:
-
-```text
-CreateRequest / requests.submit
-RecordRequestResult
-CompleteRequest
-CancelRequest
-GetRequestStatus
-```
-
-n8n/provider callbacks use authenticated tenant-bound idempotent semantic commands, never generic status mutation.
+A generic Request is not a universal mutation envelope for booking, queue or delivery. Native domain
+commands remain native even when initiated by an LLM, bot, n8n workflow or integration.
 
 ---
 
 ## 5. Booking
 
-Owns local reservation/capacity truth:
+Owns planning and local capacity truth:
 
 ```text
 Resource
-Resource ↔ ResourceCapability assignment
+ResourceCapability assignment
 ResourceLocationAssignment + contextual availability (F1)
-BookingContextTerms + immutable commercial commitment provenance (F1)
+BookingContextTerms / commercial commitment provenance (F1)
 AvailabilitySchedule
 ScheduleException
 CapacityHold
 CapacityClaim
 Reservation
-AttendanceResponse history/current projection
+AttendanceResponse
 ```
 
-Initial capacity models:
-
-```text
-exclusive
-units
-```
-
-### Closed baseline/current decisions
+Current invariants:
 
 ```text
 1 Reservation = 1 OfferingVersion + 1 subject Party + 1 interval
-Resource = capacity serialization/lock root
-CapacityClaim = common Hold/Reservation consumption truth
+Resource = booking capacity serialization root
+CapacityClaim = Hold/Reservation consumption truth
 Discovery never becomes capacity authority
 ```
 
-F2 may pass an opaque discovery handoff into Booking, but Booking remains the authoritative revalidation and commitment boundary. The handoff constrains/revalidates publication provenance; it does not create another capacity or pricing ledger.
+Booking records what was committed. F3 actual execution never rewrites Reservation interval,
+OfferingVersion or CapacityClaim merely porque reality differed from the plan.
 
-No baseline/current:
+F2 may pass opaque discovery provenance into Booking, but Booking performs authoritative revalidation
+and commitment.
 
-```text
-ReservationItem
-CapacityAuthority one-to-one indirection
-ResourceAllocation duplicate claim truth
-CapacityPool
-PlanningRevision
-external capacity commitments
-field-service feasibility
-```
-
-If future execution assignment becomes independently mutable from capacity consumption, introduce a proven `ResourceAssignment` then.
-
-Commands/Queries:
+Typical capabilities:
 
 ```text
-FindAppointmentSlots
-AcquireCapacityHold
-BookAppointment
-ConfirmCapacityHold
-CancelReservation
-RescheduleReservation
-GetReservationStatus
-ConfirmAttendance
-DeclineAttendance
-ChangeResourceAvailability
-ChangeScheduleException
+appointments.find_slots
+appointments.hold
+appointments.book
+appointments.cancel
+appointments.reschedule
+appointments.confirm_attendance
+appointments.get
 ```
 
-Booking owns self-overlap-safe reschedule according to `docs/v3/02-pre-sql-contract.md`.
-
-Attendance confirmation is distinct from Reservation confirmation. No-response/decline capacity consequences require explicit versioned booking policy.
+If execution needs a Resource different from the booked Resource, that is an execution fact owned by
+Delivery; it does not silently retarget Booking capacity history.
 
 ---
 
 ## 6. Queue
 
-Owns two distinct capabilities.
+Queue owns two distinct concerns.
 
-### 6.1 ServiceQueue
+### 6.1 ServiceQueue — waiting now
+
+Owns:
 
 ```text
 ServiceQueue
 QueueEntry
 ```
 
-Represents subjects waiting to be served now. Baseline `CallNext` is FIFO by `(admitted_at, id)` under ServiceQueue serialization.
-
-Commands/Queries:
+Current Queue responsibilities:
 
 ```text
-JoinQueue
-LeaveQueue
-CallNext
-StartServing
-CompleteQueueEntry
+subject-facing join/status/leave
+operator check-in / walk-in
+arrival/admission facts
+FIFO CallNext
+CALLED state
 MarkNoShow
-GetQueueStatus
+customer-safe queue projection
+staff live-queue projection
+expected workload classification reference on QueueEntry
 ```
 
-Queue position is derived, not mutable authoritative counter state.
+FIFO remains:
 
-### 6.2 Waitlist/released-slot recovery
+```text
+(admitted_at, id)
+```
+
+F3 current state machine:
+
+```text
+WAITING --CallNext--> CALLED --service_session.start--> SERVING --service_session.complete--> COMPLETED
+   |                    |
+   +--cancel------------+--queue.mark_no_show--> NO_SHOW
+```
+
+Queue does **not** own actual service execution. Delivery's StartService/CompleteService write the
+QueueEntry `serving/completed` states and compatibility timestamps atomically with ServiceSession.
+Those mirrored Queue fields do not create a second execution authority.
+
+Reservation-backed check-in references planning without mutating it. Walk-in uses
+`reservation_id = NULL`; Queue must not fabricate a Reservation.
+
+### 6.2 Waitlist / released-slot recovery
 
 Owns:
 
@@ -251,266 +207,134 @@ SlotOpportunity
 SlotOffer
 ```
 
-`WaitlistEntry` represents future interest and never consumes capacity.
+Waitlist represents future interest and never consumes capacity. A SlotOffer is backed by a short
+Booking CapacityHold before notification. Queue coordinates acceptance/decline/expiry while Booking
+remains capacity authority.
 
-`SlotOpportunity` is the stable coordination root for one released appointment opportunity and sequential candidate chain. It does not prove availability.
-
-Baseline `SlotOffer` is backed by a short booking CapacityHold before notification. Only one active offered SlotOffer exists per Opportunity.
-
-Candidate selection is FIFO among candidates eligible for the concrete Opportunity.
-
-Commands/Queries:
-
-```text
-JoinWaitlist
-LeaveWaitlist
-GetWaitlistStatus
-CreateSlotOpportunity           # internal/event-driven
-OfferNextWaitlistCandidate      # internal
-AcceptSlotOffer
-DeclineSlotOffer
-ExpireSlotOffer                 # ScheduledAction target
-```
-
-`AcceptSlotOffer` is queue-owned orchestration with booking through supported contracts and one local transaction where atomicity requires it.
+Do not collapse ServiceQueue and Waitlist into a generic priority/scoring engine.
 
 ---
 
 ## 7. Communications
 
-Owns transactional communication intent, delivery facts and recurring reminder business intent:
+Owns transactional communication intent, delivery facts and recurring reminder intent:
 
 ```text
 CommunicationTask
 CommunicationDelivery
-communication purpose/channel policy
+purpose/channel policy
 stable template/content key + version/snapshot contract
 ReminderPlan
 ReminderAcknowledgement when required
 ```
 
-No mandatory tenant-editable CommunicationTemplate entity exists in baseline; add one only when product functionality requires template lifecycle.
+Provider delivery state cannot directly mutate Booking, Queue, Request or Delivery truth. Inbound
+responses route to supported semantic commands.
 
-Typical purposes:
-
-```text
-appointment_confirmation
-appointment_reminder
-attendance_confirmation_request
-reservation_changed
-reservation_cancelled
-queue_turn_approaching
-slot_offer_available
-request_completed
-medication_reminder
-```
-
-Commands:
-
-```text
-CreateCommunicationTask
-RecordDeliveryAttempt/Result
-RecordProviderDeliveryCallback
-CreateReminderPlan
-UpdateReminderPlan
-CancelReminderPlan
-AcknowledgeReminder
-```
-
-Provider I/O happens after the originating business transaction commits.
-
-Provider delivery state cannot directly mutate booking/queue/request truth. An inbound response that means “confirm attendance” invokes booking's supported semantic Command.
-
-Medication reminders execute an authorized plan; communications does not infer dosage/treatment decisions.
+Provider I/O happens outside the originating authoritative business transaction.
 
 ---
 
-## 8. Delivery — deferred
+## 8. Delivery — active post-V3
 
-The former V2 admission/queue ownership is removed from `delivery`.
+Delivery now owns **two separate subdomains**.
 
-Future `ServiceSession`, Fulfillment/outcome evidence and corrections remain deferred until a real execution vertical needs independent policy/lifecycle.
+### 8.1 ReservationAccess
 
-No baseline module may depend on delivery to complete V3 proof flows.
+Owns post-commit access artifacts required to execute a confirmed Reservation without making Booking
+provider-aware:
+
+```text
+ReservationAccess
+OfferingVersion.delivery_policy interpretation
+provider-neutral access materialization/revocation
+provider reconciliation identity
+```
+
+Booking owns Reservation/capacity. Delivery owns access evidence and provider reconciliation.
+
+### 8.2 F3 live service execution
+
+Owns:
+
+```text
+ServiceSession
+ServiceSessionInterruption
+ResourceActivity
+actual Resource/Location used for execution
+actual workload classification on ServiceSession
+actual execution timestamps
+```
+
+F3 boundary:
+
+```text
+Reservation  = planned commitment / capacity history        -> booking
+QueueEntry   = arrival, waiting, call/no-show state          -> queue
+ServiceSession = what actually happened                      -> delivery
+```
+
+Normative rule:
+
+> Booking records what was committed, Queue records who is waiting/called, and Delivery records
+> what actually happened. No layer rewrites another layer merely to make history look consistent.
+
+`service_session.start` and `service_session.complete` are cross-module compositions executed inside
+one PostgreSQL transaction so Queue compatibility state and Delivery execution state commit together
+or not at all.
+
+Pause/resume owns durable interruption history. QueueEntry remains `SERVING` while paused.
+
+ResourceActivity represents non-patient occupation such as break/emergency/administrative time. It
+never creates a fake Party, Reservation, QueueEntry or ServiceSession.
+
+Current resource occupation policy:
+
+- at most one active/paused ServiceSession per Resource;
+- at most one open ResourceActivity per Resource;
+- they conflict in both directions;
+- Resource serializes the competing starts;
+- parallel/group service requires a future explicit policy.
+
+Current capabilities:
+
+```text
+service_session.start
+service_session.pause
+service_session.resume
+service_session.complete
+service_session.read
+resource_activity.start
+resource_activity.end
+resource_activity.read
+```
+
+Delivery remains intentionally narrower than a universal Fulfillment domain. F3 does not activate
+OutcomeScope, clinical records, generic workflow or payment accounting.
 
 ---
 
 ## 9. Payments — deferred
 
-V2 financial distinctions remain design knowledge, not baseline dependencies.
+Financial distinctions remain design knowledge, not current baseline dependencies.
 
-Re-entry requires concrete product policies such as:
-
-```text
-pay/deposit before confirm
-reserve now / pay before deadline
-no payment prerequisite
-```
-
-Financial truth remains separate from booking/execution truth when reactivated.
+Re-entry requires explicit product policies such as deposits, deadlines, capture/refund and
+reconciliation. Financial truth must remain separate from booking and execution truth.
 
 ---
 
 ## 10. Dispatch — deferred
 
-Field-service destination, feasibility, planning and routing are outside baseline. `PlanningRevision` and related V2 concepts are not reproduced in clean V3 SQL unless a field-service capability proves the need.
+Field-service destination, feasibility, routing and workforce planning remain outside current scope.
+`PlanningRevision` and related V2 concepts are not reproduced without a concrete field-service
+capability.
 
 ---
 
-## 11. Platform
+## 11. Discovery — active post-V3 F2
 
-Platform is technical infrastructure, never a business catch-all.
-
-### `platform/db`
-
-```text
-engine/session factories
-transaction plumbing
-PostgreSQL technical error translation
-runtime tenant-context plumbing
-```
-
-### `platform/idempotency`
-
-```text
-idempotency acquire/complete/replay mechanics
-canonical command fingerprinting support
-```
-
-Business command semantics remain module-owned.
-
-### `platform/outbox`
-
-```text
-outbox persistence/claim
-lease/fencing
-bounded retry/dead-letter/manual replay plumbing
-publisher runtime
-```
-
-Event vocabulary/payload production remains emitting-module-owned.
-
-### `platform/scheduling`
-
-```text
-ScheduledAction persistence contract
-clock abstraction
-claim batching
-lease/fencing
-bounded retry/dead-letter/manual replay
-scheduling lag telemetry
-```
-
-Platform does not decide why a reminder, SlotOffer expiry or deadline exists.
-
-### `platform/audit` / `platform/events`
-
-Append/serialization mechanics only. Do not grow a universal business event bus abstraction before needed.
-
-### `platform/observability`
-
-Tracing/metrics/logging. Audit is not telemetry.
-
-### `platform/security`
-
-Authentication/runtime role/RLS-context plumbing. Representation/business authority remains tenancy/application policy.
-
-Narrow privileged SQL may enforce F1/F2 cross-boundary invariants, but possession of the technical function does not transfer ownership of the underlying business fact to `platform`.
-
----
-
-## 12. Cross-module transaction/event examples
-
-### BookAppointment
-
-Owner: `booking`.
-
-Consumes immutable catalog contracts; Resource/Reservation/claims commit atomically. Confirmation/reminder consequences are emitted after commit.
-
-For a selected F2 `discoopt_v1`, Booking additionally fences the exact DiscoveryPublication/OfferingServiceClassification observation inside the same Reservation transaction before commitment. This is a prerequisite check, not Discovery ownership of Reservation or CapacityClaim.
-
-### RescheduleReservation
-
-Owner: `booking`.
-
-Old/new Resource claims replace atomically. After commit communications cancels/regenerates obsolete reminder tasks/actions idempotently.
-
-### ConfirmAttendance
-
-Owner: `booking`.
-
-Communications/provider adapters may route an inbound response into this command, but do not mutate Reservation state themselves.
-
-### JoinQueue / CallNext
-
-Owner: `queue`.
-
-Queue completion does not imply universal Fulfillment or Request completion.
-
-### Reservation cancellation → standby recovery
-
-```text
-booking cancel commit
-→ outbox reservation.cancelled
-→ queue create/get SlotOpportunity
-→ queue selects WaitlistEntry
-→ booking CapacityHold
-→ SlotOffer
-→ communications notification
-```
-
-Only booking claims capacity.
-
-### AcceptSlotOffer
-
-Owner: `queue` for offer/opportunity lifecycle, coordinating booking to confirm the Hold into a Reservation in the same local transaction required by V3-I40.
-
-### Appointment communication
-
-Booking emits durable fact after commit. Communications owns task/reminder policy. `platform/scheduling` owns lease/clock/retry mechanics only.
-
-### Generic quote Request via n8n
-
-```text
-requests.submit
-→ commit/outbox
-→ n8n
-→ authenticated idempotent requests.record_result
-→ requests.complete
-```
-
----
-
-## 13. Ownership change gate
-
-Moving a concept between top-level modules or activating a deferred module requires updating:
-
-- `docs/v3/01-capability-contracts.md` when external semantics change;
-- `docs/v3/02-pre-sql-contract.md` when cardinality/transaction/invariants change;
-- this map;
-- affected module READMEs/contracts/tests;
-- DB/read/cmd mapping;
-- an ADR when hard to reverse.
-
-Never infer:
-
-```text
-table → domain entity → repository → endpoint
-```
-
-The V3 north star remains:
-
-```text
-one public operational API
-        ≠
-one universal bounded context
-```
-
----
-
-## 14. Discovery — active post-V3 F2
-
-Discovery owns the minimum semantics required to expose tenant-authorized supply across Organizations:
+Discovery owns the minimum semantics required to expose tenant-authorized supply across
+Organizations:
 
 ```text
 ServiceClassification mapping semantics
@@ -521,32 +345,150 @@ objective geospatial filter/order contract
 opaque discoopt_v1 handoff issuance state
 ```
 
-It does **not** own:
+It does not own:
 
 ```text
 Organization / Representation authority       -> tenancy
 Location / Offering / OfferingVersion truth   -> catalog
 Resource / schedule / contextual terms        -> booking
 Reservation / CapacityClaim                   -> booking
+live execution / ServiceSession               -> delivery
 GlobalIdentity / SharedCapacityIdentity       -> private shared-capacity machinery
-public provider profile                       -> future explicit contract
 ```
 
-Runtime topology is intentionally split:
+Public Discovery uses its dedicated restricted runtime. Booking remains the commitment boundary.
+
+---
+
+## 12. Platform
+
+Platform is technical infrastructure, never a business catch-all.
+
+### `platform/db`
+
+Engine/session factories, transaction plumbing, PostgreSQL technical error translation and runtime
+tenant context.
+
+### `platform/idempotency`
+
+Idempotency acquire/complete/replay mechanics and canonical command fingerprinting. Business command
+semantics remain module-owned.
+
+### `platform/outbox`
+
+Outbox persistence/claim, lease/fencing, retry/dead-letter/manual replay and publisher mechanics.
+Event vocabulary remains emitting-module-owned.
+
+### `platform/scheduling`
+
+ScheduledAction persistence, clock, claim batching, lease/fencing and retry mechanics. Platform does
+not decide why a reminder, SlotOffer expiry or business deadline exists.
+
+### `platform/audit` / `platform/events`
+
+Append/serialization mechanics. Audit is durable business provenance, not telemetry.
+
+### `platform/observability`
+
+Tracing, metrics and logs. Observability never replaces audit.
+
+### `platform/security`
+
+Authentication/runtime role/RLS-context plumbing. Representation/business authority remains
+Tenancy/application policy.
+
+---
+
+## 13. Cross-module transaction examples
+
+### BookAppointment
+
+Owner: Booking. Reservation and claims commit atomically. Discovery provenance, when present, is
+revalidated as a prerequisite, not promoted to capacity authority.
+
+### RescheduleReservation
+
+Owner: Booking. Old/new claims replace atomically. Downstream communications/access reconciliation
+occurs after commit through durable facts.
+
+### CheckIn / WalkIn
+
+Owner: Queue. Reservation-backed check-in validates planning without changing it. Walk-in creates
+QueueEntry without Reservation.
+
+### CallNext
+
+Owner: Queue. ServiceQueue serializes deterministic FIFO selection.
+
+### StartService
+
+Composition: Queue + Delivery; execution owner: Delivery.
 
 ```text
-Public Discovery process
-  request_engine_discovery only
-  candidate projection + handoff issuance
-  remote availability client
-        |
-        v
-Internal Discovery Availability Gateway
-  request_engine_app tenant-domain credential
-  exact Publication/Mapping fence
-  Booking PublishedSlotReader
+lock ServiceQueue
+-> lock QueueEntry
+-> lock Resource
+-> validate execution assignment/occupation
+-> create ServiceSession
+-> QueueEntry serving compatibility mirror
+-> audit/outbox/idempotency
+-> one commit
 ```
 
-The public Discovery process must not contain `request_engine_app` credentials or the normal Booking appointment-option signing key. The internal availability gateway is not a generic tenant reader: every call must carry and revalidate exact Publication/Mapping observations before Booking availability is evaluated.
+### Pause / Resume
 
-Discovery may import Booking only through supported `contracts`. Booking must not import Discovery adapters/application/domain internals. The discovery-to-booking commitment fence is carried through narrow execution context/PostgreSQL functions so the authoritative Booking transaction can reject revoked/remapped/stale handoffs without reversing module ownership.
+Owner: Delivery. ServiceSession + ServiceSessionInterruption commit atomically; Queue remains serving.
+
+### CompleteService
+
+Composition: Queue + Delivery; execution owner: Delivery. Session and Queue completion share the same
+DB-authoritative completion timestamp and commit together.
+
+### MarkNoShow
+
+Owner: Queue. Only a `called` QueueEntry with no ServiceSession may become `no_show`.
+
+### ResourceActivity
+
+Owner: Delivery. Competes with live ServiceSession through the Resource serialization root.
+
+### Reservation cancellation → standby recovery
+
+```text
+booking cancel commit
+→ reservation.cancelled outbox
+→ queue create/get SlotOpportunity
+→ queue selects candidate
+→ booking CapacityHold
+→ SlotOffer
+→ communications notification
+```
+
+Only Booking claims capacity.
+
+---
+
+## 14. Ownership change gate
+
+Moving a concept between top-level modules or activating a deferred module requires updating:
+
+- capability contracts or a normative post-V3 amendment;
+- pre-SQL/current transaction contracts when invariants change;
+- this ownership map;
+- affected module READMEs/contracts/tests;
+- DB/read/cmd mapping;
+- an ADR when the decision is hard to reverse.
+
+Never infer:
+
+```text
+table → domain entity → repository → endpoint
+```
+
+The north star remains:
+
+```text
+one public operational API
+        ≠
+one universal bounded context
+```

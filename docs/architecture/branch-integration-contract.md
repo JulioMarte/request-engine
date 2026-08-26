@@ -59,6 +59,28 @@ Why this works:
 
 The cursor does not mean the previous branch remains active after merge. On `development`, it simply records the last integration owner. The next work branch replaces it when that branch is created from the new development head.
 
+## Commit and CI checkpoint discipline
+
+The active PR head is a **CI checkpoint, not a remote scratchpad**. Moving it may start the full repository workflow, so related implementation edits MUST be batched deliberately.
+
+For one coherent implementation/fix iteration:
+
+1. prepare the complete related edit set before moving the PR head;
+2. run the narrowest available local/static checks first when the execution environment permits it;
+3. review the whole batch for obvious lint, typing, effective-line budget, migration-chain, surface-registry and fixture/precondition issues;
+4. publish one cohesive checkpoint commit for that batch;
+5. use CI for repository-wide and environment-dependent proof;
+6. when CI fails, inspect the complete failure output and batch all related corrections into the next checkpoint instead of committing one fix per reported line or file;
+7. require successful exact-head CI on the final merge candidate exactly as before.
+
+For agents and automation, one remote file write MUST NOT imply one commit on the active PR branch when a multi-file tree/commit, local staging followed by one push, or another atomic batching mechanism is available. Contents-API helpers that create a commit per file are unsuitable for a multi-file correction directly on the PR head unless no batching mechanism exists.
+
+A running CI checkpoint SHOULD be allowed to finish while it remains useful. Supersede it only when its head is already known to be obsolete or an urgent correctness/security issue requires an immediate replacement. Do not generate speculative micro-commits merely to discover the next lint, format, typing, or file-budget error remotely.
+
+Scratch or `tmp/*` branches may be used to assemble provisional work without moving the PR head, but they remain scratch space: they MUST NOT become ordinary merge-ready PR heads or bypass reconciliation with current `development`. Promote the intended result to the durable work branch as one cohesive checkpoint.
+
+This discipline reduces redundant CI work; it does **not** weaken CI. Only successful evidence for the exact final head can make a branch merge-ready.
+
 ## Parallel work policy
 
 The default is **do not open multiple ordinary merge-ready PRs from sibling development snapshots**.

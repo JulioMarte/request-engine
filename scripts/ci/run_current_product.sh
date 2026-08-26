@@ -78,6 +78,22 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f2-discovery-db.xml"
 
+# F3 live-service operations are current product truth. Run the complete F3
+# PostgreSQL proof set so lifecycle, temporal authority, tenant opacity and
+# adversarial races execute against the same accepted migration head.
+uv run pytest \
+  tests/db/test_f3_*.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f3-live-service-db.xml"
+
+# CallNext is an application-command concurrency contract, not only a historical
+# V3 vertical. Keep its real adapter race on current HEAD so Queue changes cannot
+# retain green DB constraints while regressing command-level serialization.
+uv run pytest \
+  tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/queue-call-next-concurrency.xml"
+
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
 # they must not disappear merely because V3 historical execution was separated.

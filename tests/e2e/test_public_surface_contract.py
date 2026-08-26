@@ -11,7 +11,7 @@ from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.context import ActorContext
 
-from .http_surface import PUBLIC_HTTP_OPERATIONS, operation_keys
+from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _SIGNING_KEY = b"request-engine-e2e-contract-signing-key"

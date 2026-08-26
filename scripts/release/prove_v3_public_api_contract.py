@@ -27,6 +27,7 @@ _ERROR_MODULES = (
     Path("src/request_engine/entrypoints/http/errors.py"),
     Path("src/request_engine/modules/booking/api/errors.py"),
     Path("src/request_engine/modules/queue/api/errors.py"),
+    Path("src/request_engine/modules/queue/api/waitlist_error_mapping.py"),
     Path("src/request_engine/modules/communications/api/errors.py"),
     Path("src/request_engine/modules/requests/api/errors.py"),
 )
