@@ -79,7 +79,7 @@ def create_projection_policy_router(
 
     add_capability_route(
         router,
-        "/live-capacity/projection-policies",
+        "/v1/live-capacity/projection-policies",
         create_policy,
         capability="live_capacity.configure_scope",
         methods=["POST"],
@@ -88,10 +88,11 @@ def create_projection_policy_router(
     )
     add_capability_route(
         router,
-        "/live-capacity/projection-policies/{policy_id}",
+        "/v1/live-capacity/projection-policies/{policy_id}",
         update_policy,
         capability="live_capacity.configure_scope",
         methods=["POST"],
+        operation_id="live_capacity_configure_scope_update",
         response_model=ProjectionScopePolicyView,
     )
     return router
