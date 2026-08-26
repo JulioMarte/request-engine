@@ -9,7 +9,11 @@ from .f3_acceptance_assertions import (
     reservation_snapshot,
     seed_walk_in_subject,
 )
-from .f4_capacity_support import f4_actor, seed_today_schedule
+from .f4_capacity_support import (
+    f4_actor,
+    seed_live_execution_assignment,
+    seed_today_schedule,
+)
 from .f4_operational_day_support import (
     book_two_same_day,
     call_and_start,
@@ -37,6 +41,7 @@ async def test_f4_operational_day_reprojects_planning_queue_and_service_truth(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f4-operational-day")
+    seed_live_execution_assignment(e2e_admin_conn, sandbox)
     seed_today_schedule(e2e_admin_conn, sandbox)
     actors = {sandbox.token: f4_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
