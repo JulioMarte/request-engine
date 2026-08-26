@@ -68,6 +68,17 @@ def idempotency_state(
     return None if row is None else row[0]
 
 
+def assert_idempotency_outcome(
+    conn: PgConnection,
+    organization_id: UUID,
+    principal_id: UUID,
+    winner_key: str,
+    loser_key: str,
+) -> None:
+    assert idempotency_state(conn, organization_id, principal_id, winner_key) == "completed"
+    assert idempotency_state(conn, organization_id, principal_id, loser_key) is None
+
+
 def assert_one_winner(
     results: Sequence[object],
     result_types: tuple[type, ...],
