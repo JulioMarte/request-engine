@@ -10,7 +10,14 @@ from request_engine.modules.live_capacity.contracts.projection import (
 )
 from request_engine.modules.live_capacity.domain.projection import project_live_capacity
 
-pytestmark = [pytest.mark.unit, pytest.mark.contract, pytest.mark.temporal]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.invariant,
+    pytest.mark.contract,
+    pytest.mark.adversarial,
+    pytest.mark.temporal,
+    pytest.mark.capacity,
+]
 
 NOW = datetime(2026, 8, 26, 14, 0, tzinfo=UTC)
 
