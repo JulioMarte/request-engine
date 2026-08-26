@@ -12,7 +12,13 @@ from request_engine.modules.queue.contracts.live_capacity import (
     QueueProjectionSnapshot,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.contract]
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.invariant,
+    pytest.mark.contract,
+    pytest.mark.adversarial,
+    pytest.mark.provenance,
+]
 
 NOW = datetime(2026, 8, 26, 14, 0, tzinfo=UTC)
 
