@@ -140,6 +140,48 @@ required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["capacity", "provenance"]
 
 [[guarantees]]
+id = "INV-LIVE-CAPACITY-SEPARATION-001"
+statement = "Booking scheduled planning/commitment truth remains distinct from F4 live intake projection: live deterioration cannot rewrite Reservation, CapacityClaim or schedule truth, and scheduled headroom and live intake headroom remain separately observable."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-CAPACITY-PROJECTION-001"
+statement = "F4 projections and intake evaluations are read-only advisory derivations from published authoritative Booking, Queue and Delivery facts and cannot create, release or mutate authoritative commitments, queue/execution facts or projection policy merely by being read."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-CAPACITY-WORKLOAD-001"
+statement = "Workload identity, expected workload, actual workload, configured estimate policy, completed historical observations and the selected projection estimate/provenance remain distinguishable; estimator history never mutates policy and fallback order remains resource history, tenant history, configured policy, applicable planned duration, then unknown."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-CAPACITY-TEMPORAL-001"
+statement = "Each F4 projection uses one PostgreSQL-sourced observation instant and coherent read snapshot, projects only over effective possibly-discontinuous remaining operational intervals, and exposes open-ended interruption or resource occupation as uncertainty instead of fabricated temporal precision."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["temporal", "capacity"]
+
+[[guarantees]]
+id = "INV-LIVE-CAPACITY-DEDUP-001"
+statement = "One real service contributes remaining workload at most once across Reservation, QueueEntry and ServiceSession representations; the live representation wins while a matching Reservation planned duration may survive only as estimate fallback provenance, never as a second work item."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["capacity", "provenance"]
+
+[[guarantees]]
+id = "INV-LIVE-CAPACITY-PRIVACY-001"
+statement = "F4 staff, customer and cross-tenant projection surfaces remain least-privilege: tenant identifiers do not grant access, and customer projection exposes only approved self-relative status without other customers' identities, workloads, operational causes or historical samples."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
 id = "FIT-ARCH-001"
 statement = "Current module ownership remains explicit, dependency direction remains understandable and acyclic, and cross-module imports use published connection surfaces rather than internals."
 severity = "critical"
