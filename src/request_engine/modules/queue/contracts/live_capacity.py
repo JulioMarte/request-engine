@@ -23,6 +23,7 @@ class QueueProjectionSnapshot:
     queue_id: UUID
     observed_at: datetime
     entries: tuple[QueueProjectionEntry, ...]
+    completed_reservation_ids: frozenset[UUID] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,7 @@ class QueueProjectionSource(Protocol):
         organization_id: UUID,
         queue_id: UUID,
         observed_at: datetime,
+        relevant_reservation_ids: tuple[UUID, ...] = (),
     ) -> QueueProjectionSnapshot: ...
 
     async def read_customer_projection_target(
