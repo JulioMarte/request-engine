@@ -45,7 +45,7 @@ def create_customer_projection_router(
 
     add_capability_route(
         router,
-        "/live-capacity/queues/{service_queue_id}/customer",
+        "/v1/live-capacity/queues/{service_queue_id}/customer",
         read_customer_projection,
         capability="live_capacity.customer_read",
         methods=["GET"],
