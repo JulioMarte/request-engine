@@ -15,6 +15,10 @@ from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _SIGNING_KEY = b"request-engine-e2e-contract-signing-key"
+_OPERATION_ID_OVERRIDES = {
+    "live_capacity.scope.update": "live_capacity_configure_scope_update",
+    "live_capacity.estimate.update": "live_capacity_configure_estimate_update",
+}
 
 
 class RejectAllResolver:
@@ -119,7 +123,10 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
         contract = _operation_contract(
             openapi, path=operation.path_template, method=operation.method
         )
-        assert contract["operationId"] == definition.key.replace(".", "_")
+        expected_operation_id = _OPERATION_ID_OVERRIDES.get(
+            operation.name, definition.key.replace(".", "_")
+        )
+        assert contract["operationId"] == expected_operation_id
         assert contract["x-request-engine-capability"] == definition.key
         assert contract["x-request-engine-schema-version"] == definition.schema_version
         assert contract["x-request-engine-idempotency"] == definition.idempotency.value
