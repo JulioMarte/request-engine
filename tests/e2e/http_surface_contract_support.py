@@ -8,9 +8,7 @@ _OPERATION_ID_OVERRIDES = {
 }
 
 
-def operation_contract(
-    openapi: dict[str, object], *, path: str, method: str
-) -> dict[str, object]:
+def operation_contract(openapi: dict[str, object], *, path: str, method: str) -> dict[str, object]:
     paths_value = openapi.get("paths")
     assert isinstance(paths_value, dict)
     path_value = cast(dict[str, object], paths_value)[path]
