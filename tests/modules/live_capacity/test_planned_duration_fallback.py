@@ -17,6 +17,7 @@ pytestmark = [
     pytest.mark.invariant,
     pytest.mark.contract,
     pytest.mark.adversarial,
+    pytest.mark.capacity,
     pytest.mark.provenance,
 ]
 
