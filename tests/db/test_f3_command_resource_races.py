@@ -8,6 +8,7 @@ from f3_live_ops_race_support import create_paused_session, create_principal
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
 )
+from request_engine.modules.delivery.application.errors import LiveServiceRevisionConflict
 from request_engine.modules.delivery.application.resource_activity_commands import (
     StartResourceActivityCommand,
 )
@@ -75,7 +76,7 @@ async def test_session_vs_resource_activity_commands_have_one_effectful_winner(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
-    align_fixture_to_db_clock(admin_conn, setup)
+    revisions = align_fixture_to_db_clock(admin_conn, setup)
     principal = create_principal(admin_conn, setup)
     operations = PostgresLiveServiceOperations(command_session_factory)
     start = StartServiceCommand(
@@ -84,7 +85,7 @@ async def test_session_vs_resource_activity_commands_have_one_effectful_winner(
         setup.entry_a_id,
         setup.resource_id,
         setup.location_id,
-        1,
+        revisions[setup.entry_a_id],
         "session-activity-session",
         setup.actual_workload_id,
     )
@@ -102,6 +103,9 @@ async def test_session_vs_resource_activity_commands_have_one_effectful_winner(
         return_exceptions=True,
     )
     assert_one_winner(results, (ServiceSession, ResourceActivity))
+    assert not any(isinstance(result, LiveServiceRevisionConflict) for result in results), repr(
+        results
+    )
     sessions = admin_conn.execute(
         "SELECT count(*) FROM request_engine.service_sessions "
         "WHERE resource_id=%s AND status IN ('active','paused')",
