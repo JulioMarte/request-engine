@@ -493,11 +493,7 @@ def compact_pytest_failure(text: str) -> list[str]:
     if start is None:
         return []
     end = next(
-        (
-            i
-            for i in range(start + 1, len(lines))
-            if "short test summary info" in lines[i]
-        ),
+        (i for i in range(start + 1, len(lines)) if "short test summary info" in lines[i]),
         len(lines),
     )
     block = lines[start:end]
