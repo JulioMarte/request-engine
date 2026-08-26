@@ -62,7 +62,10 @@ def build_remaining_work(
                 active_service_seconds=service.active_service_seconds,
             ),
         )
-    planned_items = scheduled_work(planned)
+    remaining_planned = tuple(
+        item for item in planned if item.reservation_id not in queue.completed_reservation_ids
+    )
+    planned_items = scheduled_work(remaining_planned)
     return deduplicate_remaining_work(planned=planned_items, queued=queued, active=active)
 
 
