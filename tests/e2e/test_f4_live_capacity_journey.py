@@ -15,6 +15,7 @@ from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 @pytest.mark.invariant
 @pytest.mark.contract
 @pytest.mark.adversarial
+@pytest.mark.capacity
 @pytest.mark.provenance
 @pytest.mark.security
 async def test_f4_projection_is_explainable_read_only_and_customer_safe(
