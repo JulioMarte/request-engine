@@ -1,8 +1,7 @@
-from uuid import UUID
-
 import psycopg
 import pytest
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
+from f3_live_ops_race_support import create_principal
 
 EXECUTION_AT = "2035-01-01T09:30Z"
 PAUSED_AT = "2035-01-01T09:40Z"
@@ -10,20 +9,9 @@ RESUMED_AT = "2035-01-01T09:45Z"
 COMPLETED_AT = "2035-01-01T10:00Z"
 
 
-def _principal(conn: PgConnection, organization_id: UUID) -> UUID:
-    row = conn.execute(
-        "INSERT INTO request_engine.principals "
-        "(organization_id,principal_kind,external_subject) "
-        "VALUES (%s,'human','f3-history-actor') RETURNING id",
-        (organization_id,),
-    ).fetchone()
-    assert row is not None
-    return row[0]
-
-
-def _start_session(conn: PgConnection) -> tuple[object, UUID, UUID]:
+def _start_session(conn: PgConnection) -> tuple[object, object, object]:
     setup = create_live_ops_fixture(conn)
-    principal_id = _principal(conn, setup.organization_id)
+    principal_id = create_principal(conn, setup)
     conn.execute("BEGIN")
     try:
         conn.execute(
