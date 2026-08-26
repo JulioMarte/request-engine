@@ -34,9 +34,7 @@ async def test_resume_complete_commands_serialize_without_partial_effects(
     operations = PostgresLiveServiceOperations(command_session_factory)
     resume_key = "resume-complete-resume"
     complete_key = "resume-complete-complete"
-    resume = ResumeServiceCommand(
-        setup.organization_id, principal, session_id, 2, resume_key
-    )
+    resume = ResumeServiceCommand(setup.organization_id, principal, session_id, 2, resume_key)
     complete = CompleteServiceCommand(
         setup.organization_id,
         principal,
