@@ -127,7 +127,7 @@ Discovery never becomes capacity authority
 ```
 
 Booking records what was committed. F3 actual execution never rewrites Reservation interval,
-OfferingVersion or CapacityClaim merely because reality differed from the plan.
+OfferingVersion or CapacityClaim merely porque reality differed from the plan.
 
 F2 may pass opaque discovery provenance into Booking, but Booking performs authoritative revalidation
 and commitment.
@@ -306,6 +306,7 @@ service_session.complete
 service_session.read
 resource_activity.start
 resource_activity.end
+resource_activity.read
 ```
 
 Delivery remains intentionally narrower than a universal Fulfillment domain. F3 does not activate
