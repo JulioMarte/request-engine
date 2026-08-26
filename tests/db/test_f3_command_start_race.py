@@ -2,6 +2,7 @@ import asyncio
 from uuid import UUID
 
 import pytest
+from f3_command_race_support import align_fixture_to_db_clock
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
@@ -32,6 +33,7 @@ async def test_start_service_command_race_has_one_effectful_winner(
     command_session_factory: SessionFactory,
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
+    align_fixture_to_db_clock(admin_conn, setup)
     principal_id = _principal(admin_conn, setup.organization_id)
     operations = PostgresLiveServiceOperations(command_session_factory)
     commands = (
@@ -54,8 +56,9 @@ async def test_start_service_command_race_has_one_effectful_winner(
     )
     winners = [result for result in results if isinstance(result, ServiceSession)]
     losers = [result for result in results if isinstance(result, Exception)]
-    assert len(winners) == 1
-    assert len(losers) == 1
+    detail = repr(results)
+    assert len(winners) == 1, detail
+    assert len(losers) == 1, detail
 
     winner = winners[0]
     rows = admin_conn.execute(
