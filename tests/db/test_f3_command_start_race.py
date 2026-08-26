@@ -2,7 +2,7 @@ import asyncio
 from uuid import UUID
 
 import pytest
-from f3_command_race_support import align_fixture_to_db_clock, idempotency_state
+from f3_command_race_support import align_fixture_to_db_clock, assert_idempotency_outcome
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
@@ -83,10 +83,9 @@ async def test_start_service_command_race_has_one_effectful_winner(
         winner_key, loser_key = "start-race-2", "start-race-1"
     assert statuses[winner.queue_entry_id] == "serving"
     assert statuses[losing_entry] == "called"
-    assert idempotency_state(admin_conn, setup.organization_id, principal_id, winner_key) == (
-        "completed"
+    assert_idempotency_outcome(
+        admin_conn, setup.organization_id, principal_id, winner_key, loser_key
     )
-    assert idempotency_state(admin_conn, setup.organization_id, principal_id, loser_key) is None
 
     audit = admin_conn.execute(
         "SELECT count(*) FROM request_engine.audit_records "
