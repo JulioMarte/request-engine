@@ -24,6 +24,7 @@ class PostgresQueueProjectionSource:
         organization_id: UUID,
         queue_id: UUID,
         observed_at: datetime,
+        relevant_reservation_ids: tuple[UUID, ...] = (),
     ) -> QueueProjectionSnapshot:
         session = postgres_snapshot_session(snapshot)
         rows = (
@@ -52,6 +53,28 @@ class PostgresQueueProjectionSource:
             .mappings()
             .all()
         )
+        completed = frozenset[UUID]()
+        if relevant_reservation_ids:
+            completed_rows = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT DISTINCT reservation_id
+                        FROM request_engine.queue_entries
+                        WHERE organization_id = :organization_id
+                          AND service_queue_id = :queue_id
+                          AND status = 'completed'
+                          AND reservation_id = ANY(CAST(:reservation_ids AS uuid[]))
+                        """
+                    ),
+                    {
+                        "organization_id": organization_id,
+                        "queue_id": queue_id,
+                        "reservation_ids": list(relevant_reservation_ids),
+                    },
+                )
+            ).scalars()
+            completed = frozenset(cast(UUID, value) for value in completed_rows)
         return QueueProjectionSnapshot(
             queue_id=queue_id,
             observed_at=observed_at,
@@ -70,6 +93,7 @@ class PostgresQueueProjectionSource:
                 )
                 for row in rows
             ),
+            completed_reservation_ids=completed,
         )
 
     async def read_customer_projection_target(
