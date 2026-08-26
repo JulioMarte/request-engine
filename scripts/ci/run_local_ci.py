@@ -24,8 +24,11 @@ from pathlib import Path
 POSTGRES_IMAGE = "postgres:18"
 CACHE_VOLUME = "request-engine-local-ci-uv-cache"
 RUNNER_DOCKERFILE = "scripts/ci/Dockerfile.local-ci"
+WORKFLOW_PATH = ".github/workflows/ci.yml"
+WORKFLOW_BLOB_SHA = "40b9ff5c06385691785ed04edc2216cb973abef3"
 IMAGE_INPUTS = (
     RUNNER_DOCKERFILE,
+    WORKFLOW_PATH,
     "pyproject.toml",
     "uv.lock",
     ".python-version",
@@ -238,6 +241,15 @@ def reexec_synced_runner(root: Path, sha: str) -> None:
     )
 
 
+def verify_workflow_parity(root: Path) -> None:
+    actual = capture(["git", "hash-object", WORKFLOW_PATH], root)
+    if actual != WORKFLOW_BLOB_SHA:
+        raise LocalCIError(
+            "Local CI mapping is stale: .github/workflows/ci.yml changed without "
+            "updating scripts/ci/run_local_ci.py. Refusing potentially false evidence."
+        )
+
+
 def fingerprint(root: Path) -> str:
     digest = hashlib.sha256()
     for relative in IMAGE_INPUTS:
@@ -251,6 +263,11 @@ def docker_ready() -> None:
     require_program("docker")
     if stream(["docker", "version", "--format", "{{.Server.Version}}"] ) != 0:
         raise LocalCIError("Docker Desktop/Engine is not available.")
+    os_type = capture(["docker", "info", "--format", "{{.OSType}}"])
+    if os_type != "linux":
+        raise LocalCIError(
+            "Docker must be running Linux containers to reproduce GitHub CI."
+        )
 
 
 def image_exists(image: str) -> bool:
@@ -429,6 +446,7 @@ def run_job(
     )
     command.extend([image, "bash", "-lc", shell])
     started = time.monotonic()
+    status = 125
     try:
         status = stream(
             command,
@@ -476,6 +494,7 @@ def main() -> int:
     root = repo_root()
     branch, sha = sync_exact_remote(root, args.branch)
     reexec_synced_runner(root, sha)
+    verify_workflow_parity(root)
     docker_ready()
     image = prepare_images(root, args.rebuild_image)
     timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -524,6 +543,7 @@ def main() -> int:
         "status": "PASS" if aggregate else "FAIL",
         "branch": branch,
         "commit_sha": sha,
+        "workflow_blob_sha": WORKFLOW_BLOB_SHA,
         "generated_at_utc": dt.datetime.now(dt.UTC).isoformat(),
         "host": {
             "platform": platform.platform(),
