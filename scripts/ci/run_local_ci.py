@@ -261,7 +261,13 @@ def fingerprint(root: Path) -> str:
 
 def docker_ready() -> None:
     require_program("docker")
-    if stream(["docker", "version", "--format", "{{.Server.Version}}"] ) != 0:
+    version_command = [
+        "docker",
+        "version",
+        "--format",
+        "{{.Server.Version}}",
+    ]
+    if stream(version_command) != 0:
         raise LocalCIError("Docker Desktop/Engine is not available.")
     os_type = capture(["docker", "info", "--format", "{{.OSType}}"])
     if os_type != "linux":
