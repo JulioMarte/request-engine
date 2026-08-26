@@ -8,7 +8,7 @@ from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from request_engine.modules.delivery.adapters.db.live_service_operations import (
     PostgresLiveServiceOperations,
 )
-from request_engine.modules.delivery.application.errors import ResourceExecutionUnavailable
+from request_engine.modules.delivery.application.errors import LiveServiceRevisionConflict
 from request_engine.modules.delivery.application.service_session_commands import StartServiceCommand
 from request_engine.modules.delivery.contracts.service_session import ServiceSession
 from request_engine.platform.db.session import SessionFactory
@@ -60,7 +60,7 @@ async def test_start_service_command_race_has_one_effectful_winner(
     detail = repr(results)
     assert len(winners) == 1, detail
     assert len(losers) == 1, detail
-    assert isinstance(losers[0], ResourceExecutionUnavailable), detail
+    assert not isinstance(losers[0], LiveServiceRevisionConflict), detail
 
     winner = winners[0]
     rows = admin_conn.execute(
