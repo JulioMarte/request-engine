@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Run the current Request Engine GitHub CI locally through Docker.
 
-The host only orchestrates Git and Docker. Every CI job receives a fresh Linux
-Git checkout and, when required, a fresh PostgreSQL 18 service container.
+The host only orchestrates Git and Docker. CI execution happens in Linux-native
+Docker volumes and database jobs receive fresh PostgreSQL 18 containers.
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import json
 import os
 import platform
@@ -27,13 +26,6 @@ RUNNER_DOCKERFILE = "scripts/ci/Dockerfile.local-ci"
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 WORKFLOW_BLOB_SHA = "40b9ff5c06385691785ed04edc2216cb973abef3"
 SYNC_ENV = "REQUEST_ENGINE_LOCAL_CI_SYNCED_SHA"
-IMAGE_INPUTS = (
-    RUNNER_DOCKERFILE,
-    WORKFLOW_PATH,
-    "pyproject.toml",
-    "uv.lock",
-    ".python-version",
-)
 
 
 class LocalCIError(RuntimeError):
@@ -222,15 +214,7 @@ def verify_workflow_parity(root: Path) -> None:
         )
 
 
-def fingerprint(root: Path) -> str:
-    digest = hashlib.sha256()
-    for relative in IMAGE_INPUTS:
-        digest.update(relative.encode())
-        digest.update((root / relative).read_bytes())
-    return digest.hexdigest()
-
-
-def docker_ready() -> None:
+def docker_ready() -> tuple[str, str]:
     require_program("docker")
     check = subprocess.run(
         ["docker", "version", "--format", "{{.Server.Version}}"],
@@ -250,7 +234,9 @@ def docker_ready() -> None:
     architecture = capture(["docker", "info", "--format", "{{.Architecture}}"])
     if os_type != "linux":
         raise LocalCIError("Docker must be running Linux containers to reproduce GitHub CI.")
-    print(f"Docker engine: Linux/{architecture} ({check.stdout.strip()})", flush=True)
+    version = check.stdout.strip()
+    print(f"Docker engine: Linux/{architecture} ({version})", flush=True)
+    return architecture, version
 
 
 def image_exists(image: str) -> bool:
@@ -262,14 +248,35 @@ def image_exists(image: str) -> bool:
     ).returncode == 0
 
 
-def prepare_images(root: Path, rebuild: bool) -> str:
-    if stream(["docker", "pull", POSTGRES_IMAGE], cwd=root) != 0:
-        raise LocalCIError(f"Could not pull {POSTGRES_IMAGE}")
-    tag = f"request-engine-local-ci:{fingerprint(root)[:16]}"
+def image_id(image: str) -> str:
+    return capture(["docker", "image", "inspect", "--format", "{{.Id}}", image])
+
+
+def runner_image_tag(root: Path) -> str:
+    dockerfile_blob = capture(["git", "rev-parse", f"HEAD:{RUNNER_DOCKERFILE}"], root)
+    return f"request-engine-local-ci:toolchain-{dockerfile_blob[:16]}"
+
+
+def ensure_image(image: str, *, refresh: bool, root: Path) -> None:
+    if image_exists(image) and not refresh:
+        print(f"Reusing local image: {image}", flush=True)
+        return
+    if stream(["docker", "pull", image], cwd=root) != 0:
+        raise LocalCIError(f"Could not pull {image}")
+
+
+def prepare_images(root: Path, *, rebuild: bool, refresh: bool) -> str:
+    ensure_image(POSTGRES_IMAGE, refresh=refresh, root=root)
+    tag = runner_image_tag(root)
     if rebuild or not image_exists(tag):
-        command = ["docker", "build", "--pull", "-f", RUNNER_DOCKERFILE, "-t", tag, "."]
+        command = ["docker", "build"]
+        if refresh:
+            command.append("--pull")
+        command.extend(["-f", RUNNER_DOCKERFILE, "-t", tag, "."])
         if stream(command, cwd=root) != 0:
             raise LocalCIError("Local CI runner image build failed.")
+    else:
+        print(f"Reusing local CI toolchain: {tag}", flush=True)
     return tag
 
 
@@ -282,9 +289,10 @@ def remove(kind: str, name: str) -> None:
     )
 
 
-def create_linux_workspace(
+def create_linux_source(
     *, root: Path, image: str, volume: str, sha: str, development_sha: str
 ) -> None:
+    """Seed one Linux-native source repository for all jobs in this run."""
     remove("volume", volume)
     command = [
         "docker",
@@ -293,21 +301,50 @@ def create_linux_workspace(
         "-v",
         f"{root}:/host-repo:ro",
         "--mount",
-        f"type=volume,source={volume},target=/workspace",
+        f"type=volume,source={volume},target=/source",
         image,
         "bash",
         "-lc",
         "git config --global --add safe.directory /host-repo && "
-        "git clone --no-hardlinks --no-checkout /host-repo /workspace && "
-        "cd /workspace && "
+        "git clone --no-hardlinks --no-checkout /host-repo /source && "
+        "cd /source && "
+        "git config core.autocrlf false && "
         f"git update-ref refs/remotes/origin/development {development_sha} && "
         f"git checkout --detach {sha} && "
-        "git config core.autocrlf false && "
-        "git status --porcelain --untracked-files=no",
+        "test \"$(git rev-parse HEAD)\" = \"" + sha + "\" && "
+        "test -z \"$(git status --porcelain --untracked-files=no)\"",
     ]
     if stream(command, cwd=root) != 0:
         remove("volume", volume)
-        raise LocalCIError("Could not create the Linux-native CI checkout.")
+        raise LocalCIError("Could not create the Linux-native source repository.")
+
+
+def create_linux_workspace(
+    *, image: str, source: str, workspace: str, sha: str, development_sha: str
+) -> None:
+    """Clone an isolated job workspace entirely inside Docker-managed Linux storage."""
+    remove("volume", workspace)
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        f"type=volume,source={source},target=/source,readonly",
+        "--mount",
+        f"type=volume,source={workspace},target=/workspace",
+        image,
+        "bash",
+        "-lc",
+        "git clone --no-hardlinks --no-checkout /source /workspace && "
+        "cd /workspace && "
+        "git config core.autocrlf false && "
+        f"git update-ref refs/remotes/origin/development {development_sha} && "
+        f"git checkout --detach {sha} && "
+        "test -z \"$(git status --porcelain --untracked-files=no)\"",
+    ]
+    if stream(command) != 0:
+        remove("volume", workspace)
+        raise LocalCIError("Could not create an isolated Linux CI workspace.")
 
 
 def start_postgres(name: str, network: str, config: tuple[str, str, str]) -> None:
@@ -384,21 +421,22 @@ def copy_phase6(image: str, workspace: str, run_dir: Path, job: str) -> None:
 
 
 def linux_workspace_dirty(image: str, workspace: str) -> str:
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "--mount",
-        f"type=volume,source={workspace},target=/workspace",
-        "-w",
-        "/workspace",
-        image,
-        "git",
-        "status",
-        "--porcelain",
-        "--untracked-files=no",
-    ]
-    return capture(command)
+    return capture(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--mount",
+            f"type=volume,source={workspace},target=/workspace",
+            "-w",
+            "/workspace",
+            image,
+            "git",
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ]
+    )
 
 
 def run_job(
@@ -407,6 +445,7 @@ def run_job(
     root: Path,
     run_dir: Path,
     image: str,
+    source: str,
     network: str,
     sha: str,
     development_sha: str,
@@ -415,9 +454,9 @@ def run_job(
     workspace = f"{token}-workspace"
     pg_name = f"{token}-pg" if job.postgres else None
     create_linux_workspace(
-        root=root,
         image=image,
-        volume=workspace,
+        source=source,
+        workspace=workspace,
         sha=sha,
         development_sha=development_sha,
     )
@@ -479,7 +518,16 @@ def write_json(path: Path, payload: object) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--branch", help="Remote branch to test; defaults to checked-out branch.")
-    parser.add_argument("--rebuild-image", action="store_true")
+    parser.add_argument(
+        "--rebuild-image",
+        action="store_true",
+        help="Rebuild the local CI toolchain image using cached/local base layers.",
+    )
+    parser.add_argument(
+        "--refresh-images",
+        action="store_true",
+        help="Pull current base/service images and rebuild the CI toolchain against them.",
+    )
     return parser.parse_args()
 
 
@@ -490,17 +538,30 @@ def main() -> int:
     branch, sha, development_sha = sync_exact_remote(root, args.branch)
     reexec_synced_runner(root, sha)
     verify_workflow_parity(root)
-    docker_ready()
-    image = prepare_images(root, args.rebuild_image)
+    docker_architecture, docker_version = docker_ready()
+    image = prepare_images(
+        root,
+        rebuild=args.rebuild_image or args.refresh_images,
+        refresh=args.refresh_images,
+    )
     run_id = f"{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%SZ')}-{sha[:12]}"
     run_dir = root / ".local-ci" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    network = f"request-engine-local-ci-{os.getpid()}"
+    token = f"request-engine-local-ci-{os.getpid()}"
+    network = token
+    source = f"{token}-source"
     subprocess.run(["docker", "network", "rm", network], capture_output=True, check=False)
     if stream(["docker", "network", "create", network]) != 0:
         raise LocalCIError("Could not create the local CI Docker network.")
     results: list[dict[str, object]] = []
     try:
+        create_linux_source(
+            root=root,
+            image=image,
+            volume=source,
+            sha=sha,
+            development_sha=development_sha,
+        )
         status_by_job: dict[str, str] = {}
         for job in JOBS:
             blocked = [name for name in job.depends_on if status_by_job.get(name) != "PASS"]
@@ -517,6 +578,7 @@ def main() -> int:
                     root=root,
                     run_dir=run_dir,
                     image=image,
+                    source=source,
                     network=network,
                     sha=sha,
                     development_sha=development_sha,
@@ -524,11 +586,12 @@ def main() -> int:
             results.append(result)
             status_by_job[job.key] = str(result["status"])
     finally:
+        remove("volume", source)
         subprocess.run(["docker", "network", "rm", network], capture_output=True, check=False)
     host_dirty = capture(["git", "status", "--porcelain", "--untracked-files=no"], root)
     aggregate = all(item["status"] == "PASS" for item in results) and not host_dirty
     summary = {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "PASS" if aggregate else "FAIL",
         "branch": branch,
         "commit_sha": sha,
@@ -536,9 +599,13 @@ def main() -> int:
         "workflow_blob_sha": WORKFLOW_BLOB_SHA,
         "generated_at_utc": dt.datetime.now(dt.UTC).isoformat(),
         "host": {"platform": platform.platform(), "python": platform.python_version()},
-        "execution": "fresh Linux-native Docker workspace per job",
+        "docker": {"architecture": docker_architecture, "version": docker_version},
+        "execution": "one Linux source seed plus fresh Linux workspace per job",
         "runner_image": image,
+        "runner_image_id": image_id(image),
         "postgres_image": POSTGRES_IMAGE,
+        "postgres_image_id": image_id(POSTGRES_IMAGE),
+        "refresh_images": args.refresh_images,
         "jobs": results,
         "host_tracked_worktree_dirty_after_run": host_dirty,
     }
@@ -548,6 +615,7 @@ def main() -> int:
     for item in results:
         print(f"{item['status']:>4}  {item['job']}", flush=True)
     print(f"Exact tested SHA: {sha}", flush=True)
+    print(f"Runner image: {image}", flush=True)
     print(f"Summary: {run_dir / 'summary.json'}", flush=True)
     return 0 if aggregate else 1
 
