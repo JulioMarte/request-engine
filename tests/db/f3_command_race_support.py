@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from uuid import UUID
 
 from f3_live_ops_fixture import PgConnection
@@ -23,6 +24,9 @@ def effects(
     return audit[0], outbox[0]
 
 
-def assert_one_winner(results: list[object], result_types: tuple[type, ...]) -> None:
+def assert_one_winner(
+    results: Sequence[object],
+    result_types: tuple[type, ...],
+) -> None:
     assert sum(isinstance(result, result_types) for result in results) == 1
     assert sum(isinstance(result, Exception) for result in results) == 1
