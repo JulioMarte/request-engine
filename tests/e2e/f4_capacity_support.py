@@ -1,8 +1,13 @@
+from datetime import timedelta
+from typing import Any, cast
+
+from httpx import AsyncClient
+
 from request_engine.platform.security.context import ActorContext
 
 from .f3_acceptance_assertions import acceptance_actor
 from .operational_support import PgConnection
-from .tenant_sandbox import TenantSandbox
+from .tenant_sandbox import TenantSandbox, auth
 
 _F4_CAPABILITIES = frozenset(
     {
@@ -42,3 +47,27 @@ def seed_today_schedule(conn: PgConnection, sandbox: TenantSandbox) -> None:
         "VALUES (%s,%s,%s,'00:00','23:59','America/Santo_Domingo')",
         (sandbox.organization_id, sandbox.resource_id, weekday),
     )
+
+
+async def same_day_slots(
+    client: AsyncClient,
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+) -> list[dict[str, Any]]:
+    row = conn.execute("SELECT clock_timestamp()").fetchone()
+    assert row is not None
+    starts_at = row[0] + timedelta(minutes=5)
+    response = await client.get(
+        "/v1/appointments/slots",
+        params={
+            "offering_version_id": str(sandbox.offering_version_id),
+            "location_id": str(sandbox.location_id),
+            "window_start": starts_at.isoformat(),
+            "window_end": (starts_at + timedelta(hours=6)).isoformat(),
+        },
+        headers=auth(sandbox),
+    )
+    assert response.status_code == 200, response.text
+    slots = cast(list[dict[str, Any]], response.json())
+    assert len(slots) >= 2
+    return slots
