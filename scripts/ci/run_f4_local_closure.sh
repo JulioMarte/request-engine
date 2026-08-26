@@ -22,8 +22,8 @@ if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
   exit 2
 fi
 
-echo "==> Fetching the newest remote state for $branch"
-git fetch --prune origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+echo "==> Fetching current remote refs"
+git fetch --prune origin
 
 remote_sha="$(git rev-parse "origin/$branch")"
 local_sha="$(git rev-parse HEAD)"
@@ -45,8 +45,15 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 3
 fi
 
+base_ref="${FILE_BUDGET_BASE_REF:-origin/development}"
+if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+  echo "ERROR: file-budget base ref $base_ref is unavailable." >&2
+  exit 3
+fi
+
 echo "==> Running Python quality / architecture / unit / module evidence"
-python scripts/ci/ci_jobs.py python-quality
+echo "    file-budget base: $base_ref"
+FILE_BUDGET_BASE_REF="$base_ref" python scripts/ci/ci_jobs.py python-quality
 
 echo "==> Running current-product PostgreSQL 18 / integration / E2E evidence"
 bash scripts/ci/run_current_product.sh
