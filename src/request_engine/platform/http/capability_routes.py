@@ -16,6 +16,7 @@ def add_capability_route(
     *,
     capability: str,
     methods: list[str],
+    operation_id: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Register one HTTP operation from its canonical capability definition."""
@@ -45,7 +46,7 @@ def add_capability_route(
         path,
         endpoint,
         methods=methods,
-        operation_id=definition.key.replace(".", "_"),
+        operation_id=operation_id or definition.key.replace(".", "_"),
         include_in_schema=definition.exposure is not CapabilityExposure.INTERNAL,
         openapi_extra=extra,
         **kwargs,
