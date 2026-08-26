@@ -47,11 +47,13 @@ async def capture_projection_snapshot(
     )
     if not booking.configuration_valid:
         raise InvalidProjectionConfiguration(service_queue_id)
+    relevant_reservations = tuple(item.reservation_id for item in booking.planned_same_day_work)
     queue = await sources.queue.read_projection_queue(
         snapshot,
         organization_id=organization_id,
         queue_id=service_queue_id,
         observed_at=observed_at,
+        relevant_reservation_ids=relevant_reservations,
     )
     delivery = await sources.delivery.read_projection_delivery(
         snapshot,
