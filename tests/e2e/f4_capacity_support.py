@@ -29,6 +29,20 @@ def f4_actor(sandbox: TenantSandbox) -> ActorContext:
     )
 
 
+def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -> None:
+    conn.execute(
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (
+            %s, %s, %s,
+            tstzrange('2026-01-01T00:00:00+00'::timestamptz, NULL, '[)')
+        )
+        """,
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
+    )
+
+
 def seed_today_schedule(conn: PgConnection, sandbox: TenantSandbox) -> None:
     row = conn.execute(
         "SELECT extract(isodow FROM clock_timestamp() "
