@@ -5,6 +5,7 @@ from request_engine.modules.live_capacity.application.projection_assembly import
     capacity_intervals,
     existing_work,
     has_open_interruption,
+    scheduled_commitments,
 )
 from request_engine.modules.live_capacity.application.queries.projection import (
     ReadStaffLiveCapacityQuery,
@@ -37,6 +38,7 @@ class PostgresLiveCapacityReader:
             observed_at=snapshot.observed_at,
             intervals=capacity_intervals(snapshot),
             work_items=existing_work(snapshot),
+            scheduled_work_items=scheduled_commitments(snapshot),
             has_open_interruption=has_open_interruption(snapshot),
             has_open_resource_activity=snapshot.delivery.open_resource_activity is not None,
         )

@@ -40,9 +40,13 @@ class StaffLiveCapacityProjectionView(BaseModel):
     state: ProjectionState
     reasons: tuple[ProjectionReason, ...]
     remaining_operational_seconds: int
+    scheduled_committed_workload_seconds: int | None
+    scheduled_headroom_seconds: int | None
     projected_remaining_workload_seconds: int | None
     projected_end_at: datetime | None
     live_headroom_seconds: int | None
+    live_intake_headroom_seconds: int | None
+    live_vs_scheduled_headroom_delta_seconds: int | None
     items: tuple[ProjectedWorkItemView, ...]
 
     @classmethod
@@ -56,8 +60,14 @@ class StaffLiveCapacityProjectionView(BaseModel):
             state=projection.state,
             reasons=projection.reasons,
             remaining_operational_seconds=projection.remaining_operational_seconds,
+            scheduled_committed_workload_seconds=projection.scheduled_committed_workload_seconds,
+            scheduled_headroom_seconds=projection.scheduled_headroom_seconds,
             projected_remaining_workload_seconds=projection.projected_remaining_workload_seconds,
             projected_end_at=projection.projected_end_at,
             live_headroom_seconds=projection.live_headroom_seconds,
+            live_intake_headroom_seconds=projection.live_intake_headroom_seconds,
+            live_vs_scheduled_headroom_delta_seconds=(
+                projection.live_vs_scheduled_headroom_delta_seconds
+            ),
             items=tuple(ProjectedWorkItemView.from_contract(value) for value in projection.items),
         )

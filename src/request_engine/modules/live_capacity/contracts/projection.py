@@ -67,6 +67,10 @@ class LiveCapacityProjection:
     projected_end_at: datetime | None
     live_headroom_seconds: int | None
     items: tuple[ProjectedWorkItem, ...]
+    scheduled_committed_workload_seconds: int | None = None
+    scheduled_headroom_seconds: int | None = None
+    live_intake_headroom_seconds: int | None = None
+    live_vs_scheduled_headroom_delta_seconds: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

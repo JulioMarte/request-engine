@@ -44,17 +44,31 @@ def _project_one(
     return start, None, current
 
 
+def _scheduled_capacity(
+    operational_seconds: int,
+    scheduled_work_items: tuple[ProjectionWorkItem, ...],
+) -> tuple[int | None, int | None]:
+    if any(item.duration_seconds is None for item in scheduled_work_items):
+        return None, None
+    committed = sum(item.duration_seconds or 0 for item in scheduled_work_items)
+    return committed, operational_seconds - committed
+
+
 def project_live_capacity(
     *,
     observed_at: datetime,
     intervals: tuple[CapacityInterval, ...],
     work_items: tuple[ProjectionWorkItem, ...],
+    scheduled_work_items: tuple[ProjectionWorkItem, ...] = (),
     has_open_interruption: bool = False,
     has_open_resource_activity: bool = False,
 ) -> LiveCapacityProjection:
     usable = _usable_intervals(observed_at, intervals)
     operational_seconds = sum(
         int((item.ends_at - item.starts_at).total_seconds()) for item in usable
+    )
+    scheduled_committed, scheduled_headroom = _scheduled_capacity(
+        operational_seconds, scheduled_work_items
     )
     blockers: list[ProjectionReason] = []
     if has_open_interruption:
@@ -63,14 +77,18 @@ def project_live_capacity(
         blockers.append(ProjectionReason.OPEN_RESOURCE_ACTIVITY)
     if blockers:
         return LiveCapacityProjection(
-            observed_at,
-            ProjectionState.INDETERMINATE,
-            tuple(blockers),
-            operational_seconds,
-            None,
-            None,
-            None,
-            (),
+            observed_at=observed_at,
+            state=ProjectionState.INDETERMINATE,
+            reasons=tuple(blockers),
+            remaining_operational_seconds=operational_seconds,
+            projected_remaining_workload_seconds=None,
+            projected_end_at=None,
+            live_headroom_seconds=None,
+            items=(),
+            scheduled_committed_workload_seconds=scheduled_committed,
+            scheduled_headroom_seconds=scheduled_headroom,
+            live_intake_headroom_seconds=None,
+            live_vs_scheduled_headroom_delta_seconds=None,
         )
 
     projected: list[ProjectedWorkItem] = []
@@ -98,14 +116,23 @@ def project_live_capacity(
     state = ProjectionState.PARTIAL if unknown else ProjectionState.KNOWN
     known_total = None if unknown else total
     end_at = projected[-1].estimated_end if projected and not unknown else None
-    headroom = None if known_total is None else operational_seconds - known_total
+    live_headroom = None if known_total is None else operational_seconds - known_total
+    delta = (
+        None
+        if live_headroom is None or scheduled_headroom is None
+        else live_headroom - scheduled_headroom
+    )
     return LiveCapacityProjection(
-        observed_at,
-        state,
-        tuple(reasons),
-        operational_seconds,
-        known_total,
-        end_at,
-        headroom,
-        tuple(projected),
+        observed_at=observed_at,
+        state=state,
+        reasons=tuple(reasons),
+        remaining_operational_seconds=operational_seconds,
+        projected_remaining_workload_seconds=known_total,
+        projected_end_at=end_at,
+        live_headroom_seconds=live_headroom,
+        items=tuple(projected),
+        scheduled_committed_workload_seconds=scheduled_committed,
+        scheduled_headroom_seconds=scheduled_headroom,
+        live_intake_headroom_seconds=live_headroom,
+        live_vs_scheduled_headroom_delta_seconds=delta,
     )

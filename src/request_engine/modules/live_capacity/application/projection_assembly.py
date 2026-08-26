@@ -1,5 +1,8 @@
 from request_engine.modules.live_capacity.application.projection_snapshot import ProjectionSnapshot
-from request_engine.modules.live_capacity.application.workload_builder import build_remaining_work
+from request_engine.modules.live_capacity.application.workload_builder import (
+    build_remaining_work,
+    scheduled_work,
+)
 from request_engine.modules.live_capacity.contracts.projection import (
     CapacityInterval,
     ProjectionWorkItem,
@@ -13,6 +16,10 @@ def existing_work(snapshot: ProjectionSnapshot) -> tuple[ProjectionWorkItem, ...
         planned=snapshot.booking.planned_same_day_work,
         estimates=snapshot.estimates,
     )
+
+
+def scheduled_commitments(snapshot: ProjectionSnapshot) -> tuple[ProjectionWorkItem, ...]:
+    return scheduled_work(snapshot.booking.planned_same_day_work)
 
 
 def capacity_intervals(snapshot: ProjectionSnapshot) -> tuple[CapacityInterval, ...]:

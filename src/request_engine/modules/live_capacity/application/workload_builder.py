@@ -23,10 +23,16 @@ def build_remaining_work(
     planned: tuple[PlannedWorkloadFact, ...],
     estimates: dict[UUID, WorkloadEstimate],
 ) -> tuple[ProjectionWorkItem, ...]:
+    planned_by_reservation = {item.reservation_id: item for item in planned}
     queued = tuple(
         _queue_item(
             entry,
-            _estimate_for(entry.expected_workload_classification_id, estimates),
+            _estimate_with_planned_fallback(
+                entry.expected_workload_classification_id,
+                entry.reservation_id,
+                estimates,
+                planned_by_reservation,
+            ),
         )
         for entry in queue.entries
     )
@@ -39,18 +45,29 @@ def build_remaining_work(
         workload_id = service.actual_workload_classification_id
         if workload_id is None and queue_entry is not None:
             workload_id = queue_entry.expected_workload_classification_id
-        estimate = _estimate_for(workload_id, estimates)
+        reservation_id = queue_entry.reservation_id if queue_entry is not None else None
+        estimate = _estimate_with_planned_fallback(
+            workload_id,
+            reservation_id,
+            estimates,
+            planned_by_reservation,
+        )
         active = (
             ProjectionWorkItem(
                 key=service.service_session_id,
                 duration_seconds=estimate.duration_seconds,
                 source=estimate.source,
                 queue_entry_id=service.queue_entry_id,
-                reservation_id=queue_entry.reservation_id if queue_entry is not None else None,
+                reservation_id=reservation_id,
                 active_service_seconds=service.active_service_seconds,
             ),
         )
-    planned_items = tuple(
+    planned_items = scheduled_work(planned)
+    return deduplicate_remaining_work(planned=planned_items, queued=queued, active=active)
+
+
+def scheduled_work(planned: tuple[PlannedWorkloadFact, ...]) -> tuple[ProjectionWorkItem, ...]:
+    return tuple(
         ProjectionWorkItem(
             key=item.reservation_id,
             duration_seconds=item.planned_duration_seconds,
@@ -63,7 +80,6 @@ def build_remaining_work(
         )
         for item in planned
     )
-    return deduplicate_remaining_work(planned=planned_items, queued=queued, active=active)
 
 
 def _estimate_for(
@@ -73,6 +89,23 @@ def _estimate_for(
     if workload_id is None:
         return _UNKNOWN
     return estimates.get(workload_id, _UNKNOWN)
+
+
+def _estimate_with_planned_fallback(
+    workload_id: UUID | None,
+    reservation_id: UUID | None,
+    estimates: dict[UUID, WorkloadEstimate],
+    planned_by_reservation: dict[UUID, PlannedWorkloadFact],
+) -> WorkloadEstimate:
+    estimate = _estimate_for(workload_id, estimates)
+    if estimate.duration_seconds is not None:
+        return estimate
+    if reservation_id is None:
+        return estimate
+    planned = planned_by_reservation.get(reservation_id)
+    if planned is None or planned.planned_duration_seconds is None:
+        return estimate
+    return WorkloadEstimate(planned.planned_duration_seconds, EstimateSource.PLANNED_DURATION)
 
 
 def _queue_item(
