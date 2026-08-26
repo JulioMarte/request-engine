@@ -18,33 +18,6 @@ async def _post(
     )
 
 
-async def seed_foreign_policies(
-    client: AsyncClient,
-    foreign: TenantSandbox,
-) -> tuple[str, str]:
-    scope = await _post(
-        client,
-        foreign,
-        "/v1/live-capacity/projection-policies",
-        {
-            "service_queue_id": str(foreign.queue_id),
-            "resource_id": str(foreign.resource_id),
-            "location_id": str(foreign.location_id),
-        },
-    )
-    estimate = await _post(
-        client,
-        foreign,
-        "/v1/live-capacity/workload-estimate-policies",
-        {
-            "workload_classification_id": str(foreign.expected_workload_id),
-            "duration_seconds": 1200,
-        },
-    )
-    assert scope.status_code == estimate.status_code == 201
-    return scope.json()["id"], estimate.json()["id"]
-
-
 async def policy_probe_pairs(
     client: AsyncClient,
     local: TenantSandbox,
