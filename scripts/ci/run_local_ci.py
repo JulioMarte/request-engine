@@ -658,9 +658,7 @@ def run_job(
 
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def write_failure_report(
@@ -711,9 +709,7 @@ def write_failure_report(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--branch", help="Remote branch to test; defaults to checked-out branch."
-    )
+    parser.add_argument("--branch", help="Remote branch to test; defaults to checked-out branch.")
     parser.add_argument(
         "--rebuild-image",
         action="store_true",
@@ -765,9 +761,7 @@ def main() -> int:
         )
         status_by_job: dict[str, str] = {}
         for job in JOBS:
-            blocked = [
-                name for name in job.depends_on if status_by_job.get(name) != "PASS"
-            ]
+            blocked = [name for name in job.depends_on if status_by_job.get(name) != "PASS"]
             if blocked:
                 result: dict[str, object] = {
                     "job": job.key,
