@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from uuid import UUID, uuid4
 
 from httpx import AsyncClient, Response
@@ -9,7 +10,7 @@ async def _post(
     client: AsyncClient,
     sandbox: TenantSandbox,
     path: str,
-    body: dict[str, object],
+    body: Mapping[str, object],
 ) -> Response:
     return await client.post(
         path,
@@ -22,6 +23,7 @@ async def policy_probe_pairs(
     client: AsyncClient,
     local: TenantSandbox,
     foreign: TenantSandbox,
+    foreign_workload_id: UUID,
     foreign_policy_ids: tuple[str, str],
     unknown: tuple[UUID, UUID, UUID],
 ) -> list[tuple[Response, Response]]:
@@ -47,7 +49,7 @@ async def policy_probe_pairs(
     }
     estimate_create = (
         {
-            "workload_classification_id": str(foreign.expected_workload_id),
+            "workload_classification_id": str(foreign_workload_id),
             "duration_seconds": 1200,
         },
         {"workload_classification_id": str(unknown_a), "duration_seconds": 1200},
