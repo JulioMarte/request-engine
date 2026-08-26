@@ -30,9 +30,7 @@ async def read_probe_pairs(
         (
             await client.get(
                 f"{foreign_base}/evaluate-intake",
-                params={
-                    "workload_classification_id": str(foreign.expected_workload_id)
-                },
+                params={"workload_classification_id": str(foreign.expected_workload_id)},
                 headers=headers,
             ),
             await client.get(
