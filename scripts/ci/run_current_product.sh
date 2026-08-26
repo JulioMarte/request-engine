@@ -86,6 +86,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f3-live-service-db.xml"
 
+# F4 projections are advisory reads over current product truth. Keep their
+# PostgreSQL authority, tenant-opacity, snapshot and no-lock proofs on the same
+# accepted migration head so customer projection safety cannot regress silently.
+uv run pytest \
+  tests/db/test_f4_*.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f4-live-capacity-db.xml"
+
 # CallNext is an application-command concurrency contract, not only a historical
 # V3 vertical. Keep its real adapter race on current HEAD so Queue changes cannot
 # retain green DB constraints while regressing command-level serialization.

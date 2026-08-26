@@ -21,6 +21,7 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "communications": frozenset({"booking"}),
     "discovery": frozenset({"booking"}),
     "delivery": frozenset(),
+    "live_capacity": frozenset({"booking", "delivery", "queue"}),
     "payments": frozenset(),
     "dispatch": frozenset(),
 }
@@ -87,8 +88,7 @@ def _actual_dependency_graph() -> dict[str, set[str]]:
 
 
 def _format_violations(title: str, violations: Iterable[str], guidance: str) -> str:
-    items = list(violations)
-    return "\n".join([title, *[f"- {item}" for item in items], "", guidance])
+    return "\n".join([title, *[f"- {item}" for item in violations], "", guidance])
 
 
 def _find_cycle(graph: dict[str, set[str]]) -> tuple[str, ...] | None:

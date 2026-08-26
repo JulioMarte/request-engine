@@ -1,0 +1,84 @@
+import pytest
+from f3_live_ops_fixture import create_live_ops_fixture
+from f3_live_ops_seed import PgConnection
+from f4_customer_projection_fixture import (
+    create_principal,
+    create_representation,
+)
+
+from request_engine.modules.queue.adapters.db.live_capacity_source import (
+    PostgresQueueProjectionSource,
+)
+from request_engine.modules.queue.application.errors import SubjectAuthorityRequired
+from request_engine.platform.db.read_snapshot import tenant_read_snapshot
+from request_engine.platform.db.session import SessionFactory
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_customer_projection_requires_exact_subject_authority(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    fixture = create_live_ops_fixture(admin_conn)
+    principal_id = create_principal(admin_conn, fixture.organization_id)
+    source = PostgresQueueProjectionSource()
+
+    async with tenant_read_snapshot(command_session_factory, fixture.organization_id) as snapshot:
+        with pytest.raises(SubjectAuthorityRequired):
+            await source.read_customer_projection_target(
+                snapshot,
+                organization_id=fixture.organization_id,
+                principal_id=principal_id,
+                queue_id=fixture.queue_id,
+                subject_party_id=fixture.party_b_id,
+                allow_subject_override=False,
+            )
+
+    create_representation(
+        admin_conn,
+        organization_id=fixture.organization_id,
+        principal_id=principal_id,
+        party_id=fixture.party_b_id,
+    )
+    async with tenant_read_snapshot(command_session_factory, fixture.organization_id) as snapshot:
+        target = await source.read_customer_projection_target(
+            snapshot,
+            organization_id=fixture.organization_id,
+            principal_id=principal_id,
+            queue_id=fixture.queue_id,
+            subject_party_id=fixture.party_b_id,
+            allow_subject_override=False,
+        )
+    assert target is not None
+    assert target.queue_entry_id == fixture.entry_b_id
+    assert target.entries_ahead == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_customer_projection_keeps_foreign_tenant_ids_opaque(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    local = create_live_ops_fixture(admin_conn)
+    foreign = create_live_ops_fixture(admin_conn)
+    principal_id = create_principal(admin_conn, local.organization_id)
+    create_representation(
+        admin_conn,
+        organization_id=local.organization_id,
+        principal_id=principal_id,
+        party_id=local.party_b_id,
+    )
+    source = PostgresQueueProjectionSource()
+
+    async with tenant_read_snapshot(command_session_factory, foreign.organization_id) as snapshot:
+        with pytest.raises(SubjectAuthorityRequired):
+            await source.read_customer_projection_target(
+                snapshot,
+                organization_id=foreign.organization_id,
+                principal_id=principal_id,
+                queue_id=local.queue_id,
+                subject_party_id=local.party_b_id,
+                allow_subject_override=False,
+            )
