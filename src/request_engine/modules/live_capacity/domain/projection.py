@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from request_engine.modules.live_capacity.contracts.projection import (
     CapacityInterval,
@@ -8,40 +8,7 @@ from request_engine.modules.live_capacity.contracts.projection import (
     ProjectionState,
     ProjectionWorkItem,
 )
-
-
-def _usable_intervals(
-    observed_at: datetime, intervals: tuple[CapacityInterval, ...]
-) -> tuple[CapacityInterval, ...]:
-    usable: list[CapacityInterval] = []
-    for interval in sorted(intervals, key=lambda item: item.starts_at):
-        starts_at = max(interval.starts_at, observed_at)
-        if interval.ends_at > starts_at:
-            usable.append(CapacityInterval(starts_at, interval.ends_at))
-    return tuple(usable)
-
-
-def _project_one(
-    cursor: datetime,
-    remaining_seconds: int,
-    intervals: tuple[CapacityInterval, ...],
-) -> tuple[datetime | None, datetime | None, datetime]:
-    start: datetime | None = None
-    seconds_left = remaining_seconds
-    current = cursor
-    for interval in intervals:
-        position = max(current, interval.starts_at)
-        if position >= interval.ends_at:
-            continue
-        if start is None:
-            start = position
-        available = int((interval.ends_at - position).total_seconds())
-        if seconds_left <= available:
-            end = position + timedelta(seconds=seconds_left)
-            return start, end, end
-        seconds_left -= available
-        current = interval.ends_at
-    return start, None, current
+from request_engine.modules.live_capacity.domain.timeline import project_one, usable_intervals
 
 
 def _scheduled_capacity(
@@ -63,7 +30,7 @@ def project_live_capacity(
     has_open_interruption: bool = False,
     has_open_resource_activity: bool = False,
 ) -> LiveCapacityProjection:
-    usable = _usable_intervals(observed_at, intervals)
+    usable = usable_intervals(observed_at, intervals)
     operational_seconds = sum(
         int((item.ends_at - item.starts_at).total_seconds()) for item in usable
     )
@@ -105,7 +72,7 @@ def project_live_capacity(
         if unknown:
             projected.append(ProjectedWorkItem(item.key, None, None, remaining, item.source))
             continue
-        start, end, cursor = _project_one(cursor, remaining, usable)
+        start, end, cursor = project_one(cursor, remaining, usable)
         projected.append(ProjectedWorkItem(item.key, start, end, remaining, item.source))
 
     reasons: list[ProjectionReason] = []
