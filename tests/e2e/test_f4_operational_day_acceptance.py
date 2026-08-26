@@ -41,7 +41,6 @@ async def test_f4_operational_day_reprojects_planning_queue_and_service_truth(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f4-operational-day")
-    seed_live_execution_assignment(e2e_admin_conn, sandbox)
     seed_today_schedule(e2e_admin_conn, sandbox)
     actors = {sandbox.token: f4_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
@@ -82,6 +81,7 @@ async def test_f4_operational_day_reprojects_planning_queue_and_service_truth(
         assert before["projected_remaining_workload_seconds"] == 4800
         assert before["live_vs_scheduled_headroom_delta_seconds"] == -1200
 
+        seed_live_execution_assignment(e2e_admin_conn, sandbox)
         started = await call_and_start(client, sandbox, entry_id)
         session_id = UUID(started["id"])
         active = await read_projection(client, sandbox)
