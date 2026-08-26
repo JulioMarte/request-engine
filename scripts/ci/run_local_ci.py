@@ -165,17 +165,13 @@ def repo_root() -> Path:
 
 def current_branch(root: Path) -> str:
     try:
-        return capture(
-            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"], root
-        )
+        return capture(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], root)
     except subprocess.CalledProcessError as exc:
         raise LocalCIError("Local CI requires a checked-out branch.") from exc
 
 
 def ensure_clean(root: Path) -> None:
-    status = capture(
-        ["git", "status", "--porcelain", "--untracked-files=all"], root
-    )
+    status = capture(["git", "status", "--porcelain", "--untracked-files=all"], root)
     if status:
         raise LocalCIError(
             "Working tree is dirty. Commit, stash, or remove changes first.\n" + status
@@ -194,18 +190,14 @@ def sync_exact_remote(root: Path, requested: str | None) -> tuple[str, str, str]
         message = f"Required origin/{branch} or origin/development ref is missing."
         raise LocalCIError(message) from exc
     if current_branch(root) != branch:
-        branches = capture(
-            ["git", "branch", "--format=%(refname:short)"], root
-        ).splitlines()
+        branches = capture(["git", "branch", "--format=%(refname:short)"], root).splitlines()
         switch = ["git", "switch", branch]
         if branch not in branches:
             switch = ["git", "switch", "--track", "-c", branch, f"origin/{branch}"]
         if run_logged(switch, cwd=root) != 0:
             raise LocalCIError(f"Could not switch to {branch}")
     print(f"Sync exact remote: origin/{branch} @ {remote_sha[:12]}", flush=True)
-    if run_logged(
-        ["git", "reset", "--hard", f"origin/{branch}"], cwd=root, verbose=False
-    ) != 0:
+    if run_logged(["git", "reset", "--hard", f"origin/{branch}"], cwd=root, verbose=False) != 0:
         raise LocalCIError("git reset --hard to the remote branch failed")
     head = capture(["git", "rev-parse", "HEAD"], root)
     ensure_clean(root)
@@ -244,8 +236,7 @@ def docker_ready() -> tuple[str, str]:
     if check.returncode != 0:
         detail = (check.stderr or check.stdout).strip()
         raise LocalCIError(
-            "Docker engine unavailable. Start Docker Desktop with Linux containers.\n"
-            + detail
+            "Docker engine unavailable. Start Docker Desktop with Linux containers.\n" + detail
         )
     os_type = capture(["docker", "info", "--format", "{{.OSType}}"])
     architecture = capture(["docker", "info", "--format", "{{.Architecture}}"])
@@ -379,9 +370,7 @@ def start_postgres(name: str, network: str, config: tuple[str, str, str]) -> Non
         raise LocalCIError(f"Could not start {name}")
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        ready = quiet(
-            ["docker", "exec", name, "pg_isready", "-U", user, "-d", database]
-        )
+        ready = quiet(["docker", "exec", name, "pg_isready", "-U", user, "-d", database])
         if ready == 0:
             return
         time.sleep(1)
@@ -803,13 +792,9 @@ def main() -> int:
     finally:
         remove("volume", source)
         remove("network", network)
-    host_dirty = capture(
-        ["git", "status", "--porcelain", "--untracked-files=no"], root
-    )
+    host_dirty = capture(["git", "status", "--porcelain", "--untracked-files=no"], root)
     aggregate = all(item["status"] == "PASS" for item in results) and not host_dirty
-    failure_report = write_failure_report(
-        run_dir, branch=branch, sha=sha, results=results
-    )
+    failure_report = write_failure_report(run_dir, branch=branch, sha=sha, results=results)
     summary = {
         "schema_version": 4,
         "status": "PASS" if aggregate else "FAIL",
