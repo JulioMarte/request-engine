@@ -39,7 +39,7 @@ def create_intake_router(
 
     add_capability_route(
         router,
-        "/live-capacity/queues/{service_queue_id}/evaluate-intake",
+        "/v1/live-capacity/queues/{service_queue_id}/evaluate-intake",
         evaluate,
         capability="live_capacity.evaluate_intake",
         methods=["GET"],
