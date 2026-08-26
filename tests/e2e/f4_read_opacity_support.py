@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from httpx import AsyncClient, Response
@@ -6,16 +7,19 @@ from .tenant_sandbox import TenantSandbox, auth
 
 
 def response_signature(response: Response) -> tuple[int, str | None]:
-    body = response.json()
-    error = body.get("error") if isinstance(body, dict) else None
-    code = error.get("code") if isinstance(error, dict) else None
-    return response.status_code, code
+    body = cast(dict[str, object], response.json())
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return response.status_code, None
+    code = cast(dict[str, object], error).get("code")
+    return response.status_code, code if isinstance(code, str) else None
 
 
 async def read_probe_pairs(
     client: AsyncClient,
     local: TenantSandbox,
     foreign: TenantSandbox,
+    foreign_workload_id: UUID,
     unknown_queue_id: UUID,
     unknown_workload_id: UUID,
 ) -> list[tuple[Response, Response]]:
@@ -30,7 +34,7 @@ async def read_probe_pairs(
         (
             await client.get(
                 f"{foreign_base}/evaluate-intake",
-                params={"workload_classification_id": str(foreign.expected_workload_id)},
+                params={"workload_classification_id": str(foreign_workload_id)},
                 headers=headers,
             ),
             await client.get(
