@@ -242,7 +242,7 @@ def reexec_synced_runner(root: Path, sha: str) -> None:
 
 
 def verify_workflow_parity(root: Path) -> None:
-    actual = capture(["git", "hash-object", WORKFLOW_PATH], root)
+    actual = capture(["git", "rev-parse", f"HEAD:{WORKFLOW_PATH}"], root)
     if actual != WORKFLOW_BLOB_SHA:
         raise LocalCIError(
             "Local CI mapping is stale: .github/workflows/ci.yml changed without "
