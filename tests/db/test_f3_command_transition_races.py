@@ -32,7 +32,8 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
-    align_fixture_to_db_clock(admin_conn, setup)
+    revisions = align_fixture_to_db_clock(admin_conn, setup)
+    expected_revision = revisions[setup.entry_a_id]
     principal = create_principal(admin_conn, setup)
     delivery = PostgresLiveServiceOperations(command_session_factory)
     queue = PostgresLiveQueueCommands(command_session_factory)
@@ -42,12 +43,16 @@ async def test_start_service_vs_no_show_commands_have_one_effectful_winner(
         setup.entry_a_id,
         setup.resource_id,
         setup.location_id,
-        1,
+        expected_revision,
         "command-start-no-show-start",
         setup.actual_workload_id,
     )
     no_show = MarkNoShowCommand(
-        setup.organization_id, principal, setup.entry_a_id, 1, "command-start-no-show-no-show"
+        setup.organization_id,
+        principal,
+        setup.entry_a_id,
+        expected_revision,
+        "command-start-no-show-no-show",
     )
     results = await asyncio.gather(
         delivery.start_service(start), queue.mark_no_show(no_show), return_exceptions=True
