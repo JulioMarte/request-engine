@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run the current Request Engine GitHub CI locally through Docker.
 
-The host only needs Python, Git, and Docker. Every test job runs in the same
-Linux/Python/PostgreSQL family used by .github/workflows/ci.yml.
+The host only needs Python, Git, and Docker. Test jobs run in the same
+Linux/Python/PostgreSQL family used by ``.github/workflows/ci.yml``.
 """
 
 from __future__ import annotations
@@ -24,12 +24,17 @@ from pathlib import Path
 POSTGRES_IMAGE = "postgres:18"
 CACHE_VOLUME = "request-engine-local-ci-uv-cache"
 RUNNER_DOCKERFILE = "scripts/ci/Dockerfile.local-ci"
-IMAGE_INPUTS = (RUNNER_DOCKERFILE, "pyproject.toml", "uv.lock", ".python-version")
+IMAGE_INPUTS = (
+    RUNNER_DOCKERFILE,
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+)
 SYNC_ENV = "REQUEST_ENGINE_LOCAL_CI_SYNCED_SHA"
 
 
 class LocalCIError(RuntimeError):
-    pass
+    """Raised when local orchestration cannot produce trustworthy CI evidence."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +75,10 @@ JOBS = (
         "postgres-v3-bootstrap-proof",
         "python scripts/ci/ci_jobs.py postgres-v3-bootstrap-proof",
         postgres=("request_engine_v3", "postgres", "postgres"),
-        env={"PGMAINTENANCE_DB": "postgres", "V3_PROOF_DATABASE_PREFIX": "request_engine_v3_phase6"},
+        env={
+            "PGMAINTENANCE_DB": "postgres",
+            "V3_PROOF_DATABASE_PREFIX": "request_engine_v3_phase6",
+        },
         depends_on=("python-quality",),
     ),
     Job(
@@ -85,25 +93,45 @@ JOBS = (
         "bash scripts/ci/run_v3_frozen_compatibility.sh && "
         "uv run pytest tests/historical -q --tb=short",
         postgres=("request_engine_v3", "postgres", "postgres"),
-        depends_on=("python-quality", "observability-contract", "postgres-v3-bootstrap-proof"),
+        depends_on=(
+            "python-quality",
+            "observability-contract",
+            "postgres-v3-bootstrap-proof",
+        ),
     ),
 )
 
 
 def capture(command: Sequence[str], cwd: Path | None = None) -> str:
     result = subprocess.run(
-        list(command), cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8"
+        list(command),
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     return result.stdout.strip()
 
 
-def stream(command: Sequence[str], *, cwd: Path | None = None, log: Path | None = None) -> int:
+def stream(
+    command: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    log: Path | None = None,
+) -> int:
     handle = log.open("w", encoding="utf-8", newline="\n") if log else None
     try:
         print("$ " + " ".join(command), flush=True)
         process = subprocess.Popen(
-            list(command), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace", bufsize=1,
+            list(command),
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
         )
         assert process.stdout is not None
         for line in process.stdout:
@@ -130,17 +158,27 @@ def repo_root() -> Path:
 
 
 def current_branch(root: Path) -> str:
-    branch = capture(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], root)
+    try:
+        branch = capture(
+            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+            root,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise LocalCIError("Local CI requires a checked-out branch, not detached HEAD.") from exc
     if not branch:
         raise LocalCIError("Local CI requires a checked-out branch, not detached HEAD.")
     return branch
 
 
 def ensure_clean(root: Path) -> None:
-    status = capture(["git", "status", "--porcelain", "--untracked-files=all"], root)
+    status = capture(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        root,
+    )
     if status:
         raise LocalCIError(
-            "Working tree is dirty. Commit, stash, or remove local changes before local CI.\n" + status
+            "Working tree is dirty. Commit, stash, or remove local changes before local CI.\n"
+            + status
         )
 
 
@@ -153,16 +191,31 @@ def sync_exact_remote(root: Path, requested_branch: str | None) -> tuple[str, st
         capture(["git", "rev-parse", f"origin/{branch}"], root)
         capture(["git", "rev-parse", "origin/development"], root)
     except subprocess.CalledProcessError as exc:
-        raise LocalCIError(f"Required remote ref is missing for {branch} or development.") from exc
+        raise LocalCIError(
+            f"Required remote ref is missing for {branch} or development."
+        ) from exc
     if current_branch(root) != branch:
-        local_branches = capture(["git", "branch", "--format=%(refname:short)"], root).splitlines()
+        local_branches = capture(
+            ["git", "branch", "--format=%(refname:short)"],
+            root,
+        ).splitlines()
         switch = ["git", "switch", branch]
         if branch not in local_branches:
-            switch = ["git", "switch", "--track", "-c", branch, f"origin/{branch}"]
+            switch = [
+                "git",
+                "switch",
+                "--track",
+                "-c",
+                branch,
+                f"origin/{branch}",
+            ]
         if stream(switch, cwd=root) != 0:
             raise LocalCIError(f"Could not switch to {branch}")
     remote_sha = capture(["git", "rev-parse", f"origin/{branch}"], root)
-    print(f"Force-synchronizing clean checkout to origin/{branch} ({remote_sha})", flush=True)
+    print(
+        f"Force-synchronizing clean checkout to origin/{branch} ({remote_sha})",
+        flush=True,
+    )
     if stream(["git", "reset", "--hard", f"origin/{branch}"], cwd=root) != 0:
         raise LocalCIError("git reset --hard to the remote branch failed")
     head = capture(["git", "rev-parse", "HEAD"], root)
@@ -172,13 +225,17 @@ def sync_exact_remote(root: Path, requested_branch: str | None) -> tuple[str, st
     return branch, head
 
 
-def reexec_synced_runner(root: Path, branch: str, sha: str) -> None:
+def reexec_synced_runner(root: Path, sha: str) -> None:
     if os.environ.get(SYNC_ENV) == sha:
         return
     env = os.environ.copy()
     env[SYNC_ENV] = sha
     script = root / "scripts/ci/run_local_ci.py"
-    os.execve(sys.executable, [sys.executable, str(script), "--branch", branch, *sys.argv[1:]], env)
+    os.execve(
+        sys.executable,
+        [sys.executable, str(script), *sys.argv[1:]],
+        env,
+    )
 
 
 def fingerprint(root: Path) -> str:
@@ -197,10 +254,13 @@ def docker_ready() -> None:
 
 
 def image_exists(image: str) -> bool:
-    return subprocess.run(
-        ["docker", "image", "inspect", image], stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, check=False,
-    ).returncode == 0
+    result = subprocess.run(
+        ["docker", "image", "inspect", image],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def prepare_images(root: Path, rebuild: bool) -> str:
@@ -208,37 +268,89 @@ def prepare_images(root: Path, rebuild: bool) -> str:
         raise LocalCIError(f"Could not pull {POSTGRES_IMAGE}")
     tag = f"request-engine-local-ci:{fingerprint(root)[:16]}"
     if rebuild or not image_exists(tag):
-        command = ["docker", "build", "--pull", "-f", RUNNER_DOCKERFILE, "-t", tag, "."]
+        command = [
+            "docker",
+            "build",
+            "--pull",
+            "-f",
+            RUNNER_DOCKERFILE,
+            "-t",
+            tag,
+            ".",
+        ]
         if stream(command, cwd=root) != 0:
             raise LocalCIError("Local CI runner image build failed.")
     return tag
 
 
 def rm_container(name: str) -> None:
-    subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, check=False)
+    subprocess.run(
+        ["docker", "rm", "-f", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
 
 def rm_network(name: str) -> None:
-    subprocess.run(["docker", "network", "rm", name], stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, check=False)
+    subprocess.run(
+        ["docker", "network", "rm", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
 
-def start_postgres(name: str, network: str, config: tuple[str, str, str]) -> None:
+def rm_volume(name: str) -> None:
+    subprocess.run(
+        ["docker", "volume", "rm", "-f", name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def start_postgres(
+    name: str,
+    network: str,
+    config: tuple[str, str, str],
+) -> None:
     database, user, password = config
     rm_container(name)
     command = [
-        "docker", "run", "-d", "--name", name, "--network", network,
-        "-e", f"POSTGRES_DB={database}", "-e", f"POSTGRES_USER={user}",
-        "-e", f"POSTGRES_PASSWORD={password}", POSTGRES_IMAGE,
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        name,
+        "--network",
+        network,
+        "-e",
+        f"POSTGRES_DB={database}",
+        "-e",
+        f"POSTGRES_USER={user}",
+        "-e",
+        f"POSTGRES_PASSWORD={password}",
+        POSTGRES_IMAGE,
     ]
     if stream(command) != 0:
         raise LocalCIError(f"Could not start {name}")
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         ready = subprocess.run(
-            ["docker", "exec", name, "pg_isready", "-U", user, "-d", database],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            [
+                "docker",
+                "exec",
+                name,
+                "pg_isready",
+                "-U",
+                user,
+                "-d",
+                database,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
         )
         if ready.returncode == 0:
             return
@@ -251,42 +363,87 @@ def job_environment(job: Job, pg_name: str | None) -> dict[str, str]:
     env = dict(job.env or {})
     if job.postgres and pg_name:
         database, user, password = job.postgres
-        env.update({
-            "PGHOST": pg_name, "PGPORT": "5432", "PGDATABASE": database,
-            "PGUSER": user, "PGPASSWORD": password,
-        })
-        if job.key in {"postgres-production-head", "postgres-v3-candidate-proof"}:
+        env.update(
+            {
+                "PGHOST": pg_name,
+                "PGPORT": "5432",
+                "PGDATABASE": database,
+                "PGUSER": user,
+                "PGPASSWORD": password,
+            }
+        )
+        if job.key in {
+            "postgres-production-head",
+            "postgres-v3-candidate-proof",
+        }:
             env["MIGRATION_DATABASE_URL"] = (
                 f"postgresql+psycopg://{user}:{password}@{pg_name}:5432/{database}"
             )
     return env
 
 
-def run_job(job: Job, *, root: Path, run_dir: Path, image: str, network: str) -> dict[str, object]:
+def run_job(
+    job: Job,
+    *,
+    root: Path,
+    run_dir: Path,
+    image: str,
+    network: str,
+) -> dict[str, object]:
     token = f"re-ci-{os.getpid()}-{job.key}"
     pg_name = f"{token}-pg" if job.postgres else None
+    venv_volume = f"{token}-venv"
+    rm_volume(venv_volume)
     if job.postgres and pg_name:
         start_postgres(pg_name, network, job.postgres)
     env = job_environment(job, pg_name)
     command = [
-        "docker", "run", "--rm", "--name", f"{token}-runner", "--network", network,
-        "-v", f"{root}:/workspace", "-v", f"{run_dir}:/ci-artifacts",
-        "-v", f"{CACHE_VOLUME}:/uv-cache", "-w", "/workspace",
-        "-e", "UV_CACHE_DIR=/uv-cache", "-e", "PYTHONUNBUFFERED=1",
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        f"{token}-runner",
+        "--network",
+        network,
+        "-v",
+        f"{root}:/workspace",
+        "-v",
+        f"{run_dir}:/ci-artifacts",
+        "-v",
+        f"{CACHE_VOLUME}:/uv-cache",
+        "--mount",
+        f"type=volume,source={venv_volume},target=/workspace/.venv",
+        "-w",
+        "/workspace",
+        "-e",
+        "UV_CACHE_DIR=/uv-cache",
+        "-e",
+        "PYTHONUNBUFFERED=1",
     ]
     for key, value in env.items():
         command.extend(["-e", f"{key}={value}"])
     shell = (
         "git config --global --add safe.directory /workspace && "
-        "python scripts/ci/normalize_ci_line_endings.py && " + job.command
+        "python scripts/ci/normalize_ci_line_endings.py && "
+        + job.command
     )
     command.extend([image, "bash", "-lc", shell])
     started = time.monotonic()
-    status = stream(command, cwd=root, log=run_dir / f"{job.key}.log")
-    if pg_name:
-        if status != 0:
-            stream(["docker", "logs", pg_name], log=run_dir / f"{job.key}-postgres.log")
-        rm_container(pg_name)
+    try:
+        status = stream(
+            command,
+            cwd=root,
+            log=run_dir / f"{job.key}.log",
+        )
+        if pg_name and status != 0:
+            stream(
+                ["docker", "logs", pg_name],
+                log=run_dir / f"{job.key}-postgres.log",
+            )
+    finally:
+        if pg_name:
+            rm_container(pg_name)
+        rm_volume(venv_volume)
     return {
         "job": job.key,
         "status": "PASS" if status == 0 else "FAIL",
@@ -297,12 +454,18 @@ def run_job(job: Job, *, root: Path, run_dir: Path, image: str, network: str) ->
 
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--branch", help="Remote branch to test; defaults to the checked-out branch.")
+    parser.add_argument(
+        "--branch",
+        help="Remote branch to test; defaults to the checked-out branch.",
+    )
     parser.add_argument("--rebuild-image", action="store_true")
     return parser.parse_args()
 
@@ -312,10 +475,11 @@ def main() -> int:
     require_program("git")
     root = repo_root()
     branch, sha = sync_exact_remote(root, args.branch)
-    reexec_synced_runner(root, branch, sha)
+    reexec_synced_runner(root, sha)
     docker_ready()
     image = prepare_images(root, args.rebuild_image)
-    run_id = f"{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%SZ')}-{sha[:12]}"
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_id = f"{timestamp}-{sha[:12]}"
     run_dir = root / ".local-ci" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     network = f"request-engine-local-ci-{os.getpid()}"
@@ -326,17 +490,34 @@ def main() -> int:
     try:
         status_by_job: dict[str, str] = {}
         for job in JOBS:
-            blocked = [name for name in job.depends_on if status_by_job.get(name) != "PASS"]
+            blocked = [
+                dependency
+                for dependency in job.depends_on
+                if status_by_job.get(dependency) != "PASS"
+            ]
             if blocked:
-                result = {"job": job.key, "status": "SKIP", "blocked_by": blocked}
+                result: dict[str, object] = {
+                    "job": job.key,
+                    "status": "SKIP",
+                    "blocked_by": blocked,
+                }
             else:
                 print(f"\n=== {job.key} ===", flush=True)
-                result = run_job(job, root=root, run_dir=run_dir, image=image, network=network)
+                result = run_job(
+                    job,
+                    root=root,
+                    run_dir=run_dir,
+                    image=image,
+                    network=network,
+                )
             results.append(result)
             status_by_job[job.key] = str(result["status"])
     finally:
         rm_network(network)
-    dirty = capture(["git", "status", "--porcelain", "--untracked-files=no"], root)
+    dirty = capture(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        root,
+    )
     aggregate = all(item["status"] == "PASS" for item in results) and not dirty
     summary = {
         "schema_version": 1,
@@ -344,21 +525,30 @@ def main() -> int:
         "branch": branch,
         "commit_sha": sha,
         "generated_at_utc": dt.datetime.now(dt.UTC).isoformat(),
-        "host": {"platform": platform.platform(), "python": platform.python_version()},
+        "host": {
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+        },
         "runner_image": image,
         "postgres_image": POSTGRES_IMAGE,
         "jobs": results,
         "tracked_worktree_dirty_after_run": dirty,
     }
     write_json(run_dir / "summary.json", summary)
-    write_json(root / ".local-ci/latest.json", {"summary": str(run_dir / "summary.json")})
+    write_json(
+        root / ".local-ci/latest.json",
+        {"summary": str(run_dir / "summary.json")},
+    )
     print("\n=== LOCAL CI SUMMARY ===", flush=True)
     for item in results:
         print(f"{item['status']:>4}  {item['job']}", flush=True)
     print(f"Exact tested SHA: {sha}", flush=True)
     print(f"Summary: {run_dir / 'summary.json'}", flush=True)
     if dirty:
-        print("Tracked files changed during CI; evidence is invalid:\n" + dirty, flush=True)
+        print(
+            "Tracked files changed during CI; evidence is invalid:\n" + dirty,
+            flush=True,
+        )
     return 0 if aggregate else 1
 
 
