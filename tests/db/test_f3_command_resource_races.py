@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from f3_command_race_support import assert_one_winner, effects
+from f3_command_race_support import align_fixture_to_db_clock, assert_one_winner, effects
 from f3_live_ops_fixture import PgConnection, create_live_ops_fixture
 from f3_live_ops_race_support import create_paused_session, create_principal
 
@@ -32,6 +32,7 @@ async def test_resume_complete_commands_serialize_without_partial_effects(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
+    align_fixture_to_db_clock(admin_conn, setup)
     session_id, principal = create_paused_session(admin_conn, setup)
     operations = PostgresLiveServiceOperations(command_session_factory)
     resume = ResumeServiceCommand(
@@ -74,6 +75,7 @@ async def test_session_vs_resource_activity_commands_have_one_effectful_winner(
     admin_conn: PgConnection, command_session_factory: SessionFactory
 ) -> None:
     setup = create_live_ops_fixture(admin_conn)
+    align_fixture_to_db_clock(admin_conn, setup)
     principal = create_principal(admin_conn, setup)
     operations = PostgresLiveServiceOperations(command_session_factory)
     start = StartServiceCommand(
