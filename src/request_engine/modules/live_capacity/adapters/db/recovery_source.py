@@ -1,7 +1,4 @@
-from typing import cast
 from uuid import UUID
-
-from sqlalchemy import text
 
 from request_engine.modules.live_capacity.adapters.db.projection_snapshot import (
     capture_projection_snapshot,
@@ -9,6 +6,9 @@ from request_engine.modules.live_capacity.adapters.db.projection_snapshot import
 from request_engine.modules.live_capacity.adapters.db.recovery_fingerprint import (
     source_fingerprint,
     source_snapshot,
+)
+from request_engine.modules.live_capacity.adapters.db.recovery_revision_reader import (
+    read_recovery_revisions,
 )
 from request_engine.modules.live_capacity.application.projection_assembly import (
     assemble_live_capacity_projection,
@@ -26,7 +26,7 @@ from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCapacitySource,
 )
-from request_engine.platform.db.read_snapshot import postgres_snapshot_session, tenant_read_snapshot
+from request_engine.platform.db.read_snapshot import tenant_read_snapshot
 from request_engine.platform.db.session import SessionFactory
 
 
@@ -51,45 +51,20 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                 service_queue_id=service_queue_id,
             )
             projection = assemble_live_capacity_projection(snapshot)
-            session = postgres_snapshot_session(read_snapshot)
-            revisions = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            SELECT r.availability_revision,
-                                   l.operational_revision,
-                                   request_read.recovery_source_revision(
-                                       :organization_id,
-                                       :service_queue_id
-                                   ) AS recovery_source_revision
-                            FROM request_engine.resources r
-                            JOIN request_engine.locations l
-                              ON l.organization_id = r.organization_id
-                             AND l.id = :location_id
-                            WHERE r.organization_id = :organization_id
-                              AND r.id = :resource_id
-                            """
-                        ),
-                        {
-                            "organization_id": organization_id,
-                            "service_queue_id": service_queue_id,
-                            "resource_id": snapshot.policy.resource_id,
-                            "location_id": snapshot.policy.location_id,
-                        },
-                    )
-                )
-                .mappings()
-                .one()
+            resource_revision, location_revision, recovery_revision = await read_recovery_revisions(
+                read_snapshot,
+                organization_id=organization_id,
+                service_queue_id=service_queue_id,
+                snapshot=snapshot,
             )
 
         planned = tuple(snapshot.booking.planned_same_day_work)
         live_work = existing_work(snapshot)
         checkpoint = build_recovery_checkpoint(
             snapshot,
-            resource_availability_revision=cast(int, revisions["availability_revision"]),
-            location_operational_revision=cast(int, revisions["operational_revision"]),
-            recovery_source_revision=cast(int, revisions["recovery_source_revision"]),
+            resource_availability_revision=resource_revision,
+            location_operational_revision=location_revision,
+            recovery_source_revision=recovery_revision,
         )
         committed, shortfall, live_pressure = recovery_pressure(projection)
         evidence = source_snapshot(
@@ -108,7 +83,6 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             projection=projection,
             live_pressure_seconds=live_pressure,
         )
-
         return RecoveryCapacityAssessment(
             service_queue_id=service_queue_id,
             resource_id=snapshot.policy.resource_id,
