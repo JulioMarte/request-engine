@@ -1,16 +1,13 @@
-import hashlib
-import json
 from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
 
-from request_engine.modules.booking.contracts.live_capacity import (
-    OperationalAvailabilityInterval,
-    PlannedWorkloadFact,
-)
 from request_engine.modules.live_capacity.adapters.db.projection_snapshot import (
     capture_projection_snapshot,
+)
+from request_engine.modules.live_capacity.adapters.db.recovery_fingerprint import (
+    source_fingerprint,
 )
 from request_engine.modules.live_capacity.application.projection_assembly import (
     capacity_intervals,
@@ -78,18 +75,13 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                             "location_id": snapshot.policy.location_id,
                         },
                     )
-                )
-                .mappings()
-                .one()
+                ).mappings().one()
             )
-
         planned = tuple(snapshot.booking.planned_same_day_work)
-        resource_revision = cast(int, revisions["availability_revision"])
-        location_revision = cast(int, revisions["operational_revision"])
         checkpoint = RecoveryCapacityCheckpoint(
             projection_policy_revision=snapshot.policy.revision,
-            resource_availability_revision=resource_revision,
-            location_operational_revision=location_revision,
+            resource_availability_revision=cast(int, revisions["availability_revision"]),
+            location_operational_revision=cast(int, revisions["operational_revision"]),
             commitments=tuple(
                 RecoveryCommitmentCheckpoint(
                     reservation_id=item.reservation_id,
@@ -106,19 +98,6 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
         executable = projection.remaining_operational_seconds
         committed = projection.scheduled_committed_workload_seconds or 0
         shortfall = max(committed - executable, 0)
-        affected = affected_recovery_commitments(
-            planned,
-            snapshot.booking.remaining_intervals,
-            shortfall,
-        )
-        source_fingerprint = _source_fingerprint(
-            policy_id=snapshot.policy.id,
-            policy_revision=checkpoint.projection_policy_revision,
-            resource_availability_revision=checkpoint.resource_availability_revision,
-            location_operational_revision=checkpoint.location_operational_revision,
-            intervals=snapshot.booking.remaining_intervals,
-            planned=planned,
-        )
         return RecoveryCapacityAssessment(
             service_queue_id=service_queue_id,
             resource_id=snapshot.policy.resource_id,
@@ -128,44 +107,18 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             executable_capacity_seconds=executable,
             committed_capacity_seconds=committed,
             shortfall_seconds=shortfall,
-            source_fingerprint=source_fingerprint,
+            source_fingerprint=source_fingerprint(
+                policy_id=snapshot.policy.id,
+                policy_revision=checkpoint.projection_policy_revision,
+                resource_availability_revision=checkpoint.resource_availability_revision,
+                location_operational_revision=checkpoint.location_operational_revision,
+                intervals=snapshot.booking.remaining_intervals,
+                planned=planned,
+            ),
             checkpoint=checkpoint,
-            affected_commitments=affected,
-        )
-
-
-def _source_fingerprint(
-    *,
-    policy_id: UUID,
-    policy_revision: int,
-    resource_availability_revision: int,
-    location_operational_revision: int,
-    intervals: tuple[OperationalAvailabilityInterval, ...],
-    planned: tuple[PlannedWorkloadFact, ...],
-) -> str:
-    payload = {
-        "policy_id": str(policy_id),
-        "policy_revision": policy_revision,
-        "resource_availability_revision": resource_availability_revision,
-        "location_operational_revision": location_operational_revision,
-        "intervals": [
-            [item.starts_at.isoformat(), item.ends_at.isoformat()] for item in intervals
-        ],
-        "planned": [
-            {
-                "reservation_id": str(item.reservation_id),
-                "revision": item.reservation_revision,
-                "offering_version_id": str(item.offering_version_id),
-                "subject_party_id": str(item.subject_party_id),
-                "starts_at": item.planned_starts_at.isoformat(),
-                "ends_at": item.planned_ends_at.isoformat(),
-                "contextual_commitment": item.contextual_commitment,
-            }
-            for item in sorted(
+            affected_commitments=affected_recovery_commitments(
                 planned,
-                key=lambda value: (value.planned_starts_at, str(value.reservation_id)),
-            )
-        ],
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+                snapshot.booking.remaining_intervals,
+                shortfall,
+            ),
+        )
