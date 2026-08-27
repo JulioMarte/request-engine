@@ -5,6 +5,13 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryCapacityCheckpoint:
+    projection_policy_revision: int
+    resource_availability_revision: int
+    location_operational_revision: int
+
+
+@dataclass(frozen=True, slots=True)
 class RecoveryCommitmentFact:
     reservation_id: UUID
     offering_version_id: UUID
@@ -26,6 +33,7 @@ class RecoveryCapacityAssessment:
     committed_capacity_seconds: int
     shortfall_seconds: int
     source_fingerprint: str
+    checkpoint: RecoveryCapacityCheckpoint
     affected_commitments: tuple[RecoveryCommitmentFact, ...]
 
 
