@@ -18,7 +18,6 @@ pytestmark = [
     pytest.mark.contract,
     pytest.mark.adversarial,
     pytest.mark.security,
-    pytest.mark.tenant_isolation,
 ]
 
 
