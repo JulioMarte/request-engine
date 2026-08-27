@@ -46,7 +46,7 @@ async def test_f5_identical_concurrent_execution_converges_on_one_booking_and_co
     reservation_id = UUID(affected["reservation_id"])
     before = reservation_state(e2e_admin_conn, reservation_id)
     before_revision = cast(int, before[0])
-    target_start = cast(str, affected["target"]["start_at"])
+    target_start = datetime.fromisoformat(cast(str, affected["target"]["start_at"]))
     idempotency_key = f"f5-race-execute-{uuid4().hex}"
 
     async with (
@@ -85,7 +85,7 @@ async def test_f5_identical_concurrent_execution_converges_on_one_booking_and_co
     after_revision = cast(int, after[0])
     assert after_revision == before_revision + 1
     assert after[1] == "confirmed"
-    assert cast(datetime, after[2]).isoformat() == target_start
+    assert cast(datetime, after[2]) == target_start
 
     row = execution_row(
         e2e_admin_conn,
