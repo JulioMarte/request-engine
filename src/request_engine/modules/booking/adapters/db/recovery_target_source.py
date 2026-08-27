@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.recovery_source_guards import (
     require_current_recovery_window,
+    require_recovery_source_revision,
     require_source_commitments,
     require_source_resource_revision,
 )
@@ -18,6 +19,12 @@ async def validate_recovery_source_checkpoint(
     source_observed_at: datetime,
     source_horizon_end: datetime,
 ) -> None:
+    await require_recovery_source_revision(
+        session,
+        organization_id=request.organization_id,
+        service_queue_id=request.source_service_queue_id,
+        expected_revision=request.expected_recovery_source_revision,
+    )
     await require_source_resource_revision(
         session,
         organization_id=request.organization_id,
