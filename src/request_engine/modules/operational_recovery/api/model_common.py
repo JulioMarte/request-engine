@@ -42,6 +42,7 @@ class RecoverySourceCheckpointView(BaseModel):
     projection_policy_revision: int
     resource_availability_revision: int
     location_operational_revision: int
+    recovery_source_revision: int
     commitments: tuple[RecoveryCommitmentCheckpointView, ...]
 
     @classmethod
@@ -53,6 +54,7 @@ class RecoverySourceCheckpointView(BaseModel):
             projection_policy_revision=item.projection_policy_revision,
             resource_availability_revision=item.resource_availability_revision,
             location_operational_revision=item.location_operational_revision,
+            recovery_source_revision=item.recovery_source_revision,
             commitments=tuple(
                 RecoveryCommitmentCheckpointView.from_contract(value) for value in item.commitments
             ),
