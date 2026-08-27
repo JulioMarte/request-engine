@@ -1,66 +1,96 @@
 # F5 Operational Recovery and Communications acceptance evidence
 
-Status: evidence ledger for the F5 completion gate in `32-operational-recovery-communications-contract.md`.
+Status: evidence ledger for the F5 explicit-recovery core completion gate in `32-operational-recovery-communications-contract.md`.
 
 This document records what has actually been demonstrated. It is intentionally stricter than a feature checklist: a scenario is not marked complete merely because related code exists or because an unrelated aggregate suite is green.
 
 ## Evidence baseline
 
-Validated feature head:
+Latest implementation/test head with exact-head CI currently validated before the documentation reconciliation commits:
 
 ```text
-e987ad426d56373673424c31a6b1b82867e3cb3b
+87284abc38b7e0d7064e8ce78b3b7eafae8d2393
 ```
 
 Pull request: `#81` (`feature/operational-recovery-communications` -> `development`).
 
-GitHub Actions run: `33071329389` / CI run `#2565`.
+GitHub Actions: CI run `#2572` on the SHA above, completed successfully, including Python quality/architecture and the PostgreSQL 18 current-product and aggregate V3 lanes.
 
-The run completed successfully. Its `PostgreSQL 18 current product proof` job ran the repository current-product harness against PostgreSQL 18.6, upgraded through `0008_operational_recovery`, and reported:
+The hardening between the earlier evidence ledger and this SHA added direct invariant coverage for live recovery semantics:
 
-```text
-224 passed, 2 deselected
-```
+- `tests/modules/live_capacity/test_recovery_affected_selection.py`
+- `tests/modules/live_capacity/test_recovery_pressure.py`
+- `tests/modules/live_capacity/test_recovery_source_fingerprint.py`
 
-The aggregate `PostgreSQL 18 V3 candidate and verticals` job also completed successfully, as did Python quality/architecture, V2 design history, repeated V3 bootstrap, frozen V3 compatibility, and observability runtime contract.
+The final documentation descendant still requires its own exact-head CI. A green run for `87284abc...` does not prove a later documentation/code SHA.
 
-This SHA is historical evidence for the implementation state immediately before the documentation-only scope/evidence closure commits. The final branch head still requires its own exact-head CI before merge.
+## What changed during adversarial closure
+
+The recovery source previously rebuilt F4 with `work_items=()`. That was not valid operational recovery: Queue/ServiceSession pressure could make the day unrealistic while F5 still saw only scheduled Booking commitments. The current implementation now:
+
+1. shares canonical F4 projection assembly with the staff projection;
+2. includes deduplicated active/queued/planned live work and blocker state;
+3. computes structural scheduled shortfall separately from incremental live pressure;
+4. preserves the rule that schedule loss cannot mark a still-fitting Reservation merely to numerically fill a shortfall;
+5. lets genuine live pressure deterministically displace latest still-planned commitments;
+6. includes live work/progress/blockers in the source fingerprint so operational changes stale old proposals.
+
+The previous documentation also claimed a PostgreSQL advisory recovery-execution lock. No such primitive exists in the implementation. That claim has been removed. The actual protocol is durable F5 uniqueness + stable Booking idempotency + Booking transactional guards + conditional F5 transitions + Communications dedupe/conditional attachment.
 
 ## Contract scenario traceability
 
-| Contract scenario / guarantee | Durable proof at validated SHA | Result | Disposition |
+| Contract scenario / guarantee | Durable proof at validated implementation SHA | Result | Disposition |
 | --- | --- | --- | --- |
-| A — material shortfall uses authoritative capacity/commitment semantics | F4/Booking current-product PostgreSQL proofs plus `tests/modules/live_capacity/test_recovery_affected_selection.py` protect affected-selection semantics | PASS as component evidence | The exact 10 -> 6 -> deterministic 4 narrative is not represented as one monolithic E2E; the guarantee is split by owning boundaries. Do not claim an affected-count-only test as sufficient. |
-| A — affected set excludes still-executable Reservations | `tests/modules/live_capacity/test_recovery_affected_selection.py` | PASS in Python quality/module suite | Regression proof added during F5 hardening after the naive shortfall-fill algorithm was removed. |
-| A — broken current supply cannot accept new intake | existing Booking/F1/F4 PostgreSQL capacity and closure/revalidation proofs in the current-product gate | PASS as reused authority | F5 owns no intake switch; this is deliberately reused Booking authority. |
-| B — proposal is immutable/read-only and creates no recovery execution or communication intent | F5 proposal repository/service implementation plus current E2E public-surface/security coverage | PASS as distributed evidence | Proposal semantics are implemented, but a single named scenario-B journey remains desirable if future changes make this boundary less obvious. |
+| A — structural schedule shortfall does not fill affected set with still-executable Reservations | `tests/modules/live_capacity/test_recovery_affected_selection.py` | PASS | Direct regression proof for the bug found during F5 hardening. |
+| A — live Queue/ServiceSession pressure participates in recovery materiality | `tests/modules/live_capacity/test_recovery_pressure.py` plus shared `assemble_live_capacity_projection` path | PASS at invariant/component level | Directly proves the materiality formula; the full PostgreSQL 10->6 plus live-overrun narrative is not yet one named F5 E2E. |
+| A — live pressure deterministically displaces latest future commitments | `tests/modules/live_capacity/test_recovery_affected_selection.py` | PASS | Direct deterministic policy proof. |
+| A/C — live operational changes invalidate recovery freshness | `tests/modules/live_capacity/test_recovery_source_fingerprint.py` | PASS | Fingerprint changes with live service progress and blockers. |
+| A — broken current supply cannot accept new intake | existing Booking/F1/F4 PostgreSQL capacity/closure/revalidation proofs | PASS as reused authority | This proves natural Booking enforcement, not a distinct explicit operator stop-intake policy. |
+| B — proposal is immutable at the F5 persistence boundary | migration trigger `guard_operational_recovery_proposal` plus bootstrap/current-product migration lanes | PASS at schema level | The schema rejects UPDATE/DELETE and app role has SELECT/INSERT only. A named journey asserting zero Booking/Communications side effects remains desirable. |
 | B — contextual targets are not falsely actionable | `tests/modules/operational_recovery/test_recovery_target_policy.py` | PASS | Explicit fail-closed coverage for unsupported contextual reschedule. |
-| C — stale proposal cannot mutate Booking or create notification/outbox effects | F5 execution stale guards and current-product E2E recovery coverage exercised inside `tests/e2e` | PASS in aggregate current-product run | Negative-side-effect semantics are contract requirements; keep them explicit when this suite is refactored. |
-| D — exact replay/concurrent execution converges on one recovery action | F5 durable uniqueness/advisory execution serialization plus current-product E2E | PASS in aggregate current-product run | PostgreSQL-backed execution path was included in the 224-test E2E run. |
-| D — successful Booking recovery has stable Communications lineage/dedupe | F5 Recovery -> Communications integration plus Communications E2E durability/worker suites | PASS | Communications remains the delivery authority. |
-| D — provider/worker retry does not duplicate the business mutation | Communications worker/reconciliation E2E, including `tests/e2e/test_communication_worker_resilience.py` and provider-result/lease/fence coverage | PASS | Repair is Communications-only after Booking success. |
-| Public F5 HTTP surface is classified and capability metadata is frozen | `tests/e2e/http_surface_f5.py` + `tests/e2e/test_public_surface_contract.py` | PASS | Prevents silent public-surface growth and checks capability/idempotency metadata. |
+| C — stale source cannot legally reschedule through Booking | F5 source fingerprint/revalidation plus Booking recovery source/revision/target guards exercised by the current product PostgreSQL suite | PASS as composed guard evidence | This is stronger than HTTP-only evidence, but a single named stale F5 journey that inspects Reservation + execution + CommunicationTask + outbox remains an open evidence gap. |
+| D — durable duplicate execution identity | migration uniqueness on proposal/Reservation and actor/idempotency identities; stable execution fingerprint/unit coverage | PASS at persistence/contract level | Prevents two logical F5 execution identities for the same proposal/Reservation. |
+| D — Booking replay identity is stable | `recovery:{execution_id}:booking:v1` in execution orchestration + Booking idempotent reschedule authority | PASS as composition evidence | A real two-client race remains the required strongest proof of convergence. |
+| D — Communications dedupe/attachment identity is stable | execution-derived notification idempotency/dedupe + conditional attachment; existing Communications PostgreSQL durability/worker tests | PASS as composition evidence | A named end-to-end F5 race asserting one task/outbox is still open evidence. |
+| Public F5 HTTP surface is classified and capability metadata is frozen | `tests/e2e/http_surface_f5.py` + `tests/e2e/test_public_surface_contract.py` | PASS | Surface/security metadata proof, not recovery semantic acceptance. |
 
-## Acceptance interpretation
+## Evidence gaps that must not be waved through
 
-The validated CI proves the current product tree, migration head, HTTP/runtime journeys and PostgreSQL-backed regression suites were green together. It does **not** redefine the roadmap: scope truth comes from contract 32 and the explicit roadmap disposition in document 33.
+The following direct PostgreSQL journeys are still stronger than the current distributed evidence and are required before this ledger may describe the explicit F5 core as fully acceptance-proven:
 
-The repository evidence policy also does not require every guarantee to live in a file named `test_f5_acceptance_*`. Physical placement follows owning boundary. What is required is traceability from a normative guarantee to falsifiable durable proof and the canonical lane that executed it.
+1. **Scenario A journey:** authoritative 10 commitments -> 6 executable, exact four structurally affected identities, plus a separate live-overrun case proving Queue/ServiceSession pressure.
+2. **Scenario B journey:** proposal creation with authoritative before/after checks proving zero Reservation mutation, zero RecoveryExecution and zero Communications/outbox intent.
+3. **Scenario C journey:** create proposal, advance authoritative source/live truth, execute, observe `STALE_RECOVERY_PROPOSAL`, and inspect zero recovery-caused Reservation/notification/outbox effects.
+4. **Scenario D race:** two concurrent identical executions against PostgreSQL, asserting one logical Booking transition, one F5 execution identity, one CommunicationTask/dedupe lineage and correct final Reservation state.
 
-Where the table above says `distributed evidence`, future refactoring must preserve the guarantee rather than the historical filename. If a future reviewer cannot identify the negative side effects or authoritative state asserted by the referenced proof, that row must be strengthened rather than waved through because CI is green.
+Until those journeys exist, aggregate current-product success is valuable regression evidence but MUST NOT be described as if it were direct scenario C/D acceptance evidence.
 
 ## Scope truth at closure
 
-F5 v1 delivers immutable recovery proposals, deterministic affected-Reservation provenance, supported one-shot Booking reschedule orchestration, stale/idempotency protection, actor attribution, and bounded Recovery -> Communications lineage with durable Communications reliability semantics.
+The current F5 core delivers:
 
-It does not claim to deliver contextual/cadence-backed reschedule, an F5-owned stop-intake switch, extend-day ScheduleException execution, autonomous replacement selection, or a generalized recovery workflow engine. Their authoritative dispositions are recorded in document 33.
+- canonical F4-derived recovery materiality including live workload;
+- immutable recovery proposals and deterministic affected-Reservation provenance;
+- supported one-shot Booking reschedule orchestration;
+- stale/idempotency guards and actor attribution;
+- bounded Recovery -> Communications lineage with durable owner-controlled reliability semantics.
+
+The broader original roadmap still has explicit future work:
+
+- automatic event-triggered reprojection/escalation;
+- explicit operator stop-intake policy beyond natural Booking capacity rejection;
+- extend-day ScheduleException recovery execution;
+- contextual/cadence-backed and generalized replacement reschedule.
+
+These are not renamed away by calling the current core “F5”. Their authoritative disposition is document 33.
 
 ## Final merge gate
 
-Because evidence is exact-head, this ledger cannot make a later commit green retroactively. Before PR #81 is marked ready to merge:
+PR #81 should remain draft while the four direct PostgreSQL journeys above are absent. Before marking the explicit F5 core ready to merge:
 
-1. run CI on the final branch head;
-2. require `PostgreSQL 18 current product proof` success on that head;
-3. require the aggregate `PostgreSQL 18 V3 candidate and verticals` success;
-4. verify no new unsupported recovery target is exposed as actionable;
-5. update this ledger's final-head record only after those results exist.
+1. add the direct scenario A-D PostgreSQL journeys or explicitly amend the contract/evidence policy through a separate accepted architecture decision rather than silently lowering it;
+2. run CI on the final branch head;
+3. require `PostgreSQL 18 current product proof` success on that head;
+4. require the aggregate `PostgreSQL 18 V3 candidate and verticals` success;
+5. verify no unsupported contextual recovery target is exposed as actionable;
+6. record the exact final SHA/run here only after those results exist.
