@@ -5,7 +5,6 @@ from request_engine.platform.security.capability_types import (
     query_capability,
 )
 
-
 OPERATIONAL_RECOVERY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "operational_recovery.read",
