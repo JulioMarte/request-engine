@@ -107,13 +107,21 @@ DECLARE
     v_queue_entry_id uuid;
     v_queue_id uuid;
 BEGIN
-    v_organization_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.organization_id ELSE NEW.organization_id END;
-    v_queue_entry_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.queue_entry_id ELSE NEW.queue_entry_id END;
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_queue_entry_id := OLD.queue_entry_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_queue_entry_id := NEW.queue_entry_id;
+    END IF;
     SELECT service_queue_id INTO v_queue_id
     FROM request_engine.queue_entries
     WHERE organization_id = v_organization_id AND id = v_queue_entry_id;
     PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END
 $function$;
 
@@ -132,15 +140,23 @@ DECLARE
     v_session_id uuid;
     v_queue_id uuid;
 BEGIN
-    v_organization_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.organization_id ELSE NEW.organization_id END;
-    v_session_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.service_session_id ELSE NEW.service_session_id END;
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_session_id := OLD.service_session_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_session_id := NEW.service_session_id;
+    END IF;
     SELECT q.service_queue_id INTO v_queue_id
     FROM request_engine.service_sessions s
     JOIN request_engine.queue_entries q
       ON q.organization_id = s.organization_id AND q.id = s.queue_entry_id
     WHERE s.organization_id = v_organization_id AND s.id = v_session_id;
     PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END
 $function$;
 
@@ -160,9 +176,15 @@ DECLARE
     v_location_id uuid;
     v_queue_id uuid;
 BEGIN
-    v_organization_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.organization_id ELSE NEW.organization_id END;
-    v_resource_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.resource_id ELSE NEW.resource_id END;
-    v_location_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.location_id ELSE NEW.location_id END;
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+        v_resource_id := OLD.resource_id;
+        v_location_id := OLD.location_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+        v_resource_id := NEW.resource_id;
+        v_location_id := NEW.location_id;
+    END IF;
     FOR v_queue_id IN
         SELECT service_queue_id
         FROM request_engine.live_capacity_projection_policies
@@ -172,7 +194,10 @@ BEGIN
     LOOP
         PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
     END LOOP;
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END
 $function$;
 
@@ -215,7 +240,11 @@ DECLARE
     v_organization_id uuid;
     v_queue_id uuid;
 BEGIN
-    v_organization_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.organization_id ELSE NEW.organization_id END;
+    IF TG_OP = 'DELETE' THEN
+        v_organization_id := OLD.organization_id;
+    ELSE
+        v_organization_id := NEW.organization_id;
+    END IF;
     FOR v_queue_id IN
         SELECT service_queue_id
         FROM request_engine.live_capacity_projection_policies
@@ -223,7 +252,10 @@ BEGIN
     LOOP
         PERFORM request_engine.bump_recovery_source_revision(v_organization_id, v_queue_id);
     END LOOP;
-    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
 END
 $function$;
 
