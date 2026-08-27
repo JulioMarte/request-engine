@@ -38,7 +38,11 @@ def use_five_minute_slots(conn: PgConnection, sandbox: TenantSandbox) -> None:
         "UPDATE request_engine.offering_versions "
         "SET duration_minutes=5, booking_policy=%s::jsonb "
         "WHERE organization_id=%s AND id=%s",
-        (json.dumps({"slot_step_minutes": 5}), sandbox.organization_id, sandbox.offering_version_id),
+        (
+            json.dumps({"slot_step_minutes": 5}),
+            sandbox.organization_id,
+            sandbox.offering_version_id,
+        ),
     )
 
 
@@ -105,7 +109,12 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
         "INSERT INTO request_engine.resources "
         "(organization_id,location_id,resource_key,display_name,capacity_model,capacity_units) "
         "VALUES (%s,%s,%s,%s,'exclusive',1) RETURNING id",
-        (sandbox.organization_id, sandbox.location_id, f"recovery-{uuid4().hex}", "Recovery resource"),
+        (
+            sandbox.organization_id,
+            sandbox.location_id,
+            f"recovery-{uuid4().hex}",
+            "Recovery resource",
+        ),
     ).fetchone()
     assert resource is not None
     resource_id = cast(UUID, resource[0])
