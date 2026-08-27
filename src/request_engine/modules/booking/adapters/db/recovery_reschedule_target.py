@@ -14,10 +14,8 @@ from request_engine.modules.booking.adapters.db.recovery_reschedule_support impo
     load_active_recovery_claims,
     source_claims_are_contextual,
 )
-from request_engine.modules.booking.adapters.db.recovery_source_guards import (
-    require_current_recovery_window,
-    require_source_commitments,
-    require_source_resource_revision,
+from request_engine.modules.booking.adapters.db.recovery_target_source import (
+    validate_recovery_source_checkpoint,
 )
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     load_requirements,
@@ -72,24 +70,11 @@ async def prepare_target_mutation(
         organization_id=request.organization_id,
         resource_ids=resource_ids,
     )
-    await require_source_resource_revision(
+    await validate_recovery_source_checkpoint(
         session,
-        organization_id=request.organization_id,
-        resource_id=request.source_resource_id,
-        expected_revision=request.expected_source_resource_availability_revision,
-    )
-    await require_source_commitments(
-        session,
-        organization_id=request.organization_id,
-        resource_id=request.source_resource_id,
-        location_id=request.source_location_id,
-        observed_at=source_observed_at,
-        horizon_end=source_horizon_end,
-        expected=request.expected_source_commitments,
-    )
-    await require_current_recovery_window(
-        session,
+        request=request,
         target_start_at=start_at,
+        source_observed_at=source_observed_at,
         source_horizon_end=source_horizon_end,
     )
     selected = {resource_id: resources[resource_id] for resource_id in set(new_resource_ids)}
