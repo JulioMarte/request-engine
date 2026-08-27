@@ -79,15 +79,24 @@ SET search_path = request_engine, pg_catalog
 AS $function$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        PERFORM request_engine.bump_recovery_source_revision(OLD.organization_id, OLD.service_queue_id);
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
         RETURN OLD;
     END IF;
     IF TG_OP = 'UPDATE'
        AND (OLD.organization_id, OLD.service_queue_id)
            IS DISTINCT FROM (NEW.organization_id, NEW.service_queue_id) THEN
-        PERFORM request_engine.bump_recovery_source_revision(OLD.organization_id, OLD.service_queue_id);
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
     END IF;
-    PERFORM request_engine.bump_recovery_source_revision(NEW.organization_id, NEW.service_queue_id);
+    PERFORM request_engine.bump_recovery_source_revision(
+        NEW.organization_id,
+        NEW.service_queue_id
+    );
     RETURN NEW;
 END
 $function$;
@@ -213,15 +222,24 @@ SET search_path = request_engine, pg_catalog
 AS $function$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        PERFORM request_engine.bump_recovery_source_revision(OLD.organization_id, OLD.service_queue_id);
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
         RETURN OLD;
     END IF;
     IF TG_OP = 'UPDATE'
        AND (OLD.organization_id, OLD.service_queue_id)
            IS DISTINCT FROM (NEW.organization_id, NEW.service_queue_id) THEN
-        PERFORM request_engine.bump_recovery_source_revision(OLD.organization_id, OLD.service_queue_id);
+        PERFORM request_engine.bump_recovery_source_revision(
+            OLD.organization_id,
+            OLD.service_queue_id
+        );
     END IF;
-    PERFORM request_engine.bump_recovery_source_revision(NEW.organization_id, NEW.service_queue_id);
+    PERFORM request_engine.bump_recovery_source_revision(
+        NEW.organization_id,
+        NEW.service_queue_id
+    );
     RETURN NEW;
 END
 $function$;
@@ -299,7 +317,8 @@ BEGIN
       AND service_queue_id = p_service_queue_id
     FOR UPDATE;
     IF v_revision IS NULL THEN
-        RAISE EXCEPTION 'Recovery source revision is not configured for queue %', p_service_queue_id
+        RAISE EXCEPTION 'Recovery source revision is not configured for queue %',
+            p_service_queue_id
           USING ERRCODE = '23514';
     END IF;
     RETURN v_revision;
