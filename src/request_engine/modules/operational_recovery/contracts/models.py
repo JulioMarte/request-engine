@@ -1,8 +1,22 @@
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
+
+
+class RecoveryExecutionStatus(StrEnum):
+    PREPARED = "prepared"
+    SUCCEEDED = "succeeded"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class RecoverySourceCheckpoint:
+    projection_policy_revision: int
+    resource_availability_revision: int
+    location_operational_revision: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +49,7 @@ class RescheduleProposal:
     observed_at: datetime
     horizon_end: datetime
     source_fingerprint: str
+    source_checkpoint: RecoverySourceCheckpoint
     proposal_fingerprint: str
     executable_capacity_seconds: int
     committed_capacity_seconds: int
@@ -54,8 +69,11 @@ class RecoveryExecution:
     id: UUID
     proposal_id: UUID
     reservation_id: UUID
+    status: RecoveryExecutionStatus
     original_reservation_revision: int
-    resulting_reservation_revision: int
+    resulting_reservation_revision: int | None
     target: RecoveryTarget
-    executed_at: datetime
+    created_at: datetime
+    completed_at: datetime | None
+    failure_code: str | None
     notification: OperationalNotification
