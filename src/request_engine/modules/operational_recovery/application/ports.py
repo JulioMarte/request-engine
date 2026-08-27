@@ -12,6 +12,7 @@ from request_engine.modules.operational_recovery.contracts.models import (
 class RecoveryExecutionRecord:
     execution: RecoveryExecution
     command_fingerprint: str
+    created: bool
 
 
 class RecoveryRepository(Protocol):
