@@ -17,6 +17,7 @@ def proposal_from_row(row: RowMapping) -> RescheduleProposal:
     raw = cast(dict[str, object], row["snapshot"])
     affected = cast(list[dict[str, object]], raw["affected"])
     checkpoint = cast(dict[str, object], raw["source_checkpoint"])
+    source_snapshot = cast(dict[str, object], raw["source_snapshot"])
     return RescheduleProposal(
         id=cast(UUID, row["id"]),
         service_queue_id=cast(UUID, row["service_queue_id"]),
@@ -25,6 +26,7 @@ def proposal_from_row(row: RowMapping) -> RescheduleProposal:
         observed_at=cast(datetime, row["observed_at"]),
         horizon_end=cast(datetime, row["horizon_end"]),
         source_fingerprint=cast(str, row["source_fingerprint"]),
+        source_snapshot=source_snapshot,
         source_checkpoint=checkpoint_from_json(checkpoint),
         proposal_fingerprint=cast(str, row["proposal_fingerprint"]),
         executable_capacity_seconds=cast(int, row["executable_capacity_seconds"]),
@@ -47,6 +49,7 @@ def with_created_at(
         observed_at=proposal.observed_at,
         horizon_end=proposal.horizon_end,
         source_fingerprint=proposal.source_fingerprint,
+        source_snapshot=proposal.source_snapshot,
         source_checkpoint=proposal.source_checkpoint,
         proposal_fingerprint=proposal.proposal_fingerprint,
         executable_capacity_seconds=proposal.executable_capacity_seconds,
