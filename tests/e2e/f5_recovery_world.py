@@ -8,9 +8,9 @@ from httpx import AsyncClient
 
 from .f4_capacity_support import seed_today_schedule
 from .f4_operational_day_support import configure_projection
+from .f5_booking_fixture import five_minute_sandbox
 from .f5_recovery_support import (
     book_commitments,
-    five_minute_sandbox,
     restrict_source_to_first_six,
     seed_replacement_resource,
 )
