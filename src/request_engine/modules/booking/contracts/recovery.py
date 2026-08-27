@@ -19,6 +19,14 @@ class RecoveryTargetUnavailable(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryCommitmentCheckpoint:
+    reservation_id: UUID
+    revision: int
+    starts_at: datetime
+    ends_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class RecoveryRescheduleRequest:
     organization_id: UUID
     principal_id: UUID
@@ -31,15 +39,14 @@ class RecoveryRescheduleRequest:
     expected_source_resource_availability_revision: int
     source_location_id: UUID
     expected_source_location_operational_revision: int
+    source_observed_at: datetime
+    source_horizon_end: datetime
+    expected_source_commitments: tuple[RecoveryCommitmentCheckpoint, ...]
     idempotency_key: str
     allow_subject_override: bool
 
 
 class RecoveryBookingPort(Protocol):
-    async def get_reservation(
-        self, *, organization_id: UUID, reservation_id: UUID
-    ) -> Reservation | None: ...
-
     async def find_recovery_slots(
         self,
         *,
