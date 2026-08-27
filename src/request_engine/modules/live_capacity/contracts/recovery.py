@@ -29,6 +29,7 @@ class RecoveryCommitmentFact:
     planned_starts_at: datetime
     planned_ends_at: datetime
     planned_duration_seconds: int
+    contextual_commitment: bool
 
 
 @dataclass(frozen=True, slots=True)
