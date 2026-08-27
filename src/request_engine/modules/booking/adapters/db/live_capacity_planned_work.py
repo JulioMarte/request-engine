@@ -22,7 +22,7 @@ async def load_planned_same_day_work(
             await session.execute(
                 text(
                     """
-                    SELECT DISTINCT r.id, r.offering_version_id,
+                    SELECT DISTINCT r.id, r.offering_version_id, r.subject_party_id, r.revision,
                            lower(r.during) AS starts_at,
                            upper(r.during) AS ends_at
                     FROM request_engine.reservations r
@@ -59,12 +59,10 @@ async def load_planned_same_day_work(
             planned_ends_at=cast(datetime, row["ends_at"]),
             planned_duration_seconds=max(
                 0,
-                int(
-                    (
-                        cast(datetime, row["ends_at"]) - cast(datetime, row["starts_at"])
-                    ).total_seconds()
-                ),
+                int((cast(datetime, row["ends_at"]) - cast(datetime, row["starts_at"])).total_seconds()),
             ),
+            subject_party_id=cast(UUID, row["subject_party_id"]),
+            reservation_revision=cast(int, row["revision"]),
         )
         for row in rows
     )
