@@ -14,15 +14,17 @@ from request_engine.modules.live_capacity.application.projection_assembly import
     existing_work,
     has_open_interruption,
 )
+from request_engine.modules.live_capacity.application.recovery_assessment import (
+    build_recovery_checkpoint,
+    recovery_pressure,
+)
 from request_engine.modules.live_capacity.application.recovery_policy import (
     affected_recovery_commitments,
 )
 from request_engine.modules.live_capacity.application.sources import LiveCapacitySources
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
-    RecoveryCapacityCheckpoint,
     RecoveryCapacitySource,
-    RecoveryCommitmentCheckpoint,
 )
 from request_engine.platform.db.read_snapshot import postgres_snapshot_session, tenant_read_snapshot
 from request_engine.platform.db.session import SessionFactory
@@ -77,34 +79,12 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
 
         planned = tuple(snapshot.booking.planned_same_day_work)
         live_work = existing_work(snapshot)
-        checkpoint = RecoveryCapacityCheckpoint(
-            projection_policy_revision=snapshot.policy.revision,
+        checkpoint = build_recovery_checkpoint(
+            snapshot,
             resource_availability_revision=cast(int, revisions["availability_revision"]),
             location_operational_revision=cast(int, revisions["operational_revision"]),
-            commitments=tuple(
-                RecoveryCommitmentCheckpoint(
-                    reservation_id=item.reservation_id,
-                    revision=item.reservation_revision,
-                    starts_at=item.planned_starts_at,
-                    ends_at=item.planned_ends_at,
-                )
-                for item in sorted(
-                    planned,
-                    key=lambda value: (value.planned_starts_at, str(value.reservation_id)),
-                )
-            ),
         )
-        executable = projection.remaining_operational_seconds
-        committed = projection.scheduled_committed_workload_seconds or 0
-        scheduled_shortfall = max(committed - executable, 0)
-        projected_workload = projection.projected_remaining_workload_seconds
-        live_shortfall = (
-            scheduled_shortfall
-            if projected_workload is None
-            else max(projected_workload - executable, 0)
-        )
-        shortfall = max(scheduled_shortfall, live_shortfall)
-        live_pressure = max(shortfall - scheduled_shortfall, 0)
+        committed, shortfall, live_pressure = recovery_pressure(projection)
         open_interruption = has_open_interruption(snapshot)
         open_resource_activity = snapshot.delivery.open_resource_activity is not None
 
@@ -114,7 +94,7 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             location_id=snapshot.policy.location_id,
             observed_at=snapshot.observed_at,
             horizon_end=snapshot.booking.horizon_end,
-            executable_capacity_seconds=executable,
+            executable_capacity_seconds=projection.remaining_operational_seconds,
             committed_capacity_seconds=committed,
             shortfall_seconds=shortfall,
             source_fingerprint=source_fingerprint(
