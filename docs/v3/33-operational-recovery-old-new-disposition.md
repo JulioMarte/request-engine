@@ -20,6 +20,24 @@ F5 composes existing authorities. It does not rename pre-existing concepts into 
 | Analytics/reporting operational calculations | DO NOT REUSE AS AUTHORITY | Reporting may consume F5 facts later but cannot independently determine shortfall/affected commitments. |
 | Generic workflow engine | DO NOT CREATE | V1 is proposal + one-shot execution, not a long-lived RecoveryWorkflow. |
 
+## Roadmap scope disposition
+
+The roadmap intentionally described the broader recovery product direction. Contract 32 narrows the first executable F5 slice. The following table is the authoritative disposition of that delta; `deferred` does not mean silently delivered by F5.
+
+| Roadmap recovery capability | F5 v1 disposition | Authority / follow-up |
+| --- | --- | --- |
+| review affected Reservations after material capacity loss | DELIVERED | F4 publishes the authoritative recovery capacity source; F5 persists deterministic affected Reservation provenance in immutable proposals. |
+| one-shot Reservation reschedule after explicit selection/revalidation | DELIVERED | F5 orchestrates; Booking remains the only Reservation/capacity mutation authority. |
+| contextual/cadence-backed reschedule | UNSUPPORTED / DEFERRED | Booking must first evolve its own reschedule transaction to revalidate contextual assignment/location/commercial provenance. F5 fails closed and must not advertise these targets as actionable. |
+| stop new intake from consuming broken capacity | REUSED / PROVED, NOT F5-OWNED | Existing Booking/capacity authority must reject consumption that current schedule/supply no longer permits. F5 introduces no second intake switch. |
+| extend the day via one-day ScheduleException | DEFERRED | ScheduleException already belongs to Booking/operational-profile configuration. F5 v1 does not expose an extend-day recovery action or silently create exceptions. A future recovery composition capability requires a contract amendment and explicit authorization semantics. |
+| find replacement provider/resource options | PARTIAL / DEFERRED | V1 may propose Booking-owned alternatives for the supported one-shot reschedule path. It is not a generalized replacement/remediation workflow and does not autonomously select a replacement provider. |
+| communicate impact to affected customers | DELIVERED | A successful explicit recovery execution can create a bounded Communications intent with durable lineage and stable dedupe identity. |
+| durable retry, provider-result reconciliation, leases/fencing | DELIVERED BY COMMUNICATIONS | These are Communications-owned reliability semantics reused by F5; F5 does not create a parallel delivery subsystem. |
+| generalized multi-action recovery workflow | EXPLICIT NON-GOAL / DEFERRED | F5 v1 remains immutable proposal + one-shot execution. A long-lived workflow engine requires a new product/contract decision. |
+
+This disposition is part of F5 completion truth. Therefore "F5 complete" means complete against contract 32 plus the delivered/reused rows above; it does **not** mean that every potential action named by the roadmap has been implemented.
+
 ## New F5-owned persistence
 
 F5 introduces exactly two durable concepts:
