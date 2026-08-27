@@ -4,9 +4,16 @@ from uuid import UUID
 
 import pytest
 
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
-from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
-from request_engine.modules.operational_recovery.application.fingerprints import execution_fingerprint
+from request_engine.modules.booking.contracts.appointments import (
+    AppointmentSlot,
+    ResourceChoice,
+)
+from request_engine.modules.operational_recovery.application.commands import (
+    ExecuteRecoveryCommand,
+)
+from request_engine.modules.operational_recovery.application.fingerprints import (
+    execution_fingerprint,
+)
 from request_engine.modules.operational_recovery.application.proposal_policy import (
     choose_recovery_target,
 )
