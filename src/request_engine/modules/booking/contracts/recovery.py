@@ -35,6 +35,8 @@ class RecoveryRescheduleRequest:
     start_at: datetime
     location_id: UUID | None
     resources: tuple[ResourceChoice, ...]
+    source_service_queue_id: UUID
+    expected_recovery_source_revision: int
     source_resource_id: UUID
     expected_source_resource_availability_revision: int
     source_location_id: UUID
