@@ -57,7 +57,7 @@ async def find_proposal_replay(
         "idempotency_key": idempotency_key,
     }
     async with tenant_transaction(factory, organization_id) as session:
-        row = ((await session.execute(text(_REPLAY), params)).mappings().one_or_none())
+        row = (await session.execute(text(_REPLAY), params)).mappings().one_or_none()
     if row is None:
         return None
     if cast(str, row["command_fingerprint"]) != command_fingerprint:

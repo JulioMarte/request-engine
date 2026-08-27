@@ -54,8 +54,7 @@ class RecoverySourceCheckpointView(BaseModel):
             resource_availability_revision=item.resource_availability_revision,
             location_operational_revision=item.location_operational_revision,
             commitments=tuple(
-                RecoveryCommitmentCheckpointView.from_contract(value)
-                for value in item.commitments
+                RecoveryCommitmentCheckpointView.from_contract(value) for value in item.commitments
             ),
         )
 

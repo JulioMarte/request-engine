@@ -73,8 +73,7 @@ async def load_planned_same_day_work(
                 0,
                 int(
                     (
-                        cast(datetime, row["ends_at"])
-                        - cast(datetime, row["starts_at"])
+                        cast(datetime, row["ends_at"]) - cast(datetime, row["starts_at"])
                     ).total_seconds()
                 ),
             ),

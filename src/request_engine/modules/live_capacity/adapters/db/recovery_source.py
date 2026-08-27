@@ -75,7 +75,9 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                             "location_id": snapshot.policy.location_id,
                         },
                     )
-                ).mappings().one()
+                )
+                .mappings()
+                .one()
             )
         planned = tuple(snapshot.booking.planned_same_day_work)
         checkpoint = RecoveryCapacityCheckpoint(

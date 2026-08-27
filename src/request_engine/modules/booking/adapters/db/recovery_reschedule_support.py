@@ -64,14 +64,11 @@ async def load_active_recovery_claims(
         .all()
     )
     if not rows:
-        raise BookingConfigurationError(
-            f"Reservation {reservation_id} has no active claims"
-        )
+        raise BookingConfigurationError(f"Reservation {reservation_id} has no active claims")
     return tuple(rows)
 
 
 def source_claims_are_contextual(claims: tuple[RowMapping, ...]) -> bool:
     return any(
-        cast(UUID | None, row["resource_location_assignment_id"]) is not None
-        for row in claims
+        cast(UUID | None, row["resource_location_assignment_id"]) is not None for row in claims
     )

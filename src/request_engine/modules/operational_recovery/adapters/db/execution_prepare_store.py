@@ -40,9 +40,7 @@ async def prepare_execution(
     reservation_id: UUID,
     notification_requested: bool,
 ) -> RecoveryExecutionRecord:
-    affected = next(
-        item for item in proposal.affected if item.reservation_id == reservation_id
-    )
+    affected = next(item for item in proposal.affected if item.reservation_id == reservation_id)
     if affected.target is None:
         raise RuntimeError("cannot prepare recovery execution without a target")
     params = {
@@ -59,7 +57,7 @@ async def prepare_execution(
         "notification_requested": notification_requested,
     }
     async with tenant_transaction(factory, organization_id) as session:
-        row = ((await session.execute(text(_INSERT), params)).mappings().one_or_none())
+        row = (await session.execute(text(_INSERT), params)).mappings().one_or_none()
         created = row is not None
         if row is None:
             row = await find_execution_conflict(

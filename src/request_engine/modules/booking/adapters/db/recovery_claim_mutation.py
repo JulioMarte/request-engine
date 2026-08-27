@@ -33,8 +33,7 @@ async def replace_capacity_claims(
     end_at: datetime,
 ) -> None:
     old_by_requirement = {
-        cast(UUID, row["requirement_id"]): cast(UUID, row["id"])
-        for row in old_claims
+        cast(UUID, row["requirement_id"]): cast(UUID, row["id"]) for row in old_claims
     }
     if set(old_by_requirement) != set(requirements):
         raise RuntimeError("Reservation no longer has the canonical claim set")

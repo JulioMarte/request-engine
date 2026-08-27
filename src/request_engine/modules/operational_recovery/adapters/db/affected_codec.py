@@ -31,10 +31,6 @@ def affected_from_json(raw: dict[str, object]) -> AffectedReservation:
         expected_revision=cast(int, raw["expected_revision"]),
         original_start_at=datetime.fromisoformat(cast(str, raw["original_start_at"])),
         original_end_at=datetime.fromisoformat(cast(str, raw["original_end_at"])),
-        target=(
-            target_from_json(cast(dict[str, object], target))
-            if target is not None
-            else None
-        ),
+        target=(target_from_json(cast(dict[str, object], target)) if target is not None else None),
         contextual_commitment=cast(bool, raw.get("contextual_commitment", False)),
     )

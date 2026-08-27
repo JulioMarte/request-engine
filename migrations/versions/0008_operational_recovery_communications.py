@@ -224,6 +224,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError(
-        "0008 introduces durable F5 recovery facts and is not reversible in place"
-    )
+    raise RuntimeError("0008 introduces durable F5 recovery facts and is not reversible in place")
