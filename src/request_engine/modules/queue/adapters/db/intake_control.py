@@ -1,16 +1,12 @@
-from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
-
 from request_engine.modules.queue.adapters.db.intake_control_codec import (
     intake_state_from_json,
-    intake_state_from_row,
     intake_state_to_json,
 )
 from request_engine.modules.queue.adapters.db.intake_control_store import load_intake_control
+from request_engine.modules.queue.adapters.db.intake_control_write import update_intake_control
 from request_engine.modules.queue.contracts.intake import (
     QueueIntakeControlPort,
     QueueIntakeControlState,
@@ -65,9 +61,7 @@ class PostgresQueueIntakeControl(QueueIntakeControlPort):
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return intake_state_from_json(
-                    cast(dict[str, object], replay["intake_control"])
-                )
+                return intake_state_from_json(cast(dict[str, object], replay["intake_control"]))
             current = await load_intake_control(
                 session,
                 organization_id=request.organization_id,
@@ -80,37 +74,8 @@ class PostgresQueueIntakeControl(QueueIntakeControlPort):
                     request.expected_revision,
                     current.revision,
                 )
-            row = (
-                (
-                    await session.execute(
-                        text(
-                            """
-                            UPDATE request_engine.service_queue_intake_controls
-                            SET accepting = :accepting, reason = :reason,
-                                effective_until = :effective_until,
-                                revision = revision + 1,
-                                updated_by_principal_id = :principal_id,
-                                updated_at = clock_timestamp()
-                            WHERE organization_id = :organization_id
-                              AND service_queue_id = :service_queue_id
-                            RETURNING service_queue_id, accepting, reason,
-                                      effective_until, revision, updated_at
-                            """
-                        ),
-                        {
-                            "organization_id": request.organization_id,
-                            "service_queue_id": request.service_queue_id,
-                            "principal_id": request.principal_id,
-                            "accepting": request.accepting,
-                            "reason": request.reason,
-                            "effective_until": request.effective_until,
-                        },
-                    )
-                )
-                .mappings()
-                .one()
-            )
-            state = intake_state_from_row(cast(RowMapping, row))
+            state = await update_intake_control(session, request)
+            payload = intake_state_to_json(state)
             await append_audit(
                 session,
                 organization_id=request.organization_id,
@@ -119,13 +84,9 @@ class PostgresQueueIntakeControl(QueueIntakeControlPort):
                 aggregate_kind="ServiceQueue",
                 aggregate_id=request.service_queue_id,
                 idempotency_id=idempotency_id,
-                details=intake_state_to_json(state),
+                details=payload,
             )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"intake_control": intake_state_to_json(state)},
-            )
+            await complete_idempotency(session, idempotency_id, {"intake_control": payload})
             return state
 
 
