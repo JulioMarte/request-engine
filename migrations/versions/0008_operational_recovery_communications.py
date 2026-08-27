@@ -78,11 +78,14 @@ CREATE TABLE request_engine.operational_recovery_executions (
     source_fingerprint text NOT NULL,
     proposal_fingerprint text NOT NULL,
     original_reservation_revision bigint NOT NULL,
-    resulting_reservation_revision bigint NOT NULL,
+    resulting_reservation_revision bigint,
     target jsonb NOT NULL,
+    status text NOT NULL DEFAULT 'prepared',
+    failure_code text,
     notification_requested boolean NOT NULL DEFAULT true,
     communication_task_id uuid,
-    executed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    completed_at timestamptz,
     UNIQUE (organization_id, id),
     UNIQUE (organization_id, proposal_id, reservation_id),
     UNIQUE (organization_id, executed_by_principal_id, idempotency_key),
@@ -97,9 +100,30 @@ CREATE TABLE request_engine.operational_recovery_executions (
     CHECK (btrim(source_fingerprint) <> ''),
     CHECK (btrim(proposal_fingerprint) <> ''),
     CHECK (original_reservation_revision > 0),
-    CHECK (resulting_reservation_revision > original_reservation_revision),
     CHECK (jsonb_typeof(target) = 'object'),
-    CHECK (communication_task_id IS NULL OR notification_requested)
+    CHECK (status IN ('prepared', 'succeeded', 'rejected')),
+    CHECK (
+        (status = 'prepared'
+         AND resulting_reservation_revision IS NULL
+         AND failure_code IS NULL
+         AND completed_at IS NULL
+         AND communication_task_id IS NULL)
+        OR
+        (status = 'succeeded'
+         AND resulting_reservation_revision > original_reservation_revision
+         AND failure_code IS NULL
+         AND completed_at IS NOT NULL)
+        OR
+        (status = 'rejected'
+         AND resulting_reservation_revision IS NULL
+         AND btrim(failure_code) <> ''
+         AND completed_at IS NOT NULL
+         AND communication_task_id IS NULL)
+    ),
+    CHECK (
+        communication_task_id IS NULL
+        OR (notification_requested AND status = 'succeeded')
+    )
 );
 
 CREATE FUNCTION request_engine.guard_operational_recovery_execution()
@@ -119,19 +143,32 @@ BEGIN
        OR OLD.source_fingerprint IS DISTINCT FROM NEW.source_fingerprint
        OR OLD.proposal_fingerprint IS DISTINCT FROM NEW.proposal_fingerprint
        OR OLD.original_reservation_revision IS DISTINCT FROM NEW.original_reservation_revision
-       OR OLD.resulting_reservation_revision IS DISTINCT FROM NEW.resulting_reservation_revision
        OR OLD.target IS DISTINCT FROM NEW.target
        OR OLD.notification_requested IS DISTINCT FROM NEW.notification_requested
-       OR OLD.executed_at IS DISTINCT FROM NEW.executed_at THEN
-        RAISE EXCEPTION 'OperationalRecoveryExecution fact is immutable'
+       OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+        RAISE EXCEPTION 'OperationalRecoveryExecution identity is immutable'
             USING ERRCODE = '23514';
     END IF;
-    IF OLD.communication_task_id IS NOT NULL
-       OR NEW.communication_task_id IS NULL THEN
-        RAISE EXCEPTION 'communication_task_id may only be attached once'
-            USING ERRCODE = '23514';
+
+    IF OLD.status = 'prepared'
+       AND NEW.status IN ('succeeded', 'rejected')
+       AND NEW.communication_task_id IS NULL THEN
+        RETURN NEW;
     END IF;
-    RETURN NEW;
+
+    IF OLD.status = 'succeeded'
+       AND NEW.status = 'succeeded'
+       AND OLD.communication_task_id IS NULL
+       AND NEW.communication_task_id IS NOT NULL
+       AND OLD.resulting_reservation_revision IS NOT DISTINCT FROM
+           NEW.resulting_reservation_revision
+       AND OLD.failure_code IS NOT DISTINCT FROM NEW.failure_code
+       AND OLD.completed_at IS NOT DISTINCT FROM NEW.completed_at THEN
+        RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'invalid OperationalRecoveryExecution transition % -> %',
+        OLD.status, NEW.status USING ERRCODE = '23514';
 END
 $function$;
 CREATE TRIGGER operational_recovery_executions_guard
@@ -155,8 +192,14 @@ CREATE POLICY operational_recovery_executions_tenant_policy
 REVOKE ALL ON request_engine.operational_recovery_proposals,
   request_engine.operational_recovery_executions FROM PUBLIC;
 GRANT SELECT, INSERT ON request_engine.operational_recovery_proposals TO request_engine_app;
-GRANT SELECT, INSERT, UPDATE (communication_task_id)
-  ON request_engine.operational_recovery_executions TO request_engine_app;
+GRANT SELECT, INSERT ON request_engine.operational_recovery_executions TO request_engine_app;
+GRANT UPDATE (
+    status,
+    resulting_reservation_revision,
+    failure_code,
+    completed_at,
+    communication_task_id
+) ON request_engine.operational_recovery_executions TO request_engine_app;
 GRANT ALL PRIVILEGES ON request_engine.operational_recovery_proposals,
   request_engine.operational_recovery_executions TO request_engine_admin;
 
@@ -170,4 +213,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("0008 introduces durable F5 recovery facts and is not reversible in place")
+    raise RuntimeError(
+        "0008 introduces durable F5 recovery facts and is not reversible in place"
+    )
