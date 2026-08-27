@@ -16,13 +16,15 @@ from request_engine.modules.live_capacity.application.projection_assembly import
     capacity_intervals,
     scheduled_commitments,
 )
+from request_engine.modules.live_capacity.application.recovery_policy import (
+    affected_recovery_commitments,
+)
 from request_engine.modules.live_capacity.application.sources import LiveCapacitySources
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCapacityCheckpoint,
     RecoveryCapacitySource,
     RecoveryCommitmentCheckpoint,
-    RecoveryCommitmentFact,
 )
 from request_engine.modules.live_capacity.domain.projection import project_live_capacity
 from request_engine.platform.db.read_snapshot import postgres_snapshot_session, tenant_read_snapshot
@@ -104,7 +106,7 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
         executable = projection.remaining_operational_seconds
         committed = projection.scheduled_committed_workload_seconds or 0
         shortfall = max(committed - executable, 0)
-        affected = _affected_commitments(
+        affected = affected_recovery_commitments(
             planned,
             snapshot.booking.remaining_intervals,
             shortfall,
@@ -130,47 +132,6 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             checkpoint=checkpoint,
             affected_commitments=affected,
         )
-
-
-def _affected_commitments(
-    planned: tuple[PlannedWorkloadFact, ...],
-    intervals: tuple[OperationalAvailabilityInterval, ...],
-    shortfall: int,
-) -> tuple[RecoveryCommitmentFact, ...]:
-    if shortfall <= 0:
-        return ()
-    ordered = sorted(planned, key=lambda item: (item.planned_starts_at, str(item.reservation_id)))
-    selected = {
-        item.reservation_id
-        for item in ordered
-        if not any(
-            interval.starts_at <= item.planned_starts_at
-            and item.planned_ends_at <= interval.ends_at
-            for interval in intervals
-        )
-    }
-
-    result: list[RecoveryCommitmentFact] = []
-    for item in ordered:
-        if item.reservation_id not in selected:
-            continue
-        if item.subject_party_id is None:
-            raise RuntimeError(
-                "authoritative planned Reservation is missing subject Party provenance"
-            )
-        result.append(
-            RecoveryCommitmentFact(
-                reservation_id=item.reservation_id,
-                offering_version_id=item.offering_version_id,
-                subject_party_id=item.subject_party_id,
-                reservation_revision=item.reservation_revision,
-                planned_starts_at=item.planned_starts_at,
-                planned_ends_at=item.planned_ends_at,
-                planned_duration_seconds=item.planned_duration_seconds or 0,
-                contextual_commitment=item.contextual_commitment,
-            )
-        )
-    return tuple(result)
 
 
 def _source_fingerprint(
