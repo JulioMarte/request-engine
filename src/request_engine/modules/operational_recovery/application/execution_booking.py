@@ -1,12 +1,18 @@
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryBookingConflict,
     RecoveryBookingPort,
-    RecoveryCommitmentCheckpoint as BookingCommitmentCheckpoint,
     RecoveryRescheduleRequest,
+)
+from request_engine.modules.booking.contracts.recovery import (
+    RecoveryCommitmentCheckpoint as BookingCommitmentCheckpoint,
+)
+from request_engine.modules.booking.contracts.recovery import (
     RecoveryTargetUnavailable as BookingRecoveryTargetUnavailable,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
-from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
+from request_engine.modules.operational_recovery.application.commands import (
+    ExecuteRecoveryCommand,
+)
 from request_engine.modules.operational_recovery.application.errors import (
     RecoveryTargetUnavailable,
     StaleRecoveryProposal,
