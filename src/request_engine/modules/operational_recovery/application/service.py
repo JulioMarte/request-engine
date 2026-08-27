@@ -8,6 +8,7 @@ from request_engine.modules.booking.contracts.appointments import AppointmentSlo
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryBookingConflict,
     RecoveryBookingPort,
+    RecoveryCommitmentCheckpoint as BookingCommitmentCheckpoint,
     RecoveryRescheduleRequest,
     RecoveryTargetUnavailable as BookingRecoveryTargetUnavailable,
 )
@@ -27,6 +28,7 @@ from request_engine.modules.operational_recovery.application.errors import (
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
+    RecoveryCommitmentCheckpoint,
     RecoveryExecution,
     RecoveryExecutionStatus,
     RecoverySourceCheckpoint,
@@ -43,6 +45,7 @@ class CreateRecoveryProposalCommand:
     organization_id: UUID
     principal_id: UUID
     service_queue_id: UUID
+    idempotency_key: str
     search_days: int = 7
 
 
@@ -74,16 +77,34 @@ class OperationalRecoveryService:
         self._communications = communications
 
     async def create_proposal(
-        self, command: CreateRecoveryProposalCommand
+        self,
+        command: CreateRecoveryProposalCommand,
     ) -> RescheduleProposal:
+        if not command.idempotency_key:
+            raise ValueError("idempotency_key is required")
         if command.search_days <= 0 or command.search_days > 30:
             raise ValueError("search_days must be between 1 and 30")
+
+        command_fingerprint = _proposal_command_fingerprint(command)
+        replay = await self._repository.find_proposal_replay(
+            organization_id=command.organization_id,
+            principal_id=command.principal_id,
+            idempotency_key=command.idempotency_key,
+            command_fingerprint=command_fingerprint,
+        )
+        if replay is not None:
+            return replay
+
         assessment = await self._capacity.assess_recovery_capacity(
             organization_id=command.organization_id,
             service_queue_id=command.service_queue_id,
         )
         if assessment.shortfall_seconds <= 0:
             raise RecoveryShortfallNotMaterial()
+        if not assessment.affected_commitments:
+            raise RuntimeError(
+                "positive recovery shortfall has no directly unsatisfied Reservations"
+            )
 
         affected: list[AffectedReservation] = []
         for commitment in assessment.affected_commitments:
@@ -99,6 +120,7 @@ class OperationalRecoveryService:
                 slots,
                 original_start=commitment.planned_starts_at,
                 original_end=commitment.planned_ends_at,
+                source_contextual=commitment.contextual_commitment,
             )
             affected.append(
                 AffectedReservation(
@@ -109,11 +131,10 @@ class OperationalRecoveryService:
                     original_start_at=commitment.planned_starts_at,
                     original_end_at=commitment.planned_ends_at,
                     target=target,
+                    contextual_commitment=commitment.contextual_commitment,
                 )
             )
 
-        if not affected:
-            raise RecoveryShortfallNotMaterial()
         source_checkpoint = RecoverySourceCheckpoint(
             projection_policy_revision=assessment.checkpoint.projection_policy_revision,
             resource_availability_revision=(
@@ -121,6 +142,15 @@ class OperationalRecoveryService:
             ),
             location_operational_revision=(
                 assessment.checkpoint.location_operational_revision
+            ),
+            commitments=tuple(
+                RecoveryCommitmentCheckpoint(
+                    reservation_id=item.reservation_id,
+                    revision=item.revision,
+                    starts_at=item.starts_at,
+                    ends_at=item.ends_at,
+                )
+                for item in assessment.checkpoint.commitments
             ),
         )
         proposal_fingerprint = _proposal_fingerprint(
@@ -153,11 +183,16 @@ class OperationalRecoveryService:
         return await self._repository.create_proposal(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
+            idempotency_key=command.idempotency_key,
+            command_fingerprint=command_fingerprint,
             proposal=proposal,
         )
 
     async def get_proposal(
-        self, *, organization_id: UUID, proposal_id: UUID
+        self,
+        *,
+        organization_id: UUID,
+        proposal_id: UUID,
     ) -> RescheduleProposal:
         proposal = await self._repository.get_proposal(
             organization_id=organization_id,
@@ -202,12 +237,12 @@ class OperationalRecoveryService:
             _raise_rejected(execution, command.reservation_id)
 
         if execution.status is RecoveryExecutionStatus.PREPARED:
-            await self._validate_prepared_source(
-                command=command,
-                proposal=proposal,
-                execution=execution,
-                newly_prepared=record.created,
-            )
+            if record.created:
+                await self._validate_new_execution_source(
+                    command=command,
+                    proposal=proposal,
+                    execution=execution,
+                )
             try:
                 result = await self._booking.reschedule_for_recovery(
                     RecoveryRescheduleRequest(
@@ -226,6 +261,17 @@ class OperationalRecoveryService:
                         expected_source_location_operational_revision=(
                             proposal.source_checkpoint.location_operational_revision
                         ),
+                        source_observed_at=proposal.observed_at,
+                        source_horizon_end=proposal.horizon_end,
+                        expected_source_commitments=tuple(
+                            BookingCommitmentCheckpoint(
+                                reservation_id=item.reservation_id,
+                                revision=item.revision,
+                                starts_at=item.starts_at,
+                                ends_at=item.ends_at,
+                            )
+                            for item in proposal.source_checkpoint.commitments
+                        ),
                         idempotency_key=f"recovery:{execution.id}:booking:v1",
                         allow_subject_override=command.allow_subject_override,
                     )
@@ -243,7 +289,10 @@ class OperationalRecoveryService:
                     execution.id,
                     _TARGET_FAILURE,
                 )
-                raise RecoveryTargetUnavailable(command.reservation_id, str(exc)) from exc
+                raise RecoveryTargetUnavailable(
+                    command.reservation_id,
+                    str(exc),
+                ) from exc
             execution = await self._repository.succeed_execution(
                 organization_id=command.organization_id,
                 execution_id=execution.id,
@@ -258,32 +307,25 @@ class OperationalRecoveryService:
             )
         return execution
 
-    async def _validate_prepared_source(
+    async def _validate_new_execution_source(
         self,
         *,
         command: ExecuteRecoveryCommand,
         proposal: RescheduleProposal,
         execution: RecoveryExecution,
-        newly_prepared: bool,
     ) -> None:
         current = await self._capacity.assess_recovery_capacity(
             organization_id=command.organization_id,
             service_queue_id=proposal.service_queue_id,
         )
-        if newly_prepared:
-            stale = current.source_fingerprint != proposal.source_fingerprint
-        else:
-            stale = (
-                current.checkpoint.projection_policy_revision
-                != proposal.source_checkpoint.projection_policy_revision
-            )
-        if stale:
-            await self._reject(
-                command.organization_id,
-                execution.id,
-                _STALE_FAILURE,
-            )
-            raise StaleRecoveryProposal()
+        if current.source_fingerprint == proposal.source_fingerprint:
+            return
+        await self._reject(
+            command.organization_id,
+            execution.id,
+            _STALE_FAILURE,
+        )
+        raise StaleRecoveryProposal()
 
     async def _ensure_notification(
         self,
@@ -370,22 +412,57 @@ def _choose_target(
     *,
     original_start: datetime,
     original_end: datetime,
+    source_contextual: bool,
 ) -> RecoveryTarget | None:
+    blocked: RecoveryTarget | None = None
     for slot in slots:
         if slot.start_at == original_start and slot.end_at == original_end:
             continue
-        contextual = any(
+        target_contextual = any(
             choice.resource_location_assignment_id is not None for choice in slot.resources
         )
-        return RecoveryTarget(
-            start_at=slot.start_at,
-            end_at=slot.end_at,
-            location_id=slot.location_id,
-            resources=slot.resources,
-            actionable=not contextual,
-            blocked_reason="contextual_reschedule_not_supported" if contextual else None,
-        )
-    return None
+        if source_contextual:
+            if blocked is None:
+                blocked = _target_from_slot(
+                    slot,
+                    actionable=False,
+                    blocked_reason="contextual_source_reschedule_not_supported",
+                )
+            continue
+        if not target_contextual:
+            return _target_from_slot(slot, actionable=True, blocked_reason=None)
+        if blocked is None:
+            blocked = _target_from_slot(
+                slot,
+                actionable=False,
+                blocked_reason="contextual_target_reschedule_not_supported",
+            )
+    return blocked
+
+
+def _target_from_slot(
+    slot: AppointmentSlot,
+    *,
+    actionable: bool,
+    blocked_reason: str | None,
+) -> RecoveryTarget:
+    return RecoveryTarget(
+        start_at=slot.start_at,
+        end_at=slot.end_at,
+        location_id=slot.location_id,
+        resources=slot.resources,
+        actionable=actionable,
+        blocked_reason=blocked_reason,
+    )
+
+
+def _proposal_command_fingerprint(command: CreateRecoveryProposalCommand) -> str:
+    return _hash(
+        {
+            "service_queue_id": str(command.service_queue_id),
+            "search_days": command.search_days,
+        }
+    )
 
 
 def _proposal_fingerprint(
@@ -417,10 +494,14 @@ def _proposal_fingerprint(
 def _execution_fingerprint(command: ExecuteRecoveryCommand, target: RecoveryTarget) -> str:
     return _hash(
         {
+            "organization_id": str(command.organization_id),
+            "principal_id": str(command.principal_id),
             "proposal_id": str(command.proposal_id),
             "reservation_id": str(command.reservation_id),
             "expected_source_fingerprint": command.expected_source_fingerprint,
             "expected_proposal_fingerprint": command.expected_proposal_fingerprint,
+            "idempotency_key": command.idempotency_key,
+            "allow_subject_override": command.allow_subject_override,
             "notify": command.notify,
             "target": _target_payload(target),
         }
@@ -432,6 +513,15 @@ def _checkpoint_payload(checkpoint: RecoverySourceCheckpoint) -> dict[str, objec
         "projection_policy_revision": checkpoint.projection_policy_revision,
         "resource_availability_revision": checkpoint.resource_availability_revision,
         "location_operational_revision": checkpoint.location_operational_revision,
+        "commitments": [
+            {
+                "reservation_id": str(item.reservation_id),
+                "revision": item.revision,
+                "starts_at": item.starts_at.isoformat(),
+                "ends_at": item.ends_at.isoformat(),
+            }
+            for item in checkpoint.commitments
+        ],
     }
 
 
@@ -443,6 +533,7 @@ def _affected_payload(item: AffectedReservation) -> dict[str, object]:
         "expected_revision": item.expected_revision,
         "original_start_at": item.original_start_at.isoformat(),
         "original_end_at": item.original_end_at.isoformat(),
+        "contextual_commitment": item.contextual_commitment,
         "target": _target_payload(item.target) if item.target is not None else None,
     }
 
