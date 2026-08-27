@@ -31,9 +31,7 @@ def intake_state_to_json(state: QueueIntakeControlState) -> dict[str, object]:
 def intake_state_from_json(payload: Mapping[str, object]) -> QueueIntakeControlState:
     effective_until = payload.get("effective_until")
     parsed_effective_until = (
-        datetime.fromisoformat(cast(str, effective_until))
-        if effective_until is not None
-        else None
+        datetime.fromisoformat(cast(str, effective_until)) if effective_until is not None else None
     )
     return QueueIntakeControlState(
         service_queue_id=UUID(cast(str, payload["service_queue_id"])),
