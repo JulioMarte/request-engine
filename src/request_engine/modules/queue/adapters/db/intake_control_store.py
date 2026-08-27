@@ -7,7 +7,10 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.intake_control_codec import intake_state_from_row
-from request_engine.modules.queue.contracts.intake import QueueIntakeControlState, QueueIntakeStopped
+from request_engine.modules.queue.contracts.intake import (
+    QueueIntakeControlState,
+    QueueIntakeStopped,
+)
 
 
 async def load_intake_control(

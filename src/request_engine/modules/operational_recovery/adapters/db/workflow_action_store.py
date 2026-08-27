@@ -1,4 +1,4 @@
-from typing import Mapping
+from collections.abc import Mapping
 from uuid import UUID
 
 from request_engine.modules.operational_recovery.adapters.db.workflow_action_prepare import (

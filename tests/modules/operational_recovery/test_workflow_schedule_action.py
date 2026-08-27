@@ -8,7 +8,14 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryIncidentStatus,
 )
 
-from .workflow_schedule_test_support import ACTION, EXCEPTION, FakeCapacity, FakeSchedule, FakeWorkflowRepository, command
+from .workflow_schedule_test_support import (
+    ACTION,
+    EXCEPTION,
+    FakeCapacity,
+    FakeSchedule,
+    FakeWorkflowRepository,
+    command,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.contract]
 

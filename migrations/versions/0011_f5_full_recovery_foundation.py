@@ -191,4 +191,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("0011 introduces durable full-F5 recovery workflow state and is not reversible")
+    raise RuntimeError(
+        "0011 introduces durable full-F5 recovery workflow state and is not reversible"
+    )

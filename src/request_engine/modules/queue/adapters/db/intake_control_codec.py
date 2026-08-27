@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Mapping, cast
+from typing import cast
 from uuid import UUID
 
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlState
@@ -29,13 +30,16 @@ def intake_state_to_json(state: QueueIntakeControlState) -> dict[str, object]:
 
 def intake_state_from_json(payload: Mapping[str, object]) -> QueueIntakeControlState:
     effective_until = payload.get("effective_until")
+    parsed_effective_until = (
+        datetime.fromisoformat(cast(str, effective_until))
+        if effective_until is not None
+        else None
+    )
     return QueueIntakeControlState(
         service_queue_id=UUID(cast(str, payload["service_queue_id"])),
         accepting=cast(bool, payload["accepting"]),
         reason=cast(str | None, payload.get("reason")),
-        effective_until=(
-            datetime.fromisoformat(cast(str, effective_until)) if effective_until is not None else None
-        ),
+        effective_until=parsed_effective_until,
         revision=cast(int, payload["revision"]),
         updated_at=datetime.fromisoformat(cast(str, payload["updated_at"])),
     )

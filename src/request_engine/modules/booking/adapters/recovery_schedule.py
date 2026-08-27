@@ -1,7 +1,5 @@
-from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
-    SetResourceLocationScheduleExceptionCommand,
-    SetResourceLocationScheduleExceptionHandler,
-    set_resource_location_schedule_exception,
+from request_engine.modules.booking.application.commands import (
+    set_resource_location_schedule_exception as schedule_exception,
 )
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
@@ -17,16 +15,19 @@ class RecoveryAssignmentScheduleAdapter:
     of authorization, locking, availability revisions, audit and idempotency.
     """
 
-    def __init__(self, handler: SetResourceLocationScheduleExceptionHandler) -> None:
+    def __init__(
+        self,
+        handler: schedule_exception.SetResourceLocationScheduleExceptionHandler,
+    ) -> None:
         self._handler = handler
 
     async def extend_assignment_hours(
         self,
         request: RecoveryAssignmentExtensionRequest,
     ) -> RecoveryAssignmentExtensionResult:
-        state = await set_resource_location_schedule_exception(
+        state = await schedule_exception.set_resource_location_schedule_exception(
             self._handler,
-            SetResourceLocationScheduleExceptionCommand(
+            schedule_exception.SetResourceLocationScheduleExceptionCommand(
                 organization_id=request.organization_id,
                 principal_id=request.principal_id,
                 authority_party_id=request.authority_party_id,

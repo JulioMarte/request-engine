@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Mapping, cast
+from typing import cast
 from uuid import UUID
 
 from request_engine.modules.operational_recovery.contracts.workflow import (

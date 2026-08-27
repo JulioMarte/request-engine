@@ -1,5 +1,6 @@
 import json
-from typing import Mapping, cast
+from collections.abc import Mapping
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text

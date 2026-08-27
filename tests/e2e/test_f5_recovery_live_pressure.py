@@ -45,7 +45,10 @@ async def test_f5_live_pressure_changes_risk_without_fabricating_more_affected_r
         world = await prepare_recovery_world(client, e2e_admin_conn, sandbox)
         structural = await create_proposal(client, sandbox)
         expected_affected = world.reservations[6:]
-        assert tuple(UUID(item["reservation_id"]) for item in structural["affected"]) == expected_affected
+        assert (
+            tuple(UUID(item["reservation_id"]) for item in structural["affected"])
+            == expected_affected
+        )
 
         await _add_walk_in(client, e2e_admin_conn, sandbox, world)
         pressured = await create_proposal(client, sandbox)
@@ -54,7 +57,10 @@ async def test_f5_live_pressure_changes_risk_without_fabricating_more_affected_r
     assert pressured["executable_capacity_seconds"] == 1800
     assert pressured["shortfall_seconds"] == 2400
     assert pressured["source_fingerprint"] != structural["source_fingerprint"]
-    assert tuple(UUID(item["reservation_id"]) for item in pressured["affected"]) == expected_affected
+    assert (
+        tuple(UUID(item["reservation_id"]) for item in pressured["affected"])
+        == expected_affected
+    )
 
 
 async def test_f5_live_only_pressure_persists_risk_only_proposal_with_no_affected_reservations(

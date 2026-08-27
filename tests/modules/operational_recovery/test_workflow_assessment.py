@@ -4,7 +4,10 @@ from uuid import UUID
 
 import pytest
 
-from request_engine.modules.live_capacity.contracts.projection import ProjectionReason, ProjectionState
+from request_engine.modules.live_capacity.contracts.projection import (
+    ProjectionReason,
+    ProjectionState,
+)
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCapacityCheckpoint,
@@ -53,7 +56,12 @@ class FakeCapacity:
     def __init__(self, assessment: RecoveryCapacityAssessment) -> None:
         self.assessment = assessment
 
-    async def assess_recovery_capacity(self, *, organization_id: UUID, service_queue_id: UUID):
+    async def assess_recovery_capacity(
+        self,
+        *,
+        organization_id: UUID,
+        service_queue_id: UUID,
+    ):
         assert organization_id == ORG
         assert service_queue_id == QUEUE
         return self.assessment
@@ -64,29 +72,57 @@ class FakeRepository:
         self.existing = existing
         self.upserts: list[dict[str, object]] = []
 
-    async def get_open_incident(self, *, organization_id: UUID, service_queue_id: UUID):
+    async def get_open_incident(
+        self,
+        *,
+        organization_id: UUID,
+        service_queue_id: UUID,
+    ):
         return self.existing
 
     async def upsert_assessment(self, **kwargs: object):
         self.upserts.append(dict(kwargs))
-        status = RecoveryIncidentStatus.RESOLVED if kwargs["resolve"] else RecoveryIncidentStatus.OPEN
+        status = (
+            RecoveryIncidentStatus.RESOLVED
+            if kwargs["resolve"]
+            else RecoveryIncidentStatus.OPEN
+        )
         return RecoveryIncident(
-            id=UUID(int=9), organization_id=ORG, service_queue_id=QUEUE,
-            resource_id=RESOURCE, location_id=LOCATION, status=status,
-            impact_kind=kwargs["impact_kind"], escalation_level=kwargs["escalation_level"],
-            source_revision=kwargs["source_revision"], source_fingerprint=kwargs["source_fingerprint"],
-            current_proposal_id=None, opened_at=NOW, last_assessed_at=NOW,
-            resolved_at=NOW if status is RecoveryIncidentStatus.RESOLVED else None, revision=2,
+            id=UUID(int=9),
+            organization_id=ORG,
+            service_queue_id=QUEUE,
+            resource_id=RESOURCE,
+            location_id=LOCATION,
+            status=status,
+            impact_kind=kwargs["impact_kind"],
+            escalation_level=kwargs["escalation_level"],
+            source_revision=kwargs["source_revision"],
+            source_fingerprint=kwargs["source_fingerprint"],
+            current_proposal_id=None,
+            opened_at=NOW,
+            last_assessed_at=NOW,
+            resolved_at=NOW if status is RecoveryIncidentStatus.RESOLVED else None,
+            revision=2,
         )
 
 
 def _incident() -> RecoveryIncident:
     return RecoveryIncident(
-        id=UUID(int=8), organization_id=ORG, service_queue_id=QUEUE,
-        resource_id=RESOURCE, location_id=LOCATION, status=RecoveryIncidentStatus.OPEN,
-        impact_kind=RecoveryImpactKind.CAPACITY_SHORTFALL, escalation_level=2,
-        source_revision=1, source_fingerprint="source:1", current_proposal_id=None,
-        opened_at=NOW, last_assessed_at=NOW, resolved_at=None, revision=1,
+        id=UUID(int=8),
+        organization_id=ORG,
+        service_queue_id=QUEUE,
+        resource_id=RESOURCE,
+        location_id=LOCATION,
+        status=RecoveryIncidentStatus.OPEN,
+        impact_kind=RecoveryImpactKind.CAPACITY_SHORTFALL,
+        escalation_level=2,
+        source_revision=1,
+        source_fingerprint="source:1",
+        current_proposal_id=None,
+        opened_at=NOW,
+        last_assessed_at=NOW,
+        resolved_at=None,
+        revision=1,
     )
 
 

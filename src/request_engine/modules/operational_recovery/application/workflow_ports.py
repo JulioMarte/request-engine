@@ -1,4 +1,5 @@
-from typing import Mapping, Protocol
+from collections.abc import Mapping
+from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.operational_recovery.contracts.workflow import (

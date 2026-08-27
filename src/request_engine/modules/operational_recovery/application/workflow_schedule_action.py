@@ -6,8 +6,12 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapa
 from request_engine.modules.operational_recovery.application.workflow_assessment import (
     reconcile_recovery_incident,
 )
-from request_engine.modules.operational_recovery.application.workflow_commands import ExtendRecoveryDayCommand
-from request_engine.modules.operational_recovery.application.workflow_ports import RecoveryWorkflowRepository
+from request_engine.modules.operational_recovery.application.workflow_commands import (
+    ExtendRecoveryDayCommand,
+)
+from request_engine.modules.operational_recovery.application.workflow_ports import (
+    RecoveryWorkflowRepository,
+)
 from request_engine.modules.operational_recovery.application.workflow_schedule_support import (
     extend_day_fingerprint,
     extend_day_payload,
@@ -78,7 +82,9 @@ async def execute_extend_day_action(
             assignment_id=command.assignment_id,
             start_at=command.start_at,
             end_at=command.end_at,
-            expected_resource_availability_revision=command.expected_resource_availability_revision,
+            expected_resource_availability_revision=(
+                command.expected_resource_availability_revision
+            ),
             idempotency_key=f"recovery-action:{action.id}:extend-day:v1",
             reason=command.reason,
         )
