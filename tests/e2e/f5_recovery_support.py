@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+from dataclasses import replace
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -33,16 +33,32 @@ def f5_actor(sandbox: TenantSandbox) -> ActorContext:
     )
 
 
-def use_five_minute_slots(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    conn.execute(
-        "UPDATE request_engine.offering_versions "
-        "SET duration_minutes=5, booking_policy=%s::jsonb "
+def five_minute_sandbox(conn: PgConnection, sandbox: TenantSandbox) -> TenantSandbox:
+    capability = conn.execute(
+        "SELECT capability_id FROM request_engine.offering_resource_requirements "
         "WHERE organization_id=%s AND id=%s",
-        (
-            json.dumps({"slot_step_minutes": 5}),
-            sandbox.organization_id,
-            sandbox.offering_version_id,
-        ),
+        (sandbox.organization_id, sandbox.requirement_id),
+    ).fetchone()
+    assert capability is not None
+    version = conn.execute(
+        "INSERT INTO request_engine.offering_versions "
+        "(organization_id,offering_id,version,duration_minutes,bookable,requestable,"
+        "booking_policy,public_data) VALUES (%s,%s,2,5,true,true,%s::jsonb,'{}'::jsonb) "
+        "RETURNING id",
+        (sandbox.organization_id, sandbox.offering_id, '{"slot_step_minutes":5}'),
+    ).fetchone()
+    assert version is not None
+    requirement = conn.execute(
+        "INSERT INTO request_engine.offering_resource_requirements "
+        "(organization_id,offering_version_id,capability_id,ordinal,quantity) "
+        "VALUES (%s,%s,%s,1,1) RETURNING id",
+        (sandbox.organization_id, version[0], capability[0]),
+    ).fetchone()
+    assert requirement is not None
+    return replace(
+        sandbox,
+        offering_version_id=cast(UUID, version[0]),
+        requirement_id=cast(UUID, requirement[0]),
     )
 
 
