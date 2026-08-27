@@ -8,6 +8,9 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.operational_recovery.application.errors import (
+    RecoveryIdempotencyConflict,
+)
 from request_engine.modules.operational_recovery.application.ports import (
     RecoveryExecutionRecord,
     RecoveryRepository,
@@ -15,6 +18,7 @@ from request_engine.modules.operational_recovery.application.ports import (
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
     OperationalNotification,
+    RecoveryCommitmentCheckpoint,
     RecoveryExecution,
     RecoveryExecutionStatus,
     RecoverySourceCheckpoint,
@@ -22,17 +26,63 @@ from request_engine.modules.operational_recovery.contracts.models import (
     RescheduleProposal,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    complete_idempotency,
+)
+
+_PROPOSE_CAPABILITY = "operational_recovery.propose"
 
 
 class PostgresRecoveryRepository(RecoveryRepository):
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
+    async def find_proposal_replay(
+        self,
+        *,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+        command_fingerprint: str,
+    ) -> RescheduleProposal | None:
+        async with tenant_transaction(self._session_factory, organization_id) as session:
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT *
+                            FROM request_engine.operational_recovery_proposals
+                            WHERE organization_id = :organization_id
+                              AND created_by_principal_id = :principal_id
+                              AND idempotency_key = :idempotency_key
+                            """
+                        ),
+                        {
+                            "organization_id": organization_id,
+                            "principal_id": principal_id,
+                            "idempotency_key": idempotency_key,
+                        },
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        if cast(str, row["command_fingerprint"]) != command_fingerprint:
+            raise RecoveryIdempotencyConflict()
+        return _proposal_from_row(row)
+
     async def create_proposal(
         self,
         *,
         organization_id: UUID,
         principal_id: UUID,
+        idempotency_key: str,
+        command_fingerprint: str,
         proposal: RescheduleProposal,
     ) -> RescheduleProposal:
         snapshot = {
@@ -40,6 +90,23 @@ class PostgresRecoveryRepository(RecoveryRepository):
             "affected": [_affected_to_json(item) for item in proposal.affected],
         }
         async with tenant_transaction(self._session_factory, organization_id) as session:
+            try:
+                idempotency_id, replay = await acquire_idempotency(
+                    session,
+                    organization_id=organization_id,
+                    principal_id=principal_id,
+                    capability=_PROPOSE_CAPABILITY,
+                    idempotency_key=idempotency_key,
+                    fingerprint=command_fingerprint,
+                )
+            except IdempotencyConflict as exc:
+                raise RecoveryIdempotencyConflict() from exc
+
+            if replay is not None:
+                proposal_id = UUID(cast(str, replay["proposal_id"]))
+                row = await _require_proposal(session, organization_id, proposal_id)
+                return _proposal_from_row(row)
+
             created_at = cast(
                 datetime,
                 (
@@ -47,17 +114,39 @@ class PostgresRecoveryRepository(RecoveryRepository):
                         text(
                             """
                             INSERT INTO request_engine.operational_recovery_proposals (
-                                id, organization_id, service_queue_id, resource_id, location_id,
-                                created_by_principal_id, observed_at, horizon_end,
-                                source_fingerprint, proposal_fingerprint,
-                                executable_capacity_seconds, committed_capacity_seconds,
-                                shortfall_seconds, snapshot
+                                id,
+                                organization_id,
+                                service_queue_id,
+                                resource_id,
+                                location_id,
+                                created_by_principal_id,
+                                idempotency_key,
+                                command_fingerprint,
+                                observed_at,
+                                horizon_end,
+                                source_fingerprint,
+                                proposal_fingerprint,
+                                executable_capacity_seconds,
+                                committed_capacity_seconds,
+                                shortfall_seconds,
+                                snapshot
                             ) VALUES (
-                                :id, :organization_id, :service_queue_id, :resource_id,
-                                :location_id, :principal_id, :observed_at, :horizon_end,
-                                :source_fingerprint, :proposal_fingerprint,
-                                :executable_capacity_seconds, :committed_capacity_seconds,
-                                :shortfall_seconds, CAST(:snapshot AS jsonb)
+                                :id,
+                                :organization_id,
+                                :service_queue_id,
+                                :resource_id,
+                                :location_id,
+                                :principal_id,
+                                :idempotency_key,
+                                :command_fingerprint,
+                                :observed_at,
+                                :horizon_end,
+                                :source_fingerprint,
+                                :proposal_fingerprint,
+                                :executable_capacity_seconds,
+                                :committed_capacity_seconds,
+                                :shortfall_seconds,
+                                CAST(:snapshot AS jsonb)
                             )
                             RETURNING created_at
                             """
@@ -69,17 +158,28 @@ class PostgresRecoveryRepository(RecoveryRepository):
                             "resource_id": proposal.resource_id,
                             "location_id": proposal.location_id,
                             "principal_id": principal_id,
+                            "idempotency_key": idempotency_key,
+                            "command_fingerprint": command_fingerprint,
                             "observed_at": proposal.observed_at,
                             "horizon_end": proposal.horizon_end,
                             "source_fingerprint": proposal.source_fingerprint,
                             "proposal_fingerprint": proposal.proposal_fingerprint,
-                            "executable_capacity_seconds": proposal.executable_capacity_seconds,
-                            "committed_capacity_seconds": proposal.committed_capacity_seconds,
+                            "executable_capacity_seconds": (
+                                proposal.executable_capacity_seconds
+                            ),
+                            "committed_capacity_seconds": (
+                                proposal.committed_capacity_seconds
+                            ),
                             "shortfall_seconds": proposal.shortfall_seconds,
                             "snapshot": json.dumps(snapshot, separators=(",", ":")),
                         },
                     )
                 ).scalar_one(),
+            )
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"proposal_id": str(proposal.id)},
             )
         return _with_created_at(proposal, created_at)
 
@@ -130,16 +230,28 @@ class PostgresRecoveryRepository(RecoveryRepository):
                         text(
                             """
                             INSERT INTO request_engine.operational_recovery_executions (
-                                organization_id, proposal_id, reservation_id,
-                                executed_by_principal_id, idempotency_key,
-                                command_fingerprint, source_fingerprint,
-                                proposal_fingerprint, original_reservation_revision,
-                                target, notification_requested
+                                organization_id,
+                                proposal_id,
+                                reservation_id,
+                                executed_by_principal_id,
+                                idempotency_key,
+                                command_fingerprint,
+                                source_fingerprint,
+                                proposal_fingerprint,
+                                original_reservation_revision,
+                                target,
+                                notification_requested
                             ) VALUES (
-                                :organization_id, :proposal_id, :reservation_id,
-                                :principal_id, :idempotency_key, :command_fingerprint,
-                                :source_fingerprint, :proposal_fingerprint,
-                                :original_revision, CAST(:target AS jsonb),
+                                :organization_id,
+                                :proposal_id,
+                                :reservation_id,
+                                :principal_id,
+                                :idempotency_key,
+                                :command_fingerprint,
+                                :source_fingerprint,
+                                :proposal_fingerprint,
+                                :original_revision,
+                                CAST(:target AS jsonb),
                                 :notification_requested
                             )
                             ON CONFLICT DO NOTHING
@@ -157,7 +269,8 @@ class PostgresRecoveryRepository(RecoveryRepository):
                             "proposal_fingerprint": proposal.proposal_fingerprint,
                             "original_revision": affected.expected_revision,
                             "target": json.dumps(
-                                _target_to_json(affected.target), separators=(",", ":")
+                                _target_to_json(affected.target),
+                                separators=(",", ":"),
                             ),
                             "notification_requested": notification_requested,
                         },
@@ -395,6 +508,33 @@ async def _require_execution(
     )
 
 
+async def _require_proposal(
+    session: AsyncSession,
+    organization_id: UUID,
+    proposal_id: UUID,
+) -> RowMapping:
+    return (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT *
+                    FROM request_engine.operational_recovery_proposals
+                    WHERE organization_id = :organization_id
+                      AND id = :proposal_id
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "proposal_id": proposal_id,
+                },
+            )
+        )
+        .mappings()
+        .one()
+    )
+
+
 def _with_created_at(proposal: RescheduleProposal, created_at: datetime) -> RescheduleProposal:
     return RescheduleProposal(
         id=proposal.id,
@@ -444,7 +584,8 @@ def _execution_from_row(row: RowMapping) -> RecoveryExecution:
         status=RecoveryExecutionStatus(cast(str, row["status"])),
         original_reservation_revision=cast(int, row["original_reservation_revision"]),
         resulting_reservation_revision=cast(
-            int | None, row["resulting_reservation_revision"]
+            int | None,
+            row["resulting_reservation_revision"],
         ),
         target=_target_from_json(cast(dict[str, object], row["target"])),
         created_at=cast(datetime, row["created_at"]),
@@ -466,14 +607,37 @@ def _checkpoint_to_json(checkpoint: RecoverySourceCheckpoint) -> dict[str, objec
         "projection_policy_revision": checkpoint.projection_policy_revision,
         "resource_availability_revision": checkpoint.resource_availability_revision,
         "location_operational_revision": checkpoint.location_operational_revision,
+        "commitments": [
+            _commitment_to_json(item) for item in checkpoint.commitments
+        ],
     }
 
 
 def _checkpoint_from_json(raw: dict[str, object]) -> RecoverySourceCheckpoint:
+    commitments = cast(list[dict[str, object]], raw.get("commitments", []))
     return RecoverySourceCheckpoint(
         projection_policy_revision=cast(int, raw["projection_policy_revision"]),
         resource_availability_revision=cast(int, raw["resource_availability_revision"]),
         location_operational_revision=cast(int, raw["location_operational_revision"]),
+        commitments=tuple(_commitment_from_json(item) for item in commitments),
+    )
+
+
+def _commitment_to_json(item: RecoveryCommitmentCheckpoint) -> dict[str, object]:
+    return {
+        "reservation_id": str(item.reservation_id),
+        "revision": item.revision,
+        "starts_at": item.starts_at.isoformat(),
+        "ends_at": item.ends_at.isoformat(),
+    }
+
+
+def _commitment_from_json(raw: dict[str, object]) -> RecoveryCommitmentCheckpoint:
+    return RecoveryCommitmentCheckpoint(
+        reservation_id=UUID(cast(str, raw["reservation_id"])),
+        revision=cast(int, raw["revision"]),
+        starts_at=datetime.fromisoformat(cast(str, raw["starts_at"])),
+        ends_at=datetime.fromisoformat(cast(str, raw["ends_at"])),
     )
 
 
@@ -485,6 +649,7 @@ def _affected_to_json(item: AffectedReservation) -> dict[str, object]:
         "expected_revision": item.expected_revision,
         "original_start_at": item.original_start_at.isoformat(),
         "original_end_at": item.original_end_at.isoformat(),
+        "contextual_commitment": item.contextual_commitment,
         "target": _target_to_json(item.target) if item.target is not None else None,
     }
 
@@ -503,6 +668,7 @@ def _affected_from_json(raw: dict[str, object]) -> AffectedReservation:
             if target is not None
             else None
         ),
+        contextual_commitment=cast(bool, raw.get("contextual_commitment", False)),
     )
 
 
@@ -549,7 +715,9 @@ def _resource_from_json(raw: dict[str, object]) -> ResourceChoice:
     return ResourceChoice(
         requirement_id=UUID(cast(str, raw["requirement_id"])),
         resource_id=UUID(cast(str, raw["resource_id"])),
-        resource_location_assignment_id=UUID(assignment) if assignment is not None else None,
+        resource_location_assignment_id=(
+            UUID(assignment) if assignment is not None else None
+        ),
         assignment_revision=cast(int | None, raw.get("assignment_revision")),
         availability_revision=cast(int | None, raw.get("availability_revision")),
     )
