@@ -1,0 +1,114 @@
+from collections.abc import Mapping
+from dataclasses import replace
+from uuid import UUID
+
+from request_engine.modules.operational_recovery.contracts.workflow import (
+    RecoveryAction,
+    RecoveryActionStatus,
+    RecoveryImpactKind,
+    RecoveryIncident,
+    RecoveryIncidentStatus,
+)
+
+from .workflow_schedule_test_support import (
+    ACTION,
+    INCIDENT,
+    LOCATION,
+    NOW,
+    ORG,
+    PRINCIPAL,
+    QUEUE,
+    RESOURCE,
+)
+
+
+class FakeWorkflowRepository:
+    def __init__(self) -> None:
+        self.incident = RecoveryIncident(
+            INCIDENT,
+            ORG,
+            QUEUE,
+            RESOURCE,
+            LOCATION,
+            RecoveryIncidentStatus.OPEN,
+            RecoveryImpactKind.CAPACITY_SHORTFALL,
+            1,
+            3,
+            "source:v1",
+            None,
+            NOW,
+            NOW,
+            None,
+            1,
+        )
+        self.action: RecoveryAction | None = None
+
+    async def get_incident(
+        self,
+        *,
+        organization_id: UUID,
+        incident_id: UUID,
+    ) -> RecoveryIncident | None:
+        return self.incident if organization_id == ORG and incident_id == INCIDENT else None
+
+    async def get_open_incident(
+        self,
+        *,
+        organization_id: UUID,
+        service_queue_id: UUID,
+    ) -> RecoveryIncident | None:
+        return self.incident if organization_id == ORG and service_queue_id == QUEUE else None
+
+    async def upsert_assessment(self, **kwargs: object) -> RecoveryIncident:
+        status = (
+            RecoveryIncidentStatus.RESOLVED
+            if kwargs["resolve"]
+            else RecoveryIncidentStatus.OPEN
+        )
+        self.incident = replace(
+            self.incident,
+            status=status,
+            source_revision=kwargs["source_revision"],
+            source_fingerprint=kwargs["source_fingerprint"],
+            revision=self.incident.revision + 1,
+        )
+        return self.incident
+
+    async def prepare_action(self, **kwargs: object) -> tuple[RecoveryAction, bool]:
+        if self.action is not None:
+            return self.action, False
+        self.action = RecoveryAction(
+            ACTION,
+            ORG,
+            INCIDENT,
+            kwargs["action_kind"],
+            RecoveryActionStatus.PREPARED,
+            PRINCIPAL,
+            kwargs["idempotency_key"],
+            kwargs["command_fingerprint"],
+            kwargs["expected_source_revision"],
+            kwargs["payload"],
+            {},
+            None,
+            NOW,
+            None,
+            None,
+        )
+        return self.action, True
+
+    async def transition_action(
+        self,
+        *,
+        status: RecoveryActionStatus,
+        owner_steps: Mapping[str, object] | None = None,
+        failure_code: str | None = None,
+        **_: object,
+    ) -> RecoveryAction:
+        assert self.action is not None
+        self.action = replace(
+            self.action,
+            status=status,
+            owner_steps=self.action.owner_steps if owner_steps is None else owner_steps,
+            failure_code=failure_code,
+        )
+        return self.action

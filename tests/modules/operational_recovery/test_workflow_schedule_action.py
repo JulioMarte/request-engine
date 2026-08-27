@@ -8,12 +8,12 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryIncidentStatus,
 )
 
+from .workflow_schedule_repository_support import FakeWorkflowRepository
 from .workflow_schedule_test_support import (
     ACTION,
     EXCEPTION,
     FakeCapacity,
     FakeSchedule,
-    FakeWorkflowRepository,
     command,
 )
 
