@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -84,12 +85,8 @@ def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() ->
         idempotency_key="key-a",
         allow_subject_override=True,
     )
-    other_actor = ExecuteRecoveryCommand(
-        **{**base.__dict__, "principal_id": UUID(int=9)}
-    )
-    other_key = ExecuteRecoveryCommand(
-        **{**base.__dict__, "idempotency_key": "key-b"}
-    )
+    other_actor = replace(base, principal_id=UUID(int=9))
+    other_key = replace(base, idempotency_key="key-b")
 
     assert _execution_fingerprint(base, target) != _execution_fingerprint(other_actor, target)
     assert _execution_fingerprint(base, target) != _execution_fingerprint(other_key, target)
