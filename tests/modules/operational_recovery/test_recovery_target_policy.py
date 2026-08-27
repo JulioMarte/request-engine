@@ -4,7 +4,12 @@ from uuid import UUID
 import pytest
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
-from request_engine.modules.operational_recovery.application.service import _choose_target
+from request_engine.modules.operational_recovery.application.service import (
+    ExecuteRecoveryCommand,
+    _choose_target,
+    _execution_fingerprint,
+)
+from request_engine.modules.operational_recovery.contracts.models import RecoveryTarget
 
 pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.contract]
 
@@ -59,3 +64,32 @@ def test_contextual_source_never_becomes_actionable_through_legacy_target() -> N
     assert target is not None
     assert target.actionable is False
     assert target.blocked_reason == "contextual_source_reschedule_not_supported"
+
+
+def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() -> None:
+    target = RecoveryTarget(
+        start_at=NOW + timedelta(hours=2),
+        end_at=NOW + timedelta(hours=3),
+        location_id=UUID(int=2),
+        resources=(ResourceChoice(UUID(int=3), UUID(int=4)),),
+        actionable=True,
+    )
+    base = ExecuteRecoveryCommand(
+        organization_id=UUID(int=5),
+        principal_id=UUID(int=6),
+        proposal_id=UUID(int=7),
+        reservation_id=UUID(int=8),
+        expected_source_fingerprint="source",
+        expected_proposal_fingerprint="proposal",
+        idempotency_key="key-a",
+        allow_subject_override=True,
+    )
+    other_actor = ExecuteRecoveryCommand(
+        **{**base.__dict__, "principal_id": UUID(int=9)}
+    )
+    other_key = ExecuteRecoveryCommand(
+        **{**base.__dict__, "idempotency_key": "key-b"}
+    )
+
+    assert _execution_fingerprint(base, target) != _execution_fingerprint(other_actor, target)
+    assert _execution_fingerprint(base, target) != _execution_fingerprint(other_key, target)
