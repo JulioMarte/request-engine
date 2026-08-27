@@ -166,6 +166,7 @@ class PostgresRecoveryRepository(RecoveryRepository):
                 .mappings()
                 .one_or_none()
             )
+            created = row is not None
             if row is None:
                 row = await _find_execution_conflict(
                     session,
@@ -178,6 +179,7 @@ class PostgresRecoveryRepository(RecoveryRepository):
         return RecoveryExecutionRecord(
             execution=_execution_from_row(row),
             command_fingerprint=cast(str, row["command_fingerprint"]),
+            created=created,
         )
 
     async def succeed_execution(
