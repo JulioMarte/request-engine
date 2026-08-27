@@ -18,6 +18,7 @@ class RecoveryProposalView(BaseModel):
     observed_at: datetime
     horizon_end: datetime
     source_fingerprint: str
+    source_snapshot: dict[str, object]
     source_checkpoint: RecoverySourceCheckpointView
     proposal_fingerprint: str
     executable_capacity_seconds: int
@@ -36,6 +37,7 @@ class RecoveryProposalView(BaseModel):
             observed_at=item.observed_at,
             horizon_end=item.horizon_end,
             source_fingerprint=item.source_fingerprint,
+            source_snapshot=item.source_snapshot,
             source_checkpoint=RecoverySourceCheckpointView.from_contract(item.source_checkpoint),
             proposal_fingerprint=item.proposal_fingerprint,
             executable_capacity_seconds=item.executable_capacity_seconds,
