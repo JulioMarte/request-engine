@@ -17,6 +17,7 @@ class RecoveryCapacityCheckpoint:
     projection_policy_revision: int
     resource_availability_revision: int
     location_operational_revision: int
+    recovery_source_revision: int
     commitments: tuple[RecoveryCommitmentCheckpoint, ...]
 
 
@@ -43,6 +44,7 @@ class RecoveryCapacityAssessment:
     committed_capacity_seconds: int
     shortfall_seconds: int
     source_fingerprint: str
+    source_snapshot: dict[str, object]
     checkpoint: RecoveryCapacityCheckpoint
     affected_commitments: tuple[RecoveryCommitmentFact, ...]
 
