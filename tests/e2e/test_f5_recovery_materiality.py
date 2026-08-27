@@ -83,7 +83,11 @@ async def test_f5_proposal_is_read_only_and_uses_booking_generated_replacement_t
         for target in targets
         if target is not None
     )
-    assert tuple(
-        reservation_state(e2e_admin_conn, reservation_id) for reservation_id in world.reservations
-    ) == before
+    assert (
+        tuple(
+            reservation_state(e2e_admin_conn, reservation_id)
+            for reservation_id in world.reservations
+        )
+        == before
+    )
     assert recovery_counts(e2e_admin_conn, sandbox.organization_id) == side_effects_before
