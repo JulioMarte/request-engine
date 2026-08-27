@@ -1,8 +1,8 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1-F5 now have implemented feature slices. F4 normative behavior lives in `29-live-capacity-projection-contract.md`; F5 normative behavior and its explicit roadmap-scope disposition live in `32-operational-recovery-communications-contract.md` and `33-operational-recovery-old-new-disposition.md`. F6 remains future feature scope.
+Status: **accepted product/design direction**. F1-F4 are implemented feature slices. F5 has an implemented explicit-recovery core under active closure/hardening; the broader original recovery capability set is **not** fully delivered and remains explicitly disposed in `33-operational-recovery-old-new-disposition.md`. F6 remains future feature scope.
 
-This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries. A roadmap capability is not implicitly delivered merely because it appears below: where a later feature contract deliberately narrows a slice, the feature-specific disposition is authoritative for completion truth.
+This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries. A later feature contract may split a roadmap item into delivery tranches, but it MUST preserve the original capability as explicit remaining scope rather than redefining it away.
 
 ## 1. North star
 
@@ -56,7 +56,7 @@ Cross-Tenant Discovery    Operations
                              v
                        F5 Operational
                     Recovery + Communications
-                         [implemented]
+                  [core implemented / broader scope open]
                              |
                              v
                     F6 Operational Copilot
@@ -79,7 +79,7 @@ F1 + semantic commands -> F6
 F2 normative behavior lives in `24-geospatial-cross-tenant-discovery-contract.md`.
 F3 normative behavior lives in `26-live-service-operations-contract.md` with its current-state inventory in `27-live-service-operations-current-state-inventory.md`.
 F4 normative behavior lives in `29-live-capacity-projection-contract.md` with its old-to-new implementation inventory in `30-live-capacity-projection-current-state-inventory.md`.
-F5 normative behavior lives in `32-operational-recovery-communications-contract.md`; `33-operational-recovery-old-new-disposition.md` records which broader roadmap capabilities were delivered, reused, partial, unsupported/deferred or explicit non-goals; `34-operational-recovery-acceptance-evidence.md` records acceptance traceability and exact-head evidence.
+F5 core normative behavior lives in `32-operational-recovery-communications-contract.md`; `33-operational-recovery-old-new-disposition.md` preserves the original roadmap delta and records delivered, reused, partial and deferred capabilities; `34-operational-recovery-acceptance-evidence.md` records only evidence that has actually been demonstrated.
 
 ---
 
@@ -164,21 +164,21 @@ F4 projects remaining workload against remaining effective operational time over
 
 The first F4 slice uses an explicit `ServiceQueue + Resource + Location` scope, deterministic workload estimation/provenance, deduplication across planned/live/executing representations, coherent PostgreSQL observation time, explicit uncertainty, staff/customer projections and read-only intake evaluation.
 
-F4 may expose projected overrun, insufficient headroom, affected commitments and indeterminate projection. It does not itself stop intake, notify customers, extend hours, replace providers or reschedule Reservations. Recovery composition belongs to F5, subject to F5's explicit scope disposition.
+F4 may expose projected overrun, insufficient headroom, affected commitments and indeterminate projection. It does not itself stop intake, notify customers, extend hours, replace providers or reschedule Reservations. Recovery composition belongs to F5.
 
 ---
 
 # F5 — Operational Recovery & Communications
 
-Status: **implemented feature slice on `feature/operational-recovery-communications`**.
+Status: **explicit recovery core implemented on `feature/operational-recovery-communications`; broader original recovery roadmap still open**.
 
-Normative contract:
+Normative core contract:
 
 ```text
 docs/v3/32-operational-recovery-communications-contract.md
 ```
 
-Scope disposition:
+Original-scope disposition:
 
 ```text
 docs/v3/33-operational-recovery-old-new-disposition.md
@@ -190,7 +190,7 @@ Acceptance evidence:
 docs/v3/34-operational-recovery-acceptance-evidence.md
 ```
 
-F5 consumes authoritative F4 recovery capacity/provenance, persists immutable recovery proposals, and supports explicit guarded one-shot execution while leaving the authoritative Reservation/capacity mutation in Booking. Successful execution may create a bounded Communications intent; Communications owns durable delivery, retries, leases/fencing, provider-result ordering and reconciliation.
+The implemented F5 core consumes the canonical F4 projection, including deduplicated Booking/Queue/ServiceSession workload and blockers, persists immutable recovery proposals, and supports explicit guarded one-shot execution while leaving authoritative Reservation/capacity mutation in Booking. Successful execution may create a bounded Communications intent; Communications owns durable delivery, retries, leases/fencing, provider-result ordering and reconciliation.
 
 Keep distinct:
 
@@ -209,23 +209,25 @@ delay
   service probably still occurs today, later
 
 capacity shortfall risk
-  remaining work likely does not fit effective availability
+  remaining active + queued + planned work likely does not fit effective availability
 ```
 
-The broader roadmap originally described potential staff actions including extend-day ScheduleException, stop intake, affected-Reservation review, replacement, communication and reschedule. F5 v1 does **not** claim all of those as newly implemented F5 authorities. The authoritative disposition is document 33:
+The original F5 product direction included more than the current explicit-recovery core. Its status is:
 
 ```text
-one-shot supported Reservation reschedule     delivered
-contextual/cadence-backed reschedule          unsupported/deferred
-stop-intake authority                         reused from existing Booking/capacity truth
-extend-day via ScheduleException              deferred
-replacement/remediation workflow              partial/deferred
-customer communication                        delivered
-durable communication retry/reconciliation   delivered by Communications
-generalized multi-action recovery workflow    explicit non-goal/deferred
+live workload participates in recovery materiality       delivered
+one-shot supported Reservation reschedule                delivered
+customer communication after successful recovery         delivered
+natural Booking rejection of unavailable new intake      reused
+contextual/cadence-backed reschedule                      deferred
+explicit operator stop-intake policy                      deferred
+extend-day via ScheduleException                          deferred
+general/contextual replacement provider/resource          partial/deferred
+automatic event-triggered reprojection/escalation         deferred
+generalized multi-action recovery workflow                not in v1 / future decision
 ```
 
-Therefore `F5 implemented` means the contracted F5 v1 slice is implemented and its broader roadmap delta is explicitly disposed. It must never be read as a claim that every potential recovery action in the original roadmap was delivered.
+Therefore the phrase `F5 implemented` must not be used without the qualifier **core slice**. The broader recovery roadmap is complete only when the deferred rows above are delivered or explicitly superseded by a later accepted product decision.
 
 Internal cause and public communication language remain separate privacy concerns.
 
@@ -273,3 +275,4 @@ Across F1-F6:
 9. Unsupported product states fail closed and must not be presented as actionable.
 10. Every mutation remains capability-gated, tenant-scoped, auditable, idempotent where required and protected by the owning module's concurrency contract.
 11. Historical evidence remains exact-head evidence; a green run for an older SHA does not prove a later branch head.
+12. A narrower implementation slice may defer roadmap capability, but documentation must preserve that remaining scope rather than redefine it as delivered.
