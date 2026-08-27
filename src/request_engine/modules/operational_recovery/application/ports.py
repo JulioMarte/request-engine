@@ -1,4 +1,4 @@
-from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -8,20 +8,10 @@ from request_engine.modules.operational_recovery.contracts.models import (
 )
 
 
-class RecoveryExecutionUnit(Protocol):
-    async def existing(self) -> tuple[RecoveryExecution, str] | None: ...
-
-    async def record(
-        self,
-        *,
-        principal_id: UUID,
-        idempotency_key: str,
-        command_fingerprint: str,
-        proposal: RescheduleProposal,
-        reservation_id: UUID,
-        resulting_revision: int,
-        notification_requested: bool,
-    ) -> RecoveryExecution: ...
+@dataclass(frozen=True, slots=True)
+class RecoveryExecutionRecord:
+    execution: RecoveryExecution
+    command_fingerprint: str
 
 
 class RecoveryRepository(Protocol):
@@ -37,13 +27,33 @@ class RecoveryRepository(Protocol):
         self, *, organization_id: UUID, proposal_id: UUID
     ) -> RescheduleProposal | None: ...
 
-    def execution_unit(
+    async def prepare_execution(
         self,
         *,
         organization_id: UUID,
-        proposal_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+        command_fingerprint: str,
+        proposal: RescheduleProposal,
         reservation_id: UUID,
-    ) -> AbstractAsyncContextManager[RecoveryExecutionUnit]: ...
+        notification_requested: bool,
+    ) -> RecoveryExecutionRecord: ...
+
+    async def succeed_execution(
+        self,
+        *,
+        organization_id: UUID,
+        execution_id: UUID,
+        resulting_revision: int,
+    ) -> RecoveryExecution: ...
+
+    async def reject_execution(
+        self,
+        *,
+        organization_id: UUID,
+        execution_id: UUID,
+        failure_code: str,
+    ) -> RecoveryExecution: ...
 
     async def attach_communication_task(
         self,
