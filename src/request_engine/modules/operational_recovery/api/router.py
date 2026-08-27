@@ -25,7 +25,10 @@ IdempotencyKey = Annotated[
 _SUBJECT_OVERRIDE_PERMISSION = "appointments.subject_override"
 
 
-def create_router(service: OperationalRecoveryService, actor_resolver: ActorResolver) -> APIRouter:
+def create_router(
+    service: OperationalRecoveryService,
+    actor_resolver: ActorResolver,
+) -> APIRouter:
     router = APIRouter(prefix="/v1/operational-recovery", tags=["operational-recovery"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
@@ -35,6 +38,7 @@ def create_router(service: OperationalRecoveryService, actor_resolver: ActorReso
         service_queue_id: UUID,
         body: CreateRecoveryProposalBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
     ) -> RecoveryProposalView:
         require_capability(actor, "operational_recovery.propose")
         proposal = await service.create_proposal(
@@ -42,6 +46,7 @@ def create_router(service: OperationalRecoveryService, actor_resolver: ActorReso
                 organization_id=actor.organization_id,
                 principal_id=actor.principal_id,
                 service_queue_id=service_queue_id,
+                idempotency_key=idempotency_key,
                 search_days=body.search_days,
             )
         )
