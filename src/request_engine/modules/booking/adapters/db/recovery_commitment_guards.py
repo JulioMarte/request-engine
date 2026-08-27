@@ -11,6 +11,32 @@ from request_engine.modules.booking.contracts.recovery import (
 )
 
 
+async def require_recovery_source_revision(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    service_queue_id: UUID,
+    expected_revision: int,
+) -> None:
+    current = cast(
+        int,
+        (
+            await session.execute(
+                text(
+                    "SELECT request_cmd.lock_recovery_source_revision("
+                    ":organization_id, :service_queue_id)"
+                ),
+                {
+                    "organization_id": organization_id,
+                    "service_queue_id": service_queue_id,
+                },
+            )
+        ).scalar_one(),
+    )
+    if current != expected_revision:
+        raise RecoveryBookingConflict("recovery live source revision changed")
+
+
 async def require_source_resource_revision(
     session: AsyncSession,
     *,
