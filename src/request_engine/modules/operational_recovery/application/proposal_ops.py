@@ -45,8 +45,9 @@ async def create_proposal(
     )
     if assessment.shortfall_seconds <= 0:
         raise RecoveryShortfallNotMaterial()
-    if not assessment.affected_commitments:
-        raise RuntimeError("positive recovery shortfall has no directly unsatisfied Reservations")
+    # A live-only shortfall is a valid risk-only proposal. QueueEntry/ServiceSession
+    # pressure does not prove that any Reservation should move, so an empty affected
+    # set is deliberately persisted rather than converted into a fabricated action.
     proposal = await build_proposal(
         command=command,
         assessment=assessment,

@@ -34,6 +34,14 @@ def build_recovery_checkpoint(
 
 
 def recovery_pressure(projection: LiveCapacityProjection) -> tuple[int, int, int]:
+    """Return committed, scheduled shortfall and live shortfall independently.
+
+    Scheduled shortfall answers whether persisted Reservation commitments exceed
+    executable capacity. Live shortfall includes QueueEntry/ServiceSession work
+    from the same authoritative F4 projection. The latter is diagnostic pressure;
+    it must never by itself identify a Reservation as affected.
+    """
+
     executable = projection.remaining_operational_seconds
     committed = projection.scheduled_committed_workload_seconds or 0
     scheduled_shortfall = max(committed - executable, 0)
@@ -43,5 +51,4 @@ def recovery_pressure(projection: LiveCapacityProjection) -> tuple[int, int, int
         if projected_workload is None
         else max(projected_workload - executable, 0)
     )
-    shortfall = max(scheduled_shortfall, live_shortfall)
-    return committed, shortfall, max(shortfall - scheduled_shortfall, 0)
+    return committed, scheduled_shortfall, live_shortfall

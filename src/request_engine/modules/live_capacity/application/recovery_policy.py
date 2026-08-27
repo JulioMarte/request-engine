@@ -8,27 +8,24 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryComm
 def affected_recovery_commitments(
     planned: tuple[PlannedWorkloadFact, ...],
     intervals: tuple[OperationalAvailabilityInterval, ...],
-    shortfall_seconds: int,
-    *,
-    live_pressure_seconds: int = 0,
+    scheduled_shortfall_seconds: int,
 ) -> tuple[RecoveryCommitmentFact, ...]:
-    """Return commitments that are structurally or live-pressure displaced.
+    """Return only Reservation commitments proven unsatisfied by schedule authority.
 
-    Capacity loss selects only Reservations that no longer fit their authoritative
-    remaining interval. Additional pressure created by live Queue/ServiceSession
-    workload is resolved deterministically from the latest still-planned
-    Reservations backwards, because those are the commitments displaced first
-    once already-running/waiting work consumes the remaining day.
+    QueueEntry/ServiceSession pressure is intentionally absent from this function.
+    Live workload can make recovery operationally at-risk, but it does not prove
+    which future Reservation should be displaced. Fabricating that causal link
+    would allow F5 to reschedule an otherwise valid commitment.
     """
 
-    if shortfall_seconds <= 0:
+    if scheduled_shortfall_seconds <= 0:
         return ()
 
     ordered = sorted(
         planned,
         key=lambda item: (item.planned_starts_at, str(item.reservation_id)),
     )
-    directly_unsatisfied = [
+    selected = [
         item
         for item in ordered
         if not any(
@@ -37,21 +34,7 @@ def affected_recovery_commitments(
             for interval in intervals
         )
     ]
-    selected_ids = {item.reservation_id for item in directly_unsatisfied}
-    selected = list(directly_unsatisfied)
 
-    remaining_live_pressure = max(live_pressure_seconds, 0)
-    if remaining_live_pressure:
-        for item in reversed(ordered):
-            if item.reservation_id in selected_ids:
-                continue
-            selected.append(item)
-            selected_ids.add(item.reservation_id)
-            remaining_live_pressure -= item.planned_duration_seconds or 0
-            if remaining_live_pressure <= 0:
-                break
-
-    selected.sort(key=lambda item: (item.planned_starts_at, str(item.reservation_id)))
     result: list[RecoveryCommitmentFact] = []
     for item in selected:
         if item.subject_party_id is None:

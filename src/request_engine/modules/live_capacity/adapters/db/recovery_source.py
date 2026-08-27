@@ -66,7 +66,9 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             location_operational_revision=location_revision,
             recovery_source_revision=recovery_revision,
         )
-        committed, shortfall, live_pressure = recovery_pressure(projection)
+        committed, scheduled_shortfall, live_shortfall = recovery_pressure(projection)
+        shortfall = max(scheduled_shortfall, live_shortfall)
+        live_pressure = max(live_shortfall - scheduled_shortfall, 0)
         evidence = source_snapshot(
             observed_at=snapshot.observed_at,
             horizon_end=snapshot.booking.horizon_end,
@@ -89,8 +91,12 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             location_id=snapshot.policy.location_id,
             observed_at=snapshot.observed_at,
             horizon_end=snapshot.booking.horizon_end,
+            projection_state=projection.state,
+            projection_reasons=projection.reasons,
             executable_capacity_seconds=projection.remaining_operational_seconds,
             committed_capacity_seconds=committed,
+            scheduled_shortfall_seconds=scheduled_shortfall,
+            live_shortfall_seconds=live_shortfall,
             shortfall_seconds=shortfall,
             source_fingerprint=source_fingerprint(evidence),
             source_snapshot=evidence,
@@ -98,7 +104,6 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             affected_commitments=affected_recovery_commitments(
                 planned,
                 snapshot.booking.remaining_intervals,
-                shortfall,
-                live_pressure_seconds=live_pressure,
+                scheduled_shortfall,
             ),
         )
