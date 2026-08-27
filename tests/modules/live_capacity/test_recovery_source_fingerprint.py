@@ -3,9 +3,16 @@ from uuid import UUID
 
 import pytest
 
-from request_engine.modules.booking.contracts.live_capacity import OperationalAvailabilityInterval
-from request_engine.modules.live_capacity.adapters.db.recovery_fingerprint import source_fingerprint
-from request_engine.modules.live_capacity.contracts.projection import EstimateSource, ProjectionWorkItem
+from request_engine.modules.booking.contracts.live_capacity import (
+    OperationalAvailabilityInterval,
+)
+from request_engine.modules.live_capacity.adapters.db.recovery_fingerprint import (
+    source_fingerprint,
+)
+from request_engine.modules.live_capacity.contracts.projection import (
+    EstimateSource,
+    ProjectionWorkItem,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.capacity]
 NOW = datetime(2026, 8, 27, 12, 0, tzinfo=UTC)
