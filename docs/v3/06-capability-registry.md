@@ -1,6 +1,6 @@
 # Request Engine V3 — Capability Registry
 
-Status: normative for the pre-baseline V3 HTTP/security surface.
+Status: normative for the current V3/post-V3 HTTP and security surface.
 
 ## Purpose
 
@@ -12,11 +12,11 @@ The authorization chain remains:
 authentication -> technical capability -> Party authority (when required) -> domain invariants
 ```
 
-`src/request_engine/platform/security/capabilities.py` is the executable registry for the active V3 surface.
+`src/request_engine/platform/security/capabilities.py` is the executable registry for the active product surface.
 
 ## Canonical naming
 
-Capability keys describe the public operational vocabulary rather than implementation modules or persistence entities.
+Capability keys describe the public operational vocabulary rather than persistence entities.
 
 Canonical examples:
 
@@ -36,15 +36,17 @@ queue.leave
 requests.submit
 requests.read
 requests.cancel
+live_capacity.read
+operational_recovery.read
+operational_recovery.propose
+operational_recovery.execute
 ```
-
-Implementation names such as `booking.book_appointment` are not canonical public vocabulary.
 
 ## Exposure classes
 
 `public` means a capability may be granted to authenticated channels, applications, integrations, agents, or operators according to deployment policy. It does not mean anonymous access.
 
-`operator` means the capability is reserved for privileged operational control or an explicit Party-authority override. Examples include `appointments.subject_override`, `queue.subject_override`, `requests.party_override`, and `queue.call_next`.
+`operator` means the capability is reserved for privileged operational control or an explicit Party-authority override. Examples include `appointments.subject_override`, `queue.subject_override`, `requests.party_override`, `queue.call_next`, live-capacity configuration and F5 operational recovery.
 
 `internal` means the capability exists for trusted processing paths and should not be advertised as a normal customer/channel action. Request result/complete/fail processing is currently internal.
 
@@ -72,9 +74,25 @@ requests.cancel          -> requests.manage
 
 The registry documents this relation; authoritative mutation handlers must still resolve current Representation state inside the transaction when the operation requires it.
 
+F5 `operational_recovery.execute` is operator-only, but that technical grant does not itself grant authority over the Reservation subject. Execution delegates to Booking and therefore still requires ordinary `appointments.manage` subject authority or the explicit `appointments.subject_override` capability. F5 must not turn its operator capability into a hidden Party-authority bypass.
+
+## F5 operational recovery
+
+F5 registers three canonical operator capabilities:
+
+```text
+operational_recovery.read     query
+operational_recovery.propose  idempotent command
+operational_recovery.execute  idempotent command
+```
+
+`propose` is a command rather than a query because it persists an immutable proposal/provenance snapshot. It therefore requires `Idempotency-Key` under the normal command contract.
+
+`execute` authorizes one explicit proposal-bound recovery action. It does not imply a generic `reschedule all` workflow and it does not bypass Booking's authoritative Reservation/capacity validation.
+
 ## Legacy aliases
 
-V3 is still pre-baseline, but existing tests/integrations already materialize older grants. Compatibility is therefore one-way:
+Existing tests/integrations may still materialize older grants. Compatibility remains one-way:
 
 ```text
 legacy grant -> may satisfy registered canonical requirement
@@ -97,7 +115,7 @@ queue.read                     -> queue.list + queue.status
 
 The two legacy read umbrellas intentionally fan out only for compatibility. New grants should use the narrower canonical keys.
 
-Aliases are not advertised as new capability vocabulary and should be removed at the V3 compatibility freeze once deployment adapters have migrated.
+F5 introduces no legacy aliases.
 
 ## Change policy
 
@@ -105,11 +123,11 @@ Adding a capability requires a registry entry, exposure classification, a descri
 
 Renaming or removing a canonical capability requires an explicit compatibility decision. Do not silently change capability strings in routers, SDKs, tool definitions, or agent manifests.
 
-New HTTP capability checks must use canonical registry keys. Architecture fitness tests protect uniqueness, intentional alias fan-out, and operator override classification.
+New HTTP capability checks must use canonical registry keys. Architecture fitness tests protect uniqueness, intentional alias fan-out, operator override classification and the command idempotency contract.
 
 ## Deferred discovery endpoint
 
-The registry stabilizes authorization vocabulary, but it is not yet a tenant capability catalog. A future discovery endpoint must distinguish at least:
+The registry stabilizes authorization vocabulary, but it is not a tenant capability catalog. A future discovery endpoint must distinguish at least:
 
 ```text
 capability exists in product

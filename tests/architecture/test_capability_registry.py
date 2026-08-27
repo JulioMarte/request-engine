@@ -3,6 +3,7 @@ from uuid import uuid4
 from request_engine.platform.security.capabilities import (
     CAPABILITIES,
     CapabilityExposure,
+    IdempotencyPolicy,
     canonical_capability_keys,
 )
 from request_engine.platform.security.context import ActorContext
@@ -52,6 +53,14 @@ def test_internal_processing_is_not_public_capability_surface() -> None:
         assert by_key[key].party_scope is None
 
 
+def test_operational_recovery_is_operator_only_and_commands_are_idempotent() -> None:
+    by_key = {definition.key: definition for definition in CAPABILITIES}
+    assert by_key["operational_recovery.read"].exposure is CapabilityExposure.OPERATOR
+    for key in ("operational_recovery.propose", "operational_recovery.execute"):
+        assert by_key[key].exposure is CapabilityExposure.OPERATOR
+        assert by_key[key].idempotency is IdempotencyPolicy.REQUIRED
+
+
 def test_actor_context_accepts_registered_legacy_grants_without_exposing_new_aliases() -> None:
     actor = ActorContext(
         organization_id=uuid4(),
@@ -77,7 +86,7 @@ def test_actor_context_accepts_registered_legacy_grants_without_exposing_new_ali
     assert not actor.allows("appointments.cancel")
 
 
-def test_canonical_registry_contains_expected_v3_public_surface() -> None:
+def test_canonical_registry_contains_expected_current_surface() -> None:
     assert {
         "business.get_info",
         "catalog.search_offerings",
@@ -97,4 +106,7 @@ def test_canonical_registry_contains_expected_v3_public_surface() -> None:
         "requests.submit",
         "requests.read",
         "requests.cancel",
+        "operational_recovery.read",
+        "operational_recovery.propose",
+        "operational_recovery.execute",
     } <= canonical_capability_keys()

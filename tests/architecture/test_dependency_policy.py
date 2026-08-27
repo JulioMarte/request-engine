@@ -22,6 +22,7 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "discovery": frozenset({"booking"}),
     "delivery": frozenset(),
     "live_capacity": frozenset({"booking", "delivery", "queue"}),
+    "operational_recovery": frozenset({"booking", "communications", "live_capacity"}),
     "payments": frozenset(),
     "dispatch": frozenset(),
 }
@@ -177,8 +178,7 @@ def test_module_dependencies_match_approved_direction_policy() -> None:
 
 
 def test_actual_module_dependency_graph_is_acyclic() -> None:
-    graph = _actual_dependency_graph()
-    cycle = _find_cycle(graph)
+    cycle = _find_cycle(_actual_dependency_graph())
     message = (
         "Business-module dependency cycle detected: "
         f"{' -> '.join(cycle or ())}. Revisit ownership or use a one-way surface."

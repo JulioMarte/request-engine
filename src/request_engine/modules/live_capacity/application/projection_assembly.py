@@ -5,8 +5,10 @@ from request_engine.modules.live_capacity.application.workload_builder import (
 )
 from request_engine.modules.live_capacity.contracts.projection import (
     CapacityInterval,
+    LiveCapacityProjection,
     ProjectionWorkItem,
 )
+from request_engine.modules.live_capacity.domain.projection import project_live_capacity
 
 
 def existing_work(snapshot: ProjectionSnapshot) -> tuple[ProjectionWorkItem, ...]:
@@ -33,4 +35,17 @@ def has_open_interruption(snapshot: ProjectionSnapshot) -> bool:
     return (
         snapshot.delivery.active_service is not None
         and snapshot.delivery.active_service.has_open_interruption
+    )
+
+
+def assemble_live_capacity_projection(snapshot: ProjectionSnapshot) -> LiveCapacityProjection:
+    """Project one authoritative snapshot with the canonical F4 semantics."""
+
+    return project_live_capacity(
+        observed_at=snapshot.observed_at,
+        intervals=capacity_intervals(snapshot),
+        work_items=existing_work(snapshot),
+        scheduled_work_items=scheduled_commitments(snapshot),
+        has_open_interruption=has_open_interruption(snapshot),
+        has_open_resource_activity=snapshot.delivery.open_resource_activity is not None,
     )

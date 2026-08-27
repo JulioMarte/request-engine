@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3 actualmente activas.
 >
-> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 lo modifican explícitamente mediante contratos posteriores. F3: `26` + `28`. F4 projection ownership: `29-live-capacity-projection-contract.md`.
+> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 lo modifican explícitamente mediante contratos posteriores. F3: `26` + `28`. F4 projection ownership: `29-live-capacity-projection-contract.md`. F5 recovery ownership: `32-operational-recovery-communications-contract.md`.
 
 ## 1. Current summary
 
@@ -16,7 +16,8 @@
 | `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
 | `discovery` | active post-V3 F2 | canonical service mapping, publication, cross-tenant discovery projection, opaque discovery handoff |
 | `delivery` | active post-V3 F3 | ReservationAccess, ServiceSession, ServiceSessionInterruption, ResourceActivity and actual execution truth |
-| `live_capacity` | active feature F4 | projection-scope/estimate policy and deterministic live-capacity/ETA/intake-evaluation semantics over published Booking/Queue/Delivery facts |
+| `live_capacity` | active post-V3 F4 | projection-scope/estimate policy and deterministic live-capacity/ETA/intake-evaluation semantics over published Booking/Queue/Delivery facts |
+| `operational_recovery` | active post-V3 F5 | immutable recovery proposal/provenance, explicit one-shot recovery execution fact and lineage to Communications intent |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
 | `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
@@ -39,7 +40,7 @@ Owns stable/versioned operational configuration including Location, Offering/Off
 
 ## 4. Requests
 
-Owns durable new business demand requiring later processing. A generic Request is not a universal mutation envelope for Booking, Queue, Delivery or Live Capacity.
+Owns durable new business demand requiring later processing. A generic Request is not a universal mutation envelope for Booking, Queue, Delivery, Live Capacity or Operational Recovery.
 
 ---
 
@@ -68,9 +69,11 @@ CapacityClaim = Hold/Reservation consumption truth
 Reservation = planned commitment/history
 ```
 
-F3 execution never rewrites Reservation/CapacityClaim because reality differed from plan. F4 consumes effective planning availability and same-day commitment facts but cannot become capacity authority.
+F3 execution never rewrites Reservation/CapacityClaim because reality differed from plan. F4 consumes effective planning availability and same-day commitment facts but cannot become capacity authority. F5 delegates every legal reschedule back to Booking and must not update Reservation or CapacityClaim rows itself.
 
-Booking must publish a narrow F4 planning/read contract rather than permit `live_capacity` to import Booking DB/application internals.
+Booking publishes narrow F4/F5 contracts rather than permitting `live_capacity` or `operational_recovery` to import Booking DB/application internals. The F5 recovery reschedule adapter owns authoritative stale guards that require Booking locks, including Reservation revision, Resource/Location revisions, exact source commitment membership and target-capacity revalidation.
+
+Contextual source/target recovery reschedule fails closed until Booking has a contextual reschedule implementation that preserves assignment and commercial provenance.
 
 ---
 
@@ -88,13 +91,15 @@ For F4, Queue publishes only the live waiting/called facts required for projecti
 
 ### 6.2 Waitlist / released-slot recovery
 
-Owns WaitlistEntry, SlotOpportunity and SlotOffer. Waitlist is future interest and never consumes capacity. Booking remains CapacityHold/Claim authority.
+Owns WaitlistEntry, SlotOpportunity and SlotOffer. Waitlist is future interest and never consumes capacity. Booking remains CapacityHold/Claim authority. This released-slot recovery chain is distinct from F5 operational recovery after already-committed capacity becomes unsatisfiable.
 
 ---
 
 ## 7. Communications
 
-Owns transactional communication intent, delivery facts and reminder intent. Provider delivery state cannot directly mutate Booking, Queue, Delivery or Live Capacity truth.
+Owns transactional communication intent, delivery facts and reminder intent. Provider delivery state cannot directly mutate Booking, Queue, Delivery, Live Capacity or Operational Recovery truth.
+
+For F5, Communications owns `CommunicationTask`, delivery/outbox/provider retry/dedupe semantics. Operational Recovery may retain only the lineage identity of the task caused by a recovery execution.
 
 ---
 
@@ -147,6 +152,7 @@ staff live-capacity projection
 customer-safe self-relative ETA projection
 read-only intake evaluation
 projection uncertainty/blocking semantics
+F5-facing recovery capacity assessment/checkpoint
 ```
 
 Initial scope is explicit:
@@ -177,6 +183,7 @@ Does **not** own:
 Reservation / CapacityClaim                 -> booking
 ServiceQueue / QueueEntry                   -> queue
 ServiceSession / interruption/activity      -> delivery
+OperationalRecoveryProposal / Execution     -> operational_recovery
 OperationalWorkloadClassification identity -> queue/F3 configuration
 Resource schedule truth                     -> booking
 Location schedule truth                     -> catalog/booking composition
@@ -190,9 +197,10 @@ Hard rules:
 - observed durations may influence a projection but never silently mutate configured policy;
 - ETA, queue position and remaining live capacity are not authoritative persisted counters;
 - unknown/open-ended inputs produce explicit partial/indeterminate state rather than fabricated precision;
-- initial F4 does not perform multi-resource queue optimization, automatic provider assignment, stop-intake, recovery or communications.
+- F4 does not mutate Booking/Queue/Delivery facts or send communications;
+- F5 may consume a replayable F4 checkpoint, but cannot reimplement F4 capacity projection.
 
-Typical target capabilities:
+Typical capabilities:
 
 ```text
 live_capacity.read
@@ -200,35 +208,88 @@ live_capacity.evaluate_intake
 live_capacity.customer_read
 ```
 
-Configuration capability names are finalized with implementation but remain operator-only, revisioned/idempotent/audited under normal mutation rules.
+---
+
+## 10. Operational Recovery — active F5 feature
+
+`operational_recovery` owns recovery **composition and authorization lineage**, not the authorities being composed.
+
+Owns:
+
+```text
+immutable RescheduleProposal snapshot
+source/proposal fingerprint and replayable checkpoint
+AffectedReservation recovery composition
+one-shot RecoveryExecution fact
+prepared -> succeeded | rejected crash/retry state
+CommunicationTask lineage identity
+```
+
+Consumes only published contracts from:
+
+```text
+live_capacity   -> material shortfall + source checkpoint
+booking         -> recovery alternatives + guarded legal reschedule
+communications  -> transactional notification intent
+```
+
+Does not own:
+
+```text
+Resource / schedule / CapacityClaim -> booking
+Reservation mutation                -> booking
+projection semantics                -> live_capacity
+CommunicationTask / delivery        -> communications
+provider/network I/O                -> communications/provider adapters
+generic RecoveryWorkflow            -> not introduced
+```
+
+Hard rules:
+
+- proposal creation is idempotent because it persists an immutable snapshot;
+- proposal generation has no Reservation/capacity/communication side effects;
+- one execution command targets one affected Reservation in v1;
+- execution is explicitly attributable to the authorizing Principal and bound to its idempotency identity;
+- Booking revalidates stale source/target truth under its canonical Reservation/Resource locks;
+- a crash after Booking commit is resumed through the same Booking idempotency identity rather than repeating the business effect;
+- communication creation happens only after a succeeded recovery execution and uses stable idempotency/dedupe identities;
+- contextual recovery reschedule is currently fail-closed rather than silently dropping contextual provenance.
+
+Canonical capabilities:
+
+```text
+operational_recovery.read
+operational_recovery.propose
+operational_recovery.execute
+```
 
 ---
 
-## 10. Payments — deferred
+## 11. Payments — deferred
 
 Financial distinctions remain design knowledge, not current baseline dependencies. Re-entry requires explicit product policy.
 
 ---
 
-## 11. Dispatch — deferred
+## 12. Dispatch — deferred
 
 Field-service destination, feasibility, routing and workforce planning remain outside current scope.
 
 ---
 
-## 12. Discovery — active post-V3 F2
+## 13. Discovery — active post-V3 F2
 
-Discovery owns tenant-authorized published-supply search and opaque handoff semantics. It does not own Organization authority, Catalog truth, Booking capacity, Delivery execution or Live Capacity projection.
+Discovery owns tenant-authorized published-supply search and opaque handoff semantics. It does not own Organization authority, Catalog truth, Booking capacity, Delivery execution, Live Capacity projection or Operational Recovery.
 
 ---
 
-## 13. Platform
+## 14. Platform
 
 Platform is technical infrastructure, never a business catch-all: DB/transactions, idempotency, outbox, scheduling mechanics, audit/events, observability and security plumbing.
 
 ---
 
-## 14. Cross-module transaction/read examples
+## 15. Cross-module transaction/read examples
 
 ### BookAppointment
 
@@ -270,9 +331,28 @@ This read does not acquire Booking/Queue mutation locks merely to compute ETA an
 
 Owner: Live Capacity; read-only advisory evaluation of one specified additional workload against the current projection. It does not create QueueEntry/Reservation/CapacityClaim or stop intake.
 
+### CreateRecoveryProposal
+
+Owner: Operational Recovery; idempotent immutable snapshot composition over F4 + Booking published contracts. It produces no Booking or Communications mutation.
+
+### ExecuteRecovery
+
+Composition: Operational Recovery → Booking → Communications.
+
+```text
+persist/resume one RecoveryExecution identity
+-> first-attempt F4 freshness preflight
+-> Booking idempotent guarded reschedule under authoritative locks
+-> mark execution succeeded
+-> create/reuse one Communications intent
+-> attach CommunicationTask lineage
+```
+
+Booking remains Reservation/capacity authority and Communications remains delivery authority.
+
 ---
 
-## 15. Ownership change gate
+## 16. Ownership change gate
 
 Moving a concept between top-level modules or activating a deferred/new module requires updating:
 
