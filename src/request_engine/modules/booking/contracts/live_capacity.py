@@ -19,8 +19,8 @@ class PlannedWorkloadFact:
     planned_starts_at: datetime
     planned_ends_at: datetime
     planned_duration_seconds: int | None
-    subject_party_id: UUID
-    reservation_revision: int
+    subject_party_id: UUID | None = None
+    reservation_revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
