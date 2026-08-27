@@ -60,7 +60,10 @@ class FakeWorkflowRepository:
         return self.incident if organization_id == ORG and service_queue_id == QUEUE else None
 
     async def upsert_assessment(self, **kwargs: object) -> RecoveryIncident:
-        status = RecoveryIncidentStatus.RESOLVED if kwargs["resolve"] else RecoveryIncidentStatus.OPEN
+        if kwargs["resolve"]:
+            status = RecoveryIncidentStatus.RESOLVED
+        else:
+            status = RecoveryIncidentStatus.OPEN
         self.incident = replace(
             self.incident,
             status=status,
