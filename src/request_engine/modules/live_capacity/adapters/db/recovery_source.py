@@ -8,11 +8,11 @@ from request_engine.modules.live_capacity.adapters.db.projection_snapshot import
 )
 from request_engine.modules.live_capacity.adapters.db.recovery_fingerprint import (
     source_fingerprint,
+    source_snapshot,
 )
 from request_engine.modules.live_capacity.application.projection_assembly import (
     assemble_live_capacity_projection,
     existing_work,
-    has_open_interruption,
 )
 from request_engine.modules.live_capacity.application.recovery_assessment import (
     build_recovery_checkpoint,
@@ -57,7 +57,12 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                     await session.execute(
                         text(
                             """
-                            SELECT r.availability_revision, l.operational_revision
+                            SELECT r.availability_revision,
+                                   l.operational_revision,
+                                   request_read.recovery_source_revision(
+                                       :organization_id,
+                                       :service_queue_id
+                                   ) AS recovery_source_revision
                             FROM request_engine.resources r
                             JOIN request_engine.locations l
                               ON l.organization_id = r.organization_id
@@ -68,6 +73,7 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                         ),
                         {
                             "organization_id": organization_id,
+                            "service_queue_id": service_queue_id,
                             "resource_id": snapshot.policy.resource_id,
                             "location_id": snapshot.policy.location_id,
                         },
@@ -83,10 +89,25 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             snapshot,
             resource_availability_revision=cast(int, revisions["availability_revision"]),
             location_operational_revision=cast(int, revisions["operational_revision"]),
+            recovery_source_revision=cast(int, revisions["recovery_source_revision"]),
         )
         committed, shortfall, live_pressure = recovery_pressure(projection)
-        open_interruption = has_open_interruption(snapshot)
-        open_resource_activity = snapshot.delivery.open_resource_activity is not None
+        evidence = source_snapshot(
+            observed_at=snapshot.observed_at,
+            horizon_end=snapshot.booking.horizon_end,
+            policy_id=snapshot.policy.id,
+            policy_revision=checkpoint.projection_policy_revision,
+            resource_availability_revision=checkpoint.resource_availability_revision,
+            location_operational_revision=checkpoint.location_operational_revision,
+            recovery_source_revision=checkpoint.recovery_source_revision,
+            intervals=snapshot.booking.remaining_intervals,
+            planned=planned,
+            work_items=live_work,
+            queue=snapshot.queue,
+            delivery=snapshot.delivery,
+            projection=projection,
+            live_pressure_seconds=live_pressure,
+        )
 
         return RecoveryCapacityAssessment(
             service_queue_id=service_queue_id,
@@ -97,17 +118,8 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             executable_capacity_seconds=projection.remaining_operational_seconds,
             committed_capacity_seconds=committed,
             shortfall_seconds=shortfall,
-            source_fingerprint=source_fingerprint(
-                policy_id=snapshot.policy.id,
-                policy_revision=checkpoint.projection_policy_revision,
-                resource_availability_revision=checkpoint.resource_availability_revision,
-                location_operational_revision=checkpoint.location_operational_revision,
-                intervals=snapshot.booking.remaining_intervals,
-                planned=planned,
-                work_items=live_work,
-                has_open_interruption=open_interruption,
-                has_open_resource_activity=open_resource_activity,
-            ),
+            source_fingerprint=source_fingerprint(evidence),
+            source_snapshot=evidence,
             checkpoint=checkpoint,
             affected_commitments=affected_recovery_commitments(
                 planned,
