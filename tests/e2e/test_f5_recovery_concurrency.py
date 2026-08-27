@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -43,7 +45,8 @@ async def test_f5_identical_concurrent_execution_converges_on_one_booking_and_co
     affected = proposal["affected"][0]
     reservation_id = UUID(affected["reservation_id"])
     before = reservation_state(e2e_admin_conn, reservation_id)
-    target_start = affected["target"]["start_at"]
+    before_revision = cast(int, before[0])
+    target_start = cast(str, affected["target"]["start_at"])
     idempotency_key = f"f5-race-execute-{uuid4().hex}"
 
     async with (
@@ -79,9 +82,10 @@ async def test_f5_identical_concurrent_execution_converges_on_one_booking_and_co
     assert len({body["id"] for body in bodies}) == 1
     assert all(body["status"] == "succeeded" for body in bodies)
     after = reservation_state(e2e_admin_conn, reservation_id)
-    assert after[0] == before[0] + 1
+    after_revision = cast(int, after[0])
+    assert after_revision == before_revision + 1
     assert after[1] == "confirmed"
-    assert after[2].isoformat() == target_start
+    assert cast(datetime, after[2]).isoformat() == target_start
 
     row = execution_row(
         e2e_admin_conn,
@@ -92,7 +96,7 @@ async def test_f5_identical_concurrent_execution_converges_on_one_booking_and_co
     execution_id = UUID(str(row[0]))
     assert row[1] == "succeeded"
     assert row[2] == sandbox.principal_id
-    assert row[3] == before[0] and row[4] == after[0]
+    assert row[3] == before_revision and row[4] == after_revision
     task_id = UUID(str(row[5]))
     lineage = communication_lineage(e2e_admin_conn, sandbox.organization_id, execution_id)
     assert lineage == [
