@@ -5,10 +5,10 @@ from uuid import UUID
 import pytest
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
-from request_engine.modules.operational_recovery.application.service import (
-    ExecuteRecoveryCommand,
-    _choose_target,
-    _execution_fingerprint,
+from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
+from request_engine.modules.operational_recovery.application.fingerprints import execution_fingerprint
+from request_engine.modules.operational_recovery.application.proposal_policy import (
+    choose_recovery_target,
 )
 from request_engine.modules.operational_recovery.contracts.models import RecoveryTarget
 
@@ -40,7 +40,7 @@ def test_legacy_source_skips_blocked_contextual_target_for_later_actionable_slot
     contextual = _slot(1, contextual=True)
     legacy = _slot(2, contextual=False)
 
-    target = _choose_target(
+    target = choose_recovery_target(
         (contextual, legacy),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
@@ -55,7 +55,7 @@ def test_legacy_source_skips_blocked_contextual_target_for_later_actionable_slot
 def test_contextual_source_never_becomes_actionable_through_legacy_target() -> None:
     legacy = _slot(1, contextual=False)
 
-    target = _choose_target(
+    target = choose_recovery_target(
         (legacy,),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
@@ -88,5 +88,5 @@ def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() ->
     other_actor = replace(base, principal_id=UUID(int=9))
     other_key = replace(base, idempotency_key="key-b")
 
-    assert _execution_fingerprint(base, target) != _execution_fingerprint(other_actor, target)
-    assert _execution_fingerprint(base, target) != _execution_fingerprint(other_key, target)
+    assert execution_fingerprint(base, target) != execution_fingerprint(other_actor, target)
+    assert execution_fingerprint(base, target) != execution_fingerprint(other_key, target)
