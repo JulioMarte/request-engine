@@ -11,11 +11,13 @@ def build_recovery_checkpoint(
     *,
     resource_availability_revision: int,
     location_operational_revision: int,
+    recovery_source_revision: int,
 ) -> RecoveryCapacityCheckpoint:
     return RecoveryCapacityCheckpoint(
         projection_policy_revision=snapshot.policy.revision,
         resource_availability_revision=resource_availability_revision,
         location_operational_revision=location_operational_revision,
+        recovery_source_revision=recovery_source_revision,
         commitments=tuple(
             RecoveryCommitmentCheckpoint(
                 reservation_id=item.reservation_id,
