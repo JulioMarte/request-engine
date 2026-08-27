@@ -35,6 +35,8 @@ def recovery_fingerprint(
         "expected_revision": request.expected_revision,
         "start_at": start_at,
         "location_id": request.location_id,
+        "source_service_queue_id": request.source_service_queue_id,
+        "expected_recovery_source_revision": request.expected_recovery_source_revision,
         "source_resource_id": request.source_resource_id,
         "expected_source_resource_availability_revision": (
             request.expected_source_resource_availability_revision
