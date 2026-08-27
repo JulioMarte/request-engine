@@ -1,7 +1,6 @@
 import hashlib
 import json
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.live_capacity import (
@@ -81,7 +80,7 @@ def source_snapshot(
             for item in queue.entries
         ],
         "completed_reservation_ids": sorted(
-            (str(value) for value in queue.completed_reservation_ids)
+            str(value) for value in queue.completed_reservation_ids
         ),
         "work_items": [
             {
