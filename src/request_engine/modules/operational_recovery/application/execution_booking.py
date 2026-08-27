@@ -91,7 +91,13 @@ async def run_booking_execution(
     )
 
 
-async def _validate_source(command, proposal, execution, capacity, repository) -> None:
+async def _validate_source(
+    command: ExecuteRecoveryCommand,
+    proposal: RescheduleProposal,
+    execution: RecoveryExecution,
+    capacity: RecoveryCapacitySource,
+    repository: RecoveryRepository,
+) -> None:
     current = await capacity.assess_recovery_capacity(
         organization_id=command.organization_id,
         service_queue_id=proposal.service_queue_id,
@@ -102,7 +108,12 @@ async def _validate_source(command, proposal, execution, capacity, repository) -
     raise StaleRecoveryProposal()
 
 
-async def _reject(repository, command, execution, failure_code: str) -> None:
+async def _reject(
+    repository: RecoveryRepository,
+    command: ExecuteRecoveryCommand,
+    execution: RecoveryExecution,
+    failure_code: str,
+) -> None:
     await repository.reject_execution(
         organization_id=command.organization_id,
         execution_id=execution.id,
