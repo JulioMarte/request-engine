@@ -13,10 +13,19 @@ class RecoveryExecutionStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryCommitmentCheckpoint:
+    reservation_id: UUID
+    revision: int
+    starts_at: datetime
+    ends_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class RecoverySourceCheckpoint:
     projection_policy_revision: int
     resource_availability_revision: int
     location_operational_revision: int
+    commitments: tuple[RecoveryCommitmentCheckpoint, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +47,7 @@ class AffectedReservation:
     original_start_at: datetime
     original_end_at: datetime
     target: RecoveryTarget | None
+    contextual_commitment: bool = False
 
 
 @dataclass(frozen=True, slots=True)
