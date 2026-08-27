@@ -56,13 +56,17 @@ async def book_commitments(
     return reservations, slots
 
 
-def restrict_source_to_first_six(
+def restrict_source_to_first_slots(
     conn: PgConnection,
     sandbox: TenantSandbox,
     slots: list[dict[str, Any]],
+    *,
+    count: int,
 ) -> None:
+    if count <= 0 or count > len(slots):
+        raise ValueError("count must select at least one available slot")
     start_at = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
-    end_at = datetime.fromisoformat(cast(str, slots[5]["end_at"])).astimezone(_TZ)
+    end_at = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
     assert start_at.date() == end_at.date()
     weekday = start_at.weekday()
     conn.execute(
@@ -82,6 +86,14 @@ def restrict_source_to_first_six(
             end_at.timetz().replace(tzinfo=None),
         ),
     )
+
+
+def restrict_source_to_first_six(
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+    slots: list[dict[str, Any]],
+) -> None:
+    restrict_source_to_first_slots(conn, sandbox, slots, count=6)
 
 
 def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUID:

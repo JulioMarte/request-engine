@@ -121,7 +121,7 @@ live_pressure       = max(material_shortfall - scheduled_shortfall, 0)
 
 Structural affected Reservations are only those whose captured commitment no longer fits authoritative remaining intervals. F5 MUST NOT numerically fill a shortfall by marking still-executable commitments.
 
-Incremental live pressure deterministically displaces latest still-planned commitments first unless this contract is explicitly amended with a different tested policy.
+Live QueueEntry/ServiceSession workload participates in materiality, source provenance and escalation, but it MUST NOT by itself identify or fabricate an affected Reservation. A live-only shortfall is therefore a valid risk-only recovery state with zero affected Reservations until Booking/F4 authority provides evidence that a specific commitment is no longer executable.
 
 F5 must also classify delay when work still plausibly fits today but the recommended arrival/start window has materially moved. Delay is a communication/escalation input even when `material_shortfall == 0`.
 
