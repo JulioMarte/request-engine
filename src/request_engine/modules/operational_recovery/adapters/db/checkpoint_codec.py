@@ -22,6 +22,7 @@ def checkpoint_to_json(checkpoint: RecoverySourceCheckpoint) -> dict[str, object
         "projection_policy_revision": checkpoint.projection_policy_revision,
         "resource_availability_revision": checkpoint.resource_availability_revision,
         "location_operational_revision": checkpoint.location_operational_revision,
+        "recovery_source_revision": checkpoint.recovery_source_revision,
         "commitments": commitments,
     }
 
@@ -32,6 +33,7 @@ def checkpoint_from_json(raw: dict[str, object]) -> RecoverySourceCheckpoint:
         projection_policy_revision=cast(int, raw["projection_policy_revision"]),
         resource_availability_revision=cast(int, raw["resource_availability_revision"]),
         location_operational_revision=cast(int, raw["location_operational_revision"]),
+        recovery_source_revision=cast(int, raw["recovery_source_revision"]),
         commitments=tuple(_commitment_from_json(item) for item in commitments),
     )
 
