@@ -1,8 +1,8 @@
 # F5 Operational Recovery and Communications Contract
 
-Status: normative feature contract for F5.
+Status: normative feature contract for the explicit F5 recovery core slice.
 
-This document defines the semantics that MUST hold before and during implementation of the F5 `Operational Recovery and Communications` vertical slice described by `14-operational-intelligence-roadmap.md`.
+This document defines the semantics that MUST hold for the F5 `Operational Recovery and Communications` slice described by `14-operational-intelligence-roadmap.md`. The broader original recovery roadmap is preserved, with explicit delivered/deferred disposition in `33-operational-recovery-old-new-disposition.md`; this contract must not be used to retroactively claim that deferred roadmap capabilities were delivered.
 
 ## 1. Purpose
 
@@ -18,23 +18,32 @@ F5 MUST NOT become a second schedule, availability, Reservation, Request, worker
 
 ### 2.1 CapacityShortfallSummary
 
-A derived, snapshot-bound assessment that compares executable capacity from F4 with already-committed Booking obligations for one operational context and time window.
+A derived, snapshot-bound assessment that reuses the canonical F4 projection over Booking commitments plus deduplicated Queue/ServiceSession/planned workload.
 
-A capacity reduction alone is not a material shortfall.
+F5 MUST use the same F4 assembly semantics used by the staff live-capacity projection, including active/queued/planned deduplication, workload estimates, open interruption state and open resource activity. F5 MUST NOT discard live work and then call the result operational recovery.
 
-`material_shortfall = max(existing_commitment_demand - executable_capacity, 0)`
+Two pressures are kept distinct:
 
-The implementation may use finer-grained duration/resource accounting when the Booking/F4 context requires it. The invariant is semantic: F5 MUST reuse the same authoritative capacity and commitment meanings that govern actual consumption; it MUST NOT invent an independent count-based availability algorithm.
+```text
+scheduled_shortfall = max(scheduled_committed_workload - executable_capacity, 0)
+live_shortfall      = max(projected_remaining_workload - executable_capacity, 0)
+material_shortfall  = max(scheduled_shortfall, live_shortfall)
+live_pressure       = max(material_shortfall - scheduled_shortfall, 0)
+```
 
-If `material_shortfall == 0`, no recovery incident exists merely because capacity decreased.
+When F4 cannot produce a known projected workload, scheduled shortfall remains the fail-closed materiality floor; uncertainty is not silently converted into known live pressure.
+
+A capacity reduction alone is not a material shortfall. If `material_shortfall == 0`, no recovery incident exists merely because capacity decreased.
 
 ### 2.2 AffectedReservationList
 
-The deterministic set of confirmed Reservations whose commitments cannot be satisfied within the assessed authoritative capacity snapshot.
+The deterministic set of confirmed Reservations operationally displaced by the assessed authoritative snapshot.
+
+Structural schedule/capacity loss MUST NOT be implemented by adding Reservations until their durations numerically fill the shortfall. A structurally affected Reservation is one whose captured planned commitment no longer fits any authoritative remaining operational interval.
+
+Incremental `live_pressure` caused by deduplicated active/queued work may displace otherwise structurally fitting future commitments. The current policy selects latest still-planned commitments backwards until that incremental pressure is absorbed, because already-running/waiting work consumes the remaining day before later commitments. This order is deterministic and must remain contract-tested; changing prioritization requires a contract amendment.
 
 Membership MUST be reproducible from captured provenance. It MUST NOT be implemented as naive `reservation.start_at BETWEEN closed_start AND closed_end` logic when contextual supply/resource/location rules determine satisfiability.
-
-Selection order MUST be deterministic and documented by the implementation. The first F5 slice uses stable ordering by commitment start and Reservation identity after authoritative context filtering; future prioritization policy requires a contract amendment.
 
 ### 2.3 RescheduleProposal
 
@@ -90,13 +99,17 @@ At minimum it contains:
 - `as_of` in UTC;
 - organization and operational context identity;
 - assessed time-window bounds and facility timezone where relevant;
-- F4 source checkpoint/revision fingerprint;
-- capacity values used to derive the shortfall;
+- F4 policy/resource/location revisions;
+- canonical remaining operational intervals;
+- scheduled Booking commitment identities/revisions/times;
+- deduplicated live work identity, estimate/duration and active-service progress used by F4;
+- open interruption/resource-activity blocker state;
+- capacity/workload values used to derive the shortfall;
 - affected Reservation identities and expected revisions;
 - proposed target slot/resource/location revision data required by Booking;
 - a canonical payload fingerprint for idempotency/conflict checks.
 
-Persisted JSON snapshots MUST be canonicalized before hashing. A proposal's source fingerprint is immutable.
+Persisted JSON snapshots MUST be canonicalized before hashing. A proposal's source fingerprint is immutable. Any material change to one of the authoritative inputs above MUST alter the source fingerprint.
 
 ## 6. Stale recovery protection — P0 invariant
 
@@ -104,11 +117,13 @@ An irreversible action MUST NOT execute from a stale recovery view.
 
 Immediately before mutation, the command path MUST validate current authoritative state against the proposal's captured source checkpoint and each affected Reservation's expected revision. The target alternative MUST also be revalidated by Booking's normal reschedule authority.
 
+F5 fingerprint validation is defense in depth; Booking's transactional source/revision/target guards remain mandatory and MUST reject source changes even on retry/recovery after a prepared F5 execution fact already exists.
+
 If authoritative state has advanced in a way that invalidates the proposal, execution MUST fail with domain code `STALE_RECOVERY_PROPOSAL`, surfaced as HTTP 409 where an HTTP adapter exists.
 
 The stale path MUST prove all of the following negative effects:
 
-- zero Reservation mutation;
+- zero Reservation mutation caused by recovery;
 - zero recovery execution fact marked successful;
 - zero communication intent created;
 - zero outbox delivery created.
@@ -124,7 +139,7 @@ The command MUST include:
 - organization identity;
 - actor/principal identity;
 - proposal identity;
-- explicit selected recovery move(s);
+- explicit selected recovery move;
 - idempotency key;
 - expected proposal/source fingerprint.
 
@@ -138,7 +153,7 @@ F5 MUST NOT create a second availability authority.
 
 `stop new intake from consuming already-broken capacity` means that after a closure/capacity loss, the same transactional Booking/capacity-consumption boundary used for normal holds/reservations MUST reject new consumption that is no longer executable.
 
-If F4/Booking already enforce this from current schedule/supply truth, F5 REUSES and proves that behavior. A UI warning is not sufficient evidence. If a durable operational hold is later required for a policy not expressible by existing Booking authority, it must be owned/enforced by Booking and added by contract amendment.
+That reused behavior is not equivalent to an explicit operator command saying “stop intake even while capacity remains”. If the product requires that deliberate policy, Booking/operational configuration must own and enforce a typed command; it is not delivered implicitly by F5 v1.
 
 ## 9. Idempotency and concurrency
 
@@ -150,7 +165,16 @@ Reusing a key with a different canonical payload is an idempotency conflict and 
 
 Concurrent identical executions MUST converge on one logical recovery action. At most one legal Reservation transition and one logical communication intent may be committed.
 
-The implementation MUST use authoritative persistence/uniqueness/locking; process-local mutexes are not evidence.
+The implemented protocol relies on authoritative durable composition, not process-local mutexes and not a claimed advisory lock:
+
+- F5 durable uniqueness for proposal/Reservation and actor/idempotency identity;
+- stable `recovery:{execution_id}:booking:v1` Booking idempotency;
+- Booking transactional source/revision revalidation and Reservation row/concurrency guards;
+- conditional F5 terminal transitions;
+- stable execution-derived Communications idempotency/dedupe;
+- conditional one-time attachment of the same CommunicationTask identity.
+
+If this protocol cannot pass a real PostgreSQL concurrency proof, the feature is not complete; documentation MUST NOT substitute an unimplemented lock primitive for that proof.
 
 ## 10. Communication lineage and duplicate prevention
 
@@ -158,9 +182,9 @@ A successful recovery action may request a transactional notification only after
 
 The domain lineage is:
 
-`RecoveryExecution -> Communications Intent -> Outbox/Delivery -> Provider Attempt -> Delivery Result`
+`RecoveryExecution -> CommunicationTask -> Outbox/Delivery -> Provider Attempt -> Delivery Result`
 
-The communication dedupe identity MUST be stable from the recovery execution identity plus recipient/purpose. HTTP retry, worker retry, concurrent worker claim, and repeated rendering of the same proposal MUST NOT create a second logical intent.
+The communication dedupe identity MUST be stable from the recovery execution identity plus recipient/purpose. HTTP retry, worker retry, concurrent execution, and repeated rendering of the same proposal MUST NOT create a second logical intent.
 
 No provider/network I/O may occur while authoritative Booking locks are held.
 
@@ -198,7 +222,7 @@ Stale/idempotency mismatch map to conflict semantics, not generic 500 responses.
 F5 v1 persists two concepts, not a generic workflow state machine:
 
 1. immutable recovery proposal snapshot/provenance;
-2. append-oriented/idempotent recovery execution fact.
+2. append-preserving/idempotent recovery execution fact.
 
 The schema MUST NOT duplicate Reservation, schedule, capacity, outbox, or delivery state.
 
@@ -213,8 +237,10 @@ Scenario A — materiality and deterministic affected set:
 - create executable capacity for 10 equivalent commitments;
 - create 10 valid confirmed Reservations;
 - introduce forced closed time/current supply change reducing executable capacity to 6;
-- assert F4/Booking-derived shortfall is 4;
-- assert the exact deterministic four affected Reservation identities and captured revisions;
+- assert scheduled shortfall is 4;
+- assert the exact deterministic structurally affected Reservation identities and captured revisions;
+- separately create live Queue/ServiceSession pressure with scheduled commitments still fitting;
+- assert F4/F5 materiality includes that live pressure and deterministically displaces the latest still-planned commitments;
 - assert further intake into broken capacity cannot commit.
 
 Scenario B — proposal is read-only:
@@ -225,7 +251,7 @@ Scenario B — proposal is read-only:
 
 Scenario C — stale view:
 
-- mutate schedule/supply or an affected Reservation after proposal creation;
+- mutate schedule/supply, live Queue/ServiceSession truth, or an affected Reservation after proposal creation;
 - execute the old proposal;
 - assert `STALE_RECOVERY_PROPOSAL`/409 semantics;
 - assert zero Reservation mutation caused by recovery and zero notification/outbox side effects.
@@ -233,16 +259,16 @@ Scenario C — stale view:
 Scenario D — idempotent execution and communications:
 
 - create a current proposal;
-- execute the same command twice and race identical executions where the integration harness permits;
+- execute the same command twice and race identical executions;
 - assert the legal Reservation transition occurred once;
 - assert one recovery execution identity;
-- assert one logical communication intent/dedupe identity;
+- assert one logical CommunicationTask/dedupe identity;
 - assert actor attribution and complete lineage to delivery result where provider simulation is supported;
 - inspect authoritative final state.
 
-HTTP 200/202 assertions, mock-called assertions, or affected-count-only assertions do not satisfy these gates.
+HTTP 200/202 assertions, mock-called assertions, affected-count-only assertions, or a green aggregate suite without identifiable scenario assertions do not satisfy these gates.
 
-## 15. Explicit non-goals
+## 15. Explicit non-goals and deferred roadmap capabilities
 
 F5 v1 does not create:
 
@@ -253,6 +279,15 @@ F5 v1 does not create:
 - optimization/ranking ML for recovery alternatives;
 - a second analytics shortfall authority.
 
+The following broader roadmap capabilities are **not delivered by this contract** and remain future product work unless an owner-controlled command already exists and is explicitly integrated later:
+
+- automatic event-triggered recovery proposal/escalation;
+- explicit operator stop-intake policy beyond natural Booking capacity enforcement;
+- extend-day recovery execution via ScheduleException;
+- generalized/contextual provider/resource replacement and contextual reschedule.
+
 ## 16. Completion gate
 
-F5 is not complete until contract, old-to-new inventory, implementation, migration/schema, ownership docs, PostgreSQL-backed acceptance evidence, and exact-head CI evidence agree with this contract.
+The explicit F5 recovery core slice is not complete until contract, old-to-new inventory, implementation, migration/schema, ownership docs, PostgreSQL-backed acceptance evidence, and exact-head CI evidence agree with this contract.
+
+The broader original F5 roadmap is not complete merely because this narrower core slice is complete. Deferred capability status must remain visible in roadmap/disposition documentation.
