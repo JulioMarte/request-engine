@@ -2,7 +2,9 @@ from uuid import UUID
 
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
-from request_engine.modules.operational_recovery.application.commands import CreateRecoveryProposalCommand
+from request_engine.modules.operational_recovery.application.commands import (
+    CreateRecoveryProposalCommand,
+)
 from request_engine.modules.operational_recovery.application.errors import (
     RecoveryProposalNotFound,
     RecoveryShortfallNotMaterial,
@@ -11,7 +13,9 @@ from request_engine.modules.operational_recovery.application.fingerprints import
     proposal_command_fingerprint,
 )
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
-from request_engine.modules.operational_recovery.application.proposal_builder import build_proposal
+from request_engine.modules.operational_recovery.application.proposal_builder import (
+    build_proposal,
+)
 from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 
 
@@ -42,8 +46,14 @@ async def create_proposal(
     if assessment.shortfall_seconds <= 0:
         raise RecoveryShortfallNotMaterial()
     if not assessment.affected_commitments:
-        raise RuntimeError("positive recovery shortfall has no directly unsatisfied Reservations")
-    proposal = await build_proposal(command=command, assessment=assessment, booking=booking)
+        raise RuntimeError(
+            "positive recovery shortfall has no directly unsatisfied Reservations"
+        )
+    proposal = await build_proposal(
+        command=command,
+        assessment=assessment,
+        booking=booking,
+    )
     return await repository.create_proposal(
         organization_id=command.organization_id,
         principal_id=command.principal_id,
@@ -54,7 +64,10 @@ async def create_proposal(
 
 
 async def get_proposal(
-    *, repository: RecoveryRepository, organization_id: UUID, proposal_id: UUID
+    *,
+    repository: RecoveryRepository,
+    organization_id: UUID,
+    proposal_id: UUID,
 ) -> RescheduleProposal:
     proposal = await repository.get_proposal(
         organization_id=organization_id,

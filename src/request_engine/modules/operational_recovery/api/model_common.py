@@ -26,7 +26,10 @@ class RecoveryCommitmentCheckpointView(BaseModel):
     ends_at: datetime
 
     @classmethod
-    def from_contract(cls, item: RecoveryCommitmentCheckpoint) -> "RecoveryCommitmentCheckpointView":
+    def from_contract(
+        cls,
+        item: RecoveryCommitmentCheckpoint,
+    ) -> "RecoveryCommitmentCheckpointView":
         return cls(
             reservation_id=item.reservation_id,
             revision=item.revision,
@@ -42,7 +45,10 @@ class RecoverySourceCheckpointView(BaseModel):
     commitments: tuple[RecoveryCommitmentCheckpointView, ...]
 
     @classmethod
-    def from_contract(cls, item: RecoverySourceCheckpoint) -> "RecoverySourceCheckpointView":
+    def from_contract(
+        cls,
+        item: RecoverySourceCheckpoint,
+    ) -> "RecoverySourceCheckpointView":
         return cls(
             projection_policy_revision=item.projection_policy_revision,
             resource_availability_revision=item.resource_availability_revision,
@@ -95,6 +101,7 @@ class AffectedReservationView(BaseModel):
 
     @classmethod
     def from_contract(cls, item: AffectedReservation) -> "AffectedReservationView":
+        target = item.target
         return cls(
             reservation_id=item.reservation_id,
             offering_version_id=item.offering_version_id,
@@ -103,5 +110,5 @@ class AffectedReservationView(BaseModel):
             original_start_at=item.original_start_at,
             original_end_at=item.original_end_at,
             contextual_commitment=item.contextual_commitment,
-            target=RecoveryTargetView.from_contract(item.target) if item.target is not None else None,
+            target=RecoveryTargetView.from_contract(target) if target is not None else None,
         )

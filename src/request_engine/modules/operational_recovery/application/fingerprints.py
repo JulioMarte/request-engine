@@ -14,7 +14,12 @@ from request_engine.modules.operational_recovery.contracts.models import (
 
 
 def proposal_command_fingerprint(command: CreateRecoveryProposalCommand) -> str:
-    return _hash({"service_queue_id": str(command.service_queue_id), "search_days": command.search_days})
+    return _hash(
+        {
+            "service_queue_id": str(command.service_queue_id),
+            "search_days": command.search_days,
+        }
+    )
 
 
 def proposal_fingerprint(
@@ -44,7 +49,10 @@ def proposal_fingerprint(
     )
 
 
-def execution_fingerprint(command: ExecuteRecoveryCommand, target: RecoveryTarget) -> str:
+def execution_fingerprint(
+    command: ExecuteRecoveryCommand,
+    target: RecoveryTarget,
+) -> str:
     return _hash(
         {
             "organization_id": str(command.organization_id),
@@ -95,7 +103,7 @@ def target_payload(target: RecoveryTarget) -> dict[str, object]:
     return {
         "start_at": target.start_at.isoformat(),
         "end_at": target.end_at.isoformat(),
-        "location_id": str(target.location_id) if target.location_id is not None else None,
+        "location_id": str(target.location_id) if target.location_id else None,
         "resources": [resource_payload(item) for item in target.resources],
         "actionable": target.actionable,
         "blocked_reason": target.blocked_reason,
@@ -103,14 +111,11 @@ def target_payload(target: RecoveryTarget) -> dict[str, object]:
 
 
 def resource_payload(choice: ResourceChoice) -> dict[str, object]:
+    assignment = choice.resource_location_assignment_id
     return {
         "requirement_id": str(choice.requirement_id),
         "resource_id": str(choice.resource_id),
-        "resource_location_assignment_id": (
-            str(choice.resource_location_assignment_id)
-            if choice.resource_location_assignment_id is not None
-            else None
-        ),
+        "resource_location_assignment_id": str(assignment) if assignment else None,
         "assignment_revision": choice.assignment_revision,
         "availability_revision": choice.availability_revision,
     }

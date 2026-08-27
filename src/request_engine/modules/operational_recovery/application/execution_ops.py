@@ -1,8 +1,12 @@
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.communications.contracts.recovery import RecoveryCommunicationPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
-from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
-from request_engine.modules.operational_recovery.application.errors import RecoveryIdempotencyConflict
+from request_engine.modules.operational_recovery.application.commands import (
+    ExecuteRecoveryCommand,
+)
+from request_engine.modules.operational_recovery.application.errors import (
+    RecoveryIdempotencyConflict,
+)
 from request_engine.modules.operational_recovery.application.execution_booking import (
     run_booking_execution,
 )
@@ -12,8 +16,12 @@ from request_engine.modules.operational_recovery.application.execution_policy im
     require_actionable,
     require_expected_proposal,
 )
-from request_engine.modules.operational_recovery.application.fingerprints import execution_fingerprint
-from request_engine.modules.operational_recovery.application.notification_ops import ensure_notification
+from request_engine.modules.operational_recovery.application.fingerprints import (
+    execution_fingerprint,
+)
+from request_engine.modules.operational_recovery.application.notification_ops import (
+    ensure_notification,
+)
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.proposal_ops import get_proposal
 from request_engine.modules.operational_recovery.contracts.models import (

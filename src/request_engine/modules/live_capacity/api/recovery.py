@@ -1,6 +1,10 @@
-from request_engine.modules.booking.contracts.live_capacity import OperationalAvailabilitySource
+from request_engine.modules.booking.contracts.live_capacity import (
+    OperationalAvailabilitySource,
+)
 from request_engine.modules.delivery.contracts.live_capacity import DeliveryProjectionSource
-from request_engine.modules.live_capacity.adapters.db.recovery_source import PostgresRecoveryCapacitySource
+from request_engine.modules.live_capacity.adapters.db.recovery_source import (
+    PostgresRecoveryCapacitySource,
+)
 from request_engine.modules.live_capacity.application.sources import LiveCapacitySources
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.queue.contracts.live_capacity import QueueProjectionSource

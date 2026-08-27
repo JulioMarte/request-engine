@@ -25,7 +25,8 @@ class RecoveryTargetUnavailable(OperationalRecoveryError):
     def __init__(self, reservation_id: UUID, reason: str | None = None) -> None:
         self.reservation_id = reservation_id
         self.reason = reason
-        super().__init__(reason or f"recovery target for Reservation {reservation_id} is unavailable")
+        message = reason or f"recovery target for Reservation {reservation_id} is unavailable"
+        super().__init__(message)
 
 
 class StaleRecoveryProposal(OperationalRecoveryError):

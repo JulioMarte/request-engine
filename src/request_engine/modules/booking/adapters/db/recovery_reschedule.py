@@ -1,10 +1,25 @@
 from sqlalchemy.exc import IntegrityError
 
-from request_engine.modules.booking.adapters.db.capacity_errors import normalize_capacity_integrity_error
-from request_engine.modules.booking.adapters.db.recovery_reschedule_flow import execute_recovery_reschedule
-from request_engine.modules.booking.application.errors import AppointmentUnavailable, InvalidResourceSelection, OfferingVersionNotBookable, OfferingVersionNotFound, ReservationNotReschedulable, ReservationRevisionConflict
+from request_engine.modules.booking.adapters.db.capacity_errors import (
+    normalize_capacity_integrity_error,
+)
+from request_engine.modules.booking.adapters.db.recovery_reschedule_flow import (
+    execute_recovery_reschedule,
+)
+from request_engine.modules.booking.application.errors import (
+    AppointmentUnavailable,
+    InvalidResourceSelection,
+    OfferingVersionNotBookable,
+    OfferingVersionNotFound,
+    ReservationNotReschedulable,
+    ReservationRevisionConflict,
+)
 from request_engine.modules.booking.contracts.appointments import Reservation
-from request_engine.modules.booking.contracts.recovery import RecoveryBookingConflict, RecoveryRescheduleRequest, RecoveryTargetUnavailable
+from request_engine.modules.booking.contracts.recovery import (
+    RecoveryBookingConflict,
+    RecoveryRescheduleRequest,
+    RecoveryTargetUnavailable,
+)
 from request_engine.platform.db.session import SessionFactory
 
 
@@ -21,5 +36,10 @@ class PostgresGuardedRecoveryReschedule:
             normalize_capacity_integrity_error(exc)
         except (ReservationRevisionConflict, ReservationNotReschedulable) as exc:
             raise RecoveryBookingConflict(str(exc)) from exc
-        except (AppointmentUnavailable, InvalidResourceSelection, OfferingVersionNotFound, OfferingVersionNotBookable) as exc:
+        except (
+            AppointmentUnavailable,
+            InvalidResourceSelection,
+            OfferingVersionNotBookable,
+            OfferingVersionNotFound,
+        ) as exc:
             raise RecoveryTargetUnavailable(str(exc)) from exc

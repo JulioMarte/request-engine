@@ -1,8 +1,8 @@
 from request_engine.platform.security.capability_types import (
-    CapabilityDefinition,
-    CapabilityExposure,
     command_capability,
     query_capability,
+    CapabilityDefinition,
+    CapabilityExposure,
 )
 
 

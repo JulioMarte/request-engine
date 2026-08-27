@@ -6,9 +6,15 @@ from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCommitmentFact,
 )
-from request_engine.modules.operational_recovery.application.commands import CreateRecoveryProposalCommand
-from request_engine.modules.operational_recovery.application.fingerprints import proposal_fingerprint
-from request_engine.modules.operational_recovery.application.proposal_policy import choose_recovery_target
+from request_engine.modules.operational_recovery.application.commands import (
+    CreateRecoveryProposalCommand,
+)
+from request_engine.modules.operational_recovery.application.fingerprints import (
+    proposal_fingerprint,
+)
+from request_engine.modules.operational_recovery.application.proposal_policy import (
+    choose_recovery_target,
+)
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
     RecoveryCommitmentCheckpoint,
@@ -55,14 +61,19 @@ async def build_proposal(
         affected=affected,
     )
     return RescheduleProposal(
-        id=uuid4(), service_queue_id=assessment.service_queue_id,
-        resource_id=assessment.resource_id, location_id=assessment.location_id,
-        observed_at=assessment.observed_at, horizon_end=assessment.horizon_end,
-        source_fingerprint=assessment.source_fingerprint, source_checkpoint=checkpoint,
+        id=uuid4(),
+        service_queue_id=assessment.service_queue_id,
+        resource_id=assessment.resource_id,
+        location_id=assessment.location_id,
+        observed_at=assessment.observed_at,
+        horizon_end=assessment.horizon_end,
+        source_fingerprint=assessment.source_fingerprint,
+        source_checkpoint=checkpoint,
         proposal_fingerprint=fingerprint,
         executable_capacity_seconds=assessment.executable_capacity_seconds,
         committed_capacity_seconds=assessment.committed_capacity_seconds,
-        shortfall_seconds=assessment.shortfall_seconds, affected=affected,
+        shortfall_seconds=assessment.shortfall_seconds,
+        affected=affected,
         created_at=assessment.observed_at,
     )
 

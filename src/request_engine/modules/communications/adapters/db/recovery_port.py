@@ -1,5 +1,9 @@
-from request_engine.modules.communications.adapters.db.communication_commands import PostgresCommunicationCommands
-from request_engine.modules.communications.application.commands.create_communication_task import CreateCommunicationTaskCommand
+from request_engine.modules.communications.adapters.db.communication_commands import (
+    PostgresCommunicationCommands,
+)
+from request_engine.modules.communications.application.commands.create_communication_task import (
+    CreateCommunicationTaskCommand,
+)
 from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
     RecoveryCommunicationRequest,
@@ -13,7 +17,8 @@ class PostgresRecoveryCommunicationPort(RecoveryCommunicationPort):
         self._commands = PostgresCommunicationCommands(session_factory)
 
     async def create_recovery_notification(
-        self, request: RecoveryCommunicationRequest
+        self,
+        request: RecoveryCommunicationRequest,
     ) -> CommunicationTask:
         return await self._commands.create_communication_task(
             CreateCommunicationTaskCommand(
