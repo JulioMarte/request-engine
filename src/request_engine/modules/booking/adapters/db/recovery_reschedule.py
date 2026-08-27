@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -10,13 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.booking.adapters.db.capacity_errors import (
     normalize_capacity_integrity_error,
 )
-from request_engine.modules.booking.adapters.db.commitment_commands import (
-    _active_reservation_claims,
-    _load_profiles_excluding_reservation,
-    _lock_reservation,
+from request_engine.modules.booking.adapters.db.recovery_reschedule_support import (
+    load_active_recovery_claims,
+    load_recovery_profiles_excluding_reservation,
+    lock_reservation_for_recovery,
+    source_claims_are_contextual,
 )
 from request_engine.modules.booking.adapters.db.reservation_commands import (
-    _Requirement,
     ensure_reservation_revision,
     load_bookable_offering,
     load_requirements,
@@ -56,6 +57,17 @@ from request_engine.platform.idempotency.postgres import (
     complete_idempotency,
 )
 from request_engine.platform.outbox.postgres import append_outbox
+
+
+class _RequirementLike(Protocol):
+    @property
+    def id(self) -> UUID: ...
+
+    @property
+    def ordinal(self) -> int: ...
+
+    @property
+    def quantity(self) -> int: ...
 
 
 class PostgresGuardedRecoveryReschedule:
@@ -115,7 +127,7 @@ class PostgresGuardedRecoveryReschedule:
             if replay is not None:
                 return reservation_from_json(cast(dict[str, object], replay["reservation"]))
 
-            reservation_row = await _lock_reservation(
+            reservation_row = await lock_reservation_for_recovery(
                 session,
                 request.organization_id,
                 request.reservation_id,
@@ -172,16 +184,12 @@ class PostgresGuardedRecoveryReschedule:
                 offering_version_id,
             )
             choices = validate_choice_cardinality(requirements, request.resources)
-            old_claims = await _active_reservation_claims(
+            old_claims = await load_active_recovery_claims(
                 session,
                 request.organization_id,
                 request.reservation_id,
             )
-            if await _has_contextual_source_claim(
-                session,
-                organization_id=request.organization_id,
-                reservation_id=request.reservation_id,
-            ):
+            if source_claims_are_contextual(old_claims):
                 raise RecoveryTargetUnavailable(
                     "contextual source Reservation cannot be recovery-rescheduled yet"
                 )
@@ -234,7 +242,7 @@ class PostgresGuardedRecoveryReschedule:
                 resources=selected_resources,
                 location_id=request.location_id,
             )
-            profiles = await _load_profiles_excluding_reservation(
+            profiles = await load_recovery_profiles_excluding_reservation(
                 session,
                 organization_id=request.organization_id,
                 resources=selected_resources,
@@ -417,37 +425,6 @@ async def _lock_recovery_locations(
         raise RecoveryTargetUnavailable("recovery source or target Location is inactive")
 
 
-async def _has_contextual_source_claim(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    reservation_id: UUID,
-) -> bool:
-    return cast(
-        bool,
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT EXISTS (
-                        SELECT 1
-                        FROM request_engine.capacity_claims
-                        WHERE organization_id = :organization_id
-                          AND reservation_id = :reservation_id
-                          AND status = 'active'
-                          AND resource_location_assignment_id IS NOT NULL
-                    )
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "reservation_id": reservation_id,
-                },
-            )
-        ).scalar_one(),
-    )
-
-
 async def _require_source_resource_revision(
     session: AsyncSession,
     *,
@@ -552,7 +529,7 @@ async def _replace_reservation_commitment(
     session: AsyncSession,
     *,
     request: RecoveryRescheduleRequest,
-    requirements: dict[UUID, _Requirement],
+    requirements: Mapping[UUID, _RequirementLike],
     choices: dict[UUID, ResourceChoice],
     old_claims: tuple[RowMapping, ...],
     start_at: datetime,
