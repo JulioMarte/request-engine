@@ -70,7 +70,9 @@ async def _validate_source(
         organization_id=command.organization_id,
         service_queue_id=proposal.service_queue_id,
     )
-    if current.checkpoint.recovery_source_revision == proposal.source_checkpoint.recovery_source_revision:
+    current_revision = current.checkpoint.recovery_source_revision
+    proposal_revision = proposal.source_checkpoint.recovery_source_revision
+    if current_revision == proposal_revision:
         return
     await _reject(repository, command, execution, STALE_FAILURE)
     raise StaleRecoveryProposal()
