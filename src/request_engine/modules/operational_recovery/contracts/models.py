@@ -25,6 +25,7 @@ class RecoverySourceCheckpoint:
     projection_policy_revision: int
     resource_availability_revision: int
     location_operational_revision: int
+    recovery_source_revision: int
     commitments: tuple[RecoveryCommitmentCheckpoint, ...]
 
 
@@ -59,6 +60,7 @@ class RescheduleProposal:
     observed_at: datetime
     horizon_end: datetime
     source_fingerprint: str
+    source_snapshot: dict[str, object]
     source_checkpoint: RecoverySourceCheckpoint
     proposal_fingerprint: str
     executable_capacity_seconds: int
