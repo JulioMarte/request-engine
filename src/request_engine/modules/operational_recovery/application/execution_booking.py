@@ -40,6 +40,10 @@ async def run_booking_execution(
     booking: RecoveryBookingPort,
     repository: RecoveryRepository,
 ) -> RecoveryExecution:
+    # This is only an early rejection optimization. The authoritative freshness
+    # check is the recovery-source revision lock inside Booking's mutation
+    # transaction. A retry from PREPARED intentionally skips this preflight so
+    # Booking idempotency can recover an already committed reschedule first.
     if newly_prepared:
         await _validate_source(command, proposal, execution, capacity, repository)
     target = affected.target
@@ -55,6 +59,10 @@ async def run_booking_execution(
                 start_at=target.start_at,
                 location_id=target.location_id,
                 resources=target.resources,
+                source_service_queue_id=proposal.service_queue_id,
+                expected_recovery_source_revision=(
+                    proposal.source_checkpoint.recovery_source_revision
+                ),
                 source_resource_id=proposal.resource_id,
                 expected_source_resource_availability_revision=(
                     proposal.source_checkpoint.resource_availability_revision
@@ -102,7 +110,10 @@ async def _validate_source(
         organization_id=command.organization_id,
         service_queue_id=proposal.service_queue_id,
     )
-    if current.source_fingerprint == proposal.source_fingerprint:
+    if (
+        current.checkpoint.recovery_source_revision
+        == proposal.source_checkpoint.recovery_source_revision
+    ):
         return
     await _reject(repository, command, execution, STALE_FAILURE)
     raise StaleRecoveryProposal()
