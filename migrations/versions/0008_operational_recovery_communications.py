@@ -26,6 +26,8 @@ CREATE TABLE request_engine.operational_recovery_proposals (
     resource_id uuid NOT NULL,
     location_id uuid NOT NULL,
     created_by_principal_id uuid NOT NULL,
+    idempotency_key text NOT NULL,
+    command_fingerprint text NOT NULL,
     observed_at timestamptz NOT NULL,
     horizon_end timestamptz NOT NULL,
     source_fingerprint text NOT NULL,
@@ -36,6 +38,7 @@ CREATE TABLE request_engine.operational_recovery_proposals (
     snapshot jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     UNIQUE (organization_id, id),
+    UNIQUE (organization_id, created_by_principal_id, idempotency_key),
     FOREIGN KEY (organization_id, service_queue_id)
       REFERENCES request_engine.service_queues (organization_id, id),
     FOREIGN KEY (organization_id, resource_id)
@@ -44,6 +47,8 @@ CREATE TABLE request_engine.operational_recovery_proposals (
       REFERENCES request_engine.locations (organization_id, id),
     FOREIGN KEY (organization_id, created_by_principal_id)
       REFERENCES request_engine.principals (organization_id, id),
+    CHECK (btrim(idempotency_key) <> ''),
+    CHECK (btrim(command_fingerprint) <> ''),
     CHECK (horizon_end > observed_at),
     CHECK (btrim(source_fingerprint) <> ''),
     CHECK (btrim(proposal_fingerprint) <> ''),
@@ -89,12 +94,15 @@ CREATE TABLE request_engine.operational_recovery_executions (
     UNIQUE (organization_id, id),
     UNIQUE (organization_id, proposal_id, reservation_id),
     UNIQUE (organization_id, executed_by_principal_id, idempotency_key),
+    UNIQUE (organization_id, communication_task_id),
     FOREIGN KEY (organization_id, proposal_id)
       REFERENCES request_engine.operational_recovery_proposals (organization_id, id),
     FOREIGN KEY (organization_id, reservation_id)
       REFERENCES request_engine.reservations (organization_id, id),
     FOREIGN KEY (organization_id, executed_by_principal_id)
       REFERENCES request_engine.principals (organization_id, id),
+    FOREIGN KEY (organization_id, communication_task_id)
+      REFERENCES request_engine.communication_tasks (organization_id, id),
     CHECK (btrim(idempotency_key) <> ''),
     CHECK (btrim(command_fingerprint) <> ''),
     CHECK (btrim(source_fingerprint) <> ''),
@@ -110,16 +118,19 @@ CREATE TABLE request_engine.operational_recovery_executions (
          AND communication_task_id IS NULL)
         OR
         (status = 'succeeded'
-         AND resulting_reservation_revision > original_reservation_revision
+         AND resulting_reservation_revision IS NOT NULL
+         AND resulting_reservation_revision = original_reservation_revision + 1
          AND failure_code IS NULL
          AND completed_at IS NOT NULL)
         OR
         (status = 'rejected'
          AND resulting_reservation_revision IS NULL
+         AND failure_code IS NOT NULL
          AND btrim(failure_code) <> ''
          AND completed_at IS NOT NULL
          AND communication_task_id IS NULL)
     ),
+    CHECK (completed_at IS NULL OR completed_at >= created_at),
     CHECK (
         communication_task_id IS NULL
         OR (notification_requested AND status = 'succeeded')
