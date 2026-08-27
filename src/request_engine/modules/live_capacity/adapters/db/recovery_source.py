@@ -9,7 +9,9 @@ from request_engine.modules.booking.contracts.live_capacity import (
     OperationalAvailabilityInterval,
     PlannedWorkloadFact,
 )
-from request_engine.modules.live_capacity.adapters.db.projection_snapshot import capture_projection_snapshot
+from request_engine.modules.live_capacity.adapters.db.projection_snapshot import (
+    capture_projection_snapshot,
+)
 from request_engine.modules.live_capacity.application.projection_assembly import (
     capacity_intervals,
     scheduled_commitments,
@@ -17,6 +19,7 @@ from request_engine.modules.live_capacity.application.projection_assembly import
 from request_engine.modules.live_capacity.application.sources import LiveCapacitySources
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
+    RecoveryCapacityCheckpoint,
     RecoveryCapacitySource,
     RecoveryCommitmentFact,
 )
@@ -77,6 +80,13 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                 .one()
             )
 
+        resource_revision = cast(int, revisions["availability_revision"])
+        location_revision = cast(int, revisions["operational_revision"])
+        checkpoint = RecoveryCapacityCheckpoint(
+            projection_policy_revision=snapshot.policy.revision,
+            resource_availability_revision=resource_revision,
+            location_operational_revision=location_revision,
+        )
         executable = projection.remaining_operational_seconds
         committed = projection.scheduled_committed_workload_seconds or 0
         shortfall = max(committed - executable, 0)
@@ -84,9 +94,9 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
         affected = _affected_commitments(planned, snapshot.booking.remaining_intervals, shortfall)
         source_fingerprint = _source_fingerprint(
             policy_id=snapshot.policy.id,
-            policy_revision=snapshot.policy.revision,
-            resource_availability_revision=cast(int, revisions["availability_revision"]),
-            location_operational_revision=cast(int, revisions["operational_revision"]),
+            policy_revision=checkpoint.projection_policy_revision,
+            resource_availability_revision=checkpoint.resource_availability_revision,
+            location_operational_revision=checkpoint.location_operational_revision,
             intervals=snapshot.booking.remaining_intervals,
             planned=planned,
         )
@@ -100,6 +110,7 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
             committed_capacity_seconds=committed,
             shortfall_seconds=shortfall,
             source_fingerprint=source_fingerprint,
+            checkpoint=checkpoint,
             affected_commitments=affected,
         )
 
