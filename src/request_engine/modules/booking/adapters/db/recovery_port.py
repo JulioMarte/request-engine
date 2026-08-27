@@ -7,7 +7,6 @@ from request_engine.modules.booking.adapters.db.appointment_availability_reader 
 from request_engine.modules.booking.adapters.db.recovery_reschedule import (
     PostgresGuardedRecoveryReschedule,
 )
-from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
 from request_engine.modules.booking.application.queries.find_appointment_slots import (
     FindAppointmentSlotsQuery,
 )
@@ -21,14 +20,8 @@ from request_engine.platform.db.session import SessionFactory
 
 class PostgresRecoveryBookingPort(RecoveryBookingPort):
     def __init__(self, session_factory: SessionFactory) -> None:
-        self._reader = PostgresReservationReader(session_factory)
         self._availability = PostgresAppointmentAvailabilityReader(session_factory)
         self._reschedule = PostgresGuardedRecoveryReschedule(session_factory)
-
-    async def get_reservation(
-        self, *, organization_id: UUID, reservation_id: UUID
-    ) -> Reservation | None:
-        return await self._reader.get_reservation(organization_id, reservation_id)
 
     async def find_recovery_slots(
         self,
