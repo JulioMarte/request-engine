@@ -16,11 +16,22 @@ class RecoveryExecutionRecord:
 
 
 class RecoveryRepository(Protocol):
+    async def find_proposal_replay(
+        self,
+        *,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+        command_fingerprint: str,
+    ) -> RescheduleProposal | None: ...
+
     async def create_proposal(
         self,
         *,
         organization_id: UUID,
         principal_id: UUID,
+        idempotency_key: str,
+        command_fingerprint: str,
         proposal: RescheduleProposal,
     ) -> RescheduleProposal: ...
 
