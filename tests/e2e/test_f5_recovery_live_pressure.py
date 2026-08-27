@@ -33,8 +33,9 @@ async def test_f5_live_walk_in_pressure_expands_shortfall_and_affected_set(
         world = await prepare_recovery_world(client, e2e_admin_conn, sandbox)
         structural = await create_proposal(client, sandbox)
         assert structural["shortfall_seconds"] == 1200
-        assert tuple(UUID(item["reservation_id"]) for item in structural["affected"]) == (
-            world.reservations[6:]
+        assert (
+            tuple(UUID(item["reservation_id"]) for item in structural["affected"])
+            == (world.reservations[6:])
         )
 
         walk_in = await client.post(
@@ -52,6 +53,7 @@ async def test_f5_live_walk_in_pressure_expands_shortfall_and_affected_set(
     assert pressured["executable_capacity_seconds"] == 1800
     assert pressured["shortfall_seconds"] == 2400
     assert pressured["source_fingerprint"] != structural["source_fingerprint"]
-    assert tuple(UUID(item["reservation_id"]) for item in pressured["affected"]) == (
-        world.reservations[2:]
+    assert (
+        tuple(UUID(item["reservation_id"]) for item in pressured["affected"])
+        == (world.reservations[2:])
     )
