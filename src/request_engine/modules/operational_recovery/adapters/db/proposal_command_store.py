@@ -45,6 +45,7 @@ async def create_proposal(
     proposal: RescheduleProposal,
 ) -> RescheduleProposal:
     snapshot: dict[str, object] = {
+        "source_snapshot": proposal.source_snapshot,
         "source_checkpoint": checkpoint_to_json(proposal.source_checkpoint),
         "affected": [affected_to_json(item) for item in proposal.affected],
     }
