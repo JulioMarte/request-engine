@@ -22,9 +22,21 @@ async def load_planned_same_day_work(
             await session.execute(
                 text(
                     """
-                    SELECT DISTINCT r.id, r.offering_version_id, r.subject_party_id, r.revision,
+                    SELECT DISTINCT
+                           r.id,
+                           r.offering_version_id,
+                           r.subject_party_id,
+                           r.revision,
                            lower(r.during) AS starts_at,
-                           upper(r.during) AS ends_at
+                           upper(r.during) AS ends_at,
+                           EXISTS (
+                               SELECT 1
+                               FROM request_engine.capacity_claims contextual_claim
+                               WHERE contextual_claim.organization_id = r.organization_id
+                                 AND contextual_claim.reservation_id = r.id
+                                 AND contextual_claim.status = 'active'
+                                 AND contextual_claim.resource_location_assignment_id IS NOT NULL
+                           ) AS contextual_commitment
                     FROM request_engine.reservations r
                     JOIN request_engine.capacity_claims c
                       ON c.organization_id = r.organization_id
@@ -59,10 +71,16 @@ async def load_planned_same_day_work(
             planned_ends_at=cast(datetime, row["ends_at"]),
             planned_duration_seconds=max(
                 0,
-                int((cast(datetime, row["ends_at"]) - cast(datetime, row["starts_at"])).total_seconds()),
+                int(
+                    (
+                        cast(datetime, row["ends_at"])
+                        - cast(datetime, row["starts_at"])
+                    ).total_seconds()
+                ),
             ),
             subject_party_id=cast(UUID, row["subject_party_id"]),
             reservation_revision=cast(int, row["revision"]),
+            contextual_commitment=cast(bool, row["contextual_commitment"]),
         )
         for row in rows
     )
