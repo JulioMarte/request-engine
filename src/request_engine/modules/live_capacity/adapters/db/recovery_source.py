@@ -21,6 +21,7 @@ from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCapacityCheckpoint,
     RecoveryCapacitySource,
+    RecoveryCommitmentCheckpoint,
     RecoveryCommitmentFact,
 )
 from request_engine.modules.live_capacity.domain.projection import project_live_capacity
@@ -80,18 +81,34 @@ class PostgresRecoveryCapacitySource(RecoveryCapacitySource):
                 .one()
             )
 
+        planned = tuple(snapshot.booking.planned_same_day_work)
         resource_revision = cast(int, revisions["availability_revision"])
         location_revision = cast(int, revisions["operational_revision"])
         checkpoint = RecoveryCapacityCheckpoint(
             projection_policy_revision=snapshot.policy.revision,
             resource_availability_revision=resource_revision,
             location_operational_revision=location_revision,
+            commitments=tuple(
+                RecoveryCommitmentCheckpoint(
+                    reservation_id=item.reservation_id,
+                    revision=item.reservation_revision,
+                    starts_at=item.planned_starts_at,
+                    ends_at=item.planned_ends_at,
+                )
+                for item in sorted(
+                    planned,
+                    key=lambda value: (value.planned_starts_at, str(value.reservation_id)),
+                )
+            ),
         )
         executable = projection.remaining_operational_seconds
         committed = projection.scheduled_committed_workload_seconds or 0
         shortfall = max(committed - executable, 0)
-        planned = tuple(snapshot.booking.planned_same_day_work)
-        affected = _affected_commitments(planned, snapshot.booking.remaining_intervals, shortfall)
+        affected = _affected_commitments(
+            planned,
+            snapshot.booking.remaining_intervals,
+            shortfall,
+        )
         source_fingerprint = _source_fingerprint(
             policy_id=snapshot.policy.id,
             policy_revision=checkpoint.projection_policy_revision,
@@ -132,24 +149,15 @@ def _affected_commitments(
             for interval in intervals
         )
     }
-    covered = sum(
-        item.planned_duration_seconds or 0 for item in ordered if item.reservation_id in selected
-    )
-    if covered < shortfall:
-        for item in reversed(ordered):
-            if item.reservation_id in selected:
-                continue
-            selected.add(item.reservation_id)
-            covered += item.planned_duration_seconds or 0
-            if covered >= shortfall:
-                break
 
     result: list[RecoveryCommitmentFact] = []
     for item in ordered:
         if item.reservation_id not in selected:
             continue
         if item.subject_party_id is None:
-            raise RuntimeError("authoritative planned Reservation is missing subject Party provenance")
+            raise RuntimeError(
+                "authoritative planned Reservation is missing subject Party provenance"
+            )
         result.append(
             RecoveryCommitmentFact(
                 reservation_id=item.reservation_id,
@@ -159,6 +167,7 @@ def _affected_commitments(
                 planned_starts_at=item.planned_starts_at,
                 planned_ends_at=item.planned_ends_at,
                 planned_duration_seconds=item.planned_duration_seconds or 0,
+                contextual_commitment=item.contextual_commitment,
             )
         )
     return tuple(result)
@@ -178,7 +187,9 @@ def _source_fingerprint(
         "policy_revision": policy_revision,
         "resource_availability_revision": resource_availability_revision,
         "location_operational_revision": location_operational_revision,
-        "intervals": [[item.starts_at.isoformat(), item.ends_at.isoformat()] for item in intervals],
+        "intervals": [
+            [item.starts_at.isoformat(), item.ends_at.isoformat()] for item in intervals
+        ],
         "planned": [
             {
                 "reservation_id": str(item.reservation_id),
@@ -187,6 +198,7 @@ def _source_fingerprint(
                 "subject_party_id": str(item.subject_party_id),
                 "starts_at": item.planned_starts_at.isoformat(),
                 "ends_at": item.planned_ends_at.isoformat(),
+                "contextual_commitment": item.contextual_commitment,
             }
             for item in sorted(
                 planned,
