@@ -6,15 +6,15 @@ This document records what has actually been demonstrated. It is intentionally s
 
 ## Validated implementation and acceptance baseline
 
-The implementation/test tree carrying the complete direct PostgreSQL A-D acceptance journeys is:
+The implementation/test tree carrying the complete direct PostgreSQL A-D journeys plus the final FORCE-RLS/SECURITY-DEFINER tenant-isolation hardening is:
 
 ```text
-51e8b32815b1600d881fc5004acb7b6f1d8ab8be
+81019f88cb03a02a061e48d327123cb9a2fc9f0e
 ```
 
 Pull request: `#81` (`feature/operational-recovery-communications` -> `development`).
 
-GitHub Actions run `33099372037`, CI `#2595`, completed the feature's code-bearing acceptance baseline successfully. The same SHA passed:
+GitHub Actions run `33109778886`, CI `#2610`, completed that code-bearing baseline successfully. The same SHA passed:
 
 - `Python quality and architecture`;
 - `PostgreSQL 18 current product proof`;
@@ -24,7 +24,9 @@ GitHub Actions run `33099372037`, CI `#2595`, completed the feature's code-beari
 - `Observability runtime contract`;
 - aggregate `PostgreSQL 18 V3 candidate and verticals`.
 
-The ledger itself is a documentation descendant of that validated code-bearing SHA. The authoritative merge-time exact-head condition is the GitHub required-check state on the actual PR head; recording a run inside this file must not create an infinite self-referential commit loop.
+Earlier A-D acceptance provenance remains available at `51e8b32815b1600d881fc5004acb7b6f1d8ab8be`, CI `#2595` / Actions run `33099372037`. The later baseline supersedes it for merge-time code evidence because it includes the freshness serialization and RLS hardening found during adversarial closure.
+
+The ledger itself is a documentation descendant of the validated code-bearing SHA. The authoritative merge-time exact-head condition is the GitHub required-check state on the actual PR head; recording a run inside this file must not create an infinite self-referential commit loop.
 
 ## What changed during adversarial closure
 
@@ -37,6 +39,8 @@ The recovery source previously rebuilt F4 with `work_items=()`. That was not val
 5. lets genuine live pressure deterministically displace latest still-planned commitments;
 6. includes live work/progress/blockers in the source fingerprint so operational changes stale old proposals.
 
+Freshness serialization added another defect during closure. `recovery_source_revisions` correctly used `FORCE ROW LEVEL SECURITY`, but the first internal-writer correction granted the schema owner an unconditional `FOR ALL ... USING (true)` policy. Because the public recovery revision read/lock functions are `SECURITY DEFINER` functions owned by that same role, an unconditional owner policy would also have allowed those functions to see or lock a revision row for a caller-supplied foreign tenant. The final policy is deliberately narrower: schema-owner access is admitted only while an owner-controlled source-table trigger is executing (`pg_trigger_depth() > 0`). A direct PostgreSQL runtime-role test now proves own-tenant read remains available while cross-tenant `SECURITY DEFINER` read/lock paths remain RLS-filtered/fail-closed.
+
 The previous documentation also claimed a PostgreSQL advisory recovery-execution lock. No such primitive exists in the implementation. The actual convergence protocol is durable F5 uniqueness + stable Booking idempotency + Booking transactional guards + conditional F5 transitions + Communications dedupe/conditional attachment.
 
 ## Direct contract scenario traceability
@@ -47,10 +51,11 @@ The previous documentation also claimed a PostgreSQL advisory recovery-execution
 | A — live Queue pressure participates in materiality and expands the affected set | `tests/e2e/test_f5_recovery_live_pressure.py::test_f5_live_walk_in_pressure_expands_shortfall_and_affected_set` | PASS | Starts from the structural 1200s shortfall, inserts an authoritative walk-in carrying a 1200s estimate, observes a changed source fingerprint, 2400s material shortfall and deterministic expansion from four to eight affected Reservations. |
 | A — structural loss does not numerically fill affected set with still-executable Reservations | `tests/modules/live_capacity/test_recovery_affected_selection.py` | PASS | Direct regression proof for the bug found during F5 hardening. |
 | A/C — live operational changes participate in freshness | `tests/modules/live_capacity/test_recovery_source_fingerprint.py` plus the live-pressure/stale PostgreSQL journeys | PASS | Fingerprint changes with material live state and an old proposal is rejected rather than silently refreshed. |
+| Freshness writer preserves tenant isolation under FORCE RLS | `tests/e2e/test_f5_recovery_source_security.py::test_f5_recovery_source_security_definer_paths_remain_tenant_scoped` | PASS | An app runtime bound to tenant A can read A's revision, cannot read tenant B's revision through the `SECURITY DEFINER` read function, and cannot lock B's revision through the command function; admin inspection proves both rows actually exist. Source-table triggers still advance revisions under the same migration and current-product proof. |
 | B — proposal creation is read-only | `tests/e2e/test_f5_recovery_materiality.py::test_f5_proposal_is_read_only_and_uses_booking_generated_replacement_target` | PASS | Authoritative Reservation rows are identical before/after proposal creation; RecoveryExecution, CommunicationTask and outbox counts do not change; returned actionable targets come from Booking authority. |
 | B — persisted proposal is immutable | migration trigger `guard_operational_recovery_proposal` plus migration/bootstrap lanes | PASS | UPDATE/DELETE are rejected by schema authority; app role receives SELECT/INSERT only. |
 | B — unsupported contextual reschedule is fail-closed | `tests/modules/operational_recovery/test_recovery_target_policy.py` | PASS | Contextual source/target states are not falsely exposed as actionable through the legacy reschedule path. |
-| C — stale proposal fails closed with no recovery-caused Booking/Communications side effects | `tests/e2e/test_f5_recovery_stale.py::test_f5_live_change_stales_proposal_without_booking_or_notification_side_effects` | PASS | After proposal creation, authoritative live truth advances. Execution returns `STALE_RECOVERY_PROPOSAL`/409, Reservation state remains unchanged, the one F5 execution fact is terminal `rejected`, and no CommunicationTask/outbox is created by recovery. |
+| C — stale proposal fails closed with no recovery-caused Booking/Communications side effects | `tests/e2e/test_f5_recovery_stale.py::test_f5_live_truth_change_rejects_stale_proposal_without_booking_or_notification` | PASS | After proposal creation, authoritative live truth advances. Execution returns `STALE_RECOVERY_PROPOSAL`/409, Reservation state remains unchanged, the one F5 execution fact is terminal `rejected`, and no CommunicationTask/outbox is created by recovery. |
 | D — identical concurrent execution and replay converge | `tests/e2e/test_f5_recovery_concurrency.py::test_f5_identical_concurrent_execution_converges_on_one_booking_and_communication` | PASS | Two independent clients race the same idempotent command and an exact replay follows; all resolve to one execution identity, Reservation revision advances exactly once, actor/original/result revisions are preserved, one Communications lineage exists and exactly one task-created outbox record is present. |
 | Public F5 HTTP surface/capability metadata remains classified | `tests/e2e/http_surface_f5.py` + `tests/e2e/test_public_surface_contract.py` | PASS | Prevents silent public-surface growth and verifies capability/idempotency metadata independently of semantic acceptance. |
 
@@ -79,6 +84,7 @@ The explicit F5 recovery core delivers:
 - immutable recovery proposals and deterministic affected-Reservation provenance;
 - supported one-shot Booking reschedule orchestration;
 - stale/idempotency guards and actor attribution;
+- FORCE-RLS-safe recovery freshness serialization without widening cross-tenant runtime authority;
 - bounded Recovery -> Communications lineage with durable owner-controlled reliability semantics;
 - direct PostgreSQL acceptance evidence for scenarios A-D.
 
