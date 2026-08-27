@@ -1,0 +1,51 @@
+from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
+    SetResourceLocationScheduleExceptionCommand,
+    SetResourceLocationScheduleExceptionHandler,
+    set_resource_location_schedule_exception,
+)
+from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentExtensionRequest,
+    RecoveryAssignmentExtensionResult,
+)
+
+
+class RecoveryAssignmentScheduleAdapter:
+    """Expose Booking's contextual schedule authority to Operational Recovery.
+
+    The adapter deliberately delegates to the existing Booking command instead of
+    writing schedule-exception tables itself. Booking therefore remains the owner
+    of authorization, locking, availability revisions, audit and idempotency.
+    """
+
+    def __init__(self, handler: SetResourceLocationScheduleExceptionHandler) -> None:
+        self._handler = handler
+
+    async def extend_assignment_hours(
+        self,
+        request: RecoveryAssignmentExtensionRequest,
+    ) -> RecoveryAssignmentExtensionResult:
+        state = await set_resource_location_schedule_exception(
+            self._handler,
+            SetResourceLocationScheduleExceptionCommand(
+                organization_id=request.organization_id,
+                principal_id=request.principal_id,
+                authority_party_id=request.authority_party_id,
+                assignment_id=request.assignment_id,
+                start_at=request.start_at,
+                end_at=request.end_at,
+                exception_kind="available",
+                expected_resource_availability_revision=(
+                    request.expected_resource_availability_revision
+                ),
+                idempotency_key=request.idempotency_key,
+                reason=request.reason,
+                active=True,
+            ),
+        )
+        return RecoveryAssignmentExtensionResult(
+            exception_id=state.exception_id,
+            assignment_id=state.assignment_id,
+            start_at=state.start_at,
+            end_at=state.end_at,
+            resource_availability_revision=state.resource_availability_revision,
+        )

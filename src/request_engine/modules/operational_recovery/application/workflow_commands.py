@@ -13,3 +13,18 @@ class SetRecoveryIntakeCommand:
     idempotency_key: str
     reason: str | None = None
     effective_until: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExtendRecoveryDayCommand:
+    organization_id: UUID
+    principal_id: UUID
+    authority_party_id: UUID
+    incident_id: UUID
+    expected_source_revision: int
+    assignment_id: UUID
+    start_at: datetime
+    end_at: datetime
+    expected_resource_availability_revision: int
+    idempotency_key: str
+    reason: str
