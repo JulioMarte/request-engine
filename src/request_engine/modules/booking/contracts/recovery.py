@@ -27,6 +27,10 @@ class RecoveryRescheduleRequest:
     start_at: datetime
     location_id: UUID | None
     resources: tuple[ResourceChoice, ...]
+    source_resource_id: UUID
+    expected_source_resource_availability_revision: int
+    source_location_id: UUID
+    expected_source_location_operational_revision: int
     idempotency_key: str
     allow_subject_override: bool
 
