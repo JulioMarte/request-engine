@@ -1,21 +1,18 @@
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryBookingConflict,
     RecoveryBookingPort,
-    RecoveryRescheduleRequest,
-)
-from request_engine.modules.booking.contracts.recovery import (
-    RecoveryCommitmentCheckpoint as BookingCommitmentCheckpoint,
 )
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryTargetUnavailable as BookingRecoveryTargetUnavailable,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
-from request_engine.modules.operational_recovery.application.commands import (
-    ExecuteRecoveryCommand,
-)
+from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
 from request_engine.modules.operational_recovery.application.errors import (
     RecoveryTargetUnavailable,
     StaleRecoveryProposal,
+)
+from request_engine.modules.operational_recovery.application.execution_booking_request import (
+    booking_request,
 )
 from request_engine.modules.operational_recovery.application.execution_policy import (
     STALE_FAILURE,
@@ -40,51 +37,14 @@ async def run_booking_execution(
     booking: RecoveryBookingPort,
     repository: RecoveryRepository,
 ) -> RecoveryExecution:
-    # This is only an early rejection optimization. The authoritative freshness
-    # check is the recovery-source revision lock inside Booking's mutation
-    # transaction. A retry from PREPARED intentionally skips this preflight so
-    # Booking idempotency can recover an already committed reschedule first.
+    # Early rejection only. Booking's in-transaction revision lock is the
+    # authoritative freshness boundary. PREPARED retries skip preflight so
+    # Booking idempotency can replay a mutation that already committed.
     if newly_prepared:
         await _validate_source(command, proposal, execution, capacity, repository)
-    target = affected.target
-    if target is None:
-        raise RuntimeError("prepared recovery execution is missing target")
     try:
         result = await booking.reschedule_for_recovery(
-            RecoveryRescheduleRequest(
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                reservation_id=command.reservation_id,
-                expected_revision=affected.expected_revision,
-                start_at=target.start_at,
-                location_id=target.location_id,
-                resources=target.resources,
-                source_service_queue_id=proposal.service_queue_id,
-                expected_recovery_source_revision=(
-                    proposal.source_checkpoint.recovery_source_revision
-                ),
-                source_resource_id=proposal.resource_id,
-                expected_source_resource_availability_revision=(
-                    proposal.source_checkpoint.resource_availability_revision
-                ),
-                source_location_id=proposal.location_id,
-                expected_source_location_operational_revision=(
-                    proposal.source_checkpoint.location_operational_revision
-                ),
-                source_observed_at=proposal.observed_at,
-                source_horizon_end=proposal.horizon_end,
-                expected_source_commitments=tuple(
-                    BookingCommitmentCheckpoint(
-                        reservation_id=item.reservation_id,
-                        revision=item.revision,
-                        starts_at=item.starts_at,
-                        ends_at=item.ends_at,
-                    )
-                    for item in proposal.source_checkpoint.commitments
-                ),
-                idempotency_key=f"recovery:{execution.id}:booking:v1",
-                allow_subject_override=command.allow_subject_override,
-            )
+            booking_request(command, proposal, affected, execution)
         )
     except RecoveryBookingConflict as exc:
         await _reject(repository, command, execution, STALE_FAILURE)
@@ -110,10 +70,7 @@ async def _validate_source(
         organization_id=command.organization_id,
         service_queue_id=proposal.service_queue_id,
     )
-    if (
-        current.checkpoint.recovery_source_revision
-        == proposal.source_checkpoint.recovery_source_revision
-    ):
+    if current.checkpoint.recovery_source_revision == proposal.source_checkpoint.recovery_source_revision:
         return
     await _reject(repository, command, execution, STALE_FAILURE)
     raise StaleRecoveryProposal()
