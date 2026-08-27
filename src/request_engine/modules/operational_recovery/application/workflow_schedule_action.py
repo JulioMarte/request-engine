@@ -2,6 +2,10 @@ from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
     RecoveryAssignmentSchedulePort,
 )
+from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.application.workflow_assessment import (
+    reconcile_recovery_incident,
+)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
 )
@@ -24,6 +28,7 @@ async def execute_extend_day_action(
     *,
     repository: RecoveryWorkflowRepository,
     schedule: RecoveryAssignmentSchedulePort,
+    capacity: RecoveryCapacitySource,
 ) -> RecoveryAction:
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
@@ -112,6 +117,24 @@ async def execute_extend_day_action(
             reason=command.reason,
         )
     )
+    assessment, refreshed = await reconcile_recovery_incident(
+        organization_id=command.organization_id,
+        service_queue_id=incident.service_queue_id,
+        repository=repository,
+        capacity=capacity,
+        current_proposal_id=incident.current_proposal_id,
+    )
+    if assessment.checkpoint.recovery_source_revision <= command.expected_source_revision:
+        raise RuntimeError("extend-day owner mutation did not advance recovery source revision")
+
+    reassessment: dict[str, object] = {
+        "source_revision": assessment.checkpoint.recovery_source_revision,
+        "source_fingerprint": assessment.source_fingerprint,
+        "projection_state": assessment.projection_state.value,
+        "scheduled_shortfall_seconds": assessment.scheduled_shortfall_seconds,
+        "live_shortfall_seconds": assessment.live_shortfall_seconds,
+        "incident_status": None if refreshed is None else refreshed.status.value,
+    }
     return await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
@@ -123,6 +146,7 @@ async def execute_extend_day_action(
                 "start_at": result.start_at.isoformat(),
                 "end_at": result.end_at.isoformat(),
                 "resource_availability_revision": result.resource_availability_revision,
-            }
+            },
+            "reassessment": reassessment,
         },
     )
