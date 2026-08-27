@@ -39,6 +39,7 @@ async def build_proposal(
         projection_policy_revision=assessment.checkpoint.projection_policy_revision,
         resource_availability_revision=assessment.checkpoint.resource_availability_revision,
         location_operational_revision=assessment.checkpoint.location_operational_revision,
+        recovery_source_revision=assessment.checkpoint.recovery_source_revision,
         commitments=tuple(
             RecoveryCommitmentCheckpoint(
                 reservation_id=item.reservation_id,
@@ -68,6 +69,7 @@ async def build_proposal(
         observed_at=assessment.observed_at,
         horizon_end=assessment.horizon_end,
         source_fingerprint=assessment.source_fingerprint,
+        source_snapshot=assessment.source_snapshot,
         source_checkpoint=checkpoint,
         proposal_fingerprint=fingerprint,
         executable_capacity_seconds=assessment.executable_capacity_seconds,
