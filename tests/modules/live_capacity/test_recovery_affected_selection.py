@@ -7,8 +7,8 @@ from request_engine.modules.booking.contracts.live_capacity import (
     OperationalAvailabilityInterval,
     PlannedWorkloadFact,
 )
-from request_engine.modules.live_capacity.adapters.db.recovery_source import (
-    _affected_commitments,
+from request_engine.modules.live_capacity.application.recovery_policy import (
+    affected_recovery_commitments,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.capacity]
@@ -39,10 +39,10 @@ def test_shortfall_does_not_fill_affected_set_with_still_satisfiable_reservation
         ),
     )
 
-    affected = _affected_commitments(
+    affected = affected_recovery_commitments(
         (closed_commitment, satisfiable_commitment),
         remaining,
-        shortfall=2 * 3600,
+        shortfall_seconds=2 * 3600,
     )
 
     assert [item.reservation_id for item in affected] == [closed_commitment.reservation_id]
