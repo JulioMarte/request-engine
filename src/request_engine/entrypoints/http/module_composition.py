@@ -4,13 +4,17 @@ from request_engine.modules.booking.api import install_http as install_booking_h
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
 )
+from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.communications.api import install_http as install_communications_http
+from request_engine.modules.communications.api.recovery import build_recovery_communication_port
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
+from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
+from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.queue.api.live_capacity import (
@@ -51,16 +55,32 @@ def install_business_modules(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
     )
+    booking_capacity = build_booking_live_capacity_source()
+    queue_capacity = build_queue_live_capacity_source()
+    delivery_capacity = build_delivery_live_capacity_source()
     install_live_capacity_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
-        booking_source=build_booking_live_capacity_source(),
-        queue_source=build_queue_live_capacity_source(),
-        delivery_source=build_delivery_live_capacity_source(),
+        booking_source=booking_capacity,
+        queue_source=queue_capacity,
+        delivery_source=delivery_capacity,
     )
     install_communications_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+    )
+    install_recovery_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
+        capacity=build_recovery_capacity_source(
+            session_factory,
+            booking_source=booking_capacity,
+            queue_source=queue_capacity,
+            delivery_source=delivery_capacity,
+        ),
+        booking=build_recovery_booking_port(session_factory),
+        communications=build_recovery_communication_port(session_factory),
     )
