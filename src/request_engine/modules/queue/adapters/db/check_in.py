@@ -5,6 +5,7 @@ from request_engine.modules.queue.adapters.db.check_in_persistence import (
     ensure_subject_not_active,
     insert_queue_entry,
 )
+from request_engine.modules.queue.adapters.db.intake_control import require_queue_accepting_intake
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
 from request_engine.modules.queue.adapters.db.live_queue_recording import record_queue_fact
 from request_engine.modules.queue.adapters.db.live_queue_serialization import (
@@ -55,6 +56,15 @@ async def check_in(
         if replay is not None:
             return entry_from_json(cast(dict[str, object], replay["entry"]))
         queue = await lock_active_queue(session, command.organization_id, command.queue_id)
+        # The intake-control row is locked in the same authoritative admission
+        # transaction. A concurrent STOP_INTAKE therefore serializes with check-in:
+        # either an admission commits before the stop, or the stop commits first
+        # and this transaction fails closed without creating a QueueEntry.
+        await require_queue_accepting_intake(
+            session,
+            organization_id=command.organization_id,
+            service_queue_id=command.queue_id,
+        )
         await require_active_subject(session, command.organization_id, command.subject_party_id)
         await require_active_workload(
             session,
