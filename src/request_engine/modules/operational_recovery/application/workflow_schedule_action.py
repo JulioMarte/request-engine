@@ -3,6 +3,9 @@ from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.application.workflow_action_execution import (
+    authorize_or_resume_action,
+)
 from request_engine.modules.operational_recovery.application.workflow_assessment import (
     reconcile_recovery_incident,
 )
@@ -22,8 +25,6 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionKind,
     RecoveryActionStatus,
     RecoveryIncidentNotFound,
-    RecoveryIncidentStale,
-    RecoveryIncidentStatus,
 )
 
 
@@ -41,20 +42,12 @@ async def execute_extend_day_action(
     )
     if incident is None:
         raise RecoveryIncidentNotFound(command.incident_id)
-    if (
-        incident.status is RecoveryIncidentStatus.RESOLVED
-        or incident.source_revision != command.expected_source_revision
-    ):
-        raise RecoveryIncidentStale(
-            command.incident_id,
-            command.expected_source_revision,
-            incident.source_revision,
-        )
 
     payload = extend_day_payload(command)
-    action, created = await repository.prepare_action(
+    action, terminal = await authorize_or_resume_action(
+        repository=repository,
+        incident=incident,
         organization_id=command.organization_id,
-        incident_id=command.incident_id,
         principal_id=command.principal_id,
         action_kind=RecoveryActionKind.EXTEND_DAY,
         idempotency_key=command.idempotency_key,
@@ -62,17 +55,8 @@ async def execute_extend_day_action(
         expected_source_revision=command.expected_source_revision,
         payload=payload,
     )
-    if not created and action.status in {
-        RecoveryActionStatus.SUCCEEDED,
-        RecoveryActionStatus.REJECTED,
-    }:
+    if terminal:
         return action
-    if action.status is RecoveryActionStatus.PREPARED:
-        action = await repository.transition_action(
-            organization_id=command.organization_id,
-            action_id=action.id,
-            status=RecoveryActionStatus.RUNNING,
-        )
 
     result = await schedule.extend_assignment_hours(
         RecoveryAssignmentExtensionRequest(
@@ -101,6 +85,7 @@ async def execute_extend_day_action(
     return await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
+        expected_status=RecoveryActionStatus.RUNNING,
         status=RecoveryActionStatus.SUCCEEDED,
         owner_steps={
             "booking_schedule": {
