@@ -46,16 +46,10 @@ async def prepare_target_mutation(
     source_observed_at: datetime,
     source_horizon_end: datetime,
 ) -> RecoveryMutationInputs:
-    requirements = await load_requirements(
-        session,
-        request.organization_id,
-        offering_version_id,
-    )
+    requirements = await load_requirements(session, request.organization_id, offering_version_id)
     choices = validate_choice_cardinality(requirements, request.resources)
     old_claims = await load_active_recovery_claims(
-        session,
-        request.organization_id,
-        request.reservation_id,
+        session, request.organization_id, request.reservation_id
     )
     old_resource_ids = tuple(cast(UUID, row["resource_id"]) for row in old_claims)
     if request.source_resource_id not in old_resource_ids:
@@ -65,9 +59,7 @@ async def prepare_target_mutation(
     new_resource_ids = tuple(choice.resource_id for choice in choices.values())
     resource_ids = tuple(sorted(set(old_resource_ids + new_resource_ids), key=str))
     resources = await lock_resources(
-        session,
-        organization_id=request.organization_id,
-        resource_ids=resource_ids,
+        session, organization_id=request.organization_id, resource_ids=resource_ids
     )
     await validate_recovery_source_checkpoint(
         session,
@@ -77,15 +69,16 @@ async def prepare_target_mutation(
         source_horizon_end=source_horizon_end,
     )
     selected = {resource_id: resources[resource_id] for resource_id in set(new_resource_ids)}
+    contextual = contextual_target_requested(request)
     await validate_resource_capabilities(
         session,
         organization_id=request.organization_id,
         requirements=requirements,
         choices=choices,
         resources=selected,
-        location_id=None if contextual_target_requested(request) else request.location_id,
+        location_id=None if contextual else request.location_id,
     )
-    if contextual_target_requested(request):
+    if contextual:
         await validate_contextual_recovery_target(
             session,
             request=request,
@@ -116,10 +109,4 @@ async def prepare_target_mutation(
             duration_minutes=duration_minutes,
             step_minutes=step_minutes,
         )
-    return RecoveryMutationInputs(
-        requirements=requirements,
-        choices=choices,
-        old_claims=old_claims,
-        start_at=start_at,
-        end_at=end_at,
-    )
+    return RecoveryMutationInputs(requirements, choices, old_claims, start_at, end_at)
