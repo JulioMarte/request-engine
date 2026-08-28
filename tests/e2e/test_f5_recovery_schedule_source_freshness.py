@@ -32,7 +32,21 @@ def _source_revision(conn: PgConnection, organization_id: object, queue_id: obje
     return cast(int, row[0])
 
 
-async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_once(
+def _scheduled_revision(
+    conn: PgConnection,
+    organization_id: object,
+    queue_id: object,
+    revision: int,
+) -> tuple[object, ...] | None:
+    return conn.execute(
+        "SELECT owner_module,action_type,subject_kind,subject_id,"
+        "payload->>'source_revision' FROM request_engine.scheduled_actions "
+        "WHERE organization_id=%s AND dedupe_key=%s",
+        (organization_id, f"f5-reassessment:{queue_id}:{revision}"),
+    ).fetchone()
+
+
+async def test_f1_schedule_changes_advance_and_schedule_f5_source_once(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -52,6 +66,15 @@ async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_onc
     )
     after_location = _source_revision(e2e_admin_conn, sandbox.organization_id, sandbox.queue_id)
     assert after_location == before_location + 1
+    assert _scheduled_revision(
+        e2e_admin_conn, sandbox.organization_id, sandbox.queue_id, after_location
+    ) == (
+        "operational_recovery",
+        "reassess_recovery_scope",
+        "ServiceQueue",
+        sandbox.queue_id,
+        str(after_location),
+    )
 
     e2e_admin_conn.execute(
         "INSERT INTO request_engine.resource_location_schedule_exceptions "
@@ -62,3 +85,12 @@ async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_onc
     )
     after_assignment = _source_revision(e2e_admin_conn, sandbox.organization_id, sandbox.queue_id)
     assert after_assignment == after_location + 1
+    assert _scheduled_revision(
+        e2e_admin_conn, sandbox.organization_id, sandbox.queue_id, after_assignment
+    ) == (
+        "operational_recovery",
+        "reassess_recovery_scope",
+        "ServiceQueue",
+        sandbox.queue_id,
+        str(after_assignment),
+    )
