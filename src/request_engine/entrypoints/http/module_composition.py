@@ -11,7 +11,9 @@ from request_engine.modules.booking.api.recovery_schedule import (
 )
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.communications.api import install_http as install_communications_http
-from request_engine.modules.communications.api.recovery import build_recovery_communication_port
+from request_engine.modules.communications.api.recovery import (
+    build_recovery_communication_port,
+)
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
@@ -76,6 +78,7 @@ def install_business_modules(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
     )
+    queue_intake = build_recovery_intake_control_port(session_factory)
     install_recovery_http(
         app,
         session_factory=session_factory,
@@ -88,6 +91,6 @@ def install_business_modules(
         ),
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
-        intake=QueueRecoveryIntakeAdapter(build_recovery_intake_control_port(session_factory)),
+        intake=QueueRecoveryIntakeAdapter(queue_intake),
         schedule=build_recovery_assignment_schedule_port(session_factory),
     )
