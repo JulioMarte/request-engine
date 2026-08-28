@@ -5,6 +5,7 @@ from uuid import UUID
 
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
+    RecoveryActionConflict,
     RecoveryActionKind,
     RecoveryActionStatus,
     RecoveryImpactKind,
@@ -98,12 +99,17 @@ class FakeWorkflowRepository:
     async def transition_action(
         self,
         *,
+        expected_status: RecoveryActionStatus,
         status: RecoveryActionStatus,
         owner_steps: Mapping[str, object] | None = None,
         failure_code: str | None = None,
         **_: object,
     ) -> RecoveryAction:
         assert self.action is not None
+        if self.action.status is status:
+            return self.action
+        if self.action.status is not expected_status:
+            raise RecoveryActionConflict("simulated CAS conflict")
         self.action = replace(
             self.action,
             status=status,
