@@ -47,6 +47,7 @@ def create_workflow_router(
                 principal_id=actor.principal_id,
                 incident_id=incident_id,
                 expected_source_revision=body.expected_source_revision,
+                expected_intake_revision=body.expected_intake_revision,
                 accepting=body.accepting,
                 idempotency_key=idempotency_key,
                 reason=body.reason,
