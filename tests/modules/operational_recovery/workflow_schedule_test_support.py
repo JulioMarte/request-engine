@@ -5,10 +5,6 @@ from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
     RecoveryAssignmentExtensionResult,
 )
-from request_engine.modules.catalog.contracts.recovery_schedule import (
-    RecoveryLocationExtensionRequest,
-    RecoveryLocationExtensionResult,
-)
 from request_engine.modules.live_capacity.contracts.projection import ProjectionState
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
@@ -16,6 +12,10 @@ from request_engine.modules.live_capacity.contracts.recovery import (
 )
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
+)
+from request_engine.modules.operational_recovery.application.workflow_location_port import (
+    RecoveryLocationExtensionRequest,
+    RecoveryLocationExtensionResult,
 )
 
 NOW = datetime(2026, 8, 27, 14, 0, tzinfo=UTC)
