@@ -42,7 +42,10 @@ async def authorize_or_resume_action(
         RecoveryActionStatus.REJECTED,
     }:
         return action, True
-    if action.status is RecoveryActionStatus.RUNNING:
+    if action.status in {
+        RecoveryActionStatus.RUNNING,
+        RecoveryActionStatus.PARTIALLY_APPLIED,
+    }:
         return action, False
     if action.status is not RecoveryActionStatus.PREPARED:
         raise RecoveryActionConflict(f"cannot resume recovery action in {action.status.value}")
