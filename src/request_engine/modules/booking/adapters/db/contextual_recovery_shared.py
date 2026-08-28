@@ -1,28 +1,16 @@
 # pyright: reportPrivateUsage=false
 
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _build_authoritative_profiles as build_authoritative_profiles,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _configuration_fingerprint as configuration_fingerprint,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _effective_context_observations as effective_context_observations,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _load_resource_availability_revisions as load_resource_availability_revisions,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _lock_selected_assignments as lock_selected_assignments,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _require_expected_resource_revisions as require_expected_resource_revisions,
-)
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _resolve_selected_assignments as resolve_selected_assignments,
+    _build_authoritative_profiles,
+    _configuration_fingerprint,
+    _effective_context_observations,
+    _load_resource_availability_revisions,
+    _lock_selected_assignments,
+    _require_expected_resource_revisions,
+    _resolve_selected_assignments,
 )
 
 
@@ -34,13 +22,29 @@ class RequirementLike(Protocol):
     def ordinal(self) -> int: ...
 
 
-__all__ = [
-    "RequirementLike",
-    "build_authoritative_profiles",
-    "configuration_fingerprint",
-    "effective_context_observations",
-    "load_resource_availability_revisions",
-    "lock_selected_assignments",
-    "require_expected_resource_revisions",
-    "resolve_selected_assignments",
-]
+def build_authoritative_profiles(*args: Any, **kwargs: Any) -> Any:
+    return _build_authoritative_profiles(*args, **kwargs)
+
+
+def configuration_fingerprint(*args: Any, **kwargs: Any) -> str:
+    return _configuration_fingerprint(*args, **kwargs)
+
+
+def effective_context_observations(*args: Any, **kwargs: Any) -> Any:
+    return _effective_context_observations(*args, **kwargs)
+
+
+async def load_resource_availability_revisions(*args: Any, **kwargs: Any) -> dict[UUID, int]:
+    return await _load_resource_availability_revisions(*args, **kwargs)
+
+
+async def lock_selected_assignments(*args: Any, **kwargs: Any) -> None:
+    await _lock_selected_assignments(*args, **kwargs)
+
+
+def require_expected_resource_revisions(*args: Any, **kwargs: Any) -> None:
+    _require_expected_resource_revisions(*args, **kwargs)
+
+
+def resolve_selected_assignments(*args: Any, **kwargs: Any) -> Any:
+    return _resolve_selected_assignments(*args, **kwargs)
