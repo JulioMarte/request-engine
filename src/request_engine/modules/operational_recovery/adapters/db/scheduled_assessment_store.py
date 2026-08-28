@@ -1,25 +1,6 @@
 from uuid import UUID
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
-from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_fence import (
-    lock_recovery_source_revision,
-)
-from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_idempotency import (
-    incident_matches_assessment,
-)
-from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_models import (
-    ScheduledAssessmentCommit,
-)
-from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_proposal import (
-    automatic_proposal_for_assessment,
-)
-from request_engine.modules.operational_recovery.adapters.db.workflow_incident_queries import (
-    get_open_incident_row,
-)
-from request_engine.modules.operational_recovery.adapters.db.workflow_incident_write import (
-    insert_incident,
-    update_incident,
-)
 from request_engine.modules.operational_recovery.application.workflow_assessment import (
     classify_recovery_assessment,
 )
@@ -27,6 +8,13 @@ from request_engine.modules.operational_recovery.contracts.models import Resched
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import LeaseLostWorkError
+
+from .scheduled_assessment_fence import lock_recovery_source_revision
+from .scheduled_assessment_idempotency import incident_matches_assessment
+from .scheduled_assessment_models import ScheduledAssessmentCommit
+from .scheduled_assessment_proposal import automatic_proposal_for_assessment
+from .workflow_incident_queries import get_open_incident_row
+from .workflow_incident_write import insert_incident, update_incident
 
 
 class PostgresScheduledAssessmentStore:
