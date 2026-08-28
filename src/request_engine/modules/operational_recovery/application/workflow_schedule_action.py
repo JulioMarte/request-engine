@@ -1,4 +1,5 @@
 from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentRevisionConflict,
     RecoveryAssignmentSchedulePort,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
@@ -13,6 +14,7 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 )
 from request_engine.modules.operational_recovery.application.workflow_location_port import (
     RecoveryLocationExtensionPort,
+    RecoveryLocationRevisionConflict,
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
@@ -30,6 +32,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionKind,
     RecoveryActionStatus,
     RecoveryIncidentNotFound,
+    RecoveryOwnerRevisionConflict,
 )
 
 
@@ -64,14 +67,30 @@ async def execute_extend_day_action(
     if terminal:
         return action
 
-    action = await apply_extend_day_owner_steps(
-        command,
-        incident=incident,
-        action=action,
-        repository=repository,
-        location_schedule=location_schedule,
-        assignment_schedule=assignment_schedule,
-    )
+    try:
+        action = await apply_extend_day_owner_steps(
+            command,
+            incident=incident,
+            action=action,
+            repository=repository,
+            location_schedule=location_schedule,
+            assignment_schedule=assignment_schedule,
+        )
+    except RecoveryLocationRevisionConflict as exc:
+        raise RecoveryOwnerRevisionConflict(
+            owner="catalog_location",
+            scope_id=exc.location_id,
+            expected=exc.expected,
+            actual=exc.actual,
+        ) from exc
+    except RecoveryAssignmentRevisionConflict as exc:
+        raise RecoveryOwnerRevisionConflict(
+            owner="booking_schedule",
+            scope_id=exc.assignment_id,
+            expected=exc.expected,
+            actual=exc.actual,
+        ) from exc
+
     assessment, refreshed = await reconcile_recovery_incident(
         organization_id=command.organization_id,
         service_queue_id=incident.service_queue_id,
