@@ -72,6 +72,9 @@ def create_workflow_router(
                 assignment_id=body.assignment_id,
                 start_at=body.start_at,
                 end_at=body.end_at,
+                expected_location_operational_revision=(
+                    body.expected_location_operational_revision
+                ),
                 expected_resource_availability_revision=(
                     body.expected_resource_availability_revision
                 ),
