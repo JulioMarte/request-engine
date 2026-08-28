@@ -93,7 +93,8 @@ class FakeRepository:
 
     async def upsert_assessment(self, **kwargs: object) -> RecoveryIncident:
         self.upserts.append(dict(kwargs))
-        status = RecoveryIncidentStatus.RESOLVED if kwargs["resolve"] else RecoveryIncidentStatus.OPEN
+        resolve = bool(kwargs["resolve"])
+        status = RecoveryIncidentStatus.RESOLVED if resolve else RecoveryIncidentStatus.OPEN
         return RecoveryIncident(
             id=UUID(int=9),
             organization_id=ORG,
