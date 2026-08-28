@@ -11,7 +11,7 @@ from request_engine.platform.db.session import SessionFactory
 from .f4_capacity_support import seed_today_schedule
 from .f4_operational_day_support import configure_projection
 from .f5_booking_fixture import five_minute_sandbox
-from .f5_contextual_support import contextualize_recovery_supply
+from .f5_contextual_support import contextualize_recovery_supply, restrict_contextual_capacity
 from .f5_extend_day_support import (
     assignment_recovery_exception_count,
     extend_action,
@@ -20,7 +20,7 @@ from .f5_extend_day_support import (
     source_revision,
 )
 from .f5_recovery_assertions import create_proposal
-from .f5_recovery_support import book_commitments, f5_actor, restrict_source_to_first_six
+from .f5_recovery_support import book_commitments, f5_actor
 from .f5_replace_resource_support import seed_incident_for_proposal
 from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
@@ -47,7 +47,7 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
     async with client_with_actors(e2e_session_factory, actors) as client:
         await configure_projection(client, sandbox)
         _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
-        restrict_source_to_first_six(e2e_admin_conn, sandbox, slots)
+        restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=6)
         proposal = await create_proposal(client, sandbox)
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         expected_source_revision = source_revision(proposal)
