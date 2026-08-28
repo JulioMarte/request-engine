@@ -30,6 +30,15 @@ class ExtendRecoveryDayBody(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class RescheduleRecoveryBody(BaseModel):
+    expected_source_revision: int = Field(gt=0)
+    proposal_id: UUID
+    reservation_id: UUID
+    expected_source_fingerprint: str = Field(min_length=1)
+    expected_proposal_fingerprint: str = Field(min_length=1)
+    allow_subject_override: bool = False
+
+
 class RecoveryActionView(BaseModel):
     id: UUID
     incident_id: UUID
