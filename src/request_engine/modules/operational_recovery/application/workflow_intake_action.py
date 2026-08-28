@@ -26,6 +26,8 @@ async def execute_intake_action(
     repository: RecoveryWorkflowRepository,
     queue_intake: RecoveryIntakeControlPort,
 ) -> RecoveryAction:
+    if command.expected_intake_revision <= 0:
+        raise ValueError("expected_intake_revision must be positive")
     incident = await repository.get_incident(
         organization_id=command.organization_id,
         incident_id=command.incident_id,
@@ -37,6 +39,7 @@ async def execute_intake_action(
         RecoveryActionKind.REOPEN_INTAKE if command.accepting else RecoveryActionKind.STOP_INTAKE
     )
     payload: dict[str, object] = {
+        "expected_intake_revision": command.expected_intake_revision,
         "accepting": command.accepting,
         "reason": command.reason,
         "effective_until": command.effective_until,
@@ -68,6 +71,7 @@ async def execute_intake_action(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             service_queue_id=incident.service_queue_id,
+            expected_revision=command.expected_intake_revision,
             accepting=command.accepting,
             idempotency_key=f"recovery-action:{action.id}:queue-intake:v1",
             reason=command.reason,
