@@ -4,6 +4,9 @@ from uuid import UUID
 from sqlalchemy import text
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
+from request_engine.modules.operational_recovery.adapters.db.automatic_proposal_store import (
+    insert_automatic_proposal,
+)
 from request_engine.modules.operational_recovery.adapters.db.workflow_incident_queries import (
     get_open_incident_row,
 )
@@ -14,6 +17,7 @@ from request_engine.modules.operational_recovery.adapters.db.workflow_incident_w
 from request_engine.modules.operational_recovery.application.workflow_assessment import (
     classify_recovery_assessment,
 )
+from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 from request_engine.modules.operational_recovery.contracts.workflow import RecoveryIncident
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.scheduling.store import lock_action_claim
@@ -25,6 +29,7 @@ class ScheduledAssessmentCommit:
     applied: bool
     stale: bool
     incident: RecoveryIncident | None
+    proposal_id: UUID | None = None
 
 
 class PostgresScheduledAssessmentStore:
@@ -40,15 +45,11 @@ class PostgresScheduledAssessmentStore:
         action_id: UUID,
         claim_token: UUID,
         assessment: RecoveryCapacityAssessment,
+        proposal: RescheduleProposal | None = None,
     ) -> ScheduledAssessmentCommit:
         async with tenant_transaction(self._session_factory, organization_id) as session:
-            if not await lock_action_claim(
-                session,
-                action_id=action_id,
-                claim_token=claim_token,
-            ):
+            if not await lock_action_claim(session, action_id=action_id, claim_token=claim_token):
                 raise LeaseLostWorkError("recovery_reassessment_authoritative_fence_lost")
-
             current = (
                 await session.execute(
                     text(
@@ -56,10 +57,7 @@ class PostgresScheduledAssessmentStore:
                         "WHERE organization_id=:organization_id "
                         "AND service_queue_id=:service_queue_id FOR UPDATE"
                     ),
-                    {
-                        "organization_id": organization_id,
-                        "service_queue_id": service_queue_id,
-                    },
+                    {"organization_id": organization_id, "service_queue_id": service_queue_id},
                 )
             ).scalar_one()
             if (
@@ -78,6 +76,23 @@ class PostgresScheduledAssessmentStore:
             if not decision.material and existing is None:
                 return ScheduledAssessmentCommit(applied=False, stale=False, incident=None)
 
+            proposal_id: UUID | None = None
+            if decision.material and assessment.shortfall_seconds > 0:
+                if proposal is None:
+                    raise ValueError("material shortfall assessment requires a proposal")
+                if (
+                    proposal.service_queue_id != service_queue_id
+                    or proposal.source_fingerprint != assessment.source_fingerprint
+                    or proposal.source_checkpoint.recovery_source_revision != target_source_revision
+                ):
+                    raise ValueError("automatic recovery proposal does not match assessment")
+                proposal_id = await insert_automatic_proposal(
+                    session,
+                    organization_id=organization_id,
+                    source_revision=target_source_revision,
+                    proposal=proposal,
+                )
+
             if existing is None:
                 incident = await insert_incident(
                     session,
@@ -89,7 +104,7 @@ class PostgresScheduledAssessmentStore:
                     source_fingerprint=assessment.source_fingerprint,
                     impact_kind=decision.impact_kind,
                     escalation_level=decision.escalation_level,
-                    current_proposal_id=None,
+                    current_proposal_id=proposal_id,
                 )
             else:
                 incident = await update_incident(
@@ -100,7 +115,12 @@ class PostgresScheduledAssessmentStore:
                     source_fingerprint=assessment.source_fingerprint,
                     impact_kind=decision.impact_kind,
                     escalation_level=decision.escalation_level,
-                    current_proposal_id=None,
+                    current_proposal_id=proposal_id,
                     resolve=decision.resolve,
                 )
-            return ScheduledAssessmentCommit(applied=True, stale=False, incident=incident)
+            return ScheduledAssessmentCommit(
+                applied=True,
+                stale=False,
+                incident=incident,
+                proposal_id=proposal_id,
+            )
