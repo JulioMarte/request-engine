@@ -18,6 +18,7 @@ from request_engine.modules.queue.api.live_capacity import (
 )
 from request_engine.platform.db.session import SessionFactory
 
+from .f5_automatic_proposal_support import automatic_proposals, incident_proposal_id
 from .f5_recovery_support import f5_actor
 from .f5_recovery_world import prepare_recovery_world
 from .f5_scheduled_assessment_support import (
@@ -51,7 +52,7 @@ async def _material_world(
     return sandbox
 
 
-async def test_f5_scheduled_reassessment_persists_current_material_truth(
+async def test_f5_scheduled_reassessment_persists_and_replays_current_material_truth(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -60,14 +61,30 @@ async def test_f5_scheduled_reassessment_persists_current_material_truth(
     )
     revision = current_source_revision(e2e_admin_conn, sandbox)
     lease = lease_reassessment(e2e_admin_conn, sandbox, revision)
+    handler = build_recovery_assessment_handler(e2e_session_factory)
 
-    result = await build_recovery_assessment_handler(e2e_session_factory).handle(lease)
-
-    assert result.applied is True
-    assert result.stale is False
-    assert result.incident is not None
-    assert result.incident.source_revision == revision
+    first = await handler.handle(lease)
+    assert first.applied is True
+    assert first.stale is False
+    assert first.incident is not None
+    assert first.incident.source_revision == revision
+    assert first.proposal_id is not None
     assert incident_revision(e2e_admin_conn, sandbox) == (revision, 1)
+
+    proposals = automatic_proposals(e2e_admin_conn, sandbox)
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal.id == first.proposal_id == incident_proposal_id(e2e_admin_conn, sandbox)
+    assert proposal.source_revision == revision
+    assert proposal.source_fingerprint == first.incident.source_fingerprint
+    assert proposal.created_by_principal_id is None
+
+    replay = await handler.handle(lease)
+    assert replay.applied is False
+    assert replay.stale is False
+    assert replay.proposal_id == proposal.id
+    assert incident_revision(e2e_admin_conn, sandbox) == (revision, 1)
+    assert automatic_proposals(e2e_admin_conn, sandbox) == proposals
 
 
 async def test_f5_scheduled_reassessment_cannot_commit_superseded_truth(
@@ -111,4 +128,6 @@ async def test_f5_scheduled_reassessment_cannot_commit_superseded_truth(
     assert result.applied is False
     assert result.stale is True
     assert result.incident is None
+    assert result.proposal_id is None
     assert incident_revision(e2e_admin_conn, sandbox) is None
+    assert automatic_proposals(e2e_admin_conn, sandbox) == ()
