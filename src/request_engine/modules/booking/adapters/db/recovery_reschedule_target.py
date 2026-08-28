@@ -16,6 +16,7 @@ from request_engine.modules.booking.adapters.db.recovery_reschedule_mutation imp
 )
 from request_engine.modules.booking.adapters.db.recovery_reschedule_support import (
     load_active_recovery_claims,
+    source_claims_are_contextual,
 )
 from request_engine.modules.booking.adapters.db.recovery_target_source import (
     validate_recovery_source_checkpoint,
@@ -90,6 +91,7 @@ async def prepare_target_mutation(
             end_at=end_at,
             base_duration_minutes=base_duration_minutes,
             step_minutes=step_minutes,
+            source_contextual=source_claims_are_contextual(old_claims),
         )
     else:
         profiles = await load_recovery_profiles_excluding_reservation(
