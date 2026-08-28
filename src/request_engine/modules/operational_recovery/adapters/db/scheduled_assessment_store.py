@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import text
-
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_fence import (
+    lock_recovery_source_revision,
+)
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_idempotency import (
     incident_matches_assessment,
 )
@@ -53,16 +54,11 @@ class PostgresScheduledAssessmentStore:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             if not await lock_action_claim(session, action_id=action_id, claim_token=claim_token):
                 raise LeaseLostWorkError("recovery_reassessment_authoritative_fence_lost")
-            current = (
-                await session.execute(
-                    text(
-                        "SELECT revision FROM request_engine.recovery_source_revisions "
-                        "WHERE organization_id=:organization_id "
-                        "AND service_queue_id=:service_queue_id FOR UPDATE"
-                    ),
-                    {"organization_id": organization_id, "service_queue_id": service_queue_id},
-                )
-            ).scalar_one()
+            current = await lock_recovery_source_revision(
+                session,
+                organization_id=organization_id,
+                service_queue_id=service_queue_id,
+            )
             if (
                 current != target_source_revision
                 or assessment.checkpoint.recovery_source_revision != target_source_revision
