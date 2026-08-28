@@ -32,31 +32,31 @@ def _projection(
     )
 
 
-def test_recovery_pressure_includes_live_workload_beyond_remaining_day() -> None:
-    committed, shortfall, live_pressure = recovery_pressure(
+def test_recovery_pressure_separates_live_only_shortfall_from_schedule() -> None:
+    committed, scheduled_shortfall, live_shortfall = recovery_pressure(
         _projection(operational=6 * 3600, scheduled=6 * 3600, live=7 * 3600)
     )
 
     assert committed == 6 * 3600
-    assert shortfall == 3600
-    assert live_pressure == 3600
+    assert scheduled_shortfall == 0
+    assert live_shortfall == 3600
 
 
 def test_recovery_pressure_keeps_schedule_shortfall_when_live_projection_unknown() -> None:
-    committed, shortfall, live_pressure = recovery_pressure(
+    committed, scheduled_shortfall, live_shortfall = recovery_pressure(
         _projection(operational=6 * 3600, scheduled=10 * 3600, live=None)
     )
 
     assert committed == 10 * 3600
-    assert shortfall == 4 * 3600
-    assert live_pressure == 0
+    assert scheduled_shortfall == 4 * 3600
+    assert live_shortfall == scheduled_shortfall
 
 
-def test_recovery_pressure_does_not_hide_larger_scheduled_shortfall() -> None:
-    committed, shortfall, live_pressure = recovery_pressure(
+def test_recovery_pressure_preserves_both_shortfalls_when_schedule_is_larger() -> None:
+    committed, scheduled_shortfall, live_shortfall = recovery_pressure(
         _projection(operational=6 * 3600, scheduled=10 * 3600, live=8 * 3600)
     )
 
     assert committed == 10 * 3600
-    assert shortfall == 4 * 3600
-    assert live_pressure == 0
+    assert scheduled_shortfall == 4 * 3600
+    assert live_shortfall == 2 * 3600
