@@ -81,7 +81,12 @@ async def test_f5_contextual_replace_resource_preserves_time_and_commercial_trut
     assert after_state[2:] == before_state[2:]
     assert _commercial_commitment(e2e_admin_conn, reservation_id) == before_commercial
     assert before_commercial[:3] == (Decimal("4000.000000"), "DOP", 5)
-    _assert_active_claim(e2e_admin_conn, reservation_id, alternate.resource_id, alternate.assignment_id)
+    _assert_active_claim(
+        e2e_admin_conn,
+        reservation_id,
+        alternate.resource_id,
+        alternate.assignment_id,
+    )
 
 
 def _replacement_item(proposal: dict[str, Any], resource_id: UUID) -> dict[str, Any]:
