@@ -6,11 +6,11 @@ import pytest
 
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
+from request_engine.modules.operational_recovery.application import (
+    workflow_replace_resource_action as replace_resource_action,
+)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ReplaceResourceRecoveryActionCommand,
-)
-from request_engine.modules.operational_recovery.application.workflow_replace_resource_action import (
-    execute_replace_resource_action,
 )
 from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 from request_engine.modules.operational_recovery.contracts.workflow import (
@@ -74,7 +74,7 @@ async def test_replace_resource_uses_same_time_alternate_target_and_reprojects()
     workflow = FakeWorkflowRepository()
     proposals = FakeProposalRepository(replacement_proposal())
     booking = FakeBooking()
-    action = await execute_replace_resource_action(
+    action = await replace_resource_action.execute_replace_resource_action(
         command(),
         workflow_repository=workflow,
         proposal_repository=proposals.as_port(),
@@ -96,7 +96,7 @@ async def test_replace_resource_retry_resumes_after_source_revision_advances() -
     proposals = FakeProposalRepository(replacement_proposal())
     booking = FakeBooking(fail_once=True)
     with pytest.raises(TimeoutError):
-        await execute_replace_resource_action(
+        await replace_resource_action.execute_replace_resource_action(
             command(),
             workflow_repository=workflow,
             proposal_repository=proposals.as_port(),
@@ -106,7 +106,7 @@ async def test_replace_resource_retry_resumes_after_source_revision_advances() -
     assert workflow.action is not None
     assert workflow.action.status is RecoveryActionStatus.RUNNING
     workflow.incident = replace(workflow.incident, source_revision=4, revision=2)
-    action = await execute_replace_resource_action(
+    action = await replace_resource_action.execute_replace_resource_action(
         command(),
         workflow_repository=workflow,
         proposal_repository=proposals.as_port(),
