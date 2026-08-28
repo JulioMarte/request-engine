@@ -11,7 +11,7 @@ class RecoveryIntakeControlRequest:
     service_queue_id: UUID
     accepting: bool
     idempotency_key: str
-    reason: str
+    reason: str | None
     effective_until: datetime | None
 
 
