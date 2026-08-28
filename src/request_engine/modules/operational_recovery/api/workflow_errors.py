@@ -5,6 +5,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionConflict,
     RecoveryIncidentNotFound,
     RecoveryIncidentStale,
+    RecoveryOwnerRevisionConflict,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
@@ -24,6 +25,19 @@ async def workflow_recovery_error_handler(_: Request, exc: Exception) -> JSONRes
             message="the recovery incident no longer matches authoritative operational state",
             resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={"expected_revision": exc.expected, "actual_revision": exc.actual},
+        )
+        return _response(status.HTTP_409_CONFLICT, body)
+    if isinstance(exc, RecoveryOwnerRevisionConflict):
+        body = ErrorBody(
+            code="RECOVERY_OWNER_REVISION_CONFLICT",
+            message="an authoritative recovery owner changed after this action was authorized",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={
+                "owner": exc.owner,
+                "scope_id": str(exc.scope_id),
+                "expected_revision": exc.expected,
+                "actual_revision": exc.actual,
+            },
         )
         return _response(status.HTTP_409_CONFLICT, body)
     if isinstance(exc, RecoveryActionConflict):
