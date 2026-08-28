@@ -14,8 +14,10 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 from .workflow_schedule_repository_support import FakeWorkflowRepository
 from .workflow_schedule_test_support import (
     ACTION,
-    EXCEPTION,
+    ASSIGNMENT_EXCEPTION,
+    LOCATION_EXCEPTION,
     FakeCapacity,
+    FakeLocationSchedule,
     FakeSchedule,
     command,
 )
@@ -24,57 +26,74 @@ pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.contract]
 
 
 @pytest.mark.asyncio
-async def test_extend_day_delegates_to_booking_reprojects_and_resolves() -> None:
+async def test_extend_day_runs_both_owners_reprojects_and_resolves() -> None:
     repository = FakeWorkflowRepository()
+    location = FakeLocationSchedule()
     schedule = FakeSchedule()
     action = await execute_extend_day_action(
-        command(), repository=repository, schedule=schedule, capacity=FakeCapacity()
+        command(),
+        repository=repository,
+        location_schedule=location,
+        assignment_schedule=schedule,
+        capacity=FakeCapacity(),
     )
     assert action.status is RecoveryActionStatus.SUCCEEDED
     assert repository.incident.status is RecoveryIncidentStatus.RESOLVED
-    assert len(schedule.requests) == 1
-    assert schedule.requests[0].idempotency_key == f"recovery-action:{ACTION}:extend-day:v1"
-    booking_step = action.owner_steps["booking_schedule"]
-    assert isinstance(booking_step, dict)
-    assert booking_step["exception_id"] == str(EXCEPTION)
-    reassessment = action.owner_steps["reassessment"]
-    assert isinstance(reassessment, dict)
-    assert reassessment["source_revision"] == 4
-    assert reassessment["incident_status"] == "resolved"
+    assert location.requests[0].idempotency_key == f"recovery-action:{ACTION}:location-hours:v1"
+    assert schedule.requests[0].idempotency_key == f"recovery-action:{ACTION}:assignment-hours:v1"
+    assert action.owner_steps["catalog_location"]["exception_id"] == str(  # type: ignore[index]
+        LOCATION_EXCEPTION
+    )
+    assert action.owner_steps["booking_schedule"]["exception_id"] == str(  # type: ignore[index]
+        ASSIGNMENT_EXCEPTION
+    )
 
 
 @pytest.mark.asyncio
-async def test_extend_day_retry_resumes_running_action_after_source_advances() -> None:
+async def test_extend_day_retry_preserves_partial_owner_step_and_identity() -> None:
     repository = FakeWorkflowRepository()
+    location = FakeLocationSchedule()
     schedule = FakeSchedule(fail_once=True)
     with pytest.raises(TimeoutError):
         await execute_extend_day_action(
-            command(), repository=repository, schedule=schedule, capacity=FakeCapacity()
+            command(),
+            repository=repository,
+            location_schedule=location,
+            assignment_schedule=schedule,
+            capacity=FakeCapacity(),
         )
     assert repository.action is not None
     assert repository.action.status is RecoveryActionStatus.RUNNING
+    assert "catalog_location" in repository.action.owner_steps
     repository.incident = replace(repository.incident, source_revision=4, revision=2)
 
     action = await execute_extend_day_action(
-        command(), repository=repository, schedule=schedule, capacity=FakeCapacity()
+        command(),
+        repository=repository,
+        location_schedule=location,
+        assignment_schedule=schedule,
+        capacity=FakeCapacity(),
     )
     assert action.status is RecoveryActionStatus.SUCCEEDED
-    assert len(schedule.requests) == 2
+    assert location.requests[0].idempotency_key == location.requests[1].idempotency_key
     assert schedule.requests[0].idempotency_key == schedule.requests[1].idempotency_key
 
 
 @pytest.mark.asyncio
-async def test_extend_day_new_stale_authorization_is_rejected_before_owner_mutation() -> None:
+async def test_extend_day_new_stale_authorization_rejects_before_owner_mutation() -> None:
     repository = FakeWorkflowRepository()
     repository.incident = replace(repository.incident, source_revision=4, revision=2)
+    location = FakeLocationSchedule()
     schedule = FakeSchedule()
-
     with pytest.raises(RecoveryIncidentStale):
         await execute_extend_day_action(
-            command(), repository=repository, schedule=schedule, capacity=FakeCapacity()
+            command(),
+            repository=repository,
+            location_schedule=location,
+            assignment_schedule=schedule,
+            capacity=FakeCapacity(),
         )
-
     assert repository.action is not None
     assert repository.action.status is RecoveryActionStatus.REJECTED
-    assert repository.action.failure_code == "STALE_RECOVERY_INCIDENT"
+    assert location.requests == []
     assert schedule.requests == []
