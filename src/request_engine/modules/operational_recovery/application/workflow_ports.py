@@ -55,6 +55,7 @@ class RecoveryWorkflowRepository(RecoveryAssessmentRepository, Protocol):
         *,
         organization_id: UUID,
         action_id: UUID,
+        expected_status: RecoveryActionStatus,
         status: RecoveryActionStatus,
         owner_steps: Mapping[str, object] | None = None,
         failure_code: str | None = None,
