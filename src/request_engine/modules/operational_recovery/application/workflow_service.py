@@ -6,6 +6,7 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapa
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
+    ReplaceResourceRecoveryActionCommand,
     RescheduleRecoveryActionCommand,
     SetRecoveryIntakeCommand,
 )
@@ -20,6 +21,9 @@ from request_engine.modules.operational_recovery.application.workflow_location_p
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
+)
+from request_engine.modules.operational_recovery.application.workflow_replace_resource_action import (
+    execute_replace_resource_action,
 )
 from request_engine.modules.operational_recovery.application.workflow_reschedule_action import (
     execute_reschedule_action,
@@ -68,6 +72,18 @@ class RecoveryWorkflowService:
 
     async def reschedule(self, command: RescheduleRecoveryActionCommand) -> RecoveryAction:
         return await execute_reschedule_action(
+            command,
+            workflow_repository=self._repository,
+            proposal_repository=self._proposal_repository,
+            booking=self._booking,
+            capacity=self._capacity,
+        )
+
+    async def replace_resource(
+        self,
+        command: ReplaceResourceRecoveryActionCommand,
+    ) -> RecoveryAction:
+        return await execute_replace_resource_action(
             command,
             workflow_repository=self._repository,
             proposal_repository=self._proposal_repository,
