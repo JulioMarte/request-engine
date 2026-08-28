@@ -41,7 +41,7 @@ def extend_action(
 def location_recovery_exception_count(conn: PgConnection, sandbox: TenantSandbox) -> int:
     row = conn.execute(
         "SELECT count(*) FROM request_engine.location_hours_exceptions "
-        "WHERE organization_id=%s AND location_id=%s AND recovery_action_id IS NOT NULL",
+        "WHERE organization_id=%s AND location_id=%s AND active",
         (sandbox.organization_id, sandbox.location_id),
     ).fetchone()
     assert row is not None
@@ -53,8 +53,7 @@ def assignment_recovery_exception_count(
 ) -> int:
     row = conn.execute(
         "SELECT count(*) FROM request_engine.resource_location_schedule_exceptions "
-        "WHERE organization_id=%s AND resource_location_assignment_id=%s "
-        "AND recovery_action_id IS NOT NULL",
+        "WHERE organization_id=%s AND resource_location_assignment_id=%s AND active",
         (sandbox.organization_id, assignment_id),
     ).fetchone()
     assert row is not None
