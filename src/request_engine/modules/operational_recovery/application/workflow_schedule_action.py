@@ -1,7 +1,5 @@
-from request_engine.modules.booking.contracts.recovery_schedule import (
-    RecoveryAssignmentExtensionRequest,
-    RecoveryAssignmentSchedulePort,
-)
+from request_engine.modules.booking.contracts.recovery_schedule import RecoveryAssignmentSchedulePort
+from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.workflow_action_execution import (
     authorize_or_resume_action,
@@ -14,6 +12,9 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
+)
+from request_engine.modules.operational_recovery.application.workflow_schedule_owners import (
+    apply_extend_day_owner_steps,
 )
 from request_engine.modules.operational_recovery.application.workflow_schedule_support import (
     extend_day_fingerprint,
@@ -32,7 +33,8 @@ async def execute_extend_day_action(
     command: ExtendRecoveryDayCommand,
     *,
     repository: RecoveryWorkflowRepository,
-    schedule: RecoveryAssignmentSchedulePort,
+    location_schedule: RecoveryLocationSchedulePort,
+    assignment_schedule: RecoveryAssignmentSchedulePort,
     capacity: RecoveryCapacitySource,
 ) -> RecoveryAction:
     validate_extend_day(command)
@@ -58,20 +60,13 @@ async def execute_extend_day_action(
     if terminal:
         return action
 
-    result = await schedule.extend_assignment_hours(
-        RecoveryAssignmentExtensionRequest(
-            organization_id=command.organization_id,
-            principal_id=command.principal_id,
-            authority_party_id=command.authority_party_id,
-            assignment_id=command.assignment_id,
-            start_at=command.start_at,
-            end_at=command.end_at,
-            expected_resource_availability_revision=(
-                command.expected_resource_availability_revision
-            ),
-            idempotency_key=f"recovery-action:{action.id}:extend-day:v1",
-            reason=command.reason,
-        )
+    action = await apply_extend_day_owner_steps(
+        command,
+        incident=incident,
+        action=action,
+        repository=repository,
+        location_schedule=location_schedule,
+        assignment_schedule=assignment_schedule,
     )
     assessment, refreshed = await reconcile_recovery_incident(
         organization_id=command.organization_id,
@@ -81,18 +76,14 @@ async def execute_extend_day_action(
         current_proposal_id=incident.current_proposal_id,
     )
     if assessment.checkpoint.recovery_source_revision <= command.expected_source_revision:
-        raise RuntimeError("extend-day owner mutation did not advance recovery source revision")
+        raise RuntimeError("extend-day owner mutations did not advance recovery source revision")
     return await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
         expected_status=RecoveryActionStatus.RUNNING,
         status=RecoveryActionStatus.SUCCEEDED,
         owner_steps={
-            "booking_schedule": {
-                "exception_id": str(result.exception_id),
-                "assignment_id": str(result.assignment_id),
-                "resource_availability_revision": result.resource_availability_revision,
-            },
+            **action.owner_steps,
             "reassessment": {
                 "source_revision": assessment.checkpoint.recovery_source_revision,
                 "source_fingerprint": assessment.source_fingerprint,
