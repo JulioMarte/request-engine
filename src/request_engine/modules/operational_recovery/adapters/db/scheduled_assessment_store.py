@@ -4,11 +4,11 @@ from uuid import UUID
 from sqlalchemy import text
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
-from request_engine.modules.operational_recovery.adapters.db.automatic_proposal_store import (
-    insert_automatic_proposal,
-)
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_idempotency import (
     incident_matches_assessment,
+)
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_proposal import (
+    automatic_proposal_for_assessment,
 )
 from request_engine.modules.operational_recovery.adapters.db.workflow_incident_queries import (
     get_open_incident_row,
@@ -79,23 +79,15 @@ class PostgresScheduledAssessmentStore:
             if not decision.material and existing is None:
                 return ScheduledAssessmentCommit(applied=False, stale=False, incident=None)
 
-            proposal_id: UUID | None = None
-            if decision.material and assessment.shortfall_seconds > 0:
-                if proposal is None:
-                    raise ValueError("material shortfall assessment requires a proposal")
-                if (
-                    proposal.service_queue_id != service_queue_id
-                    or proposal.source_fingerprint != assessment.source_fingerprint
-                    or proposal.source_checkpoint.recovery_source_revision != target_source_revision
-                ):
-                    raise ValueError("automatic recovery proposal does not match assessment")
-                proposal_id = await insert_automatic_proposal(
-                    session,
-                    organization_id=organization_id,
-                    source_revision=target_source_revision,
-                    proposal=proposal,
-                )
-
+            proposal_id = await automatic_proposal_for_assessment(
+                session,
+                organization_id=organization_id,
+                service_queue_id=service_queue_id,
+                source_revision=target_source_revision,
+                assessment=assessment,
+                decision=decision,
+                proposal=proposal,
+            )
             if existing is not None and incident_matches_assessment(
                 existing,
                 source_revision=target_source_revision,
