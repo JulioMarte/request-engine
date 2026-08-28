@@ -44,8 +44,8 @@ async def apply_extend_day_owner_steps(
     action = await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
-        expected_status=RecoveryActionStatus.RUNNING,
-        status=RecoveryActionStatus.RUNNING,
+        expected_status=action.status,
+        status=RecoveryActionStatus.PARTIALLY_APPLIED,
         owner_steps={
             **action.owner_steps,
             "catalog_location": {
@@ -73,7 +73,7 @@ async def apply_extend_day_owner_steps(
     return await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
-        expected_status=RecoveryActionStatus.RUNNING,
+        expected_status=RecoveryActionStatus.PARTIALLY_APPLIED,
         status=RecoveryActionStatus.RUNNING,
         owner_steps={
             **action.owner_steps,
