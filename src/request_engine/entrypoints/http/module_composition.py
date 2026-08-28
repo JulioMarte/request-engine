@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.live_capacity import (
@@ -82,6 +83,7 @@ def install_business_modules(
         actor_resolver=actor_resolver,
     )
     queue_intake = build_recovery_intake_control_port(session_factory)
+    location_schedule = build_recovery_location_schedule_port(session_factory)
     install_recovery_http(
         app,
         session_factory=session_factory,
@@ -95,6 +97,6 @@ def install_business_modules(
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
         intake=QueueRecoveryIntakeAdapter(queue_intake),
-        location_schedule=build_recovery_location_schedule_port(session_factory),
+        location_schedule=CatalogRecoveryLocationAdapter(location_schedule),
         assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
     )
