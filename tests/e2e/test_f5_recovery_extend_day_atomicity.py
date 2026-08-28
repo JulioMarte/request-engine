@@ -52,6 +52,13 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         expected_source_revision = source_revision(proposal)
         location_revision, resource_revision = owner_revisions(e2e_admin_conn, sandbox)
+
+        # Advance Booking-owned contextual availability after authorization. The
+        # original revision remains a valid positive stale intent token.
+        restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=5)
+        _, stale_resource_revision = owner_revisions(e2e_admin_conn, sandbox)
+        assert stale_resource_revision > resource_revision
+
         before_location = location_recovery_exception_count(e2e_admin_conn, sandbox)
         before_assignment = assignment_recovery_exception_count(
             e2e_admin_conn, sandbox, supply.assignment_id
@@ -65,7 +72,7 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
             "start_at": start_at.isoformat(),
             "end_at": end_at.isoformat(),
             "expected_location_operational_revision": location_revision,
-            "expected_resource_availability_revision": resource_revision - 1,
+            "expected_resource_availability_revision": resource_revision,
             "reason": "adversarial stale resource revision",
         }
         path = f"/v1/operational-recovery/incidents/{incident_id}/extend-day"
@@ -84,5 +91,5 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
     )
     assert owner_revisions(e2e_admin_conn, sandbox) == (
         location_revision + 1,
-        resource_revision,
+        stale_resource_revision,
     )
