@@ -38,7 +38,7 @@ async def test_f5_contextual_reschedule_preserves_assignment_and_commercial_comm
     actors = {sandbox.token: f5_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         await configure_projection(client, sandbox)
-        reservations, slots = await book_commitments(client, e2e_admin_conn, sandbox)
+        _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
         restrict_contextual_capacity(
             e2e_admin_conn,
             sandbox,
