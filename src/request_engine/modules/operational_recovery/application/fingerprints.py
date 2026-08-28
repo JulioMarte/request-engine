@@ -95,9 +95,7 @@ def affected_payload(item: AffectedReservation) -> dict[str, object]:
         "contextual_commitment": item.contextual_commitment,
         "target": target_payload(item.target) if item.target is not None else None,
         "replacement_target": (
-            target_payload(item.replacement_target)
-            if item.replacement_target is not None
-            else None
+            target_payload(item.replacement_target) if item.replacement_target is not None else None
         ),
     }
 
