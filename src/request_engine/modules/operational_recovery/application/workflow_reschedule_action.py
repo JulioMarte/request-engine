@@ -1,15 +1,5 @@
-from request_engine.modules.booking.contracts.recovery import (
-    RecoveryBookingConflict,
-    RecoveryBookingPort,
-)
-from request_engine.modules.booking.contracts.recovery import (
-    RecoveryTargetUnavailable as BookingRecoveryTargetUnavailable,
-)
+from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
-from request_engine.modules.operational_recovery.application.errors import (
-    RecoveryTargetUnavailable,
-    StaleRecoveryProposal,
-)
 from request_engine.modules.operational_recovery.application.execution_policy import (
     affected_reservation,
     require_actionable,
@@ -28,8 +18,9 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
 )
-from request_engine.modules.operational_recovery.application.workflow_reschedule_request import (
-    workflow_booking_request,
+from request_engine.modules.operational_recovery.application.workflow_reschedule_owner import (
+    execute_booking_reschedule_step,
+    reject_reschedule_action,
 )
 from request_engine.modules.operational_recovery.application.workflow_reschedule_support import (
     reschedule_fingerprint,
@@ -85,25 +76,18 @@ async def execute_reschedule_action(
                 command, incident=incident, proposal=proposal
             )
         except RecoveryIncidentStale:
-            await _reject(workflow_repository, command, action, "STALE_RECOVERY_INCIDENT")
-            raise
-    try:
-        reservation = await booking.reschedule_for_recovery(
-            workflow_booking_request(
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                idempotency_key=f"recovery-action:{action.id}:booking-reschedule:v1",
-                allow_subject_override=command.allow_subject_override,
-                proposal=proposal,
-                affected=affected,
+            await reject_reschedule_action(
+                workflow_repository, command, action, "STALE_RECOVERY_INCIDENT"
             )
-        )
-    except RecoveryBookingConflict as exc:
-        await _reject(workflow_repository, command, action, "STALE_RECOVERY_PROPOSAL")
-        raise StaleRecoveryProposal() from exc
-    except BookingRecoveryTargetUnavailable as exc:
-        await _reject(workflow_repository, command, action, "RECOVERY_TARGET_UNAVAILABLE")
-        raise RecoveryTargetUnavailable(command.reservation_id, str(exc)) from exc
+            raise
+    reservation = await execute_booking_reschedule_step(
+        command=command,
+        action=action,
+        proposal=proposal,
+        affected=affected,
+        repository=workflow_repository,
+        booking=booking,
+    )
     assessment, refreshed = await reconcile_recovery_incident(
         organization_id=command.organization_id,
         service_queue_id=incident.service_queue_id,
@@ -126,19 +110,4 @@ async def execute_reschedule_action(
                 "incident_status": None if refreshed is None else refreshed.status.value,
             },
         },
-    )
-
-
-async def _reject(
-    repository: RecoveryWorkflowRepository,
-    command: RescheduleRecoveryActionCommand,
-    action: RecoveryAction,
-    failure_code: str,
-) -> None:
-    await repository.transition_action(
-        organization_id=command.organization_id,
-        action_id=action.id,
-        expected_status=action.status,
-        status=RecoveryActionStatus.REJECTED,
-        failure_code=failure_code,
     )
