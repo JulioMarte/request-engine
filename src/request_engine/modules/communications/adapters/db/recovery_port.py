@@ -6,10 +6,16 @@ from request_engine.modules.communications.application.commands.create_communica
 )
 from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
+    RecoveryCommunicationPurpose,
     RecoveryCommunicationRequest,
 )
 from request_engine.modules.communications.contracts.tasks import CommunicationTask
 from request_engine.platform.db.session import SessionFactory
+
+_PURPOSE_TEMPLATES = {
+    RecoveryCommunicationPurpose.IMPACT: "operational_recovery.impact",
+    RecoveryCommunicationPurpose.RESCHEDULED: "operational_recovery.rescheduled",
+}
 
 
 class PostgresRecoveryCommunicationPort(RecoveryCommunicationPort):
@@ -25,8 +31,8 @@ class PostgresRecoveryCommunicationPort(RecoveryCommunicationPort):
                 organization_id=request.organization_id,
                 principal_id=request.principal_id,
                 recipient_party_id=request.recipient_party_id,
-                purpose="operational_recovery_rescheduled",
-                template_key="operational_recovery.rescheduled",
+                purpose=request.purpose.value,
+                template_key=_PURPOSE_TEMPLATES[request.purpose],
                 template_version=1,
                 channel_policy={"kind": "transactional"},
                 render_context=request.render_context,

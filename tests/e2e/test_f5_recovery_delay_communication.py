@@ -102,7 +102,7 @@ async def test_f5_delay_impact_communication_dedupes_without_reservation_mutatio
     task_id = cast(UUID, task[0])
     assert task[1:] == (
         sandbox.party_id,
-        "operational_recovery_rescheduled",
+        "operational_recovery_impact",
         "OperationalRecoveryExecution",
         incident_id,
         "pending",

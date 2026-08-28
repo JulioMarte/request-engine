@@ -2,6 +2,9 @@ from dataclasses import replace
 
 import pytest
 
+from request_engine.modules.communications.contracts.recovery import (
+    RecoveryCommunicationPurpose,
+)
 from request_engine.modules.operational_recovery.application.workflow_communication_action import (
     execute_communicate_impact_action,
 )
@@ -36,6 +39,7 @@ async def test_impact_communication_delegates_to_owner_with_stable_identity() ->
     assert len(communications.requests) == 1
     request = communications.requests[0]
     assert request.recipient_party_id == RECIPIENT
+    assert request.purpose is RecoveryCommunicationPurpose.IMPACT
     assert request.dedupe_key == EXPECTED_DEDUPE
     assert request.execution_id == INCIDENT
     assert request.idempotency_key == f"recovery-impact:{INCIDENT}:{RECIPIENT}:3:v1"

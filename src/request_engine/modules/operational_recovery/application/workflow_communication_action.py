@@ -2,6 +2,7 @@ from uuid import UUID
 
 from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
+    RecoveryCommunicationPurpose,
     RecoveryCommunicationRequest,
 )
 from request_engine.modules.operational_recovery.application.workflow_action_execution import (
@@ -75,6 +76,7 @@ async def execute_communicate_impact_action(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             recipient_party_id=command.recipient_party_id,
+            purpose=RecoveryCommunicationPurpose.IMPACT,
             execution_id=command.incident_id,
             idempotency_key=(
                 f"recovery-impact:{command.incident_id}:"
