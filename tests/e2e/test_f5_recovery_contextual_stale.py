@@ -59,7 +59,13 @@ async def test_f5_contextual_proposal_fails_closed_after_material_configuration_
     assert _reservation_state(e2e_admin_conn, reservation_id) == before
 
 
-def _apply_change(conn: PgConnection, sandbox: object, assignment_id: UUID, target: dict, change: str) -> None:
+def _apply_change(
+    conn: PgConnection,
+    sandbox: object,
+    assignment_id: UUID,
+    target: dict,
+    change: str,
+) -> None:
     organization_id = sandbox.organization_id  # type: ignore[attr-defined]
     if change == "price":
         conn.execute(
