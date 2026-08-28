@@ -7,6 +7,9 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapa
 from request_engine.modules.operational_recovery.adapters.db.automatic_proposal_store import (
     insert_automatic_proposal,
 )
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_idempotency import (
+    incident_matches_assessment,
+)
 from request_engine.modules.operational_recovery.adapters.db.workflow_incident_queries import (
     get_open_incident_row,
 )
@@ -91,6 +94,20 @@ class PostgresScheduledAssessmentStore:
                     organization_id=organization_id,
                     source_revision=target_source_revision,
                     proposal=proposal,
+                )
+
+            if existing is not None and incident_matches_assessment(
+                existing,
+                source_revision=target_source_revision,
+                source_fingerprint=assessment.source_fingerprint,
+                proposal_id=proposal_id,
+                decision=decision,
+            ):
+                return ScheduledAssessmentCommit(
+                    applied=False,
+                    stale=False,
+                    incident=existing,
+                    proposal_id=proposal_id,
                 )
 
             if existing is None:
