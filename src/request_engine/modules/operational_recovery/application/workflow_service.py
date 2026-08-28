@@ -1,6 +1,7 @@
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
+from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
@@ -27,12 +28,14 @@ class RecoveryWorkflowService:
         *,
         repository: RecoveryWorkflowRepository,
         intake: RecoveryIntakeControlPort,
-        schedule: RecoveryAssignmentSchedulePort,
+        location_schedule: RecoveryLocationSchedulePort,
+        assignment_schedule: RecoveryAssignmentSchedulePort,
         capacity: RecoveryCapacitySource,
     ) -> None:
         self._repository = repository
         self._intake = intake
-        self._schedule = schedule
+        self._location_schedule = location_schedule
+        self._assignment_schedule = assignment_schedule
         self._capacity = capacity
 
     async def set_intake(self, command: SetRecoveryIntakeCommand) -> RecoveryAction:
@@ -46,6 +49,7 @@ class RecoveryWorkflowService:
         return await execute_extend_day_action(
             command,
             repository=self._repository,
-            schedule=self._schedule,
+            location_schedule=self._location_schedule,
+            assignment_schedule=self._assignment_schedule,
             capacity=self._capacity,
         )
