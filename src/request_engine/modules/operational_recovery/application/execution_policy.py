@@ -9,6 +9,7 @@ from request_engine.modules.operational_recovery.application.errors import (
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
     RecoveryExecution,
+    RecoveryTarget,
     RescheduleProposal,
 )
 
@@ -40,11 +41,18 @@ def affected_reservation(
     return result
 
 
-def require_actionable(affected: AffectedReservation) -> None:
-    target = affected.target
+def require_actionable_target(
+    reservation_id: UUID,
+    target: RecoveryTarget | None,
+) -> RecoveryTarget:
     if target is None or not target.actionable:
         reason = target.blocked_reason if target is not None else None
-        raise RecoveryTargetUnavailable(affected.reservation_id, reason)
+        raise RecoveryTargetUnavailable(reservation_id, reason)
+    return target
+
+
+def require_actionable(affected: AffectedReservation) -> None:
+    require_actionable_target(affected.reservation_id, affected.target)
 
 
 def raise_rejected(execution: RecoveryExecution) -> None:
