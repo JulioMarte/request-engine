@@ -84,7 +84,11 @@ async def load_contextual_recovery_snapshot(
     assignment_ids = tuple(sorted({a.id for a in selected.values() if a is not None}, key=str))
     legacy_ids = tuple(
         sorted(
-            {choices[rid].resource_id for rid, assignment in selected.items() if assignment is None},
+            {
+                choices[rid].resource_id
+                for rid, assignment in selected.items()
+                if assignment is None
+            },
             key=str,
         )
     )
