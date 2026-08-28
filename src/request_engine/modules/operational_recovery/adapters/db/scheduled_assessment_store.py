@@ -99,7 +99,7 @@ class PostgresScheduledAssessmentStore:
                     proposal_id=proposal_id,
                 )
 
-            incident = await upsert_incident_from_assessment(
+            incident, escalation = await upsert_incident_from_assessment(
                 session,
                 organization_id=organization_id,
                 service_queue_id=service_queue_id,
@@ -114,4 +114,5 @@ class PostgresScheduledAssessmentStore:
                 stale=False,
                 incident=incident,
                 proposal_id=proposal_id,
+                escalation=escalation,
             )
