@@ -39,14 +39,10 @@ def validate_fresh_reschedule_authorization(
 ) -> None:
     valid = (
         proposal.service_queue_id == incident.service_queue_id
-        and proposal.source_checkpoint.recovery_source_revision
-        == command.expected_source_revision
+        and proposal.source_checkpoint.recovery_source_revision == command.expected_source_revision
         and proposal.source_fingerprint == command.expected_source_fingerprint
         and proposal.proposal_fingerprint == command.expected_proposal_fingerprint
-        and (
-            incident.current_proposal_id is None
-            or incident.current_proposal_id == proposal.id
-        )
+        and (incident.current_proposal_id is None or incident.current_proposal_id == proposal.id)
     )
     if not valid:
         raise RecoveryIncidentStale(
