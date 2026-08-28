@@ -1,5 +1,6 @@
-from request_engine.modules.booking.contracts.recovery_schedule import RecoveryAssignmentSchedulePort
-from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
+from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentSchedulePort,
+)
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.workflow_action_execution import (
     authorize_or_resume_action,
@@ -9,6 +10,9 @@ from request_engine.modules.operational_recovery.application.workflow_assessment
 )
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
+)
+from request_engine.modules.operational_recovery.application.workflow_location_port import (
+    RecoveryLocationExtensionPort,
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
@@ -33,7 +37,7 @@ async def execute_extend_day_action(
     command: ExtendRecoveryDayCommand,
     *,
     repository: RecoveryWorkflowRepository,
-    location_schedule: RecoveryLocationSchedulePort,
+    location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
     capacity: RecoveryCapacitySource,
 ) -> RecoveryAction:
