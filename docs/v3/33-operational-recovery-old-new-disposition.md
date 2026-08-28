@@ -10,7 +10,7 @@ F5 composes existing authorities. It does not rename pre-existing concepts into 
 | Booking operational availability and ScheduleException truth | REUSE | F5 never queries schedule tables or recalculates effective availability. |
 | Booking Reservation / CapacityClaim | REUSE | Booking remains mutation and capacity-consumption authority. F5 stores only Reservation identity/revision provenance. |
 | Booking appointment slot planner | REUSE | Recovery alternatives come from Booking's existing availability reader and are revalidated on execution. |
-| Booking reschedule command | REUSE + HARDEN LATER | Legacy/non-contextual reschedule is authoritative today. Contextual F1 reschedule remains an explicit unsupported target until Booking closes that pre-existing gap; F5 must not strip assignment provenance to force it through the legacy path. |
+| Booking reschedule command | REUSE + EVOLVED | The pre-existing contextual reschedule gap is now closed by the recovery workflow tranche: Booking revalidates assignment/location/commercial provenance inside its own transaction (contract §10), and F5 contextual targets are actionable without stripping provenance through the legacy path. Evidence: `34-operational-recovery-acceptance-evidence.md`. |
 | Booking intake capacity enforcement | REUSE / PROVE | A forced closure must already make new Booking consumption fail at the authoritative capacity boundary. F5 adds no UI-only hold or second availability table. |
 | F3 queue/service operational state | REUSE INDIRECTLY THROUGH F4 | Recovery does not read QueueEntry/ServiceSession tables directly. F4 assembly incorporates active/queued/planned work with canonical deduplication, and those live inputs participate in F5 materiality and freshness. |
 | Platform/Booking idempotency | REUSE | F5 has durable uniqueness for one execution per proposal/Reservation and one actor/idempotency key. Booking receives a stable recovery execution idempotency key and performs the authoritative Reservation transition under its own row/concurrency guards. No PostgreSQL advisory lock is claimed. |
@@ -18,7 +18,7 @@ F5 composes existing authorities. It does not rename pre-existing concepts into 
 | Worker leases / ScheduledAction / outbox | REUSE | No recovery-specific worker runtime is introduced. |
 | Audit primitives | REUSE | Booking and Communications keep their own audit facts; F5 stores the explicit recovery execution fact and actor. |
 | Analytics/reporting operational calculations | DO NOT REUSE AS AUTHORITY | Reporting may consume F5 facts later but cannot independently determine shortfall/affected commitments. |
-| Generic workflow engine | DO NOT CREATE | V1 is proposal + one-shot execution, not a long-lived RecoveryWorkflow. |
+| Generic workflow engine | DO NOT CREATE | F5 implements a domain-specific `RecoveryIncident`/`RecoveryAction` workflow with a closed action set (contract §12), not a generic BPM/workflow engine. No generic engine exists or may be introduced. |
 
 ## Recovery materiality disposition
 
@@ -37,19 +37,19 @@ The roadmap described the broader recovery product direction before the first F5
 
 | Original roadmap recovery capability | Current F5 slice | Authority / follow-up |
 | --- | --- | --- |
-| react when live operations make the plan unrealistic | PARTIAL / CORE DELIVERED | F5 now consumes F4 live workload for materiality and freshness. Automatic event-triggered reprojection/escalation remains future work; current recovery creation is explicit. |
+| react when live operations make the plan unrealistic | PARTIAL / AUTOMATIC REPROJECTION DELIVERED | F5 consumes F4 live workload for materiality and freshness. Durable scheduled reassessment now opens/updates incidents and persists automatic proposals under source-revision fencing (contract §5); Booking commitment-change freshness triggers and the delay/impact communication action (proof G) remain in flight on this tranche. |
 | review affected Reservations after material capacity loss/live pressure | DELIVERED | F4 publishes the authoritative recovery capacity source; F5 persists deterministic affected Reservation provenance in immutable proposals. |
 | one-shot Reservation reschedule after explicit selection/revalidation | DELIVERED | F5 orchestrates; Booking remains the only Reservation/capacity mutation authority. |
-| contextual/cadence-backed reschedule | UNSUPPORTED / DEFERRED | Booking must first evolve its own reschedule transaction to revalidate contextual assignment/location/commercial provenance. F5 fails closed and must not advertise these targets as actionable. |
-| stop new intake from consuming broken capacity | REUSED, NOT AN EXPLICIT F5 ACTION | Existing Booking/capacity authority rejects consumption current schedule/supply no longer permits. A deliberate operator `stop intake` policy beyond natural capacity exhaustion requires a Booking-owned command/contract amendment. |
-| extend the day via one-day ScheduleException | DEFERRED | ScheduleException belongs to operational-profile/Booking configuration. F5 does not silently create exceptions. A future recovery action needs an owner-controlled semantic command and explicit authorization/revalidation. |
-| find replacement provider/resource options | PARTIAL / DEFERRED | V1 may propose Booking-owned alternatives for the supported local one-shot reschedule path. General contextual/cross-provider replacement requires the missing Booking authority above and is not autonomously selected. |
-| communicate impact to affected customers | DELIVERED | A successful explicit recovery execution can create a bounded Communications intent with durable lineage and stable dedupe identity. |
+| contextual/cadence-backed reschedule | DELIVERED | Booking now owns a contextual recovery reschedule authority that revalidates assignment/location/commercial provenance inside one transaction (contract §10). Evidence: contextual reschedule success, action commit and stale fail-closed in `34-operational-recovery-acceptance-evidence.md`. |
+| stop new intake from consuming broken capacity | DELIVERED | Queue owns a typed, revisioned intake control and F5 exposes explicit STOP_INTAKE/REOPEN_INTAKE actions gated by recovery source revision (contract §8). Stopped intake transactionally rejects walk-in admission; evidence in `34-operational-recovery-acceptance-evidence.md`. |
+| extend the day via one-day ScheduleException | DELIVERED | `EXTEND_DAY` composes Catalog Location additional-hours and Booking Resource/assignment additional-availability exceptions as a durable, partially-visible saga with fresh reprojection before resolution (contract §9). Evidence in `34-operational-recovery-acceptance-evidence.md`. |
+| find replacement provider/resource options | DELIVERED (INTRA-ORGANIZATION) | Booking's authoritative contextual slot planner proposes and commits same-time alternate Resources/assignments inside one Organization (contract §11). Cross-Organization replacement via F2 discovery + Booking handoff remains conditional scope and is not implemented in this tranche. Evidence in `34-operational-recovery-acceptance-evidence.md`. |
+| communicate impact to affected customers | DELIVERED | A successful explicit recovery execution can create a bounded Communications intent with durable lineage and stable dedupe identity. The delay/impact communication action (proof G) remains in flight on this tranche. |
 | durable retry, provider-result reconciliation, leases/fencing | DELIVERED BY COMMUNICATIONS | These are Communications-owned reliability semantics reused by F5; F5 does not create a parallel delivery subsystem. |
-| event-driven reprojection/escalation on material operational events | DEFERRED | Queue/Delivery changes now invalidate/alter recovery truth when recovery is assessed, but no autonomous trigger loop is claimed by this slice. |
-| generalized multi-action recovery workflow | EXPLICIT NON-GOAL FOR V1 | F5 v1 remains immutable proposal + one-shot execution. A long-lived workflow engine requires a new product/contract decision. |
+| event-driven reprojection/escalation on material operational events | PARTIAL / REPROJECTION DELIVERED | Authoritative source-table triggers durably advance the recovery source revision and schedule one deduped reassessment per revision; the handler commits incidents/proposals only at current truth (contract §5). Booking commitment-change triggers are in flight on this tranche; change-storm coalescing policy, bounded fallback sweep and autonomous escalation remain separate requirements needing their own evidence (`10-worker-runtime-hardening.md`). |
+| generalized multi-action recovery workflow | IMPLEMENTED AS DOMAIN-SPECIFIC WORKFLOW (PROOF IN FLIGHT) | The V1 generic-engine non-goal became a domain-specific `RecoveryIncident`/`RecoveryAction` workflow with a closed action set and per-action owner steps (contract §12). The end-to-end multi-action proof (F) is in flight on this tranche. |
 
-Accordingly, the current branch should be described as the **F5 explicit recovery core slice**, not as proof that the entire original recovery roadmap has been delivered. The deferred rows remain roadmap debt and must be assigned to a subsequent feature before the broader product line can be called complete.
+Accordingly, the current tranche should be described as the **F5 core slice plus the full recovery workflow tranche**, not as proof that the entire original recovery roadmap has been delivered. The remaining open rows — cross-Organization replacement, change-storm coalescing policy, bounded fallback sweep and autonomous escalation — remain roadmap debt and must be delivered or explicitly superseded before the broader product line can be called complete.
 
 ## Concurrency protocol actually implemented
 
@@ -66,10 +66,18 @@ This is the protocol that must be tested. The repository does **not** currently 
 
 ## New F5-owned persistence
 
-F5 introduces exactly two durable concepts:
+The slice-1 core introduced two durable concepts:
 
 1. `operational_recovery_proposals`: immutable snapshot/provenance plus the deterministic affected set and proposed Booking targets;
 2. `operational_recovery_executions`: one-shot execution fact, idempotent per proposal/Reservation, with optional one-time attachment of the Communications task identity.
+
+The recovery workflow tranche adds:
+
+3. `operational_recovery_incidents`: the durable recovery workflow aggregate with at most one unresolved incident per authoritative recovery scope (contract §4);
+4. `operational_recovery_actions`: the closed-set action facts with owner-step state, idempotency identity and failure codes (contract §12);
+5. `recovery_source_revisions`: freshness serialization advanced only by owner-controlled source-table triggers (contract §7).
+
+`service_queue_intake_controls` is the Queue-owned typed intake policy surface required by contract §8; F5 references it through the owner contract rather than owning it.
 
 No Reservation, capacity, schedule, delivery attempt, or outbox state is copied into a new authority.
 
@@ -83,8 +91,8 @@ F5 requires narrow owner-controlled ports rather than adapter imports:
 
 These ports belong to the owning modules. Their adapters may use owner-private SQL; `operational_recovery` may not.
 
-## Known pre-existing gap disposition
+## Closed pre-existing gap disposition
 
-Contextual F1 appointment options can carry `resource_location_assignment_id`, assignment revision, Location operational revision, commercial terms, and a configuration fingerprint. The existing Booking reschedule path deliberately rejects those options.
+Contextual F1 appointment options carry `resource_location_assignment_id`, assignment revision, Location operational revision, commercial terms, and a configuration fingerprint. The original slice-1 Booking reschedule path deliberately rejected those options, and slice-1 F5 persisted contextual targets as non-actionable with reason `contextual_reschedule_not_supported`.
 
-F5 does **not** bypass this safeguard. A contextual recovery target is persisted as non-actionable with reason `contextual_reschedule_not_supported`. Closing contextual reschedule correctly requires evolving Booking's own reschedule contract/transaction so it revalidates the same contextual facts as contextual booking. That work is separate from inventing F5 semantics and must be proved at Booking's authority boundary.
+That pre-existing gap is now closed by the recovery workflow tranche: Booking evolved its own reschedule contract/transaction to revalidate the same contextual facts as contextual booking (contract §10), and contextual recovery targets are actionable without bypassing the safeguard. The stale reason code above is historical to slice-1; contextual staleness is now proven fail-closed at Booking's authority boundary in `34-operational-recovery-acceptance-evidence.md`.

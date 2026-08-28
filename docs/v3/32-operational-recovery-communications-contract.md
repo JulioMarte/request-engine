@@ -195,6 +195,8 @@ Replacement may choose another eligible Resource and/or ResourceLocationAssignme
 
 Cross-Organization provider replacement, where discovery policy permits it, is a two-boundary operation: F2 discovery may find an explicitly published external supply option, but execution must use the owning Booking handoff/commitment authority and must explicitly dispose the old commitment only after the new authoritative commitment is secured under the documented recovery transaction/saga semantics. F5 never gains cross-tenant RLS bypass.
 
+Disposition note (current tranche): `feature/f5-roadmap-authoritative-recovery` delivers and proves intra-Organization replacement (see `34-operational-recovery-acceptance-evidence.md`). Cross-Organization execution via F2 discovery + Booking handoff remains conditional scope and is not implemented in this tranche; the requirement above stands unchanged.
+
 ## 12. Multi-action recovery workflow
 
 F5 MUST implement a domain-specific recovery workflow, not a generic BPM engine.
