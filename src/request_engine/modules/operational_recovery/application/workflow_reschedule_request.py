@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryCommitmentCheckpoint as BookingCommitmentCheckpoint,
 )
@@ -10,8 +12,8 @@ from request_engine.modules.operational_recovery.contracts.models import (
 
 def workflow_booking_request(
     *,
-    organization_id,
-    principal_id,
+    organization_id: UUID,
+    principal_id: UUID,
     idempotency_key: str,
     allow_subject_override: bool,
     proposal: RescheduleProposal,
