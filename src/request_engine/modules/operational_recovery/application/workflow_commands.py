@@ -9,6 +9,7 @@ class SetRecoveryIntakeCommand:
     principal_id: UUID
     incident_id: UUID
     expected_source_revision: int
+    expected_intake_revision: int
     accepting: bool
     idempotency_key: str
     reason: str | None = None
