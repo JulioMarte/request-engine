@@ -4,9 +4,13 @@ from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_comm
 from request_engine.modules.booking.application.commands import (
     set_resource_location_schedule_exception as schedule_exception,
 )
+from request_engine.modules.booking.application.operational_errors import (
+    ResourceAvailabilityRevisionConflict,
+)
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
     RecoveryAssignmentExtensionResult,
+    RecoveryAssignmentRevisionConflict,
     RecoveryAssignmentSchedulePort,
 )
 from request_engine.platform.db.session import SessionFactory
@@ -22,23 +26,30 @@ class PostgresRecoveryAssignmentSchedule(RecoveryAssignmentSchedulePort):
         self,
         request: RecoveryAssignmentExtensionRequest,
     ) -> RecoveryAssignmentExtensionResult:
-        state = await self._writer.set_resource_location_schedule_exception(
-            schedule_exception.SetResourceLocationScheduleExceptionCommand(
-                organization_id=request.organization_id,
-                principal_id=request.principal_id,
-                authority_party_id=request.authority_party_id,
-                assignment_id=request.assignment_id,
-                start_at=request.start_at,
-                end_at=request.end_at,
-                exception_kind="available",
-                expected_resource_availability_revision=(
-                    request.expected_resource_availability_revision
-                ),
-                idempotency_key=request.idempotency_key,
-                reason=request.reason,
-                active=True,
+        try:
+            state = await self._writer.set_resource_location_schedule_exception(
+                schedule_exception.SetResourceLocationScheduleExceptionCommand(
+                    organization_id=request.organization_id,
+                    principal_id=request.principal_id,
+                    authority_party_id=request.authority_party_id,
+                    assignment_id=request.assignment_id,
+                    start_at=request.start_at,
+                    end_at=request.end_at,
+                    exception_kind="available",
+                    expected_resource_availability_revision=(
+                        request.expected_resource_availability_revision
+                    ),
+                    idempotency_key=request.idempotency_key,
+                    reason=request.reason,
+                    active=True,
+                )
             )
-        )
+        except ResourceAvailabilityRevisionConflict as exc:
+            raise RecoveryAssignmentRevisionConflict(
+                request.assignment_id,
+                exc.expected,
+                exc.actual,
+            ) from exc
         return RecoveryAssignmentExtensionResult(
             exception_id=state.exception_id,
             assignment_id=state.assignment_id,
