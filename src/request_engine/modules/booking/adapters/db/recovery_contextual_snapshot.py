@@ -6,11 +6,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _load_resource_availability_revisions,
-    _lock_selected_assignments,
-    _require_expected_resource_revisions,
-    _resolve_selected_assignments,
+from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    load_resource_availability_revisions,
+    lock_selected_assignments,
+    require_expected_resource_revisions,
+    resolve_selected_assignments,
 )
 from request_engine.modules.booking.adapters.db.contextual_supply import (
     AssignmentObservation,
@@ -31,8 +31,11 @@ from request_engine.modules.booking.domain.contextual_supply import BaseBookingT
 
 
 class RequirementLike(Protocol):
-    id: UUID
-    ordinal: int
+    @property
+    def id(self) -> UUID: ...
+
+    @property
+    def ordinal(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,18 +63,18 @@ async def load_contextual_recovery_snapshot(
 ) -> ContextualRecoverySnapshot:
     location_id = request.location_id
     assert location_id is not None
-    await _lock_selected_assignments(
+    await lock_selected_assignments(
         session, organization_id=request.organization_id, choices=choices
     )
     resource_ids = tuple(sorted(resources, key=str))
-    resource_revisions = await _load_resource_availability_revisions(
+    resource_revisions = await load_resource_availability_revisions(
         session, organization_id=request.organization_id, resource_ids=resource_ids
     )
-    _require_expected_resource_revisions(choices, resource_revisions)
+    require_expected_resource_revisions(choices, resource_revisions)
     contextualized, assignments = await load_contextualization(
         session, request.organization_id, resource_ids, start_at, end_at
     )
-    selected = _resolve_selected_assignments(
+    selected = resolve_selected_assignments(
         choices=choices,
         requirements=requirements,
         resources=resources,
