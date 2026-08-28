@@ -9,6 +9,9 @@ from request_engine.modules.booking.adapters.db.contextual_reservation_commands 
     _configuration_fingerprint,
     _effective_context_observations,
 )
+from request_engine.modules.booking.adapters.db.recovery_commercial_guard import (
+    require_preserved_commercial_commitment,
+)
 from request_engine.modules.booking.adapters.db.recovery_contextual_snapshot import (
     RequirementLike,
     load_contextual_recovery_snapshot,
@@ -47,6 +50,7 @@ async def validate_contextual_recovery_target(
     end_at: datetime,
     base_duration_minutes: int,
     step_minutes: int,
+    source_contextual: bool,
 ) -> None:
     expected_location_revision = request.expected_target_location_operational_revision
     expected_duration = request.expected_planned_duration_minutes
@@ -89,7 +93,14 @@ async def validate_contextual_recovery_target(
         or resolved.currency != request.expected_currency
         or resolved.planned_duration_minutes != expected_duration
     ):
-        raise RecoveryTargetUnavailable("contextual commercial commitment changed")
+        raise RecoveryTargetUnavailable("contextual option terms changed")
+    if source_contextual:
+        await require_preserved_commercial_commitment(
+            session,
+            organization_id=request.organization_id,
+            reservation_id=request.reservation_id,
+            resolved=resolved,
+        )
     availability = snapshot.availability
     profiles = _build_authoritative_profiles(
         ordered_requirement_ids=snapshot.ordered_requirement_ids,
