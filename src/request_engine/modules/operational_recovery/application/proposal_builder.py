@@ -14,6 +14,7 @@ from request_engine.modules.operational_recovery.application.fingerprints import
 )
 from request_engine.modules.operational_recovery.application.proposal_policy import (
     choose_recovery_target,
+    choose_replacement_target,
 )
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
@@ -100,6 +101,13 @@ async def _build_affected(
         original_end=commitment.planned_ends_at,
         source_contextual=commitment.contextual_commitment,
     )
+    replacement_target = choose_replacement_target(
+        slots,
+        original_start=commitment.planned_starts_at,
+        original_end=commitment.planned_ends_at,
+        source_resource_id=assessment.resource_id,
+        source_contextual=commitment.contextual_commitment,
+    )
     return AffectedReservation(
         reservation_id=commitment.reservation_id,
         offering_version_id=commitment.offering_version_id,
@@ -108,5 +116,6 @@ async def _build_affected(
         original_start_at=commitment.planned_starts_at,
         original_end_at=commitment.planned_ends_at,
         target=target,
+        replacement_target=replacement_target,
         contextual_commitment=commitment.contextual_commitment,
     )
