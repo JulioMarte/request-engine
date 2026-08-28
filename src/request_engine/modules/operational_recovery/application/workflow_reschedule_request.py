@@ -6,6 +6,7 @@ from request_engine.modules.booking.contracts.recovery import (
 from request_engine.modules.booking.contracts.recovery import RecoveryRescheduleRequest
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
+    RecoveryTarget,
     RescheduleProposal,
 )
 
@@ -18,18 +19,19 @@ def workflow_booking_request(
     allow_subject_override: bool,
     proposal: RescheduleProposal,
     affected: AffectedReservation,
+    target: RecoveryTarget | None = None,
 ) -> RecoveryRescheduleRequest:
-    target = affected.target
-    if target is None:
+    selected = target if target is not None else affected.target
+    if selected is None:
         raise RuntimeError("actionable recovery target is missing")
     return RecoveryRescheduleRequest(
         organization_id=organization_id,
         principal_id=principal_id,
         reservation_id=affected.reservation_id,
         expected_revision=affected.expected_revision,
-        start_at=target.start_at,
-        location_id=target.location_id,
-        resources=target.resources,
+        start_at=selected.start_at,
+        location_id=selected.location_id,
+        resources=selected.resources,
         source_service_queue_id=proposal.service_queue_id,
         expected_recovery_source_revision=proposal.source_checkpoint.recovery_source_revision,
         source_resource_id=proposal.resource_id,
@@ -53,9 +55,9 @@ def workflow_booking_request(
         ),
         idempotency_key=idempotency_key,
         allow_subject_override=allow_subject_override,
-        expected_planned_duration_minutes=target.planned_duration_minutes,
-        expected_amount=target.amount,
-        expected_currency=target.currency,
-        expected_target_location_operational_revision=target.location_operational_revision,
-        expected_configuration_fingerprint=target.configuration_fingerprint,
+        expected_planned_duration_minutes=selected.planned_duration_minutes,
+        expected_amount=selected.amount,
+        expected_currency=selected.currency,
+        expected_target_location_operational_revision=selected.location_operational_revision,
+        expected_configuration_fingerprint=selected.configuration_fingerprint,
     )
