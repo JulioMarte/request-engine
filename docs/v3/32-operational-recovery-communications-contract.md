@@ -248,7 +248,9 @@ Policy may request:
 - updated notification after successful reschedule/replacement;
 - resolution/update notification when appropriate.
 
-Communications owns delivery. Stable dedupe identity derives from incident/action + recipient + purpose + source revision so worker retry and repeated reprojection do not create duplicate logical intents.
+Communications owns delivery. Stable dedupe identity derives from incident/action + recipient + purpose + source revision so worker retry and repeated reprojection do not create duplicate logical intents. Recovery communication purpose is explicit and typed: impact/risk communication (delay or shortfall, no mutation claimed) is distinct from post-reschedule confirmation, and the persisted purpose MUST match what actually happened.
+
+The delivered default policy evaluates inside the scheduled assessment transaction and records a durable, immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or its severity worsens, and customer-impact notification is requested only for identified affected commitments whose planned commitment stopped being realistic. Delivering that notification remains the explicit `COMMUNICATE_IMPACT` action unless a later accepted policy grants a system actor that authority (section 14).
 
 Internal cause/provenance MUST remain separate from public-safe communication payload.
 

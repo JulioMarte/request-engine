@@ -83,11 +83,13 @@ The following required proofs were produced on this tranche and are registered h
 
 | Guarantee | Proof | Status | Contract meaning |
 | --- | --- | --- | --- |
-| Delay/impact communication (15 G) | `tests/e2e/test_f5_recovery_delay_communication.py`; handler semantics `tests/modules/operational_recovery/test_workflow_communication_action.py` | PASS | A material delay with no capacity shortfall opens the incident through the real scheduled handler, executes COMMUNICATE_IMPACT, and creates exactly one deduped Communications-owned customer-impact task per (incident, recipient, purpose, source revision); replay and different-key retries converge on the same durable task without rescheduling the Reservation. |
+| Delay/impact communication (15 G) | `tests/e2e/test_f5_recovery_delay_communication.py`; handler semantics `tests/modules/operational_recovery/test_workflow_communication_action.py` | PASS | A material delay with no capacity shortfall opens the incident through the real scheduled handler, executes COMMUNICATE_IMPACT, and creates exactly one deduped Communications-owned customer-impact task per (incident, recipient, purpose, source revision); replay and different-key retries converge on the same durable task without rescheduling the Reservation. The persisted purpose is the typed `operational_recovery_impact` (delay/impact), never the post-reschedule purpose, because no Reservation was rescheduled. |
 | Multi-action workflow (15 F) | `tests/e2e/test_f5_recovery_multi_action_workflow.py` | PASS | One incident executes STOP_INTAKE then EXTEND_DAY through the real HTTP surface with a fresh reprojection between actions; stale authorization is rejected with conflict semantics; same-key races and replays converge without duplicate owner mutations; intake stays stopped after resolution until an explicit reopen. |
 | Workflow-table RLS/least privilege (15 H) | `tests/db/test_f5_workflow_rls_isolation.py` | PASS | `operational_recovery_incidents/actions/proposals` are FORCE-RLS tenant-isolated even for the table owner; the app role has exactly SELECT/INSERT/UPDATE and the worker role none; the recovery bump fence is not executable by runtime roles. |
 | Commitment-change freshness (5) | `tests/db/test_f5_commitment_freshness.py` | PASS | CapacityClaim/Reservation changes that enter, move or leave the assessed scope advance the recovery source revision once per material row change and enqueue exactly one deduped reassessment per revision; off-scope commitments change nothing. |
 | Bump fence tenant authority (15 H) + intake reprojection (12) | `tests/db/test_f5_bump_guard_intake_freshness.py` | PASS | The SECURITY DEFINER bump rejects a session whose tenant context differs from the requested organization (migration `0016_f5_bump_guard_freshness`), and a Queue intake-control mutation durably schedules one deduped fresh reprojection per material change while no-op updates schedule nothing. |
+| Scheduled escalation/communication policy evaluation (5.6/13) | `tests/e2e/test_f5_recovery_escalation_policy.py`; policy matrix `tests/modules/operational_recovery/test_recovery_escalation_policy.py` | PASS | The real scheduled handler evaluates escalation/communication policy in the same transaction that commits incident truth and records an immutable outcome per incident and source revision: a newly material incident requires operator escalation and requests customer-impact notification exactly for affected commitment subjects; replay is a no-op; a superseded revision records nothing; a delay that worsens into a capacity shortfall re-escalates with `worsening_severity` and now identifies recipients; a fresh resolving assessment records a cleared outcome. |
+| Escalation-fact immutability and tenant isolation (15 H) | `tests/db/test_f5_escalation_rls_isolation.py` | PASS | `operational_recovery_escalations` is append-only (guard trigger rejects UPDATE/DELETE with `23514`), FORCE-RLS tenant-isolated for the app role, cross-tenant escalation inserts fail closed, and the worker role has no access. |
 
 ## Concurrency interpretation
 
@@ -121,6 +123,7 @@ The F5 core slice plus the current recovery workflow tranche deliver (with evide
 - contextual provenance-preserving reschedule with stale fail-closed semantics;
 - intra-Organization replacement target policy and contextual replacement;
 - scheduled reassessment with source-revision fencing, incident upsert and deduped automatic proposals;
+- scheduled escalation/communication policy evaluation with durable immutable outcome facts per incident and source revision (contract §5.6/§13);
 - schedule/assignment freshness triggers with one deduped reassessment action per source revision;
 - direct PostgreSQL acceptance evidence for scenarios A-E plus the freshness/security rows above.
 
@@ -130,7 +133,7 @@ The broader original roadmap still has explicit open work:
 - change-storm coalescing policy and bounded fallback sweep (`10-worker-runtime-hardening.md` — separate requirements needing their own evidence);
 - autonomous escalation beyond explicit policy.
 
-These are not renamed away by calling the current tranche “F5”. Their authoritative disposition is document 33. The in-flight items listed above (proofs F, G, H and commitment-change triggers) must close before the completion gate in the contract is satisfied.
+These are not renamed away by calling the current tranche “F5”. Their authoritative disposition is document 33. The proofs F, G, H and commitment-change triggers that earlier revisions of this ledger listed as in flight are registered above as PASS; the open items above remain the F5 completion debt.
 
 ## Final merge gate
 
