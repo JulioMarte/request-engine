@@ -68,7 +68,11 @@ def _apply_change(conn: PgConnection, sandbox: object, assignment_id: UUID, targ
             (organization_id, assignment_id),
         )
         return
-    table = "location_hours_exceptions" if change == "location" else "resource_location_exceptions"
+    table = (
+        "location_hours_exceptions"
+        if change == "location"
+        else "resource_location_schedule_exceptions"
+    )
     owner_column = "location_id" if change == "location" else "resource_location_assignment_id"
     owner_id = sandbox.location_id if change == "location" else assignment_id  # type: ignore[attr-defined]
     conn.execute(
