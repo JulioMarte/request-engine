@@ -55,7 +55,11 @@ F5_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.NOT_FOUND,
         HttpProbe(
             f"/v1/operational-recovery/incidents/{P1}/intake-control",
-            body={"expected_source_revision": 1, "accepting": False},
+            body={
+                "expected_source_revision": 1,
+                "expected_intake_revision": 1,
+                "accepting": False,
+            },
         ),
     ),
     PublicHttpOperation(
