@@ -25,13 +25,14 @@ def _same_time_slot(resource_id: int, *, contextual: bool) -> AppointmentSlot:
         location_id=UUID(int=2),
         resources=(),
     )
+    assignment_id = UUID(int=100 + resource_id) if contextual else None
     return replace(
         base,
         resources=(
             ResourceChoice(
                 requirement_id=UUID(int=3),
                 resource_id=UUID(int=resource_id),
-                resource_location_assignment_id=(UUID(int=100 + resource_id) if contextual else None),
+                resource_location_assignment_id=assignment_id,
                 assignment_revision=1 if contextual else None,
                 availability_revision=4,
             ),
