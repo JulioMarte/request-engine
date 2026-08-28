@@ -58,7 +58,6 @@ async def validate_contextual_recovery_target(
         raise RecoveryTargetUnavailable("contextual recovery target requires commercial provenance")
     if not request.expected_configuration_fingerprint:
         raise RecoveryTargetUnavailable("contextual recovery target requires configuration fingerprint")
-
     snapshot = await load_contextual_recovery_snapshot(
         session,
         request=request,
@@ -75,7 +74,6 @@ async def validate_contextual_recovery_target(
         raise RecoveryTargetUnavailable("target Location operational configuration changed")
     if not interval_is_scheduled_available(location.profile, start_at=start_at, end_at=end_at):
         raise RecoveryTargetUnavailable("target Location is not operationally available")
-
     observations = _effective_context_observations(
         snapshot.ordered_requirement_ids,
         snapshot.selected_assignments,
@@ -92,18 +90,18 @@ async def validate_contextual_recovery_target(
         or resolved.planned_duration_minutes != expected_duration
     ):
         raise RecoveryTargetUnavailable("contextual commercial commitment changed")
-
+    availability = snapshot.availability
     profiles = _build_authoritative_profiles(
         ordered_requirement_ids=snapshot.ordered_requirement_ids,
         choices=choices,
         selected_assignments=snapshot.selected_assignments,
         resources=resources,
         location=location,
-        assignment_schedules=snapshot.assignment_schedules,
-        assignment_exceptions=snapshot.assignment_exceptions,
-        broad_exceptions=snapshot.broad_exceptions,
-        legacy_schedules=snapshot.legacy_schedules,
-        live_claims=snapshot.live_claims,
+        assignment_schedules=availability.assignment_schedules,
+        assignment_exceptions=availability.assignment_exceptions,
+        broad_exceptions=availability.broad_exceptions,
+        legacy_schedules=availability.legacy_schedules,
+        live_claims=availability.live_claims,
     )
     revalidate_exact_slot(
         requirements=requirements,
