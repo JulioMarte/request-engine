@@ -1,12 +1,13 @@
 from collections.abc import Mapping
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _build_authoritative_profiles,
-    _configuration_fingerprint,
+from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    build_authoritative_profiles,
+    configuration_fingerprint,
 )
 from request_engine.modules.booking.adapters.db.recovery_contextual_snapshot import (
     RequirementLike,
@@ -81,7 +82,7 @@ async def validate_contextual_recovery_target(
         source_contextual=source_contextual,
     )
     availability = snapshot.availability
-    profiles = _build_authoritative_profiles(
+    profiles = build_authoritative_profiles(
         ordered_requirement_ids=snapshot.ordered_requirement_ids,
         choices=choices,
         selected_assignments=snapshot.selected_assignments,
@@ -94,7 +95,7 @@ async def validate_contextual_recovery_target(
         live_claims=availability.live_claims,
     )
     revalidate_exact_slot(
-        requirements=requirements,
+        requirements=cast(Any, requirements),
         choices=choices,
         profiles=profiles,
         start_at=start_at,
@@ -102,7 +103,7 @@ async def validate_contextual_recovery_target(
         duration_minutes=resolved.planned_duration_minutes,
         step_minutes=step_minutes,
     )
-    fingerprint = _configuration_fingerprint(
+    fingerprint = configuration_fingerprint(
         offering_version_id=offering_version_id,
         location=location,
         ordered_requirement_ids=snapshot.ordered_requirement_ids,
