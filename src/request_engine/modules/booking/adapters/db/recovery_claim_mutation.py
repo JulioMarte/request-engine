@@ -76,9 +76,11 @@ async def _insert_claim(
 ) -> UUID:
     sql = """
         INSERT INTO request_engine.capacity_claims (
-            organization_id, resource_id, requirement_id, reservation_id, during, quantity
+            organization_id, resource_id, requirement_id, reservation_id,
+            resource_location_assignment_id, during, quantity
         ) VALUES (
             :organization_id, :resource_id, :requirement_id, :reservation_id,
+            :resource_location_assignment_id,
             tstzrange(:start_at, :end_at, '[)'), :quantity
         ) RETURNING id
     """
@@ -89,6 +91,7 @@ async def _insert_claim(
             "resource_id": choice.resource_id,
             "requirement_id": requirement.id,
             "reservation_id": request.reservation_id,
+            "resource_location_assignment_id": choice.resource_location_assignment_id,
             "start_at": start_at,
             "end_at": end_at,
             "quantity": requirement.quantity,
