@@ -4,6 +4,17 @@ from typing import Protocol
 from uuid import UUID
 
 
+class RecoveryAssignmentRevisionConflict(RuntimeError):
+    def __init__(self, assignment_id: UUID, expected: int, actual: int) -> None:
+        super().__init__(
+            f"Recovery assignment {assignment_id} availability revision conflict: "
+            f"expected {expected}, current {actual}"
+        )
+        self.assignment_id = assignment_id
+        self.expected = expected
+        self.actual = actual
+
+
 @dataclass(frozen=True, slots=True)
 class RecoveryAssignmentExtensionRequest:
     organization_id: UUID
