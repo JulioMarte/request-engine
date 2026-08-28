@@ -45,4 +45,38 @@ F5_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             },
         ),
     ),
+    PublicHttpOperation(
+        "operational_recovery.intake_control",
+        "POST",
+        "/v1/operational-recovery/incidents/{incident_id}/intake-control",
+        "operational_recovery.execute",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/operational-recovery/incidents/{P1}/intake-control",
+            body={"expected_source_revision": 1, "accepting": False},
+        ),
+    ),
+    PublicHttpOperation(
+        "operational_recovery.extend_day",
+        "POST",
+        "/v1/operational-recovery/incidents/{incident_id}/extend-day",
+        "operational_recovery.execute",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/operational-recovery/incidents/{P1}/extend-day",
+            body={
+                "expected_source_revision": 1,
+                "authority_party_id": P2,
+                "assignment_id": P2,
+                "start_at": "2026-08-28T20:00:00Z",
+                "end_at": "2026-08-28T22:00:00Z",
+                "expected_resource_availability_revision": 1,
+                "reason": "probe",
+            },
+        ),
+    ),
 )
