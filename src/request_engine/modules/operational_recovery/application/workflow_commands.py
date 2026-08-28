@@ -44,3 +44,17 @@ class RescheduleRecoveryActionCommand:
     expected_proposal_fingerprint: str
     idempotency_key: str
     allow_subject_override: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaceResourceRecoveryActionCommand:
+    organization_id: UUID
+    principal_id: UUID
+    incident_id: UUID
+    expected_source_revision: int
+    proposal_id: UUID
+    reservation_id: UUID
+    expected_source_fingerprint: str
+    expected_proposal_fingerprint: str
+    idempotency_key: str
+    allow_subject_override: bool
