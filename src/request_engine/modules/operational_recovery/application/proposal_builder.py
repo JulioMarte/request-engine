@@ -1,13 +1,10 @@
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
     RecoveryCommitmentFact,
-)
-from request_engine.modules.operational_recovery.application.commands import (
-    CreateRecoveryProposalCommand,
 )
 from request_engine.modules.operational_recovery.application.fingerprints import (
     proposal_fingerprint,
@@ -26,13 +23,20 @@ from request_engine.modules.operational_recovery.contracts.models import (
 
 async def build_proposal(
     *,
-    command: CreateRecoveryProposalCommand,
+    organization_id: UUID,
+    search_days: int,
     assessment: RecoveryCapacityAssessment,
     booking: RecoveryBookingPort,
 ) -> RescheduleProposal:
     affected = tuple(
         [
-            await _build_affected(command, assessment, booking, commitment)
+            await _build_affected(
+                organization_id,
+                search_days,
+                assessment,
+                booking,
+                commitment,
+            )
             for commitment in assessment.affected_commitments
         ]
     )
@@ -82,16 +86,17 @@ async def build_proposal(
 
 
 async def _build_affected(
-    command: CreateRecoveryProposalCommand,
+    organization_id: UUID,
+    search_days: int,
     assessment: RecoveryCapacityAssessment,
     booking: RecoveryBookingPort,
     commitment: RecoveryCommitmentFact,
 ) -> AffectedReservation:
     slots = await booking.find_recovery_slots(
-        organization_id=command.organization_id,
+        organization_id=organization_id,
         offering_version_id=commitment.offering_version_id,
         window_start=max(assessment.observed_at, commitment.planned_starts_at),
-        window_end=assessment.horizon_end + timedelta(days=command.search_days),
+        window_end=assessment.horizon_end + timedelta(days=search_days),
         location_id=assessment.location_id,
         limit=25,
     )
