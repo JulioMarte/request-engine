@@ -72,9 +72,7 @@ async def execute_reschedule_action(
         return action
     if newly_authorized:
         try:
-            validate_fresh_reschedule_authorization(
-                command, incident=incident, proposal=proposal
-            )
+            validate_fresh_reschedule_authorization(command, incident=incident, proposal=proposal)
         except RecoveryIncidentStale:
             await reject_reschedule_action(
                 workflow_repository, command, action, "STALE_RECOVERY_INCIDENT"
