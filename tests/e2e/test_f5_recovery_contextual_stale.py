@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -14,7 +15,7 @@ from .f5_contextual_support import contextualize_recovery_supply, restrict_conte
 from .f5_recovery_assertions import create_proposal, execute_proposal
 from .f5_recovery_support import book_commitments, f5_actor
 from .operational_support import PgConnection
-from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import TenantSandbox, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -44,7 +45,7 @@ async def test_f5_contextual_proposal_fails_closed_after_material_configuration_
         proposal = await create_proposal(client, sandbox)
         item = next(value for value in proposal["affected"] if value["contextual_commitment"])
         reservation_id = UUID(cast(str, item["reservation_id"]))
-        target = item["target"]
+        target = cast(Mapping[str, object], item["target"])
         before = _reservation_state(e2e_admin_conn, reservation_id)
         _apply_change(e2e_admin_conn, sandbox, supply.assignment_id, target, change)
         response = await execute_proposal(
@@ -61,17 +62,16 @@ async def test_f5_contextual_proposal_fails_closed_after_material_configuration_
 
 def _apply_change(
     conn: PgConnection,
-    sandbox: object,
+    sandbox: TenantSandbox,
     assignment_id: UUID,
-    target: dict,
+    target: Mapping[str, object],
     change: str,
 ) -> None:
-    organization_id = sandbox.organization_id  # type: ignore[attr-defined]
     if change == "price":
         conn.execute(
             "UPDATE request_engine.booking_context_terms SET amount=amount+100 "
             "WHERE organization_id=%s AND resource_location_assignment_id=%s",
-            (organization_id, assignment_id),
+            (sandbox.organization_id, assignment_id),
         )
         return
     table = (
@@ -80,12 +80,17 @@ def _apply_change(
         else "resource_location_schedule_exceptions"
     )
     owner_column = "location_id" if change == "location" else "resource_location_assignment_id"
-    owner_id = sandbox.location_id if change == "location" else assignment_id  # type: ignore[attr-defined]
+    owner_id = sandbox.location_id if change == "location" else assignment_id
     conn.execute(
         f"INSERT INTO request_engine.{table} "
         f"(organization_id,{owner_column},during,exception_kind,reason) "
         "VALUES (%s,%s,tstzrange(%s,%s,'[)'),'unavailable','F5 stale race')",
-        (organization_id, owner_id, target["start_at"], target["end_at"]),
+        (
+            sandbox.organization_id,
+            owner_id,
+            cast(str, target["start_at"]),
+            cast(str, target["end_at"]),
+        ),
     )
 
 
