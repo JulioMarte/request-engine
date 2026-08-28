@@ -43,35 +43,45 @@ def _slot(identity: int, *, contextual: bool) -> AppointmentSlot:
     )
 
 
-def test_legacy_source_skips_blocked_contextual_target_for_later_actionable_slot() -> None:
+def test_legacy_source_skips_contextual_target_for_legacy_slot() -> None:
     contextual = _slot(1, contextual=True)
     legacy = _slot(2, contextual=False)
-
     target = choose_recovery_target(
         (contextual, legacy),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
         source_contextual=False,
     )
-
     assert target is not None
     assert target.actionable is True
     assert target.start_at == legacy.start_at
 
 
-def test_contextual_source_never_becomes_actionable_through_legacy_target() -> None:
+def test_contextual_source_selects_contextual_target() -> None:
     legacy = _slot(1, contextual=False)
-
+    contextual = _slot(2, contextual=True)
     target = choose_recovery_target(
-        (legacy,),
+        (legacy, contextual),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
         source_contextual=True,
     )
+    assert target is not None
+    assert target.actionable is True
+    assert target.start_at == contextual.start_at
+    assert target.blocked_reason is None
 
+
+def test_contextual_source_fails_closed_when_only_legacy_target_exists() -> None:
+    target = choose_recovery_target(
+        (_slot(1, contextual=False),),
+        original_start=NOW,
+        original_end=NOW + timedelta(hours=1),
+        source_contextual=True,
+    )
     assert target is not None
     assert target.actionable is False
-    assert target.blocked_reason == "contextual_source_reschedule_not_supported"
+    assert target.blocked_reason == "contextual_source_requires_contextual_target"
 
 
 def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() -> None:
@@ -94,6 +104,5 @@ def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() ->
     )
     other_actor = replace(base, principal_id=UUID(int=9))
     other_key = replace(base, idempotency_key="key-b")
-
     assert execution_fingerprint(base, target) != execution_fingerprint(other_actor, target)
     assert execution_fingerprint(base, target) != execution_fingerprint(other_key, target)
