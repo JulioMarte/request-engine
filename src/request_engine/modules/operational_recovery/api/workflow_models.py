@@ -24,6 +24,7 @@ class ExtendRecoveryDayBody(BaseModel):
     assignment_id: UUID
     start_at: datetime
     end_at: datetime
+    expected_location_operational_revision: int = Field(gt=0)
     expected_resource_availability_revision: int = Field(gt=0)
     reason: str = Field(min_length=1)
 
