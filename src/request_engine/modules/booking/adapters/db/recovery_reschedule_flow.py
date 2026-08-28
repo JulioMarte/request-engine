@@ -18,10 +18,7 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
     reservation_to_json,
 )
 from request_engine.modules.booking.contracts.appointments import Reservation
-from request_engine.modules.booking.contracts.recovery import (
-    RecoveryRescheduleRequest,
-    RecoveryTargetUnavailable,
-)
+from request_engine.modules.booking.contracts.recovery import RecoveryRescheduleRequest
 from request_engine.modules.booking.domain.availability import require_aware_utc
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -34,8 +31,6 @@ async def execute_recovery_reschedule(
     factory: SessionFactory,
     request: RecoveryRescheduleRequest,
 ) -> Reservation:
-    if any(choice.resource_location_assignment_id for choice in request.resources):
-        raise RecoveryTargetUnavailable("contextual recovery reschedule is not supported")
     start_at = require_aware_utc(request.start_at, "start_at")
     observed_at = require_aware_utc(request.source_observed_at, "source_observed_at")
     horizon_end = require_aware_utc(request.source_horizon_end, "source_horizon_end")
