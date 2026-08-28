@@ -17,6 +17,7 @@ from request_engine.modules.booking.contracts.recovery import (
 )
 from request_engine.modules.booking.domain.contextual_supply import (
     ConflictingContextualTerms,
+    ContextBookingTerms,
     ContextNotBookable,
     MissingCommercialTerms,
     ResolvedBookingTerms,
@@ -31,7 +32,7 @@ async def resolve_recovery_terms(
     snapshot: ContextualRecoverySnapshot,
     start_at: datetime,
     source_contextual: bool,
-) -> tuple[ResolvedBookingTerms, tuple[object, ...]]:
+) -> tuple[ResolvedBookingTerms, tuple[ContextBookingTerms | None, ...]]:
     observations = _effective_context_observations(
         snapshot.ordered_requirement_ids,
         snapshot.selected_assignments,
