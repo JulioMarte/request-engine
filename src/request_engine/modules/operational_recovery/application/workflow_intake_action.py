@@ -4,6 +4,10 @@ from request_engine.modules.operational_recovery.application.workflow_action_exe
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     SetRecoveryIntakeCommand,
 )
+from request_engine.modules.operational_recovery.application.workflow_intake_port import (
+    RecoveryIntakeControlPort,
+    RecoveryIntakeControlRequest,
+)
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
 )
@@ -13,10 +17,6 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionStatus,
     RecoveryIncidentNotFound,
 )
-from request_engine.modules.queue.contracts.intake import (
-    QueueIntakeControlPort,
-    SetQueueIntakeControlRequest,
-)
 from request_engine.platform.idempotency.postgres import command_fingerprint
 
 
@@ -24,7 +24,7 @@ async def execute_intake_action(
     command: SetRecoveryIntakeCommand,
     *,
     repository: RecoveryWorkflowRepository,
-    queue_intake: QueueIntakeControlPort,
+    queue_intake: RecoveryIntakeControlPort,
 ) -> RecoveryAction:
     incident = await repository.get_incident(
         organization_id=command.organization_id,
@@ -63,17 +63,12 @@ async def execute_intake_action(
     if terminal:
         return action
 
-    current = await queue_intake.get_intake_control(
-        command.organization_id,
-        incident.service_queue_id,
-    )
-    result = await queue_intake.set_intake_control(
-        SetQueueIntakeControlRequest(
+    result = await queue_intake.set_recovery_intake_control(
+        RecoveryIntakeControlRequest(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             service_queue_id=incident.service_queue_id,
             accepting=command.accepting,
-            expected_revision=current.revision,
             idempotency_key=f"recovery-action:{action.id}:queue-intake:v1",
             reason=command.reason,
             effective_until=command.effective_until,
