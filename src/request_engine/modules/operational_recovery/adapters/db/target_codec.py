@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
@@ -36,12 +37,18 @@ def target_to_json(target: RecoveryTarget) -> dict[str, object]:
         "resources": [resource_to_json(choice) for choice in target.resources],
         "actionable": target.actionable,
         "blocked_reason": target.blocked_reason,
+        "planned_duration_minutes": target.planned_duration_minutes,
+        "amount": str(target.amount) if target.amount is not None else None,
+        "currency": target.currency,
+        "location_operational_revision": target.location_operational_revision,
+        "configuration_fingerprint": target.configuration_fingerprint,
     }
 
 
 def target_from_json(raw: dict[str, object]) -> RecoveryTarget:
     resources = cast(list[dict[str, object]], raw["resources"])
     location = cast(str | None, raw.get("location_id"))
+    amount = cast(str | None, raw.get("amount"))
     return RecoveryTarget(
         start_at=datetime.fromisoformat(cast(str, raw["start_at"])),
         end_at=datetime.fromisoformat(cast(str, raw["end_at"])),
@@ -49,4 +56,12 @@ def target_from_json(raw: dict[str, object]) -> RecoveryTarget:
         resources=tuple(resource_from_json(item) for item in resources),
         actionable=cast(bool, raw["actionable"]),
         blocked_reason=cast(str | None, raw.get("blocked_reason")),
+        planned_duration_minutes=cast(int | None, raw.get("planned_duration_minutes")),
+        amount=Decimal(amount) if amount is not None else None,
+        currency=cast(str | None, raw.get("currency")),
+        location_operational_revision=cast(
+            int | None,
+            raw.get("location_operational_revision"),
+        ),
+        configuration_fingerprint=cast(str | None, raw.get("configuration_fingerprint")),
     )
