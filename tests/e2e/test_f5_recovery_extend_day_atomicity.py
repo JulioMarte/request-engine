@@ -39,7 +39,8 @@ def _grant_extend_day_authority(conn: PgConnection, sandbox: TenantSandbox) -> N
     for scope in ("operations.manage_profile", "operations.manage_supply"):
         conn.execute(
             "INSERT INTO request_engine.representations "
-            "(organization_id,principal_id,represented_party_id,authority_kind,scope_key,valid_until) "
+            "(organization_id,principal_id,represented_party_id,authority_kind,"
+            "scope_key,valid_until) "
             "VALUES (%s,%s,%s,'delegated',%s,clock_timestamp() + interval '1 day')",
             (
                 sandbox.organization_id,
