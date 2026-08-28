@@ -1,12 +1,12 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    RequirementLike,
     load_resource_availability_revisions,
     lock_selected_assignments,
     require_expected_resource_revisions,
@@ -28,14 +28,6 @@ from request_engine.modules.booking.adapters.db.reservation_commands import Lock
 from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.booking.contracts.recovery import RecoveryRescheduleRequest
 from request_engine.modules.booking.domain.contextual_supply import BaseBookingTerms
-
-
-class RequirementLike(Protocol):
-    @property
-    def id(self) -> UUID: ...
-
-    @property
-    def ordinal(self) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
