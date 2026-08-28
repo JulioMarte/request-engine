@@ -16,17 +16,13 @@ class QueueRecoveryIntakeAdapter:
         self,
         request: RecoveryIntakeControlRequest,
     ) -> RecoveryIntakeControlResult:
-        current = await self._queue_intake.get_intake_control(
-            request.organization_id,
-            request.service_queue_id,
-        )
         result = await self._queue_intake.set_intake_control(
             SetQueueIntakeControlRequest(
                 organization_id=request.organization_id,
                 principal_id=request.principal_id,
                 service_queue_id=request.service_queue_id,
                 accepting=request.accepting,
-                expected_revision=current.revision,
+                expected_revision=request.expected_revision,
                 idempotency_key=request.idempotency_key,
                 reason=request.reason,
                 effective_until=request.effective_until,
