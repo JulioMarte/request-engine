@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, cast
 from uuid import uuid4
 
@@ -48,8 +49,8 @@ async def test_f5_extend_day_stale_resource_step_leaves_no_partial_location_exte
         before_assignment_exceptions = _assignment_recovery_exception_count(
             e2e_admin_conn, sandbox, supply.assignment_id
         )
-        start_at = slots[-1][1]
-        end_at = slots[-1][2]
+        start_at = datetime.fromisoformat(cast(str, slots[-1]["start_at"]))
+        end_at = datetime.fromisoformat(cast(str, slots[-1]["end_at"]))
 
         response = await client.post(
             f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
