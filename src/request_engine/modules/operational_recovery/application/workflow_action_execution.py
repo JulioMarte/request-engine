@@ -26,7 +26,7 @@ async def authorize_or_resume_action(
     command_fingerprint: str,
     expected_source_revision: int,
     payload: Mapping[str, object],
-) -> tuple[RecoveryAction, bool]:
+) -> tuple[RecoveryAction, bool, bool]:
     action, created = await repository.prepare_action(
         organization_id=organization_id,
         incident_id=incident.id,
@@ -41,12 +41,12 @@ async def authorize_or_resume_action(
         RecoveryActionStatus.SUCCEEDED,
         RecoveryActionStatus.REJECTED,
     }:
-        return action, True
+        return action, True, False
     if action.status in {
         RecoveryActionStatus.RUNNING,
         RecoveryActionStatus.PARTIALLY_APPLIED,
     }:
-        return action, False
+        return action, False, False
     if action.status is not RecoveryActionStatus.PREPARED:
         raise RecoveryActionConflict(f"cannot resume recovery action in {action.status.value}")
     if (
@@ -71,4 +71,4 @@ async def authorize_or_resume_action(
         expected_status=RecoveryActionStatus.PREPARED,
         status=RecoveryActionStatus.RUNNING,
     )
-    return action, False
+    return action, False, True
