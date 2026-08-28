@@ -13,6 +13,34 @@ from request_engine.modules.operational_recovery.adapters.db.checkpoint_codec im
 from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 
 
+async def find_automatic_proposal_id(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    service_queue_id: UUID,
+    source_revision: int,
+) -> UUID | None:
+    return (
+        await session.execute(
+            text(
+                """
+                SELECT id
+                FROM request_engine.operational_recovery_proposals
+                WHERE organization_id = :organization_id
+                  AND service_queue_id = :service_queue_id
+                  AND creation_kind = 'automatic'
+                  AND source_revision = :source_revision
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "service_queue_id": service_queue_id,
+                "source_revision": source_revision,
+            },
+        )
+    ).scalar_one_or_none()
+
+
 async def insert_automatic_proposal(
     session: AsyncSession,
     *,
@@ -72,29 +100,12 @@ async def insert_automatic_proposal(
     if inserted is not None:
         return inserted
 
-    existing = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT id, source_fingerprint, proposal_fingerprint
-                    FROM request_engine.operational_recovery_proposals
-                    WHERE organization_id = :organization_id
-                      AND service_queue_id = :service_queue_id
-                      AND creation_kind = 'automatic'
-                      AND source_revision = :source_revision
-                    FOR SHARE
-                    """
-                ),
-                params,
-            )
-        )
-        .mappings()
-        .one()
+    existing = await find_automatic_proposal_id(
+        session,
+        organization_id=organization_id,
+        service_queue_id=proposal.service_queue_id,
+        source_revision=source_revision,
     )
-    if (
-        existing["source_fingerprint"] != proposal.source_fingerprint
-        or existing["proposal_fingerprint"] != proposal.proposal_fingerprint
-    ):
-        raise RuntimeError("automatic recovery proposal revision conflict")
-    return existing["id"]
+    if existing is None:
+        raise RuntimeError("automatic recovery proposal conflict did not resolve a winner")
+    return existing
