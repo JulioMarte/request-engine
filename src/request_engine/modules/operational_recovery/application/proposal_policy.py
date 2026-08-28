@@ -52,4 +52,9 @@ def _target_from_slot(
         resources=slot.resources,
         actionable=actionable,
         blocked_reason=blocked_reason,
+        planned_duration_minutes=slot.planned_duration_minutes,
+        amount=slot.amount,
+        currency=slot.currency,
+        location_operational_revision=slot.location_operational_revision,
+        configuration_fingerprint=slot.configuration_fingerprint,
     )
