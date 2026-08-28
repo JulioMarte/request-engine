@@ -25,6 +25,7 @@ class ExtendRecoveryDayCommand:
     assignment_id: UUID
     start_at: datetime
     end_at: datetime
+    expected_location_operational_revision: int
     expected_resource_availability_revision: int
     idempotency_key: str
     reason: str
