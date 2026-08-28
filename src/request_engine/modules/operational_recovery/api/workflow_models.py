@@ -13,6 +13,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 
 class SetRecoveryIntakeBody(BaseModel):
     expected_source_revision: int = Field(gt=0)
+    expected_intake_revision: int = Field(gt=0)
     accepting: bool
     reason: str | None = None
     effective_until: datetime | None = None
