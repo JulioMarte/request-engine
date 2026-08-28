@@ -23,7 +23,7 @@ from .f5_recovery_assertions import create_proposal
 from .f5_recovery_support import book_commitments, f5_actor
 from .f5_replace_resource_support import seed_incident_for_proposal
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import TenantSandbox, auth, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -35,7 +35,7 @@ pytestmark = [
 ]
 
 
-def _grant_extend_day_authority(conn: PgConnection, sandbox: object) -> None:
+def _grant_extend_day_authority(conn: PgConnection, sandbox: TenantSandbox) -> None:
     for scope in ("operations.manage_profile", "operations.manage_supply"):
         conn.execute(
             "INSERT INTO request_engine.representations "
