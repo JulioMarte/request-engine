@@ -110,10 +110,12 @@ class AffectedReservationView(BaseModel):
     original_end_at: datetime
     contextual_commitment: bool
     target: RecoveryTargetView | None
+    replacement_target: RecoveryTargetView | None
 
     @classmethod
     def from_contract(cls, item: AffectedReservation) -> "AffectedReservationView":
         target = item.target
+        replacement = item.replacement_target
         return cls(
             reservation_id=item.reservation_id,
             offering_version_id=item.offering_version_id,
@@ -123,4 +125,7 @@ class AffectedReservationView(BaseModel):
             original_end_at=item.original_end_at,
             contextual_commitment=item.contextual_commitment,
             target=RecoveryTargetView.from_contract(target) if target is not None else None,
+            replacement_target=(
+                RecoveryTargetView.from_contract(replacement) if replacement is not None else None
+            ),
         )
