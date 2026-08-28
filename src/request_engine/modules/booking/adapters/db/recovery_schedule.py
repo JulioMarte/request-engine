@@ -1,8 +1,8 @@
 from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_commands import (
     PostgresContextualSupplyLifecycleCommands,
 )
-from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
-    SetResourceLocationScheduleExceptionCommand,
+from request_engine.modules.booking.application.commands import (
+    set_resource_location_schedule_exception as schedule_exception,
 )
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
@@ -23,7 +23,7 @@ class PostgresRecoveryAssignmentSchedule(RecoveryAssignmentSchedulePort):
         request: RecoveryAssignmentExtensionRequest,
     ) -> RecoveryAssignmentExtensionResult:
         state = await self._writer.set_resource_location_schedule_exception(
-            SetResourceLocationScheduleExceptionCommand(
+            schedule_exception.SetResourceLocationScheduleExceptionCommand(
                 organization_id=request.organization_id,
                 principal_id=request.principal_id,
                 authority_party_id=request.authority_party_id,
