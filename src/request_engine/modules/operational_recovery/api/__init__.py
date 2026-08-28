@@ -1,21 +1,31 @@
 from fastapi import FastAPI
 
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
-from request_engine.modules.booking.contracts.recovery_schedule import RecoveryAssignmentSchedulePort
+from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentSchedulePort,
+)
 from request_engine.modules.communications.contracts.recovery import RecoveryCommunicationPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.adapters.db.store import PostgresRecoveryRepository
 from request_engine.modules.operational_recovery.adapters.db.workflow_repository import (
     PostgresRecoveryWorkflowRepository,
 )
-from request_engine.modules.operational_recovery.api.errors import operational_recovery_error_handler
+from request_engine.modules.operational_recovery.api.errors import (
+    operational_recovery_error_handler,
+)
 from request_engine.modules.operational_recovery.api.router import create_router
 from request_engine.modules.operational_recovery.api.workflow_errors import (
     workflow_recovery_error_handler,
 )
-from request_engine.modules.operational_recovery.api.workflow_router import create_workflow_router
-from request_engine.modules.operational_recovery.application.errors import OperationalRecoveryError
-from request_engine.modules.operational_recovery.application.service import OperationalRecoveryService
+from request_engine.modules.operational_recovery.api.workflow_router import (
+    create_workflow_router,
+)
+from request_engine.modules.operational_recovery.application.errors import (
+    OperationalRecoveryError,
+)
+from request_engine.modules.operational_recovery.application.service import (
+    OperationalRecoveryService,
+)
 from request_engine.modules.operational_recovery.application.workflow_intake_port import (
     RecoveryIntakeControlPort,
 )
