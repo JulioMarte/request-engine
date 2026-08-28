@@ -2,8 +2,8 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
-    _effective_context_observations,
+from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    effective_context_observations,
 )
 from request_engine.modules.booking.adapters.db.recovery_commercial_guard import (
     require_preserved_commercial_commitment,
@@ -33,7 +33,7 @@ async def resolve_recovery_terms(
     start_at: datetime,
     source_contextual: bool,
 ) -> tuple[ResolvedBookingTerms, tuple[ContextBookingTerms | None, ...]]:
-    observations = _effective_context_observations(
+    observations = effective_context_observations(
         snapshot.ordered_requirement_ids,
         snapshot.selected_assignments,
         snapshot.context_terms,
