@@ -63,9 +63,7 @@ async def test_f5_extend_day_clears_closing_shortfall_without_rewriting_recurrin
         recurring_before = recurring_schedule_snapshot(
             e2e_admin_conn, sandbox, supply.assignment_id
         )
-        location_exceptions_before = location_recovery_exception_count(
-            e2e_admin_conn, sandbox
-        )
+        location_exceptions_before = location_recovery_exception_count(e2e_admin_conn, sandbox)
         assignment_exceptions_before = assignment_recovery_exception_count(
             e2e_admin_conn, sandbox, supply.assignment_id
         )
@@ -97,9 +95,10 @@ async def test_f5_extend_day_clears_closing_shortfall_without_rewriting_recurrin
     assert location_recovery_exception_count(e2e_admin_conn, sandbox) == (
         location_exceptions_before + 1
     )
-    assert assignment_recovery_exception_count(
-        e2e_admin_conn, sandbox, supply.assignment_id
-    ) == (assignment_exceptions_before + 1)
-    assert recurring_schedule_snapshot(
-        e2e_admin_conn, sandbox, supply.assignment_id
-    ) == recurring_before
+    assert assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id) == (
+        assignment_exceptions_before + 1
+    )
+    assert (
+        recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id)
+        == recurring_before
+    )
