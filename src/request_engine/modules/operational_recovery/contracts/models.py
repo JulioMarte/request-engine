@@ -54,6 +54,7 @@ class AffectedReservation:
     original_start_at: datetime
     original_end_at: datetime
     target: RecoveryTarget | None
+    replacement_target: RecoveryTarget | None = None
     contextual_commitment: bool = False
 
 
