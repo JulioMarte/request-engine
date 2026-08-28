@@ -46,6 +46,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionConflict,
     RecoveryIncidentNotFound,
     RecoveryIncidentStale,
+    RecoveryOwnerRevisionConflict,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
@@ -80,7 +81,12 @@ def install_http(
         capacity=capacity,
     )
     app.add_exception_handler(OperationalRecoveryError, operational_recovery_error_handler)
-    for error_type in (RecoveryIncidentNotFound, RecoveryIncidentStale, RecoveryActionConflict):
+    for error_type in (
+        RecoveryIncidentNotFound,
+        RecoveryIncidentStale,
+        RecoveryActionConflict,
+        RecoveryOwnerRevisionConflict,
+    ):
         app.add_exception_handler(error_type, workflow_recovery_error_handler)
     app.include_router(create_router(service, actor_resolver))
     app.include_router(create_workflow_router(workflow, actor_resolver))
