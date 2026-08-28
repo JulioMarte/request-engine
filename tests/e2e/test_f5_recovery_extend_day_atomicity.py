@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,11 +12,18 @@ from .f4_capacity_support import seed_today_schedule
 from .f4_operational_day_support import configure_projection
 from .f5_booking_fixture import five_minute_sandbox
 from .f5_contextual_support import contextualize_recovery_supply
+from .f5_extend_day_support import (
+    assignment_recovery_exception_count,
+    extend_action,
+    location_recovery_exception_count,
+    owner_revisions,
+    source_revision,
+)
 from .f5_recovery_assertions import create_proposal
 from .f5_recovery_support import book_commitments, f5_actor, restrict_source_to_first_six
 from .f5_replace_resource_support import seed_incident_for_proposal
 from .operational_support import PgConnection
-from .tenant_sandbox import TenantSandbox, auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -43,17 +50,17 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
         restrict_source_to_first_six(e2e_admin_conn, sandbox, slots)
         proposal = await create_proposal(client, sandbox)
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
-        source_revision = _source_revision(proposal)
-        location_revision, resource_revision = _owner_revisions(e2e_admin_conn, sandbox)
-        before_location_exceptions = _location_recovery_exception_count(e2e_admin_conn, sandbox)
-        before_assignment_exceptions = _assignment_recovery_exception_count(
+        expected_source_revision = source_revision(proposal)
+        location_revision, resource_revision = owner_revisions(e2e_admin_conn, sandbox)
+        before_location = location_recovery_exception_count(e2e_admin_conn, sandbox)
+        before_assignment = assignment_recovery_exception_count(
             e2e_admin_conn, sandbox, supply.assignment_id
         )
         start_at = datetime.fromisoformat(cast(str, slots[-1]["start_at"]))
         end_at = datetime.fromisoformat(cast(str, slots[-1]["end_at"]))
         key = f"f5-extend-day-stale-{uuid4().hex}"
         body: dict[str, object] = {
-            "expected_source_revision": source_revision,
+            "expected_source_revision": expected_source_revision,
             "assignment_id": str(supply.assignment_id),
             "start_at": start_at.isoformat(),
             "end_at": end_at.isoformat(),
@@ -61,85 +68,21 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
             "expected_resource_availability_revision": resource_revision - 1,
             "reason": "adversarial stale resource revision",
         }
-
-        response = await client.post(
-            f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
-            json=body,
-            headers=auth(sandbox, idempotency_key=key),
-        )
-        replay = await client.post(
-            f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
-            json=body,
-            headers=auth(sandbox, idempotency_key=key),
-        )
+        path = f"/v1/operational-recovery/incidents/{incident_id}/extend-day"
+        response = await client.post(path, json=body, headers=auth(sandbox, idempotency_key=key))
+        replay = await client.post(path, json=body, headers=auth(sandbox, idempotency_key=key))
 
     assert response.status_code == replay.status_code == 409
-    action_id, status, owner_steps = _extend_action(e2e_admin_conn, sandbox, incident_id)
+    action_id, status, owner_steps = extend_action(e2e_admin_conn, sandbox, incident_id)
     assert isinstance(action_id, UUID)
     assert status == "partially_applied"
     assert cast(dict[str, object], owner_steps)["catalog_location"]
-    assert _location_recovery_exception_count(e2e_admin_conn, sandbox) == (
-        before_location_exceptions + 1
-    )
+    assert location_recovery_exception_count(e2e_admin_conn, sandbox) == before_location + 1
     assert (
-        _assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
-        == before_assignment_exceptions
+        assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
+        == before_assignment
     )
-    assert _owner_revisions(e2e_admin_conn, sandbox) == (
+    assert owner_revisions(e2e_admin_conn, sandbox) == (
         location_revision + 1,
         resource_revision,
     )
-
-
-def _source_revision(proposal: dict[str, Any]) -> int:
-    checkpoint = cast(dict[str, Any], proposal["source_checkpoint"])
-    return cast(int, checkpoint["recovery_source_revision"])
-
-
-def _owner_revisions(conn: PgConnection, sandbox: TenantSandbox) -> tuple[int, int]:
-    row = conn.execute(
-        "SELECT l.operational_revision,r.availability_revision "
-        "FROM request_engine.locations l "
-        "JOIN request_engine.resources r ON r.organization_id=l.organization_id "
-        "WHERE l.organization_id=%s AND l.id=%s AND r.id=%s",
-        (sandbox.organization_id, sandbox.location_id, sandbox.resource_id),
-    ).fetchone()
-    assert row is not None
-    return cast(tuple[int, int], tuple(row))
-
-
-def _extend_action(
-    conn: PgConnection,
-    sandbox: TenantSandbox,
-    incident_id: UUID,
-) -> tuple[object, ...]:
-    row = conn.execute(
-        "SELECT id,status,owner_steps FROM request_engine.operational_recovery_actions "
-        "WHERE organization_id=%s AND incident_id=%s AND action_kind='extend_day'",
-        (sandbox.organization_id, incident_id),
-    ).fetchone()
-    assert row is not None
-    return tuple(row)
-
-
-def _location_recovery_exception_count(conn: PgConnection, sandbox: TenantSandbox) -> int:
-    row = conn.execute(
-        "SELECT count(*) FROM request_engine.location_hours_exceptions "
-        "WHERE organization_id=%s AND location_id=%s AND recovery_action_id IS NOT NULL",
-        (sandbox.organization_id, sandbox.location_id),
-    ).fetchone()
-    assert row is not None
-    return cast(int, row[0])
-
-
-def _assignment_recovery_exception_count(
-    conn: PgConnection, sandbox: TenantSandbox, assignment_id: object
-) -> int:
-    row = conn.execute(
-        "SELECT count(*) FROM request_engine.resource_location_schedule_exceptions "
-        "WHERE organization_id=%s AND resource_location_assignment_id=%s "
-        "AND recovery_action_id IS NOT NULL",
-        (sandbox.organization_id, assignment_id),
-    ).fetchone()
-    assert row is not None
-    return cast(int, row[0])
