@@ -50,7 +50,7 @@ async def execute_extend_day_action(
         raise RecoveryIncidentNotFound(command.incident_id)
 
     payload = extend_day_payload(command)
-    action, terminal = await authorize_or_resume_action(
+    action, terminal, _ = await authorize_or_resume_action(
         repository=repository,
         incident=incident,
         organization_id=command.organization_id,
