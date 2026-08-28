@@ -1,0 +1,48 @@
+from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_commands import (
+    PostgresContextualSupplyLifecycleCommands,
+)
+from request_engine.modules.booking.application.commands.set_resource_location_schedule_exception import (
+    SetResourceLocationScheduleExceptionCommand,
+)
+from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentExtensionRequest,
+    RecoveryAssignmentExtensionResult,
+    RecoveryAssignmentSchedulePort,
+)
+from request_engine.platform.db.session import SessionFactory
+
+
+class PostgresRecoveryAssignmentSchedule(RecoveryAssignmentSchedulePort):
+    """Recovery adapter over Booking's authoritative contextual-supply writer."""
+
+    def __init__(self, session_factory: SessionFactory) -> None:
+        self._writer = PostgresContextualSupplyLifecycleCommands(session_factory)
+
+    async def extend_assignment_hours(
+        self,
+        request: RecoveryAssignmentExtensionRequest,
+    ) -> RecoveryAssignmentExtensionResult:
+        state = await self._writer.set_resource_location_schedule_exception(
+            SetResourceLocationScheduleExceptionCommand(
+                organization_id=request.organization_id,
+                principal_id=request.principal_id,
+                authority_party_id=request.authority_party_id,
+                assignment_id=request.assignment_id,
+                start_at=request.start_at,
+                end_at=request.end_at,
+                exception_kind="available",
+                expected_resource_availability_revision=(
+                    request.expected_resource_availability_revision
+                ),
+                idempotency_key=request.idempotency_key,
+                reason=request.reason,
+                active=True,
+            )
+        )
+        return RecoveryAssignmentExtensionResult(
+            exception_id=state.exception_id,
+            assignment_id=state.assignment_id,
+            start_at=state.start_at,
+            end_at=state.end_at,
+            resource_availability_revision=state.resource_availability_revision,
+        )
