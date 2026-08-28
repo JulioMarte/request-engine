@@ -1,5 +1,11 @@
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.application import (
+    workflow_replace_resource_owner as replace_owner,
+)
+from request_engine.modules.operational_recovery.application import (
+    workflow_replace_resource_support as replace_support,
+)
 from request_engine.modules.operational_recovery.application.execution_policy import (
     affected_reservation,
     require_actionable_target,
@@ -17,15 +23,6 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
-)
-from request_engine.modules.operational_recovery.application.workflow_replace_resource_owner import (
-    execute_booking_replace_resource_step,
-    reject_replace_resource_action,
-)
-from request_engine.modules.operational_recovery.application.workflow_replace_resource_support import (
-    replace_resource_fingerprint,
-    replace_resource_payload,
-    validate_fresh_replace_resource_authorization,
 )
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
@@ -56,7 +53,7 @@ async def execute_replace_resource_action(
     )
     affected = affected_reservation(proposal, command.reservation_id)
     target = require_actionable_target(command.reservation_id, affected.replacement_target)
-    payload = replace_resource_payload(command)
+    payload = replace_support.replace_resource_payload(command)
     action, terminal, newly_authorized = await authorize_or_resume_action(
         repository=workflow_repository,
         incident=incident,
@@ -64,7 +61,7 @@ async def execute_replace_resource_action(
         principal_id=command.principal_id,
         action_kind=RecoveryActionKind.REPLACE_RESOURCE,
         idempotency_key=command.idempotency_key,
-        command_fingerprint=replace_resource_fingerprint(command, payload),
+        command_fingerprint=replace_support.replace_resource_fingerprint(command, payload),
         expected_source_revision=command.expected_source_revision,
         payload=payload,
     )
@@ -72,15 +69,15 @@ async def execute_replace_resource_action(
         return action
     if newly_authorized:
         try:
-            validate_fresh_replace_resource_authorization(
+            replace_support.validate_fresh_replace_resource_authorization(
                 command, incident=incident, proposal=proposal
             )
         except RecoveryIncidentStale:
-            await reject_replace_resource_action(
+            await replace_owner.reject_replace_resource_action(
                 workflow_repository, command, action, "STALE_RECOVERY_INCIDENT"
             )
             raise
-    reservation = await execute_booking_replace_resource_step(
+    reservation = await replace_owner.execute_booking_replace_resource_step(
         command=command,
         action=action,
         proposal=proposal,
