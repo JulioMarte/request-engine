@@ -52,7 +52,7 @@ async def execute_intake_action(
             **payload,
         },
     )
-    action, terminal = await authorize_or_resume_action(
+    action, terminal, _ = await authorize_or_resume_action(
         repository=repository,
         incident=incident,
         organization_id=command.organization_id,
