@@ -72,16 +72,13 @@ async def test_f5_multi_action_workflow_reprojects_between_actions_and_converges
         assert blocked.status_code == 409 and multi.error_code(blocked) == "queue_intake_stopped"
         assert multi.queue_entry_count(e2e_admin_conn, booking) == entries
 
-        stop_reprojected = await handler.handle(
-            lease_reassessment(e2e_admin_conn, booking, revision + 1)
-        )
-        assert stop_reprojected.applied is True
+        await multi.reproject(handler, e2e_admin_conn, booking, revision + 1)
         assert incident_revision(e2e_admin_conn, booking) == (revision + 1, 2)
 
         multi.seed_future_hours_exception(e2e_admin_conn, booking)
         refreshed = source_revision(e2e_admin_conn, booking)
-        reprojected = await handler.handle(lease_reassessment(e2e_admin_conn, booking, refreshed))
-        assert refreshed == revision + 2 and reprojected.applied is True
+        await multi.reproject(handler, e2e_admin_conn, booking, refreshed)
+        assert refreshed == revision + 2
         assert incident_revision(e2e_admin_conn, booking) == (refreshed, 3)
         revs = owner_revisions(e2e_admin_conn, booking)
 

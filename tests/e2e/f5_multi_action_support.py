@@ -11,6 +11,7 @@ from .f5_extend_day_support import (
     assignment_recovery_exception_count,
     location_recovery_exception_count,
 )
+from .f5_scheduled_assessment_support import lease_reassessment
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
 
@@ -26,6 +27,13 @@ class ExtendCall(TypedDict):
 
 def error_code(response: Response) -> object:
     return response.json()["error"]["code"]
+
+
+async def reproject(
+    handler: Any, conn: PgConnection, sandbox: TenantSandbox, target_revision: int
+) -> None:
+    applied = await handler.handle(lease_reassessment(conn, sandbox, target_revision))
+    assert applied.applied is True
 
 
 def intake_state(conn: PgConnection, sandbox: TenantSandbox) -> tuple[object, ...]:
