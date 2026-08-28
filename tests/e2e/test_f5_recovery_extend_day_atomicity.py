@@ -35,12 +35,28 @@ pytestmark = [
 ]
 
 
+def _grant_extend_day_authority(conn: PgConnection, sandbox: object) -> None:
+    for scope in ("operations.manage_profile", "operations.manage_supply"):
+        conn.execute(
+            "INSERT INTO request_engine.representations "
+            "(organization_id,principal_id,represented_party_id,authority_kind,scope_key,valid_until) "
+            "VALUES (%s,%s,%s,'delegated',%s,clock_timestamp() + interval '1 day')",
+            (
+                sandbox.organization_id,
+                sandbox.principal_id,
+                sandbox.party_id,
+                scope,
+            ),
+        )
+
+
 async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
     base = seed_tenant_sandbox(e2e_admin_conn, "f5-extend-day-partial")
     sandbox = five_minute_sandbox(e2e_admin_conn, base)
+    _grant_extend_day_authority(e2e_admin_conn, sandbox)
     seed_today_schedule(e2e_admin_conn, sandbox)
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
     actors = {sandbox.token: f5_actor(sandbox)}
@@ -68,6 +84,7 @@ async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
         key = f"f5-extend-day-stale-{uuid4().hex}"
         body: dict[str, object] = {
             "expected_source_revision": expected_source_revision,
+            "authority_party_id": str(sandbox.party_id),
             "assignment_id": str(supply.assignment_id),
             "start_at": start_at.isoformat(),
             "end_at": end_at.isoformat(),
