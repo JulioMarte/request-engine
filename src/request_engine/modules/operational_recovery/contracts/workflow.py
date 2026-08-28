@@ -88,3 +88,19 @@ class RecoveryIncidentStale(Exception):
 
 class RecoveryActionConflict(Exception):
     pass
+
+
+class RecoveryOwnerRevisionConflict(Exception):
+    def __init__(
+        self,
+        *,
+        owner: str,
+        scope_id: UUID,
+        expected: int,
+        actual: int,
+    ) -> None:
+        super().__init__(f"Recovery owner {owner} revision changed")
+        self.owner = owner
+        self.scope_id = scope_id
+        self.expected = expected
+        self.actual = actual
