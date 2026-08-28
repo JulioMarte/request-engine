@@ -6,6 +6,9 @@ from uuid import UUID
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.booking.adapters.db.recovery_contextual_target import (
+    contextual_target_requested,
+)
 from request_engine.modules.booking.adapters.db.recovery_reschedule_mutation import (
     RecoveryMutationInputs,
 )
@@ -28,7 +31,10 @@ from request_engine.modules.booking.adapters.db.subject_authority import (
 )
 from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.errors import ReservationNotReschedulable
-from request_engine.modules.booking.contracts.recovery import RecoveryRescheduleRequest
+from request_engine.modules.booking.contracts.recovery import (
+    RecoveryRescheduleRequest,
+    RecoveryTargetUnavailable,
+)
 from request_engine.modules.booking.domain.policy import slot_step_minutes
 
 
@@ -75,10 +81,17 @@ async def prepare_recovery(
     )
     offering_id = cast(UUID, row["offering_version_id"])
     offering = await load_bookable_offering(session, request.organization_id, offering_id)
-    duration_minutes = cast(int, offering["duration_minutes"])
+    base_duration_minutes = cast(int, offering["duration_minutes"])
+    duration_minutes = base_duration_minutes
+    if contextual_target_requested(request):
+        duration_minutes = request.expected_planned_duration_minutes or 0
+        if duration_minutes <= 0:
+            raise RecoveryTargetUnavailable(
+                "contextual recovery target requires planned duration"
+            )
     end_at = start_at + timedelta(minutes=duration_minutes)
     policy = cast(dict[str, object], row["booking_policy_snapshot"])
-    step_minutes = slot_step_minutes(policy, duration_minutes)
+    step_minutes = slot_step_minutes(policy, base_duration_minutes)
     await validate_subject_location_and_origin(
         session,
         organization_id=request.organization_id,
@@ -93,6 +106,7 @@ async def prepare_recovery(
         start_at=start_at,
         end_at=end_at,
         duration_minutes=duration_minutes,
+        base_duration_minutes=base_duration_minutes,
         step_minutes=step_minutes,
         source_observed_at=source_observed_at,
         source_horizon_end=source_horizon_end,
