@@ -20,9 +20,7 @@ def affected_to_json(item: AffectedReservation) -> dict[str, object]:
         "contextual_commitment": item.contextual_commitment,
         "target": target_to_json(item.target) if item.target is not None else None,
         "replacement_target": (
-            target_to_json(item.replacement_target)
-            if item.replacement_target is not None
-            else None
+            target_to_json(item.replacement_target) if item.replacement_target is not None else None
         ),
     }
 
