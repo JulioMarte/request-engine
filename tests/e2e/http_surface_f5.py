@@ -74,6 +74,7 @@ F5_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
                 "assignment_id": P2,
                 "start_at": "2026-08-28T20:00:00Z",
                 "end_at": "2026-08-28T22:00:00Z",
+                "expected_location_operational_revision": 1,
                 "expected_resource_availability_revision": 1,
                 "reason": "probe",
             },
