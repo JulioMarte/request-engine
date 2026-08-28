@@ -21,6 +21,9 @@ from request_engine.modules.operational_recovery.api.router import create_router
 from request_engine.modules.operational_recovery.api.workflow_errors import (
     workflow_recovery_error_handler,
 )
+from request_engine.modules.operational_recovery.api.workflow_reschedule_router import (
+    create_reschedule_router,
+)
 from request_engine.modules.operational_recovery.api.workflow_router import (
     create_workflow_router,
 )
@@ -60,14 +63,17 @@ def install_http(
     location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
 ) -> None:
+    proposal_repository = PostgresRecoveryRepository(session_factory)
     service = OperationalRecoveryService(
-        repository=PostgresRecoveryRepository(session_factory),
+        repository=proposal_repository,
         capacity=capacity,
         booking=booking,
         communications=communications,
     )
     workflow = RecoveryWorkflowService(
         repository=PostgresRecoveryWorkflowRepository(session_factory),
+        proposal_repository=proposal_repository,
+        booking=booking,
         intake=intake,
         location_schedule=location_schedule,
         assignment_schedule=assignment_schedule,
@@ -78,3 +84,4 @@ def install_http(
         app.add_exception_handler(error_type, workflow_recovery_error_handler)
     app.include_router(create_router(service, actor_resolver))
     app.include_router(create_workflow_router(workflow, actor_resolver))
+    app.include_router(create_reschedule_router(workflow, actor_resolver))
