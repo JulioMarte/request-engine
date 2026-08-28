@@ -2,12 +2,12 @@ from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentExtensionRequest,
     RecoveryAssignmentSchedulePort,
 )
-from request_engine.modules.catalog.contracts.recovery_schedule import (
-    RecoveryLocationExtensionRequest,
-    RecoveryLocationSchedulePort,
-)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
+)
+from request_engine.modules.operational_recovery.application.workflow_location_port import (
+    RecoveryLocationExtensionPort,
+    RecoveryLocationExtensionRequest,
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
@@ -25,7 +25,7 @@ async def apply_extend_day_owner_steps(
     incident: RecoveryIncident,
     action: RecoveryAction,
     repository: RecoveryWorkflowRepository,
-    location_schedule: RecoveryLocationSchedulePort,
+    location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
 ) -> RecoveryAction:
     location = await location_schedule.extend_location_hours(
