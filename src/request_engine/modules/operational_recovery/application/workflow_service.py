@@ -2,12 +2,19 @@ from request_engine.modules.booking.contracts.recovery import RecoveryBookingPor
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
+from request_engine.modules.communications.contracts.recovery import (
+    RecoveryCommunicationPort,
+)
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.application import (
+    workflow_communication_action as communication_action,
+)
 from request_engine.modules.operational_recovery.application import (
     workflow_replace_resource_action as replace_resource_action,
 )
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.workflow_commands import (
+    CommunicateImpactRecoveryActionCommand,
     ExtendRecoveryDayCommand,
     ReplaceResourceRecoveryActionCommand,
     RescheduleRecoveryActionCommand,
@@ -41,6 +48,7 @@ class RecoveryWorkflowService:
         repository: RecoveryWorkflowRepository,
         proposal_repository: RecoveryRepository,
         booking: RecoveryBookingPort,
+        communications: RecoveryCommunicationPort,
         intake: RecoveryIntakeControlPort,
         location_schedule: RecoveryLocationExtensionPort,
         assignment_schedule: RecoveryAssignmentSchedulePort,
@@ -49,6 +57,7 @@ class RecoveryWorkflowService:
         self._repository = repository
         self._proposal_repository = proposal_repository
         self._booking = booking
+        self._communications = communications
         self._intake = intake
         self._location_schedule = location_schedule
         self._assignment_schedule = assignment_schedule
@@ -77,6 +86,16 @@ class RecoveryWorkflowService:
             proposal_repository=self._proposal_repository,
             booking=self._booking,
             capacity=self._capacity,
+        )
+
+    async def communicate_impact(
+        self,
+        command: CommunicateImpactRecoveryActionCommand,
+    ) -> RecoveryAction:
+        return await communication_action.execute_communicate_impact_action(
+            command,
+            repository=self._repository,
+            communications=self._communications,
         )
 
     async def replace_resource(

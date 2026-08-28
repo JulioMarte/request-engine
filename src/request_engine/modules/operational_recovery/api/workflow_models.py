@@ -30,6 +30,13 @@ class ExtendRecoveryDayBody(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class CommunicateImpactBody(BaseModel):
+    expected_source_revision: int = Field(gt=0)
+    recipient_party_id: UUID
+    message: str | None = Field(default=None, min_length=1)
+    not_before: datetime | None = None
+
+
 class RescheduleRecoveryBody(BaseModel):
     expected_source_revision: int = Field(gt=0)
     proposal_id: UUID

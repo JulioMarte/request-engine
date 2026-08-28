@@ -9,6 +9,7 @@ _OPERATION_ID_OVERRIDES = {
     "operational_recovery.extend_day": "operational_recovery_extend_day",
     "operational_recovery.reschedule_action": "operational_recovery_reschedule",
     "operational_recovery.replace_resource_action": "operational_recovery_replace_resource",
+    "operational_recovery.communicate_impact": "operational_recovery_communicate_impact",
 }
 
 

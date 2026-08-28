@@ -78,4 +78,21 @@ F5_WORKFLOW_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             body=PROPOSAL_ACTION_BODY,
         ),
     ),
+    PublicHttpOperation(
+        "operational_recovery.communicate_impact",
+        "POST",
+        "/v1/operational-recovery/incidents/{incident_id}/communicate-impact",
+        "operational_recovery.execute",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/operational-recovery/incidents/{P1}/communicate-impact",
+            body={
+                "expected_source_revision": 1,
+                "recipient_party_id": P2,
+                "message": "probe",
+            },
+        ),
+    ),
 )

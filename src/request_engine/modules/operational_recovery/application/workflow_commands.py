@@ -47,6 +47,18 @@ class RescheduleRecoveryActionCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class CommunicateImpactRecoveryActionCommand:
+    organization_id: UUID
+    principal_id: UUID
+    incident_id: UUID
+    expected_source_revision: int
+    recipient_party_id: UUID
+    idempotency_key: str
+    message: str | None = None
+    not_before: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ReplaceResourceRecoveryActionCommand:
     organization_id: UUID
     principal_id: UUID
