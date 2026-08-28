@@ -9,6 +9,7 @@ class RecoveryIntakeControlRequest:
     organization_id: UUID
     principal_id: UUID
     service_queue_id: UUID
+    expected_revision: int
     accepting: bool
     idempotency_key: str
     reason: str | None
