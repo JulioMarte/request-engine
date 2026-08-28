@@ -4,7 +4,6 @@ from request_engine.modules.booking.contracts.recovery import RecoveryBookingPor
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
-from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
 from request_engine.modules.communications.contracts.recovery import RecoveryCommunicationPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.adapters.db.store import PostgresRecoveryRepository
@@ -23,6 +22,9 @@ from request_engine.modules.operational_recovery.application.errors import Opera
 from request_engine.modules.operational_recovery.application.service import OperationalRecoveryService
 from request_engine.modules.operational_recovery.application.workflow_intake_port import (
     RecoveryIntakeControlPort,
+)
+from request_engine.modules.operational_recovery.application.workflow_location_port import (
+    RecoveryLocationExtensionPort,
 )
 from request_engine.modules.operational_recovery.application.workflow_service import (
     RecoveryWorkflowService,
@@ -45,7 +47,7 @@ def install_http(
     booking: RecoveryBookingPort,
     communications: RecoveryCommunicationPort,
     intake: RecoveryIntakeControlPort,
-    location_schedule: RecoveryLocationSchedulePort,
+    location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
 ) -> None:
     service = OperationalRecoveryService(
