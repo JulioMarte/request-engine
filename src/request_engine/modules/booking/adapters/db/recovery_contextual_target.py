@@ -54,7 +54,9 @@ async def validate_contextual_recovery_target(
     if request.expected_amount is None or request.expected_currency is None:
         raise RecoveryTargetUnavailable("contextual recovery target requires commercial provenance")
     if not request.expected_configuration_fingerprint:
-        raise RecoveryTargetUnavailable("contextual recovery target requires configuration fingerprint")
+        raise RecoveryTargetUnavailable(
+            "contextual recovery target requires configuration fingerprint"
+        )
     snapshot = await load_contextual_recovery_snapshot(
         session,
         request=request,
