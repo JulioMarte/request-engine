@@ -31,6 +31,11 @@ from request_engine.modules.operational_recovery.application.workflow_ports impo
 from request_engine.modules.operational_recovery.application.workflow_reschedule_request import (
     workflow_booking_request,
 )
+from request_engine.modules.operational_recovery.application.workflow_reschedule_support import (
+    reschedule_fingerprint,
+    reschedule_payload,
+    validate_fresh_reschedule_authorization,
+)
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
     RecoveryActionKind,
@@ -38,7 +43,6 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryIncidentNotFound,
     RecoveryIncidentStale,
 )
-from request_engine.platform.idempotency.postgres import command_fingerprint
 
 
 async def execute_reschedule_action(
@@ -50,8 +54,7 @@ async def execute_reschedule_action(
     capacity: RecoveryCapacitySource,
 ) -> RecoveryAction:
     incident = await workflow_repository.get_incident(
-        organization_id=command.organization_id,
-        incident_id=command.incident_id,
+        organization_id=command.organization_id, incident_id=command.incident_id
     )
     if incident is None:
         raise RecoveryIncidentNotFound(command.incident_id)
@@ -60,38 +63,30 @@ async def execute_reschedule_action(
         organization_id=command.organization_id,
         proposal_id=command.proposal_id,
     )
-    if (
-        proposal.service_queue_id != incident.service_queue_id
-        or proposal.source_checkpoint.recovery_source_revision != command.expected_source_revision
-        or proposal.source_fingerprint != command.expected_source_fingerprint
-        or proposal.proposal_fingerprint != command.expected_proposal_fingerprint
-        or (incident.current_proposal_id is not None and incident.current_proposal_id != proposal.id)
-    ):
-        raise RecoveryIncidentStale(
-            incident.id, command.expected_source_revision, incident.source_revision
-        )
     affected = affected_reservation(proposal, command.reservation_id)
     require_actionable(affected)
-    payload: dict[str, object] = {
-        "proposal_id": command.proposal_id,
-        "reservation_id": command.reservation_id,
-        "expected_source_fingerprint": command.expected_source_fingerprint,
-        "expected_proposal_fingerprint": command.expected_proposal_fingerprint,
-        "allow_subject_override": command.allow_subject_override,
-    }
-    action, terminal = await authorize_or_resume_action(
+    payload = reschedule_payload(command)
+    action, terminal, newly_authorized = await authorize_or_resume_action(
         repository=workflow_repository,
         incident=incident,
         organization_id=command.organization_id,
         principal_id=command.principal_id,
         action_kind=RecoveryActionKind.RESCHEDULE,
         idempotency_key=command.idempotency_key,
-        command_fingerprint=command_fingerprint("operational_recovery.reschedule.v1", payload),
+        command_fingerprint=reschedule_fingerprint(command, payload),
         expected_source_revision=command.expected_source_revision,
         payload=payload,
     )
     if terminal:
         return action
+    if newly_authorized:
+        try:
+            validate_fresh_reschedule_authorization(
+                command, incident=incident, proposal=proposal
+            )
+        except RecoveryIncidentStale:
+            await _reject(workflow_repository, command, action, "STALE_RECOVERY_INCIDENT")
+            raise
     try:
         reservation = await booking.reschedule_for_recovery(
             workflow_booking_request(
