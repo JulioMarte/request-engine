@@ -88,9 +88,7 @@ async def prepare_recovery(
     if contextual:
         duration_minutes = request.expected_planned_duration_minutes or 0
         if duration_minutes <= 0:
-            raise RecoveryTargetUnavailable(
-                "contextual recovery target requires planned duration"
-            )
+            raise RecoveryTargetUnavailable("contextual recovery target requires planned duration")
     end_at = start_at + timedelta(minutes=duration_minutes)
     policy = cast(dict[str, object], row["booking_policy_snapshot"])
     step_minutes = slot_step_minutes(policy, base_duration_minutes)
