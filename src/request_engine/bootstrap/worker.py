@@ -1,6 +1,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
+from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
 from request_engine.entrypoints.worker.app import WorkerProcess
 from request_engine.entrypoints.worker.outbox_runtime import (
     RESERVATION_LIFECYCLE_EVENT_TYPES,
@@ -38,6 +39,11 @@ from request_engine.modules.communications.adapters.worker.scheduled_delivery im
     CommunicationDeliveryScheduledHandler,
 )
 from request_engine.modules.communications.contracts.delivery import CommunicationDeliveryProvider
+from request_engine.modules.operational_recovery.adapters.worker.scheduled_assessment import (
+    REASSESS_ACTION_TYPE,
+    REASSESS_ACTION_VERSION,
+    RecoveryAssessmentScheduledHandler,
+)
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
     SLOT_OFFER_EXPIRY_ACTION_TYPE,
     SLOT_OFFER_EXPIRY_ACTION_VERSION,
@@ -67,6 +73,7 @@ def build_scheduled_action_router(
     slot_offer_expiry: SlotOfferExpiryScheduledHandler,
     reminder_occurrences: PostgresReminderOccurrenceCommands,
     communication_delivery: CommunicationDeliveryScheduledHandler,
+    recovery_assessment: RecoveryAssessmentScheduledHandler,
 ) -> ScheduledActionRouter:
     """Compose concrete module worker adapters at the application boundary."""
 
@@ -93,6 +100,11 @@ def build_scheduled_action_router(
                 RECONCILE_ACTION_TYPE,
                 RECONCILE_ACTION_VERSION,
             ): communication_delivery.handle,
+            (
+                "operational_recovery",
+                REASSESS_ACTION_TYPE,
+                REASSESS_ACTION_VERSION,
+            ): recovery_assessment.handle,
         }
     )
 
@@ -139,11 +151,13 @@ def build_worker_process(
         scheduled_store,
         communication_providers,
     )
+    recovery_assessment = build_recovery_assessment_handler(domain_session_factory)
     scheduled_router = build_scheduled_action_router(
         no_show=no_show,
         slot_offer_expiry=slot_offer_expiry,
         reminder_occurrences=reminder_occurrences,
         communication_delivery=communication_delivery,
+        recovery_assessment=recovery_assessment,
     )
 
     fenced_internal_handlers: dict[str, FencedOutboxInternalHandler] = {}
