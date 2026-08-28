@@ -11,7 +11,7 @@ def choose_recovery_target(
     original_end: datetime,
     source_contextual: bool,
 ) -> RecoveryTarget | None:
-    """Prefer a genuinely actionable target and fail closed for contextual reschedule."""
+    """Choose a target without crossing legacy/contextual commitment semantics."""
 
     blocked: RecoveryTarget | None = None
     for slot in slots:
@@ -20,22 +20,17 @@ def choose_recovery_target(
         target_contextual = any(
             choice.resource_location_assignment_id is not None for choice in slot.resources
         )
-        if source_contextual:
-            if blocked is None:
-                blocked = _target_from_slot(
-                    slot,
-                    actionable=False,
-                    blocked_reason="contextual_source_reschedule_not_supported",
-                )
-            continue
-        if not target_contextual:
+        if source_contextual and target_contextual:
+            return _target_from_slot(slot, actionable=True, blocked_reason=None)
+        if not source_contextual and not target_contextual:
             return _target_from_slot(slot, actionable=True, blocked_reason=None)
         if blocked is None:
-            blocked = _target_from_slot(
-                slot,
-                actionable=False,
-                blocked_reason="contextual_target_reschedule_not_supported",
+            reason = (
+                "contextual_source_requires_contextual_target"
+                if source_contextual
+                else "legacy_source_requires_legacy_target"
             )
+            blocked = _target_from_slot(slot, actionable=False, blocked_reason=reason)
     return blocked
 
 
