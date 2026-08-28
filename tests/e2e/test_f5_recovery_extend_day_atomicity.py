@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -28,11 +28,11 @@ pytestmark = [
 ]
 
 
-async def test_f5_extend_day_stale_resource_step_leaves_no_partial_location_extension(
+async def test_f5_extend_day_stale_second_step_is_visible_and_idempotent(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
-    base = seed_tenant_sandbox(e2e_admin_conn, "f5-extend-day-atomicity")
+    base = seed_tenant_sandbox(e2e_admin_conn, "f5-extend-day-partial")
     sandbox = five_minute_sandbox(e2e_admin_conn, base)
     seed_today_schedule(e2e_admin_conn, sandbox)
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
@@ -51,31 +51,42 @@ async def test_f5_extend_day_stale_resource_step_leaves_no_partial_location_exte
         )
         start_at = datetime.fromisoformat(cast(str, slots[-1]["start_at"]))
         end_at = datetime.fromisoformat(cast(str, slots[-1]["end_at"]))
+        key = f"f5-extend-day-stale-{uuid4().hex}"
+        body: dict[str, object] = {
+            "expected_source_revision": source_revision,
+            "assignment_id": str(supply.assignment_id),
+            "start_at": start_at.isoformat(),
+            "end_at": end_at.isoformat(),
+            "expected_location_operational_revision": location_revision,
+            "expected_resource_availability_revision": resource_revision - 1,
+            "reason": "adversarial stale resource revision",
+        }
 
         response = await client.post(
             f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
-            json={
-                "expected_source_revision": source_revision,
-                "assignment_id": str(supply.assignment_id),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
-                "expected_location_operational_revision": location_revision,
-                "expected_resource_availability_revision": resource_revision - 1,
-                "reason": "adversarial stale resource revision",
-            },
-            headers=auth(sandbox, idempotency_key=f"f5-extend-day-stale-{uuid4().hex}"),
+            json=body,
+            headers=auth(sandbox, idempotency_key=key),
+        )
+        replay = await client.post(
+            f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
+            json=body,
+            headers=auth(sandbox, idempotency_key=key),
         )
 
-    assert response.status_code == 409, response.text
+    assert response.status_code == replay.status_code == 409
+    action_id, status, owner_steps = _extend_action(e2e_admin_conn, sandbox, incident_id)
+    assert isinstance(action_id, UUID)
+    assert status == "partially_applied"
+    assert cast(dict[str, object], owner_steps)["catalog_location"]
     assert _location_recovery_exception_count(e2e_admin_conn, sandbox) == (
-        before_location_exceptions
+        before_location_exceptions + 1
     )
     assert (
         _assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
         == before_assignment_exceptions
     )
     assert _owner_revisions(e2e_admin_conn, sandbox) == (
-        location_revision,
+        location_revision + 1,
         resource_revision,
     )
 
@@ -95,6 +106,20 @@ def _owner_revisions(conn: PgConnection, sandbox: TenantSandbox) -> tuple[int, i
     ).fetchone()
     assert row is not None
     return cast(tuple[int, int], tuple(row))
+
+
+def _extend_action(
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+    incident_id: UUID,
+) -> tuple[object, ...]:
+    row = conn.execute(
+        "SELECT id,status,owner_steps FROM request_engine.operational_recovery_actions "
+        "WHERE organization_id=%s AND incident_id=%s AND action_kind='extend_day'",
+        (sandbox.organization_id, incident_id),
+    ).fetchone()
+    assert row is not None
+    return tuple(row)
 
 
 def _location_recovery_exception_count(conn: PgConnection, sandbox: TenantSandbox) -> int:
