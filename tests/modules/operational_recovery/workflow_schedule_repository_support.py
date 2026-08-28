@@ -106,9 +106,9 @@ class FakeWorkflowRepository:
         **_: object,
     ) -> RecoveryAction:
         assert self.action is not None
-        if self.action.status is status:
-            return self.action
         if self.action.status is not expected_status:
+            if self.action.status is status:
+                return self.action
             raise RecoveryActionConflict("simulated CAS conflict")
         self.action = replace(
             self.action,
