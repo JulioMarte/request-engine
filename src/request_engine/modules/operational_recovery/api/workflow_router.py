@@ -91,6 +91,7 @@ def create_workflow_router(
         set_intake,
         capability="operational_recovery.execute",
         methods=["POST"],
+        operation_id="operational_recovery_intake_control",
         response_model=RecoveryActionView,
         status_code=status.HTTP_200_OK,
     )
@@ -100,6 +101,7 @@ def create_workflow_router(
         extend_day,
         capability="operational_recovery.execute",
         methods=["POST"],
+        operation_id="operational_recovery_extend_day",
         response_model=RecoveryActionView,
         status_code=status.HTTP_200_OK,
     )
