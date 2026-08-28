@@ -10,6 +10,9 @@ from request_engine.modules.booking.api.recovery_schedule import (
     build_recovery_assignment_schedule_port,
 )
 from request_engine.modules.catalog.api import install_http as install_catalog_http
+from request_engine.modules.catalog.api.recovery_schedule import (
+    build_recovery_location_schedule_port,
+)
 from request_engine.modules.communications.api import install_http as install_communications_http
 from request_engine.modules.communications.api.recovery import (
     build_recovery_communication_port,
@@ -92,5 +95,6 @@ def install_business_modules(
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
         intake=QueueRecoveryIntakeAdapter(queue_intake),
-        schedule=build_recovery_assignment_schedule_port(session_factory),
+        location_schedule=build_recovery_location_schedule_port(session_factory),
+        assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
     )
