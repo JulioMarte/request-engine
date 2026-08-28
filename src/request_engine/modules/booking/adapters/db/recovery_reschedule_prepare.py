@@ -55,9 +55,7 @@ async def prepare_recovery(
     source_horizon_end: datetime,
 ) -> PreparedRecovery:
     row = await lock_reservation_for_recovery(
-        session,
-        request.organization_id,
-        request.reservation_id,
+        session, request.organization_id, request.reservation_id
     )
     subject_party_id = cast(UUID, row["subject_party_id"])
     authority = await require_subject_authority(
@@ -72,18 +70,22 @@ async def prepare_recovery(
     status = cast(str, row["status"])
     if status != "confirmed":
         raise ReservationNotReschedulable(request.reservation_id, status)
+    contextual = contextual_target_requested(request)
     await lock_recovery_locations(
         session,
         organization_id=request.organization_id,
         source_location_id=request.source_location_id,
         expected_source_revision=request.expected_source_location_operational_revision,
         target_location_id=request.location_id,
+        expected_target_revision=(
+            request.expected_target_location_operational_revision if contextual else None
+        ),
     )
     offering_id = cast(UUID, row["offering_version_id"])
     offering = await load_bookable_offering(session, request.organization_id, offering_id)
     base_duration_minutes = cast(int, offering["duration_minutes"])
     duration_minutes = base_duration_minutes
-    if contextual_target_requested(request):
+    if contextual:
         duration_minutes = request.expected_planned_duration_minutes or 0
         if duration_minutes <= 0:
             raise RecoveryTargetUnavailable(
