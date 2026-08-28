@@ -84,4 +84,24 @@ F5_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             },
         ),
     ),
+    PublicHttpOperation(
+        "operational_recovery.reschedule_action",
+        "POST",
+        "/v1/operational-recovery/incidents/{incident_id}/reschedule",
+        "operational_recovery.execute",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/operational-recovery/incidents/{P1}/reschedule",
+            body={
+                "expected_source_revision": 1,
+                "proposal_id": P2,
+                "reservation_id": P2,
+                "expected_source_fingerprint": "probe-source",
+                "expected_proposal_fingerprint": "probe-proposal",
+                "allow_subject_override": False,
+            },
+        ),
+    ),
 )
