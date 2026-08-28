@@ -10,6 +10,8 @@ def validate_extend_day(command: ExtendRecoveryDayCommand) -> None:
         raise ValueError("idempotency_key is required")
     if command.expected_source_revision <= 0:
         raise ValueError("expected_source_revision must be positive")
+    if command.expected_location_operational_revision <= 0:
+        raise ValueError("expected_location_operational_revision must be positive")
     if command.expected_resource_availability_revision <= 0:
         raise ValueError("expected_resource_availability_revision must be positive")
     if not command.reason.strip():
@@ -28,6 +30,7 @@ def extend_day_payload(command: ExtendRecoveryDayCommand) -> dict[str, object]:
         "assignment_id": command.assignment_id,
         "start_at": command.start_at,
         "end_at": command.end_at,
+        "expected_location_operational_revision": command.expected_location_operational_revision,
         "expected_resource_availability_revision": (
             command.expected_resource_availability_revision
         ),
