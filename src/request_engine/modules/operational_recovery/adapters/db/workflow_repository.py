@@ -86,6 +86,7 @@ class PostgresRecoveryWorkflowRepository(RecoveryWorkflowRepository):
         *,
         organization_id: UUID,
         action_id: UUID,
+        expected_status: RecoveryActionStatus,
         status: RecoveryActionStatus,
         owner_steps: Mapping[str, object] | None = None,
         failure_code: str | None = None,
@@ -93,6 +94,7 @@ class PostgresRecoveryWorkflowRepository(RecoveryWorkflowRepository):
         return await self._actions.transition_action(
             organization_id=organization_id,
             action_id=action_id,
+            expected_status=expected_status,
             status=status,
             owner_steps=owner_steps,
             failure_code=failure_code,
