@@ -42,9 +42,7 @@ async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_onc
         await configure_projection(client, sandbox)
 
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
-    before_location = _source_revision(
-        e2e_admin_conn, sandbox.organization_id, sandbox.queue_id
-    )
+    before_location = _source_revision(e2e_admin_conn, sandbox.organization_id, sandbox.queue_id)
     e2e_admin_conn.execute(
         "INSERT INTO request_engine.location_hours_exceptions "
         "(organization_id,location_id,during,exception_kind,reason,active) "
@@ -52,9 +50,7 @@ async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_onc
         "clock_timestamp() + interval '3 hours','[)'),'available','f5 freshness proof',true)",
         (sandbox.organization_id, sandbox.location_id),
     )
-    after_location = _source_revision(
-        e2e_admin_conn, sandbox.organization_id, sandbox.queue_id
-    )
+    after_location = _source_revision(e2e_admin_conn, sandbox.organization_id, sandbox.queue_id)
     assert after_location == before_location + 1
 
     e2e_admin_conn.execute(
@@ -64,7 +60,5 @@ async def test_f1_location_and_assignment_schedule_changes_advance_f5_source_onc
         "clock_timestamp() + interval '5 hours','[)'),'available','f5 freshness proof',true)",
         (sandbox.organization_id, supply.assignment_id),
     )
-    after_assignment = _source_revision(
-        e2e_admin_conn, sandbox.organization_id, sandbox.queue_id
-    )
+    after_assignment = _source_revision(e2e_admin_conn, sandbox.organization_id, sandbox.queue_id)
     assert after_assignment == after_location + 1
