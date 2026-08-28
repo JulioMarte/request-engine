@@ -3,9 +3,14 @@ from .http_surface import PublicHttpOperation
 from .http_surface_f3 import F3_HTTP_OPERATIONS
 from .http_surface_f4 import F4_HTTP_OPERATIONS
 from .http_surface_f5 import F5_HTTP_OPERATIONS
+from .http_surface_f5_workflow import F5_WORKFLOW_HTTP_OPERATIONS
 
 PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
-    V3_HTTP_OPERATIONS + F3_HTTP_OPERATIONS + F4_HTTP_OPERATIONS + F5_HTTP_OPERATIONS
+    V3_HTTP_OPERATIONS
+    + F3_HTTP_OPERATIONS
+    + F4_HTTP_OPERATIONS
+    + F5_HTTP_OPERATIONS
+    + F5_WORKFLOW_HTTP_OPERATIONS
 )
 
 
