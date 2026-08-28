@@ -50,12 +50,8 @@ async def test_f5_contextual_reschedule_action_commits_authorized_target(
         before_commercial = _commercial_commitment(e2e_admin_conn, reservation_id)
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         key = f"f5-contextual-reschedule-action-{uuid4().hex}"
-        response = await _reschedule(
-            client, sandbox, incident_id, proposal, reservation_id, key
-        )
-        replay = await _reschedule(
-            client, sandbox, incident_id, proposal, reservation_id, key
-        )
+        response = await _reschedule(client, sandbox, incident_id, proposal, reservation_id, key)
+        replay = await _reschedule(client, sandbox, incident_id, proposal, reservation_id, key)
     assert response.status_code == 200, response.text
     assert replay.status_code == 200, replay.text
     action = response.json()
@@ -113,9 +109,7 @@ def _commercial_commitment(conn: PgConnection, reservation_id: UUID) -> tuple[ob
     return tuple(row)
 
 
-def _assert_target_claim(
-    conn: PgConnection, reservation_id: UUID, target: dict[str, Any]
-) -> None:
+def _assert_target_claim(conn: PgConnection, reservation_id: UUID, target: dict[str, Any]) -> None:
     resource = cast(dict[str, Any], target["resources"][0])
     rows = conn.execute(
         "SELECT resource_id,resource_location_assignment_id FROM request_engine.capacity_claims "
