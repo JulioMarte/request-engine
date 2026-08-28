@@ -1,10 +1,12 @@
 from uuid import UUID
 
+from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_store import (
     PostgresScheduledAssessmentStore,
     ScheduledAssessmentCommit,
 )
+from request_engine.modules.operational_recovery.application.proposal_builder import build_proposal
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
 from request_engine.platform.worker.runtime import PermanentWorkError
 
@@ -16,9 +18,11 @@ class RecoveryAssessmentScheduledHandler:
     def __init__(
         self,
         capacity: RecoveryCapacitySource,
+        booking: RecoveryBookingPort,
         store: PostgresScheduledAssessmentStore,
     ) -> None:
         self._capacity = capacity
+        self._booking = booking
         self._store = store
 
     async def handle(self, lease: ScheduledActionLease) -> ScheduledAssessmentCommit:
@@ -46,6 +50,14 @@ class RecoveryAssessmentScheduledHandler:
             organization_id=lease.organization_id,
             service_queue_id=queue_id,
         )
+        proposal = None
+        if assessment.shortfall_seconds > 0:
+            proposal = await build_proposal(
+                organization_id=lease.organization_id,
+                search_days=7,
+                assessment=assessment,
+                booking=self._booking,
+            )
         return await self._store.commit(
             organization_id=lease.organization_id,
             service_queue_id=queue_id,
@@ -53,4 +65,5 @@ class RecoveryAssessmentScheduledHandler:
             action_id=lease.id,
             claim_token=lease.claim_token,
             assessment=assessment,
+            proposal=proposal,
         )
