@@ -12,10 +12,10 @@ from request_engine.platform.worker.runtime import LeaseLostWorkError
 from .automatic_proposal_store import find_automatic_proposal_id
 from .scheduled_assessment_fence import lock_recovery_source_revision
 from .scheduled_assessment_idempotency import incident_matches_assessment
+from .scheduled_assessment_incident import upsert_incident_from_assessment
 from .scheduled_assessment_models import ScheduledAssessmentCommit
 from .scheduled_assessment_proposal import automatic_proposal_for_assessment
 from .workflow_incident_queries import get_open_incident_row
-from .workflow_incident_write import insert_incident, update_incident
 
 
 class PostgresScheduledAssessmentStore:
@@ -99,31 +99,16 @@ class PostgresScheduledAssessmentStore:
                     proposal_id=proposal_id,
                 )
 
-            if existing is None:
-                incident = await insert_incident(
-                    session,
-                    organization_id=organization_id,
-                    service_queue_id=service_queue_id,
-                    resource_id=assessment.resource_id,
-                    location_id=assessment.location_id,
-                    source_revision=target_source_revision,
-                    source_fingerprint=assessment.source_fingerprint,
-                    impact_kind=decision.impact_kind,
-                    escalation_level=decision.escalation_level,
-                    current_proposal_id=proposal_id,
-                )
-            else:
-                incident = await update_incident(
-                    session,
-                    organization_id=organization_id,
-                    incident_id=existing.id,
-                    source_revision=target_source_revision,
-                    source_fingerprint=assessment.source_fingerprint,
-                    impact_kind=decision.impact_kind,
-                    escalation_level=decision.escalation_level,
-                    current_proposal_id=proposal_id,
-                    resolve=decision.resolve,
-                )
+            incident = await upsert_incident_from_assessment(
+                session,
+                organization_id=organization_id,
+                service_queue_id=service_queue_id,
+                existing=existing,
+                assessment=assessment,
+                decision=decision,
+                source_revision=target_source_revision,
+                proposal_id=proposal_id,
+            )
             return ScheduledAssessmentCommit(
                 applied=True,
                 stale=False,
