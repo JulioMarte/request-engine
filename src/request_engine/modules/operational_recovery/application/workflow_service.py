@@ -1,4 +1,6 @@
-from request_engine.modules.booking.contracts.recovery_schedule import RecoveryAssignmentSchedulePort
+from request_engine.modules.booking.contracts.recovery_schedule import (
+    RecoveryAssignmentSchedulePort,
+)
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
