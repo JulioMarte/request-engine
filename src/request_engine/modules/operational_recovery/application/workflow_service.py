@@ -1,7 +1,6 @@
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
-from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
@@ -12,6 +11,9 @@ from request_engine.modules.operational_recovery.application.workflow_intake_act
 )
 from request_engine.modules.operational_recovery.application.workflow_intake_port import (
     RecoveryIntakeControlPort,
+)
+from request_engine.modules.operational_recovery.application.workflow_location_port import (
+    RecoveryLocationExtensionPort,
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
@@ -28,7 +30,7 @@ class RecoveryWorkflowService:
         *,
         repository: RecoveryWorkflowRepository,
         intake: RecoveryIntakeControlPort,
-        location_schedule: RecoveryLocationSchedulePort,
+        location_schedule: RecoveryLocationExtensionPort,
         assignment_schedule: RecoveryAssignmentSchedulePort,
         capacity: RecoveryCapacitySource,
     ) -> None:
