@@ -50,14 +50,10 @@ async def execute_booking_reschedule_step(
             )
         )
     except RecoveryBookingConflict as exc:
-        await reject_reschedule_action(
-            repository, command, action, "STALE_RECOVERY_PROPOSAL"
-        )
+        await reject_reschedule_action(repository, command, action, "STALE_RECOVERY_PROPOSAL")
         raise StaleRecoveryProposal() from exc
     except BookingRecoveryTargetUnavailable as exc:
-        await reject_reschedule_action(
-            repository, command, action, "RECOVERY_TARGET_UNAVAILABLE"
-        )
+        await reject_reschedule_action(repository, command, action, "RECOVERY_TARGET_UNAVAILABLE")
         raise RecoveryTargetUnavailable(command.reservation_id, str(exc)) from exc
 
 
