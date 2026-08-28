@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -61,8 +62,8 @@ async def test_f5_contextual_reschedule_action_commits_authorized_target(
     after_state = reservation_state(e2e_admin_conn, reservation_id)
     assert after_state[0] == cast(int, before_state[0]) + 1
     assert after_state[1] == before_state[1]
-    assert after_state[2].isoformat() == target["start_at"]
-    assert after_state[3].isoformat() == target["end_at"]
+    assert cast(datetime, after_state[2]).isoformat() == target["start_at"]
+    assert cast(datetime, after_state[3]).isoformat() == target["end_at"]
     assert _commercial_commitment(e2e_admin_conn, reservation_id) == before_commercial
     assert before_commercial[:3] == (Decimal("4000.000000"), "DOP", 5)
     _assert_target_claim(e2e_admin_conn, reservation_id, target)
