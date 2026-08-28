@@ -56,7 +56,8 @@ async def test_f5_extend_day_clears_closing_shortfall_without_rewriting_recurrin
         restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=6)
         close_location_after_slots(e2e_admin_conn, sandbox, slots, count=6)
         proposal = await create_proposal(client, sandbox)
-        assert proposal["scheduled_shortfall_seconds"] > 0
+        assert proposal["shortfall_seconds"] > 0
+        assert proposal["committed_capacity_seconds"] > proposal["executable_capacity_seconds"]
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         expected_source_revision = source_revision(proposal)
         location_revision, resource_revision = owner_revisions(e2e_admin_conn, sandbox)
