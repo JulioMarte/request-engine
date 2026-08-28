@@ -7,14 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
     _build_authoritative_profiles,
     _configuration_fingerprint,
-    _effective_context_observations,
-)
-from request_engine.modules.booking.adapters.db.recovery_commercial_guard import (
-    require_preserved_commercial_commitment,
 )
 from request_engine.modules.booking.adapters.db.recovery_contextual_snapshot import (
     RequirementLike,
     load_contextual_recovery_snapshot,
+)
+from request_engine.modules.booking.adapters.db.recovery_contextual_terms import (
+    resolve_recovery_terms,
 )
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     LockedResource,
@@ -26,12 +25,6 @@ from request_engine.modules.booking.contracts.recovery import (
     RecoveryTargetUnavailable,
 )
 from request_engine.modules.booking.domain.availability import interval_is_scheduled_available
-from request_engine.modules.booking.domain.contextual_supply import (
-    ConflictingContextualTerms,
-    ContextNotBookable,
-    MissingCommercialTerms,
-    resolve_booking_terms,
-)
 
 
 def contextual_target_requested(request: RecoveryRescheduleRequest) -> bool:
@@ -78,29 +71,13 @@ async def validate_contextual_recovery_target(
         raise RecoveryTargetUnavailable("target Location operational configuration changed")
     if not interval_is_scheduled_available(location.profile, start_at=start_at, end_at=end_at):
         raise RecoveryTargetUnavailable("target Location is not operationally available")
-    observations = _effective_context_observations(
-        snapshot.ordered_requirement_ids,
-        snapshot.selected_assignments,
-        snapshot.context_terms,
-        start_at,
+    resolved, observations = await resolve_recovery_terms(
+        session,
+        request=request,
+        snapshot=snapshot,
+        start_at=start_at,
+        source_contextual=source_contextual,
     )
-    try:
-        resolved = resolve_booking_terms(snapshot.base_terms, observations)
-    except (MissingCommercialTerms, ConflictingContextualTerms, ContextNotBookable) as exc:
-        raise RecoveryTargetUnavailable("contextual commercial terms changed") from exc
-    if (
-        resolved.amount != request.expected_amount
-        or resolved.currency != request.expected_currency
-        or resolved.planned_duration_minutes != expected_duration
-    ):
-        raise RecoveryTargetUnavailable("contextual option terms changed")
-    if source_contextual:
-        await require_preserved_commercial_commitment(
-            session,
-            organization_id=request.organization_id,
-            reservation_id=request.reservation_id,
-            resolved=resolved,
-        )
     availability = snapshot.availability
     profiles = _build_authoritative_profiles(
         ordered_requirement_ids=snapshot.ordered_requirement_ids,
