@@ -53,9 +53,7 @@ async def execute_booking_replace_resource_step(
             )
         )
     except RecoveryBookingConflict as exc:
-        await reject_replace_resource_action(
-            repository, command, action, "STALE_RECOVERY_PROPOSAL"
-        )
+        await reject_replace_resource_action(repository, command, action, "STALE_RECOVERY_PROPOSAL")
         raise StaleRecoveryProposal() from exc
     except BookingRecoveryTargetUnavailable as exc:
         await reject_replace_resource_action(
