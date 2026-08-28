@@ -12,7 +12,8 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryImpactKind,
     RecoveryIncidentStatus,
 )
-from workflow_assessment_test_support import (
+
+from .workflow_assessment_test_support import (
     ORG,
     QUEUE,
     FakeCapacity,
