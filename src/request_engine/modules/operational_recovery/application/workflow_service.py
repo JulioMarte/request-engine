@@ -3,6 +3,9 @@ from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.application import (
+    workflow_replace_resource_action as replace_resource_action,
+)
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ExtendRecoveryDayCommand,
@@ -21,9 +24,6 @@ from request_engine.modules.operational_recovery.application.workflow_location_p
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
-)
-from request_engine.modules.operational_recovery.application.workflow_replace_resource_action import (
-    execute_replace_resource_action,
 )
 from request_engine.modules.operational_recovery.application.workflow_reschedule_action import (
     execute_reschedule_action,
@@ -83,7 +83,7 @@ class RecoveryWorkflowService:
         self,
         command: ReplaceResourceRecoveryActionCommand,
     ) -> RecoveryAction:
-        return await execute_replace_resource_action(
+        return await replace_resource_action.execute_replace_resource_action(
             command,
             workflow_repository=self._repository,
             proposal_repository=self._proposal_repository,
