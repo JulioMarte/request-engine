@@ -1,3 +1,6 @@
+from request_engine.modules.operational_recovery.application.workflow_action_execution import (
+    authorize_or_resume_action,
+)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     SetRecoveryIntakeCommand,
 )
@@ -9,8 +12,6 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionKind,
     RecoveryActionStatus,
     RecoveryIncidentNotFound,
-    RecoveryIncidentStale,
-    RecoveryIncidentStatus,
 )
 from request_engine.modules.queue.contracts.intake import (
     QueueIntakeControlPort,
@@ -31,18 +32,6 @@ async def execute_intake_action(
     )
     if incident is None:
         raise RecoveryIncidentNotFound(command.incident_id)
-    if incident.status is RecoveryIncidentStatus.RESOLVED:
-        raise RecoveryIncidentStale(
-            command.incident_id,
-            command.expected_source_revision,
-            incident.source_revision,
-        )
-    if incident.source_revision != command.expected_source_revision:
-        raise RecoveryIncidentStale(
-            command.incident_id,
-            command.expected_source_revision,
-            incident.source_revision,
-        )
 
     action_kind = (
         RecoveryActionKind.REOPEN_INTAKE if command.accepting else RecoveryActionKind.STOP_INTAKE
@@ -60,9 +49,10 @@ async def execute_intake_action(
             **payload,
         },
     )
-    action, created = await repository.prepare_action(
+    action, terminal = await authorize_or_resume_action(
+        repository=repository,
+        incident=incident,
         organization_id=command.organization_id,
-        incident_id=command.incident_id,
         principal_id=command.principal_id,
         action_kind=action_kind,
         idempotency_key=command.idempotency_key,
@@ -70,17 +60,9 @@ async def execute_intake_action(
         expected_source_revision=command.expected_source_revision,
         payload=payload,
     )
-    if not created and action.status in {
-        RecoveryActionStatus.SUCCEEDED,
-        RecoveryActionStatus.REJECTED,
-    }:
+    if terminal:
         return action
 
-    await repository.transition_action(
-        organization_id=command.organization_id,
-        action_id=action.id,
-        status=RecoveryActionStatus.RUNNING,
-    )
     current = await queue_intake.get_intake_control(
         command.organization_id,
         incident.service_queue_id,
@@ -100,6 +82,7 @@ async def execute_intake_action(
     return await repository.transition_action(
         organization_id=command.organization_id,
         action_id=action.id,
+        expected_status=RecoveryActionStatus.RUNNING,
         status=RecoveryActionStatus.SUCCEEDED,
         owner_steps={
             "queue_intake": {
