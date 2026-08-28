@@ -1,0 +1,56 @@
+from uuid import UUID
+
+from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_store import (
+    PostgresScheduledAssessmentStore,
+    ScheduledAssessmentCommit,
+)
+from request_engine.platform.scheduling.postgres import ScheduledActionLease
+from request_engine.platform.worker.runtime import PermanentWorkError
+
+REASSESS_ACTION_TYPE = "reassess_recovery_scope"
+REASSESS_ACTION_VERSION = 1
+
+
+class RecoveryAssessmentScheduledHandler:
+    def __init__(
+        self,
+        capacity: RecoveryCapacitySource,
+        store: PostgresScheduledAssessmentStore,
+    ) -> None:
+        self._capacity = capacity
+        self._store = store
+
+    async def handle(self, lease: ScheduledActionLease) -> ScheduledAssessmentCommit:
+        if (
+            lease.owner_module != "operational_recovery"
+            or lease.action_type != REASSESS_ACTION_TYPE
+            or lease.action_version != REASSESS_ACTION_VERSION
+            or lease.subject_kind != "ServiceQueue"
+            or lease.subject_id is None
+        ):
+            raise PermanentWorkError("unsupported_recovery_scheduled_action")
+
+        raw_queue_id = lease.payload.get("service_queue_id")
+        raw_revision = lease.payload.get("source_revision")
+        if not isinstance(raw_queue_id, str) or not isinstance(raw_revision, int):
+            raise PermanentWorkError("recovery_reassessment_payload_invalid")
+        try:
+            queue_id = UUID(raw_queue_id)
+        except ValueError as exc:
+            raise PermanentWorkError("recovery_reassessment_payload_invalid") from exc
+        if queue_id != lease.subject_id or raw_revision <= 0:
+            raise PermanentWorkError("recovery_reassessment_payload_mismatch")
+
+        assessment = await self._capacity.assess_recovery_capacity(
+            organization_id=lease.organization_id,
+            service_queue_id=queue_id,
+        )
+        return await self._store.commit(
+            organization_id=lease.organization_id,
+            service_queue_id=queue_id,
+            target_source_revision=raw_revision,
+            action_id=lease.id,
+            claim_token=lease.claim_token,
+            assessment=assessment,
+        )
