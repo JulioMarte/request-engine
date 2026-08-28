@@ -16,6 +16,7 @@ from request_engine.modules.operational_recovery.application.fingerprints import
 )
 from request_engine.modules.operational_recovery.application.proposal_policy import (
     choose_recovery_target,
+    choose_replacement_target,
 )
 from request_engine.modules.operational_recovery.contracts.models import RecoveryTarget
 
@@ -36,6 +37,21 @@ def _slot(identity: int, *, contextual: bool) -> AppointmentSlot:
                 requirement_id=UUID(int=3),
                 resource_id=UUID(int=10 + identity),
                 resource_location_assignment_id=(UUID(int=20 + identity) if contextual else None),
+                assignment_revision=1 if contextual else None,
+                availability_revision=4,
+            ),
+        ),
+    )
+
+
+def _same_time_slot(resource_id: int, *, contextual: bool) -> AppointmentSlot:
+    return replace(
+        _slot(0, contextual=contextual),
+        resources=(
+            ResourceChoice(
+                requirement_id=UUID(int=3),
+                resource_id=UUID(int=resource_id),
+                resource_location_assignment_id=(UUID(int=100 + resource_id) if contextual else None),
                 assignment_revision=1 if contextual else None,
                 availability_revision=4,
             ),
@@ -77,6 +93,49 @@ def test_contextual_source_fails_closed_when_only_legacy_target_exists() -> None
         (_slot(1, contextual=False),),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
+        source_contextual=True,
+    )
+    assert target is not None
+    assert target.actionable is False
+    assert target.blocked_reason == "contextual_source_requires_contextual_target"
+
+
+def test_replacement_target_keeps_time_and_changes_degraded_resource() -> None:
+    degraded = _same_time_slot(10, contextual=True)
+    alternate = _same_time_slot(11, contextual=True)
+    target = choose_replacement_target(
+        (degraded, alternate),
+        original_start=NOW,
+        original_end=NOW + timedelta(hours=1),
+        source_resource_id=UUID(int=10),
+        source_contextual=True,
+    )
+    assert target is not None
+    assert target.actionable is True
+    assert target.start_at == NOW
+    assert target.end_at == NOW + timedelta(hours=1)
+    assert target.resources[0].resource_id == UUID(int=11)
+
+
+def test_replacement_target_does_not_relabel_reschedule_as_replacement() -> None:
+    later = _slot(2, contextual=True)
+    target = choose_replacement_target(
+        (later,),
+        original_start=NOW,
+        original_end=NOW + timedelta(hours=1),
+        source_resource_id=UUID(int=10),
+        source_contextual=True,
+    )
+    assert target is None
+
+
+def test_replacement_target_fails_closed_across_context_boundary() -> None:
+    legacy = _same_time_slot(11, contextual=False)
+    target = choose_replacement_target(
+        (legacy,),
+        original_start=NOW,
+        original_end=NOW + timedelta(hours=1),
+        source_resource_id=UUID(int=10),
         source_contextual=True,
     )
     assert target is not None
