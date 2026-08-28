@@ -1,5 +1,8 @@
 # pyright: reportPrivateUsage=false
 
+from typing import Protocol
+from uuid import UUID
+
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
     _build_authoritative_profiles as build_authoritative_profiles,
 )
@@ -22,7 +25,17 @@ from request_engine.modules.booking.adapters.db.contextual_reservation_commands 
     _resolve_selected_assignments as resolve_selected_assignments,
 )
 
+
+class RequirementLike(Protocol):
+    @property
+    def id(self) -> UUID: ...
+
+    @property
+    def ordinal(self) -> int: ...
+
+
 __all__ = [
+    "RequirementLike",
     "build_authoritative_profiles",
     "configuration_fingerprint",
     "effective_context_observations",
