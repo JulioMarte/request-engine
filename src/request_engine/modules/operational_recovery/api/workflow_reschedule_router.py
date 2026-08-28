@@ -8,6 +8,7 @@ from request_engine.modules.operational_recovery.api.workflow_models import (
     RescheduleRecoveryBody,
 )
 from request_engine.modules.operational_recovery.application.workflow_commands import (
+    ReplaceResourceRecoveryActionCommand,
     RescheduleRecoveryActionCommand,
 )
 from request_engine.modules.operational_recovery.application.workflow_service import (
@@ -55,12 +56,46 @@ def create_reschedule_router(
         )
         return RecoveryActionView.from_contract(action)
 
+    async def replace_resource(
+        incident_id: UUID,
+        body: RescheduleRecoveryBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> RecoveryActionView:
+        require_capability(actor, "operational_recovery.execute")
+        action = await service.replace_resource(
+            ReplaceResourceRecoveryActionCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                incident_id=incident_id,
+                expected_source_revision=body.expected_source_revision,
+                proposal_id=body.proposal_id,
+                reservation_id=body.reservation_id,
+                expected_source_fingerprint=body.expected_source_fingerprint,
+                expected_proposal_fingerprint=body.expected_proposal_fingerprint,
+                idempotency_key=idempotency_key,
+                allow_subject_override=body.allow_subject_override,
+            )
+        )
+        return RecoveryActionView.from_contract(action)
+
     add_capability_route(
         router,
         "/incidents/{incident_id}/reschedule",
         reschedule,
         capability="operational_recovery.execute",
         methods=["POST"],
+        operation_id="operational_recovery_reschedule",
+        response_model=RecoveryActionView,
+        status_code=status.HTTP_200_OK,
+    )
+    add_capability_route(
+        router,
+        "/incidents/{incident_id}/replace-resource",
+        replace_resource,
+        capability="operational_recovery.execute",
+        methods=["POST"],
+        operation_id="operational_recovery_replace_resource",
         response_model=RecoveryActionView,
         status_code=status.HTTP_200_OK,
     )
