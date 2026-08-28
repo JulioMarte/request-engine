@@ -9,6 +9,7 @@ from request_engine.platform.db.session import SessionFactory, tenant_transactio
 from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import LeaseLostWorkError
 
+from .automatic_proposal_store import find_automatic_proposal_id
 from .scheduled_assessment_fence import lock_recovery_source_revision
 from .scheduled_assessment_idempotency import incident_matches_assessment
 from .scheduled_assessment_models import ScheduledAssessmentCommit
@@ -46,13 +47,32 @@ class PostgresScheduledAssessmentStore:
             ):
                 return ScheduledAssessmentCommit(applied=False, stale=True, incident=None)
 
-            decision = classify_recovery_assessment(assessment)
             existing = await get_open_incident_row(
                 session,
                 organization_id=organization_id,
                 service_queue_id=service_queue_id,
                 lock=True,
             )
+            persisted_proposal_id = await find_automatic_proposal_id(
+                session,
+                organization_id=organization_id,
+                service_queue_id=service_queue_id,
+                source_revision=target_source_revision,
+            )
+            if (
+                existing is not None
+                and existing.source_revision == target_source_revision
+                and persisted_proposal_id is not None
+                and existing.current_proposal_id == persisted_proposal_id
+            ):
+                return ScheduledAssessmentCommit(
+                    applied=False,
+                    stale=False,
+                    incident=existing,
+                    proposal_id=persisted_proposal_id,
+                )
+
+            decision = classify_recovery_assessment(assessment)
             if not decision.material and existing is None:
                 return ScheduledAssessmentCommit(applied=False, stale=False, incident=None)
 
