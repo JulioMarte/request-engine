@@ -15,9 +15,7 @@ def choose_recovery_target(
     """Choose a reschedule target without crossing commitment semantics."""
 
     candidates = tuple(
-        slot
-        for slot in slots
-        if slot.start_at != original_start or slot.end_at != original_end
+        slot for slot in slots if slot.start_at != original_start or slot.end_at != original_end
     )
     return _choose_compatible_target(candidates, source_contextual=source_contextual)
 
