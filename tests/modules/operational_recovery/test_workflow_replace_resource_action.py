@@ -12,6 +12,7 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 from request_engine.modules.operational_recovery.application.workflow_replace_resource_action import (
     execute_replace_resource_action,
 )
+from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryActionKind,
     RecoveryActionStatus,
@@ -19,7 +20,6 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 
 from .workflow_reschedule_test_support import (
     INCIDENT,
-    LOCATION,
     NOW,
     ORG,
     PRINCIPAL,
@@ -38,9 +38,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.contract]
 ALTERNATE_RESOURCE = UUID(int=99)
 
 
-def replacement_proposal():
+def replacement_proposal() -> RescheduleProposal:
     current = proposal()
     affected = current.affected[0]
+    assert affected.target is not None
     replacement = replace(
         affected.target,
         start_at=affected.original_start_at,
