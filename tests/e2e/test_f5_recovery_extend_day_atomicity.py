@@ -44,9 +44,7 @@ async def test_f5_extend_day_stale_resource_step_leaves_no_partial_location_exte
         incident_id = seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         source_revision = _source_revision(proposal)
         location_revision, resource_revision = _owner_revisions(e2e_admin_conn, sandbox)
-        before_location_exceptions = _location_recovery_exception_count(
-            e2e_admin_conn, sandbox
-        )
+        before_location_exceptions = _location_recovery_exception_count(e2e_admin_conn, sandbox)
         before_assignment_exceptions = _assignment_recovery_exception_count(
             e2e_admin_conn, sandbox, supply.assignment_id
         )
@@ -64,18 +62,17 @@ async def test_f5_extend_day_stale_resource_step_leaves_no_partial_location_exte
                 "expected_resource_availability_revision": resource_revision - 1,
                 "reason": "adversarial stale resource revision",
             },
-            headers=auth(
-                sandbox, idempotency_key=f"f5-extend-day-stale-{uuid4().hex}"
-            ),
+            headers=auth(sandbox, idempotency_key=f"f5-extend-day-stale-{uuid4().hex}"),
         )
 
     assert response.status_code == 409, response.text
     assert _location_recovery_exception_count(e2e_admin_conn, sandbox) == (
         before_location_exceptions
     )
-    assert _assignment_recovery_exception_count(
-        e2e_admin_conn, sandbox, supply.assignment_id
-    ) == before_assignment_exceptions
+    assert (
+        _assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
+        == before_assignment_exceptions
+    )
     assert _owner_revisions(e2e_admin_conn, sandbox) == (
         location_revision,
         resource_revision,
