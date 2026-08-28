@@ -9,14 +9,15 @@ from request_engine.modules.live_capacity.contracts.recovery import (
 from request_engine.modules.operational_recovery.application.fingerprints import (
     proposal_fingerprint,
 )
+from request_engine.modules.operational_recovery.application.proposal_checkpoint import (
+    proposal_checkpoint,
+)
 from request_engine.modules.operational_recovery.application.proposal_policy import (
     choose_recovery_target,
     choose_replacement_target,
 )
 from request_engine.modules.operational_recovery.contracts.models import (
     AffectedReservation,
-    RecoveryCommitmentCheckpoint,
-    RecoverySourceCheckpoint,
     RescheduleProposal,
 )
 
@@ -40,21 +41,7 @@ async def build_proposal(
             for commitment in assessment.affected_commitments
         ]
     )
-    checkpoint = RecoverySourceCheckpoint(
-        projection_policy_revision=assessment.checkpoint.projection_policy_revision,
-        resource_availability_revision=assessment.checkpoint.resource_availability_revision,
-        location_operational_revision=assessment.checkpoint.location_operational_revision,
-        recovery_source_revision=assessment.checkpoint.recovery_source_revision,
-        commitments=tuple(
-            RecoveryCommitmentCheckpoint(
-                reservation_id=item.reservation_id,
-                revision=item.revision,
-                starts_at=item.starts_at,
-                ends_at=item.ends_at,
-            )
-            for item in assessment.checkpoint.commitments
-        ),
-    )
+    checkpoint = proposal_checkpoint(assessment)
     fingerprint = proposal_fingerprint(
         source_fingerprint=assessment.source_fingerprint,
         source_checkpoint=checkpoint,
