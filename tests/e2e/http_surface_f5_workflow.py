@@ -3,7 +3,7 @@ from .http_surface import HttpProbe, PublicHttpOperation, TenantIsolationMode
 P1 = "00000000-0000-4000-8000-000000000001"
 P2 = "00000000-0000-4000-8000-000000000002"
 
-PROPOSAL_ACTION_BODY = {
+PROPOSAL_ACTION_BODY: dict[str, object] = {
     "expected_source_revision": 1,
     "proposal_id": P2,
     "reservation_id": P2,
