@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from uuid import UUID
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
@@ -7,6 +6,9 @@ from request_engine.modules.operational_recovery.adapters.db.scheduled_assessmen
 )
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_idempotency import (
     incident_matches_assessment,
+)
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_models import (
+    ScheduledAssessmentCommit,
 )
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_proposal import (
     automatic_proposal_for_assessment,
@@ -22,18 +24,9 @@ from request_engine.modules.operational_recovery.application.workflow_assessment
     classify_recovery_assessment,
 )
 from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
-from request_engine.modules.operational_recovery.contracts.workflow import RecoveryIncident
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import LeaseLostWorkError
-
-
-@dataclass(frozen=True, slots=True)
-class ScheduledAssessmentCommit:
-    applied: bool
-    stale: bool
-    incident: RecoveryIncident | None
-    proposal_id: UUID | None = None
 
 
 class PostgresScheduledAssessmentStore:
