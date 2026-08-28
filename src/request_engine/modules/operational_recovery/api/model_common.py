@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -68,6 +69,11 @@ class RecoveryTargetView(BaseModel):
     resources: tuple[RecoveryResourceChoiceView, ...]
     actionable: bool
     blocked_reason: str | None
+    planned_duration_minutes: int | None
+    amount: Decimal | None
+    currency: str | None
+    location_operational_revision: int | None
+    configuration_fingerprint: str | None
 
     @classmethod
     def from_contract(cls, item: RecoveryTarget) -> "RecoveryTargetView":
@@ -87,6 +93,11 @@ class RecoveryTargetView(BaseModel):
             ),
             actionable=item.actionable,
             blocked_reason=item.blocked_reason,
+            planned_duration_minutes=item.planned_duration_minutes,
+            amount=item.amount,
+            currency=item.currency,
+            location_operational_revision=item.location_operational_revision,
+            configuration_fingerprint=item.configuration_fingerprint,
         )
 
 
