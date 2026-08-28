@@ -6,11 +6,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    RequirementLike,
     build_authoritative_profiles,
     configuration_fingerprint,
 )
 from request_engine.modules.booking.adapters.db.recovery_contextual_snapshot import (
-    RequirementLike,
     load_contextual_recovery_snapshot,
 )
 from request_engine.modules.booking.adapters.db.recovery_contextual_terms import (
