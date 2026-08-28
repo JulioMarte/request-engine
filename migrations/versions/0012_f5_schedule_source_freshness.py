@@ -19,6 +19,12 @@ _SQL = r"""
 SET ROLE request_engine_schema_owner;
 SET search_path = request_engine, pg_catalog;
 
+CREATE POLICY live_capacity_projection_policies_recovery_trigger_read
+ON request_engine.live_capacity_projection_policies
+FOR SELECT
+TO request_engine_schema_owner
+USING (pg_trigger_depth() > 0);
+
 CREATE FUNCTION request_engine.bump_location_revision_recovery_sources()
 RETURNS trigger
 LANGUAGE plpgsql
