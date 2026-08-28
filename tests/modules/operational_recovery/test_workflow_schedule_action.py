@@ -63,7 +63,7 @@ async def test_extend_day_retry_preserves_partial_owner_step_and_identity() -> N
             capacity=FakeCapacity(),
         )
     assert repository.action is not None
-    assert repository.action.status is RecoveryActionStatus.RUNNING
+    assert repository.action.status is RecoveryActionStatus.PARTIALLY_APPLIED
     assert "catalog_location" in repository.action.owner_steps
     repository.incident = replace(repository.incident, source_revision=4, revision=2)
 
