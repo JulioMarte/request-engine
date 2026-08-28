@@ -3,7 +3,6 @@ from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.intake_control_codec import intake_state_from_row
@@ -42,7 +41,7 @@ async def load_intake_control(
     )
     if row is None:
         raise LookupError(f"ServiceQueue {service_queue_id} intake control is not configured")
-    return intake_state_from_row(cast(RowMapping, row))
+    return intake_state_from_row(row)
 
 
 async def require_queue_accepting_intake(

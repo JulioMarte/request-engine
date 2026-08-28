@@ -1,7 +1,8 @@
-from collections.abc import Mapping
 from datetime import datetime
 from typing import cast
 from uuid import UUID
+
+from sqlalchemy.engine import RowMapping
 
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
@@ -13,7 +14,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 )
 
 
-def incident_from_row(row: Mapping[str, object]) -> RecoveryIncident:
+def incident_from_row(row: RowMapping) -> RecoveryIncident:
     return RecoveryIncident(
         id=cast(UUID, row["id"]),
         organization_id=cast(UUID, row["organization_id"]),
@@ -33,7 +34,7 @@ def incident_from_row(row: Mapping[str, object]) -> RecoveryIncident:
     )
 
 
-def action_from_row(row: Mapping[str, object]) -> RecoveryAction:
+def action_from_row(row: RowMapping) -> RecoveryAction:
     return RecoveryAction(
         id=cast(UUID, row["id"]),
         organization_id=cast(UUID, row["organization_id"]),

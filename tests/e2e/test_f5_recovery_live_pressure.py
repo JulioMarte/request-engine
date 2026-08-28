@@ -1,15 +1,21 @@
 from uuid import UUID, uuid4
 
 import pytest
+from httpx import AsyncClient
 
 from request_engine.platform.db.session import SessionFactory
 
 from .f3_acceptance_assertions import seed_walk_in_subject
 from .f5_recovery_assertions import create_proposal
 from .f5_recovery_support import f5_actor
-from .f5_recovery_world import prepare_recovery_world
+from .f5_recovery_world import RecoveryWorld, prepare_recovery_world
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import (
+    TenantSandbox,
+    auth,
+    client_with_actors,
+    seed_tenant_sandbox,
+)
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -23,7 +29,12 @@ pytestmark = [
 ]
 
 
-async def _add_walk_in(client, conn, sandbox, world) -> None:
+async def _add_walk_in(
+    client: AsyncClient,
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+    world: RecoveryWorld,
+) -> None:
     response = await client.post(
         f"/v1/queues/{sandbox.queue_id}/check-in",
         json={

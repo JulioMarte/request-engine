@@ -7,7 +7,7 @@ from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacitySource,
 )
 from request_engine.modules.operational_recovery.application.workflow_ports import (
-    RecoveryWorkflowRepository,
+    RecoveryAssessmentRepository,
 )
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryImpactKind,
@@ -59,7 +59,7 @@ async def reconcile_recovery_incident(
     *,
     organization_id: UUID,
     service_queue_id: UUID,
-    repository: RecoveryWorkflowRepository,
+    repository: RecoveryAssessmentRepository,
     capacity: RecoveryCapacitySource,
     current_proposal_id: UUID | None = None,
 ) -> tuple[RecoveryCapacityAssessment, RecoveryIncident | None]:

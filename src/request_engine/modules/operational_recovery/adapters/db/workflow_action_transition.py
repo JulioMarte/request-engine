@@ -1,10 +1,8 @@
 import json
 from collections.abc import Mapping
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.operational_recovery.adapters.db.workflow_codec import action_from_row
@@ -59,4 +57,4 @@ async def transition_action_row(
         .mappings()
         .one()
     )
-    return action_from_row(cast(RowMapping, row))
+    return action_from_row(row)

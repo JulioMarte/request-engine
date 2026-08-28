@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import UUID
 
 from request_engine.modules.live_capacity.contracts.projection import ProjectionState
@@ -92,10 +93,11 @@ class FakeRepository:
 
     async def upsert_assessment(self, **kwargs: object) -> RecoveryIncident:
         self.upserts.append(dict(kwargs))
-        if kwargs["resolve"]:
-            status = RecoveryIncidentStatus.RESOLVED
-        else:
-            status = RecoveryIncidentStatus.OPEN
+        status = (
+            RecoveryIncidentStatus.RESOLVED
+            if kwargs["resolve"]
+            else RecoveryIncidentStatus.OPEN
+        )
         return RecoveryIncident(
             id=UUID(int=9),
             organization_id=ORG,
@@ -103,10 +105,10 @@ class FakeRepository:
             resource_id=RESOURCE,
             location_id=LOCATION,
             status=status,
-            impact_kind=kwargs["impact_kind"],
-            escalation_level=kwargs["escalation_level"],
-            source_revision=kwargs["source_revision"],
-            source_fingerprint=kwargs["source_fingerprint"],
+            impact_kind=cast(RecoveryImpactKind, kwargs["impact_kind"]),
+            escalation_level=cast(int, kwargs["escalation_level"]),
+            source_revision=cast(int, kwargs["source_revision"]),
+            source_fingerprint=cast(str, kwargs["source_fingerprint"]),
             current_proposal_id=None,
             opened_at=NOW,
             last_assessed_at=NOW,

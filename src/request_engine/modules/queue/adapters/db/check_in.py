@@ -5,7 +5,9 @@ from request_engine.modules.queue.adapters.db.check_in_persistence import (
     ensure_subject_not_active,
     insert_queue_entry,
 )
-from request_engine.modules.queue.adapters.db.intake_control import require_queue_accepting_intake
+from request_engine.modules.queue.adapters.db.intake_control_store import (
+    require_queue_accepting_intake,
+)
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
 from request_engine.modules.queue.adapters.db.live_queue_recording import record_queue_fact
 from request_engine.modules.queue.adapters.db.live_queue_serialization import (

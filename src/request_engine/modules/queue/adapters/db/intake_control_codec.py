@@ -3,10 +3,12 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy.engine import RowMapping
+
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlState
 
 
-def intake_state_from_row(row: Mapping[str, object]) -> QueueIntakeControlState:
+def intake_state_from_row(row: RowMapping) -> QueueIntakeControlState:
     return QueueIntakeControlState(
         service_queue_id=cast(UUID, row["service_queue_id"]),
         accepting=cast(bool, row["accepting"]),

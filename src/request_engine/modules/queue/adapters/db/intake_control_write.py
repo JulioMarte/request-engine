@@ -1,7 +1,4 @@
-from typing import cast
-
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.intake_control_codec import intake_state_from_row
@@ -45,4 +42,4 @@ async def update_intake_control(
         .mappings()
         .one()
     )
-    return intake_state_from_row(cast(RowMapping, row))
+    return intake_state_from_row(row)

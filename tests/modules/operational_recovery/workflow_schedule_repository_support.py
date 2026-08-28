@@ -1,9 +1,11 @@
 from collections.abc import Mapping
 from dataclasses import replace
+from typing import cast
 from uuid import UUID
 
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
+    RecoveryActionKind,
     RecoveryActionStatus,
     RecoveryImpactKind,
     RecoveryIncident,
@@ -60,15 +62,16 @@ class FakeWorkflowRepository:
         return self.incident if organization_id == ORG and service_queue_id == QUEUE else None
 
     async def upsert_assessment(self, **kwargs: object) -> RecoveryIncident:
-        if kwargs["resolve"]:
-            status = RecoveryIncidentStatus.RESOLVED
-        else:
-            status = RecoveryIncidentStatus.OPEN
+        status = (
+            RecoveryIncidentStatus.RESOLVED
+            if kwargs["resolve"]
+            else RecoveryIncidentStatus.OPEN
+        )
         self.incident = replace(
             self.incident,
             status=status,
-            source_revision=kwargs["source_revision"],
-            source_fingerprint=kwargs["source_fingerprint"],
+            source_revision=cast(int, kwargs["source_revision"]),
+            source_fingerprint=cast(str, kwargs["source_fingerprint"]),
             revision=self.incident.revision + 1,
         )
         return self.incident
@@ -80,13 +83,13 @@ class FakeWorkflowRepository:
             ACTION,
             ORG,
             INCIDENT,
-            kwargs["action_kind"],
+            cast(RecoveryActionKind, kwargs["action_kind"]),
             RecoveryActionStatus.PREPARED,
             PRINCIPAL,
-            kwargs["idempotency_key"],
-            kwargs["command_fingerprint"],
-            kwargs["expected_source_revision"],
-            kwargs["payload"],
+            cast(str, kwargs["idempotency_key"]),
+            cast(str, kwargs["command_fingerprint"]),
+            cast(int, kwargs["expected_source_revision"]),
+            cast(Mapping[str, object], kwargs["payload"]),
             {},
             None,
             NOW,

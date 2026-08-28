@@ -1,8 +1,6 @@
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.operational_recovery.adapters.db.workflow_codec import incident_from_row
@@ -30,7 +28,7 @@ async def get_incident_row(
         .mappings()
         .one_or_none()
     )
-    return None if row is None else incident_from_row(cast(RowMapping, row))
+    return None if row is None else incident_from_row(row)
 
 
 async def get_open_incident_row(
@@ -59,4 +57,4 @@ async def get_open_incident_row(
         .mappings()
         .one_or_none()
     )
-    return None if row is None else incident_from_row(cast(RowMapping, row))
+    return None if row is None else incident_from_row(row)

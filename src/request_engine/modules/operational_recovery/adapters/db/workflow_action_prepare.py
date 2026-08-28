@@ -1,10 +1,8 @@
 import json
 from collections.abc import Mapping
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.operational_recovery.adapters.db.workflow_codec import action_from_row
@@ -62,7 +60,7 @@ async def prepare_action_row(
         .one_or_none()
     )
     if row is not None:
-        return action_from_row(cast(RowMapping, row)), True
+        return action_from_row(row), True
     existing = (
         (
             await session.execute(
@@ -81,7 +79,7 @@ async def prepare_action_row(
         .mappings()
         .one()
     )
-    action = action_from_row(cast(RowMapping, existing))
+    action = action_from_row(existing)
     if action.command_fingerprint != command_fingerprint:
         raise RecoveryActionConflict("idempotency key was reused with a different command")
     return action, False

@@ -11,11 +11,7 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 )
 
 
-class RecoveryWorkflowRepository(Protocol):
-    async def get_incident(
-        self, *, organization_id: UUID, incident_id: UUID
-    ) -> RecoveryIncident | None: ...
-
+class RecoveryAssessmentRepository(Protocol):
     async def get_open_incident(
         self, *, organization_id: UUID, service_queue_id: UUID
     ) -> RecoveryIncident | None: ...
@@ -34,6 +30,12 @@ class RecoveryWorkflowRepository(Protocol):
         current_proposal_id: UUID | None,
         resolve: bool,
     ) -> RecoveryIncident: ...
+
+
+class RecoveryWorkflowRepository(RecoveryAssessmentRepository, Protocol):
+    async def get_incident(
+        self, *, organization_id: UUID, incident_id: UUID
+    ) -> RecoveryIncident | None: ...
 
     async def prepare_action(
         self,
