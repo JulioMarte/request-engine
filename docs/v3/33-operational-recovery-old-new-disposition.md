@@ -78,6 +78,8 @@ The recovery workflow tranche adds:
 5. `recovery_source_revisions`: freshness serialization advanced only by owner-controlled source-table triggers (contract §7);
 6. `operational_recovery_escalations`: append-only escalation/communication policy outcomes, one immutable fact per incident and source revision (contract §5.6/§13).
 
+Escalation policy has a single evaluation authority: the scheduled reassessment handler, whose outcome is recorded in the same transaction as incident truth. Action-driven reprojection after owner mutations advances incident truth without recording an escalation outcome; the material source changes those actions cause schedule a fresh deduped reassessment, which records the outcome for the new revision.
+
 `service_queue_intake_controls` is the Queue-owned typed intake policy surface required by contract §8; F5 references it through the owner contract rather than owning it.
 
 No Reservation, capacity, schedule, delivery attempt, or outbox state is copied into a new authority.

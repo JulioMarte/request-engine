@@ -19,12 +19,6 @@ _ESCALATION_INSERT: LiteralString = (
     "customer_impact_required,impact_recipient_party_ids,source_fingerprint) "
     "VALUES (%s,%s,7,2,true,'newly_material',true,%s::jsonb,%s) RETURNING id"
 )
-_FORGED_ESCALATION_INSERT: LiteralString = (
-    "INSERT INTO request_engine.operational_recovery_escalations (organization_id,incident_id,"
-    "source_revision,escalation_level,operator_escalation_required,escalation_reason,"
-    "customer_impact_required,impact_recipient_party_ids,source_fingerprint) "
-    "VALUES (%s,%s,8,3,true,'worsening_severity',false,'[]'::jsonb,%s) RETURNING id"
-)
 
 
 def _tenant_context(conn: PgConnection, org: UUID) -> None:
@@ -74,8 +68,8 @@ def test_f5_escalation_facts_are_immutable_and_tenant_isolated(
         _denied(
             app_conn,
             "23503",
-            _FORGED_ESCALATION_INSERT,
-            (second.organization_id, escalation, uuid4().hex),
+            _ESCALATION_INSERT,
+            (second.organization_id, escalation, f'["{uuid4()}"]', uuid4().hex),
         )
 
         _tenant_context(app_conn, first.organization_id)

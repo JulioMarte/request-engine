@@ -2,8 +2,50 @@ from __future__ import annotations
 
 from typing import cast
 
+from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
+from request_engine.modules.operational_recovery.adapters.worker.scheduled_assessment import (
+    RecoveryAssessmentScheduledHandler,
+)
+from request_engine.platform.db.session import SessionFactory
+
+from .f5_delay_communication_support import add_delay_walk_in
+from .f5_recovery_support import f5_actor
+from .f5_recovery_world import RecoveryWorld, prepare_recovery_world
 from .operational_support import PgConnection
-from .tenant_sandbox import TenantSandbox
+from .tenant_sandbox import TenantSandbox, client_with_actors, seed_tenant_sandbox
+
+
+async def escalation_world(
+    conn: PgConnection,
+    session_factory: SessionFactory,
+    label: str,
+    *,
+    capacity_slots: int = 6,
+    walk_in: bool = False,
+) -> tuple[TenantSandbox, RecoveryWorld, RecoveryAssessmentScheduledHandler]:
+    sandbox = seed_tenant_sandbox(conn, label)
+    actors = {sandbox.token: f5_actor(sandbox)}
+    async with client_with_actors(session_factory, actors) as client:
+        world = await prepare_recovery_world(
+            client,
+            conn,
+            sandbox,
+            capacity_slots=capacity_slots,
+        )
+        if walk_in:
+            await add_delay_walk_in(client, conn, sandbox, world)
+    handler = build_recovery_assessment_handler(session_factory)
+    return sandbox, world, handler
+
+
+def advance_source_revision(conn: PgConnection, sandbox: TenantSandbox) -> None:
+    conn.execute(
+        "INSERT INTO request_engine.location_hours_exceptions "
+        "(organization_id,location_id,during,exception_kind,reason,active) "
+        "VALUES (%s,%s,tstzrange(clock_timestamp()+interval '3 days',"
+        "clock_timestamp()+interval '3 days 1 hour','[)'),'available','stale policy',true)",
+        (sandbox.organization_id, sandbox.location_id),
+    )
 
 
 def escalation_rows(conn: PgConnection, sandbox: TenantSandbox) -> list[tuple[object, ...]]:
@@ -31,3 +73,18 @@ def unresolved_incident_state(conn: PgConnection, sandbox: TenantSandbox) -> tup
     ).fetchone()
     assert row is not None
     return cast(tuple[object, ...], tuple(row))
+
+
+def automatic_recovery_facts(conn: PgConnection, organization_id: object) -> tuple[int, int, int]:
+    """(recovery actions, communication tasks, task outbox rows) created by automation."""
+
+    row = conn.execute(
+        "SELECT (SELECT count(*) FROM request_engine.operational_recovery_actions "
+        "WHERE organization_id=%s),"
+        "(SELECT count(*) FROM request_engine.communication_tasks WHERE organization_id=%s),"
+        "(SELECT count(*) FROM request_engine.outbox_messages WHERE organization_id=%s "
+        "AND aggregate_kind='CommunicationTask')",
+        (organization_id, organization_id, organization_id),
+    ).fetchone()
+    assert row is not None
+    return cast(tuple[int, int, int], tuple(row))
