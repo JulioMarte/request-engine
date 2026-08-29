@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "ci" / "check_python_file_budget.py"
@@ -56,3 +59,30 @@ def test_existing_oversized_file_is_ratcheted_not_rewritten() -> None:
     assert budget.violation(path, 140, 140) is None
     assert budget.violation(path, 130, 140) is None
     assert budget.violation(path, 141, 140) is not None
+
+
+def test_changed_python_files_include_untracked_python_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    (tmp_path / "tests").mkdir()
+    monkeypatch.chdir(tmp_path)
+    git("init", "--quiet")
+    git("config", "user.email", "budget-probe@example.invalid")
+    git("config", "user.name", "Budget Probe")
+    (tmp_path / "tests" / "base.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", "tests/base.py")
+    git("commit", "--quiet", "-m", "base")
+    (tmp_path / "tests" / "tracked.py").write_text("value = 2\n", encoding="utf-8")
+    git("add", "tests/tracked.py")
+    git("commit", "--quiet", "-m", "head")
+    (tmp_path / "tests" / "untracked.py").write_text("value = 3\n", encoding="utf-8")
+    (tmp_path / "tests" / "untracked.txt").write_text("not python\n", encoding="utf-8")
+
+    budget = _load_budget_module()
+    files = budget.changed_python_files("HEAD~1")
+    names = sorted(item.as_posix() for item in files)
+
+    assert names == ["tests/tracked.py", "tests/untracked.py"]

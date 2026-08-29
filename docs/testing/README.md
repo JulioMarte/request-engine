@@ -79,7 +79,7 @@ V3 historical reproducibility
   -> historical release behavior still reproduces in its own execution boundary
 ```
 
-Current-product PostgreSQL behavior is orchestrated by `scripts/ci/run_current_product.sh`. It includes `tests/e2e/` because HTTP/runtime production-like journeys are current-product evidence, not historical V3 evidence. `scripts/ci/run_v3_frozen_compatibility.sh` owns the latter two V3 questions and must not run current post-V3 application behavior on an intentionally stale V3 database. `tests/historical/` then checks pinned release provenance from the current repository without requiring current source paths/shape to remain frozen.
+Current-product PostgreSQL behavior is orchestrated by `scripts/ci/run_current_product.sh`. It includes `tests/e2e/` because HTTP/runtime production-like journeys are current-product evidence, not historical V3 evidence. The adversarial tenant-RLS catalog suite (`tests/db/test_v3_tenant_isolation_adversarial.py`) also runs there so the tenant-RLS catalog enumeration always executes against the accepted Alembic head. `scripts/ci/run_v3_frozen_compatibility.sh` owns the latter two V3 questions and must not run current post-V3 application behavior on an intentionally stale V3 database. `tests/historical/` then checks pinned release provenance from the current repository without requiring current source paths/shape to remain frozen.
 
 This separation prevents historical proof from freezing current implementation shape while keeping current guarantees continuously executable. A current regression does not become acceptable merely because historical V3 is green; a historical proof does not gain authority to force current code to support an unpromised stale-schema deployment mode.
 

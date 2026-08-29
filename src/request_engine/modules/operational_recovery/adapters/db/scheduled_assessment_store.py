@@ -10,6 +10,7 @@ from request_engine.platform.scheduling.store import lock_action_claim
 from request_engine.platform.worker.runtime import LeaseLostWorkError
 
 from .automatic_proposal_store import find_automatic_proposal_id
+from .scheduled_assessment_escalation import record_healthy_scope_closure
 from .scheduled_assessment_fence import lock_recovery_source_revision
 from .scheduled_assessment_idempotency import incident_matches_assessment
 from .scheduled_assessment_incident import upsert_incident_from_assessment
@@ -41,10 +42,8 @@ class PostgresScheduledAssessmentStore:
                 organization_id=organization_id,
                 service_queue_id=service_queue_id,
             )
-            if (
-                current != target_source_revision
-                or assessment.checkpoint.recovery_source_revision != target_source_revision
-            ):
+            assessment_revision = assessment.checkpoint.recovery_source_revision
+            if current != target_source_revision or (assessment_revision != target_source_revision):
                 return ScheduledAssessmentCommit(applied=False, stale=True, incident=None)
 
             existing = await get_open_incident_row(
@@ -74,7 +73,18 @@ class PostgresScheduledAssessmentStore:
 
             decision = classify_recovery_assessment(assessment)
             if not decision.material and existing is None:
-                return ScheduledAssessmentCommit(applied=False, stale=False, incident=None)
+                closure = await record_healthy_scope_closure(
+                    session,
+                    organization_id=organization_id,
+                    service_queue_id=service_queue_id,
+                    assessment=assessment,
+                    decision=decision,
+                )
+                if closure is None:
+                    return ScheduledAssessmentCommit(applied=False, stale=False, incident=None)
+                return ScheduledAssessmentCommit(
+                    applied=True, stale=False, incident=None, escalation=closure
+                )
 
             proposal_id = await automatic_proposal_for_assessment(
                 session,
