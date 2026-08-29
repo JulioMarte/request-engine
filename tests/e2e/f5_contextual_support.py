@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox
+from .world_clock import world_weekday
 
 _TZ = ZoneInfo("America/Santo_Domingo")
 
@@ -85,9 +86,4 @@ def restrict_contextual_capacity(
 
 
 def _current_weekday(conn: PgConnection) -> int:
-    row = conn.execute(
-        "SELECT extract(isodow FROM clock_timestamp() "
-        "AT TIME ZONE 'America/Santo_Domingo')::int - 1"
-    ).fetchone()
-    assert row is not None
-    return cast(int, row[0])
+    return world_weekday(conn)

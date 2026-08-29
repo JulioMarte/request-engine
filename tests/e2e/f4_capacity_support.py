@@ -8,6 +8,7 @@ from request_engine.platform.security.context import ActorContext
 from .f3_acceptance_assertions import acceptance_actor
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
+from .world_clock import world_weekday, world_window_start
 
 _F4_CAPABILITIES = frozenset(
     {
@@ -44,12 +45,7 @@ def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -
 
 
 def seed_today_schedule(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    row = conn.execute(
-        "SELECT extract(isodow FROM clock_timestamp() "
-        "AT TIME ZONE 'America/Santo_Domingo')::int - 1"
-    ).fetchone()
-    assert row is not None
-    weekday = row[0]
+    weekday = world_weekday(conn)
     conn.execute(
         "DELETE FROM request_engine.availability_schedules "
         "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
@@ -68,9 +64,7 @@ async def same_day_slots(
     conn: PgConnection,
     sandbox: TenantSandbox,
 ) -> list[dict[str, Any]]:
-    row = conn.execute("SELECT clock_timestamp()").fetchone()
-    assert row is not None
-    starts_at = row[0] + timedelta(minutes=5)
+    starts_at = world_window_start(conn)
     response = await client.get(
         "/v1/appointments/slots",
         params={
@@ -83,5 +77,9 @@ async def same_day_slots(
     )
     assert response.status_code == 200, response.text
     slots = cast(list[dict[str, Any]], response.json())
-    assert len(slots) >= 2
+    assert len(slots) >= 2, (
+        "test world slot supply exhausted; slot worlds seed one 00:00-23:59 "
+        "business day in America/Santo_Domingo (the repository default timezone) "
+        "and anchor to the next local day after 22:00 local"
+    )
     return slots
