@@ -5,6 +5,11 @@ from request_engine.platform.security.capabilities import CapabilityDefinition
 _OPERATION_ID_OVERRIDES = {
     "live_capacity.scope.update": "live_capacity_configure_scope_update",
     "live_capacity.estimate.update": "live_capacity_configure_estimate_update",
+    "operational_recovery.intake_control": "operational_recovery_intake_control",
+    "operational_recovery.extend_day": "operational_recovery_extend_day",
+    "operational_recovery.reschedule_action": "operational_recovery_reschedule",
+    "operational_recovery.replace_resource_action": "operational_recovery_replace_resource",
+    "operational_recovery.communicate_impact": "operational_recovery_communicate_impact",
 }
 
 

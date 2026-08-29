@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
@@ -37,6 +38,11 @@ class RecoveryTarget:
     resources: tuple[ResourceChoice, ...]
     actionable: bool
     blocked_reason: str | None = None
+    planned_duration_minutes: int | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    location_operational_revision: int | None = None
+    configuration_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +54,7 @@ class AffectedReservation:
     original_start_at: datetime
     original_end_at: datetime
     target: RecoveryTarget | None
+    replacement_target: RecoveryTarget | None = None
     contextual_commitment: bool = False
 
 

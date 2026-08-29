@@ -42,7 +42,8 @@ def source_snapshot(
 
     active_service, open_resource_activity = delivery_payload(delivery)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "projection_contract_version": 1,
         "observed_at": observed_at.isoformat(),
         "horizon_end": horizon_end.isoformat(),
         "policy": {"id": str(policy_id), "revision": policy_revision},

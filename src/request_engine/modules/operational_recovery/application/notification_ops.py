@@ -1,5 +1,6 @@
 from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
+    RecoveryCommunicationPurpose,
     RecoveryCommunicationRequest,
 )
 from request_engine.modules.operational_recovery.application.commands import ExecuteRecoveryCommand
@@ -29,6 +30,7 @@ async def ensure_notification(
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             recipient_party_id=affected.subject_party_id,
+            purpose=RecoveryCommunicationPurpose.RESCHEDULED,
             execution_id=execution.id,
             idempotency_key=f"recovery:{execution.id}:notification:v1",
             dedupe_key=f"operational-recovery:{execution.id}:rescheduled:v1",

@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -68,6 +69,11 @@ class RecoveryTargetView(BaseModel):
     resources: tuple[RecoveryResourceChoiceView, ...]
     actionable: bool
     blocked_reason: str | None
+    planned_duration_minutes: int | None
+    amount: Decimal | None
+    currency: str | None
+    location_operational_revision: int | None
+    configuration_fingerprint: str | None
 
     @classmethod
     def from_contract(cls, item: RecoveryTarget) -> "RecoveryTargetView":
@@ -87,6 +93,11 @@ class RecoveryTargetView(BaseModel):
             ),
             actionable=item.actionable,
             blocked_reason=item.blocked_reason,
+            planned_duration_minutes=item.planned_duration_minutes,
+            amount=item.amount,
+            currency=item.currency,
+            location_operational_revision=item.location_operational_revision,
+            configuration_fingerprint=item.configuration_fingerprint,
         )
 
 
@@ -99,10 +110,12 @@ class AffectedReservationView(BaseModel):
     original_end_at: datetime
     contextual_commitment: bool
     target: RecoveryTargetView | None
+    replacement_target: RecoveryTargetView | None
 
     @classmethod
     def from_contract(cls, item: AffectedReservation) -> "AffectedReservationView":
         target = item.target
+        replacement = item.replacement_target
         return cls(
             reservation_id=item.reservation_id,
             offering_version_id=item.offering_version_id,
@@ -112,4 +125,7 @@ class AffectedReservationView(BaseModel):
             original_end_at=item.original_end_at,
             contextual_commitment=item.contextual_commitment,
             target=RecoveryTargetView.from_contract(target) if target is not None else None,
+            replacement_target=(
+                RecoveryTargetView.from_contract(replacement) if replacement is not None else None
+            ),
         )

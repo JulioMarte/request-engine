@@ -3,6 +3,11 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.live_capacity.contracts.projection import (
+    ProjectionReason,
+    ProjectionState,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class RecoveryCommitmentCheckpoint:
@@ -40,8 +45,12 @@ class RecoveryCapacityAssessment:
     location_id: UUID
     observed_at: datetime
     horizon_end: datetime
+    projection_state: ProjectionState
+    projection_reasons: tuple[ProjectionReason, ...]
     executable_capacity_seconds: int
     committed_capacity_seconds: int
+    scheduled_shortfall_seconds: int
+    live_shortfall_seconds: int
     shortfall_seconds: int
     source_fingerprint: str
     source_snapshot: dict[str, object]

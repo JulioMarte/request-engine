@@ -94,6 +94,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f4-live-capacity-db.xml"
 
+# F5 operational recovery is current product truth. Keep its workflow/RLS/
+# freshness and escalation-fact PostgreSQL proofs on the same accepted
+# migration head so recovery guarantees cannot regress silently.
+uv run pytest \
+  tests/db/test_f5_*.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f5-recovery-db.xml"
+
 # CallNext is an application-command concurrency contract, not only a historical
 # V3 vertical. Keep its real adapter race on current HEAD so Queue changes cannot
 # retain green DB constraints while regressing command-level serialization.

@@ -1,6 +1,8 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
+from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
+from request_engine.bootstrap.scheduled_worker import build_scheduled_action_router
 from request_engine.entrypoints.worker.app import WorkerProcess
 from request_engine.entrypoints.worker.outbox_runtime import (
     RESERVATION_LIFECYCLE_EVENT_TYPES,
@@ -15,22 +17,7 @@ from request_engine.entrypoints.worker.provider_event_router import (
     ProviderEventKey,
     ProviderEventRouter,
 )
-from request_engine.entrypoints.worker.scheduled_router import ScheduledActionRouter
-from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
-    NO_SHOW_ACTION_TYPE,
-    NO_SHOW_ACTION_VERSION,
-)
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
-from request_engine.modules.communications.adapters.db.delivery_store import (
-    DISPATCH_ACTION_TYPE,
-    DISPATCH_ACTION_VERSION,
-    RECONCILE_ACTION_TYPE,
-    RECONCILE_ACTION_VERSION,
-)
-from request_engine.modules.communications.adapters.db.reminder_commands import (
-    REMINDER_ACTION_TYPE,
-    REMINDER_ACTION_VERSION,
-)
 from request_engine.modules.communications.adapters.db.reminder_occurrences import (
     PostgresReminderOccurrenceCommands,
 )
@@ -39,8 +26,6 @@ from request_engine.modules.communications.adapters.worker.scheduled_delivery im
 )
 from request_engine.modules.communications.contracts.delivery import CommunicationDeliveryProvider
 from request_engine.modules.queue.adapters.worker.slot_offer_expiry import (
-    SLOT_OFFER_EXPIRY_ACTION_TYPE,
-    SLOT_OFFER_EXPIRY_ACTION_VERSION,
     SlotOfferExpiryScheduledHandler,
 )
 from request_engine.platform.db.session import SessionFactory
@@ -59,42 +44,6 @@ class WorkerProcessConfig:
     scheduled_actions: WorkerRuntimeConfig = field(default_factory=WorkerRuntimeConfig)
     outbox_messages: WorkerRuntimeConfig = field(default_factory=WorkerRuntimeConfig)
     provider_events: WorkerRuntimeConfig = field(default_factory=WorkerRuntimeConfig)
-
-
-def build_scheduled_action_router(
-    *,
-    no_show: NoShowScheduledHandler,
-    slot_offer_expiry: SlotOfferExpiryScheduledHandler,
-    reminder_occurrences: PostgresReminderOccurrenceCommands,
-    communication_delivery: CommunicationDeliveryScheduledHandler,
-) -> ScheduledActionRouter:
-    """Compose concrete module worker adapters at the application boundary."""
-
-    return ScheduledActionRouter(
-        {
-            ("booking", NO_SHOW_ACTION_TYPE, NO_SHOW_ACTION_VERSION): no_show.handle,
-            (
-                "queue",
-                SLOT_OFFER_EXPIRY_ACTION_TYPE,
-                SLOT_OFFER_EXPIRY_ACTION_VERSION,
-            ): slot_offer_expiry.handle,
-            (
-                "communications",
-                REMINDER_ACTION_TYPE,
-                REMINDER_ACTION_VERSION,
-            ): reminder_occurrences.materialize,
-            (
-                "communications",
-                DISPATCH_ACTION_TYPE,
-                DISPATCH_ACTION_VERSION,
-            ): communication_delivery.handle,
-            (
-                "communications",
-                RECONCILE_ACTION_TYPE,
-                RECONCILE_ACTION_VERSION,
-            ): communication_delivery.handle,
-        }
-    )
 
 
 def build_worker_process(
@@ -126,7 +75,6 @@ def build_worker_process(
         )
 
     runtime_config = config or WorkerProcessConfig()
-
     scheduled_store = PostgresScheduledActionWorker(worker_session_factory)
     outbox_store = PostgresOutboxWorker(worker_session_factory)
     provider_event_store = PostgresProviderEventWorker(worker_session_factory)
@@ -139,11 +87,13 @@ def build_worker_process(
         scheduled_store,
         communication_providers,
     )
+    recovery_assessment = build_recovery_assessment_handler(domain_session_factory)
     scheduled_router = build_scheduled_action_router(
         no_show=no_show,
         slot_offer_expiry=slot_offer_expiry,
         reminder_occurrences=reminder_occurrences,
         communication_delivery=communication_delivery,
+        recovery_assessment=recovery_assessment,
     )
 
     fenced_internal_handlers: dict[str, FencedOutboxInternalHandler] = {}

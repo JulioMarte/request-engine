@@ -1,13 +1,23 @@
 from fastapi import FastAPI
 
+from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
+from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
 )
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
+from request_engine.modules.booking.api.recovery_schedule import (
+    build_recovery_assignment_schedule_port,
+)
 from request_engine.modules.catalog.api import install_http as install_catalog_http
+from request_engine.modules.catalog.api.recovery_schedule import (
+    build_recovery_location_schedule_port,
+)
 from request_engine.modules.communications.api import install_http as install_communications_http
-from request_engine.modules.communications.api.recovery import build_recovery_communication_port
+from request_engine.modules.communications.api.recovery import (
+    build_recovery_communication_port,
+)
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
@@ -20,6 +30,7 @@ from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
 )
+from request_engine.modules.queue.api.recovery import build_recovery_intake_control_port
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.modules.tenancy.api import build_party_authority_reader
 from request_engine.platform.db.session import SessionFactory
@@ -71,6 +82,8 @@ def install_business_modules(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
     )
+    queue_intake = build_recovery_intake_control_port(session_factory)
+    location_schedule = build_recovery_location_schedule_port(session_factory)
     install_recovery_http(
         app,
         session_factory=session_factory,
@@ -83,4 +96,7 @@ def install_business_modules(
         ),
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
+        intake=QueueRecoveryIntakeAdapter(queue_intake),
+        location_schedule=CatalogRecoveryLocationAdapter(location_schedule),
+        assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
     )

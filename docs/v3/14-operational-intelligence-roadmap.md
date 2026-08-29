@@ -1,6 +1,6 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1-F4 are implemented feature slices. F5 has an implemented explicit-recovery core under active closure/hardening; the broader original recovery capability set is **not** fully delivered and remains explicitly disposed in `33-operational-recovery-old-new-disposition.md`. F6 remains future feature scope.
+Status: **accepted product/design direction**. F1-F4 are implemented feature slices. F5 delivered its operational recovery + communications core slice (slice-1, PR #81, merged to `development`); the current tranche `feature/f5-roadmap-authoritative-recovery` (PR #83) implements the full recovery workflow and its required acceptance proofs, with exact-head CI as the merge gate. The broader original recovery capability set is **not** fully proven and remains explicitly disposed in `33-operational-recovery-old-new-disposition.md`. F6 remains future feature scope.
 
 This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries. A later feature contract may split a roadmap item into delivery tranches, but it MUST preserve the original capability as explicit remaining scope rather than redefining it away.
 
@@ -54,9 +54,9 @@ Cross-Tenant Discovery    Operations
                          [implemented]
                              |
                              v
-                       F5 Operational
-                    Recovery + Communications
-                  [core implemented / broader scope open]
+                        F5 Operational
+                     Recovery + Communications
+              [core merged / workflow tranche in progress]
                              |
                              v
                     F6 Operational Copilot
@@ -79,7 +79,7 @@ F1 + semantic commands -> F6
 F2 normative behavior lives in `24-geospatial-cross-tenant-discovery-contract.md`.
 F3 normative behavior lives in `26-live-service-operations-contract.md` with its current-state inventory in `27-live-service-operations-current-state-inventory.md`.
 F4 normative behavior lives in `29-live-capacity-projection-contract.md` with its old-to-new implementation inventory in `30-live-capacity-projection-current-state-inventory.md`.
-F5 core normative behavior lives in `32-operational-recovery-communications-contract.md`; `33-operational-recovery-old-new-disposition.md` preserves the original roadmap delta and records delivered, reused, partial and deferred capabilities; `34-operational-recovery-acceptance-evidence.md` records only evidence that has actually been demonstrated.
+F5 normative behavior lives in `32-operational-recovery-communications-contract.md`; `33-operational-recovery-old-new-disposition.md` preserves the original roadmap delta and records delivered, reused, partial and deferred capabilities; `34-operational-recovery-acceptance-evidence.md` records only evidence that has actually been demonstrated.
 
 ---
 
@@ -170,9 +170,16 @@ F4 may expose projected overrun, insufficient headroom, affected commitments and
 
 # F5 — Operational Recovery & Communications
 
-Status: **explicit recovery core implemented on `feature/operational-recovery-communications`; broader original recovery roadmap still open**.
+Status: **slice-1 recovery core merged; full recovery workflow and its required acceptance proofs implemented on the current tranche**.
 
-Normative core contract:
+Implementation tranches:
+
+```text
+feature/operational-recovery-communications   slice-1 core, merged to development via PR #81
+feature/f5-roadmap-authoritative-recovery     full recovery workflow tranche (PR #83), in progress
+```
+
+Normative contract:
 
 ```text
 docs/v3/32-operational-recovery-communications-contract.md
@@ -190,7 +197,9 @@ Acceptance evidence:
 docs/v3/34-operational-recovery-acceptance-evidence.md
 ```
 
-The implemented F5 core consumes the canonical F4 projection, including deduplicated Booking/Queue/ServiceSession workload and blockers, persists immutable recovery proposals, and supports explicit guarded one-shot execution while leaving authoritative Reservation/capacity mutation in Booking. Successful execution may create a bounded Communications intent; Communications owns durable delivery, retries, leases/fencing, provider-result ordering and reconciliation.
+The merged F5 slice-1 core consumes the canonical F4 projection, including deduplicated Booking/Queue/ServiceSession workload and blockers, persists immutable recovery proposals, and supports explicit guarded one-shot execution while leaving authoritative Reservation/capacity mutation in Booking. Successful execution may create a bounded Communications intent; Communications owns durable delivery, retries, leases/fencing, provider-result ordering and reconciliation.
+
+The current tranche adds the full recovery workflow on top of that core: explicit stop/reopen intake, the extend-day two-owner saga, contextual provenance-preserving reschedule, same-time Resource replacement, the domain-specific multi-action RecoveryIncident/RecoveryAction workflow, and scheduled reassessment that opens/updates incidents, persists automatic proposals and evaluates escalation/communication policy under source-revision fencing (contract §5). The evaluation records a durable immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or worsens, and customer-impact notification is requested only for identified affected commitments. Delivering that notification remains the explicit COMMUNICATE_IMPACT action; delay/impact communication is persisted with the typed `operational_recovery_impact` purpose, distinct from the post-reschedule purpose. The required tranche proofs — the delay/impact communication action (proof G), the end-to-end multi-action workflow proof (F), workflow-table RLS isolation (proof H), Booking commitment-change freshness triggers and the scheduled policy-evaluation proof — are green and registered in `34-operational-recovery-acceptance-evidence.md`.
 
 Keep distinct:
 
@@ -212,22 +221,27 @@ capacity shortfall risk
   remaining active + queued + planned work likely does not fit effective availability
 ```
 
-The original F5 product direction included more than the current explicit-recovery core. Its status is:
+The original F5 product direction included more than the slice-1 core. Its status after the current tranche is:
 
 ```text
-live workload participates in recovery materiality       delivered
-one-shot supported Reservation reschedule                delivered
-customer communication after successful recovery         delivered
+live workload participates in recovery materiality       delivered (slice-1)
+one-shot supported Reservation reschedule                delivered (slice-1)
+customer communication after successful recovery         delivered (slice-1)
 natural Booking rejection of unavailable new intake      reused
-contextual/cadence-backed reschedule                      deferred
-explicit operator stop-intake policy                      deferred
-extend-day via ScheduleException                          deferred
-general/contextual replacement provider/resource          partial/deferred
-automatic event-triggered reprojection/escalation         deferred
-generalized multi-action recovery workflow                not in v1 / future decision
+explicit operator stop/reopen intake                     delivered (this tranche)
+extend-day via owner additional-hours exceptions         delivered (this tranche)
+contextual/cadence-backed reschedule                     delivered (this tranche)
+intra-Organization replacement provider/resource         delivered (this tranche)
+cross-Organization replacement                           conditional open (F2 discovery + Booking handoff)
+automatic event-triggered reprojection                   delivered (this tranche: scheduled reassessment + automatic proposals)
+commitment-change freshness triggers                     delivered (this tranche)
+delay/impact communication action                        delivered (proof G, this tranche, typed impact purpose)
+generalized multi-action recovery workflow               delivered (multi-action proof F, this tranche)
+scheduled escalation/communication policy evaluation     delivered (this tranche: durable outcome facts; delivery stays explicit)
+autonomous escalation beyond explicit policy             open
 ```
 
-Therefore the phrase `F5 implemented` must not be used without the qualifier **core slice**. The broader recovery roadmap is complete only when the deferred rows above are delivered or explicitly superseded by a later accepted product decision.
+Therefore the phrase `F5 implemented` must not be used without the qualifier **core slice + recovery workflow tranche**. F5 is complete only when the remaining open rows are delivered or explicitly superseded by a later accepted product decision, and the completion gate in `32-operational-recovery-communications-contract.md` (roadmap + contract + implementation + evidence agree) is satisfied.
 
 Internal cause and public communication language remain separate privacy concerns.
 

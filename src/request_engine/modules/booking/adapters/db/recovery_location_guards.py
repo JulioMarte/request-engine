@@ -17,6 +17,7 @@ async def lock_recovery_locations(
     source_location_id: UUID,
     expected_source_revision: int,
     target_location_id: UUID | None,
+    expected_target_revision: int | None = None,
 ) -> None:
     ids = {source_location_id}
     if target_location_id is not None:
@@ -49,5 +50,9 @@ async def lock_recovery_locations(
     source = by_id[source_location_id]
     if cast(int, source["operational_revision"]) != expected_source_revision:
         raise RecoveryBookingConflict("recovery source Location revision changed")
+    if target_location_id is not None and expected_target_revision is not None:
+        target = by_id[target_location_id]
+        if cast(int, target["operational_revision"]) != expected_target_revision:
+            raise RecoveryTargetUnavailable("recovery target Location revision changed")
     if any(row["active"] is not True for row in rows):
         raise RecoveryTargetUnavailable("recovery source or target Location is inactive")

@@ -29,7 +29,7 @@ def _planned(identity: int, start_hour: int) -> PlannedWorkloadFact:
     )
 
 
-def test_shortfall_does_not_fill_affected_set_with_still_satisfiable_reservations() -> None:
+def test_structural_shortfall_does_not_mark_still_satisfiable_reservations() -> None:
     closed_commitment = _planned(1, 13)
     satisfiable_commitment = _planned(2, 15)
     remaining = (
@@ -42,13 +42,13 @@ def test_shortfall_does_not_fill_affected_set_with_still_satisfiable_reservation
     affected = affected_recovery_commitments(
         (closed_commitment, satisfiable_commitment),
         remaining,
-        shortfall_seconds=2 * 3600,
+        scheduled_shortfall_seconds=2 * 3600,
     )
 
     assert [item.reservation_id for item in affected] == [closed_commitment.reservation_id]
 
 
-def test_live_pressure_displaces_latest_still_planned_commitment() -> None:
+def test_live_only_pressure_does_not_fabricate_affected_reservations() -> None:
     first = _planned(1, 14)
     middle = _planned(2, 15)
     latest = _planned(3, 16)
@@ -62,14 +62,13 @@ def test_live_pressure_displaces_latest_still_planned_commitment() -> None:
     affected = affected_recovery_commitments(
         (first, middle, latest),
         remaining,
-        shortfall_seconds=3600,
-        live_pressure_seconds=3600,
+        scheduled_shortfall_seconds=0,
     )
 
-    assert [item.reservation_id for item in affected] == [latest.reservation_id]
+    assert affected == ()
 
 
-def test_live_pressure_does_not_duplicate_structurally_unsatisfied_commitment() -> None:
+def test_structural_selection_ignores_live_pressure_heuristics() -> None:
     closed = _planned(1, 13)
     latest = _planned(2, 16)
     remaining = (
@@ -82,11 +81,7 @@ def test_live_pressure_does_not_duplicate_structurally_unsatisfied_commitment() 
     affected = affected_recovery_commitments(
         (closed, latest),
         remaining,
-        shortfall_seconds=2 * 3600,
-        live_pressure_seconds=3600,
+        scheduled_shortfall_seconds=3600,
     )
 
-    assert [item.reservation_id for item in affected] == [
-        closed.reservation_id,
-        latest.reservation_id,
-    ]
+    assert [item.reservation_id for item in affected] == [closed.reservation_id]

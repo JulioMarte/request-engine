@@ -40,6 +40,8 @@ Lease renewal is valid only while the current lease is still unexpired. A late h
 
 Authoritative business writes made after provider/network I/O must not rely on lease renewal alone. The tenant-scoped transaction that persists the business result must also lock and validate the same current `claim_token` before changing authoritative state. This closes the renewal-to-write race in which another worker could reclaim the action after renewal but before the domain write commits.
 
+F5 recovery reassessment applies the same rule to computation performed before the final write transaction. A worker may calculate a candidate F4 recovery assessment outside the transaction, but the tenant-scoped transaction that mutates `OperationalRecoveryIncident` must first lock the exact ScheduledAction claim and the current `recovery_source_revision`. It may persist the assessment only when both the queued target revision and the assessment checkpoint still equal that locked current revision. A superseded revision is a successful stale no-op; it cannot overwrite fresher recovery truth. Before recomputing F4, the handler also short-circuits a superseded revision with one cheap advisory revision read so a change storm costs O(1) per stale no-op, while the commit fence above remains the only authority for staleness.
+
 ## Bounded concurrency and backpressure
 
 A runtime never claims more work than it can execute concurrently.
@@ -83,6 +85,7 @@ Examples:
 - Reservation lifecycle uses OutboxMessage identity as source-event identity.
 - communication provider sends use deterministic provider idempotency keys and reconciliation after ambiguity.
 - ReservationAccess provider artifacts use a stable `(reservation, access_key, reservation revision)` materialization key. A later claimant reuses recorded provider evidence or performs a non-creating provider lookup before deciding whether provisioning or revocation is still required.
+- F5 recovery source changes append immutable reassessment work keyed by `(ServiceQueue, recovery_source_revision)`. Replaying an old row cannot regress the incident because the authoritative write revalidates the current revision under lock.
 
 Exactly-once execution outside PostgreSQL is not promised.
 
@@ -158,7 +161,7 @@ This is an operator projection, not business state.
 
 The runtime routes only explicit `(owner_module, action_type, action_version)` registrations.
 
-The Phase 4 registry covers:
+The registry covers:
 
 ```text
 booking / evaluate_no_show
@@ -166,7 +169,12 @@ queue / waitlist.expire_slot_offer
 communications / reminder occurrence
 communications / dispatch_task
 communications / reconcile_delivery
+operational_recovery / reassess_recovery_scope
 ```
+
+`operational_recovery / reassess_recovery_scope` uses `ServiceQueue` as its subject and carries the target `recovery_source_revision`. The business mutation that advances that revision must durably insert the corresponding ScheduledAction in the same database transaction, so commit cannot publish new recovery truth while losing its wake-up request. The per-revision dedupe identity is immutable and deterministic.
+
+This per-revision durable enqueue is the event-driven delivery primitive for F5; by itself it is **not** the F5 change-storm coalescing guarantee and it is not the bounded fallback sweep. Coalescing policy and fallback repair remain separate recovery requirements and require their own acceptance evidence.
 
 Unknown action types are permanent configuration errors and become dead letters instead of retrying forever. When poison communications work has a tenant-bound `CommunicationTask` subject, the handler first fences the current lease and terminalizes that task as `failed` only when no other executable dispatch intent remains.
 
@@ -180,9 +188,11 @@ The same executable-work rule applies when Communications decides whether a futu
 
 After claim, business handlers use a separate `request_engine_app` credential to open ordinary tenant-scoped transactions and set tenant context for RLS. Authoritative handler writes first lock and validate the current action claim through the narrow fencing function. A worker-control credential must never be reused as the domain session merely because it can set the tenant GUC.
 
+The F5 reassessment handler follows this boundary explicitly: the ScheduledAction is claimed/finalized through `worker_session_factory`; F4 reads and the final incident mutation use `domain_session_factory`. The final domain transaction calls the narrow ScheduledAction claim fence and revalidates the locked recovery source revision before any incident insert/update. Production composition constructs the F5 handler automatically from domain-side F4 sources; a deployment cannot satisfy the handler by passing the worker-control factory as its domain authority.
+
 The same rule applies to Outbox-derived authoritative writes. When an app transaction must validate a worker-control fact, it uses a narrow `SECURITY DEFINER` fence rather than granting the app broad Outbox access or granting the worker business-table DML. `request_cmd.lock_outbox_message_claim(...)` requires tenant-context equality plus the exact current, unexpired Outbox token and locks that row for the duration of the app transaction. `PUBLIC` cannot execute it and its `search_path` is pinned.
 
-Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. Reservation lifecycle composition also receives only `domain_session_factory`; reserved lifecycle event names cannot bypass that factory through generic Outbox handler registration. The composition root rejects reuse of the same factory object for both roles.
+Production assembly receives independent `worker_session_factory` and `domain_session_factory` objects. `ScheduledAction`, `OutboxMessage`, and `ProviderEvent` control stores are constructed only with `worker_session_factory`. Booking and Queue scheduled handler factories receive only `domain_session_factory`, and Communications reminder/delivery authoritative adapters are also constructed with `domain_session_factory`. Reservation lifecycle composition also receives only `domain_session_factory`; reserved lifecycle event names cannot bypass that factory through generic Outbox handler registration. The F5 recovery reassessment adapter is likewise constructed only with `domain_session_factory`. The composition root rejects reuse of the same factory object for both roles.
 
 The factory-identity check is a guardrail, not the entire security proof. PostgreSQL integration evidence must also demonstrate that the worker factory authenticates through the `request_engine_worker` role boundary and the domain factory through `request_engine_app`; distinct Python wrappers around one privileged credential do not satisfy this contract.
 
@@ -191,6 +201,8 @@ The factory-identity check is a guardrail, not the entire security proof. Postgr
 ## Process assembly and deployment
 
 `request_engine.bootstrap.worker.build_worker_process` is the production composition surface. It creates independent fenced runtimes for ScheduledAction, OutboxMessage, and ProviderEvent under a single `WorkerProcess`/`WorkerSupervisor` failure boundary. An unexpected stream failure cancels siblings; graceful shutdown shares one stop event across all streams.
+
+The ScheduledAction router is assembled in a dedicated bootstrap component so adding a module handler does not grow the process supervisor itself. F5 recovery reassessment is part of the standard registry rather than an optional deployment hook; once F5 source freshness enqueues work, a normally assembled worker knows how to route it.
 
 `WorkerProcess.run_once()` is a bounded operational probe and returns per-stream `WorkerItemOutcome` evidence. `WorkerProcess.run(stop_event)` is the long-lived process boundary.
 

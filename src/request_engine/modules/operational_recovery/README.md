@@ -8,7 +8,20 @@ It owns:
 - deterministic affected-Reservation recovery composition;
 - explicit one-Reservation recovery execution facts;
 - stale-proposal, idempotency and crash/retry orchestration;
-- lineage from a recovery execution to the Communications task it caused.
+- lineage from a recovery execution to the Communications task it caused;
+- the durable `RecoveryIncident`/`RecoveryAction` workflow with the closed action set
+  (stop/reopen intake, extend-day saga, contextual reschedule, intra-Organization
+  replacement, communicate impact);
+- the scheduled F4 reassessment handler that opens/updates/resolves incidents, persists
+  automatic proposals and evaluates escalation/communication policy under source-revision
+  fencing;
+- `operational_recovery_escalations`: append-only escalation/communication policy
+  outcomes, one immutable fact per incident and source revision.
+
+The scheduled reassessment handler is the single escalation-policy evaluation authority.
+Action-driven reprojection (`reconcile_recovery_incident` after owner mutations) advances
+incident truth but records no escalation outcome; the material source changes those
+actions cause trigger a fresh scheduled reassessment, which records the outcome.
 
 It does **not** own:
 
@@ -16,6 +29,8 @@ It does **not** own:
 - Reservation mutation — Booking owns the guarded reschedule command;
 - live-capacity calculation — Live Capacity owns the F4 projection/recovery source;
 - CommunicationTask, outbox, worker or provider delivery — Communications owns them;
+- delivering customer communication — policy evaluation only requests it; delivery stays
+  with the explicit `COMMUNICATE_IMPACT` action unless a later policy grants a system actor;
 - a generic long-lived workflow engine.
 
 ## Published dependency direction

@@ -50,4 +50,9 @@ def booking_request(
         ),
         idempotency_key=f"recovery:{execution.id}:booking:v1",
         allow_subject_override=command.allow_subject_override,
+        expected_planned_duration_minutes=target.planned_duration_minutes,
+        expected_amount=target.amount,
+        expected_currency=target.currency,
+        expected_target_location_operational_revision=target.location_operational_revision,
+        expected_configuration_fingerprint=target.configuration_fingerprint,
     )

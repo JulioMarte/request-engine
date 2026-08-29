@@ -49,10 +49,7 @@ def proposal_fingerprint(
     )
 
 
-def execution_fingerprint(
-    command: ExecuteRecoveryCommand,
-    target: RecoveryTarget,
-) -> str:
+def execution_fingerprint(command: ExecuteRecoveryCommand, target: RecoveryTarget) -> str:
     return _hash(
         {
             "organization_id": str(command.organization_id),
@@ -97,6 +94,9 @@ def affected_payload(item: AffectedReservation) -> dict[str, object]:
         "original_end_at": item.original_end_at.isoformat(),
         "contextual_commitment": item.contextual_commitment,
         "target": target_payload(item.target) if item.target is not None else None,
+        "replacement_target": (
+            target_payload(item.replacement_target) if item.replacement_target is not None else None
+        ),
     }
 
 
@@ -108,6 +108,11 @@ def target_payload(target: RecoveryTarget) -> dict[str, object]:
         "resources": [resource_payload(item) for item in target.resources],
         "actionable": target.actionable,
         "blocked_reason": target.blocked_reason,
+        "planned_duration_minutes": target.planned_duration_minutes,
+        "amount": str(target.amount) if target.amount is not None else None,
+        "currency": target.currency,
+        "location_operational_revision": target.location_operational_revision,
+        "configuration_fingerprint": target.configuration_fingerprint,
     }
 
 

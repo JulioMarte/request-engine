@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.booking.adapters.db.recovery_availability import (
     load_recovery_profiles_excluding_reservation,
 )
+from request_engine.modules.booking.adapters.db.recovery_contextual_target import (
+    contextual_target_requested,
+    validate_contextual_recovery_target,
+)
 from request_engine.modules.booking.adapters.db.recovery_reschedule_mutation import (
     RecoveryMutationInputs,
 )
@@ -27,7 +31,6 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
 from request_engine.modules.booking.contracts.recovery import (
     RecoveryBookingConflict,
     RecoveryRescheduleRequest,
-    RecoveryTargetUnavailable,
 )
 
 
@@ -39,25 +42,16 @@ async def prepare_target_mutation(
     start_at: datetime,
     end_at: datetime,
     duration_minutes: int,
+    base_duration_minutes: int,
     step_minutes: int,
     source_observed_at: datetime,
     source_horizon_end: datetime,
 ) -> RecoveryMutationInputs:
-    requirements = await load_requirements(
-        session,
-        request.organization_id,
-        offering_version_id,
-    )
+    requirements = await load_requirements(session, request.organization_id, offering_version_id)
     choices = validate_choice_cardinality(requirements, request.resources)
     old_claims = await load_active_recovery_claims(
-        session,
-        request.organization_id,
-        request.reservation_id,
+        session, request.organization_id, request.reservation_id
     )
-    if source_claims_are_contextual(old_claims):
-        raise RecoveryTargetUnavailable(
-            "contextual source Reservation cannot be recovery-rescheduled yet"
-        )
     old_resource_ids = tuple(cast(UUID, row["resource_id"]) for row in old_claims)
     if request.source_resource_id not in old_resource_ids:
         raise RecoveryBookingConflict(
@@ -66,9 +60,7 @@ async def prepare_target_mutation(
     new_resource_ids = tuple(choice.resource_id for choice in choices.values())
     resource_ids = tuple(sorted(set(old_resource_ids + new_resource_ids), key=str))
     resources = await lock_resources(
-        session,
-        organization_id=request.organization_id,
-        resource_ids=resource_ids,
+        session, organization_id=request.organization_id, resource_ids=resource_ids
     )
     await validate_recovery_source_checkpoint(
         session,
@@ -78,35 +70,45 @@ async def prepare_target_mutation(
         source_horizon_end=source_horizon_end,
     )
     selected = {resource_id: resources[resource_id] for resource_id in set(new_resource_ids)}
+    contextual = contextual_target_requested(request)
     await validate_resource_capabilities(
         session,
         organization_id=request.organization_id,
         requirements=requirements,
         choices=choices,
         resources=selected,
-        location_id=request.location_id,
+        location_id=None if contextual else request.location_id,
     )
-    profiles = await load_recovery_profiles_excluding_reservation(
-        session,
-        organization_id=request.organization_id,
-        resources=selected,
-        start_at=start_at,
-        end_at=end_at,
-        reservation_id=request.reservation_id,
-    )
-    revalidate_exact_slot(
-        requirements=requirements,
-        choices=choices,
-        profiles=profiles,
-        start_at=start_at,
-        end_at=end_at,
-        duration_minutes=duration_minutes,
-        step_minutes=step_minutes,
-    )
-    return RecoveryMutationInputs(
-        requirements=requirements,
-        choices=choices,
-        old_claims=old_claims,
-        start_at=start_at,
-        end_at=end_at,
-    )
+    if contextual:
+        await validate_contextual_recovery_target(
+            session,
+            request=request,
+            offering_version_id=offering_version_id,
+            requirements=requirements,
+            choices=choices,
+            resources=selected,
+            start_at=start_at,
+            end_at=end_at,
+            base_duration_minutes=base_duration_minutes,
+            step_minutes=step_minutes,
+            source_contextual=source_claims_are_contextual(old_claims),
+        )
+    else:
+        profiles = await load_recovery_profiles_excluding_reservation(
+            session,
+            organization_id=request.organization_id,
+            resources=selected,
+            start_at=start_at,
+            end_at=end_at,
+            reservation_id=request.reservation_id,
+        )
+        revalidate_exact_slot(
+            requirements=requirements,
+            choices=choices,
+            profiles=profiles,
+            start_at=start_at,
+            end_at=end_at,
+            duration_minutes=duration_minutes,
+            step_minutes=step_minutes,
+        )
+    return RecoveryMutationInputs(requirements, choices, old_claims, start_at, end_at)

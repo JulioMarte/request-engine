@@ -45,10 +45,9 @@ async def create_proposal(
     )
     if assessment.shortfall_seconds <= 0:
         raise RecoveryShortfallNotMaterial()
-    if not assessment.affected_commitments:
-        raise RuntimeError("positive recovery shortfall has no directly unsatisfied Reservations")
     proposal = await build_proposal(
-        command=command,
+        organization_id=command.organization_id,
+        search_days=command.search_days,
         assessment=assessment,
         booking=booking,
     )

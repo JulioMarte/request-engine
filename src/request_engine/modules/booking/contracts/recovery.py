@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
@@ -46,6 +47,11 @@ class RecoveryRescheduleRequest:
     expected_source_commitments: tuple[RecoveryCommitmentCheckpoint, ...]
     idempotency_key: str
     allow_subject_override: bool
+    expected_planned_duration_minutes: int | None = None
+    expected_amount: Decimal | None = None
+    expected_currency: str | None = None
+    expected_target_location_operational_revision: int | None = None
+    expected_configuration_fingerprint: str | None = None
 
 
 class RecoveryBookingPort(Protocol):
