@@ -15,11 +15,7 @@ from .tenant_sandbox import TenantSandbox, auth
 from .world_clock import world_weekday
 
 _F5_CAPABILITIES = frozenset(
-    {
-        "operational_recovery.propose",
-        "operational_recovery.read",
-        "operational_recovery.execute",
-    }
+    {"operational_recovery.propose", "operational_recovery.read", "operational_recovery.execute"}
 )
 _TZ = ZoneInfo("America/Santo_Domingo")
 
@@ -42,10 +38,9 @@ async def book_commitments(
 ) -> tuple[list[UUID], list[dict[str, Any]]]:
     slots = await same_day_slots(client, conn, sandbox)
     assert len(slots) >= count + 1, (
-        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; "
-        "slot worlds seed one 00:00-23:59 business day in America/Santo_Domingo "
-        "(the repository default timezone) and anchor to the next local day "
-        "after 22:00 local"
+        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; slot worlds"
+        " seed 00:00-23:59 business days in America/Santo_Domingo (repository default tz),"
+        " anchored to the next local day after 22:00 local"
     )
     reservations: list[UUID] = []
     for slot in slots[:count]:
@@ -73,10 +68,7 @@ def restrict_source_to_first_slots(
         raise ValueError("count must select at least one available slot")
     start_at = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
     end_at = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
-    assert start_at.date() == end_at.date(), (
-        "slot world crossed local midnight; the anchor day must stay within one "
-        "America/Santo_Domingo business day for recovery-world semantics"
-    )
+    assert start_at.date() == end_at.date(), "slot world crossed local midnight"
     weekday = start_at.weekday()
     conn.execute(
         "DELETE FROM request_engine.availability_schedules "
