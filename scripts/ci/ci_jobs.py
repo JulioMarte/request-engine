@@ -6,14 +6,31 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import selectors
+import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
+
+
+def _resolve_bash() -> str:
+    if sys.platform != "win32":
+        return "bash"
+    git_exe = shutil.which("git")
+    if git_exe:
+        candidate = Path(git_exe).resolve().parent.parent / "bin" / "bash.exe"
+        if candidate.is_file():
+            return str(candidate)
+    found = shutil.which("bash")
+    return found or "bash"
+
+
+_BASH = _resolve_bash()
 
 
 @dataclass(frozen=True)
@@ -225,7 +242,7 @@ def _safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in "-_" else "-" for char in value)
 
 
-def _write_log(handle: object | None, line: str) -> None:
+def _write_log(handle: TextIO | None, line: str) -> None:
     if handle is None:
         return
     handle.write(line)
@@ -295,7 +312,7 @@ def _run_step(
         print(f"$ {step.command}", flush=True)
 
     process = subprocess.Popen(
-        ["bash", "-lc", f"set -o pipefail; {step.command}"],
+        [_BASH, "-lc", f"set -o pipefail; {step.command}"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -305,35 +322,26 @@ def _run_step(
         bufsize=1,
     )
     timed_out = False
-    selector = selectors.DefaultSelector()
-    try:
+
+    def _pump() -> None:
         assert process.stdout is not None
-        selector.register(process.stdout, selectors.EVENT_READ)
-        deadline = time.monotonic() + step.timeout_seconds
-        while process.poll() is None:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                timed_out = True
-                process.kill()
-                break
-            for key, _ in selector.select(timeout=min(0.25, remaining)):
-                line = key.fileobj.readline()
-                if line:
-                    tail.append(line)
-                    _write_log(handle, line)
-                    if verbose:
-                        print(line, end="", flush=True)
-        if process.stdout is not None:
-            for line in process.stdout:
-                tail.append(line)
-                _write_log(handle, line)
-                if verbose:
-                    print(line, end="", flush=True)
+        for line in process.stdout:
+            tail.append(line)
+            _write_log(handle, line)
+            if verbose:
+                print(line, end="", flush=True)
+
+    reader = threading.Thread(target=_pump, daemon=True)
+    reader.start()
+    try:
+        returncode = process.wait(timeout=step.timeout_seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
         returncode = process.wait()
-    finally:
-        selector.close()
-        if handle is not None:
-            handle.close()
+    reader.join(timeout=5)
+    if handle is not None:
+        handle.close()
 
     elapsed = round(time.monotonic() - started, 3)
     status = "TIMEOUT" if timed_out else ("PASS" if returncode == 0 else "FAIL")
