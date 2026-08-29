@@ -443,3 +443,13 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-WORKER-001"
 path = "tests/db/test_f5_reassessment_change_storm.py"
 evidence = ["invariant", "contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_f5_recovery_sweep.py"
+evidence = ["invariant", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_f5_recovery_sweep_discovery.py"
+evidence = ["invariant", "adversarial", "provenance"]

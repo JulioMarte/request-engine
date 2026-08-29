@@ -15,6 +15,9 @@ It owns:
 - the scheduled F4 reassessment handler that opens/updates/resolves incidents, persists
   automatic proposals and evaluates escalation/communication policy under source-revision
   fencing;
+- a bounded reconciliation sweep that repairs lost F5 wake-ups by re-inserting the
+  missing reassessment ScheduledAction; it never evaluates F4 itself and never
+  resurrects `dead` or `cancelled` actions (operator replay only);
 - `operational_recovery_escalations`: append-only escalation/communication policy
   outcomes, one immutable fact per incident and source revision.
 
@@ -31,6 +34,7 @@ It does **not** own:
 - CommunicationTask, outbox, worker or provider delivery — Communications owns them;
 - delivering customer communication — policy evaluation only requests it; delivery stays
   with the explicit `COMMUNICATE_IMPACT` action unless a later policy grants a system actor;
+- the ScheduledAction claim runtime — the platform worker runtime owns it;
 - a generic long-lived workflow engine.
 
 ## Published dependency direction

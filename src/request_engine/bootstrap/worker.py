@@ -1,6 +1,7 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
+from request_engine.bootstrap.recovery_sweep import build_recovery_sweep
 from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
 from request_engine.bootstrap.scheduled_worker import build_scheduled_action_router
 from request_engine.entrypoints.worker.app import WorkerProcess
@@ -121,5 +122,9 @@ def build_worker_process(
             ProviderEventRouter(provider_event_handlers),
             rejecter=provider_event_store.reject,
             config=runtime_config.provider_events,
+        ),
+        recovery_sweep=build_recovery_sweep(
+            worker_session_factory,
+            domain_session_factory,
         ),
     )

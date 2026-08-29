@@ -130,7 +130,8 @@ The F5 core slice plus the current recovery workflow tranche deliver (with evide
 The broader original roadmap still has explicit open work:
 
 - cross-Organization provider replacement via F2 discovery + Booking handoff (conditional scope);
-- change-storm coalescing policy and bounded fallback sweep (`10-worker-runtime-hardening.md` — separate requirements needing their own evidence);
+- change-storm coalescing policy (`10-worker-runtime-hardening.md` — separate requirement needing its own evidence; the per-revision enqueue is not coalescing, and the handler now short-circuits superseded revisions with a cheap freshness read before recomputing F4);
+- bounded fallback sweep — delivered on the sweep lane: `tests/db/test_f5_recovery_sweep.py` proves a lost wake-up is repaired with the exact trigger identity and processed by the real handler, live actions are a clean no-op, dead/cancelled actions are never resurrected, discovery is a worker-only cross-tenant surface over scheduled actions, and repair composition converges to one action per revision;
 - autonomous escalation beyond explicit policy.
 
 These are not renamed away by calling the current tranche “F5”. Their authoritative disposition is document 33. The proofs F, G, H and commitment-change triggers that earlier revisions of this ledger listed as in flight are registered above as PASS; the open items above remain the F5 completion debt.

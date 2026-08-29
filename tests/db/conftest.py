@@ -49,7 +49,6 @@ def admin_conn(pg_conninfo: str) -> Iterator[PgConnection]:
 @pytest_asyncio.fixture
 async def command_session_factory() -> AsyncIterator[SessionFactory]:
     """Execute command races through a release-shaped app LOGIN and RLS."""
-
     host, port, database, _user, _password = _pg_values()
     role_name = f"request_engine_app_f3_{uuid4().hex[:16]}"
     role_password = uuid4().hex
@@ -75,6 +74,41 @@ async def command_session_factory() -> AsyncIterator[SessionFactory]:
         admin = psycopg.connect(_conninfo(), autocommit=True)
         try:
             admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+            admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+        finally:
+            admin.close()
+
+
+def _worker_async_url(pg_conninfo: str, user: str, password: str) -> str:
+    parts = dict(part.split("=", 1) for part in pg_conninfo.split())
+    return (
+        f"postgresql+asyncpg://{user}:{password}@{parts['host']}:{parts['port']}/{parts['dbname']}"
+    )
+
+
+@pytest_asyncio.fixture
+async def worker_session_factory(pg_conninfo: str) -> AsyncIterator[SessionFactory]:
+    """Run sweep discovery through a release-shaped worker LOGIN."""
+
+    role_name = f"request_engine_worker_sweep_{uuid4().hex[:10]}"
+    role_password = uuid4().hex
+    admin = psycopg.connect(pg_conninfo, autocommit=True)
+    try:
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_engine_worker").format(
+                sql.Identifier(role_name), sql.Literal(role_password)
+            )
+        )
+    finally:
+        admin.close()
+
+    engine = create_postgres_engine(_worker_async_url(pg_conninfo, role_name, role_password))
+    try:
+        yield create_session_factory(engine)
+    finally:
+        await engine.dispose()
+        admin = psycopg.connect(pg_conninfo, autocommit=True)
+        try:
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
         finally:
             admin.close()
