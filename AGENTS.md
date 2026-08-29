@@ -2,6 +2,15 @@
 
 These instructions apply repository-wide. A nearer `AGENTS.md` may add stricter path-specific rules.
 
+## Reporting discipline — mandatory
+
+When reporting changes to the repository owner, write in plain operational language, not implementation jargon:
+
+1. explain what changed in production terms — what a doctor, operator, or API consumer would experience;
+2. state explicitly what was NOT changed and any pre-existing issues discovered along the way;
+3. surface decisions made on the owner's behalf and pending decisions as explicit, answerable questions;
+4. never report a check as passed unless it actually ran against the intended environment.
+
 ## Branch workflow — mandatory
 
 `development` is the canonical integration branch. `main` is release-only. Request Engine uses **one serialized ordinary development integration lane**.

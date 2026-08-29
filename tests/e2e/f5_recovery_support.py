@@ -12,6 +12,7 @@ from request_engine.platform.security.context import ActorContext
 from .f4_capacity_support import f4_actor, same_day_slots
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
+from .world_clock import world_weekday
 
 _F5_CAPABILITIES = frozenset(
     {
@@ -40,7 +41,12 @@ async def book_commitments(
     count: int = 10,
 ) -> tuple[list[UUID], list[dict[str, Any]]]:
     slots = await same_day_slots(client, conn, sandbox)
-    assert len(slots) >= count + 1
+    assert len(slots) >= count + 1, (
+        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; "
+        "slot worlds seed one 00:00-23:59 business day in America/Santo_Domingo "
+        "(the repository default timezone) and anchor to the next local day "
+        "after 22:00 local"
+    )
     reservations: list[UUID] = []
     for slot in slots[:count]:
         response = await client.post(
@@ -67,7 +73,10 @@ def restrict_source_to_first_slots(
         raise ValueError("count must select at least one available slot")
     start_at = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
     end_at = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
-    assert start_at.date() == end_at.date()
+    assert start_at.date() == end_at.date(), (
+        "slot world crossed local midnight; the anchor day must stay within one "
+        "America/Santo_Domingo business day for recovery-world semantics"
+    )
     weekday = start_at.weekday()
     conn.execute(
         "DELETE FROM request_engine.availability_schedules "
@@ -121,7 +130,7 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
         "(organization_id,resource_id,capability_id) VALUES (%s,%s,%s)",
         (sandbox.organization_id, resource_id, row[0]),
     )
-    weekday = datetime.now(_TZ).weekday()
+    weekday = world_weekday(conn)
     conn.execute(
         "INSERT INTO request_engine.availability_schedules "
         "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
