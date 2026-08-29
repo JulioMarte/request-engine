@@ -94,7 +94,12 @@ def test_production_assembly_separates_worker_and_domain_factories(
         provider_event_handlers={},
     )
 
-    assert process.stream_names == ("scheduled_actions", "outbox_messages", "provider_events")
+    assert process.stream_names == (
+        "scheduled_actions",
+        "outbox_messages",
+        "provider_events",
+        "recovery_sweep",
+    )
     assert handler_factories_seen == [domain_factory, domain_factory]
     assert store_factories_seen == [
         ("scheduled", worker_factory),

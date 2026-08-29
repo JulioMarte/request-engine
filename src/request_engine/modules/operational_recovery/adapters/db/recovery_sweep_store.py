@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
@@ -28,8 +30,8 @@ _REPAIR_INSERT = text(
     ) VALUES (
       :organization_id, 'operational_recovery', 'reassess_recovery_scope', 1,
       'ServiceQueue', :service_queue_id,
-      jsonb_build_object('service_queue_id', :service_queue_id_text,
-                         'source_revision', :revision),
+      jsonb_build_object('service_queue_id', CAST(:service_queue_id_text AS text),
+                         'source_revision', CAST(:revision AS bigint)),
       :dedupe_key, clock_timestamp(), clock_timestamp(), 8
     )
     ON CONFLICT (organization_id, dedupe_key) DO NOTHING
@@ -73,17 +75,20 @@ class PostgresRecoverySweepStore:
             key = reassessment_dedupe_key(scope.service_queue_id, revision)
             if await _has_live_action(session, scope.organization_id, key):
                 return False
-            await session.execute(
-                _REPAIR_INSERT,
-                {
-                    "organization_id": scope.organization_id,
-                    "service_queue_id": scope.service_queue_id,
-                    "service_queue_id_text": str(scope.service_queue_id),
-                    "revision": revision,
-                    "dedupe_key": key,
-                },
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    _REPAIR_INSERT,
+                    {
+                        "organization_id": scope.organization_id,
+                        "service_queue_id": scope.service_queue_id,
+                        "service_queue_id_text": str(scope.service_queue_id),
+                        "revision": revision,
+                        "dedupe_key": key,
+                    },
+                ),
             )
-            return True
+            return bool(result.rowcount)
 
 
 async def _current_revision(session: AsyncSession, scope: RecoverySweepScope) -> int | None:
