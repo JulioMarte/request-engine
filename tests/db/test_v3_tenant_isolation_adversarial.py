@@ -163,16 +163,14 @@ def test_every_tenant_table_has_rls_policy_and_runtime_roles_cannot_bypass_rls(
     ).fetchall()
     assert tables
 
-    policies = {
-        cast(str, table_name): (cast(str, qual), cast(str, with_check))
-        for table_name, qual, with_check in admin_conn.execute(
-            """
-            SELECT tablename, qual, with_check
-            FROM pg_policies
-            WHERE schemaname = 'request_engine'
-            """
-        ).fetchall()
-    }
+    policies: dict[str, list[tuple[str | None, str | None, set[str]]]] = {}
+    for table_name, qual, wc, roles in admin_conn.execute(
+        "SELECT tablename, qual, with_check AS wc, roles FROM pg_policies"
+        " WHERE schemaname = 'request_engine' ORDER BY tablename"
+    ).fetchall():
+        policies.setdefault(cast(str, table_name), []).append(
+            (cast("str | None", qual), cast("str | None", wc), {str(role) for role in roles})
+        )
 
     violations: list[str] = []
     for table_name, rls_enabled in tables:
@@ -180,15 +178,24 @@ def test_every_tenant_table_has_rls_policy_and_runtime_roles_cannot_bypass_rls(
         if not rls_enabled:
             violations.append(f"{name}: RLS disabled")
             continue
-        policy = policies.get(name)
-        if policy is None:
+        table_policies = policies.get(name, [])
+        tenant_bound = [
+            (qual, wc)
+            for qual, wc, _roles in table_policies
+            if qual is not None
+            and "current_organization_id()" in qual
+            and (wc is None or "current_organization_id()" in wc)
+        ]
+        if not tenant_bound:
             violations.append(f"{name}: missing tenant policy")
             continue
-        qual, with_check = policy
-        if "current_organization_id()" not in qual:
-            violations.append(f"{name}: policy USING is not tenant-bound")
-        if "current_organization_id()" not in with_check:
-            violations.append(f"{name}: policy WITH CHECK is not tenant-bound")
+        for qual, wc, roles in table_policies:
+            if {"request_engine_app", "request_engine_worker", "public"} & roles and not (
+                qual is not None
+                and "current_organization_id()" in qual
+                and (wc is None or "current_organization_id()" in wc)
+            ):
+                violations.append(f"{name}: runtime policy is not tenant-bound")
 
     assert not violations, "Tenant RLS catalog violations:\n" + "\n".join(violations)
 

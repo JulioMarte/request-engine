@@ -94,6 +94,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f4-live-capacity-db.xml"
 
+# Tenant RLS catalog isolation is current-product truth. Run the adversarial
+# catalog enumeration against the accepted Alembic head so post-baseline tenant
+# tables cannot silently ship without FORCE RLS and a tenant-bound policy.
+uv run pytest \
+  tests/db/test_v3_tenant_isolation_adversarial.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/tenant-isolation-adversarial.xml"
+
 # F5 operational recovery is current product truth. Keep its workflow/RLS/
 # freshness and escalation-fact PostgreSQL proofs on the same accepted
 # migration head so recovery guarantees cannot regress silently.
