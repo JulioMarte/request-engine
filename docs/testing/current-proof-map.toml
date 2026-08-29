@@ -438,3 +438,8 @@ evidence = ["invariant", "contract", "adversarial", "security"]
 guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
 path = "tests/db/test_f4_rls_isolation.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_f5_reassessment_change_storm.py"
+evidence = ["invariant", "contract", "adversarial"]

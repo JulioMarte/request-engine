@@ -6,6 +6,9 @@ from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
 )
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_fence import (
+    RecoverySourceRevisionReader,
+)
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_store import (
     PostgresScheduledAssessmentStore,
 )
@@ -31,4 +34,5 @@ def build_recovery_assessment_handler(
         capacity,
         build_recovery_booking_port(session_factory),
         PostgresScheduledAssessmentStore(session_factory),
+        RecoverySourceRevisionReader(session_factory),
     )

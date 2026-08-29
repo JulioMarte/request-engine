@@ -2,9 +2,14 @@ from uuid import UUID
 
 from request_engine.modules.booking.contracts.recovery import RecoveryBookingPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_fence import (
+    RecoverySourceRevisionReader,
+)
+from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_models import (
+    ScheduledAssessmentCommit,
+)
 from request_engine.modules.operational_recovery.adapters.db.scheduled_assessment_store import (
     PostgresScheduledAssessmentStore,
-    ScheduledAssessmentCommit,
 )
 from request_engine.modules.operational_recovery.application.proposal_builder import build_proposal
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
@@ -20,10 +25,12 @@ class RecoveryAssessmentScheduledHandler:
         capacity: RecoveryCapacitySource,
         booking: RecoveryBookingPort,
         store: PostgresScheduledAssessmentStore,
+        revisions: RecoverySourceRevisionReader,
     ) -> None:
         self._capacity = capacity
         self._booking = booking
         self._store = store
+        self._revisions = revisions
 
     async def handle(self, lease: ScheduledActionLease) -> ScheduledAssessmentCommit:
         if (
@@ -45,6 +52,13 @@ class RecoveryAssessmentScheduledHandler:
             raise PermanentWorkError("recovery_reassessment_payload_invalid") from exc
         if queue_id != lease.subject_id or raw_revision <= 0:
             raise PermanentWorkError("recovery_reassessment_payload_mismatch")
+
+        current_revision = await self._revisions.read(
+            organization_id=lease.organization_id,
+            service_queue_id=queue_id,
+        )
+        if current_revision != raw_revision:
+            return ScheduledAssessmentCommit(applied=False, stale=True, incident=None)
 
         assessment = await self._capacity.assess_recovery_capacity(
             organization_id=lease.organization_id,

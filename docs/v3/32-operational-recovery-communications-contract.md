@@ -108,6 +108,8 @@ The scheduled handler MUST:
 
 A burst of events may coalesce, but the latest authoritative revision MUST eventually be assessed.
 
+Per superseded revision the scheduled handler may short-circuit with a cheap advisory freshness read (O(1) stale no-op) before rebuilding F4; the fenced commit above remains the authority that a revision is obsolete.
+
 ## 6. Materiality and affected commitments
 
 F5 continues to use canonical F4 semantics:
