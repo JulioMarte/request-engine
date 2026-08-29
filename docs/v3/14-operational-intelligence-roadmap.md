@@ -54,9 +54,9 @@ Cross-Tenant Discovery    Operations
                          [implemented]
                              |
                              v
-                        F5 Operational
-                     Recovery + Communications
-              [core merged / workflow tranche in progress]
+                         F5 Operational
+                      Recovery + Communications
+                [core + recovery workflow tranche merged]
                              |
                              v
                     F6 Operational Copilot
@@ -170,13 +170,14 @@ F4 may expose projected overrun, insufficient headroom, affected commitments and
 
 # F5 — Operational Recovery & Communications
 
-Status: **slice-1 recovery core merged; full recovery workflow and its required acceptance proofs implemented on the current tranche**.
+Status: **slice-1 recovery core, full recovery workflow tranche and the bounded fallback sweep merged; remaining roadmap debt is cross-Organization replacement, change-storm coalescing policy and autonomous escalation**.
 
 Implementation tranches:
 
 ```text
 feature/operational-recovery-communications   slice-1 core, merged to development via PR #81
-feature/f5-roadmap-authoritative-recovery     full recovery workflow tranche (PR #83), in progress
+feature/f5-roadmap-authoritative-recovery     full recovery workflow tranche, merged via PR #83
+feature/f5-recovery-fallback-sweep            bounded fallback sweep, merged via PR #93
 ```
 
 Normative contract:
@@ -199,7 +200,7 @@ docs/v3/34-operational-recovery-acceptance-evidence.md
 
 The merged F5 slice-1 core consumes the canonical F4 projection, including deduplicated Booking/Queue/ServiceSession workload and blockers, persists immutable recovery proposals, and supports explicit guarded one-shot execution while leaving authoritative Reservation/capacity mutation in Booking. Successful execution may create a bounded Communications intent; Communications owns durable delivery, retries, leases/fencing, provider-result ordering and reconciliation.
 
-The current tranche adds the full recovery workflow on top of that core: explicit stop/reopen intake, the extend-day two-owner saga, contextual provenance-preserving reschedule, same-time Resource replacement, the domain-specific multi-action RecoveryIncident/RecoveryAction workflow, and scheduled reassessment that opens/updates incidents, persists automatic proposals and evaluates escalation/communication policy under source-revision fencing (contract §5). The evaluation records a durable immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or worsens, and customer-impact notification is requested only for identified affected commitments. Delivering that notification remains the explicit COMMUNICATE_IMPACT action; delay/impact communication is persisted with the typed `operational_recovery_impact` purpose, distinct from the post-reschedule purpose. The required tranche proofs — the delay/impact communication action (proof G), the end-to-end multi-action workflow proof (F), workflow-table RLS isolation (proof H), Booking commitment-change freshness triggers and the scheduled policy-evaluation proof — are green and registered in `34-operational-recovery-acceptance-evidence.md`.
+The recovery workflow tranche adds the full recovery workflow on top of that core: explicit stop/reopen intake, the extend-day two-owner saga, contextual provenance-preserving reschedule, same-time Resource replacement, the domain-specific multi-action RecoveryIncident/RecoveryAction workflow, and scheduled reassessment that opens/updates incidents, persists automatic proposals and evaluates escalation/communication policy under source-revision fencing (contract §5). The evaluation records a durable immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or worsens, and customer-impact notification is requested only for identified affected commitments. Delivering that notification remains the explicit COMMUNICATE_IMPACT action; delay/impact communication is persisted with the typed `operational_recovery_impact` purpose, distinct from the post-reschedule purpose. The required tranche proofs — the delay/impact communication action (proof G), the end-to-end multi-action workflow proof (F), workflow-table RLS isolation (proof H), Booking commitment-change freshness triggers and the scheduled policy-evaluation proof — are green and registered in `34-operational-recovery-acceptance-evidence.md`.
 
 Keep distinct:
 
@@ -221,7 +222,7 @@ capacity shortfall risk
   remaining active + queued + planned work likely does not fit effective availability
 ```
 
-The original F5 product direction included more than the slice-1 core. Its status after the current tranche is:
+The original F5 product direction included more than the slice-1 core. Its current status is:
 
 ```text
 live workload participates in recovery materiality       delivered (slice-1)
