@@ -8,14 +8,14 @@ import json
 
 import psycopg
 import pytest
+from f5_sweep_support import sweep_world
+
 from e2e import f5_scheduled_assessment_support as assessment_support
 from e2e.operational_support import PgConnection
 from request_engine.modules.operational_recovery.adapters.db.recovery_sweep_store import (
     PostgresRecoverySweepStore,
 )
 from request_engine.platform.db.session import SessionFactory
-
-from f5_sweep_support import sweep_world, worker_session_factory
 
 pytestmark = [
     pytest.mark.asyncio,

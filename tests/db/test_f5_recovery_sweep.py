@@ -6,18 +6,13 @@
 from __future__ import annotations
 
 import pytest
+from f5_sweep_support import delete_sweep_action, sweep_action_row, sweep_world
+
 from e2e import f5_scheduled_assessment_support as assessment_support
 from e2e.operational_support import PgConnection
 from request_engine.bootstrap.recovery_sweep import build_recovery_sweep
 from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
 from request_engine.platform.db.session import SessionFactory
-
-from f5_sweep_support import (
-    delete_sweep_action,
-    sweep_action_row,
-    sweep_world,
-    worker_session_factory,
-)
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -95,8 +90,11 @@ async def test_sweep_never_resurrects_live_or_terminal_actions(
             (sandbox.organization_id, key),
         ).fetchone()
         assert count_row is not None and count_row[0] == 1
-        assert admin_conn.execute(
-            "SELECT updated_at FROM request_engine.scheduled_actions "
-            "WHERE organization_id=%s AND dedupe_key=%s",
-            (sandbox.organization_id, key),
-        ).fetchone() == updated_at
+        assert (
+            admin_conn.execute(
+                "SELECT updated_at FROM request_engine.scheduled_actions "
+                "WHERE organization_id=%s AND dedupe_key=%s",
+                (sandbox.organization_id, key),
+            ).fetchone()
+            == updated_at
+        )

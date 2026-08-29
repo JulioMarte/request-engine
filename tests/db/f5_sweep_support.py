@@ -2,48 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from uuid import UUID, uuid4
+from uuid import UUID
 
-import psycopg
-import pytest_asyncio
 from e2e.f5_recovery_support import f5_actor
 from e2e.f5_recovery_world import prepare_recovery_world
 from e2e.operational_support import PgConnection
 from e2e.tenant_sandbox import TenantSandbox, client_with_actors, seed_tenant_sandbox
-from request_engine.platform.db.session import (
-    SessionFactory,
-    create_postgres_engine,
-    create_session_factory,
-)
-
-
-def _async_url(pg_conninfo: str, user: str, password: str) -> str:
-    parts = dict(part.split("=", 1) for part in pg_conninfo.split())
-    return (
-        f"postgresql+asyncpg://{user}:{password}"
-        f"@{parts['host']}:{parts['port']}/{parts['dbname']}"
-    )
-
-
-@pytest_asyncio.fixture
-async def worker_session_factory(pg_conninfo: str) -> AsyncIterator[SessionFactory]:
-    role = f"request_engine_worker_sweep_{uuid4().hex[:10]}"
-    password = uuid4().hex
-    admin: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
-    try:
-        admin.execute(
-            psycopg.sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_engine_worker")
-            .format(psycopg.sql.Identifier(role), psycopg.sql.Literal(password))
-        )
-        engine = create_postgres_engine(_async_url(pg_conninfo, role, password))
-        try:
-            yield create_session_factory(engine)
-        finally:
-            await engine.dispose()
-        admin.execute(psycopg.sql.SQL("DROP ROLE {}").format(psycopg.sql.Identifier(role)))
-    finally:
-        admin.close()
+from request_engine.platform.db.session import SessionFactory
 
 
 async def sweep_world(
