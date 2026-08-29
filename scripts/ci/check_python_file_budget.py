@@ -54,7 +54,10 @@ def changed_python_files(base_ref: str) -> list[Path]:
         "--",
         *TARGET_ROOTS,
     )
-    return [Path(item) for item in result.stdout.splitlines() if item.endswith(".py")]
+    tracked = {item for item in result.stdout.splitlines() if item.endswith(".py")}
+    untracked = _git("ls-files", "--others", "--exclude-standard", "--", *TARGET_ROOTS)
+    candidates = tracked | {item for item in untracked.stdout.splitlines() if item.endswith(".py")}
+    return sorted(Path(item) for item in candidates)
 
 
 def source_at_ref(base_ref: str, path: Path) -> str | None:
