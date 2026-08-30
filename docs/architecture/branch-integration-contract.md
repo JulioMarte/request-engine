@@ -81,6 +81,8 @@ Scratch or `tmp/*` branches may be used to assemble provisional work without mov
 
 This discipline reduces redundant CI work; it does **not** weaken CI. Only successful evidence for the exact final head can make a branch merge-ready.
 
+Merged integration states also carry their own evidence: CI runs on every `development` and `main` merge SHA, so the canonical lane's verdict exists for the integrated state itself and not only for the PR head that produced it. This supplements, and never replaces, the exact-head PR gate.
+
 ## Parallel work policy
 
 The default is **do not open multiple ordinary merge-ready PRs from sibling development snapshots**.

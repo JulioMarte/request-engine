@@ -115,7 +115,7 @@ The PostgreSQL race is the falsifiable proof that this composition converges for
 
 ## Scope truth at closure
 
-The F5 core slice plus the current recovery workflow tranche deliver (with evidence registered above):
+The delivered F5 product provides (with evidence registered above):
 
 - canonical F4-derived recovery materiality including live workload;
 - immutable recovery proposals and deterministic affected-Reservation provenance;
@@ -130,17 +130,27 @@ The F5 core slice plus the current recovery workflow tranche deliver (with evide
 - scheduled reassessment with source-revision fencing, incident upsert and deduped automatic proposals;
 - scheduled escalation/communication policy evaluation with durable immutable outcome facts per incident and source revision (contract §5.6/§13);
 - schedule/assignment freshness triggers with one deduped reassessment action per source revision;
-- direct PostgreSQL acceptance evidence for scenarios A-E plus the freshness/security rows above.
+- direct PostgreSQL acceptance evidence for scenarios A-I.
 
-The broader original roadmap still has explicit open work:
+## Previously open roadmap work, now disposed
 
-- cross-Organization provider replacement — delivered through the two-boundary discovery handoff saga: `tests/e2e/test_f5_recovery_cross_organization_replacement.py` proves the fail-closed stale-handoff rejection, external-commit-first sequencing, source disposal and replay convergence;
-- change-storm coalescing — delivered through the shared supersede-enqueue primitive: `tests/db/test_f5_reassessment_coalescing.py` proves one pending reassessment survives a real trigger storm, deterministic two-connection convergence, and sweep repair without resurrection;
-- bounded fallback sweep — delivered (sweep lane, PR #93): `tests/db/test_f5_recovery_sweep.py` proves a lost wake-up is repaired with the exact trigger identity and processed by the real handler, live actions are a clean no-op, dead/cancelled actions are never resurrected, discovery is a worker-only cross-tenant surface over scheduled actions, and repair composition converges to one action per revision;
-- autonomous reschedule escalation — delivered through the operator-granted per-queue envelope: `tests/e2e/test_f5_recovery_autonomous_reschedule.py` proves the dormant default, envelope-bounded autonomous moves across assessment cycles under the automation principal, fail-closed out-of-envelope behavior, and the durable per-incident budget;
-- autonomous extend-day escalation — superseded as operator-only: extending the day commits human labor, so it cannot be safely automated.
+Every row the earlier revisions of this ledger listed as open roadmap work is now either delivered or explicitly superseded. Remaining F5 roadmap product debt: none.
 
-These are not renamed away by calling the current tranche “F5”. Their authoritative disposition is document 33. The proofs F, G, H and commitment-change triggers that earlier revisions of this ledger listed as in flight are registered above as PASS; the open items above remain the F5 completion debt.
+```text
+cross-Organization provider replacement   DELIVERED  two-boundary discovery handoff saga;
+                                                     tests/e2e/test_f5_recovery_cross_organization_replacement.py
+change-storm coalescing                   DELIVERED  shared supersede-enqueue primitive;
+                                                     tests/db/test_f5_reassessment_coalescing.py
+bounded fallback sweep                    DELIVERED  sweep lane, PR #93; tests/db/test_f5_recovery_sweep.py
+autonomous impact communication           DELIVERED  contract 32 section 14 authority 1;
+                                                     tests/e2e/test_f5_recovery_autonomous_impact.py
+autonomous reschedule escalation          DELIVERED  operator-granted per-queue envelope, contract 32 section 14;
+                                                     tests/e2e/test_f5_recovery_autonomous_reschedule.py
+autonomous extend-day escalation          SUPERSEDED operator-only by accepted product decision: extending
+                                                     the day commits human labor and cannot be safely automated
+```
+
+The authoritative row-by-row disposition is document 33. This closure statement describes the integrated state as of the autonomous reschedule envelope (PR #99); it is not a substitute for the per-proof rows registered above, which remain the acceptance evidence.
 
 ## Final merge gate
 
@@ -152,4 +162,4 @@ The semantic/evidence gaps that previously required PR #81 to remain draft are n
 4. no unsupported contextual recovery target exposed as actionable;
 5. no unresolved review/branch-protection requirement.
 
-The code-bearing acceptance baseline above is historical provenance; GitHub's required checks on the actual PR head are the authoritative exact-head merge gate. The recovery workflow tranche (`feature/f5-roadmap-authoritative-recovery`, PR #83) and the bounded fallback sweep (`feature/f5-recovery-fallback-sweep`, PR #93) satisfied that gate at their merges; future rows registered here become merge evidence only when their PR head's required checks are green.
+The code-bearing acceptance baseline above is historical provenance; GitHub's required checks on the actual PR head are the authoritative exact-head merge gate, and CI additionally runs on every `development` merge SHA so each integrated state carries its own canonical run. The recovery workflow tranche (`feature/f5-roadmap-authoritative-recovery`, PR #83) and the bounded fallback sweep (`feature/f5-recovery-fallback-sweep`, PR #93) satisfied that gate at their merges; future rows registered here become merge evidence only when their PR head's required checks are green.

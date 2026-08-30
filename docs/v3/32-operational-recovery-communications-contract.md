@@ -272,6 +272,8 @@ The delivered recovery policy grants the system actor two autonomous authorities
 
 Day-extension remains operator-only: it commits human labor and cannot be safely automated. Autonomy never changes WHO (subject) or WHERE (location); it only changes HOW FAR an appointment may move.
 
+The delivered envelope commits and then notifies (`AUTO_COMMIT_AND_NOTIFY` semantics): the operator's grant stands in for per-appointment consent, and the moved subject is informed after the fact. Consent-sensitive verticals may instead require proposing the new time and committing only after explicit subject acceptance (`PROPOSE_AND_REQUIRE_ACCEPTANCE`). That mode is a recognized future policy extension of this envelope, not part of the delivered baseline: introducing it requires a new accepted product decision and its own acceptance evidence, and must not be improvised inside the current autonomy path.
+
 ## 15. Required acceptance proof
 
 The PostgreSQL-backed suite MUST directly prove:
