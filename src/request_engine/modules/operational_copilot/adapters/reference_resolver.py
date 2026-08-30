@@ -1,5 +1,3 @@
-from typing import cast
-
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.discovery_reference_resolution import (
     resolve_publish_discovery,
@@ -64,4 +62,4 @@ class OwnerBackedCopilotReferenceResolver:
                 "queue",
             )
             return ShowAtRiskReservationsIntent(queue.service_queue_id)
-        return cast(CopilotIntent, intent)
+        return intent
