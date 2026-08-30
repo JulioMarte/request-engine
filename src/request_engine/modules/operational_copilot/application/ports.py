@@ -8,6 +8,10 @@ from request_engine.modules.operational_copilot.contracts import (
 )
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
+from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
+from request_engine.modules.operational_recovery.contracts.workflow_commands import (
+    SetRecoveryIntakeCommand,
+)
 
 
 class AtRiskReservationReader(Protocol):
@@ -15,13 +19,7 @@ class AtRiskReservationReader(Protocol):
 
 
 class AuthorityPartyReader(Protocol):
-    """Trusted-boundary authority resolution from tenant-owned representation truth.
-
-    Returns the single party the principal currently holds operational authority
-    for, or None when authority is absent or ambiguous; callers must refuse
-    rather than guess. Satisfied structurally by the tenancy module's published
-    operational authority reader.
-    """
+    """Resolve one trusted operational authority party or fail closed with None."""
 
     async def resolve_operational_party(
         self,
@@ -30,6 +28,10 @@ class AuthorityPartyReader(Protocol):
         principal_id: UUID,
         scope_keys: frozenset[str],
     ) -> UUID | None: ...
+
+
+class RecoveryIntakeExecutor(Protocol):
+    async def set_intake(self, command: SetRecoveryIntakeCommand) -> RecoveryAction: ...
 
 
 class CopilotMutationExecutor(Protocol):
@@ -45,5 +47,6 @@ __all__ = [
     "AtRiskReservationReader",
     "AuthorityPartyReader",
     "CopilotMutationExecutor",
+    "RecoveryIntakeExecutor",
     "RecoveryProposalReader",
 ]
