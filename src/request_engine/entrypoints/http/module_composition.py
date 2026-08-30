@@ -11,6 +11,7 @@ from request_engine.modules.booking.api.recovery_schedule import (
     build_recovery_assignment_schedule_port,
 )
 from request_engine.modules.catalog.api import install_http as install_catalog_http
+from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
 from request_engine.modules.catalog.api.recovery_schedule import (
     build_recovery_location_schedule_port,
 )
@@ -32,10 +33,10 @@ from request_engine.modules.operational_copilot.api import install_http as insta
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
+from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
 )
-from request_engine.modules.queue.api.recovery import build_recovery_intake_control_port
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.modules.tenancy.api import (
     build_operational_authority_party_reader,
@@ -88,6 +89,7 @@ def install_business_modules(
         queue_source=queue_capacity,
         delivery_source=delivery_capacity,
     )
+    queue_runtime = build_copilot_queue_runtime(session_factory)
     recovery = install_recovery_http(
         app,
         session_factory=session_factory,
@@ -95,7 +97,7 @@ def install_business_modules(
         capacity=recovery_capacity,
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
-        intake=QueueRecoveryIntakeAdapter(build_recovery_intake_control_port(session_factory)),
+        intake=QueueRecoveryIntakeAdapter(queue_runtime.intake),
         location_schedule=CatalogRecoveryLocationAdapter(
             build_recovery_location_schedule_port(session_factory)
         ),
@@ -111,4 +113,8 @@ def install_business_modules(
         intake_executor=recovery.workflow,
         extend_day_executor=recovery.workflow,
         discovery_executor=build_discovery_publication_runtime(session_factory),
+        catalog_reader=build_copilot_catalog_reader(session_factory),
+        queue_reader=queue_runtime.queues,
+        queue_intake_reader=queue_runtime.intake,
+        recovery_incident_reader=recovery.incidents,
     )
