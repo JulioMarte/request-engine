@@ -28,7 +28,7 @@ F6 owns:
 - deterministic lowering into supported owner contracts;
 - read/query composition needed to expose supported inspection intents;
 - a fail-closed registry that maps an already-lowered operation to exactly one explicitly registered owner-contract executor;
-- owner-neutral execution receipts for the public F6 execution surface.
+- an F6-owned execution receipt for the public execution surface, rather than exposing an owner application object directly.
 
 F6 does not own tenant/principal identity, owner authorization, persistence, transactions, schedule truth, capacity truth, queue truth, discovery publication truth, recovery policy, communications delivery, or arbitrary tool execution.
 
@@ -51,9 +51,11 @@ The public execution path is separately bounded:
 3. resolve exactly one registered `CopilotMutationExecutor` for the concrete lowered operation type;
 4. require the executor-declared owner capability;
 5. invoke the adapter, which delegates to the published owner contract;
-6. return an owner-neutral `CopilotExecutionReceipt`.
+6. return the F6-owned `CopilotExecutionReceipt` rather than the owner's internal application object.
 
 Zero registered executors or more than one matching executor is a semantic refusal. There is no generic fallback tool, SQL surface, HTTP forwarding, command bus or reflection-based invocation.
+
+The current receipt is intentionally owned by F6 but is still recovery-shaped (`owner_action_id`, `incident_id`, status and idempotency identity). It must be generalized or versioned before the same public response contract is used for a non-recovery owner such as Discovery.
 
 The owner application service remains authoritative for concurrency, idempotency, transaction and domain validation. F6's execution capability never substitutes for the owner's capability or authority rules.
 
@@ -137,7 +139,7 @@ The branch contains:
 - `CopilotOperation`, which is an existing owner command or `AtRiskReservationsQuery`;
 - `CopilotMutationExecutor`, the structural registered-executor contract;
 - `CopilotExecutionRegistry`, which requires exactly one executor match;
-- `CopilotExecutionReceipt`, which prevents the F6 API from returning an owner application's internal object directly.
+- `CopilotExecutionReceipt`, an F6-owned API contract that prevents the public surface from returning the owner's `RecoveryAction` object directly.
 
 The same trusted context plus the same validated IR must lower deterministically to the same owner command values and idempotency identity.
 
@@ -209,10 +211,11 @@ trusted authority resolution (tenancy truth)       implemented (fail-closed, inj
 request-scoped idempotency identity propagation    implemented (header -> context -> owner command)
 POST /operational-copilot/interpret                implemented (decision/read surface; no mutation)
 POST /operational-copilot/execute                  implemented (registered executors only; fail-closed)
-registered intake stop/reopen execution             implemented + PostgreSQL replay/effect proof
+registered intake stop/reopen execution            implemented + PostgreSQL replay/effect proof
 registered extend-day execution                    implemented + PostgreSQL replay/effect proof
 owner-agnostic execution registry                  implemented + architecture fitness proof
 owner capability preservation on F6 execute        implemented
+F6 execution receipt                               implemented, recovery-shaped; generalization pending
 recovery proposal/execution via F6 execute         remaining scope (lowering exists; executor not registered)
 discovery publish/revoke via F6 execute            remaining scope (lowering exists; executor not registered)
 roadmap natural-language examples as written       remaining scope (entity + relative-time resolution pending)
@@ -222,6 +225,6 @@ relative operational-time resolution              remaining scope
 
 The code checkpoint `3c18136e49d622875cc045ced6744909e13b8025` passed the full PR CI pipeline, including Python quality/architecture, PostgreSQL 18 current-product proof, V2 history, repeated bootstrap, frozen V3 compatibility, observability and the V3 candidate/vertical aggregate. Documentation-only commits after that checkpoint must still survive exact-head CI before merge.
 
-Remaining before roadmap F6 is fully delivered: authoritative entity resolution (resource/assignment/queue/offering/current operational targets from Request Engine truth), relative operational-time resolution, registration/evidence for any additional mutation classes we choose to expose through `/execute`, and direct acceptance/disposition of the roadmap examples without UUID/revision boilerplate.
+Remaining before roadmap F6 is fully delivered: authoritative entity resolution (resource/assignment/queue/offering/current operational targets from Request Engine truth), relative operational-time resolution, registration/evidence for any additional mutation classes we choose to expose through `/execute`, generalization/versioning of the execution receipt before cross-owner reuse, and direct acceptance/disposition of the roadmap examples without UUID/revision boilerplate.
 
 Any future LLM, voice, chat or UI adapter is non-authoritative. It may produce text or a candidate semantic intent, but it must terminate at this bounded validation/lowering/execution-registration contract and cannot acquire identity, authority, revisions, idempotency or owner capabilities from model output.
