@@ -4,7 +4,9 @@ from request_engine.modules.discovery.contracts.commands import (
     PublishDiscoverySupplyCommand,
     RevokeDiscoveryPublicationCommand,
 )
-from request_engine.modules.operational_copilot.application.ports import DiscoveryPublicationExecutor
+from request_engine.modules.operational_copilot.application.ports import (
+    DiscoveryPublicationExecutor,
+)
 from request_engine.modules.operational_copilot.contracts import CopilotExecutionReceipt
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 
