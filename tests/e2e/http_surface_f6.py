@@ -14,4 +14,23 @@ F6_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             body={"text": "propose recovery for queue 00000000-0000-4000-8000-000000000001"},
         ),
     ),
+    PublicHttpOperation(
+        "operational_copilot.execute",
+        "POST",
+        "/v1/operational-copilot/execute",
+        "operational_copilot.execute",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            "/v1/operational-copilot/execute",
+            body={
+                "text": (
+                    "stop walk-ins for incident "
+                    "00000000-0000-4000-8000-000000000001 "
+                    "source revision 0 intake revision 0"
+                )
+            },
+        ),
+    ),
 )
