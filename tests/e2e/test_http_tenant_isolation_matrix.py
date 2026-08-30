@@ -142,12 +142,8 @@ def _foreign_request(
             404,
         )
     if name == "appointments.book":
-        return (
-            "/v1/appointments",
-            {},
-            {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)},
-            422,
-        )
+        body = {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)}
+        return "/v1/appointments", {}, body, 422
     if name == "appointments.read":
         return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
     if name == "appointments.cancel":
@@ -225,12 +221,8 @@ def _foreign_request(
     if name == "requests.read":
         return f"/v1/requests/{objects.request_id}", {}, None, 404
     if name == "requests.cancel":
-        return (
-            f"/v1/requests/{objects.request_id}/cancel",
-            {},
-            {"reason": "cross tenant", "expected_revision": objects.request_revision},
-            404,
-        )
+        body = {"reason": "cross tenant", "expected_revision": objects.request_revision}
+        return f"/v1/requests/{objects.request_id}/cancel", {}, body, 404
     if name == "reminders.create":
         return (
             "/v1/reminders",
@@ -273,12 +265,8 @@ async def _invoke(
     objects: ForeignObjects,
 ) -> tuple[Response, int]:
     path, query, body, expected = _foreign_request(operation, actor, foreign, objects)
-    headers = auth(
-        actor,
-        idempotency_key=f"cross-{operation.name}-{uuid4().hex}"
-        if operation.idempotency_required
-        else None,
-    )
+    key = f"cross-{operation.name}-{uuid4().hex}" if operation.idempotency_required else None
+    headers = auth(actor, idempotency_key=key)
     response = await client.request(
         operation.method, path, params=query, json=body, headers=headers
     )
