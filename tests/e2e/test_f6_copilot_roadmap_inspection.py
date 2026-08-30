@@ -49,5 +49,5 @@ async def test_f6_resolves_current_queue_for_natural_at_risk_inspection(
     affected = result["at_risk_reservations"]
     assert affected
     reservation_ids = {item["reservation_id"] for item in affected}
-    committed_ids = {str(reservation["id"]) for reservation in reservations}
+    committed_ids = {str(reservation_id) for reservation_id in reservations}
     assert reservation_ids <= committed_ids
