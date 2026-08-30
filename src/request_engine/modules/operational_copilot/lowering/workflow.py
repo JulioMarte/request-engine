@@ -21,6 +21,8 @@ def lower_set_intake(intent: object, context: CopilotContext) -> CopilotOperatio
         expected_intake_revision=intent.expected_intake_revision,
         accepting=intent.accepting,
         idempotency_key=context.idempotency_key,
+        reason=intent.reason,
+        effective_until=intent.effective_until,
     )
 
 
