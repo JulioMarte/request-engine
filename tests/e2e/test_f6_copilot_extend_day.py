@@ -78,10 +78,11 @@ async def test_f6_copilot_extend_day_executes_owner_extend_day(
         executed = await execute(client, sandbox, text, key)
         replay = await execute(client, sandbox, text, key)
 
+    assert executed["owner"] == "operational_recovery"
     assert executed["action"] == "extend_day"
     assert executed["status"] == "succeeded"
     assert executed["idempotency_key"] == key
-    assert replay["owner_action_id"] == executed["owner_action_id"]
+    assert replay["result_id"] == executed["result_id"]
     assert location_recovery_exception_count(e2e_admin_conn, sandbox) == location_before + 1
     assert assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id) == (
         assignment_before + 1
