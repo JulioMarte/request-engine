@@ -3,8 +3,10 @@ from fastapi import FastAPI
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
-from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
+from request_engine.modules.tenancy.adapters.db.party_authority_operational_reader import (
     PostgresOperationalAuthorityPartyReader,
+)
+from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
     PostgresPartyAuthorityReader,
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
