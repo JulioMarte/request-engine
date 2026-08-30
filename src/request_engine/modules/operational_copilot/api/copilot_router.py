@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from request_engine.modules.operational_copilot.api.models import (
     CopilotAtRiskCommitmentView,
     CopilotAtRiskView,
+    CopilotExecutionView,
     CopilotInterpretationView,
     CopilotInterpretBody,
     interpretation_view,
@@ -19,6 +20,9 @@ from request_engine.modules.operational_copilot.errors import (
     CopilotSemanticError,
 )
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
+from request_engine.modules.operational_recovery.contracts.workflow_commands import (
+    SetRecoveryIntakeCommand,
+)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -45,11 +49,7 @@ def create_copilot_router(
         idempotency_key: IdempotencyKey,
     ) -> CopilotInterpretationView | CopilotAtRiskView:
         require_capability(actor, "operational_copilot.interpret")
-        context = CopilotContext(
-            organization_id=actor.organization_id,
-            principal_id=actor.principal_id,
-            idempotency_key=idempotency_key,
-        )
+        context = _context(actor, idempotency_key)
         operation = await _refusals(copilot, context, body.text)
         if isinstance(operation, AtRiskReservationsQuery):
             assessment = await copilot.read_at_risk(context, operation)
@@ -72,6 +72,23 @@ def create_copilot_router(
             )
         return interpretation_view(operation)
 
+    async def execute(
+        body: CopilotInterpretBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> CopilotExecutionView:
+        require_capability(actor, "operational_copilot.execute")
+        context = _context(actor, idempotency_key)
+        operation = await _refusals(copilot, context, body.text)
+        if not isinstance(operation, SetRecoveryIntakeCommand):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="copilot execution is not registered for this operation",
+            )
+        require_capability(actor, "operational_recovery.execute")
+        action = await copilot.execute(operation)
+        return CopilotExecutionView.from_recovery_action(action)
+
     add_capability_route(
         router,
         "/interpret",
@@ -80,7 +97,23 @@ def create_copilot_router(
         methods=["POST"],
         response_model=CopilotInterpretationView | CopilotAtRiskView,
     )
+    add_capability_route(
+        router,
+        "/execute",
+        execute,
+        capability="operational_copilot.execute",
+        methods=["POST"],
+        response_model=CopilotExecutionView,
+    )
     return router
+
+
+def _context(actor: ActorContext, idempotency_key: str) -> CopilotContext:
+    return CopilotContext(
+        organization_id=actor.organization_id,
+        principal_id=actor.principal_id,
+        idempotency_key=idempotency_key,
+    )
 
 
 async def _refusals(

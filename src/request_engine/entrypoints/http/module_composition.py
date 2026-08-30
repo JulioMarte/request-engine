@@ -102,7 +102,7 @@ def install_business_modules(
         queue_source=queue_capacity,
         delivery_source=delivery_capacity,
     )
-    recovery_service = install_recovery_http(
+    recovery_service, recovery_workflow = install_recovery_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
@@ -119,4 +119,5 @@ def install_business_modules(
         at_risk_reader=build_live_capacity_at_risk_reader(recovery_capacity),
         proposal_reader=build_recovery_proposal_reader(recovery_service),
         authority_reader=build_operational_authority_party_reader(session_factory),
+        intake_executor=recovery_workflow,
     )

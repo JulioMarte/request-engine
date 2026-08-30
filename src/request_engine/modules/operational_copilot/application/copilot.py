@@ -8,6 +8,7 @@ from request_engine.modules.operational_copilot.application.fingerprint_resoluti
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
     AuthorityPartyReader,
+    RecoveryIntakeExecutor,
     RecoveryProposalReader,
 )
 from request_engine.modules.operational_copilot.contracts import (
@@ -21,6 +22,10 @@ from request_engine.modules.operational_copilot.lowering import lower_copilot_in
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
+from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
+from request_engine.modules.operational_recovery.contracts.workflow_commands import (
+    SetRecoveryIntakeCommand,
+)
 
 
 class OperationalCopilot:
@@ -29,10 +34,12 @@ class OperationalCopilot:
         at_risk_reader: AtRiskReservationReader,
         proposal_reader: RecoveryProposalReader | None = None,
         authority_reader: AuthorityPartyReader | None = None,
+        intake_executor: RecoveryIntakeExecutor | None = None,
     ) -> None:
         self._at_risk_reader = at_risk_reader
         self._proposal_reader = proposal_reader
         self._authority_reader = authority_reader
+        self._intake_executor = intake_executor
 
     async def interpret(self, context: CopilotContext, text: str) -> CopilotOperation:
         intent = parse_copilot_intent(text)
@@ -40,6 +47,13 @@ class OperationalCopilot:
         resolved_intent = await self._resolve_fingerprints(intent, resolved_context)
         validated = validate_copilot_intent(resolved_context, resolved_intent)
         return lower_copilot_intent(resolved_context, validated)
+
+    async def execute(self, operation: CopilotOperation) -> RecoveryAction:
+        if isinstance(operation, SetRecoveryIntakeCommand):
+            if self._intake_executor is None:
+                raise UnsupportedCopilotIntent("recovery intake execution is not registered")
+            return await self._intake_executor.set_intake(operation)
+        raise UnsupportedCopilotIntent("copilot execution is not registered for this operation")
 
     async def inspect_at_risk(
         self,

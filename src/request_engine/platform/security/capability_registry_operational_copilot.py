@@ -11,4 +11,10 @@ OPERATIONAL_COPILOT_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Interpret bounded operational natural-language requests into typed owner commands. "
         "The decision carries trusted identity and is replay-safe, but no mutation executes here.",
     ),
+    command_capability(
+        "operational_copilot.execute",
+        CapabilityExposure.OPERATOR,
+        "Execute only explicitly registered copilot operations while preserving the owning "
+        "module's capability, concurrency, idempotency and authority gates.",
+    ),
 )

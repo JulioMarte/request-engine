@@ -14,6 +14,7 @@ from request_engine.modules.operational_recovery.contracts.commands import (
     CreateRecoveryProposalCommand,
     ExecuteRecoveryCommand,
 )
+from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
     ExtendRecoveryDayCommand,
     SetRecoveryIntakeCommand,
@@ -27,6 +28,24 @@ class CopilotInterpretBody(BaseModel):
 class CopilotInterpretationView(BaseModel):
     action: str
     operation: dict[str, object]
+
+
+class CopilotExecutionView(BaseModel):
+    action: str
+    owner_action_id: UUID
+    incident_id: UUID
+    status: str
+    idempotency_key: str
+
+    @classmethod
+    def from_recovery_action(cls, action: RecoveryAction) -> "CopilotExecutionView":
+        return cls(
+            action=str(action.action_kind.value),
+            owner_action_id=action.id,
+            incident_id=action.incident_id,
+            status=str(action.status.value),
+            idempotency_key=action.idempotency_key,
+        )
 
 
 class CopilotAtRiskCommitmentView(BaseModel):
