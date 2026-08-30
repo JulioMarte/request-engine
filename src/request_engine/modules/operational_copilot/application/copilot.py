@@ -48,7 +48,7 @@ class OperationalCopilot:
         validated = validate_copilot_intent(resolved_context, resolved_intent)
         return lower_copilot_intent(resolved_context, validated)
 
-    def execution_capability(self, operation: CopilotOperation) -> str:
+    def execution_capability(self, operation: CopilotOperation) -> str | None:
         return self._execution.owner_capability(operation)
 
     async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt:
