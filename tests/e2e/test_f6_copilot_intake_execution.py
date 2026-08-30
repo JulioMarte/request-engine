@@ -48,10 +48,11 @@ async def test_f6_execute_routes_intake_language_through_owner_service(
         executed = await execute(client, sandbox, text, key)
         replay = await execute(client, sandbox, text, key)
 
+        assert executed["owner"] == "operational_recovery"
         assert executed["action"] == "stop_intake"
         assert executed["status"] == "succeeded"
         assert executed["idempotency_key"] == key
-        assert replay["owner_action_id"] == executed["owner_action_id"]
+        assert replay["result_id"] == executed["result_id"]
 
         subject = seed_walk_in_subject(e2e_admin_conn, sandbox)
         blocked = await client.post(
