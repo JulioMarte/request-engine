@@ -15,7 +15,9 @@ from request_engine.modules.operational_copilot.adapters.recovery_intake_executo
     RecoveryIntakeCopilotExecutor,
 )
 from request_engine.modules.operational_copilot.api.copilot_router import create_copilot_router
-from request_engine.modules.operational_copilot.api.recovery import build_live_capacity_at_risk_reader
+from request_engine.modules.operational_copilot.api.recovery import (
+    build_live_capacity_at_risk_reader,
+)
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
