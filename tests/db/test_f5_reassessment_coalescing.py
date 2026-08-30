@@ -24,11 +24,8 @@ from request_engine.bootstrap.recovery_sweep import build_recovery_sweep
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [
-    pytest.mark.asyncio,
-    pytest.mark.postgres,
-    pytest.mark.invariant,
-    pytest.mark.adversarial,
-    pytest.mark.contract,
+    pytest.mark.asyncio, pytest.mark.postgres, pytest.mark.invariant,
+    pytest.mark.adversarial, pytest.mark.contract,
 ]
 
 STORM_BUMPS = 50
@@ -42,7 +39,8 @@ _BUMP_SQL = (
 
 def _bump(conn: PgConnection, sandbox: TenantSandbox, offset: int) -> None:
     start = datetime.now(UTC) + timedelta(days=5, hours=offset)
-    conn.execute(_BUMP_SQL, (sandbox.organization_id, sandbox.location_id, start, start + timedelta(hours=1)))
+    end = start + timedelta(hours=1)
+    conn.execute(_BUMP_SQL, (sandbox.organization_id, sandbox.location_id, start, end))
 
 
 def _action_states(admin_conn: PgConnection, organization_id: object) -> dict[int, str]:
