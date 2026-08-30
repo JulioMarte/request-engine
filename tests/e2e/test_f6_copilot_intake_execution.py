@@ -1,3 +1,5 @@
+from datetime import datetime
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -59,5 +61,63 @@ async def test_f6_execute_routes_intake_language_through_owner_service(
             f"/v1/queues/{sandbox.queue_id}/check-in",
             json={"subject_party_id": str(subject)},
             headers=auth(sandbox, idempotency_key=f"f6-blocked-{uuid4().hex}"),
+        )
+        assert blocked.status_code == 409, blocked.text
+
+
+async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
+    e2e_admin_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+) -> None:
+    base = seed_tenant_sandbox(e2e_admin_conn, "f6-copilot-rest-of-day")
+    sandbox = five_minute_sandbox(e2e_admin_conn, base)
+    seed_today_schedule(e2e_admin_conn, sandbox)
+    actors = {sandbox.token: copilot_actor(sandbox)}
+    async with client_with_actors(e2e_session_factory, actors) as client:
+        await configure_projection(client, sandbox)
+        _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
+        restrict_source_to_first_six(e2e_admin_conn, sandbox, slots)
+        proposal = await create_proposal(client, sandbox)
+        seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
+        key = f"f6-rest-of-day-{uuid4().hex}"
+
+        executed = await execute(
+            client,
+            sandbox,
+            "stop accepting walk-ins for the rest of the day",
+            key,
+        )
+        replay = await execute(
+            client,
+            sandbox,
+            "stop accepting walk-ins for the rest of the day",
+            key,
+        )
+
+        assert executed["owner"] == "operational_recovery"
+        assert executed["action"] == "stop_intake"
+        assert executed["status"] == "succeeded"
+        assert replay["result_id"] == executed["result_id"]
+
+        row = e2e_admin_conn.execute(
+            """
+            SELECT accepting, reason, effective_until, clock_timestamp()
+            FROM request_engine.service_queue_intake_controls
+            WHERE organization_id=%s AND service_queue_id=%s
+            """,
+            (sandbox.organization_id, sandbox.queue_id),
+        ).fetchone()
+        assert row is not None
+        assert row[0] is False
+        assert row[1] == "operational copilot: stop accepting walk-ins for the rest of the day"
+        effective_until = cast(datetime, row[2])
+        observed_at = cast(datetime, row[3])
+        assert effective_until > observed_at
+
+        subject = seed_walk_in_subject(e2e_admin_conn, sandbox)
+        blocked = await client.post(
+            f"/v1/queues/{sandbox.queue_id}/check-in",
+            json={"subject_party_id": str(subject)},
+            headers=auth(sandbox, idempotency_key=f"f6-rest-blocked-{uuid4().hex}"),
         )
         assert blocked.status_code == 409, blocked.text
