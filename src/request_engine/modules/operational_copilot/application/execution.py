@@ -16,7 +16,9 @@ class CopilotExecutionRegistry:
 
     def _resolve(self, operation: CopilotOperation) -> CopilotMutationExecutor:
         matches = tuple(
-            executor for executor in self._executors if isinstance(operation, executor.operation_type)
+            executor
+            for executor in self._executors
+            if isinstance(operation, executor.operation_type)
         )
         if len(matches) != 1:
             raise UnsupportedCopilotIntent("copilot execution is not registered for this operation")
