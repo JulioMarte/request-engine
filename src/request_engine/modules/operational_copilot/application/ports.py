@@ -2,7 +2,10 @@ from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
-from request_engine.modules.operational_copilot.contracts import AtRiskReservationsQuery
+from request_engine.modules.operational_copilot.contracts import (
+    AtRiskReservationsQuery,
+    CopilotExecutionReceipt,
+)
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
 
@@ -35,7 +38,7 @@ class CopilotMutationExecutor(Protocol):
     operation_type: type
     owner_capability: str
 
-    async def execute(self, operation: CopilotOperation) -> object: ...
+    async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt: ...
 
 
 __all__ = [
