@@ -5,14 +5,13 @@ from request_engine.modules.operational_copilot.api import (
     build_live_capacity_at_risk_reader,
     install_http as install_copilot_http,
 )
+from request_engine.modules.operational_copilot.application.ports import (
+    RecoveryExtendDayExecutor,
+    RecoveryIntakeExecutor,
+    RecoveryProposalReader,
+)
 from request_engine.modules.operational_recovery.api.proposal_reader import (
     build_recovery_proposal_reader,
-)
-from request_engine.modules.operational_recovery.application.service import (
-    OperationalRecoveryService,
-)
-from request_engine.modules.operational_recovery.application.workflow_service import (
-    RecoveryWorkflowService,
 )
 from request_engine.modules.tenancy.api import build_operational_authority_party_reader
 from request_engine.platform.db.session import SessionFactory
@@ -25,8 +24,8 @@ def install_operational_copilot(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     recovery_capacity: RecoveryCapacitySource,
-    recovery_service: OperationalRecoveryService,
-    recovery_workflow: RecoveryWorkflowService,
+    recovery_service: RecoveryProposalReader,
+    recovery_workflow: RecoveryIntakeExecutor | RecoveryExtendDayExecutor,
 ) -> None:
     install_copilot_http(
         app,
