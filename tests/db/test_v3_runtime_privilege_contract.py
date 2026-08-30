@@ -4,24 +4,14 @@ from uuid import uuid4
 import psycopg
 import pytest
 from psycopg import Connection, sql
+from runtime_table_contract import EXPECTED_TABLE_EXCEPTIONS, PRIVATE_GLOBAL_TABLES
 
 PgConnection = Connection[Any]
 
-PRIVATE_GLOBAL_TABLES = {
-    "global_identities",
-    "shared_capacity_authority_events",
-    "shared_capacity_bindings",
-    "shared_capacity_claim_links",
-    "shared_capacity_identities",
-}
-
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
-    parts = pg_conninfo.split()
-    filtered = [
-        part for part in parts if not part.startswith("user=") and not part.startswith("password=")
-    ]
-    return " ".join([*filtered, f"user={role_name}", f"password={password}"])
+    parts = [part for part in pg_conninfo.split() if not part.startswith(("user=", "password="))]
+    return " ".join([*parts, f"user={role_name}", f"password={password}"])
 
 
 @pytest.mark.postgres
@@ -147,6 +137,8 @@ def test_real_application_login_has_only_the_runtime_table_contract(
             if table_name in PRIVATE_GLOBAL_TABLES:
                 seen_private.add(table_name)
                 assert privileges == (False,) * 7
+            elif table_name in EXPECTED_TABLE_EXCEPTIONS:
+                assert privileges == EXPECTED_TABLE_EXCEPTIONS[table_name], table_name
             else:
                 assert privileges[:3] == (True, True, True), table_name
                 assert privileges[3:] == (False, False, False, False), table_name

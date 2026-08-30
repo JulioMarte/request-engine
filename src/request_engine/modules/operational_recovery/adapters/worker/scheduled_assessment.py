@@ -12,6 +12,9 @@ from request_engine.modules.operational_recovery.adapters.db.scheduled_assessmen
     PostgresScheduledAssessmentStore,
 )
 from request_engine.modules.operational_recovery.application.proposal_builder import build_proposal
+from request_engine.modules.operational_recovery.application.recovery_impact_automation import (
+    RecoveryImpactAutomation,
+)
 from request_engine.platform.scheduling.postgres import ScheduledActionLease
 from request_engine.platform.worker.runtime import PermanentWorkError
 
@@ -26,11 +29,13 @@ class RecoveryAssessmentScheduledHandler:
         booking: RecoveryBookingPort,
         store: PostgresScheduledAssessmentStore,
         revisions: RecoverySourceRevisionReader,
+        impact_automation: RecoveryImpactAutomation,
     ) -> None:
         self._capacity = capacity
         self._booking = booking
         self._store = store
         self._revisions = revisions
+        self._impact_automation = impact_automation
 
     async def handle(self, lease: ScheduledActionLease) -> ScheduledAssessmentCommit:
         if (
@@ -72,7 +77,7 @@ class RecoveryAssessmentScheduledHandler:
                 assessment=assessment,
                 booking=self._booking,
             )
-        return await self._store.commit(
+        commit = await self._store.commit(
             organization_id=lease.organization_id,
             service_queue_id=queue_id,
             target_source_revision=raw_revision,
@@ -81,3 +86,17 @@ class RecoveryAssessmentScheduledHandler:
             assessment=assessment,
             proposal=proposal,
         )
+        if (
+            commit.applied
+            and commit.incident is not None
+            and commit.escalation is not None
+            and commit.escalation.customer_impact_required
+            and commit.escalation.impact_recipient_party_ids
+        ):
+            await self._impact_automation.communicate_impact(
+                organization_id=lease.organization_id,
+                incident_id=commit.incident.id,
+                source_revision=raw_revision,
+                recipients=commit.escalation.impact_recipient_party_ids,
+            )
+        return commit

@@ -170,14 +170,16 @@ F4 may expose projected overrun, insufficient headroom, affected commitments and
 
 # F5 — Operational Recovery & Communications
 
-Status: **slice-1 recovery core, full recovery workflow tranche and the bounded fallback sweep merged; remaining roadmap debt is cross-Organization replacement, change-storm coalescing policy and autonomous escalation**.
+Status: **slice-1 recovery core, full recovery workflow tranche, the bounded fallback sweep and the change-storm coalescing + autonomous impact-communication debt merged; remaining roadmap debt is cross-Organization replacement and autonomous reschedule/extend-day escalation (policy-gated)**.
 
 Implementation tranches:
 
 ```text
-feature/operational-recovery-communications   slice-1 core, merged to development via PR #81
-feature/f5-roadmap-authoritative-recovery     full recovery workflow tranche, merged via PR #83
-feature/f5-recovery-fallback-sweep            bounded fallback sweep, merged via PR #93
+feature/operational-recovery-communications        slice-1 core, merged to development via PR #81
+feature/f5-roadmap-authoritative-recovery          full recovery workflow tranche, merged via PR #83
+feature/f5-recovery-fallback-sweep                 bounded fallback sweep, merged via PR #93
+feature/f5-change-storm-coalescing                 change-storm coalescing, merged via PR #96
+feature/f5-autonomous-impact-communication         autonomous impact communication debt
 ```
 
 Normative contract:
@@ -238,8 +240,9 @@ automatic event-triggered reprojection                   delivered (this tranche
 commitment-change freshness triggers                     delivered (this tranche)
 delay/impact communication action                        delivered (proof G, this tranche, typed impact purpose)
 generalized multi-action recovery workflow               delivered (multi-action proof F, this tranche)
-scheduled escalation/communication policy evaluation     delivered (this tranche: durable outcome facts; delivery stays explicit)
-autonomous escalation beyond explicit policy             open
+scheduled escalation/communication policy evaluation     delivered (this tranche: durable outcome facts)
+autonomous customer-impact communication                 delivered (accepted policy: system actor delivers impact notification; reschedule/extend-day stay operator-only)
+autonomous reschedule/extend-day escalation              open (requires a later accepted policy and operator-visible authority grant)
 ```
 
 Therefore the phrase `F5 implemented` must not be used without the qualifier **core slice + recovery workflow tranche**. F5 is complete only when the remaining open rows are delivered or explicitly superseded by a later accepted product decision, and the completion gate in `32-operational-recovery-communications-contract.md` (roadmap + contract + implementation + evidence agree) is satisfied.

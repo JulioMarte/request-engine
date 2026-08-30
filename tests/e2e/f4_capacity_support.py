@@ -11,6 +11,7 @@ from .tenant_sandbox import TenantSandbox, auth
 from .world_clock import (
     configure_world_timezone,
     location_timezone,
+    set_world_timezone,
     world_weekday,
     world_window_start,
 )
@@ -49,8 +50,16 @@ def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -
     )
 
 
-def seed_today_schedule(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    configure_world_timezone(conn, sandbox)
+def seed_today_schedule(
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+    *,
+    business_timezone: str | None = None,
+) -> None:
+    if business_timezone is not None:
+        set_world_timezone(conn, sandbox, business_timezone)
+    else:
+        configure_world_timezone(conn, sandbox)
     timezone = location_timezone(conn, sandbox)
     conn.execute(
         "DELETE FROM request_engine.availability_schedules "
