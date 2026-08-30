@@ -55,6 +55,18 @@ def _action_states(admin_conn: PgConnection, organization_id: object) -> dict[in
     return {int(revision): str(status) for revision, status in rows}
 
 
+def _assert_single_pending(admin_conn: PgConnection, organization_id: object) -> int:
+    states = _action_states(admin_conn, organization_id)
+    max_revision = max(states)
+    assert [revision for revision, status in states.items() if status == "pending"] == [
+        max_revision
+    ]
+    assert all(
+        status == "cancelled" for revision, status in states.items() if revision < max_revision
+    )
+    return max_revision
+
+
 async def _prepared_world(
     admin_conn: PgConnection, session_factory: SessionFactory, label: str
 ) -> TenantSandbox:
@@ -80,15 +92,9 @@ async def test_storm_of_triggers_leaves_exactly_one_pending_at_the_max_revision(
     sandbox, states = await _single_pending_world(
         admin_conn, command_session_factory, "f5-coalescing-storm", STORM_BUMPS
     )
-    max_revision = max(states)
+    max_revision = _assert_single_pending(admin_conn, sandbox.organization_id)
     assert len(states) >= STORM_BUMPS
     assert assessment_support.current_source_revision(admin_conn, sandbox) == max_revision
-    assert [revision for revision, status in states.items() if status == "pending"] == [
-        max_revision
-    ]
-    assert all(
-        status == "cancelled" for revision, status in states.items() if revision < max_revision
-    )
 
 
 async def test_concurrent_bumps_on_two_connections_converge_to_one_pending(
@@ -119,15 +125,7 @@ async def test_concurrent_bumps_on_two_connections_converge_to_one_pending(
     assert not failure and not worker.is_alive()
     session_a.close()
     session_b.close()
-
-    states = _action_states(admin_conn, sandbox.organization_id)
-    max_revision = max(states)
-    assert [revision for revision, status in states.items() if status == "pending"] == [
-        max_revision
-    ]
-    assert all(
-        status == "cancelled" for revision, status in states.items() if revision < max_revision
-    )
+    _assert_single_pending(admin_conn, sandbox.organization_id)
 
 
 async def test_sweep_repairs_through_the_shared_enqueue_without_resurrecting_cancellations(
