@@ -79,7 +79,8 @@ def create_copilot_router(
         operation = await _refusals(copilot, context, body.text)
         try:
             owner_capability = copilot.execution_capability(operation)
-            require_capability(actor, owner_capability)
+            if owner_capability is not None:
+                require_capability(actor, owner_capability)
             receipt = await copilot.execute(operation)
         except CopilotSemanticError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
