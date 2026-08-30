@@ -142,7 +142,10 @@ def _foreign_request(
             404,
         )
     if name == "appointments.book":
-        body = {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)}
+        body: dict[str, object] = {
+            "option_id": objects.actor_option_id,
+            "subject_party_id": str(foreign.party_id),
+        }
         return "/v1/appointments", {}, body, 422
     if name == "appointments.read":
         return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
@@ -205,12 +208,8 @@ def _foreign_request(
     if name == "waitlist.read":
         return f"/v1/waitlist/{objects.waitlist_entry_id}", {}, None, 404
     if name == "waitlist.leave":
-        return (
-            f"/v1/waitlist/{objects.waitlist_entry_id}/leave",
-            {},
-            {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"},
-            404,
-        )
+        body = {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"}
+        return f"/v1/waitlist/{objects.waitlist_entry_id}/leave", {}, body, 404
     if name == "requests.submit":
         return (
             f"/v1/requests/definitions/{foreign.request_key}/submit",
@@ -221,7 +220,10 @@ def _foreign_request(
     if name == "requests.read":
         return f"/v1/requests/{objects.request_id}", {}, None, 404
     if name == "requests.cancel":
-        body = {"reason": "cross tenant", "expected_revision": objects.request_revision}
+        body: dict[str, object] = {
+            "reason": "cross tenant",
+            "expected_revision": objects.request_revision,
+        }
         return f"/v1/requests/{objects.request_id}/cancel", {}, body, 404
     if name == "reminders.create":
         return (
