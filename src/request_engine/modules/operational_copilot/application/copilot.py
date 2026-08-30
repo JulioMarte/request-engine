@@ -1,5 +1,3 @@
-from typing import cast
-
 from request_engine.modules.live_capacity.contracts.recovery import (
     RecoveryCapacityAssessment,
 )
@@ -92,7 +90,7 @@ class OperationalCopilot:
             return await self._reference_resolver.resolve(context, intent)
         if isinstance(intent, UNRESOLVED_INTENT_TYPES):
             raise UnsupportedCopilotIntent("semantic reference resolution is unavailable")
-        return cast(CopilotIntent, intent)
+        return intent
 
     async def _resolve_authority(
         self,
