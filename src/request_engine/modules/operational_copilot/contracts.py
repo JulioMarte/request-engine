@@ -88,3 +88,12 @@ class AtRiskReservationsQuery:
 @dataclass(frozen=True, slots=True)
 class ValidatedCopilotIntent:
     value: CopilotIntent
+
+
+@dataclass(frozen=True, slots=True)
+class CopilotExecutionReceipt:
+    action: str
+    owner_action_id: UUID
+    incident_id: UUID
+    status: str
+    idempotency_key: str
