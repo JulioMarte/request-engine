@@ -34,8 +34,10 @@ from request_engine.modules.queue.api.live_capacity import (
 )
 from request_engine.modules.queue.api.recovery import build_recovery_intake_control_port
 from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import build_operational_authority_party_reader
-from request_engine.modules.tenancy.api import build_party_authority_reader
+from request_engine.modules.tenancy.api import (
+    build_operational_authority_party_reader,
+    build_party_authority_reader,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
