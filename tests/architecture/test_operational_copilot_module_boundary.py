@@ -4,6 +4,10 @@ from pathlib import Path
 MODULE_ROOT = Path("src/request_engine/modules/operational_copilot")
 OWN_PACKAGE_PREFIX = "request_engine.modules.operational_copilot"
 API_PACKAGE_PREFIX = "src/request_engine/modules/operational_copilot/api"
+_EXECUTION_CORE = (
+    MODULE_ROOT / "api" / "copilot_router.py",
+    MODULE_ROOT / "application" / "copilot.py",
+)
 
 
 def _collect_imports(tree: ast.Module) -> list[str]:
@@ -36,6 +40,18 @@ def test_copilot_consumes_owner_modules_only_through_contracts() -> None:
             if len(parts) < 4 or parts[2] == "operational_copilot":
                 continue
             if parts[3] != "contracts":
+                violations.append(f"{path.as_posix()}: {imported}")
+    assert not violations
+
+
+def test_execution_core_does_not_dispatch_on_owner_modules() -> None:
+    violations: list[str] = []
+    for path in _EXECUTION_CORE:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for imported in _collect_imports(tree):
+            if imported.startswith("request_engine.modules.operational_recovery"):
+                violations.append(f"{path.as_posix()}: {imported}")
+            if imported.startswith("request_engine.modules.discovery"):
                 violations.append(f"{path.as_posix()}: {imported}")
     assert not violations
 
