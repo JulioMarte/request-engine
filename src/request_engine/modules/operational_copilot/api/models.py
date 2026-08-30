@@ -8,13 +8,15 @@ from request_engine.modules.discovery.contracts.commands import (
     PublishDiscoverySupplyCommand,
     RevokeDiscoveryPublicationCommand,
 )
-from request_engine.modules.operational_copilot.contracts import AtRiskReservationsQuery
+from request_engine.modules.operational_copilot.contracts import (
+    AtRiskReservationsQuery,
+    CopilotExecutionReceipt,
+)
 from request_engine.modules.operational_copilot.lowering import CopilotOperation
 from request_engine.modules.operational_recovery.contracts.commands import (
     CreateRecoveryProposalCommand,
     ExecuteRecoveryCommand,
 )
-from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
     ExtendRecoveryDayCommand,
     SetRecoveryIntakeCommand,
@@ -38,13 +40,13 @@ class CopilotExecutionView(BaseModel):
     idempotency_key: str
 
     @classmethod
-    def from_recovery_action(cls, action: RecoveryAction) -> "CopilotExecutionView":
+    def from_receipt(cls, receipt: CopilotExecutionReceipt) -> "CopilotExecutionView":
         return cls(
-            action=str(action.action_kind.value),
-            owner_action_id=action.id,
-            incident_id=action.incident_id,
-            status=str(action.status.value),
-            idempotency_key=action.idempotency_key,
+            action=receipt.action,
+            owner_action_id=receipt.owner_action_id,
+            incident_id=receipt.incident_id,
+            status=receipt.status,
+            idempotency_key=receipt.idempotency_key,
         )
 
 
@@ -79,22 +81,7 @@ _ACTIONS: dict[type, str] = {
 def interpretation_view(operation: CopilotOperation) -> CopilotInterpretationView:
     action = _ACTIONS.get(type(operation))
     if action is None:
-        raise TypeError(f"unsupported copilot operation: {type(operation).__name__}")
-    return CopilotInterpretationView(
-        action=action,
-        operation=_operation_payload(operation),
-    )
-
-
-def _operation_payload(operation: CopilotOperation) -> dict[str, object]:
+        raise TypeError(f"unregistered copilot operation view: {type(operation).__name__}")
     if not is_dataclass(operation):
-        raise TypeError(f"unsupported copilot operation: {type(operation).__name__}")
-    return {key: _normalize(value) for key, value in asdict(operation).items()}
-
-
-def _normalize(value: object) -> object:
-    if isinstance(value, UUID):
-        return str(value)
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return value
+        raise TypeError("copilot operation must be a dataclass")
+    return CopilotInterpretationView(action=action, operation=asdict(operation))
