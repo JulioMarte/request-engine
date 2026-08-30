@@ -24,6 +24,9 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 from request_engine.modules.operational_recovery.application.workflow_ports import (
     RecoveryWorkflowRepository,
 )
+from request_engine.modules.operational_recovery.application.workflow_replace_external import (
+    execute_external_replacement,
+)
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
     RecoveryActionKind,
@@ -52,7 +55,6 @@ async def execute_replace_resource_action(
         proposal_id=command.proposal_id,
     )
     affected = affected_reservation(proposal, command.reservation_id)
-    target = require_actionable_target(command.reservation_id, affected.replacement_target)
     payload = replace_support.replace_resource_payload(command)
     action, terminal, newly_authorized = await authorize_or_resume_action(
         repository=workflow_repository,
@@ -77,6 +79,17 @@ async def execute_replace_resource_action(
                 workflow_repository, command, action, "STALE_RECOVERY_INCIDENT"
             )
             raise
+    if command.external_target is not None:
+        return await execute_external_replacement(
+            command,
+            action=action,
+            incident=incident,
+            affected=affected,
+            workflow_repository=workflow_repository,
+            booking=booking,
+            capacity=capacity,
+        )
+    target = require_actionable_target(command.reservation_id, affected.replacement_target)
     reservation = await replace_owner.execute_booking_replace_resource_step(
         command=command,
         action=action,

@@ -20,6 +20,15 @@ def replace_resource_payload(
         "expected_source_fingerprint": command.expected_source_fingerprint,
         "expected_proposal_fingerprint": command.expected_proposal_fingerprint,
         "allow_subject_override": command.allow_subject_override,
+        "external_target": (
+            None
+            if command.external_target is None
+            else {
+                "organization_id": str(command.external_target.organization_id),
+                "subject_party_id": str(command.external_target.subject_party_id),
+                "option_id": command.external_target.option_id,
+            }
+        ),
     }
 
 

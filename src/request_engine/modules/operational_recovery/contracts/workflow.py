@@ -54,6 +54,19 @@ class RecoveryIncident:
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryExternalTarget:
+    """One cross-Organization replacement target for a replace_resource action.
+
+    ``option_id`` is the opaque discovery handoff token issued by the public
+    discovery search; ``subject_party_id`` is the referral subject party
+    already registered in the provider Organization."""
+
+    organization_id: UUID
+    option_id: str
+    subject_party_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class RecoveryAction:
     id: UUID
     organization_id: UUID
