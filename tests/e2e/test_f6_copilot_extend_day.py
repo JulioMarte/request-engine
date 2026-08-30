@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -26,9 +26,9 @@ from .f5_extend_day_support import (
 from .f5_recovery_assertions import create_proposal
 from .f5_recovery_support import book_commitments
 from .f5_replace_resource_support import seed_incident_for_proposal
-from .f6_copilot_support import copilot_actor, interpret
+from .f6_copilot_support import copilot_actor, execute
 from .operational_support import PgConnection
-from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -39,7 +39,7 @@ pytestmark = [
 ]
 
 
-async def test_f6_copilot_extend_day_lowers_to_owner_extend_day(
+async def test_f6_copilot_extend_day_executes_owner_extend_day(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -73,30 +73,15 @@ async def test_f6_copilot_extend_day_lowers_to_owner_extend_day(
             f"location revision {location_revision} "
             f"availability revision {resource_revision} reason recover commitments"
         )
-        decision = await interpret(client, sandbox, text, f"f6-extend-{uuid4().hex}")
-        assert decision["action"] == "extend_recovery_day"
-        operation = cast(dict[str, Any], decision["operation"])
-        assert operation["authority_party_id"] == str(sandbox.party_id)
-        response = await client.post(
-            f"/v1/operational-recovery/incidents/{incident_id}/extend-day",
-            json={
-                "expected_source_revision": int(operation["expected_source_revision"]),
-                "authority_party_id": operation["authority_party_id"],
-                "assignment_id": str(supply.assignment_id),
-                "start_at": start_at.isoformat(),
-                "end_at": end_at.isoformat(),
-                "expected_location_operational_revision": int(
-                    operation["expected_location_operational_revision"]
-                ),
-                "expected_resource_availability_revision": int(
-                    operation["expected_resource_availability_revision"]
-                ),
-                "reason": "recover commitments",
-            },
-            headers=auth(sandbox, idempotency_key=f"f6-extend-{uuid4().hex}"),
-        )
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "succeeded"
+        key = f"f6-extend-{uuid4().hex}"
+
+        executed = await execute(client, sandbox, text, key)
+        replay = await execute(client, sandbox, text, key)
+
+    assert executed["action"] == "extend_day"
+    assert executed["status"] == "succeeded"
+    assert executed["idempotency_key"] == key
+    assert replay["owner_action_id"] == executed["owner_action_id"]
     assert location_recovery_exception_count(e2e_admin_conn, sandbox) == location_before + 1
     assert assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id) == (
         assignment_before + 1
