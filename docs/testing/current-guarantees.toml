@@ -183,7 +183,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-COPILOT-ADMISSION-001"
-statement = "Natural-language copilot input can only terminate in a bounded typed intent that lowers to an already-published owner command or supported read contract; tenant, principal, authority and idempotency identity come only from the trusted application boundary, ambiguous/unsupported input fails closed, and no copilot surface executes mutations or bypasses owner concurrency, idempotency or authority gates."
+statement = "F6 exposes bounded typed operational tools for external agents/applications over already-published owner commands and supported read contracts; Request Engine does not gain conversational authority, tenant/principal/party authority or hidden operational state from model output. F6 may execute only explicitly registered owner operations while preserving the owner's capability, concurrency, idempotency and authority gates, and ambiguous authoritative entity lookup must fail closed rather than guess."
 severity = "critical"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
