@@ -20,9 +20,6 @@ from request_engine.modules.operational_copilot.errors import (
     CopilotSemanticError,
 )
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
-from request_engine.modules.operational_recovery.contracts.workflow_commands import (
-    SetRecoveryIntakeCommand,
-)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -80,14 +77,13 @@ def create_copilot_router(
         require_capability(actor, "operational_copilot.execute")
         context = _context(actor, idempotency_key)
         operation = await _refusals(copilot, context, body.text)
-        if not isinstance(operation, SetRecoveryIntakeCommand):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="copilot execution is not registered for this operation",
-            )
-        require_capability(actor, "operational_recovery.execute")
-        action = await copilot.execute(operation)
-        return CopilotExecutionView.from_recovery_action(action)
+        try:
+            owner_capability = copilot.execution_capability(operation)
+            require_capability(actor, owner_capability)
+            receipt = await copilot.execute(operation)
+        except CopilotSemanticError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+        return CopilotExecutionView.from_receipt(receipt)
 
     add_capability_route(
         router,
