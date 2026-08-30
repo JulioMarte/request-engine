@@ -46,6 +46,16 @@ class RescheduleRecoveryBody(BaseModel):
     allow_subject_override: bool = False
 
 
+class ExternalReplacementTargetBody(BaseModel):
+    organization_id: UUID
+    option_id: str = Field(min_length=1)
+    subject_party_id: UUID
+
+
+class ReplaceResourceRecoveryBody(RescheduleRecoveryBody):
+    external_target: ExternalReplacementTargetBody | None = None
+
+
 class RecoveryActionView(BaseModel):
     id: UUID
     incident_id: UUID

@@ -1,14 +1,59 @@
 from collections.abc import Mapping
 
+from request_engine.modules.operational_recovery.application import (
+    workflow_replace_resource_owner as replace_owner,
+)
+from request_engine.modules.operational_recovery.application.workflow_action_execution import (
+    authorize_or_resume_action,
+)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     ReplaceResourceRecoveryActionCommand,
 )
+from request_engine.modules.operational_recovery.application.workflow_ports import (
+    RecoveryWorkflowRepository,
+)
 from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
 from request_engine.modules.operational_recovery.contracts.workflow import (
+    RecoveryAction,
+    RecoveryActionKind,
     RecoveryIncident,
     RecoveryIncidentStale,
 )
 from request_engine.platform.idempotency.postgres import command_fingerprint
+
+
+async def authorize_replace_resource(
+    command: ReplaceResourceRecoveryActionCommand,
+    *,
+    workflow_repository: RecoveryWorkflowRepository,
+    incident: RecoveryIncident,
+    proposal: RescheduleProposal,
+) -> tuple[RecoveryAction, bool]:
+    """Authorize or resume the replace_resource action and fail closed when stale."""
+
+    payload = replace_resource_payload(command)
+    action, terminal, newly_authorized = await authorize_or_resume_action(
+        repository=workflow_repository,
+        incident=incident,
+        organization_id=command.organization_id,
+        principal_id=command.principal_id,
+        action_kind=RecoveryActionKind.REPLACE_RESOURCE,
+        idempotency_key=command.idempotency_key,
+        command_fingerprint=replace_resource_fingerprint(command, payload),
+        expected_source_revision=command.expected_source_revision,
+        payload=payload,
+    )
+    if newly_authorized and not terminal:
+        try:
+            validate_fresh_replace_resource_authorization(
+                command, incident=incident, proposal=proposal
+            )
+        except RecoveryIncidentStale:
+            await replace_owner.reject_replace_resource_action(
+                workflow_repository, command, action, "STALE_RECOVERY_INCIDENT"
+            )
+            raise
+    return action, terminal
 
 
 def replace_resource_payload(
@@ -20,6 +65,15 @@ def replace_resource_payload(
         "expected_source_fingerprint": command.expected_source_fingerprint,
         "expected_proposal_fingerprint": command.expected_proposal_fingerprint,
         "allow_subject_override": command.allow_subject_override,
+        "external_target": (
+            None
+            if command.external_target is None
+            else {
+                "organization_id": str(command.external_target.organization_id),
+                "subject_party_id": str(command.external_target.subject_party_id),
+                "option_id": command.external_target.option_id,
+            }
+        ),
     }
 
 

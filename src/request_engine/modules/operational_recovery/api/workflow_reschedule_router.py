@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, Request, status
 
 from request_engine.modules.operational_recovery.api.workflow_models import (
     RecoveryActionView,
+    ReplaceResourceRecoveryBody,
     RescheduleRecoveryBody,
 )
 from request_engine.modules.operational_recovery.application.workflow_commands import (
@@ -13,6 +14,9 @@ from request_engine.modules.operational_recovery.application.workflow_commands i
 )
 from request_engine.modules.operational_recovery.application.workflow_service import (
     RecoveryWorkflowService,
+)
+from request_engine.modules.operational_recovery.contracts.workflow import (
+    RecoveryExternalTarget,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
@@ -58,7 +62,7 @@ def create_reschedule_router(
 
     async def replace_resource(
         incident_id: UUID,
-        body: RescheduleRecoveryBody,
+        body: ReplaceResourceRecoveryBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> RecoveryActionView:
@@ -75,6 +79,15 @@ def create_reschedule_router(
                 expected_proposal_fingerprint=body.expected_proposal_fingerprint,
                 idempotency_key=idempotency_key,
                 allow_subject_override=body.allow_subject_override,
+                external_target=(
+                    None
+                    if body.external_target is None
+                    else RecoveryExternalTarget(
+                        organization_id=body.external_target.organization_id,
+                        option_id=body.external_target.option_id,
+                        subject_party_id=body.external_target.subject_party_id,
+                    )
+                ),
             )
         )
         return RecoveryActionView.from_contract(action)

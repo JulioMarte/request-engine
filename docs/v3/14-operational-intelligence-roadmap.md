@@ -170,7 +170,7 @@ F4 may expose projected overrun, insufficient headroom, affected commitments and
 
 # F5 — Operational Recovery & Communications
 
-Status: **slice-1 recovery core, full recovery workflow tranche, the bounded fallback sweep and the change-storm coalescing + autonomous impact-communication debt merged; remaining roadmap debt is cross-Organization replacement and autonomous reschedule/extend-day escalation (policy-gated)**.
+Status: **slice-1 recovery core, full recovery workflow tranche, the bounded fallback sweep, the change-storm coalescing, the autonomous impact-communication and the cross-Organization replacement debt merged; the remaining roadmap row is autonomous reschedule/extend-day escalation (policy-gated)**.
 
 Implementation tranches:
 
@@ -179,7 +179,8 @@ feature/operational-recovery-communications        slice-1 core, merged to devel
 feature/f5-roadmap-authoritative-recovery          full recovery workflow tranche, merged via PR #83
 feature/f5-recovery-fallback-sweep                 bounded fallback sweep, merged via PR #93
 feature/f5-change-storm-coalescing                 change-storm coalescing, merged via PR #96
-feature/f5-autonomous-impact-communication         autonomous impact communication debt
+feature/f5-autonomous-impact-communication         autonomous impact communication debt, merged via PR #97
+feature/f5-cross-organization-replacement          cross-Organization replacement debt
 ```
 
 Normative contract:
@@ -235,7 +236,7 @@ explicit operator stop/reopen intake                     delivered (this tranche
 extend-day via owner additional-hours exceptions         delivered (this tranche)
 contextual/cadence-backed reschedule                     delivered (this tranche)
 intra-Organization replacement provider/resource         delivered (this tranche)
-cross-Organization replacement                           conditional open (F2 discovery + Booking handoff)
+cross-Organization replacement                           delivered (F2 discovery search + handoff fence two-boundary saga; provider-side referral principal)
 automatic event-triggered reprojection                   delivered (this tranche: scheduled reassessment + automatic proposals)
 commitment-change freshness triggers                     delivered (this tranche)
 delay/impact communication action                        delivered (proof G, this tranche, typed impact purpose)

@@ -2,6 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from request_engine.modules.operational_recovery.contracts.workflow import (
+    RecoveryExternalTarget,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SetRecoveryIntakeCommand:
@@ -70,3 +74,4 @@ class ReplaceResourceRecoveryActionCommand:
     expected_proposal_fingerprint: str
     idempotency_key: str
     allow_subject_override: bool
+    external_target: RecoveryExternalTarget | None = None
