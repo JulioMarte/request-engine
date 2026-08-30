@@ -27,9 +27,12 @@ def parse_roadmap_intent(text: str) -> CopilotParsedIntent | None:
     if lowered == "show me which reservations are at risk":
         return ShowCurrentAtRiskReservationsIntent()
     if match := _EXTEND.fullmatch(text):
+        target = _clock_time(match)
+        if target is None:
+            return None
         return ExtendNamedResourceTodayIntent(
             resource_reference=match.group("resource").strip(),
-            target_local_time=_clock_time(match),
+            target_local_time=target,
         )
     if match := _PUBLISH.fullmatch(text):
         return PublishNamedResourceDiscoveryIntent(
@@ -39,11 +42,11 @@ def parse_roadmap_intent(text: str) -> CopilotParsedIntent | None:
     return None
 
 
-def _clock_time(match: re.Match[str]) -> time:
+def _clock_time(match: re.Match[str]) -> time | None:
     hour = int(match.group("hour"))
     minute = int(match.group("minute") or "0")
     if hour < 1 or hour > 12 or minute > 59:
-        raise ValueError("invalid roadmap clock time")
+        return None
     if hour == 12:
         hour = 0
     if match.group("period").casefold() == "pm":
