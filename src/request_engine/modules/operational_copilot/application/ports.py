@@ -1,12 +1,25 @@
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.discovery.contracts.commands import (
+    DiscoveryPublicationState,
+    PublishDiscoverySupplyCommand,
+    RevokeDiscoveryPublicationCommand,
+)
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
 from request_engine.modules.operational_copilot.contracts import (
     AtRiskReservationsQuery,
     CopilotExecutionReceipt,
 )
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
+from request_engine.modules.operational_recovery.contracts.commands import (
+    CreateRecoveryProposalCommand,
+    ExecuteRecoveryCommand,
+)
+from request_engine.modules.operational_recovery.contracts.models import (
+    RecoveryExecution,
+    RescheduleProposal,
+)
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
 from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
@@ -20,8 +33,6 @@ class AtRiskReservationReader(Protocol):
 
 
 class AuthorityPartyReader(Protocol):
-    """Resolve one trusted operational authority party or fail closed with None."""
-
     async def resolve_operational_party(
         self,
         *,
@@ -29,6 +40,12 @@ class AuthorityPartyReader(Protocol):
         principal_id: UUID,
         scope_keys: frozenset[str],
     ) -> UUID | None: ...
+
+
+class RecoveryCommandExecutor(Protocol):
+    async def create_proposal(self, command: CreateRecoveryProposalCommand) -> RescheduleProposal: ...
+
+    async def execute(self, command: ExecuteRecoveryCommand) -> RecoveryExecution: ...
 
 
 class RecoveryIntakeExecutor(Protocol):
@@ -39,11 +56,15 @@ class RecoveryExtendDayExecutor(Protocol):
     async def extend_day(self, command: ExtendRecoveryDayCommand) -> RecoveryAction: ...
 
 
-class CopilotMutationExecutor(Protocol):
-    """One explicitly registered bridge from an F6 operation to its owner surface."""
+class DiscoveryPublicationExecutor(Protocol):
+    async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState: ...
 
+    async def revoke(self, command: RevokeDiscoveryPublicationCommand) -> DiscoveryPublicationState: ...
+
+
+class CopilotMutationExecutor(Protocol):
     operation_type: type[object]
-    owner_capability: str
+    owner_capability: str | None
 
     async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt: ...
 
@@ -52,6 +73,8 @@ __all__ = [
     "AtRiskReservationReader",
     "AuthorityPartyReader",
     "CopilotMutationExecutor",
+    "DiscoveryPublicationExecutor",
+    "RecoveryCommandExecutor",
     "RecoveryExtendDayExecutor",
     "RecoveryIntakeExecutor",
     "RecoveryProposalReader",
