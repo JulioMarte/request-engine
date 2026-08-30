@@ -26,9 +26,7 @@ _F5_CAPABILITIES = frozenset(
 def f5_actor(sandbox: TenantSandbox) -> ActorContext:
     base = f4_actor(sandbox)
     return ActorContext(
-        organization_id=base.organization_id,
-        principal_id=base.principal_id,
-        capabilities=base.capabilities | _F5_CAPABILITIES,
+        base.organization_id, base.principal_id, base.capabilities | _F5_CAPABILITIES
     )
 
 
@@ -41,9 +39,8 @@ async def book_commitments(
 ) -> tuple[list[UUID], list[dict[str, Any]]]:
     slots = await same_day_slots(client, conn, sandbox)
     assert len(slots) >= count + 1, (
-        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; the"
-        " world business day is configured in locations.timezone (default"
-        " America/Santo_Domingo) and slot worlds require hours of runway"
+        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; the world"
+        " business day is configured in locations.timezone and needs hours of runway"
     )
     reservations: list[UUID] = []
     for slot in slots[:count]:
@@ -83,9 +80,8 @@ def restrict_source_to_first_slots(
         (sandbox.organization_id, sandbox.resource_id, weekday),
     )
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules "
-        "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,%s,%s,%s)",
+        "INSERT INTO request_engine.availability_schedules (organization_id,resource_id,"
+        "weekday,local_start,local_end,timezone) VALUES (%s,%s,%s,%s,%s,%s)",
         (
             sandbox.organization_id,
             sandbox.resource_id,
@@ -113,8 +109,8 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
     ).fetchone()
     assert row is not None
     resource = conn.execute(
-        "INSERT INTO request_engine.resources "
-        "(organization_id,location_id,resource_key,display_name,capacity_model,capacity_units) "
+        "INSERT INTO request_engine.resources (organization_id,location_id,resource_key,"
+        "display_name,capacity_model,capacity_units) "
         "VALUES (%s,%s,%s,%s,'exclusive',1) RETURNING id",
         (
             sandbox.organization_id,
@@ -132,9 +128,8 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
     )
     weekday = world_weekday(conn, sandbox)
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules "
-        "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,'00:00','23:59',%s)",
+        "INSERT INTO request_engine.availability_schedules (organization_id,resource_id,weekday,"
+        "local_start,local_end,timezone) VALUES (%s,%s,%s,'00:00','23:59',%s)",
         (sandbox.organization_id, resource_id, weekday, location_timezone(conn, sandbox).key),
     )
     return resource_id
