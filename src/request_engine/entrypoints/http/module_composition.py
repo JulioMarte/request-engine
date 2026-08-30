@@ -7,11 +7,17 @@ from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
 )
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
-from request_engine.modules.booking.api.recovery_schedule import build_recovery_assignment_schedule_port
+from request_engine.modules.booking.api.recovery_schedule import (
+    build_recovery_assignment_schedule_port,
+)
 from request_engine.modules.catalog.api import install_http as install_catalog_http
-from request_engine.modules.catalog.api.recovery_schedule import build_recovery_location_schedule_port
+from request_engine.modules.catalog.api.recovery_schedule import (
+    build_recovery_location_schedule_port,
+)
 from request_engine.modules.communications.api import install_http as install_communications_http
-from request_engine.modules.communications.api.recovery import build_recovery_communication_port
+from request_engine.modules.communications.api.recovery import (
+    build_recovery_communication_port,
+)
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
