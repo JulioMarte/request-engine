@@ -2,7 +2,9 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapa
 from request_engine.modules.operational_copilot.application.authority import (
     resolve_trusted_authority_party,
 )
-from request_engine.modules.operational_copilot.application.execution import CopilotExecutionRegistry
+from request_engine.modules.operational_copilot.application.execution import (
+    CopilotExecutionRegistry,
+)
 from request_engine.modules.operational_copilot.application.fingerprint_resolution import (
     resolve_execute_fingerprints,
 )
