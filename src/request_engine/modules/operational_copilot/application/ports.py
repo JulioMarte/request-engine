@@ -42,7 +42,7 @@ class RecoveryExtendDayExecutor(Protocol):
 class CopilotMutationExecutor(Protocol):
     """One explicitly registered bridge from an F6 operation to its owner surface."""
 
-    operation_type: type
+    operation_type: type[object]
     owner_capability: str
 
     async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt: ...
