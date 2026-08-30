@@ -252,7 +252,7 @@ Policy may request:
 
 Communications owns delivery. Stable dedupe identity derives from incident/action + recipient + purpose + source revision so worker retry and repeated reprojection do not create duplicate logical intents. Recovery communication purpose is explicit and typed: impact/risk communication (delay or shortfall, no mutation claimed) is distinct from post-reschedule confirmation, and the persisted purpose MUST match what actually happened.
 
-The delivered default policy evaluates inside the scheduled assessment transaction and records a durable, immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or its severity worsens, and customer-impact notification is requested only for identified affected commitments whose planned commitment stopped being realistic. Delivering that notification remains the explicit `COMMUNICATE_IMPACT` action unless a later accepted policy grants a system actor that authority (section 14).
+The delivered default policy evaluates inside the scheduled assessment transaction and records a durable, immutable escalation outcome per incident and source revision: operator escalation is required when a material incident is newly opened or its severity worsens, and customer-impact notification is requested only for identified affected commitments whose planned commitment stopped being realistic. When the committed outcome requires customer-impact communication, the scheduled assessment autonomously delivers that communication through the dedicated system actor of section 14, converging with any explicit `COMMUNICATE_IMPACT` action on the same section 13 dedupe identity.
 
 Internal cause/provenance MUST remain separate from public-safe communication payload.
 
@@ -260,7 +260,7 @@ Internal cause/provenance MUST remain separate from public-safe communication pa
 
 Automatic reprojection may run without human authorization because it is read/assessment orchestration. Any automatic irreversible action requires an explicit system Principal with capability/Representation appropriate to that action and must be auditable. F5 MUST NOT impersonate a human operator.
 
-The default recovery policy does not autonomously reschedule or extend the day. Those actions require explicit operator authorization unless a later policy explicitly grants a system actor that authority.
+The delivered recovery policy grants the system actor one autonomous authority: after the scheduled assessment commits an outcome that requires customer-impact communication, it delivers that notification as the service principal `operational_recovery_automation` acting under the `operational_recovery.communicate` authority. Attribution is auditable through the idempotency record that pairs that principal with the created communication task, and delivery converges with explicit operator actions through the same dedupe identity. The system actor MUST NOT autonomously reschedule or extend the day. Those actions require explicit operator authorization.
 
 ## 15. Required acceptance proof
 

@@ -36,7 +36,12 @@ def pick_business_timezone(now_utc: datetime) -> str:
 def configure_world_timezone(conn: PgConnection, sandbox: TenantSandbox) -> str:
     row = conn.execute("SELECT clock_timestamp()").fetchone()
     assert row is not None
-    timezone = pick_business_timezone(cast(datetime, row[0]))
+    return set_world_timezone(conn, sandbox, pick_business_timezone(cast(datetime, row[0])))
+
+
+def set_world_timezone(conn: PgConnection, sandbox: TenantSandbox, timezone: str) -> str:
+    """Write one explicit business timezone; the world treats it as configuration."""
+
     conn.execute(
         "UPDATE request_engine.locations SET timezone=%s WHERE organization_id=%s AND id=%s",
         (timezone, sandbox.organization_id, sandbox.location_id),

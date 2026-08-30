@@ -11,6 +11,7 @@ from .f4_capacity_support import seed_today_schedule
 from .f5_escalation_support import (
     advance_source_revision,
     automatic_recovery_facts,
+    autonomous_impact_task,
     escalation_rows,
     escalation_world,
     unresolved_incident_state,
@@ -37,7 +38,6 @@ async def test_f5_scheduled_assessment_records_newly_material_escalation_policy(
     sandbox, _, handler = await escalation_world(
         e2e_admin_conn, e2e_session_factory, "f5-escalation-material"
     )
-    facts = automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id)
     revision = current_source_revision(e2e_admin_conn, sandbox)
     lease = lease_reassessment(e2e_admin_conn, sandbox, revision)
 
@@ -51,17 +51,27 @@ async def test_f5_scheduled_assessment_records_newly_material_escalation_policy(
     assert outcome.impact_recipient_party_ids == (sandbox.party_id,)
     first_rows = [(revision, 2, True, "newly_material", True, [str(sandbox.party_id)])]
     assert escalation_rows(e2e_admin_conn, sandbox) == first_rows
-    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == facts
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)
+    task = autonomous_impact_task(
+        e2e_admin_conn, sandbox, result.incident.id, revision
+    )
+    assert task[1:] == (
+        "operational_recovery_impact",
+        "operational_recovery.impact",
+        "service",
+        "operational_recovery_automation",
+    )
 
     replay = await handler.handle(lease)
     assert replay.applied is False and replay.escalation is None
     assert escalation_rows(e2e_admin_conn, sandbox) == first_rows
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)
 
     advance_source_revision(e2e_admin_conn, sandbox)
     stale = await handler.handle(lease)
     assert stale.applied is False and stale.stale is True and stale.escalation is None
     assert escalation_rows(e2e_admin_conn, sandbox) == first_rows
-    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == facts
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)
 
 
 async def test_f5_escalation_worsens_when_delay_becomes_capacity_shortfall(
@@ -83,6 +93,7 @@ async def test_f5_escalation_worsens_when_delay_becomes_capacity_shortfall(
     assert escalation_rows(e2e_admin_conn, sandbox) == [
         (delay_revision, 1, True, "newly_material", False, [])
     ]
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 0, 0)
 
     restrict_source_to_first_slots(e2e_admin_conn, sandbox, list(world.slots), count=6)
     shortfall_revision = current_source_revision(e2e_admin_conn, sandbox)
@@ -97,6 +108,16 @@ async def test_f5_escalation_worsens_when_delay_becomes_capacity_shortfall(
     assert len(rows) == 2
     assert rows[0] == (delay_revision, 1, True, "newly_material", False, [])
     assert rows[1] == (shortfall_revision, 2, True, "worsening_severity", True, recipients)
+    assert second.incident is not None
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)
+    assert autonomous_impact_task(
+        e2e_admin_conn, sandbox, second.incident.id, shortfall_revision
+    )[1:] == (
+        "operational_recovery_impact",
+        "operational_recovery.impact",
+        "service",
+        "operational_recovery_automation",
+    )
 
 
 async def test_f5_escalation_clears_only_from_fresh_resolving_assessment(
@@ -110,6 +131,7 @@ async def test_f5_escalation_clears_only_from_fresh_resolving_assessment(
     first = await handler.handle(lease_reassessment(e2e_admin_conn, sandbox, revision))
     assert first.applied is True and first.escalation is not None
     assert first.escalation.customer_impact_required is True
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)
 
     seed_today_schedule(e2e_admin_conn, sandbox)
     restored_revision = current_source_revision(e2e_admin_conn, sandbox)
@@ -123,3 +145,4 @@ async def test_f5_escalation_clears_only_from_fresh_resolving_assessment(
     cleared: tuple[object, ...] = (restored_revision, 0, False, None, False, [])
     assert escalation_rows(e2e_admin_conn, sandbox)[-1] == cleared
     assert unresolved_incident_state(e2e_admin_conn, sandbox) == ("resolved", 0)
+    assert automatic_recovery_facts(e2e_admin_conn, sandbox.organization_id) == (0, 1, 1)

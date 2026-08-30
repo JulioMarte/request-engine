@@ -88,3 +88,30 @@ def automatic_recovery_facts(conn: PgConnection, organization_id: object) -> tup
     ).fetchone()
     assert row is not None
     return cast(tuple[int, int, int], tuple(row))
+
+
+def autonomous_impact_task(
+    conn: PgConnection, sandbox: TenantSandbox, incident_id: object, revision: int
+) -> tuple[object, ...] | None:
+    """Impact task row (id, purpose, template, principal kind/subject) for the
+    section 13 identity, attributed through the idempotency record of its creator."""
+
+    row = conn.execute(
+        """
+        SELECT t.id, t.purpose, t.template_key, p.principal_kind, p.external_subject
+        FROM request_engine.communication_tasks t
+        JOIN request_engine.idempotency_records r
+          ON r.organization_id = t.organization_id
+         AND r.capability = 'communications.create_task'
+         AND r.idempotency_key = %s
+        JOIN request_engine.principals p
+          ON p.organization_id = r.organization_id AND p.id = r.principal_id
+        WHERE t.organization_id = %s AND t.dedupe_key = %s
+        """,
+        (
+            f"recovery-impact-auto:{incident_id}:{sandbox.party_id}:{revision}:v1",
+            sandbox.organization_id,
+            f"operational-recovery:{incident_id}:impact:{sandbox.party_id}:{revision}",
+        ),
+    ).fetchone()
+    return None if row is None else cast(tuple[object, ...], tuple(row))

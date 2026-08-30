@@ -28,12 +28,8 @@ async def _tokyo_business_world(
     e2e_admin_conn: PgConnection, e2e_session_factory: SessionFactory, label: str
 ) -> TenantSandbox:
     sandbox = five_minute_sandbox(e2e_admin_conn, seed_tenant_sandbox(e2e_admin_conn, label))
-    e2e_admin_conn.execute(
-        "UPDATE request_engine.locations SET timezone=%s WHERE organization_id=%s AND id=%s",
-        (FORCED_TIMEZONE, sandbox.organization_id, sandbox.location_id),
-    )
+    seed_today_schedule(e2e_admin_conn, sandbox, business_timezone=FORCED_TIMEZONE)
     assert location_timezone(e2e_admin_conn, sandbox).key == FORCED_TIMEZONE
-    seed_today_schedule(e2e_admin_conn, sandbox)
     actors = {sandbox.token: f5_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         await configure_projection(client, sandbox)
