@@ -9,9 +9,12 @@ from request_engine.modules.discovery.contracts.commands import (
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
 from request_engine.modules.operational_copilot.contracts import (
     AtRiskReservationsQuery,
+    CopilotContext,
     CopilotExecutionReceipt,
+    CopilotIntent,
 )
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
+from request_engine.modules.operational_copilot.references import CopilotParsedIntent
 from request_engine.modules.operational_recovery.contracts.commands import (
     CreateRecoveryProposalCommand,
     ExecuteRecoveryCommand,
@@ -40,6 +43,14 @@ class AuthorityPartyReader(Protocol):
         principal_id: UUID,
         scope_keys: frozenset[str],
     ) -> UUID | None: ...
+
+
+class CopilotReferenceResolver(Protocol):
+    async def resolve(
+        self,
+        context: CopilotContext,
+        intent: CopilotParsedIntent,
+    ) -> CopilotIntent: ...
 
 
 class RecoveryCommandExecutor(Protocol):
@@ -82,6 +93,7 @@ __all__ = [
     "AtRiskReservationReader",
     "AuthorityPartyReader",
     "CopilotMutationExecutor",
+    "CopilotReferenceResolver",
     "DiscoveryPublicationExecutor",
     "RecoveryCommandExecutor",
     "RecoveryExtendDayExecutor",
