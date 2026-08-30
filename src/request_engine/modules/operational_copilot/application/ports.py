@@ -10,6 +10,7 @@ from request_engine.modules.operational_copilot.lowering.operations import Copil
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
 from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
+    ExtendRecoveryDayCommand,
     SetRecoveryIntakeCommand,
 )
 
@@ -34,6 +35,10 @@ class RecoveryIntakeExecutor(Protocol):
     async def set_intake(self, command: SetRecoveryIntakeCommand) -> RecoveryAction: ...
 
 
+class RecoveryExtendDayExecutor(Protocol):
+    async def extend_day(self, command: ExtendRecoveryDayCommand) -> RecoveryAction: ...
+
+
 class CopilotMutationExecutor(Protocol):
     """One explicitly registered bridge from an F6 operation to its owner surface."""
 
@@ -47,6 +52,7 @@ __all__ = [
     "AtRiskReservationReader",
     "AuthorityPartyReader",
     "CopilotMutationExecutor",
+    "RecoveryExtendDayExecutor",
     "RecoveryIntakeExecutor",
     "RecoveryProposalReader",
 ]
