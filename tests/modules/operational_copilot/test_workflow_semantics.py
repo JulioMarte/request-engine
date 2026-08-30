@@ -5,6 +5,7 @@ import pytest
 
 from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
+    CopilotIntent,
     ExtendRecoveryDayIntent,
     SetRecoveryIntakeIntent,
 )
@@ -16,12 +17,11 @@ from request_engine.modules.operational_copilot.errors import (
 from request_engine.modules.operational_copilot.lowering import lower_copilot_intent
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
+from request_engine.modules.operational_copilot.references import UNRESOLVED_INTENT_TYPES
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
     ExtendRecoveryDayCommand,
     SetRecoveryIntakeCommand,
 )
-
-from .support import parse_canonical_intent
 
 ORG = UUID("11111111-1111-1111-1111-111111111111")
 PRINCIPAL = UUID("22222222-2222-2222-2222-222222222222")
@@ -32,8 +32,14 @@ CTX = CopilotContext(ORG, PRINCIPAL, "copilot:intake:1")
 CTX_AUTHORITY = CopilotContext(ORG, PRINCIPAL, "copilot:extend:1", AUTHORITY)
 
 
+def _parse_canonical(text: str) -> CopilotIntent:
+    intent = parse_copilot_intent(text)
+    assert not isinstance(intent, UNRESOLVED_INTENT_TYPES)
+    return intent
+
+
 def test_stop_walk_ins_parses_validates_and_lowers() -> None:
-    intent = parse_canonical_intent(
+    intent = _parse_canonical(
         f"stop walk-ins for incident {INCIDENT} source revision 3 intake revision 5"
     )
     assert intent == SetRecoveryIntakeIntent(INCIDENT, False, 3, 5)
@@ -46,7 +52,7 @@ def test_stop_walk_ins_parses_validates_and_lowers() -> None:
 
 
 def test_reopen_walk_ins_reuses_trusted_identity() -> None:
-    intent = parse_canonical_intent(
+    intent = _parse_canonical(
         f"reopen walk-ins for incident {INCIDENT} source revision 4 intake revision 6"
     )
     assert intent == SetRecoveryIntakeIntent(INCIDENT, True, 4, 6)
@@ -63,7 +69,7 @@ def test_extend_day_lowers_with_trusted_authority_party() -> None:
         f"from {start} to {end} source revision 2 location revision 4 "
         "availability revision 6 reason crowd overflow"
     )
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     assert intent == ExtendRecoveryDayIntent(
         INCIDENT,
         ASSIGNMENT,
