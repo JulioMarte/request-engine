@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.operational_copilot.adapters.recovery_extend_day_executor import (
+    RecoveryExtendDayCopilotExecutor,
+)
 from request_engine.modules.operational_copilot.adapters.recovery_intake_executor import (
     RecoveryIntakeCopilotExecutor,
 )
@@ -11,6 +14,7 @@ from request_engine.modules.operational_copilot.application.copilot import Opera
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
     AuthorityPartyReader,
+    RecoveryExtendDayExecutor,
     RecoveryIntakeExecutor,
     RecoveryProposalReader,
 )
@@ -27,9 +31,17 @@ def install_http(
     proposal_reader: RecoveryProposalReader | None = None,
     authority_reader: AuthorityPartyReader | None = None,
     intake_executor: RecoveryIntakeExecutor | None = None,
+    extend_day_executor: RecoveryExtendDayExecutor | None = None,
 ) -> None:
-    mutation_executors = (
-        (RecoveryIntakeCopilotExecutor(intake_executor),) if intake_executor is not None else ()
+    mutation_executors = tuple(
+        executor
+        for executor in (
+            RecoveryIntakeCopilotExecutor(intake_executor) if intake_executor is not None else None,
+            RecoveryExtendDayCopilotExecutor(extend_day_executor)
+            if extend_day_executor is not None
+            else None,
+        )
+        if executor is not None
     )
     copilot = OperationalCopilot(
         at_risk_reader,
