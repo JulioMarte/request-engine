@@ -43,7 +43,10 @@ class AuthorityPartyReader(Protocol):
 
 
 class RecoveryCommandExecutor(Protocol):
-    async def create_proposal(self, command: CreateRecoveryProposalCommand) -> RescheduleProposal: ...
+    async def create_proposal(
+        self,
+        command: CreateRecoveryProposalCommand,
+    ) -> RescheduleProposal: ...
 
     async def execute(self, command: ExecuteRecoveryCommand) -> RecoveryExecution: ...
 
@@ -57,9 +60,15 @@ class RecoveryExtendDayExecutor(Protocol):
 
 
 class DiscoveryPublicationExecutor(Protocol):
-    async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState: ...
+    async def publish(
+        self,
+        command: PublishDiscoverySupplyCommand,
+    ) -> DiscoveryPublicationState: ...
 
-    async def revoke(self, command: RevokeDiscoveryPublicationCommand) -> DiscoveryPublicationState: ...
+    async def revoke(
+        self,
+        command: RevokeDiscoveryPublicationCommand,
+    ) -> DiscoveryPublicationState: ...
 
 
 class CopilotMutationExecutor(Protocol):
