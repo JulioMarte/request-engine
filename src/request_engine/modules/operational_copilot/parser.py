@@ -22,13 +22,11 @@ _ACTION_MARKERS = (
     "execute recovery",
     "walk-ins for incident",
     "extend day for incident",
-    "publish offering",
+    "publish ",
     "revoke discovery publication",
-    "show reservations at risk",
+    "at risk",
     "will work until",
     "stop accepting walk-ins",
-    " discovery",
-    "show me which reservations are at risk",
 )
 
 
