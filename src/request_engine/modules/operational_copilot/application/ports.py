@@ -3,11 +3,8 @@ from uuid import UUID
 
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
 from request_engine.modules.operational_copilot.contracts import AtRiskReservationsQuery
+from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
-from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
-from request_engine.modules.operational_recovery.contracts.workflow_commands import (
-    SetRecoveryIntakeCommand,
-)
 
 
 class AtRiskReservationReader(Protocol):
@@ -32,15 +29,18 @@ class AuthorityPartyReader(Protocol):
     ) -> UUID | None: ...
 
 
-class RecoveryIntakeExecutor(Protocol):
-    """Published owner execution shape admitted by the first F6 execution tranche."""
+class CopilotMutationExecutor(Protocol):
+    """One explicitly registered bridge from an F6 operation to its owner surface."""
 
-    async def set_intake(self, command: SetRecoveryIntakeCommand) -> RecoveryAction: ...
+    operation_type: type
+    owner_capability: str
+
+    async def execute(self, operation: CopilotOperation) -> object: ...
 
 
 __all__ = [
     "AtRiskReservationReader",
     "AuthorityPartyReader",
-    "RecoveryIntakeExecutor",
+    "CopilotMutationExecutor",
     "RecoveryProposalReader",
 ]
