@@ -10,7 +10,7 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
 
 class RecoveryExtendDayCopilotExecutor:
     operation_type: type[object] = ExtendRecoveryDayCommand
-    owner_capability: str = "operational_recovery.execute"
+    owner_capability: str | None = "operational_recovery.execute"
 
     def __init__(self, owner: RecoveryExtendDayExecutor) -> None:
         self._owner = owner
@@ -19,9 +19,9 @@ class RecoveryExtendDayCopilotExecutor:
         command = cast(ExtendRecoveryDayCommand, operation)
         action = await self._owner.extend_day(command)
         return CopilotExecutionReceipt(
+            owner="operational_recovery",
             action=str(action.action_kind.value),
-            owner_action_id=action.id,
-            incident_id=action.incident_id,
+            result_id=action.id,
             status=str(action.status.value),
             idempotency_key=action.idempotency_key,
         )
