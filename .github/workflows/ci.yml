@@ -3,10 +3,13 @@ name: CI
 on:
   pull_request:
   push:
-    # Feature branches are validated by pull_request CI. Keep direct push CI
-    # only for main so implementation branches do not duplicate canonical runs.
+    # Feature branches are validated by pull_request CI. Direct push CI covers
+    # the integrated states themselves: main (release) and development (the
+    # canonical integration branch), so every merged development SHA carries
+    # its own canonical run, not only the PR head that produced it.
     branches:
       - main
+      - development
   workflow_dispatch:
 
 permissions:

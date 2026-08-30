@@ -170,7 +170,7 @@ F4 may expose projected overrun, insufficient headroom, affected commitments and
 
 # F5 — Operational Recovery & Communications
 
-Status: **slice-1 recovery core, full recovery workflow tranche, the bounded fallback sweep, the change-storm coalescing, the autonomous impact-communication, the cross-Organization replacement debt and the operator-granted autonomous reschedule envelope merged; the remaining roadmap row is autonomous extend-day escalation (superseded as operator-only)**.
+Status: **implemented**. Every row of the F5 capability set below is delivered with registered evidence, except autonomous extend-day escalation, which is explicitly superseded as operator-only (extending the day commits human labor). See contract 32 and disposition 33; acceptance evidence is consolidated in document 34.
 
 Implementation tranches:
 
@@ -248,7 +248,7 @@ autonomous reschedule escalation                         delivered (operator-gra
 autonomous extend-day escalation                         superseded (operator-only: extending the day commits human labor and cannot be safely automated)
 ```
 
-Therefore the phrase `F5 implemented` must not be used without the qualifier **core slice + recovery workflow tranche**. F5 is complete only when the remaining open rows are delivered or explicitly superseded by a later accepted product decision, and the completion gate in `32-operational-recovery-communications-contract.md` (roadmap + contract + implementation + evidence agree) is satisfied.
+With every row above delivered or explicitly superseded, F5 may be described as implemented, subject to the completion gate in `32-operational-recovery-communications-contract.md` (roadmap + contract + implementation + owner contracts + migrations + ownership docs + evidence + exact-head CI agree). The integrated development state is additionally proven by CI runs on the development merge SHA itself. Capabilities beyond this set — such as a customer-consent reschedule mode (`PROPOSE_AND_REQUIRE_ACCEPTANCE`) for consent-sensitive verticals — are future product scope requiring a new accepted policy decision, not F5 debt.
 
 Internal cause and public communication language remain separate privacy concerns.
 
