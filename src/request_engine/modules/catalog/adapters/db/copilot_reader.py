@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from datetime import datetime
 from typing import cast
 from uuid import UUID
@@ -103,9 +102,9 @@ def _location_clock(row: RowMapping) -> CopilotLocationClock:
     )
 
 
-def _datetime(row: Mapping[str, object], key: str) -> datetime:
+def _datetime(row: RowMapping, key: str) -> datetime:
     return cast(datetime, row[key])
 
 
-def _optional_datetime(row: Mapping[str, object], key: str) -> datetime | None:
+def _optional_datetime(row: RowMapping, key: str) -> datetime | None:
     return cast(datetime | None, row[key])
