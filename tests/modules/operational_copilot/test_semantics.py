@@ -20,6 +20,8 @@ from request_engine.modules.operational_recovery.contracts.commands import (
     ExecuteRecoveryCommand,
 )
 
+from .support import parse_canonical_intent
+
 ORG = UUID("11111111-1111-1111-1111-111111111111")
 PRINCIPAL = UUID("22222222-2222-2222-2222-222222222222")
 QUEUE = UUID("33333333-3333-3333-3333-333333333333")
@@ -29,7 +31,7 @@ CTX = CopilotContext(ORG, PRINCIPAL, "copilot:replay:1")
 
 
 def test_create_proposal_parses_validates_and_lowers() -> None:
-    intent = parse_copilot_intent(f"propose recovery for queue {QUEUE} over 5 days")
+    intent = parse_canonical_intent(f"propose recovery for queue {QUEUE} over 5 days")
     assert intent == CreateRecoveryProposalIntent(QUEUE, 5)
 
     command = lower_copilot_intent(CTX, validate_copilot_intent(CTX, intent))
@@ -44,7 +46,7 @@ def test_execute_parses_exact_modifiers_and_lowers() -> None:
         "source source-fp proposal proposal-fp allow subject override "
         "without notification"
     )
-    intent = parse_copilot_intent(text)
+    intent = parse_canonical_intent(text)
     assert intent == ExecuteRecoveryIntent(
         PROPOSAL, RESERVATION, "source-fp", "proposal-fp", True, False
     )
@@ -56,7 +58,7 @@ def test_execute_parses_exact_modifiers_and_lowers() -> None:
 
 
 def test_replay_lowers_deterministically() -> None:
-    intent = parse_copilot_intent(f"propose recovery for queue {QUEUE}")
+    intent = parse_canonical_intent(f"propose recovery for queue {QUEUE}")
     validated = validate_copilot_intent(CTX, intent)
     assert lower_copilot_intent(CTX, validated) == lower_copilot_intent(CTX, validated)
 
