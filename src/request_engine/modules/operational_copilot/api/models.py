@@ -33,21 +33,15 @@ class CopilotInterpretationView(BaseModel):
 
 
 class CopilotExecutionView(BaseModel):
+    owner: str
     action: str
-    owner_action_id: UUID
-    incident_id: UUID
+    result_id: UUID
     status: str
     idempotency_key: str
 
     @classmethod
     def from_receipt(cls, receipt: CopilotExecutionReceipt) -> "CopilotExecutionView":
-        return cls(
-            action=receipt.action,
-            owner_action_id=receipt.owner_action_id,
-            incident_id=receipt.incident_id,
-            status=receipt.status,
-            idempotency_key=receipt.idempotency_key,
-        )
+        return cls(**asdict(receipt))
 
 
 class CopilotAtRiskCommitmentView(BaseModel):
