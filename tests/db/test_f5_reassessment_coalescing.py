@@ -12,7 +12,6 @@ from threading import Event, Thread
 
 import psycopg
 import pytest
-
 from f5_sweep_support import sweep_world
 
 from e2e import f5_scheduled_assessment_support as assessment_support
@@ -24,8 +23,11 @@ from request_engine.bootstrap.recovery_sweep import build_recovery_sweep
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [
-    pytest.mark.asyncio, pytest.mark.postgres, pytest.mark.invariant,
-    pytest.mark.adversarial, pytest.mark.contract,
+    pytest.mark.asyncio,
+    pytest.mark.postgres,
+    pytest.mark.invariant,
+    pytest.mark.adversarial,
+    pytest.mark.contract,
 ]
 
 STORM_BUMPS = 50
@@ -143,8 +145,7 @@ async def test_sweep_repairs_through_the_shared_enqueue_without_resurrecting_can
     assert await sweep.run_once() == ()
 
     admin_conn.execute(
-        "DELETE FROM request_engine.scheduled_actions "
-        "WHERE organization_id=%s AND dedupe_key=%s",
+        "DELETE FROM request_engine.scheduled_actions WHERE organization_id=%s AND dedupe_key=%s",
         (sandbox.organization_id, f"f5-reassessment:{sandbox.queue_id}:{revision}"),
     )
     assert await sweep.run_once() != ()
