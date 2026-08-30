@@ -193,11 +193,15 @@ A contextual Reservation MUST no longer be marked non-actionable merely because 
 
 Recovery alternatives MUST be generated from Booking's authoritative contextual slot planner, not by editing Resource IDs on an existing Reservation.
 
+Replacement may choose another eligible Resource and/or ResourceLocationAssignment...
+
+Cross-Organization provider replacement is a delivered two-boundary saga: F2 discovery search issues the opaque handoff token for one explicitly published external option; the requester's replace_resource action then (1) secures the new commitment in the provider Organization through the discovery handoff fence under the provider's own referral service principal, and only afterwards (2) disposes the degraded source commitment inside the requester Organization. Each boundary is its own idempotent transaction; replay of the same action resumes the saga, a failed external commit rejects the action without disposing the source, and the referral subject must already exist as an active party of the provider Organization. F5 never gains cross-tenant RLS bypass.
+
 Replacement may choose another eligible Resource and/or ResourceLocationAssignment that satisfies Offering requirements, Location constraints, context terms and capacity.
 
 Cross-Organization provider replacement, where discovery policy permits it, is a two-boundary operation: F2 discovery may find an explicitly published external supply option, but execution must use the owning Booking handoff/commitment authority and must explicitly dispose the old commitment only after the new authoritative commitment is secured under the documented recovery transaction/saga semantics. F5 never gains cross-tenant RLS bypass.
 
-Disposition note (current tranche): `feature/f5-roadmap-authoritative-recovery` delivers and proves intra-Organization replacement (see `34-operational-recovery-acceptance-evidence.md`). Cross-Organization execution via F2 discovery + Booking handoff remains conditional scope and is not implemented in this tranche; the requirement above stands unchanged.
+Disposition note (current tranche): `feature/f5-roadmap-authoritative-recovery` delivers and proves intra-Organization replacement (see `34-operational-recovery-acceptance-evidence.md`). `feature/f5-cross-organization-replacement` delivers and proves the cross-Organization saga described above through the real F2 discovery search, handoff fence and two-Organization runtime (see `34-operational-recovery-acceptance-evidence.md`).
 
 ## 12. Multi-action recovery workflow
 
