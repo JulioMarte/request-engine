@@ -1,4 +1,3 @@
-from request_engine.modules.operational_copilot.contracts import CopilotIntent
 from request_engine.modules.operational_copilot.errors import (
     AmbiguousCopilotIntent,
     UnsupportedCopilotIntent,
@@ -6,9 +5,12 @@ from request_engine.modules.operational_copilot.errors import (
 from request_engine.modules.operational_copilot.parsing.discovery import parse_discovery_intent
 from request_engine.modules.operational_copilot.parsing.inspection import parse_inspection_intent
 from request_engine.modules.operational_copilot.parsing.recovery import parse_recovery_intent
+from request_engine.modules.operational_copilot.parsing.roadmap import parse_roadmap_intent
 from request_engine.modules.operational_copilot.parsing.workflow import parse_workflow_intent
+from request_engine.modules.operational_copilot.references import CopilotParsedIntent
 
 _PARSERS = (
+    parse_roadmap_intent,
     parse_recovery_intent,
     parse_workflow_intent,
     parse_discovery_intent,
@@ -23,10 +25,14 @@ _ACTION_MARKERS = (
     "publish offering",
     "revoke discovery publication",
     "show reservations at risk",
+    "will work until",
+    "stop accepting walk-ins",
+    " discovery",
+    "show me which reservations are at risk",
 )
 
 
-def parse_copilot_intent(text: str) -> CopilotIntent:
+def parse_copilot_intent(text: str) -> CopilotParsedIntent:
     normalized = " ".join(text.strip().split())
     lowered = normalized.casefold()
     matches = [intent for parse in _PARSERS if (intent := parse(normalized)) is not None]
