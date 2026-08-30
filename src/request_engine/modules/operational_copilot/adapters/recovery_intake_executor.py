@@ -9,7 +9,7 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
 
 
 class RecoveryIntakeCopilotExecutor:
-    operation_type = SetRecoveryIntakeCommand
+    operation_type: type[object] = SetRecoveryIntakeCommand
     owner_capability = "operational_recovery.execute"
 
     def __init__(self, owner: RecoveryIntakeExecutor) -> None:
