@@ -4,7 +4,7 @@ from request_engine.modules.operational_copilot.contracts import (
     ExecuteRecoveryIntent,
     ValidatedCopilotIntent,
 )
-from request_engine.modules.operational_recovery.application.commands import (
+from request_engine.modules.operational_recovery.contracts.commands import (
     CreateRecoveryProposalCommand,
     ExecuteRecoveryCommand,
 )
