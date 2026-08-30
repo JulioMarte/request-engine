@@ -33,6 +33,8 @@ class SetRecoveryIntakeIntent:
     accepting: bool
     expected_source_revision: int
     expected_intake_revision: int
+    reason: str | None = None
+    effective_until: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,8 +94,8 @@ class ValidatedCopilotIntent:
 
 @dataclass(frozen=True, slots=True)
 class CopilotExecutionReceipt:
+    owner: str
     action: str
-    owner_action_id: UUID
-    incident_id: UUID
+    result_id: UUID
     status: str
     idempotency_key: str
