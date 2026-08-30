@@ -1,10 +1,10 @@
+from typing import cast
+
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
 from request_engine.modules.operational_copilot.application.authority import (
     resolve_trusted_authority_party,
 )
-from request_engine.modules.operational_copilot.application.execution import (
-    CopilotExecutionRegistry,
-)
+from request_engine.modules.operational_copilot.application.execution import CopilotExecutionRegistry
 from request_engine.modules.operational_copilot.application.fingerprint_resolution import (
     resolve_execute_fingerprints,
 )
@@ -12,6 +12,7 @@ from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
     AuthorityPartyReader,
     CopilotMutationExecutor,
+    CopilotReferenceResolver,
     RecoveryProposalReader,
 )
 from request_engine.modules.operational_copilot.contracts import (
@@ -26,6 +27,10 @@ from request_engine.modules.operational_copilot.lowering import lower_copilot_in
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
+from request_engine.modules.operational_copilot.references import (
+    CopilotParsedIntent,
+    UNRESOLVED_INTENT_TYPES,
+)
 
 
 class OperationalCopilot:
@@ -35,14 +40,17 @@ class OperationalCopilot:
         proposal_reader: RecoveryProposalReader | None = None,
         authority_reader: AuthorityPartyReader | None = None,
         mutation_executors: tuple[CopilotMutationExecutor, ...] = (),
+        reference_resolver: CopilotReferenceResolver | None = None,
     ) -> None:
         self._at_risk_reader = at_risk_reader
         self._proposal_reader = proposal_reader
         self._authority_reader = authority_reader
         self._execution = CopilotExecutionRegistry(mutation_executors)
+        self._reference_resolver = reference_resolver
 
     async def interpret(self, context: CopilotContext, text: str) -> CopilotOperation:
-        intent = parse_copilot_intent(text)
+        parsed = parse_copilot_intent(text)
+        intent = await self._resolve_references(context, parsed)
         resolved_context = await self._resolve_authority(intent, context)
         resolved_intent = await self._resolve_fingerprints(intent, resolved_context)
         validated = validate_copilot_intent(resolved_context, resolved_intent)
@@ -70,6 +78,17 @@ class OperationalCopilot:
         if not isinstance(operation, AtRiskReservationsQuery):
             raise UnsupportedCopilotIntent("intent is not an inspection query")
         return await self._at_risk_reader.read(operation)
+
+    async def _resolve_references(
+        self,
+        context: CopilotContext,
+        intent: CopilotParsedIntent,
+    ) -> CopilotIntent:
+        if self._reference_resolver is not None:
+            return await self._reference_resolver.resolve(context, intent)
+        if isinstance(intent, UNRESOLVED_INTENT_TYPES):
+            raise UnsupportedCopilotIntent("semantic reference resolution is unavailable")
+        return cast(CopilotIntent, intent)
 
     async def _resolve_authority(
         self,
