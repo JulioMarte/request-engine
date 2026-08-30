@@ -14,6 +14,7 @@ from .f5_recovery_assertions import create_proposal
 from .f5_recovery_support import book_commitments, restrict_source_to_first_six
 from .f5_replace_resource_support import seed_incident_for_proposal
 from .f6_copilot_support import copilot_actor, execute
+from .f6_roadmap_support import seed_location_operational_hours
 from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
@@ -72,6 +73,7 @@ async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
     base = seed_tenant_sandbox(e2e_admin_conn, "f6-copilot-rest-of-day")
     sandbox = five_minute_sandbox(e2e_admin_conn, base)
     seed_today_schedule(e2e_admin_conn, sandbox)
+    seed_location_operational_hours(e2e_admin_conn, sandbox)
     actors = {sandbox.token: copilot_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         await configure_projection(client, sandbox)
