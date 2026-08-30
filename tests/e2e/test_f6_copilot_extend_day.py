@@ -73,9 +73,7 @@ async def test_f6_copilot_extend_day_lowers_to_owner_extend_day(
             f"location revision {location_revision} "
             f"availability revision {resource_revision} reason recover commitments"
         )
-        decision = await interpret(
-            client, sandbox, text, f"f6-extend-{uuid4().hex}", with_authority=True
-        )
+        decision = await interpret(client, sandbox, text, f"f6-extend-{uuid4().hex}")
         assert decision["action"] == "extend_recovery_day"
         operation = cast(dict[str, Any], decision["operation"])
         assert operation["authority_party_id"] == str(sandbox.party_id)

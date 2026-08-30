@@ -1,13 +1,12 @@
-from hashlib import sha256
 from typing import Annotated
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from request_engine.modules.operational_copilot.api.models import (
     CopilotAtRiskCommitmentView,
     CopilotAtRiskView,
     CopilotInterpretationView,
+    CopilotInterpretBody,
     interpretation_view,
 )
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
@@ -24,6 +23,11 @@ from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
+IdempotencyKey = Annotated[
+    str,
+    Header(alias="Idempotency-Key", min_length=1, max_length=250),
+]
+
 
 def create_copilot_router(
     *,
@@ -36,18 +40,17 @@ def create_copilot_router(
         return await actor_resolver.resolve_actor(request)
 
     async def interpret(
-        text: str,
+        body: CopilotInterpretBody,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
-        authority_party_id: UUID | None = None,
+        idempotency_key: IdempotencyKey,
     ) -> CopilotInterpretationView | CopilotAtRiskView:
         require_capability(actor, "operational_copilot.interpret")
         context = CopilotContext(
             organization_id=actor.organization_id,
             principal_id=actor.principal_id,
-            idempotency_key=_interpretation_key(actor, text),
-            authority_party_id=authority_party_id,
+            idempotency_key=idempotency_key,
         )
-        operation = await _refusals(copilot, context, text)
+        operation = await _refusals(copilot, context, body.text)
         if isinstance(operation, AtRiskReservationsQuery):
             assessment = await copilot.read_at_risk(context, operation)
             return CopilotAtRiskView(
@@ -74,15 +77,10 @@ def create_copilot_router(
         "/interpret",
         interpret,
         capability="operational_copilot.interpret",
-        methods=["GET"],
+        methods=["POST"],
         response_model=CopilotInterpretationView | CopilotAtRiskView,
     )
     return router
-
-
-def _interpretation_key(actor: ActorContext, text: str) -> str:
-    digest = sha256(text.casefold().encode()).hexdigest()[:32]
-    return f"copilot-interpret:{actor.principal_id}:{digest}"
 
 
 async def _refusals(

@@ -28,6 +28,8 @@ live_capacity.contracts.recovery
 
 The architecture test `tests/architecture/test_operational_copilot_module_boundary.py` enforces this module-wide.
 
-Trust rules: `organization_id`, `principal_id`, `idempotency_key` and `authority_party_id` come only from the trusted `CopilotContext`. Natural language never supplies identity, authority or idempotency. Ambiguous, unsupported or name-based-resolution input fails closed (`errors.py`).
+Trust rules: `organization_id` and `principal_id` come only from the authenticated actor. `authority_party_id` is resolved server-side from tenant representation truth through the published `tenancy` operational authority reader — never from language or HTTP parameters — and fails closed when absent or ambiguous. The `Idempotency-Key` request header is the trusted idempotency identity and flows unchanged into every lowered owner command; it is never derived from the language text. Ambiguous, unsupported or name-based-resolution input fails closed (`errors.py`).
+
+The interpret surface is decision-only: it never executes mutations. Execution happens at owner module surfaces with their full gates.
 
 Normative contract: `docs/v3/35-operational-copilot-contract.md`.

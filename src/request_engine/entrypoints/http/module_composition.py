@@ -41,7 +41,10 @@ from request_engine.modules.queue.api.live_capacity import (
 )
 from request_engine.modules.queue.api.recovery import build_recovery_intake_control_port
 from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import build_party_authority_reader
+from request_engine.modules.tenancy.api import (
+    build_operational_authority_party_reader,
+    build_party_authority_reader,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
@@ -115,4 +118,5 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         at_risk_reader=build_live_capacity_at_risk_reader(recovery_capacity),
         proposal_reader=build_recovery_proposal_reader(recovery_service),
+        authority_reader=build_operational_authority_party_reader(session_factory),
     )

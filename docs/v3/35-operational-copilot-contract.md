@@ -32,7 +32,11 @@ F6 does not own tenant/principal identity, authorization, persistence, transacti
 
 ## 3. Trust boundary
 
-`organization_id`, `principal_id`, capability/authority context and mutation idempotency identity come from the authenticated application boundary. Natural-language input never chooses tenant, principal or authority.
+`organization_id` and `principal_id` come from the authenticated application boundary. Natural-language input never chooses tenant, principal or authority, and no HTTP parameter may supply them.
+
+`authority_party_id` is resolved server-side from tenant-owned representation truth through the published `tenancy` operational authority read contract (`OperationalAuthorityPartyReader`): the resolver returns the single party the principal currently holds a valid grant for within the copilot's operational scopes, and refuses (fails closed) when authority is absent or ambiguous. Callers cannot inject, override or escalate authority through the request.
+
+The mutation idempotency identity comes from the trusted request boundary: the authenticated caller supplies the `Idempotency-Key`, which flows unchanged into `CopilotContext` and into every lowered owner command. Two different request keys with identical language produce different idempotency identities; the same key replays the same identity. The idempotency identity is never derived from the language text itself.
 
 The parser is pure: text in, typed IR or semantic refusal out. It has no repository, database, network, provider, command bus or application-service dependency.
 
@@ -53,7 +57,9 @@ F6 fails closed.
 
 ## 5. Implemented grammar
 
-The branch implements a deterministic grammar over already-published owner primitives. All phrases are normalized (whitespace-collapsed, case-insensitive) and matched exactly; identifiers are always explicit UUIDs. Name-based entity resolution (for example, "Dr. A") is refused: guessing entity resolution is forbidden by section 4.
+Status framing: this tranche delivers the roadmap F6 **semantic action classes** as a deterministic semantic compiler. The roadmap's natural-language *examples as written* ("Dr. A will work until 7 PM today", "publish Dr. B for cardiology discovery") are **not yet executable**, because name-based entity resolution and relative-time resolution are deliberately pending; both are explicitly refused rather than guessed. The examples describe the target capability, not the delivered grammar.
+
+The implemented grammar runs over already-published owner primitives. All phrases are normalized (whitespace-collapsed, case-insensitive) and matched exactly; identifiers are always explicit UUIDs. Name-based entity resolution (for example, "Dr. A") is refused: guessing entity resolution is forbidden by section 4.
 
 Recovery (F5):
 
@@ -87,7 +93,7 @@ Inspection (F4/F5):
 show reservations at risk for queue <queue-uuid>
 ```
 
-`N` is admitted only as a non-negative integer; proposal search days are bounded to 1 through 30 with an F5 default of 7 days when omitted. Fingerprints are required and bounded to 512 characters. Datetimes must be timezone-aware; ends must be after starts. `public` visibility requires an explicit resource. The four roadmap example intents are covered by these phrases; name-based resolution and relative time parsing remain refused and are recorded as future grammar work, not delivered capability.
+`N` is admitted only as a non-negative integer; proposal search days are bounded to 1 through 30 with an F5 default of 7 days when omitted. Fingerprints are bounded to 512 characters. Datetimes must be timezone-aware; ends must be after starts. `public` visibility requires an explicit resource. These phrases cover the roadmap's semantic action classes; name-based resolution and relative time parsing remain refused and are recorded as remaining roadmap scope, not delivered capability.
 
 ## 6. Typed semantics and replay
 
@@ -118,11 +124,12 @@ Published owner primitives consumed by F6:
 - `operational_recovery.contracts.workflow_commands` — `SetRecoveryIntakeCommand`, `ExtendRecoveryDayCommand` (authoritative definitions moved out of `application/workflow_commands.py`, which reexports them);
 - `operational_recovery.contracts.queries` — `RecoveryProposalReader` protocol for server-side fingerprint resolution (satisfied structurally by `OperationalRecoveryService`);
 - `discovery.contracts.commands` — `PublishDiscoverySupplyCommand`, `RevokeDiscoveryPublicationCommand`, `DiscoveryPublicationState` (new published surface; `application/commands/publication.py` reexports);
-- `live_capacity.contracts.recovery` — `RecoveryCapacitySource` / `RecoveryCapacityAssessment` as the at-risk inspection read contract, adapted behind the F6 `AtRiskReservationReader` application port.
+- `live_capacity.contracts.recovery` — `RecoveryCapacitySource` / `RecoveryCapacityAssessment` as the at-risk inspection read contract, adapted behind the F6 `AtRiskReservationReader` application port;
+- `tenancy.contracts.authority` — `OperationalAuthorityPartyReader` protocol and its PostgreSQL adapter, published for composition roots to wire trusted authority resolution.
 
 Future grammar rows must first identify a supported owner command/query contract. If no such contract exists, F6 must refuse rather than invent a shadow mutation.
 
-The public application/API entrypoint is `application.copilot.OperationalCopilot` (parse -> validate -> lower, plus at-risk inspection through the reader port) and `api` route `POST /v1/operational-copilot/interpret` with capability `operational_copilot.interpret`. The interpret endpoint returns the typed semantic decision (owner command summary or at-risk view); it never executes mutations. Mutation execution remains at the owner module's own endpoints/commands with their full authority, concurrency, idempotency and audit contracts.
+The public application/API entrypoint is `application.copilot.OperationalCopilot` (parse -> resolve authority -> resolve fingerprints -> validate -> lower, plus at-risk inspection through the reader port) and `api` route `POST /v1/operational-copilot/interpret` with capability `operational_copilot.interpret`. The interpret endpoint accepts the language in a typed JSON body plus the trusted `Idempotency-Key` header; it returns the typed semantic decision (owner command summary or at-risk view) and never executes mutations. Mutation execution remains at the owner module's own endpoints/commands with their full authority, concurrency, idempotency and audit contracts.
 
 ## 8. Required proof
 
@@ -156,12 +163,18 @@ stop/reopen walk-ins semantic intent               implemented (bounded identifi
 discovery publish/revoke semantic intent           implemented (bounded identifier grammar)
 at-risk Reservation inspection                     implemented through live_capacity read contract
 F5 fingerprint resolution via owner read contract  implemented (bounded, fail-closed)
-public F6 application/API entrypoint               implemented (interpret endpoint, no mutation execution)
+trusted authority resolution (tenancy truth)       implemented (fail-closed, injection-refused)
+request-scoped idempotency identity propagation    implemented (header -> context -> owner command)
+public F6 application/API entrypoint               implemented (POST interpret, no mutation execution)
 authority/capability integration proof             implemented (PostgreSQL e2e through owner surface)
-PostgreSQL owner-gate evidence                     implemented (tests/e2e/test_f6_copilot_owner_gates.py, test_f6_copilot_fingerprints.py, test_f6_copilot_extend_day.py)
-exact-head CI                                      pending
+PostgreSQL owner-gate evidence                     implemented (tests/e2e/test_f6_copilot_owner_gates.py, test_f6_copilot_authority.py, test_f6_copilot_fingerprints.py, test_f6_copilot_extend_day.py)
+roadmap natural-language examples as written       remaining scope (entity + relative-time resolution pending)
+natural-language execution surface                 remaining scope (interpret-only tranche; execution via owner surfaces)
+exact-head CI on the branch head                   green (PR #102 head)
 ```
 
-Evidence still required before F6 closure: exact-head CI on the branch head. The PostgreSQL-backed proof in `tests/e2e/test_f6_copilot_owner_gates.py` demonstrates that a copilot-lowered command executed through the owner surface preserves optimistic-concurrency, idempotency and authority gates, and that at-risk inspection reads through the live_capacity read contract.
+The PostgreSQL-backed proof in `tests/e2e/` demonstrates that copilot-lowered commands executed through owner surfaces preserve optimistic-concurrency, idempotency and authority gates, that at-risk inspection reads through the live_capacity read contract, that caller-supplied authority is ignored in favour of tenant representation truth, and that refusal fails closed when authority is absent.
+
+Remaining before the roadmap F6 capability is fully delivered: natural entity resolution (resource/assignment/queue/offering from Request Engine truth, never from a model), relative operational-time resolution, and an explicit registered-executor execution surface (`interpret -> validated operation -> owner executor`). A future LLM adapter may draft candidate language but never resolves identities, authority, revisions or idempotency.
 
 Any future LLM, voice, chat or UI adapter is non-authoritative. It may produce text or a candidate semantic intent, but it must terminate at this bounded validation/lowering contract and cannot acquire authority from model output.

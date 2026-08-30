@@ -7,6 +7,7 @@ from request_engine.modules.operational_copilot.api.recovery import (
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
+    AuthorityPartyReader,
     RecoveryProposalReader,
 )
 from request_engine.platform.security.http import ActorResolver
@@ -20,6 +21,7 @@ def install_http(
     actor_resolver: ActorResolver,
     at_risk_reader: AtRiskReservationReader,
     proposal_reader: RecoveryProposalReader | None = None,
+    authority_reader: AuthorityPartyReader | None = None,
 ) -> None:
-    copilot = OperationalCopilot(at_risk_reader, proposal_reader)
+    copilot = OperationalCopilot(at_risk_reader, proposal_reader, authority_reader)
     app.include_router(create_copilot_router(copilot=copilot, actor_resolver=actor_resolver))

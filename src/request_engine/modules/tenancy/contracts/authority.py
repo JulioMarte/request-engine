@@ -33,3 +33,20 @@ class PartyAuthorityReader(Protocol):
         represented_party_id: UUID,
         scope_key: str,
     ) -> PartyAuthorityGrant | None: ...
+
+
+class OperationalAuthorityPartyReader(Protocol):
+    """Resolve the single party a principal currently holds operational authority for.
+
+    Returns None when the principal holds no current grant within the requested
+    scopes, or when grants point at more than one distinct party; callers must
+    refuse rather than guess.
+    """
+
+    async def resolve_operational_party(
+        self,
+        *,
+        organization_id: UUID,
+        principal_id: UUID,
+        scope_keys: frozenset[str],
+    ) -> UUID | None: ...

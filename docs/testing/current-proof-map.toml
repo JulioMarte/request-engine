@@ -513,3 +513,8 @@ evidence = ["contract", "invariant"]
 guarantee = "INV-COPILOT-ADMISSION-001"
 path = "tests/e2e/test_f6_copilot_extend_day.py"
 evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_authority.py"
+evidence = ["adversarial", "security"]

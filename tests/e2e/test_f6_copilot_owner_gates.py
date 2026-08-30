@@ -57,9 +57,10 @@ async def test_f6_language_never_bypasses_owner_gates(
         assert operation["accepting"] is False
         assert operation["organization_id"] == str(sandbox.organization_id)
         assert operation["principal_id"] == str(sandbox.principal_id)
-        assert operation["idempotency_key"].startswith("copilot-interpret:")
+        assert operation["idempotency_key"] == key
         assert await interpret(client, sandbox, stop_text, key) == decision
-        owner_key = str(operation["idempotency_key"])
+        renamed = await interpret(client, sandbox, stop_text, f"f6-other-key-{uuid4().hex}")
+        assert renamed["operation"]["idempotency_key"] != operation["idempotency_key"]
         command = SetRecoveryIntakeCommand(
             organization_id=sandbox.organization_id,
             principal_id=sandbox.principal_id,
@@ -67,7 +68,7 @@ async def test_f6_language_never_bypasses_owner_gates(
             expected_source_revision=int(operation["expected_source_revision"]),
             expected_intake_revision=int(operation["expected_intake_revision"]),
             accepting=False,
-            idempotency_key=owner_key,
+            idempotency_key=key,
         )
         stopped = await client.post(
             f"/v1/operational-recovery/incidents/{incident_id}/intake-control",

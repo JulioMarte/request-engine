@@ -142,11 +142,12 @@ def _foreign_request(
             404,
         )
     if name == "appointments.book":
-        body: dict[str, object] = {
-            "option_id": objects.actor_option_id,
-            "subject_party_id": str(foreign.party_id),
-        }
-        return "/v1/appointments", {}, body, 422
+        return (
+            "/v1/appointments",
+            {},
+            {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)},
+            422,
+        )
     if name == "appointments.read":
         return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
     if name == "appointments.cancel":
@@ -208,8 +209,12 @@ def _foreign_request(
     if name == "waitlist.read":
         return f"/v1/waitlist/{objects.waitlist_entry_id}", {}, None, 404
     if name == "waitlist.leave":
-        body = {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"}
-        return f"/v1/waitlist/{objects.waitlist_entry_id}/leave", {}, body, 404
+        return (
+            f"/v1/waitlist/{objects.waitlist_entry_id}/leave",
+            {},
+            {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"},
+            404,
+        )
     if name == "requests.submit":
         return (
             f"/v1/requests/definitions/{foreign.request_key}/submit",
@@ -220,11 +225,12 @@ def _foreign_request(
     if name == "requests.read":
         return f"/v1/requests/{objects.request_id}", {}, None, 404
     if name == "requests.cancel":
-        body: dict[str, object] = {
-            "reason": "cross tenant",
-            "expected_revision": objects.request_revision,
-        }
-        return f"/v1/requests/{objects.request_id}/cancel", {}, body, 404
+        return (
+            f"/v1/requests/{objects.request_id}/cancel",
+            {},
+            {"reason": "cross tenant", "expected_revision": objects.request_revision},
+            404,
+        )
     if name == "reminders.create":
         return (
             "/v1/reminders",
@@ -249,13 +255,6 @@ def _foreign_request(
             {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
             404,
         )
-    if name == "operational_copilot.interpret":
-        return (
-            "/v1/operational-copilot/interpret",
-            {"text": f"propose recovery for queue {foreign.queue_id}"},
-            None,
-            200,
-        )
     raise AssertionError(f"missing tenant probe for {name}")
 
 
@@ -267,8 +266,12 @@ async def _invoke(
     objects: ForeignObjects,
 ) -> tuple[Response, int]:
     path, query, body, expected = _foreign_request(operation, actor, foreign, objects)
-    key = f"cross-{operation.name}-{uuid4().hex}" if operation.idempotency_required else None
-    headers = auth(actor, idempotency_key=key)
+    headers = auth(
+        actor,
+        idempotency_key=f"cross-{operation.name}-{uuid4().hex}"
+        if operation.idempotency_required
+        else None,
+    )
     response = await client.request(
         operation.method, path, params=query, json=body, headers=headers
     )
