@@ -9,6 +9,7 @@ from request_engine.modules.discovery.contracts.commands import (
 )
 from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
+    CopilotIntent,
     PublishDiscoverySupplyIntent,
     RevokeDiscoveryPublicationIntent,
 )
@@ -19,8 +20,7 @@ from request_engine.modules.operational_copilot.errors import (
 from request_engine.modules.operational_copilot.lowering import lower_copilot_intent
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
-
-from .support import parse_canonical_intent
+from request_engine.modules.operational_copilot.references import UNRESOLVED_INTENT_TYPES
 
 ORG = UUID("11111111-1111-1111-1111-111111111111")
 PRINCIPAL = UUID("22222222-2222-2222-2222-222222222222")
@@ -35,12 +35,18 @@ START = "2026-09-01T08:00:00+00:00"
 END = "2026-09-30T20:00:00+00:00"
 
 
+def _parse_canonical(text: str) -> CopilotIntent:
+    intent = parse_copilot_intent(text)
+    assert not isinstance(intent, UNRESOLVED_INTENT_TYPES)
+    return intent
+
+
 def test_publish_parses_all_optional_clauses_and_lowers() -> None:
     text = (
         f"publish offering {OFFERING} at location {LOCATION} for discovery "
         f"starting {START} ending {END} with resource {RESOURCE} visibility public"
     )
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     assert intent == PublishDiscoverySupplyIntent(
         OFFERING,
         LOCATION,
@@ -58,7 +64,7 @@ def test_publish_parses_all_optional_clauses_and_lowers() -> None:
 
 def test_publish_defaults_to_hidden_visibility() -> None:
     text = f"publish offering {OFFERING} at location {LOCATION} for discovery starting {START}"
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     assert intent == PublishDiscoverySupplyIntent(OFFERING, LOCATION, datetime.fromisoformat(START))
 
 
@@ -80,14 +86,14 @@ def test_publish_requires_trusted_authority_context() -> None:
         f"publish offering {OFFERING} at location {LOCATION} for discovery "
         f"starting {START} with resource {RESOURCE} visibility public"
     )
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     with pytest.raises(CopilotPolicyRejected):
         validate_copilot_intent(CTX, intent)
 
 
 def test_revoke_parses_and_lowers_with_trusted_authority() -> None:
     text = f"revoke discovery publication {PUBLICATION} at revision 4"
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     assert intent == RevokeDiscoveryPublicationIntent(PUBLICATION, 4)
     command = lower_copilot_intent(CTX_AUTHORITY, validate_copilot_intent(CTX_AUTHORITY, intent))
     assert isinstance(command, RevokeDiscoveryPublicationCommand)
@@ -106,7 +112,7 @@ def test_natural_language_cannot_supply_authority() -> None:
 
 def test_publish_replay_lowers_deterministically() -> None:
     text = f"revoke discovery publication {PUBLICATION} at revision 4"
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     validated = validate_copilot_intent(CTX_AUTHORITY, intent)
     assert lower_copilot_intent(CTX_AUTHORITY, validated) == lower_copilot_intent(
         CTX_AUTHORITY, validated
