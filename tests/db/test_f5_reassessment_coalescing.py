@@ -58,12 +58,8 @@ def _action_states(admin_conn: PgConnection, organization_id: object) -> dict[in
 def _assert_single_pending(admin_conn: PgConnection, organization_id: object) -> int:
     states = _action_states(admin_conn, organization_id)
     max_revision = max(states)
-    assert [revision for revision, status in states.items() if status == "pending"] == [
-        max_revision
-    ]
-    assert all(
-        status == "cancelled" for revision, status in states.items() if revision < max_revision
-    )
+    assert [r for r, s in states.items() if s == "pending"] == [max_revision]
+    assert all(s == "cancelled" for r, s in states.items() if r < max_revision)
     return max_revision
 
 
