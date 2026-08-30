@@ -18,7 +18,10 @@ from e2e.f5_recovery_support import f5_actor
 from e2e.f5_recovery_world import prepare_recovery_world
 from e2e.operational_support import PgConnection
 from e2e.tenant_sandbox import TenantSandbox, client_with_actors, seed_tenant_sandbox
-from request_engine.bootstrap.recovery_worker import build_recovery_impact_automation
+from request_engine.bootstrap.recovery_worker import (
+    build_recovery_impact_automation,
+    build_recovery_reschedule_autonomy,
+)
 from request_engine.modules.booking.api import live_capacity as booking_live
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.delivery.api import live_capacity as delivery_live
@@ -81,12 +84,14 @@ def _instrumented_handler(
         delivery_source=delivery_live.build_live_capacity_source(),
     )
     capacity = _CountingCapacity(real, hook)
+    real_booking = build_recovery_booking_port(session_factory)
     handler = scheduled_assessment.RecoveryAssessmentScheduledHandler(
         capacity,
-        build_recovery_booking_port(session_factory),
+        real_booking,
         scheduled_assessment_store.PostgresScheduledAssessmentStore(session_factory),
         scheduled_assessment_fence.RecoverySourceRevisionReader(session_factory),
         build_recovery_impact_automation(session_factory),
+        build_recovery_reschedule_autonomy(session_factory, capacity, real_booking),
     )
     return handler, capacity
 

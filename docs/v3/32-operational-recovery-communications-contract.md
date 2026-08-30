@@ -264,7 +264,13 @@ Internal cause/provenance MUST remain separate from public-safe communication pa
 
 Automatic reprojection may run without human authorization because it is read/assessment orchestration. Any automatic irreversible action requires an explicit system Principal with capability/Representation appropriate to that action and must be auditable. F5 MUST NOT impersonate a human operator.
 
-The delivered recovery policy grants the system actor one autonomous authority: after the scheduled assessment commits an outcome that requires customer-impact communication, it delivers that notification as the service principal `operational_recovery_automation` acting under the `operational_recovery.communicate` authority. Attribution is auditable through the idempotency record that pairs that principal with the created communication task, and delivery converges with explicit operator actions through the same dedupe identity. The system actor MUST NOT autonomously reschedule or extend the day. Those actions require explicit operator authorization.
+The delivered recovery policy grants the system actor two autonomous authorities, both attributed to the service principal `operational_recovery_automation` through the idempotency records that pair it with created facts:
+
+1. **Customer-impact communication** (section 13): after the scheduled assessment commits an outcome that requires customer-impact communication, the actor delivers that notification under the `operational_recovery.communicate` authority, converging with explicit operator actions on the same section 13 dedupe identity.
+
+2. **Envelope-bound autonomous reschedule**: an operator with `operational_recovery.configure_autonomy` may grant one service queue an explicit reschedule envelope (PUT configuration; dormant by default; revocable; persisted with grantor attribution). While enabled, after a scheduled assessment commits an incident with a persisted proposal, the actor may execute the proposal's own reschedule candidates strictly within the envelope: strictly-later moves only, delay within `max_delay_minutes`, at most one new attempt per assessment cycle (a successful move advances the recovery source revision, so later cycles re-propose on fresh truth), and never beyond `max_auto_actions_per_incident` attempts per incident. The reservation keeps its subject; the target stays inside the proposal's location-bound search; execution is recorded as the same durable RESCHEDULE RecoveryAction an operator would produce; each moved subject receives a deduped `operational_recovery_rescheduled` notification. Business rejections are durable in the action row and never fail the assessment.
+
+Day-extension remains operator-only: it commits human labor and cannot be safely automated. Autonomy never changes WHO (subject) or WHERE (location); it only changes HOW FAR an appointment may move.
 
 ## 15. Required acceptance proof
 
@@ -285,6 +291,8 @@ F. **multi-action workflow** — one incident executes at least two different ac
 G. **delay communication** — a material delay with no capacity shortfall can create a deduped customer-impact CommunicationTask without requiring a Reservation reschedule;
 
 H. **tenant/security** — all new tables/functions/actions remain FORCE-RLS/least-privilege safe and no SECURITY DEFINER path accepts caller-supplied foreign tenant authority.
+
+I. **autonomous reschedule envelope** — dormant by default; a granted envelope moves affected reservations strictly within it across assessment cycles under the automation principal with durable succeeded actions and deduped subject notifications; out-of-envelope candidates stay untouched for the operator; the per-incident budget durably gates further autonomous moves.
 
 A green aggregate suite without identifiable assertions for A-H is not completion evidence.
 

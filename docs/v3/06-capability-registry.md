@@ -41,6 +41,7 @@ operational_recovery.read
 operational_recovery.propose
 operational_recovery.execute
 operational_recovery.communicate
+operational_recovery.configure_autonomy
 ```
 
 ## Exposure classes
@@ -79,13 +80,14 @@ F5 `operational_recovery.execute` is operator-only, but that technical grant doe
 
 ## F5 operational recovery
 
-F5 registers three canonical operator capabilities and one internal automation authority:
+F5 registers three canonical operator capabilities, one operator configuration capability, and one internal automation authority:
 
 ```text
-operational_recovery.read         query
-operational_recovery.propose      idempotent command
-operational_recovery.execute      idempotent command
-operational_recovery.communicate  internal automation authority
+operational_recovery.read                  query
+operational_recovery.propose               idempotent command
+operational_recovery.execute               idempotent command
+operational_recovery.configure_autonomy    operator configuration command
+operational_recovery.communicate           internal automation authority
 ```
 
 `propose` is a command rather than a query because it persists an immutable proposal/provenance snapshot. It therefore requires `Idempotency-Key` under the normal command contract.
@@ -93,6 +95,8 @@ operational_recovery.communicate  internal automation authority
 `operational_recovery.communicate` is not a public or operator HTTP capability. It names the authority under which the `operational_recovery_automation` service principal autonomously delivers customer-impact communication after a scheduled assessment commits a customer-impact outcome (contract 32 sections 13-14). It must never be granted to human channels.
 
 `execute` authorizes one explicit proposal-bound recovery action. It does not imply a generic `reschedule all` workflow and it does not bypass Booking's authoritative Reservation/capacity validation.
+
+`configure_autonomy` is the operator-only PUT configuration capability for one service queue's autonomous reschedule envelope (contract 32 section 14). Granting it is an explicit, revocable product decision per queue; the envelope stays dormant until enabled and never changes WHO (subject) or WHERE (location), only HOW FAR an appointment may move.
 
 ## Legacy aliases
 

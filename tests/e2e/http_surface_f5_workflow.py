@@ -95,4 +95,21 @@ F5_WORKFLOW_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             },
         ),
     ),
+    PublicHttpOperation(
+        "operational_recovery.configure_autonomy",
+        "POST",
+        "/v1/operational-recovery/queues/{service_queue_id}/autonomy-policy",
+        "operational_recovery.configure_autonomy",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/operational-recovery/queues/{P1}/autonomy-policy",
+            body={
+                "enabled": True,
+                "max_delay_minutes": 60,
+                "max_auto_actions_per_incident": 1,
+            },
+        ),
+    ),
 )

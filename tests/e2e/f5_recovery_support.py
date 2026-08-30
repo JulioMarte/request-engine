@@ -14,7 +14,12 @@ from .tenant_sandbox import TenantSandbox, auth
 from .world_clock import location_timezone, world_weekday
 
 _F5_CAPABILITIES = frozenset(
-    {"operational_recovery.propose", "operational_recovery.read", "operational_recovery.execute"}
+    {
+        "operational_recovery.propose",
+        "operational_recovery.read",
+        "operational_recovery.execute",
+        "operational_recovery.configure_autonomy",
+    }
 )
 
 

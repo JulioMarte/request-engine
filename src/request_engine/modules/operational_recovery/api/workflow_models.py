@@ -4,6 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from request_engine.modules.operational_recovery.application.recovery_autonomy_policy import (
+    RecoveryAutonomyPolicy,
+)
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
     RecoveryActionKind,
@@ -54,6 +57,32 @@ class ExternalReplacementTargetBody(BaseModel):
 
 class ReplaceResourceRecoveryBody(RescheduleRecoveryBody):
     external_target: ExternalReplacementTargetBody | None = None
+
+
+class RecoveryAutonomyPolicyBody(BaseModel):
+    enabled: bool
+    max_delay_minutes: int = Field(gt=0)
+    max_auto_actions_per_incident: int = Field(gt=0)
+
+
+class RecoveryAutonomyPolicyView(BaseModel):
+    organization_id: UUID
+    service_queue_id: UUID
+    enabled: bool
+    max_delay_minutes: int
+    max_auto_actions_per_incident: int
+    granted_by: UUID
+
+    @classmethod
+    def from_policy(cls, policy: RecoveryAutonomyPolicy) -> "RecoveryAutonomyPolicyView":
+        return cls(
+            organization_id=policy.organization_id,
+            service_queue_id=policy.service_queue_id,
+            enabled=policy.enabled,
+            max_delay_minutes=policy.max_delay_minutes,
+            max_auto_actions_per_incident=policy.max_auto_actions_per_incident,
+            granted_by=policy.granted_by,
+        )
 
 
 class RecoveryActionView(BaseModel):

@@ -13,8 +13,17 @@ _CANDIDATES = (
     "Asia/Tokyo",
     "Pacific/Auckland",
 )
+_FAR_CANDIDATES = (
+    "Asia/Tokyo",
+    "Pacific/Auckland",
+)
 _RUNWAY_START = datetime.min.time().replace(hour=0, minute=30)
 _RUNWAY_END = datetime.min.time().replace(hour=21, minute=30)
+
+
+def _has_runway(now_utc: datetime, candidate: str) -> bool:
+    local = now_utc.astimezone(ZoneInfo(candidate)).timetz().replace(tzinfo=None)
+    return _RUNWAY_START <= local <= _RUNWAY_END
 
 
 def pick_business_timezone(now_utc: datetime) -> str:
@@ -27,10 +36,24 @@ def pick_business_timezone(now_utc: datetime) -> str:
     """
 
     for candidate in _CANDIDATES:
-        local = now_utc.astimezone(ZoneInfo(candidate)).timetz().replace(tzinfo=None)
-        if _RUNWAY_START <= local <= _RUNWAY_END:
+        if _has_runway(now_utc, candidate):
             return candidate
     return _CANDIDATES[-1]
+
+
+def pick_far_business_timezone(conn: PgConnection) -> str:
+    """Choose a forced far-from-runner business timezone whose local day still
+    has runway, so worlds proving materiality away from the runner's clock stay
+    valid at any UTC hour. Tokyo and Auckland are ~13h apart, so exactly one of
+    them has runway whenever the runner default does not."""
+
+    row = conn.execute("SELECT clock_timestamp()").fetchone()
+    assert row is not None
+    now_utc = cast(datetime, row[0])
+    for candidate in _FAR_CANDIDATES:
+        if _has_runway(now_utc, candidate):
+            return candidate
+    raise AssertionError("no far-from-runner business timezone has runway")
 
 
 def configure_world_timezone(conn: PgConnection, sandbox: TenantSandbox) -> str:

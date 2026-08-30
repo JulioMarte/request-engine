@@ -21,4 +21,9 @@ OPERATIONAL_RECOVERY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Explicitly execute one proposal-bound Reservation recovery action.",
     ),
+    command_capability(
+        "operational_recovery.configure_autonomy",
+        CapabilityExposure.OPERATOR,
+        "Grant, adjust or revoke the autonomous reschedule envelope for one service queue.",
+    ),
 )

@@ -488,3 +488,8 @@ evidence = ["invariant", "security"]
 guarantee = "INV-WORKER-001"
 path = "tests/e2e/test_f5_recovery_cross_organization_replacement.py"
 evidence = ["contract", "invariant", "security", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/e2e/test_f5_recovery_autonomous_reschedule.py"
+evidence = ["contract", "invariant", "security", "provenance"]

@@ -6,11 +6,20 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryIncidentNotFound,
     RecoveryIncidentStale,
     RecoveryOwnerRevisionConflict,
+    RecoveryQueueNotFound,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
 
 async def workflow_recovery_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, RecoveryQueueNotFound):
+        body = ErrorBody(
+            code="recovery_queue_not_found",
+            message="the requested service queue was not found",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"queue_id": str(exc.queue_id)},
+        )
+        return _response(status.HTTP_404_NOT_FOUND, body)
     if isinstance(exc, RecoveryIncidentNotFound):
         body = ErrorBody(
             code="recovery_incident_not_found",
