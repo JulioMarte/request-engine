@@ -26,6 +26,13 @@ class ShowCurrentAtRiskReservationsIntent:
     pass
 
 
+UNRESOLVED_INTENT_TYPES = (
+    ExtendNamedResourceTodayIntent,
+    StopWalkInsRestOfDayIntent,
+    PublishNamedResourceDiscoveryIntent,
+    ShowCurrentAtRiskReservationsIntent,
+)
+
 CopilotParsedIntent = (
     CopilotIntent
     | ExtendNamedResourceTodayIntent
