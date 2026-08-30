@@ -8,7 +8,7 @@ class CopilotExecutionRegistry:
     def __init__(self, executors: tuple[CopilotMutationExecutor, ...] = ()) -> None:
         self._executors = executors
 
-    def owner_capability(self, operation: CopilotOperation) -> str:
+    def owner_capability(self, operation: CopilotOperation) -> str | None:
         return self._resolve(operation).owner_capability
 
     async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt:
