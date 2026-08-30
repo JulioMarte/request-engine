@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, cast
-from zoneinfo import ZoneInfo
 
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox
-
-_TZ = ZoneInfo("America/Santo_Domingo")
+from .world_clock import location_timezone
 
 
 def grant_extend_day_authority(conn: PgConnection, sandbox: TenantSandbox) -> None:
@@ -28,8 +26,9 @@ def close_location_after_slots(
     *,
     count: int,
 ) -> None:
-    start = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
-    end = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
+    timezone = location_timezone(conn, sandbox)
+    start = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(timezone)
+    end = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(timezone)
     conn.execute(
         "DELETE FROM request_engine.location_operational_hours "
         "WHERE organization_id=%s AND location_id=%s AND weekday=%s",
