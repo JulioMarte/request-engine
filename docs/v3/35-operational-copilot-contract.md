@@ -51,45 +51,78 @@ F6 fails closed.
 - unavailable owner primitive -> unsupported until that primitive is explicitly published;
 - arbitrary SQL, generic HTTP/tool calls and hidden execution plans are forbidden.
 
-## 5. First implementation slice
+## 5. Implemented grammar
 
-The branch currently starts with a deliberately narrow proof over already-integrated F5 recovery commands:
+The branch implements a deterministic grammar over already-published owner primitives. All phrases are normalized (whitespace-collapsed, case-insensitive) and matched exactly; identifiers are always explicit UUIDs. Name-based entity resolution (for example, "Dr. A") is refused: guessing entity resolution is forbidden by section 4.
+
+Recovery (F5):
 
 ```text
 propose recovery for queue <queue-uuid>
 propose recovery for queue <queue-uuid> over <N> days
+execute recovery proposal <proposal-uuid> for reservation <reservation-uuid>
 execute recovery proposal <proposal-uuid> for reservation <reservation-uuid> source <source-fingerprint> proposal <proposal-fingerprint>
 ```
 
-The execute form may append, in order:
+The execute form may append, in order: `allow subject override`, `without notification`. Fingerprints are all-or-nothing: either both are stated in the language (pass-through; the owner still validates them) or both are omitted, in which case F6 resolves them through the published `RecoveryProposalReader` owner read contract before validation. Resolution happens server-side from operational truth, never from model output; a failed or missing proposal fails closed. Owner freshness, concurrency, idempotency and authority gates remain fully in force either way — resolving a fingerprint only records "as of this trusted read" provenance; a stale proposal still loses at the owner.
+
+Recovery workflow (F5):
 
 ```text
-allow subject override
-without notification
+stop walk-ins for incident <incident-uuid> source revision <N> intake revision <N>
+reopen walk-ins for incident <incident-uuid> source revision <N> intake revision <N>
+extend day for incident <incident-uuid> assignment <assignment-uuid> from <iso-datetime> to <iso-datetime> source revision <N> location revision <N> availability revision <N> reason <text>
 ```
 
-`N` is admitted only from 1 through 30. Omission preserves the existing F5 default of 7 days. Fingerprints are required and bounded to 512 characters.
+Discovery publication (F2):
 
-This slice proves the F6 architecture; it does **not** close the roadmap capability set in section 1.
+```text
+publish offering <offering-uuid> at location <location-uuid> for discovery starting <iso-datetime> [ending <iso-datetime>] [with resource <resource-uuid>] [visibility hidden|public]
+revoke discovery publication <publication-uuid> at revision <N>
+```
+
+Inspection (F4/F5):
+
+```text
+show reservations at risk for queue <queue-uuid>
+```
+
+`N` is admitted only as a non-negative integer; proposal search days are bounded to 1 through 30 with an F5 default of 7 days when omitted. Fingerprints are required and bounded to 512 characters. Datetimes must be timezone-aware; ends must be after starts. `public` visibility requires an explicit resource. The four roadmap example intents are covered by these phrases; name-based resolution and relative time parsing remain refused and are recorded as future grammar work, not delivered capability.
 
 ## 6. Typed semantics and replay
 
-The first slice contains:
+The branch contains:
 
 - `CreateRecoveryProposalIntent(service_queue_id, search_days)`;
 - `ExecuteRecoveryIntent(proposal_id, reservation_id, expected_source_fingerprint, expected_proposal_fingerprint, allow_subject_override, notify)`;
-- trusted `CopilotContext(organization_id, principal_id, idempotency_key)`;
-- `ValidatedCopilotIntent` as the explicit admission boundary.
+- `SetRecoveryIntakeIntent(incident_id, accepting, expected_source_revision, expected_intake_revision)`;
+- `ExtendRecoveryDayIntent(incident_id, assignment_id, start_at, end_at, expected_source_revision, expected_location_operational_revision, expected_resource_availability_revision, reason)`;
+- `PublishDiscoverySupplyIntent(offering_id, location_id, effective_start, effective_end, resource_id, provider_visibility)`;
+- `RevokeDiscoveryPublicationIntent(publication_id, expected_revision)`;
+- `ShowAtRiskReservationsIntent(service_queue_id)`;
+- trusted `CopilotContext(organization_id, principal_id, idempotency_key, authority_party_id)`;
+- `ValidatedCopilotIntent` as the explicit admission boundary;
+- `lowering` producing `CopilotOperation`: an existing owner command or an `AtRiskReservationsQuery`.
 
 The same trusted context plus the same validated IR must lower deterministically to the same owner command values and idempotency identity.
 
+`authority_party_id` is never accepted from natural-language text. It arrives only through the trusted `CopilotContext` (authenticated application boundary), and policy refuses extend-day and discovery publication/revocation intents when it is absent.
+
 ## 7. Cross-module boundary
 
-F6 may consume only supported `contracts`/facade surfaces of owner modules. It must not import another module's `application`, `adapters`, persistence mappings or API DTOs.
+F6 may consume only supported `contracts`/facade surfaces of owner modules. It must not import another module's `application`, `adapters`, persistence mappings or API DTOs. A module-wide architecture test enforces that every cross-module import terminates at a `contracts` surface and that only the F6 `api` layer may use the HTTP framework.
 
-For the first slice, recovery command DTOs are published from `operational_recovery.contracts.commands`; the historical `operational_recovery.application.commands` path reexports those same classes for internal compatibility.
+Published owner primitives consumed by F6:
+
+- `operational_recovery.contracts.commands` — `CreateRecoveryProposalCommand`, `ExecuteRecoveryCommand`;
+- `operational_recovery.contracts.workflow_commands` — `SetRecoveryIntakeCommand`, `ExtendRecoveryDayCommand` (authoritative definitions moved out of `application/workflow_commands.py`, which reexports them);
+- `operational_recovery.contracts.queries` — `RecoveryProposalReader` protocol for server-side fingerprint resolution (satisfied structurally by `OperationalRecoveryService`);
+- `discovery.contracts.commands` — `PublishDiscoverySupplyCommand`, `RevokeDiscoveryPublicationCommand`, `DiscoveryPublicationState` (new published surface; `application/commands/publication.py` reexports);
+- `live_capacity.contracts.recovery` — `RecoveryCapacitySource` / `RecoveryCapacityAssessment` as the at-risk inspection read contract, adapted behind the F6 `AtRiskReservationReader` application port.
 
 Future grammar rows must first identify a supported owner command/query contract. If no such contract exists, F6 must refuse rather than invent a shadow mutation.
+
+The public application/API entrypoint is `application.copilot.OperationalCopilot` (parse -> validate -> lower, plus at-risk inspection through the reader port) and `api` route `POST /v1/operational-copilot/interpret` with capability `operational_copilot.interpret`. The interpret endpoint returns the typed semantic decision (owner command summary or at-risk view); it never executes mutations. Mutation execution remains at the owner module's own endpoints/commands with their full authority, concurrency, idempotency and audit contracts.
 
 ## 8. Required proof
 
@@ -110,22 +143,25 @@ Before F6 closure, evidence must prove:
 
 At branch start there is no pre-F6 natural-language execution surface to preserve.
 
-Current first-slice status:
+Current status:
 
 ```text
-semantic parser / typed IR                         started
-ambiguity + unsupported refusal                   started
-explicit F6 admission policy                      started
-recovery proposal lowering                        started
-recovery execution lowering                       started
-parser cannot directly mutate                     structural proof pending
-extend working day semantic intent                pending primitive mapping
-stop/reopen walk-ins semantic intent               pending primitive mapping
-discovery publish/unpublish semantic intent        pending primitive mapping
-at-risk Reservation inspection                    pending read-contract mapping
-public F6 application/API entrypoint               pending
-authority/capability integration proof             pending
+semantic parser / typed IR                         implemented
+ambiguity + unsupported refusal                    implemented
+explicit F6 admission policy                       implemented
+recovery proposal/execution lowering               implemented
+parser cannot directly mutate                      structural proof implemented
+extend working day semantic intent                 implemented (bounded identifier grammar)
+stop/reopen walk-ins semantic intent               implemented (bounded identifier grammar)
+discovery publish/revoke semantic intent           implemented (bounded identifier grammar)
+at-risk Reservation inspection                     implemented through live_capacity read contract
+F5 fingerprint resolution via owner read contract  implemented (bounded, fail-closed)
+public F6 application/API entrypoint               implemented (interpret endpoint, no mutation execution)
+authority/capability integration proof             implemented (PostgreSQL e2e through owner surface)
+PostgreSQL owner-gate evidence                     implemented (tests/e2e/test_f6_copilot_owner_gates.py, test_f6_copilot_fingerprints.py, test_f6_copilot_extend_day.py)
 exact-head CI                                      pending
 ```
+
+Evidence still required before F6 closure: exact-head CI on the branch head. The PostgreSQL-backed proof in `tests/e2e/test_f6_copilot_owner_gates.py` demonstrates that a copilot-lowered command executed through the owner surface preserves optimistic-concurrency, idempotency and authority gates, and that at-risk inspection reads through the live_capacity read contract.
 
 Any future LLM, voice, chat or UI adapter is non-authoritative. It may produce text or a candidate semantic intent, but it must terminate at this bounded validation/lowering contract and cannot acquire authority from model output.

@@ -182,6 +182,13 @@ required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-COPILOT-ADMISSION-001"
+statement = "Natural-language copilot input can only terminate in a bounded typed intent that lowers to an already-published owner command or supported read contract; tenant, principal, authority and idempotency identity come only from the trusted application boundary, ambiguous/unsupported input fails closed, and no copilot surface executes mutations or bypasses owner concurrency, idempotency or authority gates."
+severity = "critical"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
 id = "FIT-ARCH-001"
 statement = "Current module ownership remains explicit, dependency direction remains understandable and acyclic, and cross-module imports use published connection surfaces rather than internals."
 severity = "critical"

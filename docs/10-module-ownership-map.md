@@ -18,6 +18,7 @@
 | `delivery` | active post-V3 F3 | ReservationAccess, ServiceSession, ServiceSessionInterruption, ResourceActivity and actual execution truth |
 | `live_capacity` | active post-V3 F4 | projection-scope/estimate policy and deterministic live-capacity/ETA/intake-evaluation semantics over published Booking/Queue/Delivery facts |
 | `operational_recovery` | active post-V3 F5 | immutable recovery proposal/provenance, explicit one-shot recovery execution fact and lineage to Communications intent |
+| `operational_copilot` | active post-V3 F6 | bounded natural-language semantic parsing, refusal, admission policy and deterministic lowering into published owner commands; owns no schedule/capacity/queue/publication authority |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
 | `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
@@ -362,6 +363,12 @@ Moving a concept between top-level modules or activating a deferred/new module r
 - affected module READMEs/contracts/tests;
 - DB/read/cmd mapping;
 - an ADR when the decision is hard to reverse.
+
+## 17. Operational Copilot — active F6 feature
+
+`operational_copilot` is a bounded semantic adapter, not an authority. It owns deterministic parsing, typed intent IR, refusal semantics, admission policy and lowering into already-published owner commands/queries. It never executes mutations and never reads tables directly; at-risk inspection terminates at the `live_capacity` `RecoveryCapacitySource` read contract.
+
+Tenant, principal, idempotency and party authority come only from the trusted application boundary. Natural-language input cannot supply identity or authority, and name-based entity resolution is refused. Normative contract: `docs/v3/35-operational-copilot-contract.md`.
 
 Never infer:
 

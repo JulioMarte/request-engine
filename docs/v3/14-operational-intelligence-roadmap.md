@@ -1,6 +1,6 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1-F4 are implemented feature slices. F5 delivered its operational recovery + communications core slice (slice-1, PR #81, merged to `development`); the current tranche `feature/f5-roadmap-authoritative-recovery` (PR #83) implements the full recovery workflow and its required acceptance proofs, with exact-head CI as the merge gate. The broader original recovery capability set is **not** fully proven and remains explicitly disposed in `33-operational-recovery-old-new-disposition.md`. F6 remains future feature scope.
+Status: **accepted product/design direction**. F1-F5 are implemented and integrated feature slices; the full F5 recovery workflow closed with `feature/f5-closure-consistency` (merged to `development`). F6 is in progress on `feature/operational-copilot` and must not be described as delivered until integrated with exact-head CI; see `35-operational-copilot-contract.md` for its current disposition.
 
 This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries. A later feature contract may split a roadmap item into delivery tranches, but it MUST preserve the original capability as explicit remaining scope rather than redefining it away.
 
@@ -256,7 +256,7 @@ Internal cause and public communication language remain separate privacy concern
 
 # F6 — Operational Copilot
 
-Status: **future**.
+Status: **active feature branch** (`feature/operational-copilot`, against the F5-closure `development` base). Normative tranche contract: `35-operational-copilot-contract.md`.
 
 Planned branch:
 

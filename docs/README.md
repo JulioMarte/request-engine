@@ -27,16 +27,18 @@ released V3
   -> F1 Operational Profile / Contextual Supply
   -> F2 Geospatial Cross-Tenant Discovery
   -> F3 Live Service Operations
-  -> F4 Live Capacity Projection [active]
+  -> F4 Live Capacity Projection
+  -> F5 Operational Recovery + Communications
+  -> F6 Operational Copilot [active]
 ```
 
-F1-F3 are implemented predecessor architecture. The active feature scope is:
+F1-F5 are implemented predecessor/integrated architecture. The active feature scope is:
 
 ```text
-feature/live-capacity-projection
+feature/operational-copilot
 ```
 
-F5-F6 remain roadmap work and must branch from the then-current `development` after their predecessor contracts/evidence are integrated.
+F6 remains roadmap work in progress on its feature branch and must not be described as delivered until it is integrated into `development` with exact-head CI evidence.
 
 ## 3. Current F1 contracts
 
@@ -126,9 +128,9 @@ Current status:
 F1  implemented/integrated foundation
 F2  implemented predecessor discovery
 F3  implemented predecessor live operations
-F4  active: Live Capacity Projection
-F5  future: Operational Recovery + Communications
-F6  future: Operational Copilot
+F4  implemented: Live Capacity Projection
+F5  implemented/integrated: Operational Recovery + Communications
+F6  active feature branch: Operational Copilot
 ```
 
 The roadmap is product direction. `v3/29` defines F4 normative implementation semantics.

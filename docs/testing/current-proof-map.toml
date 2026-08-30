@@ -493,3 +493,23 @@ evidence = ["contract", "invariant", "security", "provenance"]
 guarantee = "INV-WORKER-001"
 path = "tests/e2e/test_f5_recovery_autonomous_reschedule.py"
 evidence = ["contract", "invariant", "security", "provenance"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_owner_gates.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/architecture/test_operational_copilot_module_boundary.py"
+evidence = ["fitness"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_fingerprints.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_extend_day.py"
+evidence = ["contract", "invariant"]
