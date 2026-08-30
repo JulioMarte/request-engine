@@ -1,6 +1,6 @@
 # Request Engine — Operational Intelligence Roadmap
 
-Status: **accepted product/design direction**. F1-F5 are implemented and integrated feature slices; the full F5 recovery workflow closed with `feature/f5-closure-consistency` (merged to `development`). F6 is in progress on `feature/operational-copilot` and must not be described as delivered until integrated with exact-head CI; see `35-operational-copilot-contract.md` for its current disposition.
+Status: **accepted product/design direction**. F1-F5 are implemented and integrated feature slices; the full F5 recovery workflow closed with `feature/f5-closure-consistency` (merged to `development`). F6 is in progress on `feature/operational-copilot` and must not be described as delivered until its external-agent tooling boundary is complete and integrated with exact-head CI; see `35-operational-copilot-contract.md` for its current disposition.
 
 This roadmap preserves the product direction discovered during the post-V3 operational-design work. Detailed normative behavior belongs to each feature contract; this document explains sequencing and product boundaries. A later feature contract may split a roadmap item into delivery tranches, but it MUST preserve the original capability as explicit remaining scope rather than redefining it away.
 
@@ -19,7 +19,10 @@ Authority split:
 
 ```text
 Request Engine
-  structured operational truth + deterministic execution
+  structured operational truth + deterministic execution + agent-usable tools
+
+External copilot / agent / application
+  conversation, language understanding, reasoning and tool selection
 
 Directus / CMS
   presentation/editorial content, SEO, biographies, long-form FAQ
@@ -35,7 +38,7 @@ Core rule:
 
 > If a fact is necessary to determine whether, where, when, with whom, for how long or under what commercial/operational conditions an operation can be executed, that fact belongs in Request Engine or an explicit authoritative provider contract consumed by Request Engine.
 
-Request Engine must not become a CRM, CMS, universal RAG store, EHR, universal pricing engine or opaque recommendation engine.
+Request Engine must not become a CRM, CMS, universal RAG store, EHR, universal pricing engine, opaque recommendation engine, embedded conversational runtime or general-purpose LLM orchestrator.
 
 ## 2. Roadmap structure and current status
 
@@ -56,14 +59,15 @@ Cross-Tenant Discovery    Operations
                              v
                          F5 Operational
                       Recovery + Communications
-                [core + recovery workflow tranche merged]
+                         [implemented]
                              |
                              v
-                    F6 Operational Copilot
-                           [future]
+                    F6 Agent Operational
+                         Tooling Surface
+                           [active]
 ```
 
-Two product lines are unlocked by F1:
+Product lines unlocked by the roadmap:
 
 ```text
 Discovery:
@@ -72,8 +76,8 @@ F1 -> F2
 Clinic/live operations:
 F1 -> F3 -> F4 -> F5
 
-Assisted configuration:
-F1 + semantic commands -> F6
+External agent/application tooling:
+F1-F5 authoritative reads + commands -> F6 tools
 ```
 
 F2 normative behavior lives in `24-geospatial-cross-tenant-discovery-contract.md`.
@@ -233,40 +237,50 @@ live workload participates in recovery materiality       delivered (slice-1)
 one-shot supported Reservation reschedule                delivered (slice-1)
 customer communication after successful recovery         delivered (slice-1)
 natural Booking rejection of unavailable new intake      reused
-explicit operator stop/reopen intake                     delivered (this tranche)
-extend-day via owner additional-hours exceptions         delivered (this tranche)
-contextual/cadence-backed reschedule                     delivered (this tranche)
-intra-Organization replacement provider/resource         delivered (this tranche)
-cross-Organization replacement                           delivered (F2 discovery search + handoff fence two-boundary saga; provider-side referral principal)
-automatic event-triggered reprojection                   delivered (this tranche: scheduled reassessment + automatic proposals)
-commitment-change freshness triggers                     delivered (this tranche)
-delay/impact communication action                        delivered (proof G, this tranche, typed impact purpose)
-generalized multi-action recovery workflow               delivered (multi-action proof F, this tranche)
-scheduled escalation/communication policy evaluation     delivered (this tranche: durable outcome facts)
-autonomous customer-impact communication                 delivered (accepted policy: system actor delivers impact notification)
-autonomous reschedule escalation                         delivered (operator-granted per-queue envelope, dormant by default; contract 32 §14)
-autonomous extend-day escalation                         superseded (operator-only: extending the day commits human labor and cannot be safely automated)
+explicit operator stop/reopen intake                     delivered
+extend-day via owner additional-hours exceptions         delivered
+contextual/cadence-backed reschedule                     delivered
+intra-Organization replacement provider/resource         delivered
+cross-Organization replacement                           delivered
+automatic event-triggered reprojection                   delivered
+commitment-change freshness triggers                     delivered
+delay/impact communication action                        delivered
+generalized multi-action recovery workflow               delivered
+scheduled escalation/communication policy evaluation     delivered
+autonomous customer-impact communication                 delivered
+autonomous reschedule escalation                         delivered
+autonomous extend-day escalation                         superseded (operator-only)
 ```
 
-With every row above delivered or explicitly superseded, F5 may be described as implemented, subject to the completion gate in `32-operational-recovery-communications-contract.md` (roadmap + contract + implementation + owner contracts + migrations + ownership docs + evidence + exact-head CI agree). The integrated development state is additionally proven by CI runs on the development merge SHA itself. Capabilities beyond this set — such as a customer-consent reschedule mode (`PROPOSE_AND_REQUIRE_ACCEPTANCE`) for consent-sensitive verticals — are future product scope requiring a new accepted policy decision, not F5 debt.
+With every row above delivered or explicitly superseded, F5 may be described as implemented, subject to the completion gate in `32-operational-recovery-communications-contract.md`.
 
 Internal cause and public communication language remain separate privacy concerns.
 
 ---
 
-# F6 — Operational Copilot
+# F6 — Agent Operational Tooling
 
-Status: **active feature branch** (`feature/operational-copilot`, against the F5-closure `development` base). Normative tranche contract: `35-operational-copilot-contract.md`.
+Status: **active feature branch** (`feature/operational-copilot`, historical naming). Normative contract: `35-operational-copilot-contract.md`.
 
-Planned branch:
+F6 does **not** mean Request Engine contains a copilot. F6 makes Request Engine's authoritative operational capabilities usable by an external copilot, agent, application or UI through bounded typed tools.
+
+The intended split is:
 
 ```text
-feature/operational-copilot
+external agent
+  understands conversation
+  chooses which operation/tool to attempt
+  may ask the user to clarify ambiguous intent
+
+Request Engine
+  exposes authoritative lookup/read tools
+  exposes guarded mutation tools
+  validates identity/authority/current state
+  preserves owner concurrency + idempotency
+  executes through F1-F5 owner contracts
 ```
 
-F6 lets an assistant inspect operational truth and propose/execute supported semantic configuration commands under explicit authority.
-
-Examples:
+Client-level scenarios include:
 
 ```text
 "Dr. A will work until 7 PM today"
@@ -275,9 +289,27 @@ Examples:
 "show me which Reservations are at risk"
 ```
 
-The copilot must call typed semantic commands; it must not generate arbitrary SQL or gain authority merely because a human described an intent in natural language.
+These sentences describe what an **external agent should be able to accomplish using F6 tools**. They are not requirements for Request Engine to implement arbitrary natural-language parsing.
 
-Every mutation still requires the normal authority, validation, optimistic concurrency, idempotency and audit contracts of the underlying command.
+For example, an external agent may interpret `Dr. A will work until 7 PM today`, use Request Engine lookup/state tools to resolve the Resource/assignment and current guarded state, and then call a structured extend-day tool with absolute operational values. Request Engine must never trust an ID, revision, authority or hidden state merely because a model invented it.
+
+F6 therefore needs two complementary kinds of public capability:
+
+```text
+READ / RESOLUTION TOOLS
+  find/disambiguate authorized operational entities
+  inspect current operational context
+  obtain current identifiers/revisions/freshness needed for guarded commands
+
+MUTATION TOOLS
+  invoke explicitly supported F1-F5 owner commands
+  preserve normal capability, authority, validation, concurrency,
+  idempotency, transaction and audit contracts
+```
+
+The current strict textual parser may remain as a bounded adapter/test harness, but it is not the F6 product boundary and must not drive the system toward an embedded LLM/NLU subsystem.
+
+F6 is complete when an external agent with no database access and no imports from Request Engine internals can satisfy the supported scenarios using only public authoritative reads/tools and guarded mutations.
 
 ---
 
@@ -297,3 +329,5 @@ Across F1-F6:
 10. Every mutation remains capability-gated, tenant-scoped, auditable, idempotent where required and protected by the owning module's concurrency contract.
 11. Historical evidence remains exact-head evidence; a green run for an older SHA does not prove a later branch head.
 12. A narrower implementation slice may defer roadmap capability, but documentation must preserve that remaining scope rather than redefine it as delivered.
+13. External agents may reason about language and choose tools, but they never become authoritative sources for tenant identity, authority, revisions, operational entity identity or owner state.
+14. F6 exposes tools over owner truth; it does not become an embedded conversational system or a shadow business owner.
