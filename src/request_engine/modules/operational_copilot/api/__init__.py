@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.discovery_publication_executors import (
     DiscoveryPublishCopilotExecutor,
     DiscoveryRevokeCopilotExecutor,
@@ -13,6 +14,9 @@ from request_engine.modules.operational_copilot.adapters.recovery_extend_day_exe
 )
 from request_engine.modules.operational_copilot.adapters.recovery_intake_executor import (
     RecoveryIntakeCopilotExecutor,
+)
+from request_engine.modules.operational_copilot.adapters.reference_resolver import (
+    OwnerBackedCopilotReferenceResolver,
 )
 from request_engine.modules.operational_copilot.api.copilot_router import create_copilot_router
 from request_engine.modules.operational_copilot.api.recovery import (
@@ -28,6 +32,11 @@ from request_engine.modules.operational_copilot.application.ports import (
     RecoveryIntakeExecutor,
     RecoveryProposalReader,
 )
+from request_engine.modules.operational_recovery.contracts.copilot import (
+    CopilotRecoveryIncidentReader,
+)
+from request_engine.modules.queue.contracts.copilot import CopilotQueueReader
+from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 from request_engine.platform.security.http import ActorResolver
 
 __all__ = ["build_live_capacity_at_risk_reader", "install_http"]
@@ -44,6 +53,10 @@ def install_http(
     intake_executor: RecoveryIntakeExecutor | None = None,
     extend_day_executor: RecoveryExtendDayExecutor | None = None,
     discovery_executor: DiscoveryPublicationExecutor | None = None,
+    catalog_reader: CopilotCatalogReader | None = None,
+    queue_reader: CopilotQueueReader | None = None,
+    queue_intake_reader: QueueIntakeControlPort | None = None,
+    recovery_incident_reader: CopilotRecoveryIncidentReader | None = None,
 ) -> None:
     executors = (
         RecoveryProposalCopilotExecutor(recovery_executor) if recovery_executor else None,
@@ -53,10 +66,32 @@ def install_http(
         DiscoveryPublishCopilotExecutor(discovery_executor) if discovery_executor else None,
         DiscoveryRevokeCopilotExecutor(discovery_executor) if discovery_executor else None,
     )
+    resolver = _build_reference_resolver(
+        catalog_reader,
+        queue_reader,
+        recovery_incident_reader,
+        queue_intake_reader,
+    )
     copilot = OperationalCopilot(
         at_risk_reader,
         proposal_reader,
         authority_reader,
         tuple(executor for executor in executors if executor is not None),
+        resolver,
     )
     app.include_router(create_copilot_router(copilot=copilot, actor_resolver=actor_resolver))
+
+
+def _build_reference_resolver(
+    catalog: CopilotCatalogReader | None,
+    queues: CopilotQueueReader | None,
+    recovery: CopilotRecoveryIncidentReader | None,
+    intake: QueueIntakeControlPort | None,
+) -> OwnerBackedCopilotReferenceResolver | None:
+    values = (catalog, queues, recovery, intake)
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise ValueError("copilot reference resolution requires all owner readers")
+    assert catalog is not None and queues is not None and recovery is not None and intake is not None
+    return OwnerBackedCopilotReferenceResolver(catalog, queues, recovery, intake)
