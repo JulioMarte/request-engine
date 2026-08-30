@@ -8,7 +8,12 @@ from request_engine.platform.security.context import ActorContext
 from .f3_acceptance_assertions import acceptance_actor
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
-from .world_clock import world_weekday, world_window_start
+from .world_clock import (
+    configure_world_timezone,
+    location_timezone,
+    world_weekday,
+    world_window_start,
+)
 
 _F4_CAPABILITIES = frozenset(
     {
@@ -45,17 +50,18 @@ def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -
 
 
 def seed_today_schedule(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    weekday = world_weekday(conn)
+    configure_world_timezone(conn, sandbox)
+    timezone = location_timezone(conn, sandbox)
     conn.execute(
         "DELETE FROM request_engine.availability_schedules "
         "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
-        (sandbox.organization_id, sandbox.resource_id, weekday),
+        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox)),
     )
     conn.execute(
         "INSERT INTO request_engine.availability_schedules "
         "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,'00:00','23:59','America/Santo_Domingo')",
-        (sandbox.organization_id, sandbox.resource_id, weekday),
+        "VALUES (%s,%s,%s,'00:00','23:59',%s)",
+        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox), timezone.key),
     )
 
 
@@ -78,8 +84,8 @@ async def same_day_slots(
     assert response.status_code == 200, response.text
     slots = cast(list[dict[str, Any]], response.json())
     assert len(slots) >= 2, (
-        "test world slot supply exhausted; slot worlds seed one 00:00-23:59 "
-        "business day in America/Santo_Domingo (the repository default timezone) "
-        "and anchor to the next local day after 22:00 local"
+        "test world slot supply exhausted; the world business day is configured "
+        "in locations.timezone (default America/Santo_Domingo) and slot worlds "
+        "require hours of runway before its local midnight"
     )
     return slots

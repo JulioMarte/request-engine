@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "tests" / "e2e" / "world_clock.py"
-SD = ZoneInfo("America/Santo_Domingo")
 
 
 def _load_world_clock_module() -> ModuleType:
@@ -26,31 +24,32 @@ def _load_world_clock_module() -> ModuleType:
     return module
 
 
-def test_morning_world_anchors_five_minutes_ahead() -> None:
+def test_daytime_world_keeps_the_repository_default_timezone() -> None:
     world_clock = _load_world_clock_module()
-    anchor = world_clock.anchor_for(datetime(2026, 8, 28, 9, 0, tzinfo=SD))
 
-    assert anchor == datetime(2026, 8, 28, 9, 5, tzinfo=SD)
+    assert world_clock.pick_business_timezone(datetime(2026, 8, 29, 14, 0, tzinfo=UTC)) == (
+        "America/Santo_Domingo"
+    )
 
 
-def test_evening_world_keeps_same_local_day() -> None:
+def test_evening_world_keeps_the_repository_default_timezone() -> None:
     world_clock = _load_world_clock_module()
-    anchor = world_clock.anchor_for(datetime(2026, 8, 28, 21, 59, tzinfo=SD))
 
-    assert anchor == datetime(2026, 8, 28, 22, 4, tzinfo=SD)
+    assert world_clock.pick_business_timezone(datetime(2026, 8, 29, 21, 0, tzinfo=UTC)) == (
+        "America/Santo_Domingo"
+    )
 
 
-def test_late_evening_world_anchors_next_local_day() -> None:
+def test_late_evening_world_configures_a_runway_timezone() -> None:
     world_clock = _load_world_clock_module()
-    anchor = world_clock.anchor_for(datetime(2026, 8, 28, 23, 30, tzinfo=SD))
+    picked = world_clock.pick_business_timezone(datetime(2026, 8, 30, 3, 0, tzinfo=UTC))
 
-    assert anchor == datetime(2026, 8, 29, 0, 5, tzinfo=SD)
+    assert picked == "Asia/Tokyo"
 
 
-def test_anchor_boundary_flips_at_22_local() -> None:
+def test_early_morning_world_configures_a_runway_timezone() -> None:
     world_clock = _load_world_clock_module()
-    before = world_clock.anchor_for(datetime(2026, 8, 28, 21, 59, 59, tzinfo=SD))
-    at_boundary = world_clock.anchor_for(datetime(2026, 8, 28, 22, 0, 0, tzinfo=SD))
 
-    assert before == datetime(2026, 8, 28, 22, 4, 59, tzinfo=SD)
-    assert at_boundary == datetime(2026, 8, 29, 0, 5, tzinfo=SD)
+    assert (
+        world_clock.pick_business_timezone(datetime(2026, 8, 29, 3, 0, tzinfo=UTC)) == "Asia/Tokyo"
+    )

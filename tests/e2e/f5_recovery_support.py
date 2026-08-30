@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 
@@ -12,12 +11,11 @@ from request_engine.platform.security.context import ActorContext
 from .f4_capacity_support import f4_actor, same_day_slots
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
-from .world_clock import world_weekday
+from .world_clock import location_timezone, world_weekday
 
 _F5_CAPABILITIES = frozenset(
     {"operational_recovery.propose", "operational_recovery.read", "operational_recovery.execute"}
 )
-_TZ = ZoneInfo("America/Santo_Domingo")
 
 
 def f5_actor(sandbox: TenantSandbox) -> ActorContext:
@@ -38,9 +36,9 @@ async def book_commitments(
 ) -> tuple[list[UUID], list[dict[str, Any]]]:
     slots = await same_day_slots(client, conn, sandbox)
     assert len(slots) >= count + 1, (
-        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; slot worlds"
-        " seed 00:00-23:59 business days in America/Santo_Domingo (repository default tz),"
-        " anchored to the next local day after 22:00 local"
+        f"test world slot supply exhausted: found {len(slots)}, need {count + 1}; the"
+        " world business day is configured in locations.timezone (default"
+        " America/Santo_Domingo) and slot worlds require hours of runway"
     )
     reservations: list[UUID] = []
     for slot in slots[:count]:
@@ -66,8 +64,12 @@ def restrict_source_to_first_slots(
 ) -> None:
     if count <= 0 or count > len(slots):
         raise ValueError("count must select at least one available slot")
-    start_at = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
-    end_at = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
+    start_at = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(
+        location_timezone(conn, sandbox)
+    )
+    end_at = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(
+        location_timezone(conn, sandbox)
+    )
     assert start_at.date() == end_at.date(), "slot world crossed local midnight"
     weekday = start_at.weekday()
     conn.execute(
@@ -78,13 +80,14 @@ def restrict_source_to_first_slots(
     conn.execute(
         "INSERT INTO request_engine.availability_schedules "
         "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,%s,%s,'America/Santo_Domingo')",
+        "VALUES (%s,%s,%s,%s,%s,%s)",
         (
             sandbox.organization_id,
             sandbox.resource_id,
             weekday,
             start_at.timetz().replace(tzinfo=None),
             end_at.timetz().replace(tzinfo=None),
+            location_timezone(conn, sandbox).key,
         ),
     )
 
@@ -122,11 +125,11 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
         "(organization_id,resource_id,capability_id) VALUES (%s,%s,%s)",
         (sandbox.organization_id, resource_id, row[0]),
     )
-    weekday = world_weekday(conn)
+    weekday = world_weekday(conn, sandbox)
     conn.execute(
         "INSERT INTO request_engine.availability_schedules "
         "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,'00:00','23:59','America/Santo_Domingo')",
-        (sandbox.organization_id, resource_id, weekday),
+        "VALUES (%s,%s,%s,'00:00','23:59',%s)",
+        (sandbox.organization_id, resource_id, weekday, location_timezone(conn, sandbox).key),
     )
     return resource_id

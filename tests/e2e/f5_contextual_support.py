@@ -5,13 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox
-from .world_clock import world_weekday
-
-_TZ = ZoneInfo("America/Santo_Domingo")
+from .world_clock import location_timezone, world_weekday
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +21,7 @@ def contextualize_recovery_supply(
     conn: PgConnection,
     sandbox: TenantSandbox,
 ) -> F5ContextualSupply:
-    weekday = _current_weekday(conn)
+    weekday = world_weekday(conn, sandbox)
     conn.execute(
         "INSERT INTO request_engine.location_operational_hours "
         "(organization_id,location_id,weekday,local_start,local_end) "
@@ -64,8 +61,9 @@ def restrict_contextual_capacity(
     *,
     count: int,
 ) -> None:
-    start = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(_TZ)
-    end = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(_TZ)
+    timezone = location_timezone(conn, sandbox)
+    start = datetime.fromisoformat(cast(str, slots[0]["start_at"])).astimezone(timezone)
+    end = datetime.fromisoformat(cast(str, slots[count - 1]["end_at"])).astimezone(timezone)
     conn.execute(
         "DELETE FROM request_engine.resource_location_availability "
         "WHERE organization_id=%s AND resource_location_assignment_id=%s AND weekday=%s",
@@ -83,7 +81,3 @@ def restrict_contextual_capacity(
             end.timetz().replace(tzinfo=None),
         ),
     )
-
-
-def _current_weekday(conn: PgConnection) -> int:
-    return world_weekday(conn)
