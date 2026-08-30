@@ -7,7 +7,7 @@ F6 Operational Copilot is a bounded semantic adapter over F1-F5 operational trut
 Owned here:
 
 - deterministic parser (`parser.py`, `parsing/`), pure: text in, typed IR or semantic refusal out;
-- typed intent IR, trusted context, and owner-neutral execution receipt (`contracts.py`);
+- typed intent IR, trusted context, and F6-owned execution receipt (`contracts.py`);
 - admission policy (`policy.py`), including trusted-authority requirements;
 - deterministic lowering (`lowering.py`) into owner commands / at-risk query;
 - application facade (`application/`): interpretation, supported reads, and a fail-closed registered mutation-executor registry;
@@ -42,6 +42,8 @@ The architecture test `tests/architecture/test_operational_copilot_module_bounda
 Trust rules: `organization_id` and `principal_id` come only from the authenticated actor. `authority_party_id` is resolved server-side from tenant representation truth through the published `tenancy` operational authority reader — never from language or HTTP parameters — and fails closed when absent or ambiguous. The `Idempotency-Key` request header is the trusted idempotency identity and flows unchanged into every lowered owner command; it is never derived from the language text. Ambiguous, unsupported or name-based-resolution input fails closed (`errors.py`).
 
 `/interpret` never executes mutations. `/execute` first performs the same parse → trusted resolution → policy → lowering pipeline, then resolves exactly one registered executor for the lowered operation. The F6 execution capability does not replace the owner gate: the router also requires the executor-declared owner capability before invoking the owner contract. Owner concurrency, idempotency, authority, transaction and domain validation remain authoritative.
+
+The current execution receipt is owned by F6 rather than exposing the owner's `RecoveryAction` object directly, but its fields are still recovery-shaped. It must be generalized before using the same public response contract for non-recovery owners such as Discovery.
 
 The current execution tranche is PostgreSQL-backed and exact-head CI-proven for intake stop/reopen and extend-day replay/effects. Natural entity resolution and relative operational-time resolution are still roadmap scope, not delivered capability.
 
