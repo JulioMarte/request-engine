@@ -1,4 +1,3 @@
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -55,4 +54,4 @@ class PostgresCopilotRecoveryIncidentReader(CopilotRecoveryIncidentReader):
                     {"organization_id": organization_id, "resource_id": resource_id},
                 )
             ).mappings()
-            return tuple(incident_from_row(cast(object, row)) for row in rows)
+            return tuple(incident_from_row(row) for row in rows)
