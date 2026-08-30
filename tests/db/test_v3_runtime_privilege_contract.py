@@ -15,6 +15,20 @@ PRIVATE_GLOBAL_TABLES = {
     "shared_capacity_identities",
 }
 
+DEFINER_MEDIATED_TABLES = {
+    "discovery_booking_handoffs",
+    "service_classification_authority_events",
+}
+
+# F2 taxonomy follows a reviewed narrower shape: the app can register/adjust
+# classifications through the bounded lifecycle commands but reads taxonomy
+# only through the definer lookup functions.
+EXPECTED_TABLE_EXCEPTIONS: dict[str, tuple[bool, bool, bool, bool, bool, bool, bool]] = {
+    "service_classifications": (False, True, True, False, False, False, False),
+    # F4 recomputes assignment availability, which legitimately deletes stale rows.
+    "resource_location_availability": (True, True, True, True, False, False, False),
+}
+
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
     parts = pg_conninfo.split()
@@ -141,16 +155,23 @@ def test_real_application_login_has_only_the_runtime_table_contract(
         assert table_privileges
 
         seen_private: set[str] = set()
+        seen_definer_mediated: set[str] = set()
         for row in table_privileges:
             table_name = cast(str, row[0])
             privileges = cast(tuple[bool, bool, bool, bool, bool, bool, bool], tuple(row[1:]))
             if table_name in PRIVATE_GLOBAL_TABLES:
                 seen_private.add(table_name)
                 assert privileges == (False,) * 7
+            elif table_name in DEFINER_MEDIATED_TABLES:
+                seen_definer_mediated.add(table_name)
+                assert privileges == (False,) * 7, table_name
+            elif table_name in EXPECTED_TABLE_EXCEPTIONS:
+                assert privileges == EXPECTED_TABLE_EXCEPTIONS[table_name], table_name
             else:
                 assert privileges[:3] == (True, True, True), table_name
                 assert privileges[3:] == (False, False, False, False), table_name
         assert seen_private == PRIVATE_GLOBAL_TABLES
+        assert seen_definer_mediated == DEFINER_MEDIATED_TABLES
 
         probe_privileges = app_conn.execute(
             """

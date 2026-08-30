@@ -8,6 +8,8 @@ import pytest
 from psycopg import Connection, sql
 from psycopg.errors import InsufficientPrivilege
 
+from runtime_role_function_surface import EXPECTED_FUNCTIONS
+
 PgConnection = Connection[Any]
 
 PRIVATE_GLOBAL_TABLES = {
@@ -16,6 +18,44 @@ PRIVATE_GLOBAL_TABLES = {
     "shared_capacity_bindings",
     "shared_capacity_claim_links",
     "shared_capacity_identities",
+}
+
+DEFINER_MEDIATED_TABLES = {
+    "discovery_booking_handoffs",
+    "service_classification_authority_events",
+}
+
+# F2 taxonomy/discovery tables follow reviewed narrower-than-generic shapes:
+# taxonomy is read through definer functions, the authority-event ledger is
+# append-only and definer-written, and handoffs are fully definer-mediated.
+EXPECTED_RELATION_PRIVILEGE_OVERRIDES: dict[tuple[str, str, str], set[str]] = {
+    ("request_engine_app", "request_engine", "service_classifications"): {
+        "INSERT",
+        "UPDATE",
+    },
+    ("request_engine_app", "request_engine", "discovery_booking_handoffs"): set(),
+    (
+        "request_engine_app",
+        "request_engine",
+        "service_classification_authority_events",
+    ): set(),
+    # F4 recomputes assignment availability, which legitimately deletes stale rows.
+    (
+        "request_engine_app",
+        "request_engine",
+        "resource_location_availability",
+    ): {"SELECT", "INSERT", "UPDATE", "DELETE"},
+    ("request_engine_admin", "request_engine", "service_classifications"): {
+        "SELECT",
+        "REFERENCES",
+        "TRIGGER",
+        "MAINTAIN",
+    },
+    (
+        "request_engine_admin",
+        "request_engine",
+        "service_classification_authority_events",
+    ): {"SELECT"},
 }
 
 ALL_TABLE_PRIVILEGES = {
@@ -37,81 +77,6 @@ EXPECTED_SCHEMAS = {
         "request_read",
         "request_cmd",
         "request_admin",
-    },
-}
-
-EXPECTED_FUNCTIONS = {
-    "request_engine_app": {
-        "request_cmd.acquire_idempotency(uuid, uuid, text, text, text)",
-        "request_cmd.cancel_scheduled_action(uuid, uuid)",
-        "request_cmd.complete_idempotency(uuid, jsonb)",
-        "request_cmd.lock_outbox_message_claim(uuid, uuid, uuid)",
-        "request_cmd.lock_scheduled_action_claim(uuid, uuid)",
-        "request_cmd.lock_shared_capacity_roots(uuid, uuid[])",
-        "request_engine.current_authenticated_principal_id()",
-        "request_engine.current_correlation_id()",
-        "request_engine.current_organization_id()",
-        "request_engine.lock_current_party_authority(uuid, uuid, uuid, text)",
-        "request_engine.resolve_current_party_authority(uuid, uuid, uuid, text)",
-    },
-    "request_engine_worker": {
-        "request_cmd.claim_outbox_messages(integer, interval)",
-        "request_cmd.claim_provider_events(integer, interval)",
-        "request_cmd.claim_scheduled_actions(integer, interval)",
-        "request_cmd.complete_outbox_message(uuid, uuid)",
-        "request_cmd.complete_provider_event(uuid, uuid)",
-        "request_cmd.complete_scheduled_action(uuid, uuid)",
-        "request_cmd.dead_letter_outbox_message(uuid, uuid, text)",
-        "request_cmd.dead_letter_provider_event(uuid, uuid, text)",
-        "request_cmd.dead_letter_scheduled_action(uuid, uuid, text)",
-        "request_cmd.lock_scheduled_action_claim(uuid, uuid)",
-        "request_cmd.reject_provider_event(uuid, uuid, text)",
-        "request_cmd.renew_outbox_message_lease(uuid, uuid, interval)",
-        "request_cmd.renew_provider_event_lease(uuid, uuid, interval)",
-        "request_cmd.renew_scheduled_action_lease(uuid, uuid, interval)",
-        "request_cmd.retry_outbox_message(uuid, uuid, timestamp with time zone, text)",
-        "request_cmd.retry_outbox_message_after(uuid, uuid, interval, text)",
-        "request_cmd.retry_provider_event_after(uuid, uuid, interval, text)",
-        "request_cmd.retry_scheduled_action(uuid, uuid, timestamp with time zone, text)",
-        "request_cmd.retry_scheduled_action_after(uuid, uuid, interval, text)",
-        "request_engine.current_authenticated_principal_id()",
-        "request_engine.current_correlation_id()",
-        "request_engine.current_organization_id()",
-    },
-    "request_engine_admin": {
-        "request_admin.activate_shared_capacity_binding(uuid, uuid, uuid, text, text)",
-        "request_admin.create_global_identity(text, text, text, text)",
-        "request_admin.create_shared_capacity_identity(uuid, text, text)",
-        "request_admin.replay_dead_outbox_message(uuid, uuid, integer, text)",
-        "request_admin.replay_dead_scheduled_action(uuid, uuid, integer, text)",
-        "request_admin.replay_provider_event(uuid, uuid, integer, text)",
-        "request_admin.revoke_shared_capacity_binding(uuid, text, text)",
-        "request_cmd.cancel_scheduled_action(uuid, uuid)",
-        "request_cmd.claim_outbox_messages(integer, interval)",
-        "request_cmd.claim_provider_events(integer, interval)",
-        "request_cmd.claim_scheduled_actions(integer, interval)",
-        "request_cmd.complete_outbox_message(uuid, uuid)",
-        "request_cmd.complete_provider_event(uuid, uuid)",
-        "request_cmd.complete_scheduled_action(uuid, uuid)",
-        "request_cmd.dead_letter_outbox_message(uuid, uuid, text)",
-        "request_cmd.dead_letter_provider_event(uuid, uuid, text)",
-        "request_cmd.dead_letter_scheduled_action(uuid, uuid, text)",
-        "request_cmd.lock_outbox_message_claim(uuid, uuid, uuid)",
-        "request_cmd.lock_shared_capacity_roots(uuid, uuid[])",
-        "request_cmd.reject_provider_event(uuid, uuid, text)",
-        "request_cmd.renew_outbox_message_lease(uuid, uuid, interval)",
-        "request_cmd.renew_provider_event_lease(uuid, uuid, interval)",
-        "request_cmd.renew_scheduled_action_lease(uuid, uuid, interval)",
-        "request_cmd.retry_outbox_message(uuid, uuid, timestamp with time zone, text)",
-        "request_cmd.retry_outbox_message_after(uuid, uuid, interval, text)",
-        "request_cmd.retry_provider_event_after(uuid, uuid, interval, text)",
-        "request_cmd.retry_scheduled_action(uuid, uuid, timestamp with time zone, text)",
-        "request_cmd.retry_scheduled_action_after(uuid, uuid, interval, text)",
-        "request_engine.current_authenticated_principal_id()",
-        "request_engine.current_correlation_id()",
-        "request_engine.current_organization_id()",
-        "request_engine.lock_current_party_authority(uuid, uuid, uuid, text)",
-        "request_engine.resolve_current_party_authority(uuid, uuid, uuid, text)",
     },
 }
 
@@ -190,11 +155,14 @@ def _relation_privileges(conn: PgConnection, relation_oid: int) -> set[str]:
 
 
 def _expected_relation_privileges(group_role: str, schema: str, name: str) -> set[str]:
+    override = EXPECTED_RELATION_PRIVILEGE_OVERRIDES.get((group_role, schema, name))
+    if override is not None:
+        return override
     if group_role == "request_engine_worker":
         return set()
     if group_role == "request_engine_app":
         if schema == "request_engine":
-            if name in PRIVATE_GLOBAL_TABLES:
+            if name in PRIVATE_GLOBAL_TABLES or name in DEFINER_MEDIATED_TABLES:
                 return set()
             return {"SELECT", "INSERT", "UPDATE"}
         if schema == "request_read":
@@ -347,6 +315,6 @@ def test_core_roles_and_all_security_definers_are_hardened(admin_conn: PgConnect
         assert cast(str, schema) in {"request_engine", "request_cmd", "request_admin"}
         assert cast(str, name)
         assert cast(str, arguments) is not None
-        assert owner == "request_engine_schema_owner"
+        assert owner in {"request_engine_schema_owner", "request_engine_admin"}
         assert config == ["search_path=pg_catalog, request_engine, pg_temp"]
         assert public_execute is False

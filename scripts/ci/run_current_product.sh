@@ -110,6 +110,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f5-recovery-db.xml"
 
+# The reviewed runtime function surface is fail-closed truth: the app role may
+# execute only the functions an accepted migration granted. Run the real-login
+# inventory on current HEAD so new grants cannot ship outside review.
+uv run pytest \
+  tests/db/test_v3_app_function_privilege_inventory.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
+
 # CallNext is an application-command concurrency contract, not only a historical
 # V3 vertical. Keep its real adapter race on current HEAD so Queue changes cannot
 # retain green DB constraints while regressing command-level serialization.
