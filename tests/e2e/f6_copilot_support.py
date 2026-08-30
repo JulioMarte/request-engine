@@ -10,9 +10,7 @@ from request_engine.platform.security.context import ActorContext
 from .f5_recovery_support import f5_actor
 from .tenant_sandbox import TenantSandbox, auth
 
-_COPILOT_CAPABILITIES = frozenset(
-    {"operational_copilot.interpret", "operational_copilot.execute"}
-)
+_COPILOT_CAPABILITIES = frozenset({"operational_copilot.interpret", "operational_copilot.execute"})
 
 
 def copilot_actor(sandbox: TenantSandbox) -> ActorContext:
