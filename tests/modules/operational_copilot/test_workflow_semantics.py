@@ -21,6 +21,8 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
     SetRecoveryIntakeCommand,
 )
 
+from .support import parse_canonical_intent
+
 ORG = UUID("11111111-1111-1111-1111-111111111111")
 PRINCIPAL = UUID("22222222-2222-2222-2222-222222222222")
 AUTHORITY = UUID("66666666-6666-6666-6666-666666666666")
@@ -31,7 +33,7 @@ CTX_AUTHORITY = CopilotContext(ORG, PRINCIPAL, "copilot:extend:1", AUTHORITY)
 
 
 def test_stop_walk_ins_parses_validates_and_lowers() -> None:
-    intent = parse_copilot_intent(
+    intent = parse_canonical_intent(
         f"stop walk-ins for incident {INCIDENT} source revision 3 intake revision 5"
     )
     assert intent == SetRecoveryIntakeIntent(INCIDENT, False, 3, 5)
@@ -44,7 +46,7 @@ def test_stop_walk_ins_parses_validates_and_lowers() -> None:
 
 
 def test_reopen_walk_ins_reuses_trusted_identity() -> None:
-    intent = parse_copilot_intent(
+    intent = parse_canonical_intent(
         f"reopen walk-ins for incident {INCIDENT} source revision 4 intake revision 6"
     )
     assert intent == SetRecoveryIntakeIntent(INCIDENT, True, 4, 6)
@@ -61,7 +63,7 @@ def test_extend_day_lowers_with_trusted_authority_party() -> None:
         f"from {start} to {end} source revision 2 location revision 4 "
         "availability revision 6 reason crowd overflow"
     )
-    intent = parse_copilot_intent(text)
+    intent = parse_canonical_intent(text)
     assert intent == ExtendRecoveryDayIntent(
         INCIDENT,
         ASSIGNMENT,
