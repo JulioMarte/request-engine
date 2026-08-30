@@ -4,6 +4,9 @@ from request_engine.platform.security.capability_registry_delivery_live import (
 from request_engine.platform.security.capability_registry_live_capacity import (
     LIVE_CAPACITY_CAPABILITIES,
 )
+from request_engine.platform.security.capability_registry_operational_copilot import (
+    OPERATIONAL_COPILOT_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_operational_recovery import (
     OPERATIONAL_RECOVERY_CAPABILITIES,
 )
@@ -17,4 +20,5 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     + LIVE_DELIVERY_CAPABILITIES
     + LIVE_CAPACITY_CAPABILITIES
     + OPERATIONAL_RECOVERY_CAPABILITIES
+    + OPERATIONAL_COPILOT_CAPABILITIES
 )

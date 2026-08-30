@@ -24,7 +24,16 @@ from request_engine.modules.delivery.api.live_capacity import (
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
+from request_engine.modules.operational_copilot.api import (
+    build_live_capacity_at_risk_reader,
+)
+from request_engine.modules.operational_copilot.api import (
+    install_http as install_copilot_http,
+)
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
+from request_engine.modules.operational_recovery.api.proposal_reader import (
+    build_recovery_proposal_reader,
+)
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.queue.api import install_http as install_queue_http
 from request_engine.modules.queue.api.live_capacity import (
@@ -84,19 +93,26 @@ def install_business_modules(
     )
     queue_intake = build_recovery_intake_control_port(session_factory)
     location_schedule = build_recovery_location_schedule_port(session_factory)
-    install_recovery_http(
+    recovery_capacity = build_recovery_capacity_source(
+        session_factory,
+        booking_source=booking_capacity,
+        queue_source=queue_capacity,
+        delivery_source=delivery_capacity,
+    )
+    recovery_service = install_recovery_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
-        capacity=build_recovery_capacity_source(
-            session_factory,
-            booking_source=booking_capacity,
-            queue_source=queue_capacity,
-            delivery_source=delivery_capacity,
-        ),
+        capacity=recovery_capacity,
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
         intake=QueueRecoveryIntakeAdapter(queue_intake),
         location_schedule=CatalogRecoveryLocationAdapter(location_schedule),
         assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
+    )
+    install_copilot_http(
+        app,
+        actor_resolver=actor_resolver,
+        at_risk_reader=build_live_capacity_at_risk_reader(recovery_capacity),
+        proposal_reader=build_recovery_proposal_reader(recovery_service),
     )

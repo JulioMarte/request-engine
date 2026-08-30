@@ -72,7 +72,7 @@ def install_http(
     intake: RecoveryIntakeControlPort,
     location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
-) -> None:
+) -> OperationalRecoveryService:
     proposal_repository = PostgresRecoveryRepository(session_factory)
     service = OperationalRecoveryService(
         repository=proposal_repository,
@@ -105,3 +105,4 @@ def install_http(
     app.include_router(
         create_autonomy_router(PostgresRecoveryAutonomyPolicyStore(session_factory), actor_resolver)
     )
+    return service
