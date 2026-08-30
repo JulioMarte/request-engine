@@ -1,6 +1,8 @@
 from typing import cast
 
-from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
+from request_engine.modules.live_capacity.contracts.recovery import (
+    RecoveryCapacityAssessment,
+)
 from request_engine.modules.operational_copilot.application.authority import (
     resolve_trusted_authority_party,
 )
@@ -30,8 +32,8 @@ from request_engine.modules.operational_copilot.lowering.operations import Copil
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
 from request_engine.modules.operational_copilot.references import (
-    CopilotParsedIntent,
     UNRESOLVED_INTENT_TYPES,
+    CopilotParsedIntent,
 )
 
 
