@@ -91,6 +91,12 @@ class RecoveryIncidentNotFound(Exception):
         self.incident_id = incident_id
 
 
+class RecoveryQueueNotFound(Exception):
+    def __init__(self, queue_id: UUID) -> None:
+        super().__init__(f"ServiceQueue {queue_id} not found")
+        self.queue_id = queue_id
+
+
 class RecoveryIncidentStale(Exception):
     def __init__(self, incident_id: UUID, expected: int, actual: int) -> None:
         super().__init__(f"RecoveryIncident {incident_id} source revision changed")

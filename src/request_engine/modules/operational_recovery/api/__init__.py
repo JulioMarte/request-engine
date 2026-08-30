@@ -8,6 +8,9 @@ from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.adapters.db.recovery_autonomy_policy_store import (
+    PostgresRecoveryAutonomyPolicyStore,
+)
 from request_engine.modules.operational_recovery.adapters.db.store import (
     PostgresRecoveryRepository,
 )
@@ -18,6 +21,9 @@ from request_engine.modules.operational_recovery.api.errors import (
     operational_recovery_error_handler,
 )
 from request_engine.modules.operational_recovery.api.router import create_router
+from request_engine.modules.operational_recovery.api.workflow_autonomy_router import (
+    create_autonomy_router,
+)
 from request_engine.modules.operational_recovery.api.workflow_communication_router import (
     create_communication_router,
 )
@@ -96,3 +102,6 @@ def install_http(
     app.include_router(create_workflow_router(workflow, actor_resolver))
     app.include_router(create_reschedule_router(workflow, actor_resolver))
     app.include_router(create_communication_router(workflow, actor_resolver))
+    app.include_router(
+        create_autonomy_router(PostgresRecoveryAutonomyPolicyStore(session_factory), actor_resolver)
+    )

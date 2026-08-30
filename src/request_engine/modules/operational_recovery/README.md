@@ -19,7 +19,14 @@ It owns:
   missing reassessment ScheduledAction; it never evaluates F4 itself and never
   resurrects `dead` or `cancelled` actions (operator replay only);
 - `operational_recovery_escalations`: append-only escalation/communication policy
-  outcomes, one immutable fact per incident and source revision.
+  outcomes, one immutable fact per incident and source revision;
+- the operator-granted autonomous reschedule envelope per service queue
+  (`operational_recovery_autonomy_policies`): dormant by default, configurable through
+  the `operational_recovery.configure_autonomy` idempotent command; while enabled, the
+  scheduled handler may execute the persisted proposal's own reschedule candidates
+  strictly within the granted delay budget, one new attempt per assessment cycle, under
+  the `operational_recovery_automation` system principal, with durable per-incident
+  attempt budget and deduped subject notifications (contract 32 section 14).
 
 The scheduled reassessment handler is the single escalation-policy evaluation authority.
 Action-driven reprojection (`reconcile_recovery_incident` after owner mutations) advances
@@ -33,7 +40,8 @@ It does **not** own:
 - live-capacity calculation — Live Capacity owns the F4 projection/recovery source;
 - CommunicationTask, outbox, worker or provider delivery — Communications owns them;
 - delivering customer communication — policy evaluation only requests it; delivery stays
-  with the explicit `COMMUNICATE_IMPACT` action unless a later policy grants a system actor;
+  with the explicit `COMMUNICATE_IMPACT` action unless the accepted policy grants the
+  system actor (impact notification, envelope-bound reschedule);
 - the ScheduledAction claim runtime — the platform worker runtime owns it;
 - a generic long-lived workflow engine.
 

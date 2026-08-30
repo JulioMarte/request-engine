@@ -9,7 +9,7 @@ from e2e.f5_booking_fixture import five_minute_sandbox
 from e2e.f5_recovery_support import book_commitments, f5_actor, restrict_source_to_first_slots
 from e2e.operational_support import PgConnection
 from e2e.tenant_sandbox import TenantSandbox, client_with_actors, seed_tenant_sandbox
-from e2e.world_clock import location_timezone, world_weekday
+from e2e.world_clock import location_timezone, pick_far_business_timezone, world_weekday
 from request_engine.bootstrap.recovery_worker import build_recovery_assessment_handler
 from request_engine.platform.db.session import SessionFactory
 
@@ -21,30 +21,30 @@ pytestmark = [
     pytest.mark.invariant,
 ]
 
-FORCED_TIMEZONE = "Asia/Tokyo"
 
-
-async def _tokyo_business_world(
+async def _far_business_world(
     e2e_admin_conn: PgConnection, e2e_session_factory: SessionFactory, label: str
-) -> TenantSandbox:
+) -> tuple[TenantSandbox, str]:
     sandbox = five_minute_sandbox(e2e_admin_conn, seed_tenant_sandbox(e2e_admin_conn, label))
-    seed_today_schedule(e2e_admin_conn, sandbox, business_timezone=FORCED_TIMEZONE)
-    assert location_timezone(e2e_admin_conn, sandbox).key == FORCED_TIMEZONE
+    forced_timezone = pick_far_business_timezone(e2e_admin_conn)
+    seed_today_schedule(e2e_admin_conn, sandbox, business_timezone=forced_timezone)
+    assert location_timezone(e2e_admin_conn, sandbox).key == forced_timezone
     actors = {sandbox.token: f5_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         await configure_projection(client, sandbox)
         _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
     restrict_source_to_first_slots(e2e_admin_conn, sandbox, slots, count=6)
-    return sandbox
+    return sandbox, forced_timezone
 
 
 async def test_business_timezones_configured_far_from_the_runner_stay_material(
     e2e_admin_conn: PgConnection, e2e_session_factory: SessionFactory
 ) -> None:
-    sandbox = await _tokyo_business_world(
+    sandbox, forced_timezone = await _far_business_world(
         e2e_admin_conn, e2e_session_factory, "world-business-timezone"
     )
-    assert location_timezone(e2e_admin_conn, sandbox).key == FORCED_TIMEZONE
+    assert location_timezone(e2e_admin_conn, sandbox).key == forced_timezone
+    assert forced_timezone != "America/Santo_Domingo"
     tokyo_weekday = world_weekday(e2e_admin_conn, sandbox)
     seeded = e2e_admin_conn.execute(
         "SELECT local_start,local_end FROM request_engine.availability_schedules "

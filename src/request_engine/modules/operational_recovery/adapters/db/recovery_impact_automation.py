@@ -1,35 +1,17 @@
-from typing import cast
 from uuid import UUID
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
     RecoveryCommunicationPurpose,
     RecoveryCommunicationRequest,
 )
-from request_engine.modules.operational_recovery.application.recovery_impact_automation import (
-    AUTOMATION_PRINCIPAL_KIND,
-    AUTOMATION_PRINCIPAL_SUBJECT,
+from request_engine.modules.operational_recovery.adapters.db.recovery_automation_principal import (
+    RecoveryAutomationPrincipal,
 )
 from request_engine.modules.operational_recovery.application.workflow_communication_action import (
     impact_dedupe_key,
 )
-from request_engine.platform.db.session import SessionFactory, tenant_transaction
-
-_ENSURE_PRINCIPAL = text(
-    """
-    INSERT INTO request_engine.principals (
-        organization_id, principal_kind, external_subject
-    ) VALUES (
-        :organization_id, :principal_kind, :external_subject
-    )
-    ON CONFLICT (organization_id, principal_kind, external_subject)
-    DO UPDATE SET updated_at = clock_timestamp()
-    RETURNING id
-    """
-)
+from request_engine.platform.db.session import SessionFactory
 
 
 class PostgresRecoveryImpactAutomation:
@@ -42,7 +24,7 @@ class PostgresRecoveryImpactAutomation:
         session_factory: SessionFactory,
         communications: RecoveryCommunicationPort,
     ) -> None:
-        self._session_factory = session_factory
+        self._principal = RecoveryAutomationPrincipal(session_factory)
         self._communications = communications
 
     async def communicate_impact(
@@ -53,7 +35,7 @@ class PostgresRecoveryImpactAutomation:
         source_revision: int,
         recipients: tuple[UUID, ...],
     ) -> None:
-        principal_id = await self._ensure_automation_principal(organization_id)
+        principal_id = await self._principal.ensure(organization_id)
         for recipient in recipients:
             await self._communications.create_recovery_notification(
                 RecoveryCommunicationRequest(
@@ -73,20 +55,3 @@ class PostgresRecoveryImpactAutomation:
                     render_context={},
                 )
             )
-
-    async def _ensure_automation_principal(self, organization_id: UUID) -> UUID:
-        async with tenant_transaction(self._session_factory, organization_id) as session:
-            return await self._provisioned_principal_id(session, organization_id)
-
-    async def _provisioned_principal_id(self, session: AsyncSession, organization_id: UUID) -> UUID:
-        row = (
-            await session.execute(
-                _ENSURE_PRINCIPAL,
-                {
-                    "organization_id": organization_id,
-                    "principal_kind": AUTOMATION_PRINCIPAL_KIND,
-                    "external_subject": AUTOMATION_PRINCIPAL_SUBJECT,
-                },
-            )
-        ).scalar_one()
-        return cast(UUID, row)

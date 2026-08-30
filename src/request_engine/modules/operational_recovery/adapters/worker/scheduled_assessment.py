@@ -12,6 +12,9 @@ from request_engine.modules.operational_recovery.adapters.db.scheduled_assessmen
     PostgresScheduledAssessmentStore,
 )
 from request_engine.modules.operational_recovery.application.proposal_builder import build_proposal
+from request_engine.modules.operational_recovery.application.recovery_autonomy_automation import (
+    RecoveryRescheduleAutonomy,
+)
 from request_engine.modules.operational_recovery.application.recovery_impact_automation import (
     RecoveryImpactAutomation,
 )
@@ -30,12 +33,14 @@ class RecoveryAssessmentScheduledHandler:
         store: PostgresScheduledAssessmentStore,
         revisions: RecoverySourceRevisionReader,
         impact_automation: RecoveryImpactAutomation,
+        autonomy: RecoveryRescheduleAutonomy,
     ) -> None:
         self._capacity = capacity
         self._booking = booking
         self._store = store
         self._revisions = revisions
         self._impact_automation = impact_automation
+        self._autonomy = autonomy
 
     async def handle(self, lease: ScheduledActionLease) -> ScheduledAssessmentCommit:
         if (
@@ -98,5 +103,13 @@ class RecoveryAssessmentScheduledHandler:
                 incident_id=commit.incident.id,
                 source_revision=raw_revision,
                 recipients=commit.escalation.impact_recipient_party_ids,
+            )
+        if commit.incident is not None and commit.proposal_id is not None:
+            await self._autonomy.reschedule_within_envelope(
+                organization_id=lease.organization_id,
+                incident_id=commit.incident.id,
+                service_queue_id=queue_id,
+                proposal_id=commit.proposal_id,
+                source_revision=raw_revision,
             )
         return commit
