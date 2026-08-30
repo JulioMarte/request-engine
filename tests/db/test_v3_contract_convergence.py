@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection, Error
+from revision_guard_tables import REVISION_GUARD_TABLES
 
 PgConnection = Connection[Any]
 
@@ -342,26 +343,7 @@ def test_revision_step_rejects_skips_and_backwards_values(admin_conn: PgConnecti
 def test_all_revision_managed_aggregates_install_revision_guard(
     admin_conn: PgConnection,
 ) -> None:
-    expected = {
-        "representations",
-        "requests",
-        "capacity_holds",
-        "reservations",
-        "reservation_attendance",
-        "service_classifications",
-        "offering_service_classifications",
-        "booking_context_terms",
-        "discovery_publications",
-        "resource_public_profiles",
-        "resource_location_assignments",
-        "service_queues",
-        "queue_entries",
-        "waitlist_entries",
-        "slot_opportunities",
-        "slot_offers",
-        "communication_tasks",
-        "reminder_plans",
-    }
+    expected = REVISION_GUARD_TABLES
     rows = admin_conn.execute(
         """
         SELECT c.relname

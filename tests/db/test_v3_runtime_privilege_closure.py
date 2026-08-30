@@ -7,7 +7,6 @@ import psycopg
 import pytest
 from psycopg import Connection, sql
 from psycopg.errors import InsufficientPrivilege
-
 from runtime_role_function_surface import EXPECTED_FUNCTIONS
 
 PgConnection = Connection[Any]

@@ -5,19 +5,14 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from psycopg import Connection, sql
-
 from app_function_surface import REVIEWED_APP_EXECUTE_ALLOWLIST
+from psycopg import Connection, sql
 
 PgConnection = Connection[Any]
 
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
-    parts = [
-        part
-        for part in pg_conninfo.split()
-        if not part.startswith(("user=", "password="))
-    ]
+    parts = [part for part in pg_conninfo.split() if not part.startswith(("user=", "password="))]
     return " ".join([*parts, f"user={role_name}", f"password={password}"])
 
 
