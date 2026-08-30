@@ -11,7 +11,9 @@ from request_engine.modules.booking.api.recovery_schedule import (
     build_recovery_assignment_schedule_port,
 )
 from request_engine.modules.catalog.api import install_http as install_catalog_http
-from request_engine.modules.catalog.api.recovery_schedule import build_recovery_location_schedule_port
+from request_engine.modules.catalog.api.recovery_schedule import (
+    build_recovery_location_schedule_port,
+)
 from request_engine.modules.communications.api import install_http as install_communications_http
 from request_engine.modules.communications.api.recovery import build_recovery_communication_port
 from request_engine.modules.delivery.api import install_http as install_delivery_http
@@ -25,8 +27,10 @@ from request_engine.modules.operational_copilot.api import (
     install_http as install_copilot_http,
 )
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
-from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
-from request_engine.modules.queue.api import install_http as install_queue_http
+from request_engine.modules.queue.api import (
+    QueueSlotOfferHttpPorts,
+    install_http as install_queue_http,
+)
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
 )
