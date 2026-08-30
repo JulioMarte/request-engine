@@ -68,11 +68,15 @@ class PostgresCopilotCatalogReader(CopilotCatalogReader):
     ) -> CopilotLocationClock | None:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             row = (
-                await session.execute(
-                    text(LOCATION_QUERY),
-                    {"organization_id": organization_id, "location_id": location_id},
+                (
+                    await session.execute(
+                        text(LOCATION_QUERY),
+                        {"organization_id": organization_id, "location_id": location_id},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             return _location_clock(row) if row is not None else None
 
 
