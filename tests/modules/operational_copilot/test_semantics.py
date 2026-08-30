@@ -4,6 +4,7 @@ import pytest
 
 from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
+    CopilotIntent,
     CreateRecoveryProposalIntent,
     ExecuteRecoveryIntent,
 )
@@ -15,12 +16,11 @@ from request_engine.modules.operational_copilot.errors import (
 from request_engine.modules.operational_copilot.lowering import lower_copilot_intent
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
+from request_engine.modules.operational_copilot.references import UNRESOLVED_INTENT_TYPES
 from request_engine.modules.operational_recovery.contracts.commands import (
     CreateRecoveryProposalCommand,
     ExecuteRecoveryCommand,
 )
-
-from .support import parse_canonical_intent
 
 ORG = UUID("11111111-1111-1111-1111-111111111111")
 PRINCIPAL = UUID("22222222-2222-2222-2222-222222222222")
@@ -30,8 +30,14 @@ RESERVATION = UUID("55555555-5555-5555-5555-555555555555")
 CTX = CopilotContext(ORG, PRINCIPAL, "copilot:replay:1")
 
 
+def _parse_canonical(text: str) -> CopilotIntent:
+    intent = parse_copilot_intent(text)
+    assert not isinstance(intent, UNRESOLVED_INTENT_TYPES)
+    return intent
+
+
 def test_create_proposal_parses_validates_and_lowers() -> None:
-    intent = parse_canonical_intent(f"propose recovery for queue {QUEUE} over 5 days")
+    intent = _parse_canonical(f"propose recovery for queue {QUEUE} over 5 days")
     assert intent == CreateRecoveryProposalIntent(QUEUE, 5)
 
     command = lower_copilot_intent(CTX, validate_copilot_intent(CTX, intent))
@@ -46,7 +52,7 @@ def test_execute_parses_exact_modifiers_and_lowers() -> None:
         "source source-fp proposal proposal-fp allow subject override "
         "without notification"
     )
-    intent = parse_canonical_intent(text)
+    intent = _parse_canonical(text)
     assert intent == ExecuteRecoveryIntent(
         PROPOSAL, RESERVATION, "source-fp", "proposal-fp", True, False
     )
@@ -58,7 +64,7 @@ def test_execute_parses_exact_modifiers_and_lowers() -> None:
 
 
 def test_replay_lowers_deterministically() -> None:
-    intent = parse_canonical_intent(f"propose recovery for queue {QUEUE}")
+    intent = _parse_canonical(f"propose recovery for queue {QUEUE}")
     validated = validate_copilot_intent(CTX, intent)
     assert lower_copilot_intent(CTX, validated) == lower_copilot_intent(CTX, validated)
 
