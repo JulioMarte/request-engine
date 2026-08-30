@@ -2,18 +2,20 @@ from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapa
 from request_engine.modules.operational_copilot.application.authority import (
     resolve_trusted_authority_party,
 )
+from request_engine.modules.operational_copilot.application.execution import CopilotExecutionRegistry
 from request_engine.modules.operational_copilot.application.fingerprint_resolution import (
     resolve_execute_fingerprints,
 )
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
     AuthorityPartyReader,
-    RecoveryIntakeExecutor,
+    CopilotMutationExecutor,
     RecoveryProposalReader,
 )
 from request_engine.modules.operational_copilot.contracts import (
     AtRiskReservationsQuery,
     CopilotContext,
+    CopilotExecutionReceipt,
     CopilotIntent,
     ExecuteRecoveryIntent,
 )
@@ -22,10 +24,6 @@ from request_engine.modules.operational_copilot.lowering import lower_copilot_in
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_copilot.parser import parse_copilot_intent
 from request_engine.modules.operational_copilot.policy import validate_copilot_intent
-from request_engine.modules.operational_recovery.contracts.workflow import RecoveryAction
-from request_engine.modules.operational_recovery.contracts.workflow_commands import (
-    SetRecoveryIntakeCommand,
-)
 
 
 class OperationalCopilot:
@@ -34,12 +32,12 @@ class OperationalCopilot:
         at_risk_reader: AtRiskReservationReader,
         proposal_reader: RecoveryProposalReader | None = None,
         authority_reader: AuthorityPartyReader | None = None,
-        intake_executor: RecoveryIntakeExecutor | None = None,
+        mutation_executors: tuple[CopilotMutationExecutor, ...] = (),
     ) -> None:
         self._at_risk_reader = at_risk_reader
         self._proposal_reader = proposal_reader
         self._authority_reader = authority_reader
-        self._intake_executor = intake_executor
+        self._execution = CopilotExecutionRegistry(mutation_executors)
 
     async def interpret(self, context: CopilotContext, text: str) -> CopilotOperation:
         intent = parse_copilot_intent(text)
@@ -48,12 +46,11 @@ class OperationalCopilot:
         validated = validate_copilot_intent(resolved_context, resolved_intent)
         return lower_copilot_intent(resolved_context, validated)
 
-    async def execute(self, operation: CopilotOperation) -> RecoveryAction:
-        if isinstance(operation, SetRecoveryIntakeCommand):
-            if self._intake_executor is None:
-                raise UnsupportedCopilotIntent("recovery intake execution is not registered")
-            return await self._intake_executor.set_intake(operation)
-        raise UnsupportedCopilotIntent("copilot execution is not registered for this operation")
+    def execution_capability(self, operation: CopilotOperation) -> str:
+        return self._execution.owner_capability(operation)
+
+    async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt:
+        return await self._execution.execute(operation)
 
     async def inspect_at_risk(
         self,
