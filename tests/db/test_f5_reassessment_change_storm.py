@@ -59,9 +59,7 @@ class _CountingCapacity:
     def __init__(
         self, inner: recovery_contracts.RecoveryCapacitySource, hook: Callable[[], None]
     ) -> None:
-        self._inner = inner
-        self._hook = hook
-        self.calls = 0
+        self._inner, self._hook, self.calls = inner, hook, 0
 
     async def assess_recovery_capacity(
         self, *, organization_id: UUID, service_queue_id: UUID
