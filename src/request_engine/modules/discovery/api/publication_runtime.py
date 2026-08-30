@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 
-from request_engine.modules.discovery.adapters.db.publish_commands import PostgresDiscoveryPublishCommands
-from request_engine.modules.discovery.adapters.db.revoke_commands import PostgresDiscoveryRevokeCommands
+from request_engine.modules.discovery.adapters.db.publish_commands import (
+    PostgresDiscoveryPublishCommands,
+)
+from request_engine.modules.discovery.adapters.db.revoke_commands import (
+    PostgresDiscoveryRevokeCommands,
+)
 from request_engine.modules.discovery.application.commands.publication import (
     PublishDiscoverySupplyHandler,
     RevokeDiscoveryPublicationHandler,
@@ -19,10 +23,16 @@ class DiscoveryPublicationRuntime:
     publish_handler: PublishDiscoverySupplyHandler
     revoke_handler: RevokeDiscoveryPublicationHandler
 
-    async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState:
+    async def publish(
+        self,
+        command: PublishDiscoverySupplyCommand,
+    ) -> DiscoveryPublicationState:
         return await self.publish_handler.publish(command)
 
-    async def revoke(self, command: RevokeDiscoveryPublicationCommand) -> DiscoveryPublicationState:
+    async def revoke(
+        self,
+        command: RevokeDiscoveryPublicationCommand,
+    ) -> DiscoveryPublicationState:
         return await self.revoke_handler.revoke(command)
 
 
