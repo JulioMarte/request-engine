@@ -93,5 +93,8 @@ def _build_reference_resolver(
         return None
     if any(value is None for value in values):
         raise ValueError("copilot reference resolution requires all owner readers")
-    assert catalog is not None and queues is not None and recovery is not None and intake is not None
+    assert catalog is not None
+    assert queues is not None
+    assert recovery is not None
+    assert intake is not None
     return OwnerBackedCopilotReferenceResolver(catalog, queues, recovery, intake)
