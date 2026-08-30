@@ -23,6 +23,7 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
     "delivery": frozenset(),
     "live_capacity": frozenset({"booking", "delivery", "queue"}),
     "operational_recovery": frozenset({"booking", "communications", "live_capacity"}),
+    "operational_copilot": frozenset({"discovery", "live_capacity", "operational_recovery"}),
     "payments": frozenset(),
     "dispatch": frozenset(),
 }
