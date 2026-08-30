@@ -12,3 +12,7 @@ class AmbiguousCopilotIntent(CopilotSemanticError):
 
 class CopilotPolicyRejected(CopilotSemanticError):
     pass
+
+
+class CopilotResolutionFailed(CopilotSemanticError):
+    pass
