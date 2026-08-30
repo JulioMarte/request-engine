@@ -1,6 +1,10 @@
+from typing import Protocol
+
 from fastapi import FastAPI
 
-from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.live_capacity.contracts.recovery import (
+    RecoveryCapacitySource,
+)
 from request_engine.modules.operational_copilot.api import (
     build_live_capacity_at_risk_reader,
     install_http as install_copilot_http,
@@ -13,9 +17,19 @@ from request_engine.modules.operational_copilot.application.ports import (
 from request_engine.modules.operational_recovery.api.proposal_reader import (
     build_recovery_proposal_reader,
 )
-from request_engine.modules.tenancy.api import build_operational_authority_party_reader
+from request_engine.modules.tenancy.api import (
+    build_operational_authority_party_reader,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
+
+
+class RecoveryWorkflowExecutor(
+    RecoveryIntakeExecutor,
+    RecoveryExtendDayExecutor,
+    Protocol,
+):
+    pass
 
 
 def install_operational_copilot(
@@ -25,7 +39,7 @@ def install_operational_copilot(
     actor_resolver: ActorResolver,
     recovery_capacity: RecoveryCapacitySource,
     recovery_service: RecoveryProposalReader,
-    recovery_workflow: RecoveryIntakeExecutor | RecoveryExtendDayExecutor,
+    recovery_workflow: RecoveryWorkflowExecutor,
 ) -> None:
     install_copilot_http(
         app,
