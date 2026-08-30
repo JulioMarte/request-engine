@@ -468,3 +468,18 @@ evidence = ["invariant", "adversarial", "concurrency"]
 guarantee = "INV-WORKER-001"
 path = "tests/e2e/test_f5_recovery_autonomous_impact.py"
 evidence = ["invariant", "contract", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_v3_app_function_privilege_inventory.py"
+evidence = ["invariant", "security", "provenance"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_v3_runtime_privilege_closure.py"
+evidence = ["invariant", "security", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-WORKER-001"
+path = "tests/db/test_v3_release_catalog.py"
+evidence = ["invariant", "security"]
