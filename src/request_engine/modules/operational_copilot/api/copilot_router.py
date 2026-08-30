@@ -1,13 +1,13 @@
-from collections.abc import Awaitable, Callable
+from hashlib import sha256
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from request_engine.modules.operational_copilot.api.models import (
     CopilotAtRiskCommitmentView,
     CopilotAtRiskView,
     CopilotInterpretationView,
-    CopilotInterpretBody,
     interpretation_view,
 )
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
@@ -19,14 +19,10 @@ from request_engine.modules.operational_copilot.errors import (
     CopilotPolicyRejected,
     CopilotSemanticError,
 )
-from request_engine.modules.operational_copilot.lowering import CopilotOperation
+from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
-
-IdempotencyKey = Annotated[
-    str,
-    Header(alias="Idempotency-Key", min_length=1, max_length=250),
-]
 
 
 def create_copilot_router(
@@ -40,18 +36,18 @@ def create_copilot_router(
         return await actor_resolver.resolve_actor(request)
 
     async def interpret(
-        body: CopilotInterpretBody,
+        text: str,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
-        idempotency_key: IdempotencyKey,
+        authority_party_id: UUID | None = None,
     ) -> CopilotInterpretationView | CopilotAtRiskView:
         require_capability(actor, "operational_copilot.interpret")
         context = CopilotContext(
             organization_id=actor.organization_id,
             principal_id=actor.principal_id,
-            idempotency_key=idempotency_key,
-            authority_party_id=body.authority_party_id,
+            idempotency_key=_interpretation_key(actor, text),
+            authority_party_id=authority_party_id,
         )
-        operation = await _refusals(copilot.interpret, context, body.text)
+        operation = await _refusals(copilot, context, text)
         if isinstance(operation, AtRiskReservationsQuery):
             assessment = await copilot.read_at_risk(context, operation)
             return CopilotAtRiskView(
@@ -73,17 +69,29 @@ def create_copilot_router(
             )
         return interpretation_view(operation)
 
-    router.add_api_route("/interpret", interpret, methods=["POST"])
+    add_capability_route(
+        router,
+        "/interpret",
+        interpret,
+        capability="operational_copilot.interpret",
+        methods=["GET"],
+        response_model=CopilotInterpretationView | CopilotAtRiskView,
+    )
     return router
 
 
+def _interpretation_key(actor: ActorContext, text: str) -> str:
+    digest = sha256(text.casefold().encode()).hexdigest()[:32]
+    return f"copilot-interpret:{actor.principal_id}:{digest}"
+
+
 async def _refusals(
-    operate: Callable[[CopilotContext, str], Awaitable[CopilotOperation]],
+    copilot: OperationalCopilot,
     context: CopilotContext,
     text: str,
 ) -> CopilotOperation:
     try:
-        return await operate(context, text)
+        return await copilot.interpret(context, text)
     except CopilotPolicyRejected as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(error)) from error
     except CopilotSemanticError as error:

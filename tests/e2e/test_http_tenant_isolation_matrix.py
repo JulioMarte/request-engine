@@ -255,6 +255,13 @@ def _foreign_request(
             {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
             404,
         )
+    if name == "operational_copilot.interpret":
+        return (
+            "/v1/operational-copilot/interpret",
+            {"text": f"propose recovery for queue {foreign.queue_id}"},
+            None,
+            200,
+        )
     raise AssertionError(f"missing tenant probe for {name}")
 
 

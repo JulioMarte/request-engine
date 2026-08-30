@@ -30,12 +30,12 @@ async def interpret(
     *,
     with_authority: bool = False,
 ) -> dict[str, Any]:
-    body: dict[str, str] = {"text": text}
+    params: dict[str, str] = {"text": text}
     if with_authority:
-        body["authority_party_id"] = str(sandbox.party_id)
-    response = await client.post(
+        params["authority_party_id"] = str(sandbox.party_id)
+    response = await client.get(
         "/v1/operational-copilot/interpret",
-        json=body,
+        params=params,
         headers=auth(sandbox, idempotency_key=key),
     )
     assert response.status_code == 200, response.text

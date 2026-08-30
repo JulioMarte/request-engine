@@ -20,11 +20,6 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
 )
 
 
-class CopilotInterpretBody(BaseModel):
-    text: str
-    authority_party_id: UUID | None = None
-
-
 class CopilotInterpretationView(BaseModel):
     action: str
     operation: dict[str, object]
