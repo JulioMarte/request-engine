@@ -27,7 +27,9 @@ from request_engine.modules.delivery.api import install_http as install_delivery
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
 )
-from request_engine.modules.discovery.api.publication_runtime import build_discovery_publication_runtime
+from request_engine.modules.discovery.api.publication_runtime import (
+    build_discovery_publication_runtime,
+)
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
