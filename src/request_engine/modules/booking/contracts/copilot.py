@@ -10,6 +10,7 @@ class CopilotResourceMatch:
     location_id: UUID
     assignment_id: UUID
     resource_availability_revision: int
+    display_name: str | None = None
 
 
 class CopilotBookingReader(Protocol):
