@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 from typing import cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -82,11 +82,11 @@ async def test_f6_structured_extend_day_replay_and_conflict(
             client, sandbox, f"/queues/{sandbox.queue_id}/recovery-incident"
         )
         start_at = datetime.combine(
-            observed.date(), datetime.strptime(day_end["day_end"], "%H:%M:%S").time(), tzinfo=zone
+            observed.date(),
+            time.fromisoformat(day_end["day_end"]),
+            tzinfo=zone,
         )
-        end_at = datetime.combine(
-            observed.date(), datetime.strptime("19:00:00", "%H:%M:%S").time(), tzinfo=zone
-        )
+        end_at = datetime.combine(observed.date(), time(19), tzinfo=zone)
         body = {
             "incident_id": incident["incident_id"],
             "assignment_id": resource["assignment_id"],
@@ -94,13 +94,21 @@ async def test_f6_structured_extend_day_replay_and_conflict(
             "end_at": end_at.isoformat(),
             "expected_source_revision": incident["source_revision"],
             "expected_location_operational_revision": clock["operational_revision"],
-            "expected_resource_availability_revision": resource["resource_availability_revision"],
+            "expected_resource_availability_revision": resource[
+                "resource_availability_revision"
+            ],
             "reason": "structured F6 extend day",
         }
         key = f"f6-structured-extend-{uuid4().hex}"
-        before = assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
-        executed = await execute_tool(client, sandbox, "/recovery/day-extensions", body, key)
-        replay = await execute_tool(client, sandbox, "/recovery/day-extensions", body, key)
+        before = assignment_recovery_exception_count(
+            e2e_admin_conn, sandbox, supply.assignment_id
+        )
+        executed = await execute_tool(
+            client, sandbox, "/recovery/day-extensions", body, key
+        )
+        replay = await execute_tool(
+            client, sandbox, "/recovery/day-extensions", body, key
+        )
         assert executed["action"] == "extend_day"
         assert replay["result_id"] == executed["result_id"]
         conflict = await client.post(
