@@ -51,16 +51,12 @@ class OwnerBackedCopilotReferenceResolver:
         intent: CopilotParsedIntent,
     ) -> CopilotIntent:
         if isinstance(intent, ExtendNamedResourceTodayIntent):
-            replay = await resolve_proactive_replay(
-                self._schedule, self._intake, context, intent
-            )
+            replay = await resolve_proactive_replay(self._schedule, self._intake, context, intent)
             if replay is not None:
                 return replay
             return await resolve_extend_today(self._booking, self._catalog, context, intent)
         if isinstance(intent, StopWalkInsRestOfDayIntent):
-            replay = await resolve_proactive_replay(
-                self._schedule, self._intake, context, intent
-            )
+            replay = await resolve_proactive_replay(self._schedule, self._intake, context, intent)
             if replay is not None:
                 return replay
             return await resolve_stop_walk_ins(
