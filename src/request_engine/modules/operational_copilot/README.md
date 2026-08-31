@@ -32,7 +32,7 @@ Authoritative reads use `operational_copilot.read` and currently expose:
 
 - Resource lookup by bounded reference;
 - Offering lookup by bounded reference;
-- ServiceQueue listing;
+- ServiceQueue listing with owner-backed display/location/offering metadata;
 - Location clock / operational-day state;
 - assignment day-end state;
 - Queue intake state and revision;
@@ -79,7 +79,7 @@ Lookup is authoritative search, not model inference:
 - multiple plausible matches -> all authoritative candidates are returned or semantic resolution refuses as ambiguous;
 - F6 never silently chooses one because a model or fuzzy matcher prefers it.
 
-Resource candidates include the owner-provided display name together with `resource_id`, `location_id`, `assignment_id` and current availability revision. Queue candidates expose the identities the Queue model actually owns; F6 does not invent display labels that do not exist in the owner schema.
+Resource candidates include the owner-provided display name together with `resource_id`, `location_id`, `assignment_id` and current availability revision. Queue candidates include owner-backed `service_queue_id`, `display_name`, `location_id` and `offering_id`. Offering lookup exposes owner-backed IDs/display names. Duplicate names or a Resource with multiple current assignments remain explicit ambiguity rather than becoming an arbitrary winner.
 
 ## Trust boundary
 
@@ -112,7 +112,7 @@ status
 idempotency_key
 ```
 
-It intentionally does not leak Recovery- or Discovery-specific application objects.
+It intentionally does not leak Recovery- or Discovery-specific application objects. `result_id` always preserves the identity returned by the authoritative owner; for Recovery execution that is `RecoveryExecution.id`.
 
 ## Closure criterion
 
@@ -124,5 +124,7 @@ F6 is complete when an external agent with no database access and no Request Eng
 4. execute it through F6 while preserving tenant/principal/authority/capability boundaries;
 5. replay safely under owner idempotency/concurrency semantics;
 6. complete the supported roadmap scenarios without relying on the text parser as the only API.
+
+PostgreSQL acceptance covers Recovery proposal/execution, intake stop/reopen, day extension, Discovery publish/revoke, conflicting replay and natural-command concurrency. Adversarial lookup acceptance covers multi-Queue, duplicate Offering and multi-location Resource ambiguity.
 
 Normative contract: `docs/v3/35-operational-copilot-contract.md`.
