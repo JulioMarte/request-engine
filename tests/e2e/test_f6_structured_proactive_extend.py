@@ -75,9 +75,7 @@ async def test_f6_structured_proactive_extend_without_recovery(
             "assignment_id": resource["assignment_id"],
             "start_at": start_at.isoformat(),
             "end_at": end_at.isoformat(),
-            "expected_resource_availability_revision": resource[
-                "resource_availability_revision"
-            ],
+            "expected_resource_availability_revision": resource["resource_availability_revision"],
             "reason": "operator extended today",
         }
         before = assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
