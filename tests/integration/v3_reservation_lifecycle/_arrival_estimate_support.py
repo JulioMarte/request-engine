@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -11,6 +12,31 @@ from request_engine.modules.booking.contracts.arrival_estimates import ArrivalEs
 from ._arrival_estimate_world import ArrivalWorld
 
 PgConnection = Connection[Any]
+
+
+async def wait_until_lock_blocked(
+    observer: PgConnection,
+    query_pattern: str,
+    failure: str,
+) -> None:
+    deadline = asyncio.get_running_loop().time() + 5
+    while asyncio.get_running_loop().time() < deadline:
+        row = observer.execute(
+            """
+            SELECT count(*)
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE %s
+            """,
+            (query_pattern,),
+        ).fetchone()
+        assert row is not None
+        if int(row[0]) >= 1:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(failure)
 
 
 def arrival_command(

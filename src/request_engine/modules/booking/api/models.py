@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
 from request_engine.modules.booking.contracts.arrival_estimates import ReservationArrivalEstimate
@@ -62,6 +62,13 @@ class ArrivalEstimateBody(BaseModel):
     estimated_arrival_at: datetime
     source_kind: Literal["customer", "operator"]
     expected_revision: int = Field(gt=0)
+
+    @field_validator("estimated_arrival_at")
+    @classmethod
+    def _require_timezone_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            raise ValueError("estimated_arrival_at must include a UTC offset")
+        return value
 
 
 class ArrivalEstimateView(BaseModel):

@@ -1,6 +1,6 @@
 """Add reservation arrival estimates (F7d).
 
-Revision ID: 0022_f7_reservation_arrival_estimates
+Revision ID: 0022_f7_arrival_estimates
 Revises: 0021_recovery_autonomy_policy
 Create Date: 2026-08-31
 """

@@ -18,7 +18,6 @@ WEBHOOK_PROVIDER_KEY = "webhook"
 _LOOKUP_REMOTE_STATUSES = {
     "delivered": ProviderDeliveryStatus.DELIVERED,
     "failed": ProviderDeliveryStatus.FAILED,
-    "not_found": ProviderDeliveryStatus.NOT_FOUND,
 }
 
 
@@ -77,13 +76,12 @@ class WebhookDeliveryProvider:
             )
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
-                return _lookup_result(ProviderDeliveryStatus.NOT_FOUND, None, "http_404")
+                return _lookup_result(ProviderDeliveryStatus.AMBIGUOUS, None, "http_404")
             raise
         body = _json_body(response)
         remote = str(body.get("status", ""))
         status = _LOOKUP_REMOTE_STATUSES.get(remote, ProviderDeliveryStatus.AMBIGUOUS)
-        message_id = None if status is ProviderDeliveryStatus.NOT_FOUND else _message_id(body)
-        return _lookup_result(status, message_id, remote or "unknown")
+        return _lookup_result(status, _message_id(body), remote or "unknown")
 
     def _request(self, url: str, payload: bytes | None = None) -> urllib.request.Request:
         headers: dict[str, str] = {"Content-Type": "application/json"} if payload else {}
@@ -101,7 +99,10 @@ def _handoff_payload(request: ProviderSendRequest) -> dict[str, object]:
         "attempt_no": int(tail) if tail.isdigit() else None,
         "provider_key": request.provider_key,
         "channel": request.channel,
-        "recipient": {"destination": request.destination},
+        "recipient": {
+            "contact_point_id": str(request.contact_point_id),
+            "destination": request.destination,
+        },
         "content": {
             "template_key": request.template_key,
             "template_version": request.template_version,

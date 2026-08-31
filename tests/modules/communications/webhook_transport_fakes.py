@@ -50,6 +50,7 @@ def send_request() -> ProviderSendRequest:
         provider_idempotency_key=f"communication:{task_id}:attempt:2",
         channel="email",
         destination="patient@example.test",
+        contact_point_id=uuid4(),
         template_key="booking-confirmed",
         template_version=3,
         render_context={"clinic": "Sala 4"},

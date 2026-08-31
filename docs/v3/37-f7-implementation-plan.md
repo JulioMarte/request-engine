@@ -79,8 +79,11 @@ memory; F4 projection and the operator board cannot see them.
 - read surface: active estimate included in reservation read view (advisory field).
 - unit tests: authority, idempotency, revision fencing, supersede behavior, reject on
   non-confirmed reservation.
-- PostgreSQL proof (S2-GATE, may be a follow-up lane): concurrent estimates -> exactly one
-  active row; append-only history; RLS isolation.
+- PostgreSQL proofs (landed with S2): sequential supersede/immutability/backstop suite,
+  plus the concurrent proofs required by contract §10 — two concurrent command recordings
+  serialize on the reservation lock (exactly one active estimate, append-only history) and
+  a direct concurrent insert is rejected by the partial unique index (23505,
+  `reservation_arrival_estimates_one_active_uq`).
 
 **Acceptance criteria:**
 1. Recording on a confirmed reservation creates an active estimate and supersedes any
@@ -149,3 +152,25 @@ only existing owner commands. No tables, no new capabilities.
   aids only.
 - Evidence follows `docs/testing/evidence-authoring-guide.md`: falsifiable assertions,
   realistic worlds, no seeding of the result under test.
+
+## Registered follow-ups (from the PR #104 adversarial review)
+
+Each item below is owned and sequenced; none may be silently dropped.
+
+| # | Item | Why it matters to the product goal | Lands with |
+|---|---|---|---|
+| FU-1 | Operator board / at-risk visibility of the active arrival estimate (today it is only on the single-reservation read) | Goal criterion 4: the secretary must see who is late from one surface, not reservation-by-reservation | S2b small slice (before or with S5) |
+| FU-2 | Provider-event ingestion handler mapping transport outcome reports to fenced delivery finalize (callback half of contract §3; today `delivered` arrives only via lookup polling ~`reconcile_after_seconds`) | Closes the delivered-state loop in near-real-time; required before S3 escalation trusts outcomes | S3 (prerequisite) |
+| FU-3 | Typed translation of IntegrityError (23505 -> typed conflict, 23514 -> `ReservationNotConfirmed`) in the arrival-estimate adapter, matching `capacity_error_boundary` conventions | Parity with booking guard error contracts; today the global handler returns generic 409/500 | S2b or S4 |
+| FU-4 | `source_kind` provenance decision: either require operator authority mode for `source_kind='operator'`, or document it as caller-asserted provenance | "The system never lies about who is coming" — provenance must not be falsifiable without a decision | S4 |
+| FU-5 | Reference worker factory env contract (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) candidate for documentation in `docs/v3/10-worker-runtime-hardening.md` | Deployment-facing configuration contract must be in the canonical hardening doc | docs change with S3 |
+
+## Composition contract for the webhook transport (S1)
+
+The reference worker factory `bootstrap/reference_worker_factory.py` is the documented
+composition path a deployment may name via `REQUEST_ENGINE_WORKER_FACTORY`. Configuration
+is explicit and fails loud at startup: `REQUEST_ENGINE_WEBHOOK_BASE_URL` (required),
+`REQUEST_ENGINE_WEBHOOK_AUTH_HEADER` (optional, `Header-Name: value`), plus the existing
+worker runtime variables. Tenants select the transport per channel via
+`channel_policy.provider_key = "webhook"`. Provider selection remains a deployment concern;
+no adapter is ever inferred.

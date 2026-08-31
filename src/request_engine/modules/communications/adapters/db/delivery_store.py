@@ -287,6 +287,7 @@ async def prepare_dispatch(
             provider_idempotency_key=provider_idempotency_key,
             channel=route.channel,
             destination=cast(str, contact_point["normalized_value"]),
+            contact_point_id=cast(UUID, contact_point["id"]),
             template_key=cast(str, task["template_key"]),
             template_version=cast(int, task["template_version"]),
             render_context=cast(dict[str, object], task["render_context"]),

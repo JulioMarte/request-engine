@@ -46,7 +46,10 @@ async def test_send_posts_handoff_payload_and_reports_accepted_handoff() -> None
         "attempt_no": 2,
         "provider_key": "webhook",
         "channel": "email",
-        "recipient": {"destination": "patient@example.test"},
+        "recipient": {
+            "contact_point_id": str(request.contact_point_id),
+            "destination": "patient@example.test",
+        },
         "content": {
             "template_key": "booking-confirmed",
             "template_version": 3,
@@ -84,6 +87,7 @@ async def test_send_transport_exception_propagates_for_worker_ambiguous_classifi
     [
         ({"status": "delivered", "provider_message_id": "m-1"}, "delivered"),
         ({"status": "failed"}, "failed"),
+        ({"status": "not_found"}, "ambiguous"),
         ({"status": "unknown"}, "ambiguous"),
         ({"status": "pending"}, "ambiguous"),
         ({}, "ambiguous"),
@@ -102,10 +106,11 @@ async def test_lookup_maps_remote_status_without_inventing_terminal_outcomes(
     if expected == "ambiguous":
         assert result.status is not ProviderDeliveryStatus.DELIVERED
         assert result.status is not ProviderDeliveryStatus.FAILED
+        assert result.retryable is False
 
 
 @pytest.mark.asyncio
-async def test_lookup_gets_quoted_identity_and_maps_http_404_to_not_found() -> None:
+async def test_lookup_gets_quoted_identity_and_maps_http_404_to_ambiguous() -> None:
     transport = fakes.FakeTransport(fakes.http_error(404))
     provider = WebhookDeliveryProvider(fakes.BASE_URL, transport=transport)
     request = fakes.lookup_request()
@@ -115,8 +120,11 @@ async def test_lookup_gets_quoted_identity_and_maps_http_404_to_not_found() -> N
     identity = urllib.parse.quote(request.provider_idempotency_key, safe="")
     assert transport.requests[0].get_method() == "GET"
     assert transport.requests[0].full_url == f"{fakes.BASE_URL}/status/{identity}"
-    assert result.status is ProviderDeliveryStatus.NOT_FOUND
+    assert result.status is ProviderDeliveryStatus.AMBIGUOUS
+    assert result.status is not ProviderDeliveryStatus.FAILED
+    assert result.status is not ProviderDeliveryStatus.NOT_FOUND
     assert result.retryable is False
+    assert result.provider_message_id is None
 
 
 @pytest.mark.asyncio

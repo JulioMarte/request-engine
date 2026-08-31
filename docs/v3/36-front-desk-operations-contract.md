@@ -4,10 +4,36 @@ Status: normative contract for `feature/f7-front-desk-operations`. Slices land a
 
 ## 0. Product framing
 
-F7 makes F1-F6 operational truth usable by the front desk of a small Caribbean / Dominican
-service practice: a receptionist or personal medical secretary coordinating appointments
-through WhatsApp messaging, facing late arrivals, no-shows, last-minute changes, unreachable
-patients, walk-ins and same-day reordering.
+### 0.1 Product goal (authoritative)
+
+F7 exists for one primary user: **the receptionist / personal medical secretary of a small
+Dominican Republic medical practice.** It is not a patient-management system, not a clinical
+record, and not a billing tool. It is the operational companion that does the coordination
+work she does today by hand:
+
+- know who is actually coming today (confirmations that arrive by WhatsApp become facts
+  without her typing them);
+- reduce no-shows (reminders send themselves; a freed slot triggers a waitlist offer
+  without her acting);
+- absorb late arrivals ("voy 20 min tarde" becomes a durable fact the board shows);
+- communicate day-of changes (doctor running late -> waiting patients are told, not called
+  one by one);
+- capture after-hours demand (a "quiero cita" at 11pm is a durable request for the morning);
+- reach unreachable patients (channel escalation instead of silence).
+
+Success criteria (falsifiable, judged in the practice, not in the repo):
+
+1. A patient's confirmation, lateness or cancellation is recorded without the secretary
+   relaying it manually.
+2. Reminders and confirmations send without manual action per message.
+3. During a clinic power/internet outage, patient-side messages still mutate authoritative
+   state (the appointment truth lives where the light does not go out).
+4. She can answer "who is coming, who confirmed, who is late, who can move" from one
+   surface without opening individual reservations.
+5. **The week-3 test: if she still keeps the real appointment book on paper or WhatsApp,
+   F7 has failed — regardless of technical correctness.**
+
+### 0.2 Boundary stance
 
 The design stance is the one already proven by F6:
 
@@ -49,10 +75,10 @@ Cross-cutting rule inherited from F6 and the recovery contract:
 
 | Slice | Name | Owner module | Status |
 |---|---|---|---|
-| F7a | Remote delivery transport | communications | TARGET (first slice) |
+| F7a | Remote delivery transport | communications | implemented on `feature/f7-front-desk-operations` (PR #104) |
 | F7b | Delivery escalation policy | communications | TARGET (depends on F7a) |
 | F7c | Inbound interpretation boundary | communications + owners | TARGET (depends on F7d for late-ETA) |
-| F7d | Reservation arrival estimates | booking | TARGET (first slice) |
+| F7d | Reservation arrival estimates | booking | implemented on `feature/f7-front-desk-operations` (PR #104) |
 | F7e | Same-day selection layer (subset) | queue | TARGET (own proof lane, later) |
 | F7f | After-hours demand intake | application composition | TARGET (no core change) |
 

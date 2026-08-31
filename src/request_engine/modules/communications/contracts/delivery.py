@@ -21,6 +21,7 @@ class ProviderSendRequest:
     provider_idempotency_key: str
     channel: str
     destination: str
+    contact_point_id: UUID
     template_key: str
     template_version: int
     render_context: dict[str, object]
