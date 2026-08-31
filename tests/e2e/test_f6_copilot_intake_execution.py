@@ -66,7 +66,7 @@ async def test_f6_execute_routes_intake_language_through_owner_service(
         assert blocked.status_code == 409, blocked.text
 
 
-async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
+async def test_f6_execute_rest_of_day_without_recovery_incident(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -76,11 +76,6 @@ async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
     seed_location_operational_hours(e2e_admin_conn, sandbox)
     actors = {sandbox.token: copilot_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
-        await configure_projection(client, sandbox)
-        _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
-        restrict_source_to_first_six(e2e_admin_conn, sandbox, slots)
-        proposal = await create_proposal(client, sandbox)
-        seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
         key = f"f6-rest-of-day-{uuid4().hex}"
 
         executed = await execute(
@@ -96,9 +91,9 @@ async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
             key,
         )
 
-        assert executed["owner"] == "operational_recovery"
-        assert executed["action"] == "stop_intake"
-        assert executed["status"] == "succeeded"
+        assert executed["owner"] == "queue"
+        assert executed["action"] == "set_intake_control"
+        assert executed["status"] == "applied"
         assert replay["result_id"] == executed["result_id"]
 
         row = e2e_admin_conn.execute(
@@ -115,6 +110,12 @@ async def test_f6_execute_resolves_rest_of_day_from_owner_truth(
         effective_until = cast(datetime, row[2])
         observed_at = cast(datetime, row[3])
         assert effective_until > observed_at
+
+        incident = e2e_admin_conn.execute(
+            "SELECT count(*) FROM request_engine.recovery_incidents WHERE organization_id=%s",
+            (sandbox.organization_id,),
+        ).fetchone()
+        assert incident == (0,)
 
         subject = seed_walk_in_subject(e2e_admin_conn, sandbox)
         blocked = await client.post(
