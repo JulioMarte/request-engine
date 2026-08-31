@@ -29,6 +29,15 @@ class OperationalAssignmentExtensionRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class OperationalAssignmentExtensionReplay:
+    assignment_id: UUID
+    start_at: datetime
+    end_at: datetime
+    expected_resource_availability_revision: int
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class OperationalAssignmentExtensionResult:
     exception_id: UUID
     assignment_id: UUID
@@ -38,12 +47,12 @@ class OperationalAssignmentExtensionResult:
 
 
 class OperationalAssignmentSchedulePort(Protocol):
-    async def get_extension_request_by_idempotency(
+    async def get_extension_by_idempotency(
         self,
         organization_id: UUID,
         principal_id: UUID,
         idempotency_key: str,
-    ) -> OperationalAssignmentExtensionRequest | None: ...
+    ) -> OperationalAssignmentExtensionReplay | None: ...
 
     async def extend_assignment_hours(
         self,
