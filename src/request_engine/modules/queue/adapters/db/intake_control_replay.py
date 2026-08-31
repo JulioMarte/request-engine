@@ -2,7 +2,34 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from request_engine.modules.queue.contracts.intake import SetQueueIntakeControlRequest
+from request_engine.platform.idempotency.replay import get_completed_idempotency_result
+
+
+async def load_request_by_idempotency(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    principal_id: UUID,
+    idempotency_key: str,
+) -> SetQueueIntakeControlRequest | None:
+    result = await get_completed_idempotency_result(
+        session,
+        organization_id=organization_id,
+        principal_id=principal_id,
+        capability="queue.set_intake_control",
+        idempotency_key=idempotency_key,
+    )
+    if result is None or not isinstance(result.get("request"), dict):
+        return None
+    return request_from_json(
+        cast(dict[str, object], result["request"]),
+        organization_id=organization_id,
+        principal_id=principal_id,
+        idempotency_key=idempotency_key,
+    )
 
 
 def request_to_json(request: SetQueueIntakeControlRequest) -> dict[str, object]:
