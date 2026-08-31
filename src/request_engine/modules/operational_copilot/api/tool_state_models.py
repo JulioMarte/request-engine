@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from request_engine.modules.discovery.contracts.commands import DiscoveryPublicationState
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacityAssessment
 from request_engine.modules.operational_recovery.contracts.workflow import RecoveryIncident
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlState
@@ -51,6 +52,32 @@ class RecoveryIncidentView(BaseModel):
             current_proposal_id=value.current_proposal_id,
             revision=value.revision,
             status=value.status.value,
+        )
+
+
+class DiscoveryPublicationView(BaseModel):
+    publication_id: UUID
+    offering_id: UUID
+    location_id: UUID
+    resource_id: UUID | None
+    effective_start: datetime
+    effective_end: datetime | None
+    provider_visibility: str
+    status: str
+    revision: int
+
+    @classmethod
+    def from_state(cls, value: DiscoveryPublicationState) -> "DiscoveryPublicationView":
+        return cls(
+            publication_id=value.id,
+            offering_id=value.offering_id,
+            location_id=value.location_id,
+            resource_id=value.resource_id,
+            effective_start=value.effective_start,
+            effective_end=value.effective_end,
+            provider_visibility=value.provider_visibility,
+            status=value.status,
+            revision=value.revision,
         )
 
 
