@@ -1,10 +1,10 @@
+import typing
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 
-DiscoveryEffectiveStartOrigin = Literal["explicit", "resolved_now"]
+DiscoveryEffectiveStartOrigin = typing.Literal["explicit", "resolved_now"]
 
 
 @dataclass(frozen=True, slots=True)
