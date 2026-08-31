@@ -6,9 +6,6 @@ from request_engine.modules.operational_copilot.adapters.discovery_publication_e
     DiscoveryPublishCopilotExecutor,
     DiscoveryRevokeCopilotExecutor,
 )
-from request_engine.modules.operational_copilot.adapters.reference_resolver import (
-    OwnerBackedCopilotReferenceResolver,
-)
 from request_engine.modules.operational_copilot.adapters.recovery_command_executors import (
     RecoveryExecutionCopilotExecutor,
     RecoveryProposalCopilotExecutor,
@@ -22,6 +19,9 @@ from request_engine.modules.operational_copilot.adapters.recovery_intake_executo
 from request_engine.modules.operational_copilot.api.copilot_router import create_copilot_router
 from request_engine.modules.operational_copilot.api.recovery import (
     build_live_capacity_at_risk_reader,
+)
+from request_engine.modules.operational_copilot.api.reference_composition import (
+    build_reference_resolver,
 )
 from request_engine.modules.operational_copilot.api.tool_lookup_router import (
     create_tool_lookup_router,
@@ -77,7 +77,7 @@ def install_http(
         DiscoveryPublishCopilotExecutor(discovery_executor) if discovery_executor else None,
         DiscoveryRevokeCopilotExecutor(discovery_executor) if discovery_executor else None,
     )
-    resolver = _build_reference_resolver(
+    resolver = build_reference_resolver(
         booking_reader,
         catalog_reader,
         queue_reader,
@@ -111,23 +111,3 @@ def install_http(
                 incident_reader=recovery_incident_reader,
             )
         )
-
-
-def _build_reference_resolver(
-    booking: CopilotBookingReader | None,
-    catalog: CopilotCatalogReader | None,
-    queues: CopilotQueueReader | None,
-    recovery: CopilotRecoveryIncidentReader | None,
-    intake: QueueIntakeControlPort | None,
-) -> OwnerBackedCopilotReferenceResolver | None:
-    values = (booking, catalog, queues, recovery, intake)
-    if all(value is None for value in values):
-        return None
-    if any(value is None for value in values):
-        raise ValueError("copilot reference resolution requires all owner readers")
-    assert booking is not None
-    assert catalog is not None
-    assert queues is not None
-    assert recovery is not None
-    assert intake is not None
-    return OwnerBackedCopilotReferenceResolver(booking, catalog, queues, recovery, intake)
