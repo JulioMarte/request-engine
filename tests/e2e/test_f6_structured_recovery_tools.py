@@ -75,7 +75,7 @@ async def test_f6_structured_recovery_replay_and_conflicting_replay(
 
         row = e2e_admin_conn.execute(
             """
-            SELECT count(*) FROM request_engine.operational_recovery_actions
+            SELECT count(*) FROM request_engine.operational_recovery_executions
             WHERE organization_id=%s AND id=%s
             """,
             (sandbox.organization_id, executed["result_id"]),
