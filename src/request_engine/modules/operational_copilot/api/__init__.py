@@ -6,6 +6,9 @@ from request_engine.modules.operational_copilot.adapters.discovery_publication_e
     DiscoveryPublishCopilotExecutor,
     DiscoveryRevokeCopilotExecutor,
 )
+from request_engine.modules.operational_copilot.adapters.reference_resolver import (
+    OwnerBackedCopilotReferenceResolver,
+)
 from request_engine.modules.operational_copilot.adapters.recovery_command_executors import (
     RecoveryExecutionCopilotExecutor,
     RecoveryProposalCopilotExecutor,
@@ -16,12 +19,13 @@ from request_engine.modules.operational_copilot.adapters.recovery_extend_day_exe
 from request_engine.modules.operational_copilot.adapters.recovery_intake_executor import (
     RecoveryIntakeCopilotExecutor,
 )
-from request_engine.modules.operational_copilot.adapters.reference_resolver import (
-    OwnerBackedCopilotReferenceResolver,
-)
 from request_engine.modules.operational_copilot.api.copilot_router import create_copilot_router
-from request_engine.modules.operational_copilot.api.recovery import build_live_capacity_at_risk_reader
-from request_engine.modules.operational_copilot.api.tool_write_router import create_tool_write_router
+from request_engine.modules.operational_copilot.api.recovery import (
+    build_live_capacity_at_risk_reader,
+)
+from request_engine.modules.operational_copilot.api.tool_write_router import (
+    create_tool_write_router,
+)
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
