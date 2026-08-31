@@ -7,7 +7,6 @@ from psycopg import Connection
 from request_engine.modules.booking.application.commands.record_arrival_estimate import (
     RecordArrivalEstimateCommand,
 )
-from request_engine.modules.booking.contracts.arrival_estimates import ArrivalEstimateSource
 
 from ._arrival_estimate_world import ArrivalWorld
 
@@ -43,7 +42,6 @@ def arrival_command(
     world: ArrivalWorld,
     *,
     eta: datetime,
-    source: str,
     revision: int,
     key: str,
     override: bool = True,
@@ -53,7 +51,6 @@ def arrival_command(
         principal_id=world.principal_id,
         reservation_id=world.reservation_id,
         estimated_arrival_at=eta,
-        source_kind=ArrivalEstimateSource(source),
         idempotency_key=key,
         expected_revision=revision,
         allow_subject_override=override,
@@ -75,3 +72,14 @@ def active_rows(conn: PgConnection, world: ArrivalWorld) -> list[tuple[datetime,
             (world.organization_id, world.reservation_id),
         ).fetchall(),
     )
+
+
+def reservation_during(conn: PgConnection, world: ArrivalWorld) -> tuple[datetime, datetime]:
+    row = conn.execute(
+        "SELECT lower(during), upper(during)"
+        " FROM request_engine.reservations"
+        " WHERE organization_id = %s AND id = %s",
+        (world.organization_id, world.reservation_id),
+    ).fetchone()
+    assert row is not None
+    return (cast(datetime, row[0]), cast(datetime, row[1]))

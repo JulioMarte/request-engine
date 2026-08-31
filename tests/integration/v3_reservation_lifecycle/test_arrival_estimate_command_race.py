@@ -45,7 +45,6 @@ async def test_concurrent_estimate_commands_serialize_on_reservation_lock(
                 arrival_command(
                     world,
                     eta=arrival_eta(15),
-                    source="customer",
                     revision=revision,
                     key=f"eta-{uuid4().hex}",
                 ),
@@ -58,7 +57,6 @@ async def test_concurrent_estimate_commands_serialize_on_reservation_lock(
                 arrival_command(
                     world,
                     eta=arrival_eta(40),
-                    source="operator",
                     revision=revision + 1,
                     key=f"eta-{uuid4().hex}",
                 ),
@@ -81,7 +79,7 @@ async def test_concurrent_estimate_commands_serialize_on_reservation_lock(
     assert first.reservation_revision == revision + 1
     assert second.reservation_revision == revision + 2
     rows = active_rows(admin_conn, world)
-    assert [(row[1], row[2]) for row in rows] == [("customer", True), ("operator", False)]
+    assert [(row[1], row[2]) for row in rows] == [("operator", True), ("operator", False)]
     assert rows[0][0] == first.estimated_arrival_at
     assert rows[1][0] == second.estimated_arrival_at
     assert reservation_revision(admin_conn, world) == revision + 2

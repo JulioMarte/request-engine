@@ -60,7 +60,6 @@ class AttendanceResponseBody(BaseModel):
 class ArrivalEstimateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     estimated_arrival_at: datetime
-    source_kind: Literal["customer", "operator"]
     expected_revision: int = Field(gt=0)
 
     @field_validator("estimated_arrival_at")

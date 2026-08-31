@@ -121,6 +121,13 @@ class ReservationNotConfirmed(BookingError):
         self.status = status
 
 
+class ArrivalEstimateInvalid(BookingError):
+    def __init__(self, reservation_id: UUID, reason: str) -> None:
+        super().__init__(f"Reservation {reservation_id} arrival estimate is invalid: {reason}")
+        self.reservation_id = reservation_id
+        self.reason = reason
+
+
 class ReservationNotCancellable(BookingError):
     def __init__(self, reservation_id: UUID, status: str) -> None:
         super().__init__(f"Reservation {reservation_id} cannot be cancelled from status {status}")

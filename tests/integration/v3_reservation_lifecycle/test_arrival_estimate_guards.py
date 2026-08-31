@@ -39,7 +39,6 @@ async def _record(
     *,
     revision: int,
     key: str,
-    source: str = "operator",
     override: bool = True,
     eta: datetime | None = None,
 ) -> ReservationArrivalEstimate:
@@ -48,7 +47,6 @@ async def _record(
         arrival_command(
             world,
             eta=eta if eta is not None else arrival_eta(20),
-            source=source,
             revision=revision,
             key=key,
             override=override,
@@ -96,7 +94,7 @@ async def test_estimate_history_is_immutable(
 ) -> None:
     world = create_arrival_world(admin_conn)
     commands = PostgresArrivalEstimateCommands(session_factory)
-    await _record(commands, world, revision=1, key=f"eta-{uuid4().hex}", source="customer")
+    await _record(commands, world, revision=1, key=f"eta-{uuid4().hex}")
     await _record(commands, world, revision=2, key=f"eta-{uuid4().hex}")
 
     with pytest.raises(psycopg.errors.CheckViolation):
@@ -131,4 +129,4 @@ async def test_revision_authority_and_idempotency_fencing(
     assert replayed.estimate_id == recorded.estimate_id
     assert len(active_rows(admin_conn, world)) == 1
     with pytest.raises(IdempotencyConflict):
-        await _record(commands, world, revision=2, key=key, source="customer", eta=arrival_eta(45))
+        await _record(commands, world, revision=2, key=key, eta=arrival_eta(45))

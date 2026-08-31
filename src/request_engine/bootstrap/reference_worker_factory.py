@@ -1,16 +1,7 @@
-"""Reference ``REQUEST_ENGINE_WORKER_FACTORY`` composition with webhook delivery.
-
-A deployment points the worker launcher at
-``request_engine.bootstrap.reference_worker_factory:create_worker``. Every
-connection is explicit: webhook transport, database credentials, the worker
-principal and the outbox publisher come from named environment variables or a
-named publisher factory, and a missing value fails the process loudly at
-startup instead of silently composing an empty provider mapping.
-"""
+"""Reference ``REQUEST_ENGINE_WORKER_FACTORY`` composition with lifecycle outbox handling."""
 
 import importlib
 import os
-from typing import cast
 from uuid import UUID
 
 from request_engine.bootstrap.communication_providers import (
@@ -18,16 +9,34 @@ from request_engine.bootstrap.communication_providers import (
 )
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
-from request_engine.entrypoints.worker.outbox_runtime import OutboxPublisher
+from request_engine.entrypoints.worker.outbox_runtime import (
+    OutboxPublisher,
+    ReservationLifecycleOutboxHandler,
+)
 from request_engine.modules.booking.adapters.db.attendance_commands import (
     PostgresAttendanceCommands,
 )
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeSlotOfferCapacity,
 )
+from request_engine.modules.booking.adapters.db.lifecycle_reader import (
+    PostgresReservationLifecycleReader,
+)
+from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
+    PostgresReservationLifecycleScheduling,
+)
+from request_engine.modules.booking.adapters.db.slot_offer_capacity import (
+    PostgresSlotOfferCapacity,
+)
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
+from request_engine.modules.communications.adapters.db.reservation_lifecycle_intent import (
+    PostgresReservationLifecycleNotificationIntent,
+)
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
+)
+from request_engine.modules.queue.adapters.db.released_slot_recovery import (
+    PostgresReleasedSlotRecovery,
 )
 from request_engine.modules.queue.adapters.db.slot_offer_commands import (
     PostgresSlotOfferCommands,
@@ -70,7 +79,10 @@ def _outbox_publisher() -> OutboxPublisher:
     factory = getattr(importlib.import_module(module_name), attribute_name, None)
     if not callable(factory):
         raise RuntimeError(f"{OUTBOX_PUBLISHER_FACTORY_ENV} {factory_path!r} is not callable")
-    return cast(OutboxPublisher, factory())
+    publisher = factory()
+    if not isinstance(publisher, OutboxPublisher):
+        raise RuntimeError(f"{OUTBOX_PUBLISHER_FACTORY_ENV} factory result is not OutboxPublisher")
+    return publisher
 
 
 def create_worker() -> WorkerProcess:
@@ -105,4 +117,15 @@ def create_worker() -> WorkerProcess:
         outbox_publisher=_outbox_publisher(),
         outbox_internal_handlers={},
         provider_event_handlers={},
+        reservation_lifecycle_factory=lambda factory: ReservationLifecycleOutboxHandler(
+            worker_principal_id=worker_principal_id,
+            reader=PostgresReservationLifecycleReader(factory),
+            scheduling=PostgresReservationLifecycleScheduling(factory),
+            notifications=PostgresReservationLifecycleNotificationIntent(factory),
+            recovery=PostgresReleasedSlotRecovery(
+                factory,
+                capacity=PostgresSlotOfferCapacity(),
+                notification=PostgresSlotOfferNotificationIntent(),
+            ),
+        ),
     )

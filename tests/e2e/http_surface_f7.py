@@ -13,7 +13,6 @@ F7_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             f"/v1/appointments/{PROBE_UUID}/arrival-estimate",
             body={
                 "estimated_arrival_at": "2026-09-01T10:20:00+00:00",
-                "source_kind": "operator",
                 "expected_revision": 1,
             },
         ),

@@ -109,6 +109,13 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
             resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={"reservation_id": str(exc.reservation_id), "status": exc.status},
         )
+    if isinstance(exc, booking_errors.ArrivalEstimateInvalid):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="arrival_estimate_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"reservation_id": str(exc.reservation_id), "reason": exc.reason},
+        )
     if isinstance(exc, booking_errors.ContextualCommitmentUnsupported):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="contextual_commitment_unsupported",

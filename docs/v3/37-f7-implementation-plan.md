@@ -153,17 +153,27 @@ only existing owner commands. No tables, no new capabilities.
 - Evidence follows `docs/testing/evidence-authoring-guide.md`: falsifiable assertions,
   realistic worlds, no seeding of the result under test.
 
-## Registered follow-ups (from the PR #104 adversarial review)
+## Registered follow-ups (from PR #104 adversarial reviews, rounds 1-2)
 
-Each item below is owned and sequenced; none may be silently dropped.
+Each item below is owned and sequenced; none may be silently dropped. Round-2 fixes already
+landed on this branch: bounded reconcile (deadline gate + durable `delivery_deadline_exceeded`),
+`DeliveryConfigurationError` -> durable poison path, channel-policy shape validation at plan
+creation (422), redirect refusal in the webhook transport, server-derived `source_kind`,
+ETA closed validation rules, single capability string, e2e tenant-isolation probe for the new
+operation, reservation-lifecycle wiring in the reference worker factory (slot recovery +
+booking-native notifications now run in the documented deployment), optional `provider_key`
+with sole-provider dispatch binding (slot-offer and recovery notifications now dispatchable),
+and the publisher-factory isinstance guard.
 
 | # | Item | Why it matters to the product goal | Lands with |
 |---|---|---|---|
-| FU-1 | Operator board / at-risk visibility of the active arrival estimate (today it is only on the single-reservation read) | Goal criterion 4: the secretary must see who is late from one surface, not reservation-by-reservation | S2b small slice (before or with S5) |
+| FU-1 | Operator day board: who is coming / confirmed / late / movable — for reservations AND attendance state (not only the estimate) | Goal criterion 4 is NOT-MET: no day view exists at any layer today; the secretary polls reservation-by-reservation | Dedicated slice (highest priority after S4) |
 | FU-2 | Provider-event ingestion handler mapping transport outcome reports to fenced delivery finalize (callback half of contract §3; today `delivered` arrives only via lookup polling ~`reconcile_after_seconds`) | Closes the delivered-state loop in near-real-time; required before S3 escalation trusts outcomes | S3 (prerequisite) |
-| FU-3 | Typed translation of IntegrityError (23505 -> typed conflict, 23514 -> `ReservationNotConfirmed`) in the arrival-estimate adapter, matching `capacity_error_boundary` conventions | Parity with booking guard error contracts; today the global handler returns generic 409/500 | S2b or S4 |
-| FU-4 | `source_kind` provenance decision: either require operator authority mode for `source_kind='operator'`, or document it as caller-asserted provenance | "The system never lies about who is coming" — provenance must not be falsifiable without a decision | S4 |
-| FU-5 | Reference worker factory env contract (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) candidate for documentation in `docs/v3/10-worker-runtime-hardening.md` | Deployment-facing configuration contract must be in the canonical hardening doc | docs change with S3 |
+| FU-3 | Decide the legacy `CommunicationDeliveryWorker` (test-composed) vs the scheduled handler: it does not poison on `DeliveryConfigurationError` | Divergent failure semantics between two delivery executors invites silent-stuck regressions in test compositions | S3 |
+| FU-4 | `ProviderDeliveryStatus.NOT_FOUND` remains armed in finalize (FAILED + retryable -> resend) though the webhook provider no longer emits it; also `attempt_no` is derived by parsing the dedupe-key tail | Armed-but-unreachable resend vocabulary and string coupling; both need an explicit disposition | S3 |
+| FU-5 | Consider `CapacitySafeSlotOfferCapacity` boundary in the reference-factory slot-recovery composition (raw adapter mirrored from the composition tests) | Consistency with the safe-capacity boundary used by the expiry handler in the same runtime | S3 |
+| FU-6 | Reference worker factory env contract (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) documentation in `docs/v3/10-worker-runtime-hardening.md` | Deployment-facing configuration contract belongs in the canonical hardening doc | docs change with S3 |
+| FU-7 | Recovery impact-communication policy: recovery tasks now use the shared transactional channel set + dispatch-time provider binding; confirm recipients resolve verified contact points as intended | Recovery communications are the F5 surface most exposed to the new fail-fast semantics | verify with S3 |
 
 ## Composition contract for the webhook transport (S1)
 

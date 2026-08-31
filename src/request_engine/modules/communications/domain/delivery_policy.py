@@ -1,3 +1,11 @@
+"""Transactional delivery policy parsing.
+
+Tasks declare channels; deployments declare transports; binding happens at
+dispatch. ``PATIENT_TRANSACTIONAL_CONTACT_CHANNELS`` is the named default
+channel set for reaching a patient by any verified contact point.
+"""
+
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import cast
 
@@ -11,12 +19,20 @@ _ENDPOINT_CHANNELS = {
     "whatsapp": "whatsapp",
 }
 
+PATIENT_TRANSACTIONAL_CONTACT_CHANNELS = ("whatsapp", "sms", "email")
+
+
+def patient_transactional_channel_policy() -> dict[str, object]:
+    """Policy that reaches the patient by any verified contact point."""
+
+    return {"channels": list(PATIENT_TRANSACTIONAL_CONTACT_CHANNELS)}
+
 
 @dataclass(frozen=True, slots=True)
 class DeliveryRoute:
     channel: str
     endpoint_channel: str
-    provider_key: str
+    provider_key: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +52,12 @@ def parse_delivery_policy(value: dict[str, object]) -> DeliveryPolicy:
 
     if not isinstance(raw_channels, list) or not raw_channels:
         raise DeliveryConfigurationError("channel_policy.channels must be a non-empty list")
-    if not isinstance(raw_provider_key, str) or not raw_provider_key:
-        raise DeliveryConfigurationError("channel_policy.provider_key must be a non-empty string")
+    if raw_provider_key is not None and (
+        not isinstance(raw_provider_key, str) or not raw_provider_key
+    ):
+        raise DeliveryConfigurationError(
+            "channel_policy.provider_key must be a non-empty string when present"
+        )
     reconcile_after_seconds = _bounded_seconds(
         raw_reconcile,
         field="channel_policy.reconcile_after_seconds",
@@ -70,6 +90,26 @@ def parse_delivery_policy(value: dict[str, object]) -> DeliveryPolicy:
         routes=tuple(routes),
         reconcile_after_seconds=reconcile_after_seconds,
         retry_after_seconds=retry_after_seconds,
+    )
+
+
+def resolve_provider_key(
+    policy_provider_key: str | None,
+    configured_provider_keys: Collection[str],
+) -> str:
+    """Bind a policy to a transport: explicit key wins, single provider falls back."""
+
+    if policy_provider_key is not None:
+        return policy_provider_key
+    configured = sorted(set(configured_provider_keys))
+    if len(configured) == 1:
+        return configured[0]
+    if not configured:
+        raise DeliveryConfigurationError(
+            "channel_policy.provider_key is required because no delivery provider is configured"
+        )
+    raise DeliveryConfigurationError(
+        "channel_policy.provider_key is required because multiple delivery providers are configured"
     )
 
 

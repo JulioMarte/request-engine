@@ -4,7 +4,6 @@ from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.arrival_estimates import (
-    ArrivalEstimateSource,
     ReservationArrivalEstimate,
 )
 
@@ -15,7 +14,6 @@ class RecordArrivalEstimateCommand:
     principal_id: UUID
     reservation_id: UUID
     estimated_arrival_at: datetime
-    source_kind: ArrivalEstimateSource
     idempotency_key: str
     expected_revision: int
     allow_subject_override: bool = False

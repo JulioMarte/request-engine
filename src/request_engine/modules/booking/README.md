@@ -87,6 +87,6 @@ Lifecycle automation reads only the Reservation's policy snapshot. It does not r
 
 Cancellation and reschedule may expose future capacity for recovery. That recovery begins only after the Booking transaction commits and then enters Queue through its public contract and the Phase 2B `SlotOpportunity -> SlotOffer` state machine.
 
-Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts.
+Provider/network I/O never occurs while booking locks are held. Confirmation/reminder communications and waitlist recovery begin after booking commit through outbox/contracts — but only where the reservation lifecycle outbox handler is actually composed (the reference worker factory passes `reservation_lifecycle_factory`; a `build_worker_process` composition that omits it persists lifecycle events without processing them).
 
 The authoritative transaction/race contract is `docs/v3/02-pre-sql-contract.md`. The cross-tenant extension design and privacy rationale are documented in `docs/v3/12-cross-tenant-shared-capacity-design.md` and ADR 0011.

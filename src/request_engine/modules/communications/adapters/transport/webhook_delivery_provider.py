@@ -27,6 +27,18 @@ class _HttpResponse(Protocol):
     def read(self) -> bytes: ...
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    # A 3xx must never be followed: urllib would replay the auth header to the
+    # Location target, including on an https -> http downgrade.
+    def redirect_request(
+        self, req: object, fp: object, code: object, msg: object, headers: object, newurl: object
+    ) -> None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect())
+
+
 class WebhookDeliveryProvider:
     """F7a remote delivery transport over a configured HTTPS webhook."""
 
@@ -43,16 +55,13 @@ class WebhookDeliveryProvider:
         self._base_url = base_url.rstrip("/")
         self._auth_header = auth_header
         self._timeout_seconds = timeout_seconds
-        self._transport = transport if transport is not None else urllib.request.urlopen
+        self._transport = transport if transport is not None else _OPENER.open
 
     async def send(self, request: ProviderSendRequest) -> ProviderDeliveryResult:
         payload = json.dumps(_handoff_payload(request), default=str).encode("utf-8")
         try:
-            response = await asyncio.to_thread(
-                self._transport,
-                self._request(self._base_url, payload),
-                timeout=self._timeout_seconds,
-            )
+            req = self._request(self._base_url, payload)
+            response = await asyncio.to_thread(self._transport, req, timeout=self._timeout_seconds)
         except urllib.error.HTTPError as exc:
             return ProviderDeliveryResult(
                 status=ProviderDeliveryStatus.FAILED,
@@ -69,11 +78,8 @@ class WebhookDeliveryProvider:
     async def lookup(self, request: ProviderLookupRequest) -> ProviderDeliveryResult:
         identity = quote(request.provider_idempotency_key, safe="")
         try:
-            response = await asyncio.to_thread(
-                self._transport,
-                self._request(f"{self._base_url}/status/{identity}"),
-                timeout=self._timeout_seconds,
-            )
+            req = self._request(f"{self._base_url}/status/{identity}")
+            response = await asyncio.to_thread(self._transport, req, timeout=self._timeout_seconds)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return _lookup_result(ProviderDeliveryStatus.AMBIGUOUS, None, "http_404")
@@ -118,9 +124,7 @@ def _json_body(response: _HttpResponse) -> dict[str, object]:
         parsed: object = json.loads(response.read())
     except ValueError:
         return {}
-    if isinstance(parsed, dict):
-        return cast("dict[str, object]", parsed)
-    return {}
+    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
 
 
 def _message_id(body: dict[str, object]) -> str | None:

@@ -11,7 +11,6 @@ from request_engine.modules.booking.application.commands.record_arrival_estimate
     RecordArrivalEstimateHandler,
     record_arrival_estimate,
 )
-from request_engine.modules.booking.contracts.arrival_estimates import ArrivalEstimateSource
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -39,7 +38,6 @@ def add_arrival_estimate_routes(
                 principal_id=actor.principal_id,
                 reservation_id=reservation_id,
                 estimated_arrival_at=body.estimated_arrival_at,
-                source_kind=ArrivalEstimateSource(body.source_kind),
                 idempotency_key=idempotency_key,
                 expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),

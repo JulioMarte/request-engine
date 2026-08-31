@@ -9,7 +9,6 @@ from request_engine.modules.booking.api.models import ArrivalEstimateBody
 def _payload(estimated_arrival_at: str) -> dict[str, Any]:
     return {
         "estimated_arrival_at": estimated_arrival_at,
-        "source_kind": "customer",
         "expected_revision": 1,
     }
 
@@ -32,5 +31,17 @@ def test_aware_arrival_timestamp_is_accepted() -> None:
     body = ArrivalEstimateBody.model_validate(_payload("2026-08-31T10:15:00-04:00"))
 
     assert body.estimated_arrival_at.utcoffset() is not None
-    assert body.source_kind == "customer"
     assert body.expected_revision == 1
+
+
+def test_legacy_source_kind_field_is_rejected() -> None:
+    """source_kind is derived server-side from the resolved authority mode. A legacy
+    body that still declares it must fail body validation so a subject-authorized
+    caller cannot fabricate clinic-attributed provenance."""
+
+    legacy = {**_payload("2026-08-31T10:15:00-04:00"), "source_kind": "operator"}
+
+    with pytest.raises(ValidationError) as error:
+        ArrivalEstimateBody.model_validate(legacy)
+
+    assert any(item["loc"] == ("source_kind",) for item in error.value.errors())

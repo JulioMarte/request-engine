@@ -13,6 +13,9 @@ from request_engine.modules.booking.adapters.db.arrival_estimate_store import (
     lock_reservation,
     supersede_and_insert,
 )
+from request_engine.modules.booking.adapters.db.arrival_estimate_validation import (
+    validate_estimate_window,
+)
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     ensure_reservation_revision,
 )
@@ -22,10 +25,7 @@ from request_engine.modules.booking.application.commands.record_arrival_estimate
     RecordArrivalEstimateCommand,
 )
 from request_engine.modules.booking.application.errors import ReservationNotConfirmed
-from request_engine.modules.booking.contracts.arrival_estimates import (
-    ArrivalEstimateSource,
-    ReservationArrivalEstimate,
-)
+from request_engine.modules.booking.contracts.arrival_estimates import ReservationArrivalEstimate
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -35,7 +35,7 @@ from request_engine.platform.idempotency.postgres import (
 )
 from request_engine.platform.outbox.postgres import append_outbox
 
-_CAPABILITY = "booking.record_arrival_estimate"
+_CAPABILITY = "appointments.record_arrival_estimate"
 
 
 class PostgresArrivalEstimateCommands:
@@ -48,21 +48,18 @@ class PostgresArrivalEstimateCommands:
         self,
         command: RecordArrivalEstimateCommand,
     ) -> ReservationArrivalEstimate:
-        fingerprint = command_fingerprint(
-            _CAPABILITY,
-            {
-                "reservation_id": command.reservation_id,
-                "estimated_arrival_at": command.estimated_arrival_at.isoformat(),
-                "source_kind": command.source_kind.value,
-                "expected_revision": command.expected_revision,
-            },
-        )
+        values = {
+            "reservation_id": command.reservation_id,
+            "estimated_arrival_at": command.estimated_arrival_at.isoformat(),
+            "expected_revision": command.expected_revision,
+        }
+        fingerprint = command_fingerprint(_CAPABILITY, values)
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
-                capability="appointments.record_arrival_estimate",
+                capability=_CAPABILITY,
                 idempotency_key=command.idempotency_key,
                 fingerprint=fingerprint,
             )
@@ -83,12 +80,15 @@ class PostgresArrivalEstimateCommands:
             ensure_reservation_revision(
                 reservation, command.reservation_id, command.expected_revision
             )
-            if cast(str, reservation["status"]) != "confirmed":
-                raise ReservationNotConfirmed(
-                    command.reservation_id, cast(str, reservation["status"])
-                )
+            status = cast(str, reservation["status"])
+            if status != "confirmed":
+                raise ReservationNotConfirmed(command.reservation_id, status)
+            await validate_estimate_window(
+                session, command, interval_end=cast(datetime, reservation["end_at"])
+            )
+            source_kind = authority.derived_source_kind()
 
-            estimate_row = await supersede_and_insert(session, command)
+            estimate_row = await supersede_and_insert(session, command, source_kind)
             state = ReservationArrivalEstimate(
                 reservation_id=command.reservation_id,
                 reservation_revision=await advance_reservation_revision(
@@ -96,7 +96,7 @@ class PostgresArrivalEstimateCommands:
                 ),
                 estimate_id=cast(UUID, estimate_row["id"]),
                 estimated_arrival_at=command.estimated_arrival_at,
-                source_kind=ArrivalEstimateSource(command.source_kind.value),
+                source_kind=source_kind,
                 asserted_at=cast(datetime, estimate_row["asserted_at"]),
             )
             await append_audit(
@@ -108,7 +108,7 @@ class PostgresArrivalEstimateCommands:
                 aggregate_id=command.reservation_id,
                 idempotency_id=idempotency_id,
                 details={
-                    **estimate_audit_details(command, state.estimate_id),
+                    **estimate_audit_details(command, state.estimate_id, source_kind),
                     "subject_authority": authority.audit_details(),
                 },
             )
@@ -118,11 +118,9 @@ class PostgresArrivalEstimateCommands:
                 event_type="reservation.arrival_estimate_recorded.v1",
                 aggregate_kind="Reservation",
                 aggregate_id=command.reservation_id,
-                payload=estimate_outbox_payload(command, state.estimate_id),
+                payload=estimate_outbox_payload(command, state.estimate_id, source_kind),
             )
             await complete_idempotency(
-                session,
-                idempotency_id,
-                {"estimate": estimate_to_json(state)},
+                session, idempotency_id, {"estimate": estimate_to_json(state)}
             )
             return state

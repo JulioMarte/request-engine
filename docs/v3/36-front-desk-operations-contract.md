@@ -111,16 +111,28 @@ reconcile_after_seconds
 
 - transport must dedupe on the deterministic delivery identity; a RE retry must never
   double-send;
-- `send` returns 2xx -> handoff accepted; non-2xx -> retryable failure (task returns to
-  `pending` with a new future attempt, per existing retry semantics);
+- `send` returns 2xx -> handoff accepted; non-2xx (including any 3xx redirect — redirects
+  are refused so the static credential is never forwarded cross-origin or downgraded to
+  http) -> retryable failure (task returns to `pending` with a new future attempt, per
+  existing retry semantics);
 - `send` transport exception (timeout, connection) -> **AMBIGUOUS**; reconciliation-first:
   RE queries `lookup` before any resend, never blind-retries;
 - `lookup` maps the remote status to `delivered` / `failed` / `unknown` only; `unknown`
-  keeps the delivery ambiguous and schedules another reconcile;
+  and remote-404 keep the delivery **ambiguous** and schedule another reconcile — a
+  not-found answer must never trigger a resend under a fresh identity;
+- **the ambiguity loop is bounded by the task deadline**: the reconcile path applies the
+  same `expires_at` gate as dispatch; when the deadline passes the task terminalizes with
+  a durable failure fact (`delivery_deadline_exceeded`) and the delivery row keeps its
+  true last state. An unreachable transport can never strand a task in `delivering`
+  forever, and a delivered-before-deadline message is never reported failed;
 - outcome reports arriving from the transport layer enter through the authenticated
   provider-event surface (persist-before-interpretation, deduped, fenced). Replay is a
   no-op. Only fenced finalize mutates delivery state; late contradictory results can never
-  downgrade terminal states (existing rule, unchanged).
+  downgrade terminal states (existing rule, unchanged);
+- **transport binding happens at dispatch, not at task creation**: a `channel_policy` may
+  omit `provider_key`; an omitted key binds to the deployment's sole registered provider,
+  and with zero or multiple providers the task fails durably (`delivery_configuration_invalid`)
+  instead of retrying silently. Tasks declare channels; deployments declare transports.
 
 F7a adds no new truth domain. It is a transport adapter plus wiring.
 
@@ -201,9 +213,17 @@ New durable fact in Booking, attached to a confirmed reservation:
   (a new estimate supersedes the previous one; superseded rows are immutable);
 - fields: estimated arrival instant, source (`customer` | `operator`), asserting principal,
   asserted timestamp;
+- **`source_kind` is derived server-side from the resolved authority mode** (operator
+  override -> `operator`; subject/representation authority -> `customer`) and is not
+  caller-supplied: provenance is decided by the clinic, never asserted by the patient;
 - the recording command is idempotent, revision-fenced (`expected_revision`), and
   authority-gated exactly like attendance recording (subject scope via representations or
   operator override), with party authority resolved in-transaction;
+- closed validation rules (advisory fact — no policy engine): an estimate in the past
+  (already an arrival/check-in fact, not an estimate) and an estimate after the
+  reservation interval end (the slot is gone; the fact can never be acted on) are
+  rejected with a typed 422; an estimate before the interval start is legal (early
+  arrival is real information); no monotonicity rule (supersede handles revisions);
 - an active estimate is **advisory input**: receptionist surfaces may display it and F4
   projection may consume it as an input, but it must never fabricate certainty — the
   honest-unknown rule of F4 is unchanged (no estimate -> `unknown`, never invented);

@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.communications.contracts.reminders import ReminderPlan
+from request_engine.modules.communications.domain.delivery_policy import parse_delivery_policy
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,4 +41,5 @@ async def create_reminder_plan(
         raise ValueError("template_version must be positive")
     if command.max_lateness_minutes <= 0 or command.max_lateness_minutes > 1440:
         raise ValueError("max_lateness_minutes must be between 1 and 1440")
+    parse_delivery_policy(command.channel_policy)
     return await handler.create_reminder_plan(command)

@@ -12,6 +12,7 @@ PgConnection = Connection[Any]
 class ArrivalWorld:
     organization_id: UUID
     principal_id: UUID
+    subject_party_id: UUID
     reservation_id: UUID
 
 
@@ -112,7 +113,7 @@ def create_arrival_world(conn: PgConnection, *, status: str = "confirmed") -> Ar
                 " WHERE organization_id = %s AND id = %s",
                 (status, organization_id, reservation_id),
             )
-    return ArrivalWorld(organization_id, principal_id, reservation_id)
+    return ArrivalWorld(organization_id, principal_id, subject_id, reservation_id)
 
 
 def reservation_revision(conn: PgConnection, world: ArrivalWorld) -> int:
