@@ -603,3 +603,13 @@ evidence = ["contract", "invariant"]
 guarantee = "INV-COPILOT-ADMISSION-001"
 path = "tests/e2e/test_f6_structured_roadmap_supply_scenarios.py"
 evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_mutation_concurrency_matrix.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_discovery_concurrency.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
