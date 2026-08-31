@@ -72,7 +72,7 @@ F6_TOOL_READ_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         HttpProbe(f"/v1/operational-copilot/tools/queues/{UUID_1}/at-risk-reservations"),
     ),
     _read(
-        "operational_copilot.tools.recovery_proposal",
+        "operational_copilot.tools.recovery_proposal_read",
         "/v1/operational-copilot/tools/recovery/proposals/{proposal_id}",
         HttpProbe(f"/v1/operational-copilot/tools/recovery/proposals/{UUID_1}"),
     ),
