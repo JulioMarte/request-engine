@@ -84,6 +84,11 @@ F6_TOOL_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         "/v1/operational-copilot/tools/queues/{service_queue_id}/at-risk-reservations",
         HttpProbe(f"/v1/operational-copilot/tools/queues/{UUID_1}/at-risk-reservations"),
     ),
+    _read(
+        "operational_copilot.tools.discovery_publication",
+        "/v1/operational-copilot/tools/discovery/publications/{publication_id}",
+        HttpProbe(f"/v1/operational-copilot/tools/discovery/publications/{UUID_1}"),
+    ),
     _write(
         "operational_copilot.tools.recovery_proposal",
         "/v1/operational-copilot/tools/recovery/proposals",
