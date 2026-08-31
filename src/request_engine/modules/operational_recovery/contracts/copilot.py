@@ -1,7 +1,10 @@
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.operational_recovery.contracts.workflow import RecoveryIncident
+from request_engine.modules.operational_recovery.contracts.workflow import (
+    RecoveryAction,
+    RecoveryIncident,
+)
 
 
 class CopilotRecoveryIncidentReader(Protocol):
@@ -18,3 +21,11 @@ class CopilotRecoveryIncidentReader(Protocol):
         organization_id: UUID,
         resource_id: UUID,
     ) -> tuple[RecoveryIncident, ...]: ...
+
+    async def get_action_by_idempotency(
+        self,
+        *,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+    ) -> RecoveryAction | None: ...
