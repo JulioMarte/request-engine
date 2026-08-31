@@ -161,7 +161,9 @@ Required behavior:
 
 Resource lookup returns the owner-provided display name together with Resource, Location, assignment and availability-revision identity. One Resource with multiple current assignments therefore produces multiple explicit candidates rather than an arbitrary winner.
 
-ServiceQueue currently has no guaranteed human display label in its owner contract. F6 returns the Queue and Location identities the owner actually possesses; it does not invent presentation metadata absent from the domain model.
+ServiceQueue listing returns owner-backed `service_queue_id`, `display_name`, `location_id` and `offering_id`. These values are descriptive/disambiguation metadata only; they do not grant authority, and F6 does not synthesize labels outside the Queue owner contract.
+
+Offering lookup likewise exposes owner-backed identifiers and display names and returns all tenant-scoped matches when names are duplicated rather than selecting one arbitrarily.
 
 ## 8. RecoveryIncident semantics
 
@@ -247,7 +249,7 @@ status
 idempotency_key
 ```
 
-F6 does not expose RecoveryAction or DiscoveryPublication application objects as the common mutation response.
+F6 does not expose RecoveryAction or DiscoveryPublication application objects as the common mutation response. For Recovery execution, `result_id` is the owner-returned `RecoveryExecution.id`; F6 does not reinterpret that identity as a different Recovery persistence object.
 
 ## 12. Cross-module boundary
 
@@ -366,8 +368,10 @@ second owner capability gate                         implemented + negative proo
 request-scoped idempotency propagation              implemented
 roadmap text compatibility scenarios                implemented as bounded adapter proof
 structured PostgreSQL acceptance                    implemented for proposal/execution,
-                                                     intake stop/reopen and Discovery publish/revoke
+                                                     intake stop/reopen, extend-day and
+                                                     Discovery publish/revoke
 concurrent natural-command replay proof              implemented
+multi-Queue/Resource-location/Offering ambiguity     implemented + adversarial proof
 final exact-head evidence/docs convergence           closure gate
 ```
 
