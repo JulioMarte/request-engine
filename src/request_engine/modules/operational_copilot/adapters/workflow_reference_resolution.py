@@ -46,7 +46,9 @@ async def resolve_extend_today(
     scheduled_end = datetime.combine(local_observed.date(), scheduled_local_end, tzinfo=zone)
     target_end = datetime.combine(local_observed.date(), intent.target_local_time, tzinfo=zone)
     if target_end <= scheduled_end:
-        raise CopilotResolutionFailed("requested day extension does not extend the current schedule")
+        raise CopilotResolutionFailed(
+            "requested day extension does not extend the current schedule"
+        )
     if target_end <= clock.observed_at:
         raise CopilotResolutionFailed("requested day extension has already elapsed")
     return ExtendOperationalDayIntent(
