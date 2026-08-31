@@ -68,9 +68,7 @@ async def test_f6_structured_extend_day_replay_and_conflict(
         resources = await read_tool(client, sandbox, "/resources?reference=Dr.%20A")
         assert len(resources) == 1 and resources[0]["display_name"] == "Dr. A"
         resource = resources[0]
-        clock = await read_tool(
-            client, sandbox, f"/locations/{resource['location_id']}/clock"
-        )
+        clock = await read_tool(client, sandbox, f"/locations/{resource['location_id']}/clock")
         zone = ZoneInfo(clock["timezone"])
         observed = datetime.fromisoformat(clock["observed_at"]).astimezone(zone)
         day_end = await read_tool(
@@ -78,9 +76,7 @@ async def test_f6_structured_extend_day_replay_and_conflict(
             sandbox,
             f"/assignments/{resource['assignment_id']}/day-end?weekday={observed.weekday()}",
         )
-        incident = await read_tool(
-            client, sandbox, f"/queues/{sandbox.queue_id}/recovery-incident"
-        )
+        incident = await read_tool(client, sandbox, f"/queues/{sandbox.queue_id}/recovery-incident")
         start_at = datetime.combine(
             observed.date(),
             time.fromisoformat(day_end["day_end"]),
@@ -94,21 +90,13 @@ async def test_f6_structured_extend_day_replay_and_conflict(
             "end_at": end_at.isoformat(),
             "expected_source_revision": incident["source_revision"],
             "expected_location_operational_revision": clock["operational_revision"],
-            "expected_resource_availability_revision": resource[
-                "resource_availability_revision"
-            ],
+            "expected_resource_availability_revision": resource["resource_availability_revision"],
             "reason": "structured F6 extend day",
         }
         key = f"f6-structured-extend-{uuid4().hex}"
-        before = assignment_recovery_exception_count(
-            e2e_admin_conn, sandbox, supply.assignment_id
-        )
-        executed = await execute_tool(
-            client, sandbox, "/recovery/day-extensions", body, key
-        )
-        replay = await execute_tool(
-            client, sandbox, "/recovery/day-extensions", body, key
-        )
+        before = assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
+        executed = await execute_tool(client, sandbox, "/recovery/day-extensions", body, key)
+        replay = await execute_tool(client, sandbox, "/recovery/day-extensions", body, key)
         assert executed["action"] == "extend_day"
         assert replay["result_id"] == executed["result_id"]
         conflict = await client.post(
@@ -118,6 +106,7 @@ async def test_f6_structured_extend_day_replay_and_conflict(
         )
         assert conflict.status_code == 409, conflict.text
 
-    assert assignment_recovery_exception_count(
-        e2e_admin_conn, sandbox, supply.assignment_id
-    ) == before + 1
+    assert (
+        assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
+        == before + 1
+    )
