@@ -31,10 +31,10 @@ async def validate_scope(
                             WHERE l.organization_id = :organization_id
                               AND l.id = :location_id AND l.active
                         ) AS location_ok,
-                        (:resource_id IS NULL OR EXISTS (
+                        (CAST(:resource_id AS uuid) IS NULL OR EXISTS (
                             SELECT 1 FROM request_engine.resources r
                             WHERE r.organization_id = :organization_id
-                              AND r.id = :resource_id AND r.active
+                              AND r.id = CAST(:resource_id AS uuid) AND r.active
                               AND (
                                   r.location_id = :location_id
                                   OR EXISTS (

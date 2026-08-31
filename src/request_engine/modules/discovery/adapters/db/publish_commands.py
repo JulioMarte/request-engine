@@ -36,7 +36,8 @@ class PostgresDiscoveryPublishCommands:
         self._session_factory = session_factory
 
     async def publish(self, command: PublishDiscoverySupplyCommand) -> DiscoveryPublicationState:
-        start, end, visibility = validated_publication_intent(command)
+        start, end, visibility, start_is_resolved_now = validated_publication_intent(command)
+        fingerprint_start: object = "resolved_now" if start_is_resolved_now else start
         fingerprint = command_fingerprint(
             "discovery.publish_supply",
             {
@@ -44,7 +45,8 @@ class PostgresDiscoveryPublishCommands:
                 "offering_id": command.offering_id,
                 "location_id": command.location_id,
                 "resource_id": command.resource_id,
-                "effective_start": start,
+                "effective_start": fingerprint_start,
+                "effective_start_is_resolved_now": start_is_resolved_now,
                 "effective_end": end,
                 "provider_visibility": visibility,
             },

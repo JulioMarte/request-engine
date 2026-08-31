@@ -27,16 +27,20 @@ released V3
   -> F1 Operational Profile / Contextual Supply
   -> F2 Geospatial Cross-Tenant Discovery
   -> F3 Live Service Operations
-  -> F4 Live Capacity Projection [active]
+  -> F4 Live Capacity Projection
+  -> F5 Operational Recovery + Communications
+  -> F6 Agent Operational Tooling [active]
 ```
 
-F1-F3 are implemented predecessor architecture. The active feature scope is:
+F1-F5 are implemented predecessor/integrated architecture. The active feature scope is:
 
 ```text
-feature/live-capacity-projection
+feature/operational-copilot
 ```
 
-F5-F6 remain roadmap work and must branch from the then-current `development` after their predecessor contracts/evidence are integrated.
+The branch/module name is historical. **F6 does not embed a copilot inside Request Engine.** F6 exposes bounded typed operational tools that external copilots, agents, applications and UIs can consume. External callers own conversation/reasoning/tool selection; Request Engine owns authoritative operational truth, admission and guarded execution through the existing F1-F5 owners.
+
+F6 remains work in progress and must not be described as delivered until its external-agent tooling Definition of Done is satisfied and integrated into `development` with exact-head CI evidence.
 
 ## 3. Current F1 contracts
 
@@ -84,13 +88,13 @@ F3 provides expected vs actual workload facts, ServiceSession execution, interru
 
 The supported F3 migration line ends at `0006_f3_historical_fact_hardening`; older text claiming all F3 behavior ended at `0005` is superseded by the reconciled current contract/inventory and migration README.
 
-## 6. Active F4 contracts
+## 6. Current F4 contracts
 
-F4 is the active implementation scope.
+F4 is implemented predecessor architecture.
 
 Read in this order:
 
-1. `v3/29-live-capacity-projection-contract.md` — **normative F4 target contract**.
+1. `v3/29-live-capacity-projection-contract.md` — normative F4 contract.
 2. `v3/30-live-capacity-projection-current-state-inventory.md` — F4 old→new implementation disposition.
 3. `v3/14-operational-intelligence-roadmap.md` — cross-feature product sequencing/boundaries.
 4. F1/F3 contracts above for authoritative predecessor facts.
@@ -116,7 +120,59 @@ and remains advisory. It does not become CapacityClaim authority, does not persi
 
 The initial contract deliberately uses an explicit ServiceQueue + Resource + Location projection scope and leaves multi-resource queue optimization outside F4.
 
-## 7. Product roadmap
+## 7. Current F5 contracts
+
+F5 Operational Recovery + Communications is implemented/integrated predecessor architecture.
+
+Primary documents:
+
+1. `v3/32-operational-recovery-communications-contract.md` — normative F5 contract.
+2. `v3/33-operational-recovery-old-new-disposition.md` — original roadmap capability disposition.
+3. `v3/34-operational-recovery-acceptance-evidence.md` — demonstrated F5 evidence.
+4. `10-module-ownership-map.md` — current ownership boundaries.
+
+F5 composes recovery over owner-controlled Booking, Queue, Catalog, Live Capacity and Communications contracts without becoming those domains' authority.
+
+## 8. Active F6 contract — external-agent tooling
+
+Primary contract:
+
+1. `v3/35-operational-copilot-contract.md` — **normative F6 agent operational tooling contract**.
+2. `v3/14-operational-intelligence-roadmap.md` — product scenarios and sequencing.
+3. `10-module-ownership-map.md` — F6 ownership/non-ownership boundary.
+4. `testing/current-guarantees.toml` — current security/admission guarantee.
+
+The critical F6 distinction is:
+
+```text
+external copilot / agent / application
+  understands conversation
+  reasons about user intent
+  chooses which Request Engine tools to call
+
+Request Engine
+  exposes typed operational lookup/read tools
+  exposes guarded mutation tools
+  returns authoritative identities/current state
+  validates tenant/party/capability authority
+  preserves owner concurrency/idempotency
+  executes through the authoritative F1-F5 owner
+```
+
+Therefore these roadmap examples:
+
+```text
+"Dr. A will work until 7 PM today"
+"stop accepting walk-ins for the rest of the day"
+"publish Dr. B for cardiology discovery"
+"show me which Reservations are at risk"
+```
+
+are client-level scenarios. F6 must provide enough public authoritative tools for an external agent to satisfy them without database access or internal imports. Request Engine itself is **not required to parse those exact sentences** or host a general NLU/LLM subsystem.
+
+The current strict text parser under `operational_copilot` is an optional bounded adapter/test harness. It is not the product boundary.
+
+## 9. Product roadmap
 
 `v3/14-operational-intelligence-roadmap.md` is the accepted direction for F1-F6.
 
@@ -126,14 +182,12 @@ Current status:
 F1  implemented/integrated foundation
 F2  implemented predecessor discovery
 F3  implemented predecessor live operations
-F4  active: Live Capacity Projection
-F5  future: Operational Recovery + Communications
-F6  future: Operational Copilot
+F4  implemented: Live Capacity Projection
+F5  implemented/integrated: Operational Recovery + Communications
+F6  active: Agent Operational Tooling (historical branch/module name operational-copilot)
 ```
 
-The roadmap is product direction. `v3/29` defines F4 normative implementation semantics.
-
-## 8. Testing and guarantee governance
+## 10. Testing and guarantee governance
 
 Canonical testing/governance documents:
 
@@ -145,9 +199,23 @@ Canonical testing/governance documents:
 
 A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include feature-specific evidence required by the current guarantee inventory and owning contract.
 
-F4 must add durable guarantees/proofs for projection separation, workload provenance, temporal consistency, Reservation/Queue/ServiceSession deduplication and staff/customer/tenant privacy before closure.
+For F6, closure evidence must prove that external callers can use supported public lookup/read and guarded mutation tools without direct DB/internal access, that ambiguous authoritative lookup fails closed, and that F6 execution preserves the underlying owner capability/concurrency/idempotency/authority gates.
 
-## 9. Current precedence
+## 11. Current precedence
+
+For F6 tooling concepts:
+
+```text
+v3/35 F6 normative contract
+  >
+v3/14 product roadmap
+  >
+10-module-ownership-map.md
+  >
+F1-F5 contracts for the owner truths/commands F6 exposes
+```
+
+F6 may expose or compose owner capabilities, but it does not supersede the owning module's business authority.
 
 For F4 projection concepts:
 
@@ -188,13 +256,13 @@ Outside post-V3 deltas, use the baseline precedence:
 
 A newer accepted post-V3 contract may explicitly supersede named baseline rules under the pre-production evolution policy without rewriting released history.
 
-## 10. Released V3 provenance
+## 12. Released V3 provenance
 
 Request Engine V3 completed Phase 6 — V3 Freeze & Release Proof. Release/freeze evidence lives under `docs/release/` and remains historical provenance.
 
 Current post-V3 product contracts may deliberately evolve beyond that baseline while preserving evidence discipline.
 
-## 11. PostgreSQL executable surfaces
+## 13. PostgreSQL executable surfaces
 
 Executable SQL does not live in `docs/`.
 
@@ -213,7 +281,7 @@ F2 development SQL-bearing steps remain under `migrations/f2_steps/` as provenan
 
 See `migrations/README.md` before changing SQL.
 
-## 12. Architecture and connection surfaces
+## 14. Architecture and connection surfaces
 
 Semantic dependency direction remains:
 
@@ -229,11 +297,11 @@ database/provider adapters
 
 Physical organization is module-first according to `09-python-module-architecture.md`. Cross-module access uses published contracts according to `13-connection-surfaces.md`.
 
-For F4 specifically, `live_capacity` consumes narrow Booking/Queue/Delivery contracts/read surfaces. It must not import those modules' adapters/application internals.
+For F6 specifically, the external-agent/tool surface may compose only published owner contracts. It must not import another module's application/persistence internals, and no transport adapter (HTTP, MCP, SDK, voice/chat integration) may weaken owner validation.
 
 Architecture fitness functions are safety/drift detectors, not a ban on intentional evolution under a newer accepted contract.
 
-## 13. Documentation policy
+## 15. Documentation policy
 
 Durable domain/schema contracts belong under `docs/v3/` (or a successor versioned contract area). Durable rationale belongs in `docs/adr/`. Release proof belongs under `docs/release/`. Testing/repository governance belongs under `docs/testing/`.
 

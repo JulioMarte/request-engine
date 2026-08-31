@@ -2,36 +2,12 @@ import ast
 from collections.abc import Iterable
 from pathlib import Path
 
+from dependency_policy import FRAMEWORK_OR_INFRA_PREFIXES, MODULE_DEPENDENCY_POLICY
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULES_ROOT = REPO_ROOT / "src" / "request_engine" / "modules"
 ALL_MODULES = frozenset(
     path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
-)
-
-# Approved synchronous Python dependency directions. An allowed edge still has to
-# use the target module's contracts surface; it is permission, not ownership.
-# New business modules must be added here deliberately; discovery of ALL_MODULES
-# prevents an unlisted module from escaping the fitness checks.
-MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
-    "tenancy": frozenset(),
-    "catalog": frozenset(),
-    "requests": frozenset({"tenancy"}),
-    "booking": frozenset({"catalog", "tenancy"}),
-    "queue": frozenset({"booking", "tenancy"}),
-    "communications": frozenset({"booking"}),
-    "discovery": frozenset({"booking"}),
-    "delivery": frozenset(),
-    "live_capacity": frozenset({"booking", "delivery", "queue"}),
-    "operational_recovery": frozenset({"booking", "communications", "live_capacity"}),
-    "payments": frozenset(),
-    "dispatch": frozenset(),
-}
-
-FRAMEWORK_OR_INFRA_PREFIXES = (
-    "asyncpg",
-    "fastapi",
-    "psycopg",
-    "sqlalchemy",
 )
 
 

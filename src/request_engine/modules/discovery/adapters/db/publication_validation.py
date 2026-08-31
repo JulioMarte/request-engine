@@ -7,7 +7,7 @@ from request_engine.modules.discovery.application.commands.publication import (
 
 def validated_publication_intent(
     command: PublishDiscoverySupplyCommand,
-) -> tuple[datetime, datetime | None, str]:
+) -> tuple[datetime, datetime | None, str, bool]:
     start = command.effective_start
     end = command.effective_end
     if start.utcoffset() is None or (end is not None and end.utcoffset() is None):
@@ -21,4 +21,4 @@ def validated_publication_intent(
         raise ValueError("provider_visibility must be hidden or public")
     if visibility == "public" and command.resource_id is None:
         raise ValueError("public provider visibility requires resource_id")
-    return start, end, visibility
+    return start, end, visibility, command.effective_start_is_resolved_now

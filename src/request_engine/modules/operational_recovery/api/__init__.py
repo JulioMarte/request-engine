@@ -8,6 +8,9 @@ from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationPort,
 )
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.adapters.db.copilot_reader import (
+    PostgresCopilotRecoveryIncidentReader,
+)
 from request_engine.modules.operational_recovery.adapters.db.recovery_autonomy_policy_store import (
     PostgresRecoveryAutonomyPolicyStore,
 )
@@ -21,6 +24,7 @@ from request_engine.modules.operational_recovery.api.errors import (
     operational_recovery_error_handler,
 )
 from request_engine.modules.operational_recovery.api.router import create_router
+from request_engine.modules.operational_recovery.api.runtime import OperationalRecoveryRuntime
 from request_engine.modules.operational_recovery.api.workflow_autonomy_router import (
     create_autonomy_router,
 )
@@ -60,6 +64,8 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
+__all__ = ["OperationalRecoveryRuntime", "install_http"]
+
 
 def install_http(
     app: FastAPI,
@@ -72,7 +78,7 @@ def install_http(
     intake: RecoveryIntakeControlPort,
     location_schedule: RecoveryLocationExtensionPort,
     assignment_schedule: RecoveryAssignmentSchedulePort,
-) -> None:
+) -> OperationalRecoveryRuntime:
     proposal_repository = PostgresRecoveryRepository(session_factory)
     service = OperationalRecoveryService(
         repository=proposal_repository,
@@ -104,4 +110,9 @@ def install_http(
     app.include_router(create_communication_router(workflow, actor_resolver))
     app.include_router(
         create_autonomy_router(PostgresRecoveryAutonomyPolicyStore(session_factory), actor_resolver)
+    )
+    return OperationalRecoveryRuntime(
+        service=service,
+        workflow=workflow,
+        incidents=PostgresCopilotRecoveryIncidentReader(session_factory),
     )

@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3 actualmente activas.
 >
-> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 lo modifican explícitamente mediante contratos posteriores. F3: `26` + `28`. F4 projection ownership: `29-live-capacity-projection-contract.md`. F5 recovery ownership: `32-operational-recovery-communications-contract.md`.
+> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 lo modifican explícitamente mediante contratos posteriores. F3: `26` + `28`. F4 projection ownership: `29-live-capacity-projection-contract.md`. F5 recovery ownership: `32-operational-recovery-communications-contract.md`. F6 external-agent tooling boundary: `35-operational-copilot-contract.md`.
 
 ## 1. Current summary
 
@@ -18,6 +18,7 @@
 | `delivery` | active post-V3 F3 | ReservationAccess, ServiceSession, ServiceSessionInterruption, ResourceActivity and actual execution truth |
 | `live_capacity` | active post-V3 F4 | projection-scope/estimate policy and deterministic live-capacity/ETA/intake-evaluation semantics over published Booking/Queue/Delivery facts |
 | `operational_recovery` | active post-V3 F5 | immutable recovery proposal/provenance, explicit one-shot recovery execution fact and lineage to Communications intent |
+| `operational_copilot` | active post-V3 F6 | agent-facing typed operational tool/admission surface over published owner reads/commands; owns no conversational runtime or underlying business truth |
 | `payments` | deferred | future pricing/payment/reconciliation domain |
 | `dispatch` | deferred | future field-service dispatch/feasibility domain |
 | `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
@@ -363,16 +364,44 @@ Moving a concept between top-level modules or activating a deferred/new module r
 - DB/read/cmd mapping;
 - an ADR when the decision is hard to reverse.
 
+## 17. Agent Operational Tooling — active F6 feature
+
+`operational_copilot` is the historical module name for F6's **agent-facing operational tooling boundary**. It is not an embedded copilot and does not own conversation, an LLM, prompt orchestration or general natural-language understanding.
+
+F6 owns the bounded adapter/tool layer required for external agents/applications to use existing Request Engine authority safely:
+
+```text
+typed tool requests/results
+bounded lookup/read composition
+admission/refusal policy
+deterministic lowering to owner contracts
+explicit registered execution adapters
+machine-readable execution receipts
+```
+
+F6 may execute an operation **through** a registered owner adapter; that does not make F6 the owner of the mutation. Booking, Queue, Delivery, Discovery, Live Capacity, Operational Recovery and Communications retain their existing domain authority and final validation.
+
+A compliant external agent may interpret conversational language and choose tools. Request Engine must supply authoritative lookup/state surfaces when the caller needs Resource, Assignment, ServiceQueue, Offering, Location, current revisions or other operational facts to construct a safe command. F6 lookup must return ambiguity rather than guessing when multiple authoritative candidates match.
+
+The current deterministic text parser is an optional bounded adapter/test surface. It is not the product definition of F6, and Request Engine does not need a general NLU/date parser to complete F6.
+
+Tenant, principal, idempotency and party authority come only from the trusted application boundary. Model/tool arguments cannot manufacture authority or trusted revisions. F6 execution must preserve both its own capability gate and the executor-declared owner capability gate.
+
+Normative contract: `docs/v3/35-operational-copilot-contract.md`.
+
 Never infer:
 
 ```text
 table → domain entity → repository → endpoint
+model output → trusted identity/authority/revision
 ```
 
 The north star remains:
 
 ```text
-one public operational API
+one public operational API/tool surface
         ≠
 one universal bounded context
+        ≠
+an embedded copilot
 ```

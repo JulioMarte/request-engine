@@ -493,3 +493,123 @@ evidence = ["contract", "invariant", "security", "provenance"]
 guarantee = "INV-WORKER-001"
 path = "tests/e2e/test_f5_recovery_autonomous_reschedule.py"
 evidence = ["contract", "invariant", "security", "provenance"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/architecture/test_operational_copilot_module_boundary.py"
+evidence = ["fitness"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_owner_gates.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_authority.py"
+evidence = ["adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_tool_entity_ambiguity.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_tool_ambiguity.py"
+evidence = ["contract", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_recovery_tools.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_intake_tools.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_extend_day_tools.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_discovery_tools.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_fingerprints.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_concurrency.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_roadmap_extend.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_roadmap_discovery.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_roadmap_inspection.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_copilot_intake_execution.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_proactive_intake.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_proactive_extend.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_proactive_owner_gates.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_closed_schemas.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_proactive_concurrency.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_roadmap_scenarios.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_roadmap_supply_scenarios.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_mutation_concurrency_matrix.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_discovery_concurrency.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]

@@ -48,6 +48,13 @@ class QueueIntakeControlPort(Protocol):
         service_queue_id: UUID,
     ) -> QueueIntakeControlState: ...
 
+    async def get_request_by_idempotency(
+        self,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+    ) -> SetQueueIntakeControlRequest | None: ...
+
     async def set_intake_control(
         self,
         request: SetQueueIntakeControlRequest,
