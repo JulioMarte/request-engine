@@ -38,6 +38,13 @@ class OperationalAssignmentExtensionResult:
 
 
 class OperationalAssignmentSchedulePort(Protocol):
+    async def get_extension_request_by_idempotency(
+        self,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+    ) -> OperationalAssignmentExtensionRequest | None: ...
+
     async def extend_assignment_hours(
         self,
         request: OperationalAssignmentExtensionRequest,
