@@ -10,7 +10,13 @@ from request_engine.platform.security.context import ActorContext
 from .f5_recovery_support import f5_actor
 from .tenant_sandbox import TenantSandbox, auth
 
-_COPILOT_CAPABILITIES = frozenset({"operational_copilot.interpret", "operational_copilot.execute"})
+_COPILOT_CAPABILITIES = frozenset(
+    {
+        "operational_copilot.read",
+        "operational_copilot.interpret",
+        "operational_copilot.execute",
+    }
+)
 
 
 def copilot_actor(sandbox: TenantSandbox) -> ActorContext:
@@ -50,6 +56,31 @@ async def execute(
     )
     assert response.status_code == 200, response.text
     return cast(dict[str, Any], response.json())
+
+
+async def execute_tool(
+    client: Any,
+    sandbox: TenantSandbox,
+    path: str,
+    body: dict[str, object],
+    key: str,
+) -> dict[str, Any]:
+    response = await client.post(
+        f"/v1/operational-copilot/tools{path}",
+        json=body,
+        headers=auth(sandbox, idempotency_key=key),
+    )
+    assert response.status_code == 200, response.text
+    return cast(dict[str, Any], response.json())
+
+
+async def read_tool(client: Any, sandbox: TenantSandbox, path: str) -> Any:
+    response = await client.get(
+        f"/v1/operational-copilot/tools{path}",
+        headers=auth(sandbox),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def intake_body(command: SetRecoveryIntakeCommand) -> dict[str, object]:
