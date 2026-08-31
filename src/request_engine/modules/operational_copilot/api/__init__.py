@@ -23,6 +23,9 @@ from request_engine.modules.operational_copilot.api.copilot_router import create
 from request_engine.modules.operational_copilot.api.recovery import (
     build_live_capacity_at_risk_reader,
 )
+from request_engine.modules.operational_copilot.api.tool_lookup_router import (
+    create_tool_lookup_router,
+)
 from request_engine.modules.operational_copilot.api.tool_write_router import (
     create_tool_write_router,
 )
@@ -87,6 +90,15 @@ def install_http(
     )
     app.include_router(create_copilot_router(copilot=copilot, actor_resolver=actor_resolver))
     app.include_router(create_tool_write_router(copilot=copilot, actor_resolver=actor_resolver))
+    if booking_reader is not None and catalog_reader is not None and queue_reader is not None:
+        app.include_router(
+            create_tool_lookup_router(
+                actor_resolver=actor_resolver,
+                booking_reader=booking_reader,
+                catalog_reader=catalog_reader,
+                queue_reader=queue_reader,
+            )
+        )
 
 
 def _build_reference_resolver(
