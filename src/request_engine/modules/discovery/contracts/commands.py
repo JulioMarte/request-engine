@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
+
+
+DiscoveryEffectiveStartOrigin = Literal["explicit", "resolved_now"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +19,7 @@ class PublishDiscoverySupplyCommand:
     effective_end: datetime | None
     provider_visibility: str
     idempotency_key: str
+    effective_start_origin: DiscoveryEffectiveStartOrigin = "explicit"
 
 
 @dataclass(frozen=True, slots=True)
