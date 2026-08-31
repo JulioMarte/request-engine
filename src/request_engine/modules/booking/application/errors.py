@@ -112,6 +112,15 @@ class ReservationRevisionConflict(BookingError):
         self.actual = actual
 
 
+class ReservationNotConfirmed(BookingError):
+    def __init__(self, reservation_id: UUID, status: str) -> None:
+        super().__init__(
+            f"Reservation {reservation_id} is not confirmed for this operation: {status}"
+        )
+        self.reservation_id = reservation_id
+        self.status = status
+
+
 class ReservationNotCancellable(BookingError):
     def __init__(self, reservation_id: UUID, status: str) -> None:
         super().__init__(f"Reservation {reservation_id} cannot be cancelled from status {status}")

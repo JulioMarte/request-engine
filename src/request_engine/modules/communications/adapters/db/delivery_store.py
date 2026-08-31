@@ -154,7 +154,7 @@ async def prepare_dispatch(
                 lookup_request=_lookup_request(latest),
             )
         if latest_status == "delivered":
-            await _mark_task_completed(session, organization_id, communication_task_id)
+            await _set_task_status(session, organization_id, communication_task_id, "completed")
             return PreparedDeliveryWork(
                 kind=DeliveryWorkKind.SKIP,
                 communication_task_id=communication_task_id,
@@ -290,6 +290,8 @@ async def prepare_dispatch(
             template_key=cast(str, task["template_key"]),
             template_version=cast(int, task["template_version"]),
             render_context=cast(dict[str, object], task["render_context"]),
+            expires_at=expires_at,
+            reconcile_after_seconds=policy.reconcile_after_seconds,
         ),
     )
 
@@ -305,7 +307,7 @@ async def prepare_reconciliation(
     await _lock_task(session, organization_id, task_id)
     delivery_status = cast(str, delivery["status"])
     if delivery_status == "delivered":
-        await _mark_task_completed(session, organization_id, task_id)
+        await _set_task_status(session, organization_id, task_id, "completed")
         return PreparedDeliveryWork(
             kind=DeliveryWorkKind.SKIP,
             communication_task_id=task_id,
@@ -404,7 +406,7 @@ async def finalize_provider_result(
     task_terminal = False
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
     if effective.status is ProviderDeliveryStatus.DELIVERED:
-        await _mark_task_completed(session, organization_id, task_id)
+        await _set_task_status(session, organization_id, task_id, "completed")
         task_terminal = True
         await append_outbox(
             session,
@@ -420,7 +422,7 @@ async def finalize_provider_result(
         )
     elif effective.status is ProviderDeliveryStatus.FAILED:
         if effective.retryable:
-            await _mark_task_pending(session, organization_id, task_id)
+            await _set_task_status(session, organization_id, task_id, "pending")
             await _schedule_retry_dispatch(
                 session,
                 organization_id=organization_id,
@@ -784,28 +786,12 @@ async def _schedule_retry_dispatch(
     )
 
 
-async def _mark_task_completed(
-    session: AsyncSession,
-    organization_id: UUID,
-    communication_task_id: UUID,
-) -> None:
-    await _set_task_status(session, organization_id, communication_task_id, "completed")
-
-
 async def _mark_task_failed(
     session: AsyncSession,
     organization_id: UUID,
     communication_task_id: UUID,
 ) -> None:
     await _set_task_status(session, organization_id, communication_task_id, "failed")
-
-
-async def _mark_task_pending(
-    session: AsyncSession,
-    organization_id: UUID,
-    communication_task_id: UUID,
-) -> None:
-    await _set_task_status(session, organization_id, communication_task_id, "pending")
 
 
 async def _set_task_status(

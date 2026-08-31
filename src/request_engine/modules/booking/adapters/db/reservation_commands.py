@@ -882,7 +882,7 @@ async def read_reservation(
                     SELECT reservation_id, offering_version_id, subject_party_id,
                            location_id, lower(during) AS start_at,
                            upper(during) AS end_at, status, revision,
-                           attendance_status
+                           attendance_status, estimated_arrival_at
                     FROM request_read.reservation_status_v1
                     WHERE organization_id = :organization_id
                       AND reservation_id = :reservation_id

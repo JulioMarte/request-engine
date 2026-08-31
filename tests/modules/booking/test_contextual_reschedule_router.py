@@ -77,6 +77,7 @@ def _reschedule_endpoint(
         cancel_handler=unused,
         reschedule_handler=handler,
         attendance_handler=unused,
+        arrival_estimate_handler=unused,
         reservation_reader=unused,
         authority_reader=unused,
         actor_resolver=unused,

@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
+from request_engine.modules.booking.contracts.arrival_estimates import ReservationArrivalEstimate
 from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
 
 
@@ -56,6 +57,33 @@ class AttendanceResponseBody(BaseModel):
     expected_revision: int = Field(gt=0)
 
 
+class ArrivalEstimateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    estimated_arrival_at: datetime
+    source_kind: Literal["customer", "operator"]
+    expected_revision: int = Field(gt=0)
+
+
+class ArrivalEstimateView(BaseModel):
+    reservation_id: UUID
+    reservation_revision: int
+    estimate_id: UUID
+    estimated_arrival_at: datetime
+    source_kind: str
+    asserted_at: datetime
+
+    @classmethod
+    def from_contract(cls, estimate: ReservationArrivalEstimate) -> "ArrivalEstimateView":
+        return cls(
+            reservation_id=estimate.reservation_id,
+            reservation_revision=estimate.reservation_revision,
+            estimate_id=estimate.estimate_id,
+            estimated_arrival_at=estimate.estimated_arrival_at,
+            source_kind=estimate.source_kind.value,
+            asserted_at=estimate.asserted_at,
+        )
+
+
 class AttendanceStateView(BaseModel):
     reservation_id: UUID
     reservation_revision: int
@@ -88,6 +116,7 @@ class ReservationView(BaseModel):
     status: str
     revision: int
     attendance_status: str
+    estimated_arrival_at: datetime | None = None
 
     @classmethod
     def from_contract(cls, reservation: Reservation) -> "ReservationView":
@@ -101,4 +130,5 @@ class ReservationView(BaseModel):
             status=reservation.status.value,
             revision=reservation.revision,
             attendance_status=reservation.attendance_status.value,
+            estimated_arrival_at=reservation.estimated_arrival_at,
         )

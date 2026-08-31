@@ -14,6 +14,7 @@ CapacityHold
 Reservation
 AttendanceResponse history
 ReservationAttendance execution outcome
+ReservationArrivalEstimate history
 ```
 
 Catalog owns `ResourceCapability` vocabulary and immutable `OfferingVersion` mandatory resource requirements; booking resolves those requirements to concrete Resources.
@@ -36,6 +37,7 @@ CancelReservation
 RescheduleReservation
 GetReservationStatus
 ConfirmAttendance
+RecordArrivalEstimate
 DeclineAttendance
 CheckInReservation
 EvaluateNoShow

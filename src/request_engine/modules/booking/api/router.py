@@ -8,6 +8,8 @@ from request_engine.modules.booking.api.dependencies import IdempotencyKey
 from request_engine.modules.booking.api.discovery_booking import book_selected_option
 from request_engine.modules.booking.api.models import (
     AppointmentSlotView,
+    ArrivalEstimateBody,
+    ArrivalEstimateView,
     AttendanceResponseBody,
     AttendanceStateView,
     BookAppointmentBody,
@@ -23,6 +25,11 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
     CancelReservationCommand,
     CancelReservationHandler,
     cancel_reservation,
+)
+from request_engine.modules.booking.application.commands.record_arrival_estimate import (
+    RecordArrivalEstimateCommand,
+    RecordArrivalEstimateHandler,
+    record_arrival_estimate,
 )
 from request_engine.modules.booking.application.commands.record_attendance import (
     RecordAttendanceResponseCommand,
@@ -48,6 +55,7 @@ from request_engine.modules.booking.application.queries.get_reservation_status i
     get_reservation_status,
 )
 from request_engine.modules.booking.contracts.appointment_options import AppointmentOptionCodec
+from request_engine.modules.booking.contracts.arrival_estimates import ArrivalEstimateSource
 from request_engine.modules.booking.contracts.discovery import DiscoveryHandoffReader
 from request_engine.modules.tenancy.contracts.authority import PartyAuthorityReader
 from request_engine.platform.http.capability_routes import add_capability_route
@@ -64,6 +72,7 @@ def create_router(
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
     attendance_handler: RecordAttendanceResponseHandler,
+    arrival_estimate_handler: RecordArrivalEstimateHandler,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
@@ -205,6 +214,28 @@ def create_router(
         )
         return AttendanceStateView.from_contract(attendance)
 
+    async def arrival_estimate(
+        reservation_id: UUID,
+        body: ArrivalEstimateBody,
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+        idempotency_key: IdempotencyKey,
+    ) -> ArrivalEstimateView:
+        require_capability(actor, "appointments.record_arrival_estimate")
+        estimate = await record_arrival_estimate(
+            arrival_estimate_handler,
+            RecordArrivalEstimateCommand(
+                organization_id=actor.organization_id,
+                principal_id=actor.principal_id,
+                reservation_id=reservation_id,
+                estimated_arrival_at=body.estimated_arrival_at,
+                source_kind=ArrivalEstimateSource(body.source_kind),
+                idempotency_key=idempotency_key,
+                expected_revision=body.expected_revision,
+                allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
+            ),
+        )
+        return ArrivalEstimateView.from_contract(estimate)
+
     add_capability_route(
         router,
         "/slots",
@@ -254,5 +285,13 @@ def create_router(
         capability="appointments.confirm_attendance",
         methods=["POST"],
         response_model=AttendanceStateView,
+    )
+    add_capability_route(
+        router,
+        "/{reservation_id}/arrival-estimate",
+        arrival_estimate,
+        capability="appointments.record_arrival_estimate",
+        methods=["POST"],
+        response_model=ArrivalEstimateView,
     )
     return router

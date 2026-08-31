@@ -50,3 +50,4 @@ class Reservation:
     status: ReservationStatus
     revision: int
     attendance_status: AttendanceStatus = AttendanceStatus.PENDING
+    estimated_arrival_at: datetime | None = None

@@ -13,6 +13,7 @@ from request_engine.modules.booking.application.errors import (
     OfferingVersionNotBookable,
     OfferingVersionNotFound,
     ReservationNotCancellable,
+    ReservationNotConfirmed,
     ReservationNotFound,
     ReservationNotReschedulable,
     ReservationRevisionConflict,
@@ -103,6 +104,13 @@ def _booking_error(exc: BookingError) -> tuple[int, ErrorBody]:
             message="the requested appointment is unavailable",
             resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
             details={},
+        )
+    if isinstance(exc, ReservationNotConfirmed):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_not_confirmed",
+            message=str(exc),
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={"reservation_id": str(exc.reservation_id), "status": exc.status},
         )
     if isinstance(exc, ReservationNotCancellable):
         return status.HTTP_409_CONFLICT, ErrorBody(

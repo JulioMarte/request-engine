@@ -74,6 +74,14 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         override_capability="appointments.subject_override",
     ),
     command_capability(
+        "appointments.record_arrival_estimate",
+        CapabilityExposure.PUBLIC,
+        "Record an advisory arrival estimate for a confirmed appointment.",
+        revision=RevisionPolicy.REQUIRED,
+        party_scope="appointments.manage",
+        override_capability="appointments.subject_override",
+    ),
+    command_capability(
         "appointments.subject_override",
         CapabilityExposure.OPERATOR,
         "Permission to operate on appointment subjects without delegated Party authority.",
