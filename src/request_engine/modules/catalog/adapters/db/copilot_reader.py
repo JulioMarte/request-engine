@@ -69,6 +69,7 @@ def _location_clock(row: RowMapping) -> CopilotLocationClock:
         observed_at=_datetime(row, "observed_at"),
         operational_day_end_at=_optional_datetime(row, "operational_day_end_at"),
         operational_revision=cast(int, row["operational_revision"]),
+        display_name=cast(str, row["display_name"]),
     )
 
 
