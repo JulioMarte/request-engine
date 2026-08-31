@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import pytest
+from httpx import Response
 
 from request_engine.platform.db.session import SessionFactory
 
@@ -19,7 +20,7 @@ pytestmark = [
 ]
 
 
-def _error_message(response) -> str:
+def _error_message(response: Response) -> str:
     return str(response.json()["error"]["message"])
 
 
