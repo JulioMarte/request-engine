@@ -52,6 +52,11 @@ async def test_f6_structured_proactive_extend_without_recovery(
         sandbox,
         business_timezone=_timezone_with_local_noon(e2e_admin_conn),
     )
+    e2e_admin_conn.execute(
+        "UPDATE request_engine.availability_schedules SET local_end='17:00' "
+        "WHERE organization_id=%s AND resource_id=%s",
+        (sandbox.organization_id, sandbox.resource_id),
+    )
     seed_location_operational_hours(e2e_admin_conn, sandbox)
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
     actors = {sandbox.token: copilot_actor(sandbox)}
@@ -99,7 +104,8 @@ async def test_f6_structured_proactive_extend_without_recovery(
         == before + 1
     )
     incident = e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.recovery_incidents WHERE organization_id=%s",
+        "SELECT count(*) FROM request_engine.operational_recovery_incidents "
+        "WHERE organization_id=%s",
         (sandbox.organization_id,),
     ).fetchone()
     assert incident == (0,)
