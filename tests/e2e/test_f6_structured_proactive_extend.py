@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -104,6 +104,22 @@ async def test_f6_structured_proactive_extend_without_recovery(
         )
         assert stale.status_code == 409, stale.text
 
+        conflicting = await client.post(
+            "/v1/operational-copilot/tools/assignments/day-extensions",
+            json={**body, "end_at": (end_at + timedelta(hours=1)).isoformat()},
+            headers=auth(sandbox, idempotency_key=key),
+        )
+        assert conflicting.status_code == 409, conflicting.text
+
+    surviving = e2e_admin_conn.execute(
+        "SELECT count(*), max(upper(during)) "
+        "FROM request_engine.resource_location_schedule_exceptions "
+        "WHERE organization_id=%s AND resource_location_assignment_id=%s AND active",
+        (sandbox.organization_id, supply.assignment_id),
+    ).fetchone()
+    assert surviving is not None
+    assert surviving[0] == before + 1
+    assert surviving[1] == end_at
     assert (
         assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
         == before + 1

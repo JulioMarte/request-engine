@@ -568,3 +568,38 @@ evidence = ["contract", "invariant"]
 guarantee = "INV-COPILOT-ADMISSION-001"
 path = "tests/e2e/test_f6_copilot_intake_execution.py"
 evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_proactive_intake.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_proactive_extend.py"
+evidence = ["contract", "invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_proactive_owner_gates.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_closed_schemas.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_proactive_concurrency.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_roadmap_scenarios.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_structured_roadmap_supply_scenarios.py"
+evidence = ["contract", "invariant"]

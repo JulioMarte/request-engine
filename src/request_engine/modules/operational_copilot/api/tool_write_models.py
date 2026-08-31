@@ -1,8 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from request_engine.modules.operational_copilot.api.models import F6RequestBody
 from request_engine.modules.operational_copilot.contracts import (
     CreateRecoveryProposalIntent,
     ExecuteRecoveryIntent,
@@ -13,7 +14,7 @@ from request_engine.modules.operational_copilot.contracts import (
 )
 
 
-class CreateRecoveryProposalBody(BaseModel):
+class CreateRecoveryProposalBody(F6RequestBody):
     service_queue_id: UUID
     search_days: int = Field(default=7, ge=1, le=30)
 
@@ -21,7 +22,7 @@ class CreateRecoveryProposalBody(BaseModel):
         return CreateRecoveryProposalIntent(self.service_queue_id, self.search_days)
 
 
-class ExecuteRecoveryBody(BaseModel):
+class ExecuteRecoveryBody(F6RequestBody):
     proposal_id: UUID
     reservation_id: UUID
     expected_source_fingerprint: str | None = None
@@ -33,7 +34,7 @@ class ExecuteRecoveryBody(BaseModel):
         return ExecuteRecoveryIntent(**self.model_dump())
 
 
-class SetRecoveryIntakeBody(BaseModel):
+class SetRecoveryIntakeBody(F6RequestBody):
     incident_id: UUID
     accepting: bool
     expected_source_revision: int = Field(ge=0)
@@ -45,7 +46,7 @@ class SetRecoveryIntakeBody(BaseModel):
         return SetRecoveryIntakeIntent(**self.model_dump())
 
 
-class ExtendRecoveryDayBody(BaseModel):
+class ExtendRecoveryDayBody(F6RequestBody):
     incident_id: UUID
     assignment_id: UUID
     start_at: datetime
@@ -59,7 +60,7 @@ class ExtendRecoveryDayBody(BaseModel):
         return ExtendRecoveryDayIntent(**self.model_dump())
 
 
-class PublishDiscoverySupplyBody(BaseModel):
+class PublishDiscoverySupplyBody(F6RequestBody):
     offering_id: UUID
     location_id: UUID
     effective_start: datetime
@@ -72,7 +73,7 @@ class PublishDiscoverySupplyBody(BaseModel):
         return PublishDiscoverySupplyIntent(**self.model_dump())
 
 
-class RevokeDiscoveryPublicationBody(BaseModel):
+class RevokeDiscoveryPublicationBody(F6RequestBody):
     publication_id: UUID
     expected_revision: int = Field(ge=0)
 

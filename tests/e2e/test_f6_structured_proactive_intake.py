@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -48,6 +49,34 @@ async def test_f6_structured_proactive_intake_without_recovery(
         )
         assert stale.status_code == 409, stale.text
 
+        conflicting = await client.post(
+            "/v1/operational-copilot/tools/queues/intake-control",
+            json={**body, "accepting": True, "reason": "reopen walk-ins"},
+            headers=auth(sandbox, idempotency_key=key),
+        )
+        assert conflicting.status_code == 409, conflicting.text
+        rescheduled = await client.post(
+            "/v1/operational-copilot/tools/queues/intake-control",
+            json={
+                **body,
+                "effective_until": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            },
+            headers=auth(sandbox, idempotency_key=key),
+        )
+        assert rescheduled.status_code == 409, rescheduled.text
+
+        after = await read_tool(client, sandbox, f"/queues/{sandbox.queue_id}/intake")
+        assert after["accepting"] is False
+        assert after["revision"] == intake["revision"] + 1
+
+    closed = e2e_admin_conn.execute(
+        "SELECT accepting, revision FROM request_engine.service_queue_intake_controls "
+        "WHERE organization_id=%s AND service_queue_id=%s",
+        (sandbox.organization_id, sandbox.queue_id),
+    ).fetchone()
+    assert closed is not None
+    assert closed[0] is False
+    assert closed[1] == intake["revision"] + 1
     incident = e2e_admin_conn.execute(
         "SELECT count(*) FROM request_engine.operational_recovery_incidents "
         "WHERE organization_id=%s",

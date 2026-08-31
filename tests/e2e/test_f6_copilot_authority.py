@@ -21,7 +21,7 @@ pytestmark = [
 ]
 
 
-async def test_f6_ignores_caller_supplied_authority_and_resolves_tenant_truth(
+async def test_f6_rejects_caller_supplied_authority_field(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -36,10 +36,14 @@ async def test_f6_ignores_caller_supplied_authority_and_resolves_tenant_truth(
             json={"text": _extend_text(), "authority_party_id": forged_party},
             headers=auth(sandbox, idempotency_key=f"f6-forged-{uuid4().hex}"),
         )
-    assert response.status_code == 200, response.text
-    operation = response.json()["operation"]
-    assert operation["authority_party_id"] != forged_party
-    assert operation["authority_party_id"] is not None
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "validation_failed"
+    forged = e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.idempotency_records "
+        "WHERE organization_id=%s AND idempotency_key LIKE %s",
+        (sandbox.organization_id, "f6-forged-%"),
+    ).fetchone()
+    assert forged == (0,)
 
 
 async def test_f6_refuses_extend_day_without_resolved_party_authority(

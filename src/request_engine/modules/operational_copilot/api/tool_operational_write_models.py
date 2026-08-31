@@ -1,15 +1,16 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from request_engine.modules.operational_copilot.api.models import F6RequestBody
 from request_engine.modules.operational_copilot.contracts import (
     ExtendOperationalDayIntent,
     SetOperationalIntakeIntent,
 )
 
 
-class SetOperationalIntakeBody(BaseModel):
+class SetOperationalIntakeBody(F6RequestBody):
     service_queue_id: UUID
     accepting: bool
     expected_intake_revision: int = Field(ge=0)
@@ -20,7 +21,7 @@ class SetOperationalIntakeBody(BaseModel):
         return SetOperationalIntakeIntent(**self.model_dump())
 
 
-class ExtendOperationalDayBody(BaseModel):
+class ExtendOperationalDayBody(F6RequestBody):
     assignment_id: UUID
     start_at: datetime
     end_at: datetime

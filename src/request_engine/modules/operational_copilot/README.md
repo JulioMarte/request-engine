@@ -40,16 +40,26 @@ Authoritative reads use `operational_copilot.read` and currently expose:
 - at-risk Reservation assessment;
 - Discovery publication state and revision.
 
-Guarded mutations use `operational_copilot.execute`, then require the executor-declared owner capability before owner invocation:
+Guarded mutations use `operational_copilot.execute`, then require the executor-declared owner capability before owner invocation.
+
+Recovery-scoped operations require an open `RecoveryIncident`:
 
 - create Recovery proposal;
 - execute Recovery proposal;
 - stop/reopen Recovery intake;
-- extend a Recovery day;
+- extend a Recovery day.
+
+Proactive owner operations do not require a `RecoveryIncident`; each is delegated to its owner's native authority:
+
+- stop/reopen Queue walk-in intake (`queue.manage_intake`);
+- extend an assignment's working day (`booking.manage_supply`).
+
+Discovery operations:
+
 - publish Discovery supply;
 - revoke Discovery publication.
 
-Every mutation accepts a closed typed schema. There is deliberately no arbitrary `operation`/payload command bus.
+Every mutation accepts a closed typed schema (`extra="forbid"`): unknown or injected fields such as `organization_id`, `principal_id`, `authority_party_id` or an unrecognized revision name are rejected with `422`, never silently ignored. There is deliberately no arbitrary `operation`/payload command bus.
 
 ## Text adapter
 
@@ -62,13 +72,11 @@ They are deterministic bounded text adapters over the same admission/lowering/ex
 
 `OperationalCopilot.admit(...)` is the canonical admission boundary for an already-structured `CopilotIntent`. The text adapter parses/resolves references and then enters that same boundary; it does not get a privileged execution path.
 
-## RecoveryIncident semantics
+## Recovery-scoped vs proactive operations
 
-Recovery-owned intake control and additional-hours/day-extension commands require an existing authoritative `RecoveryIncident`. F6 does not manufacture an incident, direct-write Queue/Booking, or reinterpret a normal operational request as a crisis merely to make a phrase executable.
+Recovery-owned intake control and additional-hours/day-extension commands require an existing authoritative `RecoveryIncident`. F6 does not manufacture an incident or reinterpret a normal operational request as a crisis merely to make a phrase executable. An external agent can obtain the current incident and revisions through the structured read tools and then invoke the corresponding typed Recovery mutation. If no open incident exists, the Recovery-scoped operation fails closed.
 
-An external agent can obtain the current incident and revisions through the structured read tools and then invoke the corresponding typed Recovery mutation. If no open incident exists, the Recovery-scoped operation fails closed.
-
-If the product later requires proactive stop-intake or schedule extension outside Recovery, that capability must first be added to the appropriate owner contract. It must not be smuggled into F6 as shadow authority.
+Ordinary operator control is proactive and owner-native: `POST /tools/queues/intake-control` exercises Queue intake authority, and `POST /tools/assignments/day-extensions` exercises Booking supply authority. Both still pass through F6 admission, owner capability gates, optimistic revisions and owner idempotency. F6 gains no shadow authority: proactive execution is always a delegated owner command, never a direct write to owner tables.
 
 ## Lookup and ambiguity
 
@@ -125,6 +133,6 @@ F6 is complete when an external agent with no database access and no Request Eng
 5. replay safely under owner idempotency/concurrency semantics;
 6. complete the supported roadmap scenarios without relying on the text parser as the only API.
 
-PostgreSQL acceptance covers Recovery proposal/execution, intake stop/reopen, day extension, Discovery publish/revoke, conflicting replay and natural-command concurrency. Adversarial lookup acceptance covers multi-Queue, duplicate Offering and multi-location Resource ambiguity.
+PostgreSQL acceptance covers Recovery proposal/execution, proactive Queue intake control, proactive Booking day extension, Recovery intake stop/reopen, Recovery day extension, Discovery publish/revoke, closed-schema injection refusal, same-key conflicting replay and concurrent same-key execution for Recovery, Queue and Booking paths. Adversarial lookup acceptance covers multi-Queue, duplicate Offering and multi-location Resource ambiguity. The four roadmap scenarios (extend day, stop walk-ins, publish Discovery, inspect at-risk Reservations) are satisfied end-to-end through structured tools alone.
 
 Normative contract: `docs/v3/35-operational-copilot-contract.md`.

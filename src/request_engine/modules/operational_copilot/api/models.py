@@ -2,7 +2,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from request_engine.modules.booking.contracts.operational_schedule import (
     OperationalAssignmentExtensionRequest,
@@ -27,7 +27,13 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
 from request_engine.modules.queue.contracts.intake import SetQueueIntakeControlRequest
 
 
-class CopilotInterpretBody(BaseModel):
+class F6RequestBody(BaseModel):
+    """Closed transport schema for public F6 mutation/interpretation requests."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CopilotInterpretBody(F6RequestBody):
     text: str
 
 
