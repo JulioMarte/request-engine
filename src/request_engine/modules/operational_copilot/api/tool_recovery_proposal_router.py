@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
-from request_engine.modules.operational_recovery.contracts.models import RescheduleProposal
+from request_engine.modules.operational_recovery.api.models import RecoveryProposalView
 from request_engine.modules.operational_recovery.contracts.queries import RecoveryProposalReader
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
@@ -25,12 +25,13 @@ def create_tool_recovery_proposal_router(
     async def proposal(
         proposal_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
-    ) -> RescheduleProposal:
+    ) -> RecoveryProposalView:
         require_capability(current, READ_CAPABILITY)
-        return await proposal_reader.get_proposal(
+        value = await proposal_reader.get_proposal(
             organization_id=current.organization_id,
             proposal_id=proposal_id,
         )
+        return RecoveryProposalView.from_contract(value)
 
     add_capability_route(
         router,
@@ -39,6 +40,6 @@ def create_tool_recovery_proposal_router(
         capability=READ_CAPABILITY,
         methods=["GET"],
         operation_id="copilot_recovery_proposal",
-        response_model=RescheduleProposal,
+        response_model=RecoveryProposalView,
     )
     return router
