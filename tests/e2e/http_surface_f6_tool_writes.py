@@ -39,7 +39,7 @@ F6_TOOL_WRITE_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         },
     ),
     _write(
-        "operational_copilot.tools.day_extension",
+        "operational_copilot.tools.recovery_day_extension",
         "/v1/operational-copilot/tools/recovery/day-extensions",
         {
             "incident_id": UUID_1,
@@ -49,6 +49,27 @@ F6_TOOL_WRITE_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             "expected_source_revision": 0,
             "expected_location_operational_revision": 0,
             "expected_resource_availability_revision": 0,
+            "reason": "probe",
+        },
+    ),
+    _write(
+        "operational_copilot.tools.operational_intake",
+        "/v1/operational-copilot/tools/queues/intake-control",
+        {
+            "service_queue_id": UUID_1,
+            "accepting": False,
+            "expected_intake_revision": 1,
+            "reason": "probe",
+        },
+    ),
+    _write(
+        "operational_copilot.tools.operational_day_extension",
+        "/v1/operational-copilot/tools/assignments/day-extensions",
+        {
+            "assignment_id": UUID_1,
+            "start_at": "2030-01-07T13:00:00+00:00",
+            "end_at": "2030-01-07T14:00:00+00:00",
+            "expected_resource_availability_revision": 1,
             "reason": "probe",
         },
     ),
