@@ -16,3 +16,7 @@ class CopilotPolicyRejected(CopilotSemanticError):
 
 class CopilotResolutionFailed(CopilotSemanticError):
     pass
+
+
+class CopilotConflict(RuntimeError):
+    pass
