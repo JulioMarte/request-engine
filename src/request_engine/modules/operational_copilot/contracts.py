@@ -50,6 +50,24 @@ class ExtendRecoveryDayIntent:
 
 
 @dataclass(frozen=True, slots=True)
+class SetOperationalIntakeIntent:
+    service_queue_id: UUID
+    accepting: bool
+    expected_intake_revision: int
+    reason: str | None = None
+    effective_until: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExtendOperationalDayIntent:
+    assignment_id: UUID
+    start_at: datetime
+    end_at: datetime
+    expected_resource_availability_revision: int
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class PublishDiscoverySupplyIntent:
     offering_id: UUID
     location_id: UUID
@@ -76,6 +94,8 @@ CopilotIntent = (
     | ExecuteRecoveryIntent
     | SetRecoveryIntakeIntent
     | ExtendRecoveryDayIntent
+    | SetOperationalIntakeIntent
+    | ExtendOperationalDayIntent
     | PublishDiscoverySupplyIntent
     | RevokeDiscoveryPublicationIntent
     | ShowAtRiskReservationsIntent

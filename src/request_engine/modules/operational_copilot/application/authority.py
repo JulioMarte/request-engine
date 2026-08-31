@@ -4,6 +4,7 @@ from request_engine.modules.operational_copilot.application.ports import Authori
 from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
     CopilotIntent,
+    ExtendOperationalDayIntent,
     ExtendRecoveryDayIntent,
     PublishDiscoverySupplyIntent,
     RevokeDiscoveryPublicationIntent,
@@ -19,6 +20,7 @@ _COPILOT_AUTHORITY_SCOPES = frozenset(
 )
 
 _AuthorityRequiredIntents = (
+    ExtendOperationalDayIntent,
     ExtendRecoveryDayIntent,
     PublishDiscoverySupplyIntent,
     RevokeDiscoveryPublicationIntent,

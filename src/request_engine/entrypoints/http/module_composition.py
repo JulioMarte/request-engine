@@ -9,6 +9,9 @@ from request_engine.modules.booking.api.copilot import build_copilot_booking_rea
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
 )
+from request_engine.modules.booking.api.operational_schedule import (
+    build_operational_assignment_schedule_port,
+)
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.booking.api.recovery_schedule import (
     build_recovery_assignment_schedule_port,
@@ -19,16 +22,12 @@ from request_engine.modules.catalog.api.recovery_schedule import (
     build_recovery_location_schedule_port,
 )
 from request_engine.modules.communications.api import install_http as install_communications_http
-from request_engine.modules.communications.api.recovery import (
-    build_recovery_communication_port,
-)
+from request_engine.modules.communications.api.recovery import build_recovery_communication_port
 from request_engine.modules.delivery.api import install_http as install_delivery_http
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
 )
-from request_engine.modules.discovery.api.publication_runtime import (
-    build_discovery_publication_runtime,
-)
+from request_engine.modules.discovery.api.publication_runtime import build_discovery_publication_runtime
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
@@ -112,6 +111,7 @@ def install_business_modules(
         recovery_executor=recovery.service,
         intake_executor=recovery.workflow,
         extend_day_executor=recovery.workflow,
+        operational_schedule=build_operational_assignment_schedule_port(session_factory),
         discovery_executor=discovery_runtime,
         discovery_reader=discovery_runtime,
         booking_reader=build_copilot_booking_reader(session_factory),

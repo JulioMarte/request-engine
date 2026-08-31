@@ -3,9 +3,6 @@ from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReade
 from request_engine.modules.operational_copilot.adapters.discovery_reference_resolution import (
     resolve_publish_discovery,
 )
-from request_engine.modules.operational_copilot.adapters.recovery_replay_resolution import (
-    resolve_recovery_replay,
-)
 from request_engine.modules.operational_copilot.adapters.resolution_common import require_one
 from request_engine.modules.operational_copilot.adapters.workflow_reference_resolution import (
     resolve_extend_today,
@@ -23,9 +20,6 @@ from request_engine.modules.operational_copilot.references import (
     ShowCurrentAtRiskReservationsIntent,
     StopWalkInsRestOfDayIntent,
 )
-from request_engine.modules.operational_recovery.contracts.copilot import (
-    CopilotRecoveryIncidentReader,
-)
 from request_engine.modules.queue.contracts.copilot import CopilotQueueReader
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 
@@ -36,13 +30,11 @@ class OwnerBackedCopilotReferenceResolver:
         booking: CopilotBookingReader,
         catalog: CopilotCatalogReader,
         queues: CopilotQueueReader,
-        recovery: CopilotRecoveryIncidentReader,
         intake: QueueIntakeControlPort,
     ) -> None:
         self._booking = booking
         self._catalog = catalog
         self._queues = queues
-        self._recovery = recovery
         self._intake = intake
 
     async def resolve(
@@ -50,19 +42,12 @@ class OwnerBackedCopilotReferenceResolver:
         context: CopilotContext,
         intent: CopilotParsedIntent,
     ) -> CopilotIntent:
-        if isinstance(intent, (ExtendNamedResourceTodayIntent, StopWalkInsRestOfDayIntent)):
-            replay = await resolve_recovery_replay(self._recovery, context, intent)
-            if replay is not None:
-                return replay
         if isinstance(intent, ExtendNamedResourceTodayIntent):
-            return await resolve_extend_today(
-                self._booking, self._catalog, self._recovery, context, intent
-            )
+            return await resolve_extend_today(self._booking, self._catalog, context, intent)
         if isinstance(intent, StopWalkInsRestOfDayIntent):
             return await resolve_stop_walk_ins(
                 self._catalog,
                 self._queues,
-                self._recovery,
                 self._intake,
                 context,
             )

@@ -2,14 +2,16 @@ from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
     CreateRecoveryProposalIntent,
     ExecuteRecoveryIntent,
+    ExtendOperationalDayIntent,
     ExtendRecoveryDayIntent,
     PublishDiscoverySupplyIntent,
     RevokeDiscoveryPublicationIntent,
+    SetOperationalIntakeIntent,
     SetRecoveryIntakeIntent,
     ShowAtRiskReservationsIntent,
     ValidatedCopilotIntent,
 )
-from request_engine.modules.operational_copilot.lowering import discovery, inspection, recovery
+from request_engine.modules.operational_copilot.lowering import discovery, inspection, proactive, recovery
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_copilot.lowering.workflow import (
     lower_extend_day,
@@ -21,6 +23,8 @@ _LOWERERS = {
     ExecuteRecoveryIntent: recovery.lower_execute,
     SetRecoveryIntakeIntent: lower_set_intake,
     ExtendRecoveryDayIntent: lower_extend_day,
+    SetOperationalIntakeIntent: proactive.lower_set_operational_intake,
+    ExtendOperationalDayIntent: proactive.lower_extend_operational_day,
     PublishDiscoverySupplyIntent: discovery.lower_publish,
     RevokeDiscoveryPublicationIntent: discovery.lower_revoke,
     ShowAtRiskReservationsIntent: inspection.lower_show_at_risk,

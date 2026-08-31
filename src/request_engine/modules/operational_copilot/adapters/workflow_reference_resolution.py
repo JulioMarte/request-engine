@@ -6,14 +6,11 @@ from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReade
 from request_engine.modules.operational_copilot.adapters.resolution_common import require_one
 from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
-    ExtendRecoveryDayIntent,
-    SetRecoveryIntakeIntent,
+    ExtendOperationalDayIntent,
+    SetOperationalIntakeIntent,
 )
 from request_engine.modules.operational_copilot.errors import CopilotResolutionFailed
 from request_engine.modules.operational_copilot.references import ExtendNamedResourceTodayIntent
-from request_engine.modules.operational_recovery.contracts.copilot import (
-    CopilotRecoveryIncidentReader,
-)
 from request_engine.modules.queue.contracts.copilot import CopilotQueueReader
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 
@@ -21,10 +18,9 @@ from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 async def resolve_extend_today(
     booking: CopilotBookingReader,
     catalog: CopilotCatalogReader,
-    recovery: CopilotRecoveryIncidentReader,
     context: CopilotContext,
     intent: ExtendNamedResourceTodayIntent,
-) -> ExtendRecoveryDayIntent:
+) -> ExtendOperationalDayIntent:
     resource = require_one(
         await booking.find_resources(
             organization_id=context.organization_id,
@@ -32,18 +28,11 @@ async def resolve_extend_today(
         ),
         "resource",
     )
-    incident = require_one(
-        await recovery.find_open_incidents_for_resource(
-            organization_id=context.organization_id,
-            resource_id=resource.resource_id,
-        ),
-        "open recovery incident",
-    )
     clock = await catalog.read_location_clock(
         organization_id=context.organization_id,
         location_id=resource.location_id,
     )
-    if clock is None or incident.location_id != resource.location_id:
+    if clock is None:
         raise CopilotResolutionFailed("resource operational context is not uniquely executable")
     zone = ZoneInfo(clock.timezone)
     local_observed = clock.observed_at.astimezone(zone)
@@ -55,18 +44,15 @@ async def resolve_extend_today(
     if scheduled_local_end is None:
         raise CopilotResolutionFailed("resource scheduled day end is unavailable")
     scheduled_end = datetime.combine(local_observed.date(), scheduled_local_end, tzinfo=zone)
-    target_end = datetime.combine(
-        local_observed.date(),
-        intent.target_local_time,
-        tzinfo=zone,
-    )
-    return ExtendRecoveryDayIntent(
-        incident_id=incident.id,
+    target_end = datetime.combine(local_observed.date(), intent.target_local_time, tzinfo=zone)
+    if target_end <= scheduled_end:
+        raise CopilotResolutionFailed("requested day extension does not extend the current schedule")
+    if target_end <= clock.observed_at:
+        raise CopilotResolutionFailed("requested day extension has already elapsed")
+    return ExtendOperationalDayIntent(
         assignment_id=resource.assignment_id,
         start_at=scheduled_end,
         end_at=target_end,
-        expected_source_revision=incident.source_revision,
-        expected_location_operational_revision=clock.operational_revision,
         expected_resource_availability_revision=resource.resource_availability_revision,
         reason=f"operational copilot: extend {intent.resource_reference} today",
     )
@@ -75,17 +61,10 @@ async def resolve_extend_today(
 async def resolve_stop_walk_ins(
     catalog: CopilotCatalogReader,
     queues: CopilotQueueReader,
-    recovery: CopilotRecoveryIncidentReader,
     intake_reader: QueueIntakeControlPort,
     context: CopilotContext,
-) -> SetRecoveryIntakeIntent:
+) -> SetOperationalIntakeIntent:
     queue = require_one(await queues.list_queues(organization_id=context.organization_id), "queue")
-    incident = await recovery.get_open_incident_for_queue(
-        organization_id=context.organization_id,
-        service_queue_id=queue.service_queue_id,
-    )
-    if incident is None:
-        raise CopilotResolutionFailed("no open recovery incident exists for the current queue")
     intake = await intake_reader.get_intake_control(context.organization_id, queue.service_queue_id)
     clock = await catalog.read_location_clock(
         organization_id=context.organization_id,
@@ -95,10 +74,9 @@ async def resolve_stop_walk_ins(
         raise CopilotResolutionFailed("location operational day end is unavailable")
     if clock.operational_day_end_at <= clock.observed_at:
         raise CopilotResolutionFailed("the current operational day has already ended")
-    return SetRecoveryIntakeIntent(
-        incident_id=incident.id,
+    return SetOperationalIntakeIntent(
+        service_queue_id=queue.service_queue_id,
         accepting=False,
-        expected_source_revision=incident.source_revision,
         expected_intake_revision=intake.revision,
         reason="operational copilot: stop accepting walk-ins for the rest of the day",
         effective_until=clock.operational_day_end_at,

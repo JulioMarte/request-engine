@@ -6,9 +6,11 @@ from request_engine.modules.operational_copilot.contracts import (
     CopilotIntent,
     CreateRecoveryProposalIntent,
     ExecuteRecoveryIntent,
+    ExtendOperationalDayIntent,
     ExtendRecoveryDayIntent,
     PublishDiscoverySupplyIntent,
     RevokeDiscoveryPublicationIntent,
+    SetOperationalIntakeIntent,
     SetRecoveryIntakeIntent,
     ShowAtRiskReservationsIntent,
     ValidatedCopilotIntent,
@@ -56,6 +58,12 @@ def _(intent: SetRecoveryIntakeIntent, context: CopilotContext) -> ValidatedCopi
 
 
 @_validate.register
+def _(intent: SetOperationalIntakeIntent, context: CopilotContext) -> ValidatedCopilotIntent:
+    _require_revisions(intent.expected_intake_revision)
+    return ValidatedCopilotIntent(intent)
+
+
+@_validate.register
 def _(intent: ExtendRecoveryDayIntent, context: CopilotContext) -> ValidatedCopilotIntent:
     _require_authority(context)
     _require_revisions(
@@ -63,9 +71,15 @@ def _(intent: ExtendRecoveryDayIntent, context: CopilotContext) -> ValidatedCopi
         intent.expected_location_operational_revision,
         intent.expected_resource_availability_revision,
     )
-    _require_interval(intent.start_at, intent.end_at)
-    if not intent.reason.strip():
-        raise CopilotPolicyRejected("extend-day reason is required")
+    _validate_extension(intent.start_at, intent.end_at, intent.reason)
+    return ValidatedCopilotIntent(intent)
+
+
+@_validate.register
+def _(intent: ExtendOperationalDayIntent, context: CopilotContext) -> ValidatedCopilotIntent:
+    _require_authority(context)
+    _require_revisions(intent.expected_resource_availability_revision)
+    _validate_extension(intent.start_at, intent.end_at, intent.reason)
     return ValidatedCopilotIntent(intent)
 
 
@@ -92,6 +106,12 @@ def _(intent: RevokeDiscoveryPublicationIntent, context: CopilotContext) -> Vali
 @_validate.register
 def _(intent: ShowAtRiskReservationsIntent, context: CopilotContext) -> ValidatedCopilotIntent:
     return ValidatedCopilotIntent(intent)
+
+
+def _validate_extension(start_at: datetime, end_at: datetime, reason: str) -> None:
+    _require_interval(start_at, end_at)
+    if not reason.strip():
+        raise CopilotPolicyRejected("extend-day reason is required")
 
 
 def _require_authority(context: CopilotContext) -> None:

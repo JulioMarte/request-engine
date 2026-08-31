@@ -48,6 +48,12 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Check in a reservation-backed subject or admit a walk-in to a live queue.",
     ),
     command_capability(
+        "queue.manage_intake",
+        CapabilityExposure.OPERATOR,
+        "Stop or reopen queue intake using optimistic concurrency.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    command_capability(
         "queue.classify_expected_workload",
         CapabilityExposure.OPERATOR,
         "Assign, correct, or clear expected workload while a QueueEntry is waiting or called.",
