@@ -24,88 +24,105 @@ The agent decides what operation to attempt. Request Engine validates whether th
 
 F6 does not own schedule, capacity, queue, publication, recovery or communication truth merely because it exposes a tool that reaches those domains.
 
-## Owned here
+## Canonical public tools
 
-- typed intent/operation contracts and trusted request context (`contracts.py`);
-- admission/refusal policy (`policy.py`);
-- deterministic lowering into published owner commands/queries (`lowering/`);
-- supported operational read composition needed by the tool surface;
-- fail-closed registered mutation execution (`application/execution.py`);
-- F6-owned machine-readable execution receipts;
-- HTTP/tool adapters (`api/`);
-- optional bounded text parsing (`parser.py`, `parsing/`) as a compatibility/test adapter.
+The canonical machine-facing boundary is `/v1/operational-copilot/tools`.
 
-## Explicit non-goals
+Authoritative reads use `operational_copilot.read` and currently expose:
 
-F6 does not own or require:
+- Resource lookup by bounded reference;
+- Offering lookup by bounded reference;
+- ServiceQueue listing;
+- Location clock / operational-day state;
+- assignment day-end state;
+- Queue intake state and revision;
+- open RecoveryIncident state and source revision/fingerprint;
+- at-risk Reservation assessment;
+- Discovery publication state and revision.
 
-```text
-embedded LLM
-conversation memory
-prompt orchestration
-arbitrary natural-language understanding
-fuzzy autonomous entity selection
-general natural-language date parsing
-arbitrary SQL/tool execution
-model-selected tenant/principal/authority/revision
-```
+Guarded mutations use `operational_copilot.execute`, then require the executor-declared owner capability before owner invocation:
 
-An external agent may understand a sentence such as `Dr. A will work until 7 PM today`. It should then use authoritative Request Engine lookup/state tools to identify the Resource/assignment and current guarded state before invoking a structured mutation.
+- create Recovery proposal;
+- execute Recovery proposal;
+- stop/reopen Recovery intake;
+- extend a Recovery day;
+- publish Discovery supply;
+- revoke Discovery publication.
 
-Request Engine must never trust a Resource ID, revision, fingerprint or authority identity merely because a model produced it.
+Every mutation accepts a closed typed schema. There is deliberately no arbitrary `operation`/payload command bus.
 
-## Current implementation
+## Text adapter
 
-The current branch contains a strict deterministic text adapter and two HTTP surfaces:
+The historical surfaces remain available:
 
-- `POST /v1/operational-copilot/interpret`, capability `operational_copilot.interpret`;
-- `POST /v1/operational-copilot/execute`, capability `operational_copilot.execute`.
+- `POST /v1/operational-copilot/interpret`;
+- `POST /v1/operational-copilot/execute`.
 
-The text adapter accepts a bounded DSL with explicit UUIDs/revisions/timestamps. It is useful as an admission/refusal proof and integration harness, but **it is not the F6 product boundary** and should not be expanded into a general NLU system merely to make F6 conversational.
+They are deterministic bounded text adapters over the same admission/lowering/execution path. They are useful for compatibility, refusal proofs and roadmap-language acceptance, but they are **not** the canonical F6 product boundary.
 
-Currently registered execution operations:
+`OperationalCopilot.admit(...)` is the canonical admission boundary for an already-structured `CopilotIntent`. The text adapter parses/resolves references and then enters that same boundary; it does not get a privileged execution path.
 
-- stop/reopen recovery intake (`SetRecoveryIntakeCommand`);
-- extend a recovery day (`ExtendRecoveryDayCommand`).
+## RecoveryIncident semantics
 
-All other lowered mutations remain non-executable through the F6 execution surface until an owner-contract executor is explicitly registered. They fail closed rather than falling back to arbitrary tools or shadow mutation logic.
+Recovery-owned intake control and additional-hours/day-extension commands require an existing authoritative `RecoveryIncident`. F6 does not manufacture an incident, direct-write Queue/Booking, or reinterpret a normal operational request as a crisis merely to make a phrase executable.
 
-## Agent-facing reads and resolution
+An external agent can obtain the current incident and revisions through the structured read tools and then invoke the corresponding typed Recovery mutation. If no open incident exists, the Recovery-scoped operation fails closed.
 
-A complete F6 tooling surface must let an external agent obtain the authoritative identifiers/current state required by supported mutations without database access or imports from owner internals.
+If the product later requires proactive stop-intake or schedule extension outside Recovery, that capability must first be added to the appropriate owner contract. It must not be smuggled into F6 as shadow authority.
 
-Where needed, lookup/read tools must support bounded tenant-scoped discovery of operational entities such as Resource, ResourceLocationAssignment, ServiceQueue, Offering and Location, plus the current revisions/freshness required by guarded commands.
+## Lookup and ambiguity
 
 Lookup is authoritative search, not model inference:
 
-- zero matches -> explicit no-match;
+- zero matches -> explicit no-match/empty candidates;
 - one match -> explicit candidate;
-- multiple plausible matches -> explicit ambiguity;
-- never silently choose one because a model or fuzzy matcher prefers it.
+- multiple plausible matches -> all authoritative candidates are returned or semantic resolution refuses as ambiguous;
+- F6 never silently chooses one because a model or fuzzy matcher prefers it.
 
-## Boundary
+Resource candidates include the owner-provided display name together with `resource_id`, `location_id`, `assignment_id` and current availability revision. Queue candidates expose the identities the Queue model actually owns; F6 does not invent display labels that do not exist in the owner schema.
 
-Cross-module imports inside F6 terminate at owner `contracts` surfaces only:
+## Trust boundary
+
+`organization_id` and `principal_id` come only from authenticated `ActorContext`. `authority_party_id` is resolved server-side from tenancy representation truth. Tool bodies cannot inject those identities.
+
+Mutation identity comes from the trusted `Idempotency-Key` transport header. F6 preserves that identity into the owner command. Owner idempotency, optimistic concurrency, transactionality, domain validation and durable effects remain authoritative.
+
+The structured write path performs both gates:
+
+1. `operational_copilot.execute`;
+2. the registered executor's owner capability, such as `operational_recovery.execute` or the Discovery owner capability.
+
+## Module boundary
+
+Cross-module imports inside F6 terminate at published owner `contracts` surfaces. The HTTP composition root obtains concrete owner readers/runtimes through each module's `api` composition surface.
+
+F6 owns no durable business table and performs no direct owner-table mutation.
+
+Architecture fitness tests enforce this boundary.
+
+## Execution receipt
+
+`CopilotExecutionReceipt` is owner-agnostic:
 
 ```text
-operational_recovery.contracts.commands / contracts.workflow_commands
-discovery.contracts.commands
-live_capacity.contracts.recovery
-tenancy.contracts.authority
+owner
+action
+result_id
+status
+idempotency_key
 ```
 
-The architecture test `tests/architecture/test_operational_copilot_module_boundary.py` enforces this module-wide. The HTTP composition root wires owner application objects only through module `api` surfaces; F6 adapters consume their published structural contracts.
+It intentionally does not leak Recovery- or Discovery-specific application objects.
 
-Trust rules: `organization_id` and `principal_id` come only from the authenticated actor. `authority_party_id` is resolved server-side from tenant representation truth through the published `tenancy` operational authority reader. The trusted `Idempotency-Key` request identity flows into owner commands and is never derived from conversational text.
+## Closure criterion
 
-`/interpret` never executes mutations. `/execute` resolves exactly one registered executor and requires both the F6 capability and the executor-declared owner capability before invoking the owner contract. Owner concurrency, idempotency, authority, transaction and domain validation remain authoritative.
+F6 is complete when an external agent with no database access and no Request Engine internal imports can:
 
-The current execution receipt is owned by F6 rather than exposing the owner's `RecoveryAction` object directly, but its fields are still recovery-shaped. It must be generalized or versioned before the same response contract is reused for non-recovery owners such as Discovery.
-
-## F6 closure criterion
-
-F6 is complete when an external copilot/agent with no database access and no Request Engine internal imports can satisfy the supported roadmap scenarios using only public authoritative lookup/read tools and guarded mutation tools.
-
-It is not necessary for Request Engine itself to understand the user's arbitrary natural-language sentence.
+1. discover authoritative targets/state through structured read tools;
+2. disambiguate or fail closed rather than guess;
+3. construct a supported typed mutation;
+4. execute it through F6 while preserving tenant/principal/authority/capability boundaries;
+5. replay safely under owner idempotency/concurrency semantics;
+6. complete the supported roadmap scenarios without relying on the text parser as the only API.
 
 Normative contract: `docs/v3/35-operational-copilot-contract.md`.
