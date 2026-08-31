@@ -7,6 +7,8 @@ from uuid import UUID
 class CopilotQueueMatch:
     service_queue_id: UUID
     location_id: UUID
+    offering_id: UUID | None = None
+    display_name: str | None = None
 
 
 class CopilotQueueReader(Protocol):
