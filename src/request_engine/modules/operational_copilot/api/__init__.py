@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.discovery_publication_executors import (
     DiscoveryPublishCopilotExecutor,
@@ -53,6 +54,7 @@ def install_http(
     intake_executor: RecoveryIntakeExecutor | None = None,
     extend_day_executor: RecoveryExtendDayExecutor | None = None,
     discovery_executor: DiscoveryPublicationExecutor | None = None,
+    booking_reader: CopilotBookingReader | None = None,
     catalog_reader: CopilotCatalogReader | None = None,
     queue_reader: CopilotQueueReader | None = None,
     queue_intake_reader: QueueIntakeControlPort | None = None,
@@ -67,6 +69,7 @@ def install_http(
         DiscoveryRevokeCopilotExecutor(discovery_executor) if discovery_executor else None,
     )
     resolver = _build_reference_resolver(
+        booking_reader,
         catalog_reader,
         queue_reader,
         recovery_incident_reader,
@@ -83,18 +86,20 @@ def install_http(
 
 
 def _build_reference_resolver(
+    booking: CopilotBookingReader | None,
     catalog: CopilotCatalogReader | None,
     queues: CopilotQueueReader | None,
     recovery: CopilotRecoveryIncidentReader | None,
     intake: QueueIntakeControlPort | None,
 ) -> OwnerBackedCopilotReferenceResolver | None:
-    values = (catalog, queues, recovery, intake)
+    values = (booking, catalog, queues, recovery, intake)
     if all(value is None for value in values):
         return None
     if any(value is None for value in values):
         raise ValueError("copilot reference resolution requires all owner readers")
+    assert booking is not None
     assert catalog is not None
     assert queues is not None
     assert recovery is not None
     assert intake is not None
-    return OwnerBackedCopilotReferenceResolver(catalog, queues, recovery, intake)
+    return OwnerBackedCopilotReferenceResolver(booking, catalog, queues, recovery, intake)

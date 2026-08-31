@@ -4,6 +4,14 @@ from pathlib import Path
 MODULE_ROOT = Path("src/request_engine/modules/operational_copilot")
 OWN_PACKAGE_PREFIX = "request_engine.modules.operational_copilot"
 API_PACKAGE_PREFIX = "src/request_engine/modules/operational_copilot/api"
+CATALOG_COPILOT_QUERIES = Path(
+    "src/request_engine/modules/catalog/adapters/db/copilot_queries.py"
+)
+BOOKING_OWNED_RELATIONS = (
+    "request_engine.resources",
+    "request_engine.resource_location_assignments",
+    "request_engine.resource_location_availability",
+)
 _EXECUTION_CORE = (
     MODULE_ROOT / "api" / "copilot_router.py",
     MODULE_ROOT / "application" / "copilot.py",
@@ -54,6 +62,17 @@ def test_execution_core_does_not_dispatch_on_owner_modules() -> None:
             if imported.startswith("request_engine.modules.discovery"):
                 violations.append(f"{path.as_posix()}: {imported}")
     assert not violations
+
+
+def test_catalog_copilot_lookup_does_not_read_booking_owned_tables() -> None:
+    query_source = CATALOG_COPILOT_QUERIES.read_text(encoding="utf-8")
+    violations = [
+        relation for relation in BOOKING_OWNED_RELATIONS if relation in query_source
+    ]
+    assert not violations, (
+        "Catalog copilot lookup crossed Booking ownership for "
+        f"{violations}; expose Resource/assignment/availability through Booking contracts."
+    )
 
 
 def test_copilot_has_no_relative_import_escape_hatches() -> None:

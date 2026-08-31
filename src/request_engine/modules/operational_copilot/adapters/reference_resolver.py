@@ -1,3 +1,4 @@
+from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.discovery_reference_resolution import (
     resolve_publish_discovery,
@@ -32,11 +33,13 @@ from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 class OwnerBackedCopilotReferenceResolver:
     def __init__(
         self,
+        booking: CopilotBookingReader,
         catalog: CopilotCatalogReader,
         queues: CopilotQueueReader,
         recovery: CopilotRecoveryIncidentReader,
         intake: QueueIntakeControlPort,
     ) -> None:
+        self._booking = booking
         self._catalog = catalog
         self._queues = queues
         self._recovery = recovery
@@ -52,7 +55,9 @@ class OwnerBackedCopilotReferenceResolver:
             if replay is not None:
                 return replay
         if isinstance(intent, ExtendNamedResourceTodayIntent):
-            return await resolve_extend_today(self._catalog, self._recovery, context, intent)
+            return await resolve_extend_today(
+                self._booking, self._catalog, self._recovery, context, intent
+            )
         if isinstance(intent, StopWalkInsRestOfDayIntent):
             return await resolve_stop_walk_ins(
                 self._catalog,
@@ -62,7 +67,9 @@ class OwnerBackedCopilotReferenceResolver:
                 context,
             )
         if isinstance(intent, PublishNamedResourceDiscoveryIntent):
-            return await resolve_publish_discovery(self._catalog, context, intent)
+            return await resolve_publish_discovery(
+                self._booking, self._catalog, context, intent
+            )
         if isinstance(intent, ShowCurrentAtRiskReservationsIntent):
             queue = require_one(
                 await self._queues.list_queues(organization_id=context.organization_id),

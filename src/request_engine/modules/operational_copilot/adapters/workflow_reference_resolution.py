@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.resolution_common import require_one
 from request_engine.modules.operational_copilot.contracts import (
@@ -18,13 +19,14 @@ from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 
 
 async def resolve_extend_today(
+    booking: CopilotBookingReader,
     catalog: CopilotCatalogReader,
     recovery: CopilotRecoveryIncidentReader,
     context: CopilotContext,
     intent: ExtendNamedResourceTodayIntent,
 ) -> ExtendRecoveryDayIntent:
     resource = require_one(
-        await catalog.find_resources(
+        await booking.find_resources(
             organization_id=context.organization_id,
             reference=intent.resource_reference,
         ),
@@ -37,21 +39,34 @@ async def resolve_extend_today(
         ),
         "open recovery incident",
     )
-    if incident.location_id != resource.location_id or resource.scheduled_end_at is None:
+    clock = await catalog.read_location_clock(
+        organization_id=context.organization_id,
+        location_id=resource.location_id,
+    )
+    if clock is None or incident.location_id != resource.location_id:
         raise CopilotResolutionFailed("resource operational context is not uniquely executable")
-    zone = ZoneInfo(resource.timezone)
+    zone = ZoneInfo(clock.timezone)
+    local_observed = clock.observed_at.astimezone(zone)
+    scheduled_local_end = await booking.read_assignment_day_end(
+        organization_id=context.organization_id,
+        assignment_id=resource.assignment_id,
+        weekday=local_observed.weekday(),
+    )
+    if scheduled_local_end is None:
+        raise CopilotResolutionFailed("resource scheduled day end is unavailable")
+    scheduled_end = datetime.combine(local_observed.date(), scheduled_local_end, tzinfo=zone)
     target_end = datetime.combine(
-        resource.observed_at.astimezone(zone).date(),
+        local_observed.date(),
         intent.target_local_time,
         tzinfo=zone,
     )
     return ExtendRecoveryDayIntent(
         incident_id=incident.id,
         assignment_id=resource.assignment_id,
-        start_at=resource.scheduled_end_at,
+        start_at=scheduled_end,
         end_at=target_end,
         expected_source_revision=incident.source_revision,
-        expected_location_operational_revision=resource.location_operational_revision,
+        expected_location_operational_revision=clock.operational_revision,
         expected_resource_availability_revision=resource.resource_availability_revision,
         reason=f"operational copilot: extend {intent.resource_reference} today",
     )

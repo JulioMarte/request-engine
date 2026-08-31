@@ -8,13 +8,11 @@ from sqlalchemy.engine import RowMapping
 from request_engine.modules.catalog.adapters.db.copilot_queries import (
     LOCATION_QUERY,
     OFFERING_QUERY,
-    RESOURCE_QUERY,
 )
 from request_engine.modules.catalog.contracts.copilot import (
     CopilotCatalogReader,
     CopilotLocationClock,
     CopilotOfferingMatch,
-    CopilotResourceMatch,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
@@ -22,21 +20,6 @@ from request_engine.platform.db.session import SessionFactory, tenant_transactio
 class PostgresCopilotCatalogReader(CopilotCatalogReader):
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
-
-    async def find_resources(
-        self,
-        *,
-        organization_id: UUID,
-        reference: str,
-    ) -> tuple[CopilotResourceMatch, ...]:
-        async with tenant_transaction(self._session_factory, organization_id) as session:
-            rows = (
-                await session.execute(
-                    text(RESOURCE_QUERY),
-                    {"organization_id": organization_id, "reference": reference.strip()},
-                )
-            ).mappings()
-            return tuple(_resource_match(row) for row in rows)
 
     async def find_offerings(
         self,
@@ -77,19 +60,6 @@ class PostgresCopilotCatalogReader(CopilotCatalogReader):
                 .first()
             )
             return _location_clock(row) if row is not None else None
-
-
-def _resource_match(row: RowMapping) -> CopilotResourceMatch:
-    return CopilotResourceMatch(
-        resource_id=cast(UUID, row["resource_id"]),
-        location_id=cast(UUID, row["location_id"]),
-        assignment_id=cast(UUID, row["assignment_id"]),
-        timezone=cast(str, row["timezone"]),
-        observed_at=_datetime(row, "observed_at"),
-        scheduled_end_at=_optional_datetime(row, "scheduled_end_at"),
-        location_operational_revision=cast(int, row["location_operational_revision"]),
-        resource_availability_revision=cast(int, row["resource_availability_revision"]),
-    )
 
 
 def _location_clock(row: RowMapping) -> CopilotLocationClock:

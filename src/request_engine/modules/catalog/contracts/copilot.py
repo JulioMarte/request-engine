@@ -5,18 +5,6 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
-class CopilotResourceMatch:
-    resource_id: UUID
-    location_id: UUID
-    assignment_id: UUID
-    timezone: str
-    observed_at: datetime
-    scheduled_end_at: datetime | None
-    location_operational_revision: int
-    resource_availability_revision: int
-
-
-@dataclass(frozen=True, slots=True)
 class CopilotOfferingMatch:
     offering_id: UUID
     display_name: str
@@ -32,13 +20,6 @@ class CopilotLocationClock:
 
 
 class CopilotCatalogReader(Protocol):
-    async def find_resources(
-        self,
-        *,
-        organization_id: UUID,
-        reference: str,
-    ) -> tuple[CopilotResourceMatch, ...]: ...
-
     async def find_offerings(
         self,
         *,
