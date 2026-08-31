@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import cast
 
 import pytest
@@ -35,7 +34,9 @@ pytestmark = [
 
 
 def _timezone_with_local_noon(conn: PgConnection) -> str:
-    row = conn.execute("SELECT EXTRACT(HOUR FROM clock_timestamp() AT TIME ZONE 'UTC')::int").fetchone()
+    row = conn.execute(
+        "SELECT EXTRACT(HOUR FROM clock_timestamp() AT TIME ZONE 'UTC')::int"
+    ).fetchone()
     assert row is not None
     offset = 12 - cast(int, row[0])
     if offset > 12:
@@ -95,4 +96,7 @@ async def test_f6_executes_roadmap_named_resource_extend_today(
     assert assignment_recovery_exception_count(
         e2e_admin_conn, sandbox, supply.assignment_id
     ) == assignment_before + 1
-    assert recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id) == recurring_before
+    assert (
+        recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id)
+        == recurring_before
+    )
