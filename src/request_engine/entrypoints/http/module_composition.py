@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 import request_engine.modules.operational_copilot.api as copilot_api
 import request_engine.modules.queue.api as queue_api
+import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
@@ -38,10 +39,6 @@ from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
 )
 from request_engine.modules.requests.api import install_http as install_requests_http
-from request_engine.modules.tenancy.api import (
-    build_operational_authority_party_reader,
-    build_party_authority_reader,
-)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
@@ -54,7 +51,7 @@ def install_business_modules(
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
 ) -> None:
-    party_authority_reader = build_party_authority_reader(session_factory)
+    party_authority_reader = tenancy_api.build_party_authority_reader(session_factory)
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_booking_http(
@@ -109,7 +106,7 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         at_risk_reader=copilot_api.build_live_capacity_at_risk_reader(recovery_capacity),
         proposal_reader=recovery.service,
-        authority_reader=build_operational_authority_party_reader(session_factory),
+        authority_reader=tenancy_api.build_operational_authority_party_reader(session_factory),
         recovery_executor=recovery.service,
         intake_executor=recovery.workflow,
         extend_day_executor=recovery.workflow,
