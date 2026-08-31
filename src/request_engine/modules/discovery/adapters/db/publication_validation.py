@@ -3,12 +3,11 @@ from datetime import UTC, datetime
 from request_engine.modules.discovery.application.commands.publication import (
     PublishDiscoverySupplyCommand,
 )
-from request_engine.modules.discovery.contracts.commands import DiscoveryEffectiveStartOrigin
 
 
 def validated_publication_intent(
     command: PublishDiscoverySupplyCommand,
-) -> tuple[datetime, datetime | None, str, DiscoveryEffectiveStartOrigin]:
+) -> tuple[datetime, datetime | None, str, bool]:
     start = command.effective_start
     end = command.effective_end
     if start.utcoffset() is None or (end is not None and end.utcoffset() is None):
@@ -22,7 +21,4 @@ def validated_publication_intent(
         raise ValueError("provider_visibility must be hidden or public")
     if visibility == "public" and command.resource_id is None:
         raise ValueError("public provider visibility requires resource_id")
-    origin = command.effective_start_origin
-    if origin not in {"explicit", "resolved_now"}:
-        raise ValueError("effective_start_origin must be explicit or resolved_now")
-    return start, end, visibility, origin
+    return start, end, visibility, command.effective_start_is_resolved_now
