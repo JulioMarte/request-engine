@@ -49,7 +49,8 @@ async def test_f6_structured_proactive_intake_without_recovery(
         assert stale.status_code == 409, stale.text
 
     incident = e2e_admin_conn.execute(
-        "SELECT count(*) FROM request_engine.recovery_incidents WHERE organization_id=%s",
+        "SELECT count(*) FROM request_engine.operational_recovery_incidents "
+        "WHERE organization_id=%s",
         (sandbox.organization_id,),
     ).fetchone()
     assert incident == (0,)
