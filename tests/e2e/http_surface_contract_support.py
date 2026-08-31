@@ -10,6 +10,21 @@ _OPERATION_ID_OVERRIDES = {
     "operational_recovery.reschedule_action": "operational_recovery_reschedule",
     "operational_recovery.replace_resource_action": "operational_recovery_replace_resource",
     "operational_recovery.communicate_impact": "operational_recovery_communicate_impact",
+    "operational_copilot.tools.resources": "copilot_lookup_resources",
+    "operational_copilot.tools.offerings": "copilot_lookup_offerings",
+    "operational_copilot.tools.queues": "copilot_list_queues",
+    "operational_copilot.tools.location_clock": "copilot_location_clock",
+    "operational_copilot.tools.assignment_day_end": "copilot_assignment_day_end",
+    "operational_copilot.tools.queue_intake": "copilot_queue_intake_state",
+    "operational_copilot.tools.recovery_incident": "copilot_open_recovery_incident",
+    "operational_copilot.tools.at_risk": "copilot_at_risk_reservations",
+    "operational_copilot.tools.discovery_publication": "copilot_discovery_publication",
+    "operational_copilot.tools.recovery_proposal": "copilot_propose_recovery",
+    "operational_copilot.tools.recovery_execution": "copilot_execute_recovery",
+    "operational_copilot.tools.recovery_intake": "copilot_set_recovery_intake",
+    "operational_copilot.tools.day_extension": "copilot_extend_recovery_day",
+    "operational_copilot.tools.discovery_publish": "copilot_publish_discovery_supply",
+    "operational_copilot.tools.discovery_revoke": "copilot_revoke_discovery_publication",
 }
 
 
