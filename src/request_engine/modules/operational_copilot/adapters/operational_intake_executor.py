@@ -1,9 +1,11 @@
 from typing import cast
 
 from request_engine.modules.operational_copilot.contracts import CopilotExecutionReceipt
+from request_engine.modules.operational_copilot.errors import CopilotConflict
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.queue.contracts.intake import (
     QueueIntakeControlPort,
+    QueueIntakeRevisionConflict,
     SetQueueIntakeControlRequest,
 )
 
@@ -17,7 +19,10 @@ class OperationalIntakeCopilotExecutor:
 
     async def execute(self, operation: CopilotOperation) -> CopilotExecutionReceipt:
         request = cast(SetQueueIntakeControlRequest, operation)
-        state = await self._owner.set_intake_control(request)
+        try:
+            state = await self._owner.set_intake_control(request)
+        except QueueIntakeRevisionConflict as error:
+            raise CopilotConflict(str(error)) from error
         return CopilotExecutionReceipt(
             owner="queue",
             action="set_intake_control",
