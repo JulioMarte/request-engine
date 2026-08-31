@@ -8,7 +8,6 @@ from request_engine.modules.operational_copilot.contracts import (
     RevokeDiscoveryPublicationIntent,
     SetOperationalIntakeIntent,
     SetRecoveryIntakeIntent,
-    ShowAtRiskReservationsIntent,
     ValidatedCopilotIntent,
 )
 from request_engine.modules.operational_copilot.lowering import (
@@ -47,6 +46,4 @@ def lower_copilot_intent(
         return discovery.lower_publish(intent, context)
     if isinstance(intent, RevokeDiscoveryPublicationIntent):
         return discovery.lower_revoke(intent, context)
-    if isinstance(intent, ShowAtRiskReservationsIntent):
-        return inspection.lower_show_at_risk(intent, context)
-    raise TypeError(f"unsupported validated copilot intent: {type(intent).__name__}")
+    return inspection.lower_show_at_risk(intent, context)
