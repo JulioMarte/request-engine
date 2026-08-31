@@ -38,6 +38,7 @@ class PostgresCopilotBookingReader(CopilotBookingReader):
                     location_id=cast(UUID, row["location_id"]),
                     assignment_id=cast(UUID, row["assignment_id"]),
                     resource_availability_revision=cast(int, row["resource_availability_revision"]),
+                    display_name=cast(str, row["display_name"]),
                 )
                 for row in rows
             )
