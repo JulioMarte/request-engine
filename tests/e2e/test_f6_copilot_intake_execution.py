@@ -112,7 +112,8 @@ async def test_f6_execute_rest_of_day_without_recovery_incident(
         assert effective_until > observed_at
 
         incident = e2e_admin_conn.execute(
-            "SELECT count(*) FROM request_engine.recovery_incidents WHERE organization_id=%s",
+            "SELECT count(*) FROM request_engine.operational_recovery_incidents "
+            "WHERE organization_id=%s",
             (sandbox.organization_id,),
         ).fetchone()
         assert incident == (0,)
