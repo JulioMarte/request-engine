@@ -10,12 +10,12 @@ from .discovery_seed_support import create_classification
 from .f4_capacity_support import seed_live_execution_assignment
 from .f6_copilot_support import copilot_actor, execute_tool, read_tool
 from .operational_support import PgConnection
-from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.postgres, pytest.mark.contract]
 
 
-async def test_f6_structured_discovery_publish_revoke_and_replay(
+async def test_f6_structured_discovery_replay_and_conflicting_replay(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -49,6 +49,12 @@ async def test_f6_structured_discovery_publish_revoke_and_replay(
         )
         assert published["action"] == "publish_discovery_supply"
         assert publish_replay["result_id"] == published["result_id"]
+        publish_conflict = await client.post(
+            "/v1/operational-copilot/tools/discovery/publications",
+            json={**publish_body, "provider_visibility": "hidden"},
+            headers=auth(sandbox, idempotency_key=publish_key),
+        )
+        assert publish_conflict.status_code == 409, publish_conflict.text
 
         publication = await read_tool(
             client,
@@ -69,6 +75,12 @@ async def test_f6_structured_discovery_publish_revoke_and_replay(
         )
         assert revoked["action"] == "revoke_discovery_publication"
         assert replay["result_id"] == revoked["result_id"]
+        revoke_conflict = await client.post(
+            "/v1/operational-copilot/tools/discovery/revocations",
+            json={**revoke_body, "expected_revision": publication["revision"] + 1},
+            headers=auth(sandbox, idempotency_key=revoke_key),
+        )
+        assert revoke_conflict.status_code == 409, revoke_conflict.text
         final_state = await read_tool(
             client,
             sandbox,
