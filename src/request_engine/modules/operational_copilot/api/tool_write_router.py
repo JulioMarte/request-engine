@@ -80,20 +80,21 @@ def create_tool_write_router(
         return await _execute(copilot, current, key, body.to_intent())
 
     routes = (
-        ("/recovery/proposals", proposal),
-        ("/recovery/executions", recovery_execution),
-        ("/recovery/intake", intake),
-        ("/recovery/day-extensions", day_extension),
-        ("/discovery/publications", publication),
-        ("/discovery/revocations", revocation),
+        ("/recovery/proposals", proposal, "copilot_propose_recovery"),
+        ("/recovery/executions", recovery_execution, "copilot_execute_recovery"),
+        ("/recovery/intake", intake, "copilot_set_recovery_intake"),
+        ("/recovery/day-extensions", day_extension, "copilot_extend_recovery_day"),
+        ("/discovery/publications", publication, "copilot_publish_discovery_supply"),
+        ("/discovery/revocations", revocation, "copilot_revoke_discovery_publication"),
     )
-    for path, endpoint in routes:
+    for path, endpoint, operation_id in routes:
         add_capability_route(
             router,
             path,
             endpoint,
             capability="operational_copilot.execute",
             methods=["POST"],
+            operation_id=operation_id,
             response_model=CopilotExecutionView,
         )
     return router
@@ -116,4 +117,4 @@ async def _execute(
     except CopilotPolicyRejected as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(error)) from error
     except CopilotSemanticError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
