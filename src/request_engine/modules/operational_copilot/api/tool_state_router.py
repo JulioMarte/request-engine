@@ -18,6 +18,8 @@ from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
+READ_CAPABILITY = "operational_copilot.read"
+
 
 def create_tool_state_router(
     *,
@@ -35,7 +37,7 @@ def create_tool_state_router(
         service_queue_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> QueueIntakeView:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         state = await intake_reader.get_intake_control(current.organization_id, service_queue_id)
         return QueueIntakeView.from_state(state)
 
@@ -43,7 +45,7 @@ def create_tool_state_router(
         service_queue_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> RecoveryIncidentView:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         value = await incident_reader.get_open_incident_for_queue(
             organization_id=current.organization_id,
             service_queue_id=service_queue_id,
@@ -56,7 +58,7 @@ def create_tool_state_router(
         service_queue_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> AtRiskAssessmentView:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         assessment = await at_risk_reader.read(
             AtRiskReservationsQuery(current.organization_id, service_queue_id)
         )
@@ -66,7 +68,7 @@ def create_tool_state_router(
         router,
         "/queues/{service_queue_id}/intake",
         intake,
-        capability="operational_copilot.interpret",
+        capability=READ_CAPABILITY,
         methods=["GET"],
         operation_id="copilot_queue_intake_state",
         response_model=QueueIntakeView,
@@ -75,7 +77,7 @@ def create_tool_state_router(
         router,
         "/queues/{service_queue_id}/recovery-incident",
         incident,
-        capability="operational_copilot.interpret",
+        capability=READ_CAPABILITY,
         methods=["GET"],
         operation_id="copilot_open_recovery_incident",
         response_model=RecoveryIncidentView,
@@ -84,7 +86,7 @@ def create_tool_state_router(
         router,
         "/queues/{service_queue_id}/at-risk-reservations",
         at_risk,
-        capability="operational_copilot.interpret",
+        capability=READ_CAPABILITY,
         methods=["GET"],
         operation_id="copilot_at_risk_reservations",
         response_model=AtRiskAssessmentView,
