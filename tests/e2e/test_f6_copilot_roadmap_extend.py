@@ -5,22 +5,15 @@ import pytest
 from request_engine.platform.db.session import SessionFactory
 
 from .f4_capacity_support import seed_today_schedule
-from .f4_operational_day_support import configure_projection
 from .f5_booking_fixture import five_minute_sandbox
-from .f5_contextual_support import contextualize_recovery_supply, restrict_contextual_capacity
+from .f5_contextual_support import contextualize_recovery_supply
 from .f5_extend_day_fixture import (
-    close_location_after_slots,
     grant_extend_day_authority,
     recurring_schedule_snapshot,
 )
-from .f5_extend_day_support import (
-    assignment_recovery_exception_count,
-    location_recovery_exception_count,
-)
-from .f5_recovery_assertions import create_proposal
-from .f5_recovery_support import book_commitments
-from .f5_replace_resource_support import seed_incident_for_proposal
+from .f5_extend_day_support import assignment_recovery_exception_count
 from .f6_copilot_support import copilot_actor, execute
+from .f6_roadmap_support import seed_location_operational_hours
 from .operational_support import PgConnection
 from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
 
@@ -49,7 +42,7 @@ def _timezone_with_local_noon(conn: PgConnection) -> str:
     return f"Etc/GMT{sign}{abs(offset)}"
 
 
-async def test_f6_executes_roadmap_named_resource_extend_today(
+async def test_f6_executes_roadmap_named_resource_extend_today_without_recovery(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -66,33 +59,28 @@ async def test_f6_executes_roadmap_named_resource_extend_today(
         sandbox,
         business_timezone=_timezone_with_local_noon(e2e_admin_conn),
     )
+    seed_location_operational_hours(e2e_admin_conn, sandbox)
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
     actors = {sandbox.token: copilot_actor(sandbox)}
+    recurring_before = recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id)
+    assignment_before = assignment_recovery_exception_count(
+        e2e_admin_conn, sandbox, supply.assignment_id
+    )
 
     async with client_with_actors(e2e_session_factory, actors) as client:
-        await configure_projection(client, sandbox)
-        _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
-        restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=6)
-        close_location_after_slots(e2e_admin_conn, sandbox, slots, count=6)
-        proposal = await create_proposal(client, sandbox)
-        seed_incident_for_proposal(e2e_admin_conn, sandbox, proposal)
-        recurring_before = recurring_schedule_snapshot(
-            e2e_admin_conn, sandbox, supply.assignment_id
-        )
-        location_before = location_recovery_exception_count(e2e_admin_conn, sandbox)
-        assignment_before = assignment_recovery_exception_count(
-            e2e_admin_conn, sandbox, supply.assignment_id
-        )
-
         key = "f6-roadmap-dr-a-extend"
         executed = await execute(client, sandbox, "Dr. A will work until 7 PM today", key)
         replay = await execute(client, sandbox, "Dr. A will work until 7 PM today", key)
 
-    assert executed["owner"] == "operational_recovery"
-    assert executed["action"] == "extend_day"
-    assert executed["status"] == "succeeded"
+    incident = e2e_admin_conn.execute(
+        "SELECT count(*) FROM request_engine.recovery_incidents WHERE organization_id=%s",
+        (sandbox.organization_id,),
+    ).fetchone()
+    assert incident == (0,)
+    assert executed["owner"] == "booking"
+    assert executed["action"] == "extend_assignment_hours"
+    assert executed["status"] == "applied"
     assert replay["result_id"] == executed["result_id"]
-    assert location_recovery_exception_count(e2e_admin_conn, sandbox) == location_before + 1
     assert (
         assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
         == assignment_before + 1
