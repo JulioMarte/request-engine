@@ -44,6 +44,20 @@ async def test_f6_structured_recovery_replay_and_conflicting_replay(
         )
         assert proposal["action"] == "propose_recovery"
         assert proposal_replay["result_id"] == proposal["result_id"]
+
+        proposal_state = await read_tool(
+            client,
+            sandbox,
+            f"/recovery/proposals/{proposal['result_id']}",
+        )
+        assert proposal_state["id"] == proposal["result_id"]
+        assert proposal_state["source_fingerprint"] == at_risk["source_fingerprint"]
+        assert proposal_state["proposal_fingerprint"]
+        assert proposal_state["source_checkpoint"]["recovery_source_revision"] == (
+            at_risk["recovery_source_revision"]
+        )
+        assert proposal_state["affected"]
+
         proposal_conflict = await client.post(
             "/v1/operational-copilot/tools/recovery/proposals",
             json={**proposal_body, "search_days": 8},
