@@ -29,9 +29,12 @@ from request_engine.modules.discovery.api.publication_runtime import (
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
-from request_engine.modules.operational_copilot import api as copilot_api
+from request_engine.modules.operational_copilot.api import (
+    build_live_capacity_at_risk_reader,
+    install_http as install_copilot_http,
+)
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
-from request_engine.modules.queue import api as queue_api
+from request_engine.modules.queue.api import QueueSlotOfferHttpPorts, install_http as install_queue_http
 from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
@@ -50,7 +53,7 @@ def install_business_modules(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
-    slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
+    slot_offer_ports: QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
 ) -> None:
     party_authority_reader = build_party_authority_reader(session_factory)
@@ -63,7 +66,7 @@ def install_business_modules(
         party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
     )
-    queue_api.install_http(
+    install_queue_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
@@ -103,10 +106,10 @@ def install_business_modules(
         ),
         assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
     )
-    copilot_api.install_http(
+    install_copilot_http(
         app,
         actor_resolver=actor_resolver,
-        at_risk_reader=copilot_api.build_live_capacity_at_risk_reader(recovery_capacity),
+        at_risk_reader=build_live_capacity_at_risk_reader(recovery_capacity),
         proposal_reader=recovery.service,
         authority_reader=build_operational_authority_party_reader(session_factory),
         recovery_executor=recovery.service,
