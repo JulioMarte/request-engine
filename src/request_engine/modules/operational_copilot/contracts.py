@@ -1,10 +1,6 @@
-import typing
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
-
-
-DiscoveryEffectiveStartOrigin = typing.Literal["explicit", "resolved_now"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +57,7 @@ class PublishDiscoverySupplyIntent:
     effective_end: datetime | None = None
     resource_id: UUID | None = None
     provider_visibility: str = "hidden"
-    effective_start_origin: DiscoveryEffectiveStartOrigin = "explicit"
+    effective_start_is_resolved_now: bool = False
 
 
 @dataclass(frozen=True, slots=True)
