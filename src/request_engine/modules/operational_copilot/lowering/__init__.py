@@ -23,18 +23,6 @@ from request_engine.modules.operational_copilot.lowering.workflow import (
     lower_set_intake,
 )
 
-_LOWERERS = {
-    CreateRecoveryProposalIntent: recovery.lower_create_proposal,
-    ExecuteRecoveryIntent: recovery.lower_execute,
-    SetRecoveryIntakeIntent: lower_set_intake,
-    ExtendRecoveryDayIntent: lower_extend_day,
-    SetOperationalIntakeIntent: proactive.lower_set_operational_intake,
-    ExtendOperationalDayIntent: proactive.lower_extend_operational_day,
-    PublishDiscoverySupplyIntent: discovery.lower_publish,
-    RevokeDiscoveryPublicationIntent: discovery.lower_revoke,
-    ShowAtRiskReservationsIntent: inspection.lower_show_at_risk,
-}
-
 __all__ = ["CopilotOperation", "lower_copilot_intent"]
 
 
@@ -43,7 +31,22 @@ def lower_copilot_intent(
     validated: ValidatedCopilotIntent,
 ) -> CopilotOperation:
     intent = validated.value
-    lowerer = _LOWERERS.get(type(intent))
-    if lowerer is None:
-        raise TypeError(f"unsupported validated copilot intent: {type(intent).__name__}")
-    return lowerer(intent, context)
+    if isinstance(intent, CreateRecoveryProposalIntent):
+        return recovery.lower_create_proposal(intent, context)
+    if isinstance(intent, ExecuteRecoveryIntent):
+        return recovery.lower_execute(intent, context)
+    if isinstance(intent, SetRecoveryIntakeIntent):
+        return lower_set_intake(intent, context)
+    if isinstance(intent, ExtendRecoveryDayIntent):
+        return lower_extend_day(intent, context)
+    if isinstance(intent, SetOperationalIntakeIntent):
+        return proactive.lower_set_operational_intake(intent, context)
+    if isinstance(intent, ExtendOperationalDayIntent):
+        return proactive.lower_extend_operational_day(intent, context)
+    if isinstance(intent, PublishDiscoverySupplyIntent):
+        return discovery.lower_publish(intent, context)
+    if isinstance(intent, RevokeDiscoveryPublicationIntent):
+        return discovery.lower_revoke(intent, context)
+    if isinstance(intent, ShowAtRiskReservationsIntent):
+        return inspection.lower_show_at_risk(intent, context)
+    raise TypeError(f"unsupported validated copilot intent: {type(intent).__name__}")
