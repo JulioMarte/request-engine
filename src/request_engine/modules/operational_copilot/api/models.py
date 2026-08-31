@@ -4,6 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from request_engine.modules.booking.contracts.operational_schedule import (
+    OperationalAssignmentExtensionRequest,
+)
 from request_engine.modules.discovery.contracts.commands import (
     PublishDiscoverySupplyCommand,
     RevokeDiscoveryPublicationCommand,
@@ -21,6 +24,7 @@ from request_engine.modules.operational_recovery.contracts.workflow_commands imp
     ExtendRecoveryDayCommand,
     SetRecoveryIntakeCommand,
 )
+from request_engine.modules.queue.contracts.intake import SetQueueIntakeControlRequest
 
 
 class CopilotInterpretBody(BaseModel):
@@ -66,6 +70,8 @@ _ACTIONS: dict[type, str] = {
     ExecuteRecoveryCommand: "execute_recovery",
     SetRecoveryIntakeCommand: "set_recovery_intake",
     ExtendRecoveryDayCommand: "extend_recovery_day",
+    SetQueueIntakeControlRequest: "set_operational_intake",
+    OperationalAssignmentExtensionRequest: "extend_operational_day",
     PublishDiscoverySupplyCommand: "publish_discovery_supply",
     RevokeDiscoveryPublicationCommand: "revoke_discovery_publication",
     AtRiskReservationsQuery: "show_at_risk_reservations",
