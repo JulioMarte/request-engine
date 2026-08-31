@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
+from request_engine.modules.booking.contracts.operational_schedule import (
+    OperationalAssignmentExtensionReplay,
+    OperationalAssignmentSchedulePort,
+)
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.resolution_common import require_one
 from request_engine.modules.operational_copilot.contracts import (
@@ -14,10 +18,15 @@ from request_engine.modules.operational_copilot.references import ExtendNamedRes
 from request_engine.modules.queue.contracts.copilot import CopilotQueueReader
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 
+_INCOMPATIBLE_PROACTIVE_REPLAY = (
+    "idempotency key is already bound to an incompatible proactive operation"
+)
+
 
 async def resolve_extend_today(
     booking: CopilotBookingReader,
     catalog: CopilotCatalogReader,
+    schedule: OperationalAssignmentSchedulePort | None,
     context: CopilotContext,
     intent: ExtendNamedResourceTodayIntent,
 ) -> ExtendOperationalDayIntent:
@@ -36,6 +45,12 @@ async def resolve_extend_today(
         raise CopilotResolutionFailed("resource operational context is not uniquely executable")
     zone = ZoneInfo(clock.timezone)
     local_observed = clock.observed_at.astimezone(zone)
+    if schedule is not None:
+        replay = await schedule.get_extension_by_idempotency(
+            context.organization_id, context.principal_id, context.idempotency_key
+        )
+        if replay is not None:
+            return _replayed_extension(replay, zone, local_observed.date(), intent)
     scheduled_local_end = await booking.read_assignment_day_end(
         organization_id=context.organization_id,
         assignment_id=resource.assignment_id,
@@ -61,6 +76,29 @@ async def resolve_extend_today(
         end_at=target_end,
         expected_resource_availability_revision=resource.resource_availability_revision,
         reason=f"operational copilot: extend {intent.resource_reference} today",
+    )
+
+
+def _replayed_extension(
+    replay: OperationalAssignmentExtensionReplay,
+    zone: ZoneInfo,
+    local_today: date,
+    intent: ExtendNamedResourceTodayIntent,
+) -> ExtendOperationalDayIntent:
+    expected_reason = f"operational copilot: extend {intent.resource_reference} today"
+    local_end = replay.end_at.astimezone(zone)
+    if (
+        replay.reason != expected_reason
+        or local_end.date() != local_today
+        or local_end.timetz().replace(tzinfo=None) != intent.target_local_time
+    ):
+        raise CopilotResolutionFailed(_INCOMPATIBLE_PROACTIVE_REPLAY)
+    return ExtendOperationalDayIntent(
+        assignment_id=replay.assignment_id,
+        start_at=replay.start_at,
+        end_at=replay.end_at,
+        expected_resource_availability_revision=replay.expected_resource_availability_revision,
+        reason=replay.reason,
     )
 
 

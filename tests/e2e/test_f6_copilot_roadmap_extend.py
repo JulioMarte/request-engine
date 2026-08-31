@@ -16,6 +16,7 @@ from .f6_copilot_support import copilot_actor, execute
 from .f6_roadmap_support import seed_location_operational_hours
 from .operational_support import PgConnection
 from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
+from .world_clock import world_weekday
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -59,13 +60,17 @@ async def test_f6_executes_roadmap_named_resource_extend_today_without_recovery(
         sandbox,
         business_timezone=_timezone_with_local_noon(e2e_admin_conn),
     )
-    e2e_admin_conn.execute(
-        "UPDATE request_engine.availability_schedules SET local_end='17:00' "
-        "WHERE organization_id=%s AND resource_id=%s",
-        (sandbox.organization_id, sandbox.resource_id),
-    )
     seed_location_operational_hours(e2e_admin_conn, sandbox)
     supply = contextualize_recovery_supply(e2e_admin_conn, sandbox)
+    e2e_admin_conn.execute(
+        "UPDATE request_engine.resource_location_availability SET local_end='17:00' "
+        "WHERE organization_id=%s AND resource_location_assignment_id=%s AND weekday=%s",
+        (
+            sandbox.organization_id,
+            supply.assignment_id,
+            world_weekday(e2e_admin_conn, sandbox),
+        ),
+    )
     actors = {sandbox.token: copilot_actor(sandbox)}
     recurring_before = recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id)
     assignment_before = assignment_recovery_exception_count(
