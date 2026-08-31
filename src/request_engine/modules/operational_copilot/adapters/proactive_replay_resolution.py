@@ -52,19 +52,18 @@ async def resolve_proactive_replay(
     target = intent.target_local_time
     end = replay.end_at
     expected_reason = f"operational copilot: extend {intent.resource_reference} today"
-    if (
-        replay.reason != expected_reason
-        or (end.hour, end.minute, end.second, end.microsecond)
-        != (target.hour, target.minute, target.second, target.microsecond)
+    if replay.reason != expected_reason or (end.hour, end.minute, end.second, end.microsecond) != (
+        target.hour,
+        target.minute,
+        target.second,
+        target.microsecond,
     ):
         raise _incompatible_replay()
     return ExtendOperationalDayIntent(
         assignment_id=replay.assignment_id,
         start_at=replay.start_at,
         end_at=replay.end_at,
-        expected_resource_availability_revision=(
-            replay.expected_resource_availability_revision
-        ),
+        expected_resource_availability_revision=(replay.expected_resource_availability_revision),
         reason=replay.reason,
     )
 
