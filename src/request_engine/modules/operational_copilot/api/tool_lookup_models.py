@@ -41,14 +41,22 @@ class OfferingCandidateView(BaseModel):
 class QueueCandidateView(BaseModel):
     service_queue_id: UUID
     location_id: UUID
+    offering_id: UUID | None
+    display_name: str | None
 
     @classmethod
     def from_match(cls, value: CopilotQueueMatch) -> "QueueCandidateView":
-        return cls(service_queue_id=value.service_queue_id, location_id=value.location_id)
+        return cls(
+            service_queue_id=value.service_queue_id,
+            location_id=value.location_id,
+            offering_id=value.offering_id,
+            display_name=value.display_name,
+        )
 
 
 class LocationClockView(BaseModel):
     location_id: UUID
+    display_name: str | None
     timezone: str
     observed_at: datetime
     operational_day_end_at: datetime | None
@@ -58,6 +66,7 @@ class LocationClockView(BaseModel):
     def from_clock(cls, value: CopilotLocationClock) -> "LocationClockView":
         return cls(
             location_id=value.location_id,
+            display_name=value.display_name,
             timezone=value.timezone,
             observed_at=value.observed_at,
             operational_day_end_at=value.operational_day_end_at,
