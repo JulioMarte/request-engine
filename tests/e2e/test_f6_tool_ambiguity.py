@@ -60,7 +60,7 @@ async def test_f6_lists_human_queue_candidates_and_text_fails_closed_on_ambiguit
             headers=auth(sandbox, idempotency_key=f"f6-ambiguous-{uuid4().hex}"),
         )
         assert response.status_code == 422, response.text
-        assert "ambiguous queue" in _error_message(response).lower()
+        assert "multiple tenant-scoped queue values matched" in _error_message(response).lower()
 
 
 async def test_f6_recovery_text_refuses_without_open_incident(
