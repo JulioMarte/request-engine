@@ -17,6 +17,7 @@ class CopilotLocationClock:
     observed_at: datetime
     operational_day_end_at: datetime | None
     operational_revision: int
+    display_name: str | None = None
 
 
 class CopilotCatalogReader(Protocol):
