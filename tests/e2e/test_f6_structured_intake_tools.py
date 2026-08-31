@@ -12,12 +12,12 @@ from .f5_recovery_support import book_commitments, restrict_source_to_first_six
 from .f5_replace_resource_support import seed_incident_for_proposal
 from .f6_copilot_support import copilot_actor, execute_tool, read_tool
 from .operational_support import PgConnection
-from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.postgres, pytest.mark.contract]
 
 
-async def test_f6_structured_intake_stop_reopen_and_replay(
+async def test_f6_structured_intake_stop_reopen_replay_and_conflict(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -52,6 +52,12 @@ async def test_f6_structured_intake_stop_reopen_and_replay(
         stopped = await execute_tool(client, sandbox, "/recovery/intake", stop_body, stop_key)
         stop_replay = await execute_tool(client, sandbox, "/recovery/intake", stop_body, stop_key)
         assert stop_replay["result_id"] == stopped["result_id"]
+        conflicting_stop = await client.post(
+            "/v1/operational-copilot/tools/recovery/intake",
+            json={**stop_body, "reason": "different semantic payload"},
+            headers=auth(sandbox, idempotency_key=stop_key),
+        )
+        assert conflicting_stop.status_code == 409, conflicting_stop.text
 
         incident = await read_tool(
             client,
@@ -72,5 +78,11 @@ async def test_f6_structured_intake_stop_reopen_and_replay(
         replay = await execute_tool(client, sandbox, "/recovery/intake", reopen_body, reopen_key)
         assert reopened["action"] == "reopen_intake"
         assert replay["result_id"] == reopened["result_id"]
+        conflicting_reopen = await client.post(
+            "/v1/operational-copilot/tools/recovery/intake",
+            json={**reopen_body, "reason": "different reopen payload"},
+            headers=auth(sandbox, idempotency_key=reopen_key),
+        )
+        assert conflicting_reopen.status_code == 409, conflicting_reopen.text
         final_state = await read_tool(client, sandbox, f"/queues/{sandbox.queue_id}/intake")
         assert final_state["accepting"] is True
