@@ -9,9 +9,19 @@ async def booking_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, booking_errors.BookingError):
         raise exc
     status_code, body = _booking_error(exc)
-    return JSONResponse(
-        status_code=status_code,
-        content=ErrorEnvelope(error=body).model_dump(mode="json"),
+    content = ErrorEnvelope(error=body).model_dump(mode="json")
+    return JSONResponse(status_code=status_code, content=content)
+
+
+def _status_conflict(
+    exc: booking_errors.ReservationStateConflict,
+    code: str,
+) -> ErrorBody:
+    return ErrorBody(
+        code=code,
+        message=str(exc),
+        resolution=ErrorResolution.REFRESH_AND_RETRY,
+        details={"reservation_id": str(exc.reservation_id), "status": exc.status},
     )
 
 
@@ -89,26 +99,11 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
             details={},
         )
     if isinstance(exc, booking_errors.ReservationNotConfirmed):
-        return status.HTTP_409_CONFLICT, ErrorBody(
-            code="reservation_not_confirmed",
-            message=str(exc),
-            resolution=ErrorResolution.REFRESH_AND_RETRY,
-            details={"reservation_id": str(exc.reservation_id), "status": exc.status},
-        )
+        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_confirmed")
     if isinstance(exc, booking_errors.ReservationNotCancellable):
-        return status.HTTP_409_CONFLICT, ErrorBody(
-            code="reservation_not_cancellable",
-            message=str(exc),
-            resolution=ErrorResolution.REFRESH_AND_RETRY,
-            details={"reservation_id": str(exc.reservation_id), "status": exc.status},
-        )
+        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_cancellable")
     if isinstance(exc, booking_errors.ReservationNotReschedulable):
-        return status.HTTP_409_CONFLICT, ErrorBody(
-            code="reservation_not_reschedulable",
-            message=str(exc),
-            resolution=ErrorResolution.REFRESH_AND_RETRY,
-            details={"reservation_id": str(exc.reservation_id), "status": exc.status},
-        )
+        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_reschedulable")
     if isinstance(exc, booking_errors.ArrivalEstimateInvalid):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="arrival_estimate_invalid",

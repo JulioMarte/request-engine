@@ -70,8 +70,7 @@ class OutboxPipelineProcessor:
         self._fenced_internal_handlers = dict(fenced_internal_handlers or {})
         overlap = self._internal_handlers.keys() & self._fenced_internal_handlers.keys()
         if overlap:
-            names = ", ".join(sorted(overlap))
-            raise ValueError(f"Outbox event types registered twice: {names}")
+            raise ValueError(f"Outbox event types registered twice: {', '.join(sorted(overlap))}")
 
     async def process(self, lease: OutboxLease) -> None:
         event = OutboxEvent(

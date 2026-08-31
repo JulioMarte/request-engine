@@ -140,3 +140,8 @@ class ReservationNotReschedulable(BookingError):
         super().__init__(f"Reservation {reservation_id} cannot be rescheduled from status {status}")
         self.reservation_id = reservation_id
         self.status = status
+
+
+ReservationStateConflict = (
+    ReservationNotConfirmed | ReservationNotCancellable | ReservationNotReschedulable
+)
