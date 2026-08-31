@@ -17,6 +17,11 @@ CROSS JOIN clock
 LEFT JOIN request_engine.location_operational_hours h
   ON h.organization_id=l.organization_id AND h.location_id=l.id
  AND h.weekday=extract(isodow FROM clock.observed_at AT TIME ZONE l.timezone)::int - 1
+ AND h.active
+ AND (h.valid_from IS NULL
+      OR h.valid_from <= (clock.observed_at AT TIME ZONE l.timezone)::date)
+ AND (h.valid_until IS NULL
+      OR h.valid_until >= (clock.observed_at AT TIME ZONE l.timezone)::date)
 WHERE l.organization_id=:organization_id AND l.id=:location_id
 GROUP BY l.id,l.timezone,clock.observed_at,l.operational_revision
 """
