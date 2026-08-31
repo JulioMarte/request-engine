@@ -143,6 +143,40 @@ only existing owner commands. No tables, no new capabilities.
 
 ---
 
+## Round-3 usability audit (post-4554282f) — priority reordering
+
+An adversarial usability walkthrough (setup journey, day-of journey, patient/bot journey,
+public API only) found that the transactional core is operable but the product has no front
+door. Registered as authoritative for slice ordering:
+
+- **R3-1 Party registry (root blocker):** there is no API to create parties (patients or
+  authority parties), contact points, or representations — ~9 of ~16 prerequisite objects
+  are SQL/deployment-only. Booking, queue, waitlist, reminders and every
+  `/v1/operations/*` configuration endpoint demand objects no API can produce. Also no
+  party lookup by name/phone. → **New slice S0b (before S3).**
+- **R3-2 Unified day agenda read:** booked-but-not-checked-in patients are invisible to
+  every read surface; patient names, attendance state and arrival estimates never reach
+  any board. Goal criterion 4 fails structurally. → **Elevated: part of S0b/S5 lane.**
+- **R3-3 Triage grammar (F7e subset) is the load-bearing day-of slice:** urgent
+  selection, squeeze-in and stepped-out have zero truthful representation; every workaround
+  fabricates durable lies. The §7 semantic contract (`operator_select`, `recall_hold`,
+  `skip`) plus the day board is the secretary's core ask. → unchanged TARGET, now
+  explicitly the highest-value unimplemented slice.
+- **R3-4 Bot-as-subject authority mode:** subject authority is
+  representation-or-override only; representations are unprovisionable; a bot using
+  operator override durably misattributes patient facts (`source_kind=operator` for the
+  patient's own ETA). Verified-contact-point binding as a first subject-authority source,
+  plus a delivery-handoff correlation block (subject/purpose/conversation key), is the
+  prerequisite for F7c inbound to be attributable. → folded into S4's contract.
+- **R3-5 Operator day-of controls are incident-gated:** "we are 30 min late", "stop
+  intake", "extend day" require an auto-generated incident no operator surface can create;
+  notify-impact is one recipient per call. → new slice item (S3-adjacent, Queue/Recovery
+  composition).
+
+Reordered build order: **S0b (party registry + lookup + contact-point verification) →
+S3 (escalation) → day board (FU-1, full scope incl. attendance + estimates) → S5 (triage
+subset) → S4 (inbound, with R3-4 identity mode) → S6.**
+
 ## Validation discipline
 
 - Every slice runs the repository canonical lane that owns its proof:
