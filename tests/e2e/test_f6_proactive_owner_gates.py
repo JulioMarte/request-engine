@@ -48,7 +48,7 @@ async def test_f6_proactive_intake_requires_queue_owner_capability(
         "WHERE organization_id=%s AND service_queue_id=%s",
         (sandbox.organization_id, sandbox.queue_id),
     ).fetchone()
-    assert row is None
+    assert row == (True, 1)
 
 
 async def test_f6_proactive_extend_requires_booking_owner_capability(
