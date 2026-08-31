@@ -18,6 +18,8 @@ from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
+READ_CAPABILITY = "operational_copilot.read"
+
 
 def create_tool_lookup_router(
     *,
@@ -35,7 +37,7 @@ def create_tool_lookup_router(
         current: Annotated[ActorContext, Depends(actor)],
         reference: Annotated[str, Query(min_length=1, max_length=250)],
     ) -> list[ResourceCandidateView]:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         matches = await booking_reader.find_resources(
             organization_id=current.organization_id,
             reference=reference,
@@ -46,7 +48,7 @@ def create_tool_lookup_router(
         current: Annotated[ActorContext, Depends(actor)],
         reference: Annotated[str, Query(min_length=1, max_length=250)],
     ) -> list[OfferingCandidateView]:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         matches = await catalog_reader.find_offerings(
             organization_id=current.organization_id,
             reference=reference,
@@ -54,7 +56,7 @@ def create_tool_lookup_router(
         return [OfferingCandidateView.from_match(value) for value in matches]
 
     async def queues(current: Annotated[ActorContext, Depends(actor)]) -> list[QueueCandidateView]:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         matches = await queue_reader.list_queues(organization_id=current.organization_id)
         return [QueueCandidateView.from_match(value) for value in matches]
 
@@ -62,7 +64,7 @@ def create_tool_lookup_router(
         location_id: UUID,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> LocationClockView:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         value = await catalog_reader.read_location_clock(
             organization_id=current.organization_id,
             location_id=location_id,
@@ -76,7 +78,7 @@ def create_tool_lookup_router(
         current: Annotated[ActorContext, Depends(actor)],
         weekday: Annotated[int, Query(ge=0, le=6)],
     ) -> AssignmentDayEndView:
-        require_capability(current, "operational_copilot.interpret")
+        require_capability(current, READ_CAPABILITY)
         day_end = await booking_reader.read_assignment_day_end(
             organization_id=current.organization_id,
             assignment_id=assignment_id,
@@ -87,8 +89,20 @@ def create_tool_lookup_router(
     _add(router, "/resources", resources, list[ResourceCandidateView], "copilot_lookup_resources")
     _add(router, "/offerings", offerings, list[OfferingCandidateView], "copilot_lookup_offerings")
     _add(router, "/queues", queues, list[QueueCandidateView], "copilot_list_queues")
-    _add(router, "/locations/{location_id}/clock", location_clock, LocationClockView, "copilot_location_clock")
-    _add(router, "/assignments/{assignment_id}/day-end", assignment_day_end, AssignmentDayEndView, "copilot_assignment_day_end")
+    _add(
+        router,
+        "/locations/{location_id}/clock",
+        location_clock,
+        LocationClockView,
+        "copilot_location_clock",
+    )
+    _add(
+        router,
+        "/assignments/{assignment_id}/day-end",
+        assignment_day_end,
+        AssignmentDayEndView,
+        "copilot_assignment_day_end",
+    )
     return router
 
 
@@ -103,7 +117,7 @@ def _add(
         router,
         path,
         endpoint,
-        capability="operational_copilot.interpret",
+        capability=READ_CAPABILITY,
         methods=["GET"],
         operation_id=operation_id,
         response_model=response_model,
