@@ -82,7 +82,7 @@ async def test_rest_of_day_ignores_inactive_expired_and_future_hours(
             "f6-operational-hours-validity",
         )
 
-    assert executed["action"] == "stop_intake"
+    assert executed["action"] == "set_intake_control"
     row = e2e_admin_conn.execute(
         """
         SELECT effective_until
