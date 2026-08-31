@@ -26,6 +26,9 @@ from request_engine.modules.operational_copilot.api.recovery import (
 from request_engine.modules.operational_copilot.api.tool_lookup_router import (
     create_tool_lookup_router,
 )
+from request_engine.modules.operational_copilot.api.tool_state_router import (
+    create_tool_state_router,
+)
 from request_engine.modules.operational_copilot.api.tool_write_router import (
     create_tool_write_router,
 )
@@ -97,6 +100,15 @@ def install_http(
                 booking_reader=booking_reader,
                 catalog_reader=catalog_reader,
                 queue_reader=queue_reader,
+            )
+        )
+    if queue_intake_reader is not None and recovery_incident_reader is not None:
+        app.include_router(
+            create_tool_state_router(
+                actor_resolver=actor_resolver,
+                at_risk_reader=at_risk_reader,
+                intake_reader=queue_intake_reader,
+                incident_reader=recovery_incident_reader,
             )
         )
 
