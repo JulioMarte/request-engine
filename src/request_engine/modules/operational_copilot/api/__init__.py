@@ -20,9 +20,8 @@ from request_engine.modules.operational_copilot.adapters.reference_resolver impo
     OwnerBackedCopilotReferenceResolver,
 )
 from request_engine.modules.operational_copilot.api.copilot_router import create_copilot_router
-from request_engine.modules.operational_copilot.api.recovery import (
-    build_live_capacity_at_risk_reader,
-)
+from request_engine.modules.operational_copilot.api.recovery import build_live_capacity_at_risk_reader
+from request_engine.modules.operational_copilot.api.tool_write_router import create_tool_write_router
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.application.ports import (
     AtRiskReservationReader,
@@ -83,6 +82,7 @@ def install_http(
         resolver,
     )
     app.include_router(create_copilot_router(copilot=copilot, actor_resolver=actor_resolver))
+    app.include_router(create_tool_write_router(copilot=copilot, actor_resolver=actor_resolver))
 
 
 def _build_reference_resolver(

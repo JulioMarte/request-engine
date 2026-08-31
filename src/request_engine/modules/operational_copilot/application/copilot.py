@@ -53,6 +53,10 @@ class OperationalCopilot:
     async def interpret(self, context: CopilotContext, text: str) -> CopilotOperation:
         parsed = parse_copilot_intent(text)
         intent = await self._resolve_references(context, parsed)
+        return await self.admit(context, intent)
+
+    async def admit(self, context: CopilotContext, intent: CopilotIntent) -> CopilotOperation:
+        """Admit one already-structured F6 intent through the canonical boundary."""
         resolved_context = await self._resolve_authority(intent, context)
         resolved_intent = await self._resolve_fingerprints(intent, resolved_context)
         validated = validate_copilot_intent(resolved_context, resolved_intent)
