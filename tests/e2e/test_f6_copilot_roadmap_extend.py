@@ -93,9 +93,10 @@ async def test_f6_executes_roadmap_named_resource_extend_today(
     assert executed["status"] == "succeeded"
     assert replay["result_id"] == executed["result_id"]
     assert location_recovery_exception_count(e2e_admin_conn, sandbox) == location_before + 1
-    assert assignment_recovery_exception_count(
-        e2e_admin_conn, sandbox, supply.assignment_id
-    ) == assignment_before + 1
+    assert (
+        assignment_recovery_exception_count(e2e_admin_conn, sandbox, supply.assignment_id)
+        == assignment_before + 1
+    )
     assert (
         recurring_schedule_snapshot(e2e_admin_conn, sandbox, supply.assignment_id)
         == recurring_before
