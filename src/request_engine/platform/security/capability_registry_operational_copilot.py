@@ -2,9 +2,15 @@ from request_engine.platform.security.capability_types import (
     CapabilityDefinition,
     CapabilityExposure,
     command_capability,
+    query_capability,
 )
 
 OPERATIONAL_COPILOT_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+    query_capability(
+        "operational_copilot.read",
+        CapabilityExposure.OPERATOR,
+        "Read authoritative owner-backed operational lookup and state used by structured tools.",
+    ),
     command_capability(
         "operational_copilot.interpret",
         CapabilityExposure.OPERATOR,
