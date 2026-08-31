@@ -133,7 +133,20 @@ Primary documents:
 
 F5 composes recovery over owner-controlled Booking, Queue, Catalog, Live Capacity and Communications contracts without becoming those domains' authority.
 
-## 8. Active F6 contract — external-agent tooling
+## 8. Active F7 contract — front-desk operations
+
+Primary documents:
+
+1. `v3/36-front-desk-operations-contract.md` — **normative F7 front-desk operations contract** (remote delivery transport, escalation policy, inbound interpretation boundary, arrival estimates, same-day selection subset, after-hours intake).
+2. `v3/37-f7-implementation-plan.md` — slice plan, dependencies and acceptance criteria.
+3. `14-operational-intelligence-roadmap.md` — predecessor product scenarios and sequencing.
+
+The critical F7 distinction mirrors F6: external messaging/voice transport layers and bots
+execute delivery and conversation; Request Engine owns delivery truth, escalation policy,
+identity binding, intent validation and every typed mutation. Slices land append-only and
+are normative only once implemented with evidence.
+
+## 9. Active F6 contract — external-agent tooling
 
 Primary contract:
 
