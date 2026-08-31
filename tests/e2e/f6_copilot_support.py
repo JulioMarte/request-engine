@@ -16,6 +16,8 @@ _COPILOT_CAPABILITIES = frozenset(
         "operational_copilot.read",
         "operational_copilot.interpret",
         "operational_copilot.execute",
+        "queue.manage_intake",
+        "booking.manage_supply",
     }
 )
 
