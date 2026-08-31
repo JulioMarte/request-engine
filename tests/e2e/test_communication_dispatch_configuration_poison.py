@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
-import pg_support as support
 import pytest
 
 from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
@@ -18,7 +17,10 @@ from request_engine.platform.scheduling.postgres import (
 )
 from request_engine.platform.worker.runtime import PermanentWorkError
 
-pytestmark = [pytest.mark.postgres, pytest.mark.integration]
+from . import communication_reconcile_support as reconcile
+from . import operational_support as support
+
+pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
 
 def _lease_dispatch_action(
@@ -55,24 +57,24 @@ def _lease_dispatch_action(
 
 @pytest.mark.asyncio
 async def test_unusable_recipient_configuration_fails_task_durably_on_first_attempt(
-    pg_admin_conn: support.PgConnection,
-    pg_session_factory: SessionFactory,
+    e2e_admin_conn: support.PgConnection,
+    e2e_session_factory: SessionFactory,
 ) -> None:
-    organization_id = support.new_org(pg_admin_conn, "config-poison")
+    organization_id = support.new_org(e2e_admin_conn, "config-poison")
     party_id = support.new_party(
-        pg_admin_conn,
+        e2e_admin_conn,
         organization_id,
         "Recipient without contact points",
     )
-    task_id = support.new_task(
-        pg_admin_conn,
+    task_id = reconcile.new_task(
+        e2e_admin_conn,
         organization_id,
         party_id=party_id,
         contact_point_id=None,
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     action_id, claim_token = _lease_dispatch_action(
-        pg_admin_conn,
+        e2e_admin_conn,
         organization_id,
         task_id,
     )
@@ -89,24 +91,24 @@ async def test_unusable_recipient_configuration_fails_task_durably_on_first_atte
         attempt_count=0,
         lease_until=datetime.now(UTC) + timedelta(minutes=5),
     )
-    scheduler = PostgresScheduledActionWorker(pg_session_factory)
-    handler = CommunicationDeliveryScheduledHandler(pg_session_factory, scheduler, {})
+    scheduler = PostgresScheduledActionWorker(e2e_session_factory)
+    handler = CommunicationDeliveryScheduledHandler(e2e_session_factory, scheduler, {})
 
     with pytest.raises(PermanentWorkError) as caught:
         await handler.handle(lease)
 
     assert caught.value.error_class == "delivery_configuration_invalid"
     assert (
-        support.fetch_one(
-            pg_admin_conn,
+        reconcile.fetch_one(
+            e2e_admin_conn,
             "SELECT status FROM request_engine.communication_tasks WHERE id = %s",
             task_id,
         )
         == "failed"
     )
     assert (
-        support.fetch_one(
-            pg_admin_conn,
+        reconcile.fetch_one(
+            e2e_admin_conn,
             """
         SELECT count(*)
         FROM request_engine.communication_deliveries
@@ -116,8 +118,8 @@ async def test_unusable_recipient_configuration_fails_task_durably_on_first_atte
         )
         == 0
     )
-    failures = support.outbox_payloads(
-        pg_admin_conn,
+    failures = reconcile.outbox_payloads(
+        e2e_admin_conn,
         organization_id,
         "communication.task_failed.v1",
     )
