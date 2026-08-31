@@ -42,7 +42,7 @@ async def test_f6_structured_recovery_replay_and_conflicting_replay(
         proposal_replay = await execute_tool(
             client, sandbox, "/recovery/proposals", proposal_body, proposal_key
         )
-        assert proposal["action"] == "create_proposal"
+        assert proposal["action"] == "propose_recovery"
         assert proposal_replay["result_id"] == proposal["result_id"]
         proposal_conflict = await client.post(
             "/v1/operational-copilot/tools/recovery/proposals",
