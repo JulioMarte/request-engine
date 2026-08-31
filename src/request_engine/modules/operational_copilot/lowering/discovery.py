@@ -26,6 +26,7 @@ def lower_publish(intent: object, context: CopilotContext) -> CopilotOperation:
         effective_end=intent.effective_end,
         provider_visibility=intent.provider_visibility,
         idempotency_key=context.idempotency_key,
+        effective_start_origin=intent.effective_start_origin,
     )
 
 
