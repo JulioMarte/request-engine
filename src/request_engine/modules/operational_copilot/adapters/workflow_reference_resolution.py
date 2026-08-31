@@ -51,6 +51,10 @@ async def resolve_extend_today(
         )
     if target_end <= clock.observed_at:
         raise CopilotResolutionFailed("requested day extension has already elapsed")
+    if clock.operational_day_end_at is None or target_end > clock.operational_day_end_at:
+        raise CopilotResolutionFailed(
+            "location operating hours do not cover the requested resource extension"
+        )
     return ExtendOperationalDayIntent(
         assignment_id=resource.assignment_id,
         start_at=scheduled_end,
