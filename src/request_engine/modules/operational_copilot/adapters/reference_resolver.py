@@ -37,7 +37,7 @@ class OwnerBackedCopilotReferenceResolver:
         catalog: CopilotCatalogReader,
         queues: CopilotQueueReader,
         intake: QueueIntakeControlPort,
-        schedule: OperationalAssignmentSchedulePort,
+        schedule: OperationalAssignmentSchedulePort | None = None,
     ) -> None:
         self._booking = booking
         self._catalog = catalog
