@@ -83,7 +83,10 @@ def create_copilot_router(
                 require_capability(actor, owner_capability)
             receipt = await copilot.execute(operation)
         except CopilotSemanticError as error:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
         return CopilotExecutionView.from_receipt(receipt)
 
     add_capability_route(
@@ -123,4 +126,7 @@ async def _refusals(
     except CopilotPolicyRejected as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(error)) from error
     except CopilotSemanticError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
