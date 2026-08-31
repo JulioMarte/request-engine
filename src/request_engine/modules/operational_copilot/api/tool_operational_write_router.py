@@ -10,6 +10,7 @@ from request_engine.modules.operational_copilot.api.tool_operational_write_model
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.contracts import CopilotContext, CopilotIntent
 from request_engine.modules.operational_copilot.errors import (
+    CopilotConflict,
     CopilotPolicyRejected,
     CopilotSemanticError,
 )
@@ -84,5 +85,7 @@ async def _execute(
         return CopilotExecutionView.from_receipt(await copilot.execute(operation))
     except CopilotPolicyRejected as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(error)) from error
+    except CopilotConflict as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error
     except CopilotSemanticError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
