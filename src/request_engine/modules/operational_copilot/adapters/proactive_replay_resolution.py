@@ -17,7 +17,7 @@ _STOP_REASON = "operational copilot: stop accepting walk-ins for the rest of the
 
 
 async def resolve_proactive_replay(
-    schedule: OperationalAssignmentSchedulePort,
+    schedule: OperationalAssignmentSchedulePort | None,
     intake: QueueIntakeControlPort,
     context: CopilotContext,
     intent: ExtendNamedResourceTodayIntent | StopWalkInsRestOfDayIntent,
@@ -40,6 +40,8 @@ async def resolve_proactive_replay(
             effective_until=request.effective_until,
         )
 
+    if schedule is None:
+        return None
     replay = await schedule.get_extension_by_idempotency(
         context.organization_id,
         context.principal_id,
