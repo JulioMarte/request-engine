@@ -63,11 +63,11 @@ async def test_f6_lists_human_queue_candidates_and_text_fails_closed_on_ambiguit
         assert "multiple tenant-scoped queue values matched" in _error_message(response).lower()
 
 
-async def test_f6_recovery_text_refuses_without_open_incident(
+async def test_f6_proactive_intake_text_requires_current_operational_day_end(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
-    sandbox = seed_tenant_sandbox(e2e_admin_conn, "f6-no-incident")
+    sandbox = seed_tenant_sandbox(e2e_admin_conn, "f6-no-operational-day-end")
     actors = {sandbox.token: copilot_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         incident = await client.get(
@@ -78,7 +78,7 @@ async def test_f6_recovery_text_refuses_without_open_incident(
         response = await client.post(
             "/v1/operational-copilot/execute",
             json={"text": "stop accepting walk-ins for the rest of the day"},
-            headers=auth(sandbox, idempotency_key=f"f6-no-incident-{uuid4().hex}"),
+            headers=auth(sandbox, idempotency_key=f"f6-no-day-end-{uuid4().hex}"),
         )
         assert response.status_code == 422, response.text
-        assert "no open recovery incident" in _error_message(response).lower()
+        assert "location operational day end is unavailable" in _error_message(response).lower()
