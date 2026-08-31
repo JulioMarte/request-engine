@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, cast
 
 from request_engine.modules.operational_recovery.contracts.workflow_commands import (
@@ -62,7 +63,7 @@ async def execute_tool(
     client: Any,
     sandbox: TenantSandbox,
     path: str,
-    body: dict[str, object],
+    body: Mapping[str, object],
     key: str,
 ) -> dict[str, Any]:
     response = await client.post(
