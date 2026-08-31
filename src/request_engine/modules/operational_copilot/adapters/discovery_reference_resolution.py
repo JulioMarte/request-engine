@@ -43,4 +43,5 @@ async def resolve_publish_discovery(
         effective_start=clock.observed_at,
         resource_id=resource.resource_id,
         provider_visibility="public",
+        effective_start_origin="resolved_now",
     )
