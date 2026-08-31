@@ -14,25 +14,28 @@ _CANDIDATES = (
     "Pacific/Auckland",
 )
 _FAR_CANDIDATES = (
+    "Pacific/Honolulu",
+    "Europe/London",
     "Asia/Tokyo",
-    "Pacific/Auckland",
 )
-_RUNWAY_START = datetime.min.time().replace(hour=0, minute=30)
-_RUNWAY_END = datetime.min.time().replace(hour=21, minute=30)
+_WORLD_START_OFFSET = timedelta(minutes=5)
+_RUNWAY_START = datetime.min.time().replace(hour=6)
+_RUNWAY_END = datetime.min.time().replace(hour=18)
 
 
 def _has_runway(now_utc: datetime, candidate: str) -> bool:
-    local = now_utc.astimezone(ZoneInfo(candidate)).timetz().replace(tzinfo=None)
+    world_start = now_utc + _WORLD_START_OFFSET
+    local = world_start.astimezone(ZoneInfo(candidate)).timetz().replace(tzinfo=None)
     return _RUNWAY_START <= local <= _RUNWAY_END
 
 
 def pick_business_timezone(now_utc: datetime) -> str:
-    """Choose the business timezone whose local day still has runway for the world.
+    """Choose a business timezone whose synthetic world starts in a stable daytime band.
 
-    Slot worlds book a full business day of 5-minute commitments, so the
-    configured business day must have hours left before its local midnight.
-    Production keeps this choice in ``locations.timezone``; the world writes the
-    picked value there through ``configure_world_timezone``.
+    Slot worlds need same-local-day runway after their five-minute observation
+    offset. Keeping the synthetic start between 06:00 and 18:00 avoids midnight
+    boundary artifacts while still leaving enough supply for the six-hour slot
+    search window.
     """
 
     for candidate in _CANDIDATES:
@@ -42,10 +45,13 @@ def pick_business_timezone(now_utc: datetime) -> str:
 
 
 def pick_far_business_timezone(conn: PgConnection) -> str:
-    """Choose a forced far-from-runner business timezone whose local day still
-    has runway, so worlds proving materiality away from the runner's clock stay
-    valid at any UTC hour. Tokyo and Auckland are ~13h apart, so exactly one of
-    them has runway whenever the runner default does not."""
+    """Choose a non-default timezone whose synthetic world starts in daytime.
+
+    Honolulu, London and Tokyo are distributed around the globe so at least one
+    candidate has a stable local daytime window at every UTC hour. This keeps the
+    proof materially far from the runner clock without depending on a midnight
+    edge in another timezone.
+    """
 
     row = conn.execute("SELECT clock_timestamp()").fetchone()
     assert row is not None
@@ -53,7 +59,7 @@ def pick_far_business_timezone(conn: PgConnection) -> str:
     for candidate in _FAR_CANDIDATES:
         if _has_runway(now_utc, candidate):
             return candidate
-    raise AssertionError("no far-from-runner business timezone has runway")
+    raise AssertionError("no far-from-runner business timezone has daytime runway")
 
 
 def configure_world_timezone(conn: PgConnection, sandbox: TenantSandbox) -> str:
@@ -84,7 +90,7 @@ def location_timezone(conn: PgConnection, sandbox: TenantSandbox) -> ZoneInfo:
 def world_window_start(conn: PgConnection) -> datetime:
     row = conn.execute("SELECT clock_timestamp()").fetchone()
     assert row is not None
-    return cast(datetime, row[0]) + timedelta(minutes=5)
+    return cast(datetime, row[0]) + _WORLD_START_OFFSET
 
 
 def world_weekday(conn: PgConnection, sandbox: TenantSandbox) -> int:
