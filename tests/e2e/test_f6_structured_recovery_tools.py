@@ -10,12 +10,12 @@ from .f5_booking_fixture import five_minute_sandbox
 from .f5_recovery_support import book_commitments, restrict_source_to_first_six
 from .f6_copilot_support import copilot_actor, execute_tool, read_tool
 from .operational_support import PgConnection
-from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
+from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.e2e, pytest.mark.postgres, pytest.mark.contract]
 
 
-async def test_f6_structured_recovery_proposal_execution_and_replay(
+async def test_f6_structured_recovery_replay_and_conflicting_replay(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -37,21 +37,19 @@ async def test_f6_structured_recovery_proposal_execution_and_replay(
         proposal_key = f"f6-structured-proposal-{uuid4().hex}"
         proposal_body = {"service_queue_id": str(sandbox.queue_id), "search_days": 7}
         proposal = await execute_tool(
-            client,
-            sandbox,
-            "/recovery/proposals",
-            proposal_body,
-            proposal_key,
+            client, sandbox, "/recovery/proposals", proposal_body, proposal_key
         )
         proposal_replay = await execute_tool(
-            client,
-            sandbox,
-            "/recovery/proposals",
-            proposal_body,
-            proposal_key,
+            client, sandbox, "/recovery/proposals", proposal_body, proposal_key
         )
         assert proposal["action"] == "create_proposal"
         assert proposal_replay["result_id"] == proposal["result_id"]
+        proposal_conflict = await client.post(
+            "/v1/operational-copilot/tools/recovery/proposals",
+            json={**proposal_body, "search_days": 8},
+            headers=auth(sandbox, idempotency_key=proposal_key),
+        )
+        assert proposal_conflict.status_code == 409, proposal_conflict.text
 
         execute_key = f"f6-structured-execution-{uuid4().hex}"
         execution_body = {
@@ -60,22 +58,20 @@ async def test_f6_structured_recovery_proposal_execution_and_replay(
             "notify": True,
         }
         executed = await execute_tool(
-            client,
-            sandbox,
-            "/recovery/executions",
-            execution_body,
-            execute_key,
+            client, sandbox, "/recovery/executions", execution_body, execute_key
         )
         replay = await execute_tool(
-            client,
-            sandbox,
-            "/recovery/executions",
-            execution_body,
-            execute_key,
+            client, sandbox, "/recovery/executions", execution_body, execute_key
         )
         assert executed["action"] == "execute_recovery"
         assert executed["status"] == "succeeded"
         assert replay["result_id"] == executed["result_id"]
+        execute_conflict = await client.post(
+            "/v1/operational-copilot/tools/recovery/executions",
+            json={**execution_body, "notify": False},
+            headers=auth(sandbox, idempotency_key=execute_key),
+        )
+        assert execute_conflict.status_code == 409, execute_conflict.text
 
         row = e2e_admin_conn.execute(
             """
