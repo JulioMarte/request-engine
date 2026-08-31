@@ -29,11 +29,9 @@ from request_engine.modules.discovery.api.publication_runtime import (
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
-from request_engine.modules.operational_copilot.api import build_live_capacity_at_risk_reader
-from request_engine.modules.operational_copilot.api import install_http as install_copilot_http
+from request_engine.modules.operational_copilot import api as copilot_api
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
-from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
-from request_engine.modules.queue.api import install_http as install_queue_http
+from request_engine.modules.queue import api as queue_api
 from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
@@ -52,7 +50,7 @@ def install_business_modules(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
-    slot_offer_ports: QueueSlotOfferHttpPorts | None,
+    slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
 ) -> None:
     party_authority_reader = build_party_authority_reader(session_factory)
@@ -65,7 +63,7 @@ def install_business_modules(
         party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
     )
-    install_queue_http(
+    queue_api.install_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
@@ -91,6 +89,7 @@ def install_business_modules(
         delivery_source=delivery_capacity,
     )
     queue_runtime = build_copilot_queue_runtime(session_factory)
+    discovery_runtime = build_discovery_publication_runtime(session_factory)
     recovery = install_recovery_http(
         app,
         session_factory=session_factory,
@@ -104,16 +103,17 @@ def install_business_modules(
         ),
         assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
     )
-    install_copilot_http(
+    copilot_api.install_http(
         app,
         actor_resolver=actor_resolver,
-        at_risk_reader=build_live_capacity_at_risk_reader(recovery_capacity),
+        at_risk_reader=copilot_api.build_live_capacity_at_risk_reader(recovery_capacity),
         proposal_reader=recovery.service,
         authority_reader=build_operational_authority_party_reader(session_factory),
         recovery_executor=recovery.service,
         intake_executor=recovery.workflow,
         extend_day_executor=recovery.workflow,
-        discovery_executor=build_discovery_publication_runtime(session_factory),
+        discovery_executor=discovery_runtime,
+        discovery_reader=discovery_runtime,
         booking_reader=build_copilot_booking_reader(session_factory),
         catalog_reader=build_copilot_catalog_reader(session_factory),
         queue_reader=queue_runtime.queues,
