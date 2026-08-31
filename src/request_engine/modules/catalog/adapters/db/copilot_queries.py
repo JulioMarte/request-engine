@@ -9,7 +9,7 @@ ORDER BY id
 
 LOCATION_QUERY = """
 WITH clock AS (SELECT clock_timestamp() AS observed_at)
-SELECT l.id AS location_id,l.timezone,clock.observed_at,l.operational_revision,
+SELECT l.id AS location_id,l.display_name,l.timezone,clock.observed_at,l.operational_revision,
        (((clock.observed_at AT TIME ZONE l.timezone)::date + max(h.local_end))
          AT TIME ZONE l.timezone) AS operational_day_end_at
 FROM request_engine.locations l
@@ -23,5 +23,5 @@ LEFT JOIN request_engine.location_operational_hours h
  AND (h.valid_until IS NULL
       OR h.valid_until >= (clock.observed_at AT TIME ZONE l.timezone)::date)
 WHERE l.organization_id=:organization_id AND l.id=:location_id
-GROUP BY l.id,l.timezone,clock.observed_at,l.operational_revision
+GROUP BY l.id,l.display_name,l.timezone,clock.observed_at,l.operational_revision
 """
