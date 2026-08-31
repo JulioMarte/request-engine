@@ -3,8 +3,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from request_engine.modules.discovery.contracts.copilot import CopilotDiscoveryPublicationReader
 from request_engine.modules.operational_copilot.api.tool_state_models import (
     AtRiskAssessmentView,
+    DiscoveryPublicationView,
     QueueIntakeView,
     RecoveryIncidentView,
 )
@@ -27,6 +29,7 @@ def create_tool_state_router(
     at_risk_reader: AtRiskReservationReader,
     intake_reader: QueueIntakeControlPort,
     incident_reader: CopilotRecoveryIncidentReader,
+    discovery_reader: CopilotDiscoveryPublicationReader,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/operational-copilot/tools", tags=["operational-copilot-tools"])
 
@@ -53,6 +56,19 @@ def create_tool_state_router(
         if value is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="no open recovery incident")
         return RecoveryIncidentView.from_incident(value)
+
+    async def publication(
+        publication_id: UUID,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> DiscoveryPublicationView:
+        require_capability(current, READ_CAPABILITY)
+        value = await discovery_reader.get_publication(
+            organization_id=current.organization_id,
+            publication_id=publication_id,
+        )
+        if value is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="publication not found")
+        return DiscoveryPublicationView.from_state(value)
 
     async def at_risk(
         service_queue_id: UUID,
@@ -81,6 +97,15 @@ def create_tool_state_router(
         methods=["GET"],
         operation_id="copilot_open_recovery_incident",
         response_model=RecoveryIncidentView,
+    )
+    add_capability_route(
+        router,
+        "/discovery/publications/{publication_id}",
+        publication,
+        capability=READ_CAPABILITY,
+        methods=["GET"],
+        operation_id="copilot_discovery_publication",
+        response_model=DiscoveryPublicationView,
     )
     add_capability_route(
         router,
