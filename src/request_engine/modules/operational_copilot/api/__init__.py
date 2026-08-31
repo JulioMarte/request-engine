@@ -66,7 +66,7 @@ def install_http(
         discovery=discovery_executor,
     )
     resolver = reference_composition.build_reference_resolver(
-        booking_reader, catalog_reader, queue_reader, queue_intake_reader
+        booking_reader, catalog_reader, queue_reader, queue_intake_reader, operational_schedule
     )
     copilot = OperationalCopilot(
         at_risk_reader, proposal_reader, authority_reader, executors, resolver
