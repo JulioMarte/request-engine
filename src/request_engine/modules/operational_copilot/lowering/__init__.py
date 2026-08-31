@@ -11,7 +11,12 @@ from request_engine.modules.operational_copilot.contracts import (
     ShowAtRiskReservationsIntent,
     ValidatedCopilotIntent,
 )
-from request_engine.modules.operational_copilot.lowering import discovery, inspection, proactive, recovery
+from request_engine.modules.operational_copilot.lowering import (
+    discovery,
+    inspection,
+    proactive,
+    recovery,
+)
 from request_engine.modules.operational_copilot.lowering.operations import CopilotOperation
 from request_engine.modules.operational_copilot.lowering.workflow import (
     lower_extend_day,
