@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
+from request_engine.modules.discovery.contracts.copilot import CopilotDiscoveryPublicationReader
 from request_engine.modules.operational_copilot.adapters.discovery_publication_executors import (
     DiscoveryPublishCopilotExecutor,
     DiscoveryRevokeCopilotExecutor,
@@ -63,6 +64,7 @@ def install_http(
     intake_executor: RecoveryIntakeExecutor | None = None,
     extend_day_executor: RecoveryExtendDayExecutor | None = None,
     discovery_executor: DiscoveryPublicationExecutor | None = None,
+    discovery_reader: CopilotDiscoveryPublicationReader | None = None,
     booking_reader: CopilotBookingReader | None = None,
     catalog_reader: CopilotCatalogReader | None = None,
     queue_reader: CopilotQueueReader | None = None,
@@ -102,12 +104,17 @@ def install_http(
                 queue_reader=queue_reader,
             )
         )
-    if queue_intake_reader is not None and recovery_incident_reader is not None:
+    if (
+        queue_intake_reader is not None
+        and recovery_incident_reader is not None
+        and discovery_reader is not None
+    ):
         app.include_router(
             create_tool_state_router(
                 actor_resolver=actor_resolver,
                 at_risk_reader=at_risk_reader,
                 intake_reader=queue_intake_reader,
                 incident_reader=recovery_incident_reader,
+                discovery_reader=discovery_reader,
             )
         )
