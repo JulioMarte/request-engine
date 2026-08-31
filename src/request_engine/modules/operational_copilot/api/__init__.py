@@ -10,16 +10,24 @@ from request_engine.modules.operational_copilot.api.copilot_router import create
 from request_engine.modules.operational_copilot.api.executor_composition import (
     build_mutation_executors,
 )
-from request_engine.modules.operational_copilot.api.recovery import build_live_capacity_at_risk_reader
-from request_engine.modules.operational_copilot.api.reference_composition import build_reference_resolver
-from request_engine.modules.operational_copilot.api.tool_lookup_router import create_tool_lookup_router
+from request_engine.modules.operational_copilot.api.recovery import (
+    build_live_capacity_at_risk_reader,
+)
+from request_engine.modules.operational_copilot.api.reference_composition import (
+    build_reference_resolver,
+)
+from request_engine.modules.operational_copilot.api.tool_lookup_router import (
+    create_tool_lookup_router,
+)
 from request_engine.modules.operational_copilot.api.tool_operational_write_router import (
     create_tool_operational_write_router,
 )
 from request_engine.modules.operational_copilot.api.tool_recovery_proposal_router import (
     create_tool_recovery_proposal_router,
 )
-from request_engine.modules.operational_copilot.api.tool_state_router import create_tool_state_router
+from request_engine.modules.operational_copilot.api.tool_state_router import (
+    create_tool_state_router,
+)
 from request_engine.modules.operational_copilot.api.tool_write_router import create_tool_write_router
 from request_engine.modules.operational_copilot.application.copilot import OperationalCopilot
 from request_engine.modules.operational_copilot.application.ports import (
@@ -31,7 +39,9 @@ from request_engine.modules.operational_copilot.application.ports import (
     RecoveryIntakeExecutor,
     RecoveryProposalReader,
 )
-from request_engine.modules.operational_recovery.contracts.copilot import CopilotRecoveryIncidentReader
+from request_engine.modules.operational_recovery.contracts.copilot import (
+    CopilotRecoveryIncidentReader,
+)
 from request_engine.modules.queue.contracts.copilot import CopilotQueueReader
 from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 from request_engine.platform.security.http import ActorResolver
