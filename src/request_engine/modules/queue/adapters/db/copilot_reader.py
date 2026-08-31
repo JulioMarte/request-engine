@@ -24,7 +24,7 @@ class PostgresCopilotQueueReader(CopilotQueueReader):
                 await session.execute(
                     text(
                         """
-                        SELECT id, location_id
+                        SELECT id, location_id, offering_id, display_name
                         FROM request_engine.service_queues
                         WHERE organization_id=:organization_id
                         ORDER BY id
@@ -37,6 +37,8 @@ class PostgresCopilotQueueReader(CopilotQueueReader):
                 CopilotQueueMatch(
                     service_queue_id=cast(UUID, row["id"]),
                     location_id=cast(UUID, row["location_id"]),
+                    offering_id=cast(UUID | None, row["offering_id"]),
+                    display_name=cast(str | None, row["display_name"]),
                 )
                 for row in rows
             )
