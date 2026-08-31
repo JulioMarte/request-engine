@@ -17,6 +17,10 @@ pytestmark = [
 ]
 
 
+def _error_message(response) -> str:
+    return str(response.json()["error"]["message"])
+
+
 async def test_f6_lists_human_queue_candidates_and_text_fails_closed_on_ambiguity(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
@@ -55,7 +59,7 @@ async def test_f6_lists_human_queue_candidates_and_text_fails_closed_on_ambiguit
             headers=auth(sandbox, idempotency_key=f"f6-ambiguous-{uuid4().hex}"),
         )
         assert response.status_code == 422, response.text
-        assert "ambiguous queue" in response.json()["detail"].lower()
+        assert "ambiguous queue" in _error_message(response).lower()
 
 
 async def test_f6_recovery_text_refuses_without_open_incident(
@@ -76,4 +80,4 @@ async def test_f6_recovery_text_refuses_without_open_incident(
             headers=auth(sandbox, idempotency_key=f"f6-no-incident-{uuid4().hex}"),
         )
         assert response.status_code == 422, response.text
-        assert "no open recovery incident" in response.json()["detail"].lower()
+        assert "no open recovery incident" in _error_message(response).lower()
