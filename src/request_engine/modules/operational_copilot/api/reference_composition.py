@@ -1,4 +1,7 @@
 from request_engine.modules.booking.contracts.copilot import CopilotBookingReader
+from request_engine.modules.booking.contracts.operational_schedule import (
+    OperationalAssignmentSchedulePort,
+)
 from request_engine.modules.catalog.contracts.copilot import CopilotCatalogReader
 from request_engine.modules.operational_copilot.adapters.reference_resolver import (
     OwnerBackedCopilotReferenceResolver,
@@ -12,6 +15,7 @@ def build_reference_resolver(
     catalog: CopilotCatalogReader | None,
     queues: CopilotQueueReader | None,
     intake: QueueIntakeControlPort | None,
+    schedule: OperationalAssignmentSchedulePort | None = None,
 ) -> OwnerBackedCopilotReferenceResolver | None:
     values = (booking, catalog, queues, intake)
     if all(value is None for value in values):
@@ -22,4 +26,4 @@ def build_reference_resolver(
     assert catalog is not None
     assert queues is not None
     assert intake is not None
-    return OwnerBackedCopilotReferenceResolver(booking, catalog, queues, intake)
+    return OwnerBackedCopilotReferenceResolver(booking, catalog, queues, intake, schedule)
