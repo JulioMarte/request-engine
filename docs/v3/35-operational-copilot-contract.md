@@ -35,8 +35,8 @@ F6 exposes enough supported tooling for an external agent/application to:
 - inspect operational truth through owner-backed read/query surfaces;
 - locate and disambiguate operational entities through authoritative tenant-scoped lookup;
 - obtain current owner state/revisions needed for guarded mutations without database access;
-- extend a Resource/assignment working day through Recovery-owned additional-hours semantics;
-- stop/reopen walk-in intake through Recovery/Queue owner semantics;
+- extend a Resource/assignment working day through Booking-owned operational schedule-exception semantics or Recovery-owned recovery semantics, depending on the explicit operation selected;
+- stop/reopen walk-in intake through Queue-owned operational intake control or Recovery-owned recovery semantics, depending on the explicit operation selected;
 - publish/unpublish eligible supply through Discovery owner semantics;
 - inspect Reservations/commitments currently at risk through F4/F5 truth;
 - create and execute supported Recovery proposals through F5 contracts.
@@ -89,6 +89,7 @@ GET /assignments/{assignment_id}/day-end?weekday=...
 GET /queues/{service_queue_id}/intake
 GET /queues/{service_queue_id}/recovery-incident
 GET /queues/{service_queue_id}/at-risk-reservations
+GET /recovery/proposals/{proposal_id}
 GET /discovery/publications/{publication_id}
 ```
 
@@ -99,6 +100,8 @@ POST /recovery/proposals
 POST /recovery/executions
 POST /recovery/intake
 POST /recovery/day-extensions
+POST /queues/intake-control
+POST /assignments/day-extensions
 POST /discovery/publications
 POST /discovery/revocations
 ```
@@ -130,7 +133,7 @@ For a request such as:
 "Dr. A will work until 7 PM today"
 ```
 
-an external agent may decide the user means `extend_day`, then use F6 reads to identify candidate Resources/assignments and current state.
+an external agent may decide the user means an operational assignment extension, then use F6 reads to identify candidate Resources/assignments and current state.
 
 Request Engine is responsible for:
 
@@ -165,24 +168,28 @@ ServiceQueue listing returns owner-backed `service_queue_id`, `display_name`, `l
 
 Offering lookup likewise exposes owner-backed identifiers and display names and returns all tenant-scoped matches when names are duplicated rather than selecting one arbitrarily.
 
-## 8. RecoveryIncident semantics
+## 8. Recovery-scoped vs proactive owner semantics
 
-`SetRecoveryIntakeIntent` and `ExtendRecoveryDayIntent` lower into Recovery-owned commands. Their structured forms therefore require an authoritative `incident_id` and the relevant current owner revisions.
+`SetRecoveryIntakeIntent` and `ExtendRecoveryDayIntent` lower into Recovery-owned commands. Their structured forms require an authoritative `incident_id` and the relevant current owner revisions. The read surface exposes the current open RecoveryIncident for a ServiceQueue so an external agent can compose those Recovery-scoped mutations without database access. If no applicable RecoveryIncident exists, the Recovery-scoped operation fails closed.
 
-The read surface exposes the current open RecoveryIncident for a ServiceQueue so an external agent can compose these mutations without database access.
+F6 also exposes explicit proactive owner operations that do **not** require a RecoveryIncident:
 
-If no applicable RecoveryIncident exists, the Recovery-scoped operation fails closed.
+- `SetOperationalIntakeIntent` lowers to Queue's published `QueueIntakeControlPort` / `SetQueueIntakeControlRequest` contract;
+- `ExtendOperationalDayIntent` lowers to Booking's published `OperationalAssignmentSchedulePort` / `OperationalAssignmentExtensionRequest` contract, which delegates to Booking's authoritative one-day schedule-exception writer rather than rewriting recurring availability.
 
-This is intentional. F6 must not:
+These proactive operations preserve the same owner-first rule that originally gated this capability: Queue remains authoritative for intake state and revision, Booking remains authoritative for assignment availability revision and schedule exceptions, and the concrete owner capability is enforced in addition to `operational_copilot.execute`.
+
+F6 must not:
 
 - manufacture a RecoveryIncident merely to satisfy a phrase;
 - direct-write Queue intake state;
-- direct-write Booking schedules;
-- reinterpret a normal proactive operator request as Recovery authority.
+- direct-write Booking schedules or schedule exceptions;
+- reinterpret a proactive owner request as Recovery authority;
+- collapse proactive and Recovery-scoped operations into one ambiguous command.
 
-If the product requires proactive stop-intake or schedule extension outside Recovery, a corresponding owner capability/contract must first be added to Queue/Booking/another authoritative owner. F6 may then expose that owner operation explicitly. It must not create shadow authority.
+Selected bounded text phrases may resolve to the proactive owner operations when authoritative entity, clock and revision state is available. For example, `stop accepting walk-ins for the rest of the day` resolves the unique Queue, current intake revision and authoritative Location operational-day end before lowering to Queue. `Dr. A will work until 7 PM today` resolves the Resource assignment, current scheduled day end, Location timezone/clock and availability revision before lowering to Booking. Same-key text replay is reconstructed from owner-backed idempotency history so a successful first mutation is not reinterpreted from the post-mutation state.
 
-Therefore the current text behavior of phrases such as `stop accepting walk-ins for the rest of the day` or `Dr. A will work until 7 PM today` is correctly narrower than unconstrained prose: execution requires current Recovery truth.
+Recovery-scoped tools remain separate and continue to require current Recovery truth.
 
 ## 9. Current typed operation set
 
@@ -193,6 +200,13 @@ CreateRecoveryProposalIntent
 ExecuteRecoveryIntent
 SetRecoveryIntakeIntent
 ExtendRecoveryDayIntent
+```
+
+Proactive Queue/Booking owner operations:
+
+```text
+SetOperationalIntakeIntent
+ExtendOperationalDayIntent
 ```
 
 Discovery/F2:
@@ -215,6 +229,8 @@ Registered mutation execution includes:
 - execute Recovery proposal;
 - stop/reopen Recovery intake;
 - extend Recovery day;
+- set proactive Queue intake control;
+- extend proactive Booking assignment hours for the current day through a one-day availability exception;
 - publish Discovery supply;
 - revoke Discovery publication.
 
@@ -273,19 +289,39 @@ Architecture fitness tests enforce the boundary, including preventing accidental
 
 ## 13. Tool composition examples
 
-### Extend a working day
+### Proactively extend a working day
 
 ```text
 lookup Resource -> explicit assignment/location candidate
 read Location clock
 read assignment day-end
-read current RecoveryIncident
+read current Resource availability revision
+POST structured Booking-backed assignment day-extension
+```
+
+The mutation is Booking-owned, is represented as a one-day available schedule exception and does not rewrite the recurring schedule.
+
+### Recovery-scoped extend-day
+
+```text
+identify ServiceQueue / assignment
+read current RecoveryIncident + source revision
+read current Location/Resource revisions
 POST structured Recovery day-extension
 ```
 
 The mutation remains Recovery-owned and requires the incident/current revisions.
 
-### Stop/reopen walk-ins
+### Proactively stop/reopen walk-ins
+
+```text
+list/identify ServiceQueue
+read intake state + revision
+read Location operational clock when deriving rest-of-day bounds
+POST structured Queue intake-control mutation
+```
+
+### Recovery-scoped stop/reopen walk-ins
 
 ```text
 list/identify ServiceQueue
@@ -322,7 +358,8 @@ Every public F6 mutation must preserve owner idempotency semantics:
 - same key + different semantic command -> conflict, never reinterpretation;
 - concurrent same-key requests -> at most one durable owner effect;
 - owner state/revision changes after read/resolution -> owner freshness/concurrency rules remain authoritative;
-- text-adapter replay must not fabricate a new semantic payload merely because the first execution changed current state.
+- text-adapter replay must not fabricate a new semantic payload merely because the first execution changed current state;
+- proactive text replay is reconstructed from completed owner idempotency/audit provenance rather than inferred from mutated current state.
 
 F6-specific concurrency evidence is required because semantic resolution occurs before the owner transaction. Owner-only concurrency tests are necessary but not sufficient.
 
@@ -339,10 +376,11 @@ Evidence must prove:
 7. concurrent F6 semantic resolution/execution cannot duplicate durable owner effects;
 8. lookup exposes ambiguity/candidates rather than guessing;
 9. callers can obtain IDs/current revisions needed by supported mutations without database access;
-10. Recovery proposal/execution, intake stop/reopen, extend-day and Discovery publish/revoke execute through F6 into real PostgreSQL effects;
-11. the four roadmap scenarios are satisfiable using structured public tools, with natural-language reasoning allowed outside Request Engine;
-12. F6 has no shadow persistence/authority;
-13. docs, guarantee/proof inventory and exact-head CI describe the same implementation.
+10. Recovery proposal/execution, Recovery intake/day-extension, proactive Queue intake control, proactive Booking day-extension and Discovery publish/revoke execute through F6 into real PostgreSQL effects;
+11. proactive Queue/Booking operations work without manufacturing a RecoveryIncident and preserve existing Recovery-scoped operations unchanged;
+12. the four roadmap scenarios are satisfiable using structured public tools, with natural-language reasoning allowed outside Request Engine;
+13. F6 has no shadow persistence/authority;
+14. docs, guarantee/proof inventory and exact-head CI describe the same implementation.
 
 ## 16. Current old -> new disposition
 
@@ -359,16 +397,20 @@ Queue intake + RecoveryIncident state reads         implemented
 Discovery publication state/revision read           implemented
 at-risk Reservation inspection                      implemented
 Recovery proposal/execution                         registered through F6
-stop/reopen intake execution                         registered through F6
-extend-day execution                                 registered through F6
+Recovery stop/reopen intake execution                registered through F6
+Recovery extend-day execution                        registered through F6
+proactive Queue intake control                       registered through F6
+proactive Booking assignment day-extension           registered through F6
 Discovery publish/revoke execution                   registered through F6
 trusted authority resolution                         implemented
 owner-agnostic execution registry/receipt            implemented
 second owner capability gate                         implemented + negative proof
 request-scoped idempotency propagation              implemented
+owner-backed proactive text replay                   implemented
 roadmap text compatibility scenarios                implemented as bounded adapter proof
 structured PostgreSQL acceptance                    implemented for proposal/execution,
-                                                     intake stop/reopen, extend-day and
+                                                     Recovery/proactive intake,
+                                                     Recovery/proactive extend-day and
                                                      Discovery publish/revoke
 concurrent natural-command replay proof              implemented
 multi-Queue/Resource-location/Offering ambiguity     implemented + adversarial proof
