@@ -1,6 +1,7 @@
 RESOURCE_QUERY = """
 WITH clock AS (SELECT clock_timestamp() AS observed_at)
 SELECT r.id AS resource_id,
+       r.display_name,
        a.location_id,
        a.id AS assignment_id,
        r.availability_revision AS resource_availability_revision
