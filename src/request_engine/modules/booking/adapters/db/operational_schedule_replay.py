@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -54,13 +55,15 @@ async def load_extension_replay(
             },
         )
     ).scalar_one_or_none()
-    exception = result.get("exception")
-    if not isinstance(exception, dict) or not isinstance(details, dict):
+    raw_exception = result.get("exception")
+    if not isinstance(raw_exception, dict) or not isinstance(details, dict):
         raise RuntimeError("completed Booking extension is missing replay provenance")
+    exception = cast(dict[str, object], raw_exception)
+    audit_details = cast(dict[str, object], details)
     if exception.get("exception_kind") != "available" or exception.get("active") is not True:
         return None
     reason = exception.get("reason")
-    expected_revision = details.get("previous_resource_availability_revision")
+    expected_revision = audit_details.get("previous_resource_availability_revision")
     if not isinstance(reason, str) or not isinstance(expected_revision, int):
         raise RuntimeError("completed Booking extension has invalid replay provenance")
     return OperationalAssignmentExtensionReplay(
