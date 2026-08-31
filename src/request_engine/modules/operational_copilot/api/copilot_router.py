@@ -86,10 +86,7 @@ def create_copilot_router(
         except CopilotConflict as error:
             raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error
         except CopilotSemanticError as error:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=str(error),
-            ) from error
+            raise _unprocessable(error) from error
         return CopilotExecutionView.from_receipt(receipt)
 
     add_capability_route(
@@ -112,11 +109,11 @@ def create_copilot_router(
 
 
 def _context(actor: ActorContext, idempotency_key: str) -> CopilotContext:
-    return CopilotContext(
-        organization_id=actor.organization_id,
-        principal_id=actor.principal_id,
-        idempotency_key=idempotency_key,
-    )
+    return CopilotContext(actor.organization_id, actor.principal_id, idempotency_key)
+
+
+def _unprocessable(error: Exception) -> HTTPException:
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error))
 
 
 async def _refusals(
@@ -129,7 +126,4 @@ async def _refusals(
     except CopilotPolicyRejected as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(error)) from error
     except CopilotSemanticError as error:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(error),
-        ) from error
+        raise _unprocessable(error) from error
