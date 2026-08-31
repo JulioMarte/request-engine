@@ -19,6 +19,10 @@ pytestmark = [
 ]
 
 
+def _error_message(response) -> str:
+    return str(response.json()["error"]["message"])
+
+
 async def test_resource_lookup_exposes_each_current_location_and_text_refuses_ambiguity(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
@@ -53,7 +57,7 @@ async def test_resource_lookup_exposes_each_current_location_and_text_refuses_am
             headers=auth(sandbox, idempotency_key="f6-resource-multi-location"),
         )
     assert response.status_code == 422, response.text
-    assert "multiple tenant-scoped resource values matched" in response.json()["detail"]
+    assert "multiple tenant-scoped resource values matched" in _error_message(response)
 
 
 async def test_offering_lookup_exposes_duplicate_names_and_text_refuses_ambiguity(
@@ -93,4 +97,4 @@ async def test_offering_lookup_exposes_duplicate_names_and_text_refuses_ambiguit
             headers=auth(sandbox, idempotency_key="f6-offering-ambiguity"),
         )
     assert response.status_code == 422, response.text
-    assert "multiple tenant-scoped offering values matched" in response.json()["detail"]
+    assert "multiple tenant-scoped offering values matched" in _error_message(response)
