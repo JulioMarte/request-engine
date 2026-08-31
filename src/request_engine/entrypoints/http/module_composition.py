@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 import request_engine.modules.operational_copilot.api as copilot_api
+import request_engine.modules.queue.api as queue_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
@@ -31,7 +32,6 @@ from request_engine.modules.discovery.api.publication_runtime import (
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
-from request_engine.modules.queue.api import QueueSlotOfferHttpPorts, install_http as install_queue_http
 from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
@@ -50,7 +50,7 @@ def install_business_modules(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
-    slot_offer_ports: QueueSlotOfferHttpPorts | None,
+    slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
 ) -> None:
     party_authority_reader = build_party_authority_reader(session_factory)
@@ -63,7 +63,7 @@ def install_business_modules(
         party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
     )
-    install_queue_http(
+    queue_api.install_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
