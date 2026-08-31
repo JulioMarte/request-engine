@@ -16,6 +16,7 @@ from request_engine.modules.operational_copilot.contracts import (
     CopilotContext,
 )
 from request_engine.modules.operational_copilot.errors import (
+    CopilotConflict,
     CopilotPolicyRejected,
     CopilotSemanticError,
 )
@@ -82,6 +83,8 @@ def create_copilot_router(
             if owner_capability is not None:
                 require_capability(actor, owner_capability)
             receipt = await copilot.execute(operation)
+        except CopilotConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=str(error)) from error
         except CopilotSemanticError as error:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
