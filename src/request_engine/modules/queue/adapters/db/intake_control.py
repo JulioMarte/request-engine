@@ -5,6 +5,10 @@ from request_engine.modules.queue.adapters.db.intake_control_codec import (
     intake_state_from_json,
     intake_state_to_json,
 )
+from request_engine.modules.queue.adapters.db.intake_control_replay import (
+    request_from_json,
+    request_to_json,
+)
 from request_engine.modules.queue.adapters.db.intake_control_store import load_intake_control
 from request_engine.modules.queue.adapters.db.intake_control_write import update_intake_control
 from request_engine.modules.queue.contracts.intake import (
@@ -19,6 +23,7 @@ from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
     command_fingerprint,
     complete_idempotency,
+    get_completed_idempotency_result,
 )
 
 
@@ -36,6 +41,29 @@ class PostgresQueueIntakeControl(QueueIntakeControlPort):
                 service_queue_id=service_queue_id,
                 lock=False,
             )
+
+    async def get_request_by_idempotency(
+        self,
+        organization_id: UUID,
+        principal_id: UUID,
+        idempotency_key: str,
+    ) -> SetQueueIntakeControlRequest | None:
+        async with tenant_transaction(self._session_factory, organization_id) as session:
+            result = await get_completed_idempotency_result(
+                session,
+                organization_id=organization_id,
+                principal_id=principal_id,
+                capability="queue.set_intake_control",
+                idempotency_key=idempotency_key,
+            )
+        if result is None or not isinstance(result.get("request"), dict):
+            return None
+        return request_from_json(
+            cast(dict[str, object], result["request"]),
+            organization_id=organization_id,
+            principal_id=principal_id,
+            idempotency_key=idempotency_key,
+        )
 
     async def set_intake_control(
         self, request: SetQueueIntakeControlRequest
@@ -86,7 +114,11 @@ class PostgresQueueIntakeControl(QueueIntakeControlPort):
                 idempotency_id=idempotency_id,
                 details=payload,
             )
-            await complete_idempotency(session, idempotency_id, {"intake_control": payload})
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"intake_control": payload, "request": request_to_json(request)},
+            )
             return state
 
 
