@@ -67,9 +67,7 @@ class OwnerBackedCopilotReferenceResolver:
                 context,
             )
         if isinstance(intent, PublishNamedResourceDiscoveryIntent):
-            return await resolve_publish_discovery(
-                self._booking, self._catalog, context, intent
-            )
+            return await resolve_publish_discovery(self._booking, self._catalog, context, intent)
         if isinstance(intent, ShowCurrentAtRiskReservationsIntent):
             queue = require_one(
                 await self._queues.list_queues(organization_id=context.organization_id),

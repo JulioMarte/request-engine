@@ -32,10 +32,7 @@ async def test_f6_execute_requires_the_registered_owner_capability(
     actors = {sandbox.token: actor}
     key = f"f6-owner-gate-{uuid4().hex}"
     incident_id = uuid4()
-    text = (
-        f"stop walk-ins for incident {incident_id} "
-        "source revision 1 intake revision 1"
-    )
+    text = f"stop walk-ins for incident {incident_id} source revision 1 intake revision 1"
 
     async with client_with_actors(e2e_session_factory, actors) as client:
         response = await client.post(

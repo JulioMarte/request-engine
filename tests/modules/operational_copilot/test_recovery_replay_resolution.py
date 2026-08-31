@@ -77,9 +77,7 @@ async def test_rest_of_day_replay_reuses_original_guarded_state() -> None:
             "effective_until": "2026-08-30 23:30:00+00:00",
         },
     )
-    resolved = await resolve_recovery_replay(
-        _reader(action), CTX, StopWalkInsRestOfDayIntent()
-    )
+    resolved = await resolve_recovery_replay(_reader(action), CTX, StopWalkInsRestOfDayIntent())
     assert resolved == SetRecoveryIntakeIntent(
         INCIDENT,
         False,
@@ -125,6 +123,4 @@ async def test_replay_refuses_same_key_bound_to_different_semantics() -> None:
         {"accepting": False, "reason": "different command"},
     )
     with pytest.raises(CopilotResolutionFailed):
-        await resolve_recovery_replay(
-            _reader(action), CTX, StopWalkInsRestOfDayIntent()
-        )
+        await resolve_recovery_replay(_reader(action), CTX, StopWalkInsRestOfDayIntent())
