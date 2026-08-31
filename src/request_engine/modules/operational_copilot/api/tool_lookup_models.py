@@ -16,6 +16,7 @@ class ResourceCandidateView(BaseModel):
     location_id: UUID
     assignment_id: UUID
     resource_availability_revision: int
+    display_name: str | None
 
     @classmethod
     def from_match(cls, value: CopilotResourceMatch) -> "ResourceCandidateView":
@@ -24,6 +25,7 @@ class ResourceCandidateView(BaseModel):
             location_id=value.location_id,
             assignment_id=value.assignment_id,
             resource_availability_revision=value.resource_availability_revision,
+            display_name=value.display_name,
         )
 
 
