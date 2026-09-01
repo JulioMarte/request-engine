@@ -78,6 +78,17 @@ def _skip_work(communication_task_id: UUID, skip_reason: str) -> PreparedDeliver
     )
 
 
+def _skip_delivery(
+    communication_task_id: UUID, delivery_id: UUID, skip_reason: str
+) -> PreparedDeliveryWork:
+    return PreparedDeliveryWork(
+        kind=DeliveryWorkKind.SKIP,
+        communication_task_id=communication_task_id,
+        delivery_id=delivery_id,
+        skip_reason=skip_reason,
+    )
+
+
 async def fail_poisoned_communication_task(
     session: AsyncSession,
     *,
@@ -131,6 +142,14 @@ async def prepare_dispatch(
     communication_task_id: UUID,
     configured_provider_keys: Collection[str] = (),
 ) -> PreparedDeliveryWork:
+    """Resolve the next dispatch work item for a live communication task.
+
+    Terminal tasks, elapsed deadlines and non-retryable definitive failures
+    are always closed upstream by fenced finalize (with its task_failed fact
+    and escalation hook) before a live task can be prepared again; prepare
+    never resurrects a closed lineage.
+    """
+
     task = await _lock_task(session, organization_id, communication_task_id)
     task_status = cast(str, task["status"])
     if task_status in {"completed", "cancelled", "failed"}:
@@ -163,19 +182,8 @@ async def prepare_dispatch(
             )
         if latest_status == "delivered":
             await _set_task_status(session, organization_id, communication_task_id, "completed")
-            return PreparedDeliveryWork(
-                kind=DeliveryWorkKind.SKIP,
-                communication_task_id=communication_task_id,
-                delivery_id=cast(UUID, latest["id"]),
-                skip_reason="already_delivered",
-            )
-        if latest_status == "failed" and not _delivery_retryable(latest):
-            await _mark_task_failed(session, organization_id, communication_task_id)
-            return PreparedDeliveryWork(
-                kind=DeliveryWorkKind.SKIP,
-                communication_task_id=communication_task_id,
-                delivery_id=cast(UUID, latest["id"]),
-                skip_reason="non_retryable_failure",
+            return _skip_delivery(
+                communication_task_id, cast(UUID, latest["id"]), "already_delivered"
             )
         if latest_status == "failed" and await _future_dispatch_exists(
             session,
@@ -183,11 +191,8 @@ async def prepare_dispatch(
             communication_task_id=communication_task_id,
             db_now=db_now,
         ):
-            return PreparedDeliveryWork(
-                kind=DeliveryWorkKind.SKIP,
-                communication_task_id=communication_task_id,
-                delivery_id=cast(UUID, latest["id"]),
-                skip_reason="retry_already_scheduled",
+            return _skip_delivery(
+                communication_task_id, cast(UUID, latest["id"]), "retry_already_scheduled"
             )
 
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
@@ -209,8 +214,7 @@ async def prepare_dispatch(
                 SET contact_point_id = :contact_point_id,
                     revision = revision + 1,
                     updated_at = clock_timestamp()
-                WHERE organization_id = :organization_id
-                  AND id = :communication_task_id
+                WHERE organization_id = :organization_id AND id = :communication_task_id
                 """
             ),
             {
@@ -228,22 +232,11 @@ async def prepare_dispatch(
                 text(
                     """
                     INSERT INTO request_engine.communication_deliveries (
-                        organization_id,
-                        communication_task_id,
-                        attempt_no,
-                        channel,
-                        provider_key,
-                        provider_idempotency_key,
-                        status,
-                        result_data
+                        organization_id, communication_task_id, attempt_no, channel,
+                        provider_key, provider_idempotency_key, status, result_data
                     ) VALUES (
-                        :organization_id,
-                        :communication_task_id,
-                        :attempt_no,
-                        :channel,
-                        :provider_key,
-                        :provider_idempotency_key,
-                        'attempting',
+                        :organization_id, :communication_task_id, :attempt_no, :channel,
+                        :provider_key, :provider_idempotency_key, 'attempting',
                         CAST(:result_data AS jsonb)
                     )
                     RETURNING *
@@ -278,8 +271,7 @@ async def prepare_dispatch(
                     revision = revision + 1,
                     updated_at = clock_timestamp()
                 WHERE organization_id = :organization_id
-                  AND id = :communication_task_id
-                  AND status = 'pending'
+                  AND id = :communication_task_id AND status = 'pending'
                 """
             ),
             {
@@ -316,34 +308,23 @@ async def prepare_reconciliation(
     organization_id: UUID,
     delivery_id: UUID,
 ) -> PreparedDeliveryWork:
+    """Resolve the next reconciliation work item for a persisted delivery.
+
+    A non-retryable failed delivery can only exist with its task already
+    closed by fenced finalize (task_failed fact plus escalation hook);
+    prepare never resurrects a closed lineage.
+    """
+
     delivery = await _lock_delivery(session, organization_id, delivery_id)
     task_id = cast(UUID, delivery["communication_task_id"])
     task = await _lock_task(session, organization_id, task_id)
     task_status = cast(str, task["status"])
     if task_status in {"completed", "cancelled", "failed"}:
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            skip_reason=f"task_{task_status}",
-        )
+        return _skip_delivery(task_id, delivery_id, f"task_{task_status}")
     delivery_status = cast(str, delivery["status"])
     if delivery_status == "delivered":
         await _set_task_status(session, organization_id, task_id, "completed")
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            skip_reason="already_delivered",
-        )
-    if delivery_status == "failed" and not _delivery_retryable(delivery):
-        await _mark_task_failed(session, organization_id, task_id)
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            skip_reason="non_retryable_failure",
-        )
+        return _skip_delivery(task_id, delivery_id, "already_delivered")
     db_now = await _database_now(session)
     expires_at = cast(datetime | None, task["expires_at"])
     if expires_at is not None and expires_at <= db_now:
@@ -358,19 +339,9 @@ async def prepare_reconciliation(
             },
             trigger="delivery_deadline_missed",
         )
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            skip_reason="task_expired",
-        )
+        return _skip_delivery(task_id, delivery_id, "task_expired")
     if delivery_status == "failed":
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=task_id,
-            delivery_id=delivery_id,
-            skip_reason="retryable_failure_requires_dispatch",
-        )
+        return _skip_delivery(task_id, delivery_id, "retryable_failure_requires_dispatch")
     return PreparedDeliveryWork(
         kind=DeliveryWorkKind.LOOKUP,
         communication_task_id=task_id,
@@ -411,8 +382,7 @@ async def finalize_provider_result(
             )
 
     db_now = await _database_now(session)
-    result_data = dict(result.result_data)
-    result_data["retryable"] = result.retryable
+    result_data = {**result.result_data, "retryable": result.retryable}
     await session.execute(
         text(
             """
@@ -422,8 +392,7 @@ async def finalize_provider_result(
                 result_data = result_data || CAST(:result_data AS jsonb),
                 completed_at = :completed_at,
                 updated_at = :completed_at
-            WHERE organization_id = :organization_id
-              AND id = :delivery_id
+            WHERE organization_id = :organization_id AND id = :delivery_id
             """
         ),
         {
@@ -455,13 +424,13 @@ async def finalize_provider_result(
         )
     elif result.status is ProviderDeliveryStatus.FAILED:
         if result.retryable:
-            await _set_task_status(session, organization_id, task_id, "pending")
-            await _schedule_retry_dispatch(
+            task_terminal = not await _rearm_retryable_failure(
                 session,
                 organization_id=organization_id,
                 communication_task_id=task_id,
                 source_delivery_id=delivery_id,
                 execute_at=db_now + timedelta(seconds=policy.retry_after_seconds),
+                db_now=db_now,
             )
         else:
             await close_task_failed_and_escalate(
@@ -492,6 +461,57 @@ async def finalize_provider_result(
         retryable=result.retryable,
         task_terminal=task_terminal,
     )
+
+
+async def _rearm_retryable_failure(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    communication_task_id: UUID,
+    source_delivery_id: UUID,
+    execute_at: datetime,
+    db_now: datetime,
+) -> bool:
+    """Re-arm one retryable failure as a pending task plus a future attempt.
+
+    A late retryable report after lineage failure records evidence on the
+    delivery row only and never resurrects the task: the CAS below fires zero
+    rows for a terminal task or an elapsed deadline, so no retry dispatch runs.
+    """
+
+    rearm = (
+        await session.execute(
+            text(
+                """
+                UPDATE request_engine.communication_tasks
+                SET status = 'pending',
+                    revision = revision + CASE WHEN status IS DISTINCT FROM 'pending'
+                        THEN 1 ELSE 0 END,
+                    updated_at = clock_timestamp()
+                WHERE organization_id = :organization_id
+                  AND id = :communication_task_id
+                  AND status NOT IN ('failed', 'completed', 'cancelled')
+                  AND (expires_at IS NULL OR expires_at > :db_now)
+                RETURNING id
+                """
+            ),
+            {
+                "organization_id": organization_id,
+                "communication_task_id": communication_task_id,
+                "db_now": db_now,
+            },
+        )
+    ).first()
+    if rearm is None:
+        return False
+    await _schedule_retry_dispatch(
+        session,
+        organization_id=organization_id,
+        communication_task_id=communication_task_id,
+        source_delivery_id=source_delivery_id,
+        execute_at=execute_at,
+    )
+    return True
 
 
 async def _lock_task(
@@ -673,9 +693,7 @@ async def _schedule_retry_dispatch(
 
 
 async def _mark_task_failed(
-    session: AsyncSession,
-    organization_id: UUID,
-    communication_task_id: UUID,
+    session: AsyncSession, organization_id: UUID, communication_task_id: UUID
 ) -> None:
     await _set_task_status(session, organization_id, communication_task_id, "failed")
 
@@ -691,13 +709,10 @@ async def _set_task_status(
             """
             UPDATE request_engine.communication_tasks
             SET status = :status,
-                revision = CASE
-                    WHEN status IS DISTINCT FROM :status THEN revision + 1
-                    ELSE revision
-                END,
+                revision = revision + CASE WHEN status IS DISTINCT FROM :status
+                    THEN 1 ELSE 0 END,
                 updated_at = clock_timestamp()
-            WHERE organization_id = :organization_id
-              AND id = :communication_task_id
+            WHERE organization_id = :organization_id AND id = :communication_task_id
             """
         ),
         {

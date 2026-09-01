@@ -117,6 +117,22 @@ Predecessor: F7 S1/S2 merged as PR #104; S0b/S0b2 landed via `docs/v3/38`/`39` a
 - `docs/README.md` map entry for this plan; doc-contract expectations updated for any
   mapped file touched.
 
+## Review dispositions
+
+Adversarial-review findings dispositioned after T8; all are accepted current behavior:
+
+- A late authenticated delivered report may complete a failed-and-escalated task while its
+  escalation child remains live — accepted: delivered-upgrade-not-downgrade preserves §3;
+  the child's own delivery outcome reconciles independently.
+- A late retryable report records evidence on the delivery row only and never resurrects a
+  failed/terminal or deadline-lapsed task (CAS re-arm, delivery_store).
+- Zero-reachability poison closes the lineage via the `communication.task_failed.v1` fact
+  only, with no separate `lineage_unreachable` event — accepted asymmetry; the terminal
+  state is operator-visible either way.
+- A pre-dispatch `delivery_deadline_missed` re-attempts the SAME channel with a fresh
+  workable window — pinned by test (`test_escalation_replay_and_window.py`), documented
+  intent: reaching the patient after a missed deadline is the point of the trigger.
+
 ## Validation discipline
 
 - Canonical lane for Python/architecture/unit/module work:

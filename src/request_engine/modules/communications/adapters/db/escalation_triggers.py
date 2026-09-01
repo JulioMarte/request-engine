@@ -5,7 +5,10 @@ non-retryable finalize branch (after the durable task-failure marking) and at
 the per-channel dispatch-resolution failure (instead of raising). Each hook
 runs inside the caller's tenant transaction: the failed marking, the
 ``communication.task_failed.v1`` fact and the escalation step commit or roll
-back together, so a trigger fires at most once per failed task.
+back together, so a trigger fires at most once per failed task. The close is
+a CAS on a not-yet-terminal row: a repeated trigger on a task that already
+closed re-runs the escalation step but appends no duplicate fact and does not
+bump the revision again.
 """
 
 from collections.abc import Collection
@@ -47,30 +50,37 @@ async def close_task_failed_and_escalate(
 
     ``payload`` is the exact ``communication.task_failed.v1`` payload the
     caller previously appended inline; the payload ``reason`` doubles as the
-    ledger ``failure_class``.
+    ledger ``failure_class``. The close is a CAS on a not-yet-terminal row:
+    when the task already closed, the fact and revision bump are skipped and
+    only the (no-op safe) escalation step runs.
     """
 
-    await session.execute(
-        text(
-            """
-            UPDATE request_engine.communication_tasks
-            SET status = 'failed',
-                revision = revision + 1,
-                updated_at = clock_timestamp()
-            WHERE organization_id = :organization_id
-              AND id = :communication_task_id
-            """
-        ),
-        {"organization_id": organization_id, "communication_task_id": communication_task_id},
-    )
-    await append_outbox(
-        session,
-        organization_id=organization_id,
-        event_type="communication.task_failed.v1",
-        aggregate_kind="CommunicationTask",
-        aggregate_id=communication_task_id,
-        payload=payload,
-    )
+    transitioned = (
+        await session.execute(
+            text(
+                """
+                UPDATE request_engine.communication_tasks
+                SET status = 'failed',
+                    revision = revision + 1,
+                    updated_at = clock_timestamp()
+                WHERE organization_id = :organization_id
+                  AND id = :communication_task_id
+                  AND status NOT IN ('failed', 'completed', 'cancelled')
+                RETURNING id
+                """
+            ),
+            {"organization_id": organization_id, "communication_task_id": communication_task_id},
+        )
+    ).first() is not None
+    if transitioned:
+        await append_outbox(
+            session,
+            organization_id=organization_id,
+            event_type="communication.task_failed.v1",
+            aggregate_kind="CommunicationTask",
+            aggregate_id=communication_task_id,
+            payload=payload,
+        )
     await escalate_channel(
         session,
         organization_id=organization_id,

@@ -1,19 +1,14 @@
 """The escalation step (docs/v3/36 section 4): sequential channel fallback.
-
 ``escalate_channel`` runs inside the caller's tenant transaction, after the
 triggering failure has marked the parent task failed. Replay/concurrency
-discipline: the parent row lock serializes decisions for the same parent; a
-live lineage task or an existing ledger row for the parent makes a repeated
-trigger a no-op; the ledger UNIQUE ``(organization, parent, to_channel,
-ordinal)`` plus the deterministic child dedupe key realize the idempotency
-identity ``(parent task, trigger, from_channel, to_channel, ordinal)`` as
-durable state; a replayed terminal close is detected from its outbox fact.
-
+discipline: the parent row lock serializes decisions for the same parent, a
+transaction-scoped subject advisory lock serializes the fatigue count-then-act
+across lineages for the same recipient, and a repeated trigger (live lineage
+task, existing ledger row, deterministic child dedupe key) is a durable no-op.
 Terminal lineage facts (``communication.lineage_unreachable.v1``): reason
-``unreachable`` when no usable next channel remains, ``escalation_exhausted``
-when the ordinal guard is exhausted, ``fatigue_limited`` when the daily
-contact fatigue guard refuses — the first two close the same unreachable
-terminal family (docs/v3/40 T4)."""
+``unreachable`` (no usable next channel) and ``escalation_exhausted`` (ordinal
+guard) close the same unreachable terminal family; ``fatigue_limited`` is the
+daily contact guard refusal — all operator-visible, never silence (T4)."""
 
 from typing import cast
 from uuid import UUID
@@ -35,6 +30,9 @@ from request_engine.modules.communications.adapters.db.escalation_next_channel i
     database_now,
     resolve_next_channel_contact_point,
     today_contact_count,
+)
+from request_engine.modules.communications.adapters.db.escalation_serialization import (
+    serialize_subject_contacts,
 )
 from request_engine.modules.communications.adapters.db.escalation_terminal import (
     close_lineage_terminal,
@@ -64,11 +62,14 @@ async def escalate_channel(
     if isinstance(revalidated, str):
         return EscalationOutcome("no_op", None, revalidated)
     parent, prior = revalidated
-
-    from_channel, was_attempted = await parent_trigger_channel(
+    await serialize_subject_contacts(
         session,
         organization_id=organization_id,
-        parent_task_id=parent_task_id,
+        recipient_party_id=cast(UUID, parent["recipient_party_id"]),
+    )
+
+    from_channel, was_attempted = await parent_trigger_channel(
+        session, organization_id=organization_id, parent_task_id=parent_task_id
     )
 
     async def close(reason: str) -> EscalationOutcome:
@@ -82,8 +83,7 @@ async def escalate_channel(
             reason=reason,
         )
 
-    channel_policy = cast(dict[str, object], parent["channel_policy"])
-    guards = parse_escalation_guards(channel_policy)
+    guards = parse_escalation_guards(cast(dict[str, object], parent["channel_policy"]))
     if len(prior) >= guards.max_escalations_per_task:
         return await close("escalation_exhausted")
 
@@ -95,7 +95,7 @@ async def escalate_channel(
     if fatigue_limited(contacts, guards):
         return await close("fatigue_limited")
 
-    policy = parse_delivery_policy(channel_policy)
+    policy = parse_delivery_policy(cast(dict[str, object], parent["channel_policy"]))
     attempted = {cast(str, row["to_channel"]) for row in prior}
     if was_attempted and from_channel is not None:
         attempted.add(from_channel)
