@@ -59,8 +59,7 @@ class FakeProvider:
         self.send_requests.append(request)
         if self._lock_probe is not None:
             self._lock_probe(request.communication_task_id)
-        if not self._send_results:
-            raise AssertionError("unexpected provider send")
+        assert self._send_results, "unexpected provider send"
         result = self._send_results.pop(0)
         if isinstance(result, Exception):
             raise result

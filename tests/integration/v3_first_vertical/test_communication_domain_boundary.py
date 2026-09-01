@@ -35,11 +35,8 @@ from request_engine.platform.scheduling.postgres import PostgresScheduledActionW
 from .booking_boundary_fixture import create_booking_boundary_fixture
 
 PgConnection = Connection[Any]
-BookingState = tuple[
-    tuple[object, ...],
-    tuple[tuple[object, ...], ...],
-    tuple[tuple[object, ...], ...],
-]
+PgRow = tuple[object, ...]
+BookingState = tuple[PgRow, tuple[PgRow, ...], tuple[PgRow, ...]]
 
 
 class BoundaryProvider:

@@ -17,18 +17,10 @@ from request_engine.modules.communications.contracts.delivery import (
 from request_engine.platform.db.session import tenant_transaction
 
 from . import operational_support as support
-from .test_communication_worker_resilience import (
-    PAST,
-    ScriptedProvider,
-    _action_status,
-    _claim_and_process,
-    _delivery_status,
-    _dispatch,
-    _events,
-    _task,
-    _task_status,
-    _worker_stack,
-)
+from .delivery_provider_fakes import ScriptedProvider
+from .delivery_resilience_readers import action_status, delivery_status, event_count, task_status
+from .delivery_resilience_store import dispatch, new_task
+from .delivery_resilience_world import PAST, claim_and_process, worker_stack
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
@@ -40,8 +32,8 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
     org = support.new_org(e2e_admin_conn, "accepted-reconciliation")
-    task_id = _task(e2e_admin_conn, org)
-    dispatch_id = _dispatch(e2e_admin_conn, org, task_id)
+    task_id = new_task(e2e_admin_conn, org)
+    dispatch_id = dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(
         send=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.ACCEPTED,
@@ -53,10 +45,10 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
         ),
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+    async with worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
         _, _, scheduler, handler = stack
-        await _claim_and_process(scheduler, handler)
-        assert _action_status(e2e_admin_conn, dispatch_id) == "completed"
+        await claim_and_process(scheduler, handler)
+        assert action_status(e2e_admin_conn, dispatch_id) == "completed"
         assert len(provider.send_calls) == 1
         assert provider.lookup_calls == []
 
@@ -95,10 +87,10 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
             (PAST, PAST, first_reconcile_id),
         )
 
-        await _claim_and_process(scheduler, handler)
+        await claim_and_process(scheduler, handler)
         assert len(provider.send_calls) == 1
         assert len(provider.lookup_calls) == 1
-        assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
+        assert delivery_status(e2e_admin_conn, delivery_id) == "accepted"
 
         pending_reconciliations = e2e_admin_conn.execute(
             """
@@ -116,12 +108,12 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
         assert len(pending_reconciliations) == 1
         next_reconcile_id = cast(UUID, pending_reconciliations[0][0])
 
-        replay_dispatch_id = _dispatch(e2e_admin_conn, org, task_id)
-        await _claim_and_process(scheduler, handler)
-        assert _action_status(e2e_admin_conn, replay_dispatch_id) == "completed"
+        replay_dispatch_id = dispatch(e2e_admin_conn, org, task_id)
+        await claim_and_process(scheduler, handler)
+        assert action_status(e2e_admin_conn, replay_dispatch_id) == "completed"
         assert len(provider.send_calls) == 1
         assert len(provider.lookup_calls) == 2
-        assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
+        assert delivery_status(e2e_admin_conn, delivery_id) == "accepted"
 
         still_one_future = e2e_admin_conn.execute(
             """
@@ -149,13 +141,13 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
             """,
             (PAST, PAST, next_reconcile_id),
         )
-        await _claim_and_process(scheduler, handler)
+        await claim_and_process(scheduler, handler)
 
     assert len(provider.send_calls) == 1
     assert len(provider.lookup_calls) == 3
-    assert _task_status(e2e_admin_conn, task_id) == "completed"
-    assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"
-    assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
+    assert task_status(e2e_admin_conn, task_id) == "completed"
+    assert delivery_status(e2e_admin_conn, delivery_id) == "delivered"
+    assert event_count(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
     assert e2e_admin_conn.execute(
         """
         SELECT count(*)
@@ -176,8 +168,8 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
     org = support.new_org(e2e_admin_conn, "retry-backoff-replay")
-    task_id = _task(e2e_admin_conn, org)
-    action_id = _dispatch(e2e_admin_conn, org, task_id)
+    task_id = new_task(e2e_admin_conn, org)
+    action_id = dispatch(e2e_admin_conn, org, task_id)
     provider = ScriptedProvider(
         send=ProviderDeliveryResult(
             status=ProviderDeliveryStatus.FAILED,
@@ -186,7 +178,7 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
         )
     )
 
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
+    async with worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
         domain_factory, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
@@ -211,8 +203,8 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
             )
         assert finalized.status is ProviderDeliveryStatus.FAILED
         assert finalized.retryable is True
-        assert _task_status(e2e_admin_conn, task_id) == "pending"
-        assert _action_status(e2e_admin_conn, action_id) == "leased"
+        assert task_status(e2e_admin_conn, task_id) == "pending"
+        assert action_status(e2e_admin_conn, action_id) == "leased"
 
         retry_row = e2e_admin_conn.execute(
             """
@@ -251,7 +243,7 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
 
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
-    assert _action_status(e2e_admin_conn, action_id) == "completed"
+    assert action_status(e2e_admin_conn, action_id) == "completed"
     assert e2e_admin_conn.execute(
         """
         SELECT status, execute_at > clock_timestamp()

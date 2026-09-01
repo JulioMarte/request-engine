@@ -95,18 +95,25 @@ Predecessor: F7 S1/S2 merged as PR #104; S0b/S0b2 landed via `docs/v3/38`/`39` a
 
 ### T8 — Docs + governance
 
-- FU-5 (slot-recovery capacity boundary): no decision is recorded yet; current state is
-  that the reference factory's expiry handler uses `CapacitySafeSlotOfferCapacity` while
-  its slot-recovery composition still uses the raw `PostgresSlotOfferCapacity`. Decision
-  lands at implementation; either way the two compositions in the same runtime must use
-  the same capacity boundary, recorded here when decided.
-- FU-6: document the reference worker factory env contract
-  (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`, plus
-  the webhook variables already documented in doc 37) in
-  `docs/v3/10-worker-runtime-hardening.md`.
-- FU-7: verify recovery impact-communication recipients resolve verified contact points
-  as intended under the shared transactional channel set + dispatch-time provider
-  binding; record the verification result in doc 37's follow-up table.
+- FU-5 (slot-recovery capacity boundary) — **decided:** both queue-facing compositions in
+  the reference worker runtime now use `CapacitySafeSlotOfferCapacity`. The expiry handler
+  already used it; the slot-recovery composition inside the reservation-lifecycle outbox
+  handler was switched from the raw `PostgresSlotOfferCapacity` (which had been mirrored
+  from the composition tests). Capacity loss on a queue-facing offer path is a business
+  outcome (`SlotOfferCapacityUnavailable` closes the SlotOpportunity), so the safe
+  boundary is used there too: it isolates the speculative Hold acquisition in a savepoint
+  and normalizes any escaping shared-capacity `23P01` into the port contract, keeping a
+  lost-capacity race from aborting the surrounding outbox-handler transaction with a raw
+  `IntegrityError`. Both compositions (and the HTTP composition) now share one capacity
+  boundary; no test composed the factory's capacity choice, so none needed changing.
+- FU-6: the reference worker factory environment contract and the provider-event handler
+  registration/payload contract are documented in `10-worker-runtime-hardening.md`.
+- FU-7 — verified: recovery impact communications resolve recipients through the shared
+  transactional channel set, and the dispatch path auto-binds only `active AND verified`
+  contact points (`dispatch_resolution.py`); the recovery impact e2e
+  (`tests/e2e/test_f5_recovery_delay_communication.py`, PostgreSQL) creates the durable
+  impact task for a recipient whose contact point is verified, and the escalation
+  step/dispatch proofs pin children to verified contact points. No behavior changed.
 - `docs/README.md` map entry for this plan; doc-contract expectations updated for any
   mapped file touched.
 

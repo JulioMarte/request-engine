@@ -26,9 +26,6 @@ from request_engine.modules.booking.adapters.db.lifecycle_reader import (
 from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
     PostgresReservationLifecycleScheduling,
 )
-from request_engine.modules.booking.adapters.db.slot_offer_capacity import (
-    PostgresSlotOfferCapacity,
-)
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
 from request_engine.modules.communications.adapters.db.reservation_lifecycle_intent import (
     PostgresReservationLifecycleNotificationIntent,
@@ -125,7 +122,7 @@ def create_worker() -> WorkerProcess:
             notifications=PostgresReservationLifecycleNotificationIntent(factory),
             recovery=PostgresReleasedSlotRecovery(
                 factory,
-                capacity=PostgresSlotOfferCapacity(),
+                capacity=CapacitySafeSlotOfferCapacity(),
                 notification=PostgresSlotOfferNotificationIntent(),
             ),
         ),
