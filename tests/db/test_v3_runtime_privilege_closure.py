@@ -28,10 +28,7 @@ DEFINER_MEDIATED_TABLES = {
 # taxonomy is read through definer functions, the authority-event ledger is
 # append-only and definer-written, and handoffs are fully definer-mediated.
 EXPECTED_RELATION_PRIVILEGE_OVERRIDES: dict[tuple[str, str, str], set[str]] = {
-    ("request_engine_app", "request_engine", "service_classifications"): {
-        "INSERT",
-        "UPDATE",
-    },
+    ("request_engine_app", "request_engine", "service_classifications"): {"INSERT", "UPDATE"},
     ("request_engine_app", "request_engine", "discovery_booking_handoffs"): set(),
     (
         "request_engine_app",
@@ -44,12 +41,8 @@ EXPECTED_RELATION_PRIVILEGE_OVERRIDES: dict[tuple[str, str, str], set[str]] = {
         "request_engine",
         "resource_location_availability",
     ): {"SELECT", "INSERT", "UPDATE", "DELETE"},
-    # S0b2 (§9.3): the party identity revision ledger is append-only for the
-    # app role; UPDATE/DELETE are denied by grants and by the 0025 guard.
-    ("request_engine_app", "request_engine", "party_identity_revisions"): {
-        "SELECT",
-        "INSERT",
-    },
+    # S0b2 (§9.3): the revision ledger is append-only for the app role.
+    ("request_engine_app", "request_engine", "party_identity_revisions"): {"SELECT", "INSERT"},
     ("request_engine_admin", "request_engine", "service_classifications"): {
         "SELECT",
         "REFERENCES",
