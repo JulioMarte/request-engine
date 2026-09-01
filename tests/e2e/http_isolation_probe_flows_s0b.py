@@ -8,7 +8,7 @@ probe is read-only.
 
 from typing import TYPE_CHECKING
 
-from .http_surface import PROBE_UUID_2
+from .http_surface import PROBE_UUID, PROBE_UUID_2
 
 if TYPE_CHECKING:
     from .http_isolation_probes import ForeignObjects
@@ -70,6 +70,21 @@ def foreign_request(
         )
     if operation.name == "parties.deactivate":
         return (f"/v1/parties/{foreign.party_id}/deactivate", {}, None, 404)
+    if operation.name == "parties.read_revisions":
+        return (f"/v1/parties/{foreign.party_id}/revisions", {}, None, 404)
+    if operation.name == "parties.rollback_identity":
+        return (
+            f"/v1/parties/{foreign.party_id}/rollback",
+            {},
+            {"target_revision": 1},
+            404,
+        )
+    if operation.name == "staff.register_contact":
+        return ("/v1/staff/contacts", {}, {"channel": "phone", "value": "12"}, 422)
+    if operation.name == "staff.request_contact_verification":
+        return (f"/v1/staff/contacts/{PROBE_UUID}/request-verification", {}, None, 404)
+    if operation.name == "staff.confirm_contact":
+        return (f"/v1/staff/contacts/{PROBE_UUID}/confirm", {}, {"code": "123456"}, 404)
     if operation.name == "parties.lookup":
         return ("/v1/parties/lookup", {"mode": "phone", "value": "+18295550100"}, None, 200)
     raise AssertionError(f"missing S0b tenant probe for {operation.name}")

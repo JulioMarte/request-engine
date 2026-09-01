@@ -1,23 +1,21 @@
 import os
 from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.exceptions import RequestValidationError
-from sqlalchemy.exc import IntegrityError
+from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
-from request_engine.entrypoints.http.errors import (
-    authentication_required_handler,
-    capability_required_handler,
-    http_exception_handler,
-    idempotency_conflict_handler,
-    integrity_error_handler,
-    request_validation_error_handler,
-)
+from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
+from request_engine.entrypoints.http.operator_resolution import (
+    DeploymentOperatorActorResolver,
+    OperatorCapabilitySource,
+)
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.security.acting_operator import (
+    ActingOperatorActorResolver,
+    OperatorActorResolver,
+)
 from request_engine.platform.security.discovery import (
     BaselineTenantCapabilityPolicy,
     TenantCapabilityPolicy,
@@ -25,8 +23,6 @@ from request_engine.platform.security.discovery import (
 from request_engine.platform.security.execution_context import clear_actor_context
 from request_engine.platform.security.http import (
     ActorResolver,
-    AuthenticationRequired,
-    CapabilityRequired,
     RequestExecutionActorResolver,
     TenantCapabilityActorResolver,
     request_correlation_id,
@@ -56,6 +52,8 @@ def create_app(
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
+    operator_actor_resolver: OperatorActorResolver | None = None,
+    operator_capability_source: OperatorCapabilitySource | None = None,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around explicit external ports."""
 
@@ -70,7 +68,11 @@ def create_app(
         signing_key = configured_key.encode("utf-8")
 
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
-    request_actor_resolver = RequestExecutionActorResolver(actor_resolver)
+    operator_actors = operator_actor_resolver or DeploymentOperatorActorResolver(
+        session_factory, operator_capability_source
+    )
+    relay_actor_resolver = ActingOperatorActorResolver(actor_resolver, operator_actors)
+    request_actor_resolver = RequestExecutionActorResolver(relay_actor_resolver)
     execution_actor_resolver = TenantCapabilityActorResolver(request_actor_resolver, policy)
     app = FastAPI(
         title="Request Engine",
@@ -81,12 +83,7 @@ def create_app(
         ),
     )
     app.middleware("http")(_request_execution_context)
-    app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
-    app.add_exception_handler(CapabilityRequired, capability_required_handler)
-    app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
-    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(IntegrityError, integrity_error_handler)
+    add_global_error_handlers(app)
     app.include_router(
         create_capability_router(
             actor_resolver=request_actor_resolver,

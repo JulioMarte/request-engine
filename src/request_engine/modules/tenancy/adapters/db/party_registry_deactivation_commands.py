@@ -13,10 +13,13 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.tenancy.adapters.db.party_correction_support import (
+from request_engine.modules.tenancy.adapters.db.party_correction_records import (
     audit_correction,
-    fetch_one,
     finish_party_state,
+    record_correction_revision,
+)
+from request_engine.modules.tenancy.adapters.db.party_correction_support import (
+    fetch_one,
     lock_any_party,
     party_state,
     run_correction,
@@ -49,7 +52,7 @@ _DEACTIVATE_CONTACT_POINT_SQL = text(
     " SET active = false, updated_at = clock_timestamp()"
     " WHERE organization_id = :organization_id AND id = :contact_point_id"
     " AND party_id = :party_id"
-    " RETURNING id, party_id, channel, normalized_value, verified, registered_via"
+    " RETURNING id, party_id, channel, normalized_value, verified, source_kind"
 )
 
 _DEACTIVATE_PARTY_SQL = text(
@@ -87,6 +90,7 @@ class PostgresPartyDeactivationCommands:
             if updated is None:
                 raise PartyContactPointNotFound(command.party_id, command.contact_point_id)
             affected = contact_point_from_row(updated)
+            await record_correction_revision(session, command, _CONTACT_POINT_CAPABILITY)
             state = await party_state(session, command.organization_id, command.party_id)
             payload: dict[str, object] = {
                 "party": party_to_json(state),

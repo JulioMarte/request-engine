@@ -20,8 +20,8 @@ from request_engine.modules.tenancy.application.errors import (
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     PartyIdentityDocument,
+    PartySourceKind,
     RegisteredParty,
-    RegisteredVia,
 )
 
 
@@ -48,14 +48,14 @@ def replay_contact_point(
 
 
 def contact_point_from_row(row: RowMapping) -> PartyContactPoint:
-    raw_via = cast(str | None, row["registered_via"])
+    raw_kind = cast(str | None, row["source_kind"])
     return PartyContactPoint(
         party_id=cast(UUID, row["party_id"]),
         contact_point_id=cast(UUID, row["id"]),
         channel=cast(str, row["channel"]),
         normalized_value=cast(str, row["normalized_value"]),
         verified=cast(bool, row["verified"]),
-        registered_via=RegisteredVia(raw_via) if raw_via else None,
+        source_kind=PartySourceKind(raw_kind) if raw_kind else None,
     )
 
 
@@ -66,7 +66,7 @@ def contact_point_to_json(contact: PartyContactPoint) -> dict[str, object]:
         "channel": contact.channel,
         "normalized_value": contact.normalized_value,
         "verified": contact.verified,
-        "registered_via": contact.registered_via.value if contact.registered_via else None,
+        "source_kind": contact.source_kind.value if contact.source_kind else None,
     }
 
 
@@ -77,9 +77,9 @@ def contact_point_from_json(data: dict[str, object]) -> PartyContactPoint:
         channel=cast(str, data["channel"]),
         normalized_value=cast(str, data["normalized_value"]),
         verified=cast(bool, data["verified"]),
-        registered_via=(
-            RegisteredVia(cast(str, data["registered_via"]))
-            if data["registered_via"] is not None
+        source_kind=(
+            PartySourceKind(cast(str, data["source_kind"]))
+            if data["source_kind"] is not None
             else None
         ),
     )

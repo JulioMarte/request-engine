@@ -12,7 +12,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
 from request_engine.modules.tenancy.api.party_registry_models import (
     PartyContactPointView,
     RegisteredPartyView,
@@ -52,6 +55,9 @@ def add_party_deactivation_routes(
                 party_id=party_id,
                 contact_point_id=contact_point_id,
                 idempotency_key=idempotency_key,
+                source_kind=source_kind(actor),
+                platform=actor.platform,
+                technical_principal_id=actor.technical_principal_id,
             ),
         )
         return PartyContactPointView.from_contract(contact_point)
@@ -69,6 +75,9 @@ def add_party_deactivation_routes(
                 principal_id=actor.principal_id,
                 party_id=party_id,
                 idempotency_key=idempotency_key,
+                source_kind=source_kind(actor),
+                platform=actor.platform,
+                technical_principal_id=actor.technical_principal_id,
             ),
         )
         return RegisteredPartyView.from_contract(party)

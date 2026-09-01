@@ -5,24 +5,19 @@ from uuid import UUID, uuid4
 from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
     PostgresPartyRegistryCommands,
 )
-from request_engine.modules.tenancy.application.commands.confirm_party_contact_point import (
-    ConfirmPartyContactPointCommand,
+from request_engine.modules.tenancy.application.commands.add_party_document import (
+    AddPartyDocumentCommand,
 )
 from request_engine.modules.tenancy.application.commands.register_party import (
     RegisterPartyCommand,
-    register_party,
 )
+from request_engine.modules.tenancy.application.commands.rename_party import RenamePartyCommand
 from request_engine.modules.tenancy.contracts.party_registry import (
-    PartyContactPoint,
     PartyContactPointInput,
     PartyDocumentInput,
-    RegisteredParty,
-    RegisteredVia,
+    PartySourceKind,
 )
 from request_engine.platform.db.session import SessionFactory
-
-from ._party_support import PgConnection
-from ._party_world import PartyRegistryWorld, create_party_registry_world
 
 
 def registry_commands(session_factory: SessionFactory) -> PostgresPartyRegistryCommands:
@@ -37,7 +32,7 @@ def register_command(
     whatsapp: str | None = None,
     phone: str | None = None,
     cedula: str | None = None,
-    registered_via: RegisteredVia = RegisteredVia.OPERATOR,
+    source_kind: PartySourceKind = PartySourceKind.OPERATOR,
 ) -> RegisterPartyCommand:
     contact_points: tuple[PartyContactPointInput, ...] = ()
     if whatsapp or phone:
@@ -51,66 +46,44 @@ def register_command(
         organization_id=organization_id,
         principal_id=principal_id,
         display_name=display_name,
-        registered_via=registered_via,
+        source_kind=source_kind,
         idempotency_key=f"register-{uuid4().hex}",
         contact_points=contact_points,
         documents=(PartyDocumentInput("cedula", cedula),) if cedula else (),
     )
 
 
-def confirm_command(
+def rename_command(
+    organization_id: UUID,
+    operator_principal_id: UUID,
+    party_id: UUID,
+    relay_principal_id: UUID,
+) -> RenamePartyCommand:
+    return RenamePartyCommand(
+        organization_id=organization_id,
+        principal_id=operator_principal_id,
+        party_id=party_id,
+        display_name="María González",
+        idempotency_key=f"rename-{uuid4().hex}",
+        source_kind=PartySourceKind.OPERATOR,
+        platform="reception_web",
+        technical_principal_id=relay_principal_id,
+    )
+
+
+def document_command(
     organization_id: UUID,
     principal_id: UUID,
     party_id: UUID,
-    contact_point_id: UUID,
-    *,
-    key: str,
-) -> ConfirmPartyContactPointCommand:
-    return ConfirmPartyContactPointCommand(
+    kind: str,
+    value: str,
+) -> AddPartyDocumentCommand:
+    return AddPartyDocumentCommand(
         organization_id=organization_id,
         principal_id=principal_id,
         party_id=party_id,
-        contact_point_id=contact_point_id,
-        idempotency_key=key,
+        kind=kind,
+        value=value,
+        source_kind=PartySourceKind.OPERATOR,
+        idempotency_key=f"doc-{uuid4().hex}",
     )
-
-
-async def bot_registered_contact_point(
-    admin_conn: PgConnection, session_factory: SessionFactory
-) -> tuple[PartyRegistryWorld, RegisteredParty, PartyContactPoint]:
-    """Bot path world: an unverified contact point via the real register command."""
-
-    world = create_party_registry_world(admin_conn, prefix="s0b-confirm")
-    party = await register_party(
-        registry_commands(session_factory),
-        register_command(
-            world.organization_id,
-            world.bot_principal_id,
-            display_name="Paciente Bot",
-            whatsapp="+1 809 555 0110",
-            registered_via=RegisteredVia.BOT,
-        ),
-    )
-    return world, party, party.contact_points[0]
-
-
-async def verified_operator_contact_point(
-    admin_conn: PgConnection, session_factory: SessionFactory
-) -> tuple[PartyRegistryWorld, RegisteredParty, PartyContactPoint]:
-    """Operator world: a verified contact point via the real register command."""
-
-    world = create_party_registry_world(admin_conn, prefix="s0b-guard")
-    party = await register_party(
-        registry_commands(session_factory),
-        register_command(
-            world.organization_id,
-            world.operator_principal_id,
-            display_name="Paciente Mostrador",
-            whatsapp="+1 809 555 0199",
-        ),
-    )
-    return world, party, party.contact_points[0]
-
-
-def confirm_key(contact_point_id: UUID) -> str:
-    return f"confirm-{contact_point_id.hex}"

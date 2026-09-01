@@ -8,8 +8,8 @@ from sqlalchemy.engine import RowMapping
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     PartyIdentityDocument,
+    PartySourceKind,
     RegisteredParty,
-    RegisteredVia,
 )
 
 
@@ -18,7 +18,7 @@ def contact_point_views_from_rows(
 ) -> tuple[PartyContactPoint, ...]:
     views: list[PartyContactPoint] = []
     for row in rows:
-        raw_via = cast(str | None, row["registered_via"])
+        raw_kind = cast(str | None, row["source_kind"])
         views.append(
             PartyContactPoint(
                 party_id=cast(UUID, row["party_id"]),
@@ -26,7 +26,7 @@ def contact_point_views_from_rows(
                 channel=cast(str, row["channel"]),
                 normalized_value=cast(str, row["normalized_value"]),
                 verified=cast(bool, row["verified"]),
-                registered_via=RegisteredVia(raw_via) if raw_via else None,
+                source_kind=PartySourceKind(raw_kind) if raw_kind else None,
             )
         )
     return tuple(views)
@@ -74,7 +74,7 @@ def party_to_json(view: RegisteredParty) -> dict[str, object]:
                 "channel": item.channel,
                 "normalized_value": item.normalized_value,
                 "verified": item.verified,
-                "registered_via": item.registered_via.value if item.registered_via else None,
+                "source_kind": item.source_kind.value if item.source_kind else None,
             }
             for item in view.contact_points
         ],
@@ -104,9 +104,9 @@ def party_from_json(data: dict[str, object]) -> RegisteredParty:
                 channel=cast(str, item["channel"]),
                 normalized_value=cast(str, item["normalized_value"]),
                 verified=cast(bool, item["verified"]),
-                registered_via=(
-                    RegisteredVia(cast(str, item["registered_via"]))
-                    if item["registered_via"] is not None
+                source_kind=(
+                    PartySourceKind(cast(str, item["source_kind"]))
+                    if item["source_kind"] is not None
                     else None
                 ),
             )

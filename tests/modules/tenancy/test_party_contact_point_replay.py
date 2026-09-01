@@ -29,7 +29,7 @@ from request_engine.modules.tenancy.application.commands.confirm_party_contact_p
     ConfirmPartyContactPointCommand,
 )
 from request_engine.modules.tenancy.application.errors import PartyContactPointNotFound
-from request_engine.modules.tenancy.contracts.party_registry import RegisteredVia
+from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 
 
@@ -85,7 +85,7 @@ async def test_add_replay_raises_typed_not_found_when_point_is_absent(
         party_id=party_id,
         channel="whatsapp",
         value="+18095550110",
-        registered_via=RegisteredVia.BOT,
+        source_kind=PartySourceKind.SUBJECT,
         idempotency_key="replay-add",
     )
 

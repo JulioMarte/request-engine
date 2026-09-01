@@ -163,8 +163,8 @@ subset via their principal capability set.
   normalized_value)` (frozen); the same number may belong to several Parties by design.
 - **I-S0b-4**: `verified` transitions are monotone upward through the confirm command;
   no command path silently downgrades verification.
-- **I-S0b-5**: bot-created contact points are never `verified` at creation, regardless
-  of client-sent fields (server-derived, like F7d `source_kind`).
+- **I-S0b-5**: *(superseded by §9.2)* contact-point trust derives from provenance, not
+  from the platform used (see §9.2).
 - Lookup paths take no locks beyond the tenant RLS context and are safe under
   concurrent registration (multi-match is the expected outcome, not an anomaly).
 
@@ -174,7 +174,8 @@ subset via their principal capability set.
 - No implicit authority: a registered contact point does not let an inbound message act
   for the Party until the S4 verified-contact-point authority path exists.
 - No silent merge or dedup of Parties that share a phone number.
-- No verified-by-default paths for bot principals.
+- No verified-by-default paths for bot principals. *(narrowed by §9.2: platform is not
+  the trust signal; provenance is.)*
 
 ## 8. Proofs
 
@@ -182,8 +183,104 @@ subset via their principal capability set.
   kind, capability-gate rejections, lookup multi-match shape.
 - PostgreSQL tests (real 18): cédula unique backstop race (two connections, one loser),
   confirm-command monotonicity under concurrent replay, shared-phone multi-party lookup,
-  bot-created contact point never verified.
+  bot-created contact point never verified. *(I-S0b-5 proof superseded by §9.2 proofs.)*
 - HTTP surface + tenant isolation: new routes registered in the isolation matrix; bot
   principal cannot reach `confirm_contact_point`.
 - Canonical lane: `python scripts/ci/ci_jobs.py python-quality` plus the PostgreSQL
   runner that owns tenancy/party proofs per `docs/testing/README.md`.
+
+## 9. R2 amendment — authority, platform attribution, history and verification policy
+
+Owner decisions (2026-09-01). This section supersedes any conflicting statement above.
+Motivation: the R1 model froze "who acted" into one dimension (human/bot) and made
+records near-immutable, while a real front desk exercises authority through several
+platforms and corrects records constantly.
+
+### 9.1 Authority × platform attribution (two orthogonal facts)
+
+Every attribution-bearing mutation records two independent durable facts:
+
+- `source_kind ∈ {'operator', 'subject'}` — **whose authority produced the change**:
+  - `operator`: an authorized human operator directed it. True when the caller is a
+    human operator principal, **or** when a trusted integration principal (bot platform)
+    presents a valid acting-operator context (below).
+  - `subject`: the party themselves provided it through a platform with no operator in
+    the loop (patient self-registration from their own WhatsApp).
+- `platform` (nullable text, ≤ 64 chars) — **which surface executed it**
+  (`reception_web`, `whatsapp_bot`, `phone`, ...). Declared by the authenticated trusted
+  layer, recorded verbatim, never used for authorization, never enum-frozen.
+  `platform` is a declared, never-verified descriptive fact; first-party surfaces bind
+  it at the transport layer, not through any verification step.
+
+**Acting-operator relay (the "bot as a platform" rule).** An integration principal may
+execute operator-directed mutations only when it presents an acting-operator reference.
+RE then *verifies* — in the same transaction — that the referenced principal exists, is
+active, is a human operator of the same organization, and holds the semantic capability
+the mutation requires. If it does not, the command fails closed. The bot cannot launder
+authority the operator does not have. Admission for this relay requires the dedicated
+permission `platform.acting_for_operator`; all semantic capability checks then run
+against the operator's grant set. Idempotency keys are scoped to the *effective*
+principal (the operator). Audit records keep both identities: the technical caller and
+the attributed operator, plus `source_kind` and `platform`. Relay admission itself is
+a platform-level admission control: `platform.acting_for_operator` is evaluated before
+tenant capability policy and is not tenant-disableable.
+
+Verified derivation follows authority, not platform: `operator`-sourced contact points
+are trusted because an accountable human (verified by RE to hold the capability) asserts
+them; `subject`-sourced contact points are trusted because the party demonstrated
+possession by acting from that channel.
+
+### 9.2 Verification policy (provenance, not ceremony)
+
+- Patient contact points need **no verification ceremony**: a subject-provided number is
+  demonstrated by the channel itself; an operator-recorded number is asserted by an
+  accountable operator. Both are created `verified = true` with provenance carried by
+  `source_kind` + `platform`. A future `on_file` import path (business already holds the
+  data from past contact) may land with S4 and is verified by import provenance.
+- The confirm command is retained for secondhand information paths and re-verification.
+- Verification is mandatory where access is granted: **administrative contacts of staff**
+  (operator principals) must be confirmed via a one-time code delivered as a durable
+  transactional intent (outbox → external transport → WhatsApp). RE stores the code
+  hashed with expiry and attempt limits; confirmation is a capability-gated command.
+  Delivery remains external (§ F7 rule: RE owns the intent, never the transport).
+
+### 9.3 Versioned, auditable, reversible records
+
+- `request_engine.party_identity_revisions` is an **append-only** ledger: every party
+  mutation (registration, rename, contact add/deactivate, document add, verification
+  flip, deactivation, rollback) appends one revision in the same transaction with the
+  resulting full identity snapshot (display name, active flag, contact-point set,
+  document set), the acting principal, the attributed operator when relayed,
+  `source_kind`, `platform`, a per-party monotone `revision` number, and `created_at`.
+- The ledger rejects UPDATE and DELETE at the database level for every role.
+- Rollback is a semantic operator command that applies a prior revision's state as a
+  **new** revision (`rollback`); history is never rewritten or deleted.
+  Rollback restores identity state; verification remains monotone (I-S0b-4).
+- A read surface exposes the revision ledger for audit ("quién editó, cuándo, desde
+  dónde") and for building restore UX.
+
+### 9.4 Document identity across clinics (real-world model)
+
+Cédula uniqueness is **per organization** — each clinic keeps its own patient chart, as
+in real life. Cross-clinic there is intentionally **no matching and no sharing**: a
+patient visiting a different clinic registers that clinic's own record; clinical data
+isolation is a hard tenant boundary and is not relaxed for convenience. Within one
+clinic, a document conflict is not a dead end: the 409 names the existing record
+(match-and-link flow), and in self-service the platform presents the match to the
+person ("ya estás registrado — ¿eres tú?") instead of creating a duplicate.
+
+### 9.5 Schema additions (migration `0025`, append-only)
+
+- `party_contact_points.registered_via` is renamed `source_kind` with CHECK
+  `('operator','subject')`; adds `platform` and `relay_principal_id`
+  (tenant-scoped FK to principals) — the technical relay caller preserved only
+  in the admitted acting-operator relay. `attributed_operator_principal_id`
+  (the operator a relay acted for) lives on the revision ledger (§9.3), not on
+  the fact tables. Mirroring attribution columns on `parties` and
+  `party_identity_documents`.
+- `parties.identity_revision` (monotone per party) and the
+  `party_identity_revisions` ledger (§9.3) with RLS/force, deny-by-default grants and
+  full UPDATE/DELETE rejection.
+- `request_engine.principal_contacts` for staff administrative contacts (§9.2) with
+  hashed verification code, expiry, attempt counter, one active contact per principal,
+  RLS/force, deny-by-default grants, verified-monotone guard.

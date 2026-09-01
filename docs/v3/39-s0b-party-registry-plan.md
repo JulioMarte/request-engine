@@ -60,3 +60,18 @@ same branch; exact-head CI is the merge evidence.
   rename, add-document, contact-point deactivation and Party deactivation surfaces
   shipped as the S0b correction batch (`docs/v3/38` §4).
 - Any inbound-message verification round-trip (verification codes) — S4 territory.
+
+## R2 status (2026-09-01) - slices completed
+
+- Attribution x platform (`source_kind`/`platform`, migration 0025) landed with
+  provenance-based verification per `docs/v3/38` §9.2: patient contact points are
+  created verified, no ceremony.
+- Acting-operator relay (`platform.acting_for_operator`, `X-RE-Acting-Operator`) shipped;
+  effective-actor authorization and idempotency scoping verified on PostgreSQL.
+- Revision ledger + rollback landed: append-only `party_identity_revisions` with
+  full-snapshot history, DB-rejected UPDATE/DELETE, rollback as a new revision.
+- Staff verification slice landed: `staff.manage_own_admin_contact` and
+  `staff.confirm_own_admin_contact` with hashed one-time code, expiry, attempt limit
+  and outbox transactional intent (`staff.contact_verification_requested.v1`); the
+  "verification codes - S4 territory" deferral above is superseded for staff
+  administrative contacts only.

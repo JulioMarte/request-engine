@@ -1,10 +1,7 @@
 """PostgreSQL `parties.rename` and `parties.add_document` command adapters.
 
-Operator-granted corrections on an existing, active Party: the display name
-is a mutable label corrected through `parties.rename`; identity documents are
-immutable facts added through `parties.add_document` with the normalization
-and unique active-value backstop of registration. One Session, one tenant
-transaction, idempotent replay, audited; no outbox events.
+Operator-granted corrections on an existing, active Party: idempotent replay,
+audited; no outbox events. One Session, one tenant transaction.
 """
 
 from typing import Never
@@ -14,10 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.tenancy.adapters.db.party_correction_support import (
-    finish_party_state,
-    run_correction,
-)
+from request_engine.modules.tenancy.adapters.db.party_correction_records import finish_party_state
+from request_engine.modules.tenancy.adapters.db.party_correction_support import run_correction
 from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
     raise_added_document_conflict,
 )

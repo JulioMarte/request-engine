@@ -11,7 +11,11 @@ from request_engine.modules.tenancy.adapters.db.party_registry_codec import (
 from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
     raise_document_conflict,
 )
+from request_engine.modules.tenancy.adapters.db.party_registry_fingerprints import (
+    register_fingerprint,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import (
+    attribution_values,
     contact_point_rows,
     document_rows,
 )
@@ -22,6 +26,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_store import (
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_views import (
     load_party_views,
+)
+from request_engine.modules.tenancy.adapters.db.party_revision_ledger import (
+    record_party_revision,
 )
 from request_engine.modules.tenancy.application.commands import register_party
 from request_engine.modules.tenancy.contracts.party_registry import RegisteredParty
@@ -35,17 +42,6 @@ from request_engine.platform.idempotency.postgres import (
 from request_engine.platform.outbox.postgres import append_outbox
 
 _REGISTER_PARTY_CAPABILITY = "parties.register"
-
-
-def register_fingerprint(command: register_party.RegisterPartyCommand) -> dict[str, object]:
-    return {
-        "display_name": command.display_name,
-        "registered_via": command.registered_via.value,
-        "contact_points": [
-            {"channel": c.channel, "normalized_value": c.value} for c in command.contact_points
-        ],
-        "documents": [{"kind": d.kind, "normalized_value": d.value} for d in command.documents],
-    }
 
 
 class PostgresPartyRegistrationCommands:
@@ -82,9 +78,17 @@ class PostgresPartyRegistrationCommands:
                     organization_id=command.organization_id,
                     display_name=command.display_name,
                     principal_id=command.principal_id,
+                    attribution=attribution_values(command),
                 )
                 await insert_contact_points(session, contact_point_rows(command, party_id))
                 await insert_documents(session, document_rows(command, party_id))
+                await record_party_revision(
+                    session,
+                    command=command,
+                    organization_id=command.organization_id,
+                    party_id=party_id,
+                    change_kind="registered",
+                )
                 state = (await load_party_views(session, command.organization_id, [party_id]))[0]
                 await append_audit(
                     session,
@@ -96,7 +100,7 @@ class PostgresPartyRegistrationCommands:
                     idempotency_id=idempotency_id,
                     details={
                         "display_name": command.display_name,
-                        "registered_via": command.registered_via.value,
+                        **attribution_values(command),
                         "contact_point_count": len(state.contact_points),
                         "document_count": len(state.documents),
                     },

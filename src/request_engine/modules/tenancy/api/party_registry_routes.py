@@ -2,8 +2,8 @@
 
 Transport route handlers map request values verbatim into application
 commands/queries: normalization happens only in the application layer, and
-attribution (`registered_via`) is derived only from the authenticated actor
-(see `party_registry_dependencies`).
+attribution (`source_kind`/`platform`) is derived only from the resolved
+effective actor (see `party_registry_dependencies`).
 """
 
 from typing import Annotated
@@ -16,7 +16,7 @@ from request_engine.modules.tenancy.api.party_contact_point_routes import (
 from request_engine.modules.tenancy.api.party_lookup_routes import add_party_lookup_routes
 from request_engine.modules.tenancy.api.party_registry_dependencies import (
     IdempotencyKey,
-    registered_via,
+    source_kind,
 )
 from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
 from request_engine.modules.tenancy.api.party_registry_models import (
@@ -69,7 +69,7 @@ def add_party_registry_routes(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
                     display_name=body.display_name,
-                    registered_via=registered_via(actor),
+                    source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
                     contact_points=tuple(
                         PartyContactPointInput(item.channel, item.value)
@@ -78,6 +78,8 @@ def add_party_registry_routes(
                     documents=tuple(
                         PartyDocumentInput(item.kind, item.value) for item in body.documents
                     ),
+                    platform=actor.platform,
+                    technical_principal_id=actor.technical_principal_id,
                 ),
             )
         except ValueError as error:

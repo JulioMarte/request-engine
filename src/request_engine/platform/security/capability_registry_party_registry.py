@@ -41,9 +41,19 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.PUBLIC,
         "Deactivate a person Party so lookups no longer return it.",
     ),
+    command_capability(
+        "parties.rollback_identity",
+        CapabilityExposure.PUBLIC,
+        "Restore a person Party's identity from a prior recorded revision.",
+    ),
     query_capability(
         "parties.lookup",
         CapabilityExposure.PUBLIC,
         "Look up Parties by phone, identity document or display-name prefix.",
+    ),
+    query_capability(
+        "parties.read_revisions",
+        CapabilityExposure.PUBLIC,
+        "Read the append-only identity revision ledger of a person Party.",
     ),
 )

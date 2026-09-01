@@ -11,7 +11,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
 
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
 from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
 from request_engine.modules.tenancy.api.party_registry_models import (
     AddPartyDocumentBody,
@@ -53,6 +56,9 @@ def add_party_correction_routes(
                     party_id=party_id,
                     display_name=body.display_name,
                     idempotency_key=idempotency_key,
+                    source_kind=source_kind(actor),
+                    platform=actor.platform,
+                    technical_principal_id=actor.technical_principal_id,
                 ),
             )
         except ValueError as error:
@@ -75,7 +81,10 @@ def add_party_correction_routes(
                     party_id=party_id,
                     kind=body.kind,
                     value=body.value,
+                    source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
+                    platform=actor.platform,
+                    technical_principal_id=actor.technical_principal_id,
                 ),
             )
         except ValueError as error:

@@ -15,7 +15,7 @@ from request_engine.modules.tenancy.application.commands import (
 )
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
-    RegisteredVia,
+    PartySourceKind,
 )
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 
@@ -50,14 +50,14 @@ class _RecordingContactPointCommands:
         return self._contact_point
 
 
-def _bot_contact_point() -> PartyContactPoint:
+def _subject_contact_point() -> PartyContactPoint:
     return PartyContactPoint(
         party_id=uuid4(),
         contact_point_id=uuid4(),
         channel="whatsapp",
         normalized_value="+18095551234",
-        verified=False,
-        registered_via=RegisteredVia.BOT,
+        verified=True,
+        source_kind=PartySourceKind.SUBJECT,
     )
 
 
@@ -88,8 +88,8 @@ def _actor(*capabilities: str, principal_kind: PrincipalKind = PrincipalKind.HUM
 
 
 @pytest.mark.asyncio
-async def test_add_contact_point_derives_bot_attribution_and_maps_view() -> None:
-    commands = _RecordingContactPointCommands(_bot_contact_point())
+async def test_add_contact_point_derives_subject_attribution_and_maps_view() -> None:
+    commands = _RecordingContactPointCommands(_subject_contact_point())
     actor = _actor("parties.add_contact_point", principal_kind=PrincipalKind.INTEGRATION)
     async with AsyncClient(
         transport=ASGITransport(app=_app(actor, commands)), base_url="http://test"
@@ -102,16 +102,17 @@ async def test_add_contact_point_derives_bot_attribution_and_maps_view() -> None
 
     assert response.status_code == 201, response.text
     command = commands.add_commands[0]
-    assert command.registered_via is RegisteredVia.BOT
+    assert command.source_kind is PartySourceKind.SUBJECT
+    assert command.principal_id == actor.principal_id
     body = response.json()
-    assert body["verified"] is False
-    assert body["registered_via"] == "bot"
+    assert body["verified"] is True
+    assert body["source_kind"] == "subject"
     assert body["normalized_value"] == "+18095551234"
 
 
 @pytest.mark.asyncio
 async def test_confirm_contact_point_maps_command_and_returns_view() -> None:
-    contact_point = _bot_contact_point()
+    contact_point = _subject_contact_point()
     commands = _RecordingContactPointCommands(contact_point)
     actor = _actor("parties.confirm_contact_point")
     async with AsyncClient(

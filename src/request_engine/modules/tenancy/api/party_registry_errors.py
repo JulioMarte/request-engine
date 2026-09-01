@@ -9,6 +9,8 @@ from request_engine.modules.tenancy.application.errors import (
     PartyDocumentConflict,
     PartyNotFound,
     PartyRegistryError,
+    PartyRevisionNotFound,
+    PartyRevisionTargetInvalid,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
@@ -94,6 +96,24 @@ def _party_registry_error(exc: PartyRegistryError) -> tuple[int, ErrorBody]:
             message=str(exc),
             resolution=ErrorResolution.FIX_REQUEST,
             details={"party_id": str(exc.party_id)},
+        )
+    if isinstance(exc, PartyRevisionNotFound):
+        return status.HTTP_404_NOT_FOUND, ErrorBody(
+            code="party_revision_not_found",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"party_id": str(exc.party_id), "revision": exc.revision},
+        )
+    if isinstance(exc, PartyRevisionTargetInvalid):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="party_revision_target_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={
+                "party_id": str(exc.party_id),
+                "target_revision": exc.target_revision,
+                "current_revision": exc.current_revision,
+            },
         )
     return status.HTTP_500_INTERNAL_SERVER_ERROR, ErrorBody(
         code="party_registry_error",

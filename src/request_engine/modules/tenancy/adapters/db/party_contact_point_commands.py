@@ -12,7 +12,11 @@ from request_engine.modules.tenancy.adapters.db.party_registry_codec import (
 from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
     raise_contact_point_conflict,
 )
+from request_engine.modules.tenancy.adapters.db.party_registry_fingerprints import (
+    add_fingerprint,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import (
+    attribution_values,
     single_contact_point_row,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_store import (
@@ -23,6 +27,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_views import (
     contact_point_by_id,
     contact_point_by_value,
     load_party_views,
+)
+from request_engine.modules.tenancy.adapters.db.party_revision_ledger import (
+    record_party_revision,
 )
 from request_engine.modules.tenancy.application.commands import (
     add_party_contact_point,
@@ -41,17 +48,6 @@ from request_engine.platform.idempotency.postgres import (
 
 _ADD_CAPABILITY = "parties.add_contact_point"
 _CONFIRM_CAPABILITY = "parties.confirm_contact_point"
-
-
-def add_fingerprint(
-    command: add_party_contact_point.AddPartyContactPointCommand,
-) -> dict[str, object]:
-    return {
-        "party_id": str(command.party_id),
-        "channel": command.channel,
-        "normalized_value": command.value,
-        "registered_via": command.registered_via.value,
-    }
 
 
 class PostgresPartyContactPointCommands:
@@ -91,6 +87,13 @@ class PostgresPartyContactPointCommands:
                 await lock_party(session, command.organization_id, command.party_id)
                 inserted = await insert_contact_points(session, single_contact_point_row(command))
                 contact_point_id = cast(UUID, inserted[0]["id"])
+                await record_party_revision(
+                    session,
+                    command=command,
+                    organization_id=command.organization_id,
+                    party_id=command.party_id,
+                    change_kind="contact_added",
+                )
                 state = (
                     await load_party_views(session, command.organization_id, [command.party_id])
                 )[0]
@@ -107,8 +110,8 @@ class PostgresPartyContactPointCommands:
                         "contact_point_id": str(contact_point_id),
                         "channel": command.channel,
                         "normalized_value": command.value,
-                        "registered_via": command.registered_via.value,
-                        "verified": command.registered_via.value == "operator",
+                        **attribution_values(command),
+                        "verified": True,
                     },
                 )
                 await complete_idempotency(

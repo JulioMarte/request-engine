@@ -6,7 +6,7 @@ from uuid import UUID
 
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
-    RegisteredVia,
+    PartySourceKind,
 )
 from request_engine.modules.tenancy.domain.party_identity import normalize_party_contact_value
 
@@ -18,8 +18,10 @@ class AddPartyContactPointCommand:
     party_id: UUID
     channel: str
     value: str
-    registered_via: RegisteredVia
+    source_kind: PartySourceKind
     idempotency_key: str
+    platform: str | None = None
+    technical_principal_id: UUID | None = None
 
 
 class AddPartyContactPointHandler(Protocol):

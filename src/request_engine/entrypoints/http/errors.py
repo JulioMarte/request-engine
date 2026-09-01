@@ -1,5 +1,10 @@
+"""Transport-global HTTP error mapping for the process entrypoint.
+
+The frozen V3 public API proof scans this module for its literal error codes;
+keep those handlers and literals here.
+"""
+
 from collections.abc import Mapping
-from typing import Protocol, runtime_checkable
 
 from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -11,15 +16,23 @@ from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 
 
-@runtime_checkable
-class _HasSqlState(Protocol):
-    sqlstate: str | None
+def render_error_response(
+    status_code: int,
+    body: ErrorBody,
+    *,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(error=body).model_dump(mode="json"),
+        headers=headers,
+    )
 
 
 async def authentication_required_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AuthenticationRequired):
         raise exc
-    return _response(
+    return render_error_response(
         status.HTTP_401_UNAUTHORIZED,
         ErrorBody(
             code="authentication_required",
@@ -32,7 +45,7 @@ async def authentication_required_handler(_: Request, exc: Exception) -> JSONRes
 async def capability_required_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, CapabilityRequired):
         raise exc
-    return _response(
+    return render_error_response(
         status.HTTP_403_FORBIDDEN,
         ErrorBody(
             code="capability_required",
@@ -46,16 +59,13 @@ async def capability_required_handler(_: Request, exc: Exception) -> JSONRespons
 async def idempotency_conflict_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, IdempotencyConflict):
         raise exc
-    return _response(
+    return render_error_response(
         status.HTTP_409_CONFLICT,
         ErrorBody(
             code="idempotency_conflict",
             message="the idempotency key was already used for a different command",
             resolution=ErrorResolution.FIX_REQUEST,
-            details={
-                "capability": exc.capability,
-                "idempotency_key": exc.idempotency_key,
-            },
+            details={"capability": exc.capability, "idempotency_key": exc.idempotency_key},
         ),
     )
 
@@ -63,16 +73,15 @@ async def idempotency_conflict_handler(_: Request, exc: Exception) -> JSONRespon
 async def request_validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, RequestValidationError):
         raise exc
-    fields: list[dict[str, object]] = []
-    for error in exc.errors():
-        fields.append(
-            {
-                "location": list(error.get("loc", ())),
-                "message": str(error.get("msg", "invalid value")),
-                "type": str(error.get("type", "validation_error")),
-            }
-        )
-    return _response(
+    fields = [
+        {
+            "location": list(error.get("loc", ())),
+            "message": str(error.get("msg", "invalid value")),
+            "type": str(error.get("type", "validation_error")),
+        }
+        for error in exc.errors()
+    ]
+    return render_error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         ErrorBody(
             code="validation_failed",
@@ -92,7 +101,7 @@ async def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
         code = "method_not_allowed"
     else:
         code = "http_error"
-    return _response(
+    return render_error_response(
         exc.status_code,
         ErrorBody(
             code=code,
@@ -107,30 +116,21 @@ async def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 async def integrity_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, IntegrityError):
         raise exc
-    sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
+    sqlstate = getattr(exc.orig, "sqlstate", None)
     if sqlstate == "23505":
-        body = ErrorBody(
-            code="conflict",
-            message="the command conflicts with existing authoritative state",
-            resolution=ErrorResolution.REFRESH_AND_RETRY,
+        return render_error_response(
+            status.HTTP_409_CONFLICT,
+            ErrorBody(
+                code="conflict",
+                message="the command conflicts with existing authoritative state",
+                resolution=ErrorResolution.REFRESH_AND_RETRY,
+            ),
         )
-        return _response(status.HTTP_409_CONFLICT, body)
-    body = ErrorBody(
-        code="database_integrity_error",
-        message="the command violated an authoritative database invariant",
-        resolution=ErrorResolution.OPERATOR_INTERVENTION,
-    )
-    return _response(status.HTTP_500_INTERNAL_SERVER_ERROR, body)
-
-
-def _response(
-    status_code: int,
-    body: ErrorBody,
-    *,
-    headers: Mapping[str, str] | None = None,
-) -> JSONResponse:
-    return JSONResponse(
-        status_code=status_code,
-        content=ErrorEnvelope(error=body).model_dump(mode="json"),
-        headers=headers,
+    return render_error_response(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ErrorBody(
+            code="database_integrity_error",
+            message="the command violated an authoritative database invariant",
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
+        ),
     )

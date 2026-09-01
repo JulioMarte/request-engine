@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, status
 
 from request_engine.modules.tenancy.api.party_registry_dependencies import (
     IdempotencyKey,
-    registered_via,
+    source_kind,
 )
 from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
 from request_engine.modules.tenancy.api.party_registry_models import (
@@ -55,8 +55,10 @@ def add_party_contact_point_routes(
                     party_id=party_id,
                     channel=body.channel,
                     value=body.value,
-                    registered_via=registered_via(actor),
+                    source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
+                    platform=actor.platform,
+                    technical_principal_id=actor.technical_principal_id,
                 ),
             )
         except ValueError as error:
@@ -78,6 +80,9 @@ def add_party_contact_point_routes(
                 party_id=party_id,
                 contact_point_id=contact_point_id,
                 idempotency_key=idempotency_key,
+                source_kind=source_kind(actor),
+                platform=actor.platform,
+                technical_principal_id=actor.technical_principal_id,
             ),
         )
         return PartyContactPointView.from_contract(contact_point)

@@ -17,6 +17,7 @@ from request_engine.modules.tenancy.application.commands import (
     rename_party,
 )
 from request_engine.modules.tenancy.application.errors import PartyNotFound
+from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 
 from ._party_commands import register_command
@@ -76,6 +77,7 @@ def _document_attempt(
             party_id=party_id,
             kind="cedula",
             value="40299999999",
+            source_kind=PartySourceKind.OPERATOR,
             idempotency_key=f"doc-{uuid4().hex}",
         ),
     )

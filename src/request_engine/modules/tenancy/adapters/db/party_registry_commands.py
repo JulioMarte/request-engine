@@ -15,6 +15,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_correction_comman
 from request_engine.modules.tenancy.adapters.db.party_registry_deactivation_commands import (
     PostgresPartyDeactivationCommands,
 )
+from request_engine.modules.tenancy.adapters.db.party_rollback_commands import (
+    PostgresPartyRollbackCommands,
+)
 
 
 class PostgresPartyRegistryCommands(
@@ -23,14 +26,15 @@ class PostgresPartyRegistryCommands(
     PostgresPartyContactPointConfirmationCommands,
     PostgresPartyCorrectionCommands,
     PostgresPartyDeactivationCommands,
+    PostgresPartyRollbackCommands,
 ):
     """Tenancy-owned idempotent party registry commands.
 
     Composition of the per-capability command adapters: `parties.register`,
-    `parties.add_contact_point`, `parties.confirm_contact_point` and the
+    `parties.add_contact_point`, `parties.confirm_contact_point`, the
     operator-granted correction surface (`parties.rename`,
     `parties.add_document`, `parties.deactivate_contact_point`,
-    `parties.deactivate`). Each capability owns one Session, one explicit
-    tenant transaction, standard idempotency replay and typed conflict
-    mapping.
+    `parties.deactivate`) and `parties.rollback_identity`. Each capability
+    owns one Session, one explicit tenant transaction, standard idempotency
+    replay and typed conflict mapping.
     """

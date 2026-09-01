@@ -27,12 +27,17 @@ class ActorContext:
     authentication_method: str = "deployment_adapter"
     correlation_id: UUID = field(default_factory=uuid4)
     credential_id: str | None = None
+    platform: str | None = None
+    acting_operator_principal_id: UUID | None = None
+    technical_principal_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():
             raise ValueError("authentication_method is required")
         if self.credential_id is not None and not self.credential_id.strip():
             raise ValueError("credential_id cannot be blank")
+        if self.platform is not None and not self.platform.strip():
+            raise ValueError("platform cannot be blank")
 
     def allows(self, capability: str) -> bool:
         """Evaluate one canonical capability against materialized grants."""

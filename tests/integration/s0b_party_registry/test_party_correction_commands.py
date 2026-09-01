@@ -1,14 +1,11 @@
 """Operator correction proofs on real PostgreSQL: `parties.rename` and
-`parties.add_document`.
-
-A rename must move the party between name-prefix buckets (the accent-folded
-SQL path still matches the new stored name); an added document must be
-normalized exactly like registration and feed the document lookup. Both are
-audited and neither emits an outbox event: `party.registered.v1` stays the
-only outbox payload.
+`parties.add_document`. A rename must move the party between name-prefix
+buckets; an added document must be normalized exactly like registration and
+feed the document lookup. Both are audited with the §9.1 attribution facts
+and neither emits an outbox event.
 """
 
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 
@@ -30,7 +27,7 @@ from request_engine.modules.tenancy.application.queries.lookup_parties import (
 )
 from request_engine.platform.db.session import SessionFactory
 
-from ._party_commands import register_command
+from ._party_commands import document_command, register_command, rename_command
 from ._party_support import PgConnection, audit_rows, outbox_rows
 from ._party_world import create_party_registry_world
 
@@ -38,40 +35,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 
 
 async def _lookup_ids(
-    reader: PostgresPartyLookupReader,
-    organization_id: UUID,
-    mode: PartyLookupMode,
-    value: str,
+    reader: PostgresPartyLookupReader, organization_id: UUID, mode: PartyLookupMode, value: str
 ) -> list[UUID]:
     found = await lookup_parties(
         reader, PartyLookupQuery(organization_id=organization_id, mode=mode, value=value)
     )
     return [party.party_id for party in found]
-
-
-def _rename_command(
-    organization_id: UUID, principal_id: UUID, party_id: UUID
-) -> rename_party.RenamePartyCommand:
-    return rename_party.RenamePartyCommand(
-        organization_id=organization_id,
-        principal_id=principal_id,
-        party_id=party_id,
-        display_name="María González",
-        idempotency_key=f"rename-{uuid4().hex}",
-    )
-
-
-def _document_command(
-    organization_id: UUID, principal_id: UUID, party_id: UUID, kind: str, value: str
-) -> add_party_document.AddPartyDocumentCommand:
-    return add_party_document.AddPartyDocumentCommand(
-        organization_id=organization_id,
-        principal_id=principal_id,
-        party_id=party_id,
-        kind=kind,
-        value=value,
-        idempotency_key=f"doc-{uuid4().hex}",
-    )
 
 
 @pytest.mark.asyncio
@@ -93,14 +62,30 @@ async def test_rename_moves_the_party_to_the_new_accent_folded_prefix(
 
     renamed = await rename_party.rename_party(
         commands,
-        _rename_command(world.organization_id, world.operator_principal_id, party.party_id),
+        rename_command(
+            world.organization_id,
+            world.operator_principal_id,
+            party.party_id,
+            world.bot_principal_id,
+        ),
     )
 
     assert renamed.display_name == "María González"
     old_name = await _lookup_ids(reader, world.organization_id, PartyLookupMode.NAME, "jose perez")
     new_name = await _lookup_ids(reader, world.organization_id, PartyLookupMode.NAME, "maria gon")
     assert (old_name, new_name) == ([], [party.party_id])
-    assert len(audit_rows(admin_conn, world.organization_id, "parties.rename")) == 1
+    rename_audits = audit_rows(admin_conn, world.organization_id, "parties.rename")
+    assert len(rename_audits) == 1
+    assert rename_audits[0]["source_kind"] == "operator"
+    assert rename_audits[0]["platform"] == "reception_web"
+    assert rename_audits[0]["relay_principal_id"] == str(world.bot_principal_id)
+    ledger = admin_conn.execute(
+        "SELECT actor_principal_id, attributed_operator_principal_id"
+        " FROM request_engine.party_identity_revisions"
+        " WHERE organization_id = %s AND party_id = %s AND revision = 2",
+        (world.organization_id, party.party_id),
+    ).fetchone()
+    assert ledger == (world.bot_principal_id, world.operator_principal_id)
     assert len(outbox_rows(admin_conn, world.organization_id, "party.registered.v1")) == 1
 
 
@@ -120,7 +105,7 @@ async def test_add_document_attaches_a_normalized_document_to_an_existing_party(
 
     added = await add_party_document.add_party_document(
         commands,
-        _document_command(
+        document_command(
             world.organization_id,
             world.operator_principal_id,
             party.party_id,

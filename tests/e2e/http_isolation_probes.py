@@ -18,6 +18,10 @@ ISOLATION_ACTOR_GRANTS = frozenset(
         "parties.deactivate_contact_point",
         "parties.deactivate",
         "parties.lookup",
+        "parties.read_revisions",
+        "parties.rollback_identity",
+        "staff.manage_own_admin_contact",
+        "staff.confirm_own_admin_contact",
     }
 )
 

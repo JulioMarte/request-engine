@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from request_engine.entrypoints.http.app import create_app
+from request_engine.entrypoints.http.operator_resolution import OperatorCapabilitySource
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeSlotOfferCapacity,
 )
@@ -19,6 +20,7 @@ def build_http_app(
     actor_resolver: ActorResolver,
     appointment_option_signing_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
+    operator_capability_source: OperatorCapabilitySource | None = None,
 ) -> FastAPI:
     """Compose the full V3 HTTP product without cross-module adapter imports in modules."""
 
@@ -27,6 +29,7 @@ def build_http_app(
         actor_resolver=actor_resolver,
         appointment_option_signing_key=appointment_option_signing_key,
         tenant_capability_policy=tenant_capability_policy,
+        operator_capability_source=operator_capability_source,
         slot_offer_ports=QueueSlotOfferHttpPorts(
             capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),

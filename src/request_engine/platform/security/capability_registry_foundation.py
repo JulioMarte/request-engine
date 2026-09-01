@@ -88,4 +88,11 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         legacy_aliases=frozenset({"booking.subject_override"}),
         runtime_available=False,
     ),
+    command_capability(
+        "platform.acting_for_operator",
+        CapabilityExposure.OPERATOR,
+        "Admission permission for trusted integrations to execute operator-directed"
+        " mutations under a verified acting operator's authority.",
+        runtime_available=False,
+    ),
 )

@@ -17,7 +17,7 @@ from request_engine.modules.tenancy.application.commands.register_party import (
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
     PartyDocumentInput,
-    RegisteredVia,
+    PartySourceKind,
 )
 
 
@@ -34,7 +34,7 @@ def _command(
         organization_id=uuid4(),
         principal_id=uuid4(),
         display_name="Jose Perez",
-        registered_via=RegisteredVia.OPERATOR,
+        source_kind=PartySourceKind.OPERATOR,
         idempotency_key="validation",
         contact_points=contact_points,
         documents=documents,

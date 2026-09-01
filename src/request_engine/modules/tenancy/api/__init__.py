@@ -15,6 +15,12 @@ from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
 from request_engine.modules.tenancy.adapters.db.party_registry_reader import (
     PostgresPartyLookupReader,
 )
+from request_engine.modules.tenancy.adapters.db.party_revision_history_reader import (
+    PostgresPartyRevisionHistoryReader,
+)
+from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
+    PostgresPrincipalContactCommands,
+)
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_correction_routes import (
     add_party_correction_routes,
@@ -26,6 +32,11 @@ from request_engine.modules.tenancy.api.party_registry_errors import (
     add_party_registry_error_handlers,
 )
 from request_engine.modules.tenancy.api.party_registry_routes import add_party_registry_routes
+from request_engine.modules.tenancy.api.party_revision_routes import add_party_revision_routes
+from request_engine.modules.tenancy.api.staff_contact_errors import (
+    add_staff_contact_error_handlers,
+)
+from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
@@ -59,6 +70,7 @@ def install_http(
 
     commands = PostgresPartyRegistryCommands(session_factory)
     add_party_registry_error_handlers(app)
+    add_staff_contact_error_handlers(app)
     router = APIRouter(prefix="/v1/parties", tags=["parties"])
 
     async def authenticated_actor(request: Request) -> ActorContext:
@@ -84,7 +96,23 @@ def install_http(
         deactivate_party_handler=commands,
         authenticated_actor=authenticated_actor,
     )
+    add_party_revision_routes(
+        router,
+        revision_history_reader=PostgresPartyRevisionHistoryReader(session_factory),
+        rollback_handler=commands,
+        authenticated_actor=authenticated_actor,
+    )
     app.include_router(router)
+    staff_commands = PostgresPrincipalContactCommands(session_factory)
+    staff_router = APIRouter(prefix="/v1/staff", tags=["staff"])
+    add_staff_contact_routes(
+        staff_router,
+        register_handler=staff_commands,
+        verification_handler=staff_commands,
+        confirm_handler=staff_commands,
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(staff_router)
 
 
 def install_operational_http(

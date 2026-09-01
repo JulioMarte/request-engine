@@ -1,4 +1,9 @@
-"""PostgreSQL `parties.confirm_contact_point` command adapter (idempotent)."""
+"""PostgreSQL `parties.confirm_contact_point` command adapter (idempotent).
+
+Uniform party-first locking: the party row is locked before the contact-point
+row, matching the correction/rollback/deactivation paths so a concurrent
+correction can never interleave the opposite lock order and deadlock.
+"""
 
 from typing import cast
 
@@ -6,13 +11,18 @@ from request_engine.modules.tenancy.adapters.db.party_registry_codec import (
     party_from_json,
     party_to_json,
 )
+from request_engine.modules.tenancy.adapters.db.party_registry_rows import audit_attribution
 from request_engine.modules.tenancy.adapters.db.party_registry_store import (
     confirm_contact_point,
     lock_contact_point,
+    lock_party,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_views import (
     contact_point_by_id,
     load_party_views,
+)
+from request_engine.modules.tenancy.adapters.db.party_revision_ledger import (
+    record_party_revision,
 )
 from request_engine.modules.tenancy.application.commands import confirm_party_contact_point
 from request_engine.modules.tenancy.application.errors import PartyContactPointNotFound
@@ -63,6 +73,7 @@ class PostgresPartyContactPointConfirmationCommands:
                 if affected is None:
                     raise PartyContactPointNotFound(command.party_id, command.contact_point_id)
                 return affected
+            await lock_party(session, command.organization_id, command.party_id)
             locked = await lock_contact_point(
                 session,
                 command.organization_id,
@@ -77,6 +88,13 @@ class PostgresPartyContactPointConfirmationCommands:
                     session,
                     command.organization_id,
                     command.contact_point_id,
+                )
+                await record_party_revision(
+                    session,
+                    command=command,
+                    organization_id=command.organization_id,
+                    party_id=command.party_id,
+                    change_kind="verification_flipped",
                 )
             state = (await load_party_views(session, command.organization_id, [command.party_id]))[
                 0
@@ -93,6 +111,7 @@ class PostgresPartyContactPointConfirmationCommands:
                     "party_id": str(command.party_id),
                     "contact_point_id": str(command.contact_point_id),
                     "already_verified": already_verified,
+                    **audit_attribution(command),
                 },
             )
             await complete_idempotency(

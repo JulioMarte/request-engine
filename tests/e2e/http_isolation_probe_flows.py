@@ -101,6 +101,6 @@ def foreign_request(
             {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
             404,
         )
-    if name.startswith("parties."):
+    if name.startswith("parties.") or name.startswith("staff."):
         return _s0b_request(operation, actor, foreign, objects)
     raise AssertionError(f"missing tenant probe for {name}")
