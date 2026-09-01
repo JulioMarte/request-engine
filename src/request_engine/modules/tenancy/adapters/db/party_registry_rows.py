@@ -72,6 +72,18 @@ def ledger_attribution(command: AttributedCommand) -> dict[str, object]:
     }
 
 
+def audit_attribution(command: AttributedCommand) -> dict[str, object]:
+    """Audit-record attribution facts (§9.1: both identities stay in the audit)."""
+
+    return {
+        "source_kind": command.source_kind.value if command.source_kind else None,
+        "platform": command.platform,
+        "relay_principal_id": (
+            command.technical_principal_id if relayed_operator(command) else None
+        ),
+    }
+
+
 def contact_point_rows(
     command: RegisterPartyCommand,
     party_id: UUID,

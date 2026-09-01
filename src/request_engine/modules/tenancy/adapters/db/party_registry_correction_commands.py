@@ -11,10 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.tenancy.adapters.db.party_correction_support import (
-    finish_party_state,
-    run_correction,
-)
+from request_engine.modules.tenancy.adapters.db.party_correction_records import finish_party_state
+from request_engine.modules.tenancy.adapters.db.party_correction_support import run_correction
 from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
     raise_added_document_conflict,
 )

@@ -19,6 +19,7 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "operational_app.py",
     "operational_composition.py",
     "operational_errors.py",
+    "operator_resolution.py",
     "security.py",
 }
 

@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.tenancy.application.errors import PrincipalContactNotFound
 
+MAX_VERIFICATION_ATTEMPTS = 5
+
 _INSERT_SQL = text(
     "INSERT INTO request_engine.principal_contacts"
     " (organization_id, principal_id, channel, normalized_value, created_by_principal_id)"
@@ -79,7 +81,7 @@ async def insert_contact(
     channel: str,
     normalized_value: str,
 ) -> RowMapping:
-    row = (
+    return (
         (
             await session.execute(
                 _INSERT_SQL,
@@ -94,7 +96,6 @@ async def insert_contact(
         .mappings()
         .one()
     )
-    return row
 
 
 async def lock_contact(

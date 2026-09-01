@@ -69,9 +69,11 @@ ALTER TABLE request_engine.party_identity_documents
   FOREIGN KEY (organization_id, relay_principal_id)
   REFERENCES request_engine.principals (organization_id, id);
 
--- §9.3: per-party monotone revision cursor.
+-- §9.3: per-party monotone revision cursor. The revision starts at 1 and
+-- only ever moves upward; the check is a direct backstop on the column.
 ALTER TABLE request_engine.parties
-  ADD COLUMN identity_revision bigint NOT NULL DEFAULT 1;
+  ADD COLUMN identity_revision bigint NOT NULL DEFAULT 1
+    CONSTRAINT parties_identity_revision_positive CHECK (identity_revision >= 1);
 
 -- §9.3: append-only revision ledger. Every party mutation appends one
 -- revision in the same transaction with the resulting full identity snapshot.

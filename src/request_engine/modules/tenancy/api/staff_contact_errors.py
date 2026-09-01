@@ -6,6 +6,9 @@ their own statuses instead of the generic 500 fallback (Starlette resolves
 handlers along the exception MRO).
 """
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -13,6 +16,7 @@ from request_engine.modules.tenancy.application.errors import (
     PrincipalContactExists,
     PrincipalContactNotFound,
     StaffContactForbidden,
+    VerificationAlreadyPending,
     VerificationAttemptsExhausted,
     VerificationCodeExpired,
     VerificationCodeInvalid,
@@ -20,96 +24,107 @@ from request_engine.modules.tenancy.application.errors import (
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
 
-def add_staff_contact_error_handlers(app: FastAPI) -> None:
-    app.add_exception_handler(StaffContactForbidden, _staff_contact_forbidden_handler)
-    app.add_exception_handler(PrincipalContactNotFound, _not_found_handler)
-    app.add_exception_handler(PrincipalContactExists, _exists_handler)
-    app.add_exception_handler(VerificationCodeInvalid, _code_invalid_handler)
-    app.add_exception_handler(VerificationCodeExpired, _code_expired_handler)
-    app.add_exception_handler(VerificationAttemptsExhausted, _attempts_exhausted_handler)
+def _forbidden_details(exc: StaffContactForbidden) -> dict[str, object]:
+    return {"principal_id": str(exc.principal_id)}
 
 
-async def _staff_contact_forbidden_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, StaffContactForbidden)
-    return _response(
+def _not_found_details(exc: PrincipalContactNotFound) -> dict[str, object]:
+    return {"principal_id": str(exc.principal_id), "contact_id": str(exc.contact_id)}
+
+
+def _exists_details(exc: PrincipalContactExists) -> dict[str, object]:
+    return {
+        "principal_id": str(exc.principal_id),
+        "channel": exc.channel,
+        "normalized_value": exc.normalized_value,
+    }
+
+
+def _code_invalid_details(exc: VerificationCodeInvalid) -> dict[str, object]:
+    return {"attempts_remaining": exc.attempts_remaining}
+
+
+def _already_pending_details(exc: VerificationAlreadyPending) -> dict[str, object]:
+    return {"expires_at": exc.expires_at.isoformat()}
+
+
+_STAFF_CONTACT_ERRORS: tuple[
+    tuple[type[Exception], int, str, ErrorResolution, Callable[[Any], dict[str, object]]],
+    ...,
+] = (
+    (
+        StaffContactForbidden,
         status.HTTP_403_FORBIDDEN,
-        ErrorBody(
-            code="staff_contact_forbidden",
-            message=str(exc),
-            resolution=ErrorResolution.REQUEST_AUTHORITY,
-            details={"principal_id": str(exc.principal_id)},
-        ),
-    )
-
-
-async def _not_found_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, PrincipalContactNotFound)
-    return _response(
+        "staff_contact_forbidden",
+        ErrorResolution.REQUEST_AUTHORITY,
+        _forbidden_details,
+    ),
+    (
+        PrincipalContactNotFound,
         status.HTTP_404_NOT_FOUND,
-        ErrorBody(
-            code="principal_contact_not_found",
-            message=str(exc),
-            resolution=ErrorResolution.FIX_REQUEST,
-            details={
-                "principal_id": str(exc.principal_id),
-                "contact_id": str(exc.contact_id),
-            },
-        ),
-    )
-
-
-async def _exists_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, PrincipalContactExists)
-    return _response(
+        "principal_contact_not_found",
+        ErrorResolution.FIX_REQUEST,
+        _not_found_details,
+    ),
+    (
+        PrincipalContactExists,
         status.HTTP_409_CONFLICT,
-        ErrorBody(
-            code="principal_contact_exists",
-            message=str(exc),
-            resolution=ErrorResolution.FIX_REQUEST,
-            details={
-                "principal_id": str(exc.principal_id),
-                "channel": exc.channel,
-                "normalized_value": exc.normalized_value,
-            },
-        ),
-    )
-
-
-async def _code_invalid_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, VerificationCodeInvalid)
-    return _response(
+        "principal_contact_exists",
+        ErrorResolution.FIX_REQUEST,
+        _exists_details,
+    ),
+    (
+        VerificationCodeInvalid,
         status.HTTP_422_UNPROCESSABLE_CONTENT,
-        ErrorBody(
-            code="verification_code_invalid",
-            message=str(exc),
-            resolution=ErrorResolution.FIX_REQUEST,
-            details={"attempts_remaining": exc.attempts_remaining},
-        ),
-    )
-
-
-async def _code_expired_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, VerificationCodeExpired)
-    return _response(
+        "verification_code_invalid",
+        ErrorResolution.FIX_REQUEST,
+        _code_invalid_details,
+    ),
+    (
+        VerificationAlreadyPending,
+        status.HTTP_409_CONFLICT,
+        "verification_already_pending",
+        ErrorResolution.REFRESH_AND_RETRY,
+        _already_pending_details,
+    ),
+    (
+        VerificationCodeExpired,
         status.HTTP_410_GONE,
-        ErrorBody(
-            code="verification_code_expired",
-            message=str(exc),
-            resolution=ErrorResolution.FIX_REQUEST,
-        ),
-    )
-
-
-async def _attempts_exhausted_handler(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, VerificationAttemptsExhausted)
-    return _response(
+        "verification_code_expired",
+        ErrorResolution.FIX_REQUEST,
+        lambda _exc: {},
+    ),
+    (
+        VerificationAttemptsExhausted,
         status.HTTP_429_TOO_MANY_REQUESTS,
-        ErrorBody(
-            code="verification_attempts_exhausted",
-            message=str(exc),
-            resolution=ErrorResolution.CHOOSE_ALTERNATIVE,
-        ),
-    )
+        "verification_attempts_exhausted",
+        ErrorResolution.CHOOSE_ALTERNATIVE,
+        lambda _exc: {},
+    ),
+)
+
+
+def add_staff_contact_error_handlers(app: FastAPI) -> None:
+    for error_type, status_code, code, resolution, details in _STAFF_CONTACT_ERRORS:
+        app.add_exception_handler(
+            error_type,
+            _staff_contact_handler(status_code, code, resolution, details),
+        )
+
+
+def _staff_contact_handler(
+    status_code: int,
+    code: str,
+    resolution: ErrorResolution,
+    details: Callable[[Any], dict[str, object]],
+) -> Callable[[Request, Exception], Awaitable[JSONResponse]]:
+    async def handler(_: Request, exc: Exception) -> JSONResponse:
+        return _response(
+            status_code,
+            ErrorBody(code=code, message=str(exc), resolution=resolution, details=details(exc)),
+        )
+
+    return handler
 
 
 def _response(status_code: int, body: ErrorBody) -> JSONResponse:

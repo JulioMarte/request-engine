@@ -1,5 +1,6 @@
 """Typed errors for the tenancy party registry commands."""
 
+from datetime import datetime
 from uuid import UUID
 
 
@@ -106,6 +107,12 @@ class VerificationCodeInvalid(PartyRegistryError):
 class VerificationCodeExpired(PartyRegistryError):
     def __init__(self) -> None:
         super().__init__("no pending verification code is valid for this contact")
+
+
+class VerificationAlreadyPending(PartyRegistryError):
+    def __init__(self, expires_at: datetime) -> None:
+        super().__init__("an unexpired verification code is already pending for this contact")
+        self.expires_at = expires_at
 
 
 class VerificationAttemptsExhausted(PartyRegistryError):

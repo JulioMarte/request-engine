@@ -209,6 +209,8 @@ Every attribution-bearing mutation records two independent durable facts:
 - `platform` (nullable text, ≤ 64 chars) — **which surface executed it**
   (`reception_web`, `whatsapp_bot`, `phone`, ...). Declared by the authenticated trusted
   layer, recorded verbatim, never used for authorization, never enum-frozen.
+  `platform` is a declared, never-verified descriptive fact; first-party surfaces bind
+  it at the transport layer, not through any verification step.
 
 **Acting-operator relay (the "bot as a platform" rule).** An integration principal may
 execute operator-directed mutations only when it presents an acting-operator reference.
@@ -219,7 +221,9 @@ authority the operator does not have. Admission for this relay requires the dedi
 permission `platform.acting_for_operator`; all semantic capability checks then run
 against the operator's grant set. Idempotency keys are scoped to the *effective*
 principal (the operator). Audit records keep both identities: the technical caller and
-the attributed operator, plus `source_kind` and `platform`.
+the attributed operator, plus `source_kind` and `platform`. Relay admission itself is
+a platform-level admission control: `platform.acting_for_operator` is evaluated before
+tenant capability policy and is not tenant-disableable.
 
 Verified derivation follows authority, not platform: `operator`-sourced contact points
 are trusted because an accountable human (verified by RE to hold the capability) asserts
@@ -268,8 +272,11 @@ person ("ya estás registrado — ¿eres tú?") instead of creating a duplicate.
 ### 9.5 Schema additions (migration `0025`, append-only)
 
 - `party_contact_points.registered_via` is renamed `source_kind` with CHECK
-  `('operator','subject')`; adds `platform` and `attributed_operator_principal_id`
-  (tenant-scoped FK to principals). Mirroring attribution columns on `parties` and
+  `('operator','subject')`; adds `platform` and `relay_principal_id`
+  (tenant-scoped FK to principals) — the technical relay caller preserved only
+  in the admitted acting-operator relay. `attributed_operator_principal_id`
+  (the operator a relay acted for) lives on the revision ledger (§9.3), not on
+  the fact tables. Mirroring attribution columns on `parties` and
   `party_identity_documents`.
 - `parties.identity_revision` (monotone per party) and the
   `party_identity_revisions` ledger (§9.3) with RLS/force, deny-by-default grants and

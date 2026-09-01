@@ -13,13 +13,15 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.tenancy.adapters.db.party_correction_support import (
+from request_engine.modules.tenancy.adapters.db.party_correction_records import (
     audit_correction,
-    fetch_one,
     finish_party_state,
+    record_correction_revision,
+)
+from request_engine.modules.tenancy.adapters.db.party_correction_support import (
+    fetch_one,
     lock_any_party,
     party_state,
-    record_correction_revision,
     run_correction,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_codec import party_to_json

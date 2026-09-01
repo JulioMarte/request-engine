@@ -2,10 +2,11 @@
 
 One transaction: row-lock the principal's own contact; already-verified is
 an idempotent success without a code check; otherwise expired -> exhausted ->
-hash validation. Success flips `verified` monotonically (0025 guard
-backstops this) and clears the code state. No outbox event.
+constant-time hash validation. Success flips `verified` monotonically (0025
+guard backstops this) and clears the code state. No outbox event.
 """
 
+import hmac
 from datetime import UTC, datetime
 from typing import cast
 
@@ -18,6 +19,7 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_codec import (
     contact_to_json,
 )
 from request_engine.modules.tenancy.adapters.db.principal_contact_support import (
+    MAX_VERIFICATION_ATTEMPTS,
     bump_attempts,
     code_hash,
     lock_contact,
@@ -39,7 +41,6 @@ from request_engine.platform.idempotency.postgres import (
 )
 
 _CAPABILITY = "staff.confirm_own_admin_contact"
-_MAX_ATTEMPTS = 5
 
 
 class PostgresPrincipalContactConfirmationCommands:
@@ -119,12 +120,12 @@ async def _validate_code(
         raise VerificationCodeExpired()
     if expires_at <= datetime.now(UTC):
         raise VerificationCodeExpired()
-    if int(cast(int, row["verification_attempts"])) >= _MAX_ATTEMPTS:
+    if int(cast(int, row["verification_attempts"])) >= MAX_VERIFICATION_ATTEMPTS:
         raise VerificationAttemptsExhausted()
-    if row["verification_code_hash"] == code_hash(command.code):
+    if hmac.compare_digest(cast(str, row["verification_code_hash"]), code_hash(command.code)):
         return None
     attempts = await bump_attempts(session, organization_id, principal_id, contact_id)
-    remaining = _MAX_ATTEMPTS - attempts
+    remaining = MAX_VERIFICATION_ATTEMPTS - attempts
     if remaining <= 0:
         return VerificationAttemptsExhausted()
     return VerificationCodeInvalid(remaining)

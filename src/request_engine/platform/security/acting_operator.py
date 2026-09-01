@@ -7,7 +7,9 @@ must resolve, through the deployment operator port, to an active human
 principal of the same organization; the resolved effective actor carries the
 operator's capabilities and principal identity (authorization and idempotency)
 while `technical_principal_id` preserves the caller for attribution. The bot
-cannot launder authority the operator does not have.
+cannot launder authority the operator does not have. A composition without
+the deployment operator port raises `OperatorResolutionUnavailable` —
+deployment misconfiguration, not a permission denial.
 
 `X-RE-Platform` records the executing surface verbatim (<= 64 chars); it is
 never an authorization input. A HUMAN caller's relay header is ignored.
@@ -27,6 +29,16 @@ PLATFORM_HEADER = "X-RE-Platform"
 ACTING_OPERATOR_HEADER = "X-RE-Acting-Operator"
 ACTING_FOR_OPERATOR_PERMISSION = "platform.acting_for_operator"
 _MAX_PLATFORM_LENGTH = 64
+
+
+class OperatorResolutionUnavailable(Exception):
+    """The deployment provides no operator resolution for the relay port.
+
+    This is deployment misconfiguration, not a permission denial: a caller
+    that presents an acting-operator reference to a composition without a
+    usable operator resolver must not receive a 403 that looks like a
+    capability failure (§9.1). Mapped at the transport edge to 503.
+    """
 
 
 class OperatorActorResolver(Protocol):
@@ -103,7 +115,7 @@ class ActingOperatorActorResolver:
 
     async def _admitted_operator(self, organization_id: UUID, principal_id: UUID) -> ActorContext:
         if self._operator_actors is None:
-            raise CapabilityRequired(ACTING_FOR_OPERATOR_PERMISSION)
+            raise OperatorResolutionUnavailable()
         operator = await self._operator_actors.resolve_operator_actor(organization_id, principal_id)
         if (
             operator is None

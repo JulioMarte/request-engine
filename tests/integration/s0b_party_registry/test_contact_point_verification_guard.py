@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from request_engine.platform.db.session import SessionFactory
 
-from ._party_commands import verified_operator_contact_point
+from ._party_confirm_support import verified_operator_contact_point
 from ._party_support import PgConnection, contact_point_row
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]

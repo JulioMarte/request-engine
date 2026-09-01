@@ -4,9 +4,10 @@ The register command creates the contact unverified; the verification
 request stores a sha256 code hash with expiry, resets the attempt counter
 and appends exactly ONE outbox event carrying the 6-digit code. Replay
 returns the stored result without regenerating. Wrong codes consume
-attempts until exhausted; a re-request issues a fresh code and resets
-attempts; the correct code flips `verified` monotonically and clears the
-code state; a further confirm is an idempotent success.
+attempts until exhausted; a re-request after exhaustion or expiry issues a
+fresh code and resets attempts; the correct code flips `verified`
+monotonically and clears the code state; a further confirm is an idempotent
+success.
 """
 
 import hashlib

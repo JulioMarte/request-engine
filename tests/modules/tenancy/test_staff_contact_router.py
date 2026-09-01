@@ -14,6 +14,7 @@ from _staff_contact_route_support import actor, app, client, contact
 
 from request_engine.modules.tenancy.application.errors import (
     PrincipalContactNotFound,
+    VerificationAlreadyPending,
     VerificationAttemptsExhausted,
     VerificationCodeExpired,
     VerificationCodeInvalid,
@@ -102,6 +103,7 @@ async def test_request_verification_view_never_carries_a_code() -> None:
     (
         (VerificationCodeInvalid(2), 422, "verification_code_invalid"),
         (VerificationCodeExpired(), 410, "verification_code_expired"),
+        (VerificationAlreadyPending(datetime.now(UTC)), 409, "verification_already_pending"),
         (VerificationAttemptsExhausted(), 429, "verification_attempts_exhausted"),
         (PrincipalContactNotFound(uuid4(), uuid4()), 404, "principal_contact_not_found"),
     ),

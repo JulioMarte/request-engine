@@ -18,10 +18,10 @@ from request_engine.modules.tenancy.application.commands.confirm_party_contact_p
 )
 from request_engine.platform.db.session import SessionFactory
 
-from ._party_commands import (
+from ._party_commands import registry_commands
+from ._party_confirm_support import (
     confirm_command,
     confirm_key,
-    registry_commands,
     secondhand_unverified_contact_point,
 )
 from ._party_support import (

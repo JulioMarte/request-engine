@@ -19,4 +19,7 @@ EXPECTED_TABLE_EXCEPTIONS = {
     "service_classifications": (False, True, True, False, False, False, False),
     # F4 recomputes assignment availability, legitimately deleting stale rows.
     "resource_location_availability": (True, True, True, True, False, False, False),
+    # S0b2 (§9.3): the party identity revision ledger is append-only for the
+    # app role; UPDATE/DELETE are denied by grants and by the 0025 guard.
+    "party_identity_revisions": (True, True, False, False, False, False, False),
 }

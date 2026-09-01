@@ -3,9 +3,12 @@
 The relay fails closed (docs/v3/38 §9.1): a caller without
 `platform.acting_for_operator` is 403, an operator that does not resolve to an
 active HUMAN principal of the same organization is 403, and a HUMAN caller's
-relay header is ignored. When admitted, the effective actor carries the
-operator's capabilities and principal identity (authorization and idempotency)
-while `technical_principal_id` preserves the caller.
+relay header is ignored. A composition with no operator port is deployment
+misconfiguration, not a permission denial: it raises the typed
+`OperatorResolutionUnavailable` instead of a 403. When admitted, the
+effective actor carries the operator's capabilities and principal identity
+(authorization and idempotency) while `technical_principal_id` preserves the
+caller.
 """
 
 from dataclasses import replace
@@ -17,6 +20,7 @@ from fastapi import Request
 from request_engine.platform.security.acting_operator import (
     ACTING_FOR_OPERATOR_PERMISSION,
     ActingOperatorActorResolver,
+    OperatorResolutionUnavailable,
 )
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.http import CapabilityRequired
@@ -121,10 +125,10 @@ async def test_unresolvable_or_foreign_or_non_human_operator_fails_closed(
 
 
 @pytest.mark.asyncio
-async def test_relay_without_operator_port_fails_closed() -> None:
+async def test_relay_without_operator_port_is_deployment_misconfiguration() -> None:
     actor = _actor(PrincipalKind.INTEGRATION, ACTING_FOR_OPERATOR_PERMISSION)
     resolver = ActingOperatorActorResolver(_StaticDelegate(actor), None)
-    with pytest.raises(CapabilityRequired):
+    with pytest.raises(OperatorResolutionUnavailable):
         await resolver.resolve_actor(_request(acting=OPERATOR_ID))
 
 

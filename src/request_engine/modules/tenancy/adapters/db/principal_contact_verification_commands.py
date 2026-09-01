@@ -1,21 +1,23 @@
 """PostgreSQL staff contact verification-request adapter (docs/v3/38 §9.2).
 
-One transaction: row-lock the principal's own contact, generate a fresh
+One transaction: row-lock the principal's own contact, reject a re-request
+while an unexpired unconsumed code is pending, otherwise generate a fresh
 6-digit code, store its sha256 hash with a 15-minute expiry, reset the
-attempt counter, append ONE outbox event carrying the code as durable
-transactional intent (delivery is external), audit and complete the
-idempotency record. Replay returns the stored contact id + expiry and never
-a code.
+attempt counter and append ONE outbox event carrying the code as durable
+transactional intent; delivery is external. Replay never returns a code.
 """
 
 from datetime import UTC, datetime, timedelta
 from typing import cast
+
+from sqlalchemy.engine import RowMapping
 
 from request_engine.modules.tenancy.adapters.db.principal_contact_codec import (
     issued_from_json,
     issued_to_json,
 )
 from request_engine.modules.tenancy.adapters.db.principal_contact_support import (
+    MAX_VERIFICATION_ATTEMPTS,
     code_hash,
     lock_contact,
     new_verification_code,
@@ -24,6 +26,7 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_support import
 from request_engine.modules.tenancy.application.commands import (
     request_principal_contact_verification,
 )
+from request_engine.modules.tenancy.application.errors import VerificationAlreadyPending
 from request_engine.modules.tenancy.contracts.staff_contacts import (
     PrincipalContactVerificationIssued,
 )
@@ -68,6 +71,7 @@ class PostgresPrincipalContactVerificationCommands:
             row = await lock_contact(
                 session, command.organization_id, command.principal_id, command.contact_id
             )
+            _reject_still_pending(row)
             code = new_verification_code()
             expires_at = datetime.now(UTC) + _VERIFICATION_TTL
             await set_pending_verification(
@@ -111,3 +115,17 @@ class PostgresPrincipalContactVerificationCommands:
             )
             await complete_idempotency(session, idempotency_id, {"issued": issued_to_json(issued)})
             return issued
+
+
+def _reject_still_pending(row: RowMapping) -> None:
+    """An unexpired, unconsumed code blocks re-issuance without side effects."""
+
+    expires_at = row["verification_expires_at"]
+    pending = (
+        row["verification_code_hash"] is not None
+        and isinstance(expires_at, datetime)
+        and expires_at > datetime.now(UTC)
+        and int(cast(int, row["verification_attempts"])) < MAX_VERIFICATION_ATTEMPTS
+    )
+    if pending:
+        raise VerificationAlreadyPending(expires_at)
