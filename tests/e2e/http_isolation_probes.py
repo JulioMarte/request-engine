@@ -7,7 +7,19 @@ from .http_isolation_probe_flows import foreign_request as _flow_request
 from .http_surface import PublicHttpOperation
 from .tenant_sandbox import TenantSandbox, actor_for
 
-ISOLATION_ACTOR_GRANTS = frozenset({"appointments.record_arrival_estimate"})
+ISOLATION_ACTOR_GRANTS = frozenset(
+    {
+        "appointments.record_arrival_estimate",
+        "parties.register",
+        "parties.add_contact_point",
+        "parties.confirm_contact_point",
+        "parties.rename",
+        "parties.add_document",
+        "parties.deactivate_contact_point",
+        "parties.deactivate",
+        "parties.lookup",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)

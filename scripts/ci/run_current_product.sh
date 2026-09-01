@@ -126,6 +126,15 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/queue-call-next-concurrency.xml"
 
+# S0b party registry proofs are current product truth. Keep the cédula race,
+# confirm monotonicity, verification guard and shared-phone multi-match
+# evidence on the accepted migration head so tenancy registry guarantees
+# cannot regress silently.
+uv run pytest \
+  tests/integration/s0b_party_registry \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/s0b-party-registry.xml"
+
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
 # they must not disappear merely because V3 historical execution was separated.
