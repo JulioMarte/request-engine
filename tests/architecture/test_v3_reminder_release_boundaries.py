@@ -9,7 +9,7 @@ BUSINESS_MODULES = (
 
 def test_i44_business_modules_cannot_import_communication_provider_io() -> None:
     forbidden = (
-        "request_engine.modules.communications.adapters.worker.delivery_worker",
+        "request_engine.modules.communications.adapters.worker.scheduled_delivery",
         "request_engine.modules.communications.contracts.delivery",
         "CommunicationDeliveryProvider",
         "ProviderSendRequest",

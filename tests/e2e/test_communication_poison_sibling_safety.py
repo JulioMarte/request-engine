@@ -9,10 +9,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from request_engine.modules.communications.adapters.worker.delivery_worker import (
-    CommunicationDeliveryWorker,
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
 )
-from request_engine.modules.communications.application.errors import UnsupportedScheduledAction
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
     ProviderDeliveryResult,
@@ -25,7 +24,11 @@ from request_engine.platform.db.session import (
     create_postgres_engine,
     create_session_factory,
 )
-from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
+from request_engine.platform.worker.runtime import PermanentWorkError
 
 from . import operational_support as support
 
@@ -51,7 +54,7 @@ class DeliveredProvider(CommunicationDeliveryProvider):
 async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
     provider: CommunicationDeliveryProvider,
-) -> AsyncGenerator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryWorker]]:
+) -> AsyncGenerator[tuple[PostgresScheduledActionWorker, CommunicationDeliveryScheduledHandler]]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
     assert domain_database_url is not None, "delivery work requires separate app credentials"
     worker_engine = create_postgres_engine(credentials.database_url)
@@ -62,7 +65,7 @@ async def _worker_stack(
     try:
         yield (
             scheduler,
-            CommunicationDeliveryWorker(
+            CommunicationDeliveryScheduledHandler(
                 domain_factory,
                 scheduler,
                 {"provider-a": provider},
@@ -71,6 +74,21 @@ async def _worker_stack(
     finally:
         await domain_engine.dispose()
         await worker_engine.dispose()
+
+
+async def _fail_poisoned_action(
+    scheduler: PostgresScheduledActionWorker,
+    handler: CommunicationDeliveryScheduledHandler,
+    lease: ScheduledActionLease,
+) -> str:
+    """Drive poison work to its typed permanent failure, then fence the action
+    into the dead letter exactly as the ``FencedWorkerRuntime`` does for a
+    ``PermanentWorkError``."""
+
+    with pytest.raises(PermanentWorkError) as exc_info:
+        await handler.handle(lease)
+    assert await scheduler.dead_letter(lease, error_class=exc_info.value.error_class)
+    return exc_info.value.error_class
 
 
 def _task(conn: support.PgConnection, organization_id: UUID) -> UUID:
@@ -204,12 +222,11 @@ async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibli
     )
     provider = DeliveredProvider()
 
-    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, handler):
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         assert leases[0].id == poison_id
-        with pytest.raises(UnsupportedScheduledAction):
-            await worker.process(leases[0])
+        await _fail_poisoned_action(scheduler, handler, leases[0])
 
         assert _action_status(e2e_admin_conn, poison_id) == "dead"
         assert _action_status(e2e_admin_conn, valid_id) == "pending"
@@ -227,7 +244,8 @@ async def test_poison_action_does_not_terminalize_task_with_valid_dispatch_sibli
         valid_leases = await scheduler.claim(limit=1)
         assert len(valid_leases) == 1
         assert valid_leases[0].id == valid_id
-        await worker.process(valid_leases[0])
+        await handler.handle(valid_leases[0])
+        assert await scheduler.complete(valid_leases[0]) is True
 
     assert len(provider.send_calls) == 1
     assert _action_status(e2e_admin_conn, valid_id) == "completed"
@@ -277,12 +295,11 @@ async def test_malformed_dispatch_sibling_does_not_mask_orphaned_poison_task(
     )
     provider = DeliveredProvider()
 
-    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, handler):
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         assert leases[0].id == poison_id
-        with pytest.raises(UnsupportedScheduledAction):
-            await worker.process(leases[0])
+        await _fail_poisoned_action(scheduler, handler, leases[0])
 
     assert provider.send_calls == []
     assert _action_status(e2e_admin_conn, poison_id) == "dead"
@@ -332,12 +349,11 @@ async def test_exhausted_dispatch_sibling_does_not_mask_orphaned_poison_task(
     )
     provider = DeliveredProvider()
 
-    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, worker):
+    async with _worker_stack(worker_runtime_credentials, provider) as (scheduler, handler):
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
         assert leases[0].id == poison_id
-        with pytest.raises(UnsupportedScheduledAction):
-            await worker.process(leases[0])
+        await _fail_poisoned_action(scheduler, handler, leases[0])
 
     assert provider.send_calls == []
     assert _action_status(e2e_admin_conn, poison_id) == "dead"

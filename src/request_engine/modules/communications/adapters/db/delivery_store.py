@@ -303,6 +303,7 @@ async def prepare_dispatch(
             template_key=cast(str, task["template_key"]),
             template_version=cast(int, task["template_version"]),
             render_context=cast(dict[str, object], task["render_context"]),
+            attempt_no=attempt_no,
             expires_at=expires_at,
             reconcile_after_seconds=policy.reconcile_after_seconds,
         ),
@@ -409,18 +410,9 @@ async def finalize_provider_result(
                 task_terminal=not current_retryable or cast(str, task["status"]) == "failed",
             )
 
-    effective = result
-    if result.status is ProviderDeliveryStatus.NOT_FOUND:
-        effective = ProviderDeliveryResult(
-            status=ProviderDeliveryStatus.FAILED,
-            provider_message_id=result.provider_message_id,
-            retryable=True,
-            result_data={**result.result_data, "reconciliation": "not_found"},
-        )
-
     db_now = await _database_now(session)
-    result_data = dict(effective.result_data)
-    result_data["retryable"] = effective.retryable
+    result_data = dict(result.result_data)
+    result_data["retryable"] = result.retryable
     await session.execute(
         text(
             """
@@ -437,8 +429,8 @@ async def finalize_provider_result(
         {
             "organization_id": organization_id,
             "delivery_id": delivery_id,
-            "status": effective.status.value,
-            "provider_message_id": effective.provider_message_id,
+            "status": result.status.value,
+            "provider_message_id": result.provider_message_id,
             "result_data": json.dumps(result_data, default=str, separators=(",", ":")),
             "completed_at": db_now,
         },
@@ -446,7 +438,7 @@ async def finalize_provider_result(
 
     task_terminal = False
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
-    if effective.status is ProviderDeliveryStatus.DELIVERED:
+    if result.status is ProviderDeliveryStatus.DELIVERED:
         await _set_task_status(session, organization_id, task_id, "completed")
         task_terminal = True
         await append_outbox(
@@ -458,11 +450,11 @@ async def finalize_provider_result(
             payload={
                 "communication_task_id": str(task_id),
                 "delivery_id": str(delivery_id),
-                "provider_message_id": effective.provider_message_id,
+                "provider_message_id": result.provider_message_id,
             },
         )
-    elif effective.status is ProviderDeliveryStatus.FAILED:
-        if effective.retryable:
+    elif result.status is ProviderDeliveryStatus.FAILED:
+        if result.retryable:
             await _set_task_status(session, organization_id, task_id, "pending")
             await _schedule_retry_dispatch(
                 session,
@@ -496,8 +488,8 @@ async def finalize_provider_result(
     return FinalizedDelivery(
         communication_task_id=task_id,
         delivery_id=delivery_id,
-        status=effective.status,
-        retryable=effective.retryable,
+        status=result.status,
+        retryable=result.retryable,
         task_terminal=task_terminal,
     )
 

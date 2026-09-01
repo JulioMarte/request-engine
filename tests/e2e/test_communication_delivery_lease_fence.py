@@ -10,8 +10,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from request_engine.modules.communications.adapters.db.delivery_store import prepare_dispatch
-from request_engine.modules.communications.adapters.worker.delivery_worker import (
-    CommunicationDeliveryWorker,
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
 )
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
@@ -106,7 +106,7 @@ async def _worker_stack(
         SessionFactory,
         SessionFactory,
         PostgresScheduledActionWorker,
-        CommunicationDeliveryWorker,
+        CommunicationDeliveryScheduledHandler,
     ]
 ]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
@@ -121,7 +121,7 @@ async def _worker_stack(
             domain_factory,
             worker_factory,
             scheduler,
-            CommunicationDeliveryWorker(domain_factory, scheduler, providers),
+            CommunicationDeliveryScheduledHandler(domain_factory, scheduler, providers),
         )
     finally:
         await domain_engine.dispose()
@@ -274,7 +274,7 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
     providers: dict[str, CommunicationDeliveryProvider] = {}
 
     async with _worker_stack(worker_runtime_credentials, providers) as stack:
-        _, worker_factory, scheduler, worker = stack
+        _, worker_factory, scheduler, handler = stack
         competitor = PostgresScheduledActionWorker(worker_factory)
         provider = ReclaimDuringSendProvider(e2e_admin_conn, action_id, competitor)
         providers["provider-a"] = provider
@@ -288,7 +288,7 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
             LeaseLostWorkError,
             match="provider_result_finalization_fence_lost",
         ):
-            await worker.process(first_lease)
+            await handler.handle(first_lease)
 
         assert provider.reclaimed is not None
         assert provider.reclaimed.id == action_id
@@ -299,9 +299,9 @@ async def test_reclaimed_lease_fences_stale_provider_result_then_reconciles_with
         assert _action_status(e2e_admin_conn, action_id) == "leased"
         assert _completion_events(e2e_admin_conn, organization_id, task_id) == 0
 
-        outcome = await worker.process(provider.reclaimed)
+        await handler.handle(provider.reclaimed)
+        assert await scheduler.complete(provider.reclaimed) is True
 
-    assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == delivery_id
@@ -327,7 +327,7 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
     async with _worker_stack(
         worker_runtime_credentials,
         {"provider-a": provider},
-    ) as (domain_factory, _, scheduler, worker):
+    ) as (domain_factory, _, scheduler, handler):
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -399,9 +399,9 @@ async def test_exhausted_crash_dead_letter_replay_recovers_without_second_send(
         assert len(replay_leases) == 1
         assert replay_leases[0].id == action_id
         assert replay_leases[0].attempt_count == 2
-        outcome = await worker.process(replay_leases[0])
+        await handler.handle(replay_leases[0])
+        assert await scheduler.complete(replay_leases[0]) is True
 
-    assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == delivery_id

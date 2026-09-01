@@ -54,9 +54,8 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        first = await _claim_and_process(scheduler, worker)
-        assert first.detail == "accepted"
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
         assert _action_status(e2e_admin_conn, dispatch_id) == "completed"
         assert len(provider.send_calls) == 1
         assert provider.lookup_calls == []
@@ -96,8 +95,7 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
             (PAST, PAST, first_reconcile_id),
         )
 
-        accepted_again = await _claim_and_process(scheduler, worker)
-        assert accepted_again.detail == "accepted"
+        await _claim_and_process(scheduler, handler)
         assert len(provider.send_calls) == 1
         assert len(provider.lookup_calls) == 1
         assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
@@ -119,11 +117,11 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
         next_reconcile_id = cast(UUID, pending_reconciliations[0][0])
 
         replay_dispatch_id = _dispatch(e2e_admin_conn, org, task_id)
-        replay = await _claim_and_process(scheduler, worker)
-        assert replay.detail == "accepted"
+        await _claim_and_process(scheduler, handler)
         assert _action_status(e2e_admin_conn, replay_dispatch_id) == "completed"
         assert len(provider.send_calls) == 1
         assert len(provider.lookup_calls) == 2
+        assert _delivery_status(e2e_admin_conn, delivery_id) == "accepted"
 
         still_one_future = e2e_admin_conn.execute(
             """
@@ -151,9 +149,8 @@ async def test_repeated_accepted_reconciliation_reuses_one_future_action_before_
             """,
             (PAST, PAST, next_reconcile_id),
         )
-        delivered = await _claim_and_process(scheduler, worker)
+        await _claim_and_process(scheduler, handler)
 
-    assert delivered.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert len(provider.lookup_calls) == 3
     assert _task_status(e2e_admin_conn, task_id) == "completed"
@@ -190,7 +187,7 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        domain_factory, _, scheduler, worker = stack
+        domain_factory, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -246,8 +243,10 @@ async def test_crash_after_retryable_failure_finalize_cannot_bypass_future_dispa
         assert reclaimed[0].id == action_id
         assert reclaimed[0].claim_token != first_lease.claim_token
 
-        replay = await worker.process(reclaimed[0])
-        assert replay.detail == "retry_already_scheduled"
+        # The replay must observe the already-scheduled future dispatch and skip
+        # without another provider send or a second delivery row.
+        await handler.handle(reclaimed[0])
+        assert await scheduler.complete(reclaimed[0]) is True
         assert await scheduler.complete(first_lease) is False
 
     assert len(provider.send_calls) == 1

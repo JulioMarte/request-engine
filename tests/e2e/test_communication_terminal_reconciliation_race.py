@@ -9,6 +9,9 @@ import pytest
 from request_engine.modules.communications.adapters.db.delivery_store import (
     finalize_provider_result,
 )
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
+)
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
     ProviderDeliveryResult,
@@ -17,6 +20,10 @@ from request_engine.modules.communications.contracts.delivery import (
     ProviderSendRequest,
 )
 from request_engine.platform.db.session import tenant_transaction
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
 
 from . import operational_support as support
 from .test_communication_worker_resilience import (
@@ -67,6 +74,15 @@ class OrderedConflictingLookupProvider(CommunicationDeliveryProvider):
         raise AssertionError("unexpected third provider.lookup call")
 
 
+async def _drive(
+    scheduler: PostgresScheduledActionWorker,
+    handler: CommunicationDeliveryScheduledHandler,
+    lease: ScheduledActionLease,
+) -> None:
+    await handler.handle(lease)
+    assert await scheduler.complete(lease) is True
+
+
 @pytest.mark.asyncio
 @pytest.mark.concurrency
 async def test_two_reconciliations_cannot_emit_failed_then_completed_for_one_delivery(
@@ -82,29 +98,27 @@ async def test_two_reconciliations_cannot_emit_failed_then_completed_for_one_del
     provider = OrderedConflictingLookupProvider()
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
+        _, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=500, lease=timedelta(seconds=30))
         ours = {lease.id: lease for lease in leases if lease.id in target_ids}
         assert set(ours) == target_ids
 
-        first_process = asyncio.create_task(worker.process(ours[first_action_id]))
+        first_process = asyncio.create_task(_drive(scheduler, handler, ours[first_action_id]))
         await asyncio.wait_for(provider.first_started.wait(), timeout=10)
 
-        second_process = asyncio.create_task(worker.process(ours[second_action_id]))
+        second_process = asyncio.create_task(_drive(scheduler, handler, ours[second_action_id]))
         await asyncio.wait_for(provider.second_started.wait(), timeout=10)
 
         provider.release_failure.set()
-        first_outcome = await asyncio.wait_for(first_process, timeout=10)
-        assert first_outcome.detail == "failed"
+        await asyncio.wait_for(first_process, timeout=10)
         assert _task_status(e2e_admin_conn, task_id) == "failed"
         assert _delivery_status(e2e_admin_conn, delivery_id) == "failed"
         assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
         assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 0
 
         provider.release_delivered.set()
-        second_outcome = await asyncio.wait_for(second_process, timeout=10)
+        await asyncio.wait_for(second_process, timeout=10)
 
-    assert second_outcome.detail == "failed"
     assert len(provider.lookup_calls) == 2
     assert _action_status(e2e_admin_conn, first_action_id) == "completed"
     assert _action_status(e2e_admin_conn, second_action_id) == "completed"
@@ -124,7 +138,7 @@ async def test_retryable_failed_delivery_can_recover_from_late_delivered_evidenc
     delivery_id = _delivery(e2e_admin_conn, org, task_id, status="accepted")
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        domain_factory, _, scheduler, worker = stack
+        domain_factory, _, scheduler, handler = stack
         async with tenant_transaction(domain_factory, org) as session:
             failed = await finalize_provider_result(
                 session,
@@ -180,9 +194,8 @@ async def test_retryable_failed_delivery_can_recover_from_late_delivered_evidenc
         )
         leases = await scheduler.claim(limit=500)
         retry_lease = next(lease for lease in leases if lease.id == retry_id)
-        skipped = await worker.process(retry_lease)
+        await _drive(scheduler, handler, retry_lease)
 
-    assert skipped.detail == "task_completed"
     assert _action_status(e2e_admin_conn, retry_id) == "completed"
     assert _task_status(e2e_admin_conn, task_id) == "completed"
     assert _delivery_status(e2e_admin_conn, delivery_id) == "delivered"

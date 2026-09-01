@@ -1,27 +1,45 @@
+"""Delivery resilience proofs on the production scheduled-handler composition.
+
+The executor under test is ``CommunicationDeliveryScheduledHandler`` composed
+inside the platform ``FencedWorkerRuntime`` via ``ScheduledActionRouter`` — the
+same wiring the worker bootstrap assembles for production. Claims/leases come
+from the real ``PostgresScheduledActionWorker``; provider doubles stand only at
+the external transport boundary.
+
+Disposition (doc 40 T5): the retired legacy ``CommunicationDeliveryWorker``
+self-reported per-execution ``detail`` strings; the scheduled handler returns
+no such value because lease finalization belongs to the runtime. Every former
+``outcome.detail`` assertion is therefore replaced by the equivalent durable
+oracle (delivery/task/scheduled-action state), which is a strictly stronger
+claim. The legacy-only executor states (DEFERRED/DEAD self-report) are replaced
+by ``WorkerItemState`` outcomes from the real runtime and by durable
+``scheduled_actions`` rows.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import json
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.entrypoints.worker.scheduled_router import ScheduledActionRouter
 from request_engine.modules.communications.adapters.db.delivery_store import (
+    DISPATCH_ACTION_TYPE,
+    DISPATCH_ACTION_VERSION,
+    RECONCILE_ACTION_TYPE,
+    RECONCILE_ACTION_VERSION,
     finalize_provider_result,
     prepare_dispatch,
 )
-from request_engine.modules.communications.adapters.worker.delivery_worker import (
-    CommunicationDeliveryWorker,
-    DeliveryWorkerOutcome,
-    DeliveryWorkerState,
-)
-from request_engine.modules.communications.application.errors import (
-    DeliveryProviderNotConfigured,
-    UnsupportedScheduledAction,
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
 )
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
@@ -36,7 +54,16 @@ from request_engine.platform.db.session import (
     create_session_factory,
     tenant_transaction,
 )
-from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
+from request_engine.platform.scheduling.postgres import (
+    PostgresScheduledActionWorker,
+    ScheduledActionLease,
+)
+from request_engine.platform.worker.runtime import (
+    FencedWorkerRuntime,
+    PermanentWorkError,
+    WorkerItemState,
+    WorkerRuntimeConfig,
+)
 
 from . import operational_support as support
 
@@ -97,6 +124,34 @@ class UniqueDeliveredProvider(CommunicationDeliveryProvider):
         raise AssertionError("contention scenario must not reconcile")
 
 
+def _single_action_config() -> WorkerRuntimeConfig:
+    return WorkerRuntimeConfig(
+        max_concurrency=1,
+        claim_batch_size=1,
+        lease_duration=timedelta(seconds=30),
+        heartbeat_interval=timedelta(seconds=10),
+        idle_sleep=timedelta(milliseconds=1),
+        retry_base=timedelta(seconds=5),
+        retry_cap=timedelta(minutes=1),
+    )
+
+
+def _delivery_runtime(
+    scheduler: PostgresScheduledActionWorker,
+    handler: CommunicationDeliveryScheduledHandler,
+    *,
+    batch: int = 1,
+) -> FencedWorkerRuntime[ScheduledActionLease]:
+    router = ScheduledActionRouter(
+        {
+            ("communications", DISPATCH_ACTION_TYPE, DISPATCH_ACTION_VERSION): handler.handle,
+            ("communications", RECONCILE_ACTION_TYPE, RECONCILE_ACTION_VERSION): handler.handle,
+        }
+    )
+    config = replace(_single_action_config(), max_concurrency=batch, claim_batch_size=batch)
+    return FencedWorkerRuntime(scheduler, router, config=config)
+
+
 @asynccontextmanager
 async def _worker_stack(
     credentials: support.RuntimeCredentialsLike,
@@ -106,7 +161,7 @@ async def _worker_stack(
         SessionFactory,
         SessionFactory,
         PostgresScheduledActionWorker,
-        CommunicationDeliveryWorker,
+        CommunicationDeliveryScheduledHandler,
     ],
 ]:
     domain_database_url = getattr(credentials, "domain_database_url", None)
@@ -116,13 +171,9 @@ async def _worker_stack(
     worker_factory: SessionFactory = create_session_factory(worker_engine)
     domain_factory: SessionFactory = create_session_factory(domain_engine)
     scheduler = PostgresScheduledActionWorker(worker_factory)
+    handler = CommunicationDeliveryScheduledHandler(domain_factory, scheduler, providers)
     try:
-        yield (
-            domain_factory,
-            worker_factory,
-            scheduler,
-            CommunicationDeliveryWorker(domain_factory, scheduler, providers),
-        )
+        yield (domain_factory, worker_factory, scheduler, handler)
     finally:
         await domain_engine.dispose()
         await worker_engine.dispose()
@@ -241,6 +292,18 @@ def _delivery(
     return cast(UUID, row[0])
 
 
+def _delivery_id(conn: support.PgConnection, task_id: UUID) -> UUID:
+    row = conn.execute(
+        """
+        SELECT id FROM request_engine.communication_deliveries
+        WHERE communication_task_id = %s
+        """,
+        (task_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0])
+
+
 def _reconcile(
     conn: support.PgConnection,
     organization_id: UUID,
@@ -303,11 +366,18 @@ def _events(
 
 async def _claim_and_process(
     scheduler: PostgresScheduledActionWorker,
-    worker: CommunicationDeliveryWorker,
-) -> DeliveryWorkerOutcome:
+    handler: CommunicationDeliveryScheduledHandler,
+) -> None:
+    """Claim one action, execute the handler, and acknowledge the lease.
+
+    The explicit ``complete`` mirrors the runtime's post-success finalization;
+    a ``False`` here would mean the handler lost its fence and must fail.
+    """
+
     leases = await scheduler.claim(limit=1)
     assert len(leases) == 1
-    return await worker.process(leases[0])
+    await handler.handle(leases[0])
+    assert await scheduler.complete(leases[0]) is True
 
 
 @pytest.mark.asyncio
@@ -326,13 +396,14 @@ async def test_delivered_send_completes_task_action_and_outbox(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
 
-    assert outcome.detail == "delivered"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
     assert provider.send_calls[0].provider_idempotency_key == (f"communication:{task_id}:attempt:1")
+    assert provider.send_calls[0].attempt_no == 1
+    assert _delivery_status(e2e_admin_conn, _delivery_id(e2e_admin_conn, task_id)) == "delivered"
     assert _task_status(e2e_admin_conn, task_id) == "completed"
     assert _action_status(e2e_admin_conn, action_id) == "completed"
     assert _events(e2e_admin_conn, org, "communication.task_completed.v1", task_id) == 1
@@ -349,10 +420,9 @@ async def test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend(
     provider = ScriptedProvider(send=TimeoutError("provider response lost"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
 
-    assert outcome.detail == "ambiguous"
     assert len(provider.send_calls) == 1
     assert provider.lookup_calls == []
     assert _action_status(e2e_admin_conn, action_id) == "completed"
@@ -405,10 +475,9 @@ async def test_reconciliation_delivered_uses_lookup_without_second_send(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
 
-    assert outcome.detail == "delivered"
     assert provider.send_calls == []
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == delivery_id
@@ -429,11 +498,14 @@ async def test_lookup_exception_retries_same_action_without_resend(
     provider = ScriptedProvider(lookup=ConnectionError("provider unavailable"))
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        runtime = _delivery_runtime(scheduler, handler)
+        outcomes = await runtime.run_once()
 
-    assert outcome.state is DeliveryWorkerState.DEFERRED
-    assert outcome.detail == "lookup_pending"
+    assert len(outcomes) == 1
+    assert outcomes[0].work_id == action_id
+    assert outcomes[0].state is WorkerItemState.RETRY
+    assert outcomes[0].detail == "lookup_ConnectionError"
     assert provider.send_calls == []
     action = e2e_admin_conn.execute(
         """
@@ -463,10 +535,11 @@ async def test_retryable_failure_schedules_exactly_one_future_dispatch(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
 
-    assert outcome.detail == "failed"
+    assert len(provider.send_calls) == 1
+    assert _delivery_status(e2e_admin_conn, _delivery_id(e2e_admin_conn, task_id)) == "failed"
     assert _task_status(e2e_admin_conn, task_id) == "pending"
     assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 0
     assert _action_status(e2e_admin_conn, original_id) == "completed"
@@ -501,8 +574,8 @@ async def test_non_retryable_failure_is_terminal_and_emits_failure_event(
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        await _claim_and_process(scheduler, worker)
+        _, _, scheduler, handler = stack
+        await _claim_and_process(scheduler, handler)
 
     assert _task_status(e2e_admin_conn, task_id) == "failed"
     assert _action_status(e2e_admin_conn, action_id) == "completed"
@@ -519,12 +592,14 @@ async def test_missing_provider_fails_domain_state_before_dead_lettering_action(
     action_id = _dispatch(e2e_admin_conn, org, task_id)
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, _, scheduler, worker = stack
-        leases = await scheduler.claim(limit=1)
-        assert len(leases) == 1
-        with pytest.raises(DeliveryProviderNotConfigured):
-            await worker.process(leases[0])
+        _, _, scheduler, handler = stack
+        runtime = _delivery_runtime(scheduler, handler)
+        outcomes = await runtime.run_once()
 
+    assert len(outcomes) == 1
+    assert outcomes[0].work_id == action_id
+    assert outcomes[0].state is WorkerItemState.DEAD
+    assert outcomes[0].detail == "provider_not_configured"
     action = e2e_admin_conn.execute(
         """
         SELECT status, claim_token, lease_until, last_error_class
@@ -551,6 +626,11 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
+    """A communications action the handler cannot interpret is poison: the
+    orphaned task closes with a visible failure fact before the runtime fences
+    the action into the dead letter (the router-level variant for actions no
+    handler claims is proven in tests/integration/v3_worker_runtime)."""
+
     org = support.new_org(e2e_admin_conn, "delivery-poison-type")
     task_id = _task(e2e_admin_conn, org)
     action_id = _action(
@@ -563,17 +643,19 @@ async def test_unsupported_action_is_dead_lettered_as_permanent_poison_work(
     )
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, _, scheduler, worker = stack
+        _, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=1)
         assert len(leases) == 1
-        with pytest.raises(UnsupportedScheduledAction):
-            await worker.process(leases[0])
+        with pytest.raises(PermanentWorkError) as exc_info:
+            await handler.handle(leases[0])
+        assert exc_info.value.error_class == "unsupported_communications_scheduled_action"
+        assert await scheduler.dead_letter(leases[0], error_class=exc_info.value.error_class)
 
     row = e2e_admin_conn.execute(
         "SELECT status, last_error_class FROM request_engine.scheduled_actions WHERE id = %s",
         (action_id,),
     ).fetchone()
-    assert row == ("dead", "unsupported_scheduled_action")
+    assert row == ("dead", "unsupported_communications_scheduled_action")
     assert _task_status(e2e_admin_conn, task_id) == "failed"
     assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
 
@@ -588,17 +670,19 @@ async def test_payload_identity_mismatch_dead_letters_action_and_fails_orphaned_
     action_id = _dispatch(e2e_admin_conn, org, task_id, payload_task_id=uuid4())
 
     async with _worker_stack(worker_runtime_credentials, {}) as stack:
-        _, _, scheduler, worker = stack
-        leases = await scheduler.claim(limit=1)
-        assert len(leases) == 1
-        with pytest.raises(ValueError, match="does not match subject identity"):
-            await worker.process(leases[0])
+        _, _, scheduler, handler = stack
+        runtime = _delivery_runtime(scheduler, handler)
+        outcomes = await runtime.run_once()
 
+    assert len(outcomes) == 1
+    assert outcomes[0].work_id == action_id
+    assert outcomes[0].state is WorkerItemState.DEAD
+    assert outcomes[0].detail == "scheduled_action_payload_mismatch"
     row = e2e_admin_conn.execute(
         "SELECT status, last_error_class FROM request_engine.scheduled_actions WHERE id = %s",
         (action_id,),
     ).fetchone()
-    assert row == ("dead", "invalid_scheduled_action")
+    assert row == ("dead", "scheduled_action_payload_mismatch")
     assert _task_status(e2e_admin_conn, task_id) == "failed"
     assert _events(e2e_admin_conn, org, "communication.task_failed.v1", task_id) == 1
     delivery_count = e2e_admin_conn.execute(
@@ -623,7 +707,7 @@ async def test_crash_after_provider_finalize_before_action_ack_reclaims_without_
     provider = UniqueDeliveredProvider()
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        factory, _, scheduler, worker = stack
+        factory, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -662,8 +746,8 @@ async def test_crash_after_provider_finalize_before_action_ack_reclaims_without_
         assert reclaimed[0].id == action_id
         assert reclaimed[0].claim_token != first_lease.claim_token
 
-        replay = await worker.process(reclaimed[0])
-        assert replay.detail in {"already_delivered", "task_completed"}
+        await handler.handle(reclaimed[0])
+        assert await scheduler.complete(reclaimed[0]) is True
         assert await scheduler.complete(first_lease) is False
 
     assert len(provider.send_calls) == 1
@@ -697,7 +781,7 @@ async def test_crash_after_prepare_reconciles_existing_attempt_before_any_resend
     )
 
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        factory, _, scheduler, worker = stack
+        factory, _, scheduler, handler = stack
         leases = await scheduler.claim(limit=1, lease=timedelta(seconds=30))
         assert len(leases) == 1
         first_lease = leases[0]
@@ -722,9 +806,9 @@ async def test_crash_after_prepare_reconciles_existing_attempt_before_any_resend
         reclaimed = await scheduler.claim(limit=1)
         assert len(reclaimed) == 1
         assert reclaimed[0].claim_token != first_lease.claim_token
-        outcome = await worker.process(reclaimed[0])
+        await handler.handle(reclaimed[0])
+        assert await scheduler.complete(reclaimed[0]) is True
 
-    assert outcome.detail == "delivered"
     assert provider.send_calls == []
     assert len(provider.lookup_calls) == 1
     assert provider.lookup_calls[0].delivery_id == prepared.delivery_id
@@ -736,7 +820,7 @@ async def test_crash_after_prepare_reconciles_existing_attempt_before_any_resend
 
 @pytest.mark.asyncio
 @pytest.mark.concurrency
-async def test_three_delivery_workers_claim_disjoint_work_and_each_task_sends_once(
+async def test_three_delivery_runtimes_claim_disjoint_work_and_each_task_sends_once(
     e2e_admin_conn: support.PgConnection,
     worker_runtime_credentials: support.RuntimeCredentialsLike,
 ) -> None:
@@ -748,26 +832,24 @@ async def test_three_delivery_workers_claim_disjoint_work_and_each_task_sends_on
     async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
         domain_factory, worker_factory, _, _ = stack
         schedulers = tuple(PostgresScheduledActionWorker(worker_factory) for _ in range(3))
-        workers = tuple(
-            CommunicationDeliveryWorker(domain_factory, scheduler, {"provider-a": provider})
+        handlers = tuple(
+            CommunicationDeliveryScheduledHandler(
+                domain_factory,
+                scheduler,
+                {"provider-a": provider},
+            )
             for scheduler in schedulers
         )
-        claimed_groups = await asyncio.gather(
-            *(scheduler.claim(limit=4) for scheduler in schedulers)
+        runtimes = tuple(
+            _delivery_runtime(scheduler, handler, batch=4)
+            for scheduler, handler in zip(schedulers, handlers, strict=True)
         )
-        claimed = tuple(lease for group in claimed_groups for lease in group)
-        assert len(claimed) == 12
-        assert {lease.id for lease in claimed} == set(action_ids)
-        assert len({lease.claim_token for lease in claimed}) == 12
+        outcome_groups = await asyncio.gather(*(runtime.run_once() for runtime in runtimes))
+        outcomes = tuple(outcome for group in outcome_groups for outcome in group)
 
-        await asyncio.gather(
-            *(
-                worker.process(lease)
-                for worker, group in zip(workers, claimed_groups, strict=True)
-                for lease in group
-            )
-        )
-
+    assert len(outcomes) == 12
+    assert {outcome.work_id for outcome in outcomes} == set(action_ids)
+    assert all(outcome.state is WorkerItemState.COMPLETED for outcome in outcomes)
     assert len(provider.send_calls) == 12
     assert provider.lookup_calls == []
     assert len({call.provider_idempotency_key for call in provider.send_calls}) == 12

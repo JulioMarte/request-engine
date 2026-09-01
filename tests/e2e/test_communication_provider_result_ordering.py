@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false
 
-from typing import cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -16,14 +15,9 @@ from request_engine.platform.db.session import tenant_transaction
 
 from . import operational_support as support
 from .test_communication_worker_resilience import (
-    PAST,
-    ScriptedProvider,
-    _action_status,
-    _claim_and_process,
     _delivery,
     _delivery_status,
     _events,
-    _reconcile,
     _task,
     _task_status,
     _worker_stack,
@@ -55,6 +49,11 @@ async def test_delivered_result_is_monotonic_against_late_nonterminal_provider_r
             )
         assert first.status is ProviderDeliveryStatus.DELIVERED
 
+        # Disposition (doc 40 T6): the late NOT_FOUND entry was removed with the
+        # NOT_FOUND vocabulary itself. A provider that cannot find the attempt
+        # now reports ambiguity at the transport boundary (webhook lookup 404 ->
+        # AMBIGUOUS, proven in tests/modules/communications), so the ambiguous
+        # case below is the surviving non-terminal late answer.
         late_results = (
             ProviderDeliveryResult(status=ProviderDeliveryStatus.ACCEPTED),
             ProviderDeliveryResult(status=ProviderDeliveryStatus.AMBIGUOUS),
@@ -68,7 +67,6 @@ async def test_delivered_result_is_monotonic_against_late_nonterminal_provider_r
                 retryable=False,
                 result_data={"error_class": "late_terminal_failure"},
             ),
-            ProviderDeliveryResult(status=ProviderDeliveryStatus.NOT_FOUND),
         )
         for late in late_results:
             async with tenant_transaction(domain_factory, org) as session:
@@ -98,65 +96,15 @@ async def test_delivered_result_is_monotonic_against_late_nonterminal_provider_r
     ).fetchone() == (0,)
 
 
-@pytest.mark.asyncio
-async def test_reconciliation_not_found_schedules_backoff_dispatch_without_immediate_resend(
-    e2e_admin_conn: support.PgConnection,
-    worker_runtime_credentials: support.RuntimeCredentialsLike,
-) -> None:
-    org = support.new_org(e2e_admin_conn, "reconcile-not-found")
-    task_id = _task(e2e_admin_conn, org, status="delivering")
-    delivery_id = _delivery(e2e_admin_conn, org, task_id, status="ambiguous")
-    reconcile_id = _reconcile(e2e_admin_conn, org, delivery_id)
-    provider = ScriptedProvider(
-        lookup=ProviderDeliveryResult(
-            status=ProviderDeliveryStatus.NOT_FOUND,
-            provider_message_id=f"missing-{uuid4().hex}",
-        )
-    )
-
-    async with _worker_stack(worker_runtime_credentials, {"provider-a": provider}) as stack:
-        _, _, scheduler, worker = stack
-        outcome = await _claim_and_process(scheduler, worker)
-
-    assert outcome.detail == "failed"
-    assert provider.send_calls == []
-    assert len(provider.lookup_calls) == 1
-    assert _action_status(e2e_admin_conn, reconcile_id) == "completed"
-    assert _delivery_status(e2e_admin_conn, delivery_id) == "failed"
-    assert _task_status(e2e_admin_conn, task_id) == "pending"
-
-    delivery = e2e_admin_conn.execute(
-        """
-        SELECT result_data->>'retryable', result_data->>'reconciliation'
-        FROM request_engine.communication_deliveries
-        WHERE id = %s
-        """,
-        (delivery_id,),
-    ).fetchone()
-    assert delivery == ("true", "not_found")
-
-    retry = e2e_admin_conn.execute(
-        """
-        SELECT id, status, execute_at > clock_timestamp()
-        FROM request_engine.scheduled_actions
-        WHERE organization_id = %s
-          AND action_type = 'dispatch_task'
-          AND subject_kind = 'CommunicationTask'
-          AND subject_id = %s
-          AND status = 'pending'
-        """,
-        (org, task_id),
-    ).fetchone()
-    assert retry is not None
-    retry_id = cast(UUID, retry[0])
-    assert retry[1:] == ("pending", True)
-
-    # Making the retry due is the explicit boundary at which a new send is allowed.
-    e2e_admin_conn.execute(
-        """
-        UPDATE request_engine.scheduled_actions
-        SET execute_at = %s, next_attempt_at = %s
-        WHERE id = %s
-        """,
-        (PAST, PAST, retry_id),
-    )
+# Disposition (doc 40 T6): the former
+# ``test_reconciliation_not_found_schedules_backoff_dispatch_without_immediate_resend``
+# proved that a NOT_FOUND lookup answer closed the attempt as a retryable
+# failure and scheduled a backoff dispatch — protecting "a lost provider answer
+# never triggers an immediate resend". The NOT_FOUND outcome vocabulary is
+# retired: the webhook transport now answers a missing attempt with AMBIGUOUS
+# (tests/modules/communications/test_webhook_delivery_provider.py) and an
+# ambiguous result keeps the delivery reconciling without any resend (guarantee
+# proven by the recovery-scheduling reconciliation proofs and
+# test_send_exception_becomes_ambiguous_and_schedules_lookup_not_resend). The
+# retryable-backoff-dispatch behavior itself remains proven by
+# test_retryable_failure_schedules_exactly_one_future_dispatch.

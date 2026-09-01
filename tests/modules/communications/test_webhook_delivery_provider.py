@@ -17,7 +17,7 @@ pytestmark = [pytest.mark.unit]
 
 
 @pytest.mark.asyncio
-async def test_send_posts_handoff_payload_and_reports_accepted_handoff() -> None:
+async def test_send_posts_handoff_payload_with_explicit_attempt_no() -> None:
     transport = fakes.FakeTransport(fakes.FakeResponse(202, {"provider_message_id": "msg-1"}))
     provider = WebhookDeliveryProvider(
         fakes.BASE_URL,
@@ -39,11 +39,16 @@ async def test_send_posts_handoff_payload_and_reports_accepted_handoff() -> None
     assert http_request.get_header("Authorization") == "Bearer token-1"
     raw_payload = http_request.data
     assert isinstance(raw_payload, bytes)
-    assert json.loads(raw_payload) == {
+    payload = json.loads(raw_payload)
+    # The dedupe key has no parseable attempt tail; attempt_no must come from
+    # the explicit ProviderSendRequest field, not from key-string coupling.
+    assert request.provider_idempotency_key.endswith("attempt-two")
+    assert payload["attempt_no"] == 2 == request.attempt_no
+    assert payload == {
         "delivery_id": str(request.delivery_id),
         "communication_task_id": str(request.communication_task_id),
         "dedupe_key": request.provider_idempotency_key,
-        "attempt_no": 2,
+        "attempt_no": request.attempt_no,
         "provider_key": "webhook",
         "channel": "email",
         "recipient": {
@@ -122,7 +127,6 @@ async def test_lookup_gets_quoted_identity_and_maps_http_404_to_ambiguous() -> N
     assert transport.requests[0].full_url == f"{fakes.BASE_URL}/status/{identity}"
     assert result.status is ProviderDeliveryStatus.AMBIGUOUS
     assert result.status is not ProviderDeliveryStatus.FAILED
-    assert result.status is not ProviderDeliveryStatus.NOT_FOUND
     assert result.retryable is False
     assert result.provider_message_id is None
 
