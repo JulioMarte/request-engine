@@ -24,7 +24,7 @@ async def test_reminder_create_read_cancel_replay_cancels_future_work(
         "timezone": "America/Santo_Domingo",
         "daily_times": ["09:00:00", "21:00:00"],
         "max_lateness_minutes": 45,
-        "channel_policy": {"preferred": "whatsapp"},
+        "channel_policy": {"channels": ["whatsapp"]},
         "template_key": "medication-reminder",
         "template_version": 1,
     }

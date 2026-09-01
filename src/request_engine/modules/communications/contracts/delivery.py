@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -20,9 +21,12 @@ class ProviderSendRequest:
     provider_idempotency_key: str
     channel: str
     destination: str
+    contact_point_id: UUID
     template_key: str
     template_version: int
     render_context: dict[str, object]
+    expires_at: datetime | None = None
+    reconcile_after_seconds: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

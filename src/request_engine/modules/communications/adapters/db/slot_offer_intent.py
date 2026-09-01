@@ -6,6 +6,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.domain.delivery_policy import (
+    patient_transactional_channel_policy,
+)
+
 
 class PostgresSlotOfferNotificationIntent:
     """Communications-owned persistence adapter for queue notification intent."""
@@ -23,6 +27,8 @@ class PostgresSlotOfferNotificationIntent:
         expires_at: datetime,
     ) -> UUID:
         session = _session(transaction)
+        dedupe_key = f"slot-offer:{slot_offer_id}:available:v1"
+        policy_json = json.dumps(patient_transactional_channel_policy(), separators=(",", ":"))
         render_context = {
             "slot_offer_id": str(slot_offer_id),
             "slot_opportunity_id": str(slot_opportunity_id),
@@ -52,7 +58,7 @@ class PostgresSlotOfferNotificationIntent:
                         'slot_offer_available',
                         'SlotOffer',
                         :slot_offer_id,
-                        '{"strategy":"party_default"}'::jsonb,
+                        CAST(:channel_policy AS jsonb),
                         'slot_offer_available',
                         1,
                         CAST(:render_context AS jsonb),
@@ -69,12 +75,11 @@ class PostgresSlotOfferNotificationIntent:
                     "organization_id": organization_id,
                     "recipient_party_id": recipient_party_id,
                     "slot_offer_id": slot_offer_id,
+                    "channel_policy": policy_json,
                     "render_context": json.dumps(
-                        render_context,
-                        sort_keys=True,
-                        separators=(",", ":"),
+                        render_context, sort_keys=True, separators=(",", ":")
                     ),
-                    "dedupe_key": f"slot-offer:{slot_offer_id}:available:v1",
+                    "dedupe_key": dedupe_key,
                     "expires_at": expires_at,
                 },
             )
@@ -93,10 +98,7 @@ class PostgresSlotOfferNotificationIntent:
                     FOR UPDATE
                     """
                 ),
-                {
-                    "organization_id": organization_id,
-                    "dedupe_key": f"slot-offer:{slot_offer_id}:available:v1",
-                },
+                {"organization_id": organization_id, "dedupe_key": dedupe_key},
             )
         ).scalar_one()
         return cast(UUID, existing)
@@ -123,10 +125,7 @@ class PostgresSlotOfferNotificationIntent:
                   AND status = 'pending'
                 """
             ),
-            {
-                "organization_id": organization_id,
-                "slot_offer_id": slot_offer_id,
-            },
+            {"organization_id": organization_id, "slot_offer_id": slot_offer_id},
         )
 
 

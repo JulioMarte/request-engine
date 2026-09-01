@@ -10,6 +10,9 @@ from request_engine.modules.communications.contracts.recovery import (
     RecoveryCommunicationRequest,
 )
 from request_engine.modules.communications.contracts.tasks import CommunicationTask
+from request_engine.modules.communications.domain.delivery_policy import (
+    patient_transactional_channel_policy,
+)
 from request_engine.platform.db.session import SessionFactory
 
 _PURPOSE_TEMPLATES = {
@@ -34,7 +37,7 @@ class PostgresRecoveryCommunicationPort(RecoveryCommunicationPort):
                 purpose=request.purpose.value,
                 template_key=_PURPOSE_TEMPLATES[request.purpose],
                 template_version=1,
-                channel_policy={"kind": "transactional"},
+                channel_policy=patient_transactional_channel_policy(),
                 render_context=request.render_context,
                 idempotency_key=request.idempotency_key,
                 source_kind="OperationalRecoveryExecution",

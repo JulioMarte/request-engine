@@ -28,10 +28,10 @@ class PostgresReservationReader:
                     await session.execute(
                         text(
                             """
-                            SELECT reservation_id, offering_version_id, subject_party_id,
-                                   location_id, lower(during) AS start_at,
-                                   upper(during) AS end_at, status, revision,
-                                   attendance_status
+                             SELECT reservation_id, offering_version_id, subject_party_id,
+                                    location_id, lower(during) AS start_at,
+                                    upper(during) AS end_at, status, revision,
+                                    attendance_status, estimated_arrival_at
                             FROM request_read.reservation_status_v1
                             WHERE organization_id = :organization_id
                               AND reservation_id = :reservation_id
@@ -60,4 +60,5 @@ def reservation_from_row(row: RowMapping) -> Reservation:
         status=ReservationStatus(cast(str, row["status"])),
         revision=cast(int, row["revision"]),
         attendance_status=AttendanceStatus(cast(str, row["attendance_status"])),
+        estimated_arrival_at=cast(datetime | None, row["estimated_arrival_at"]),
     )

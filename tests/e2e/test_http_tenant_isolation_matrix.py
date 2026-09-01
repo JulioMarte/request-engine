@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,10 +9,17 @@ from request_engine.platform.db.session import SessionFactory
 
 from . import operational_support as support
 from .evidence import durable_snapshot
+from .http_isolation_probes import (
+    ForeignObjects,
+    isolation_actor,
+)
+from .http_isolation_probes import (
+    foreign_request as _foreign_request,
+)
 from .http_surface import PUBLIC_HTTP_OPERATIONS, PublicHttpOperation, TenantIsolationMode
+from .http_surface_f7 import F7_HTTP_OPERATIONS
 from .tenant_sandbox import (
     TenantSandbox,
-    actor_for,
     auth,
     client_with_actors,
     first_slot,
@@ -21,21 +27,6 @@ from .tenant_sandbox import (
 )
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
-
-
-@dataclass(frozen=True, slots=True)
-class ForeignObjects:
-    reservation_id: UUID
-    reservation_revision: int
-    queue_entry_id: UUID
-    queue_entry_revision: int
-    waitlist_entry_id: UUID
-    waitlist_revision: int
-    request_id: UUID
-    request_revision: int
-    reminder_plan_id: UUID
-    reminder_revision: int
-    actor_option_id: str
 
 
 async def _seed_foreign_objects(
@@ -92,7 +83,7 @@ async def _seed_foreign_objects(
             "purpose": "medication_reminder",
             "timezone": "America/Santo_Domingo",
             "daily_times": ["08:00:00"],
-            "channel_policy": {"channels": ["email"]},
+            "channel_policy": {"channels": ["email"], "provider_key": "provider-a"},
             "template_key": "medication-reminder",
             "template_version": 1,
         },
@@ -113,149 +104,6 @@ async def _seed_foreign_objects(
         reminder_revision=reminder.json()["revision"],
         actor_option_id=str(actor_slot["option_id"]),
     )
-
-
-def _foreign_request(
-    operation: PublicHttpOperation,
-    actor: TenantSandbox,
-    foreign: TenantSandbox,
-    objects: ForeignObjects,
-) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
-    name = operation.name
-    if name == "capabilities.list":
-        return "/v1/capabilities", {}, None, 200
-    if name == "business.read":
-        return "/v1/business", {}, None, 200
-    if name == "catalog.offerings.list":
-        return "/v1/catalog/offerings", {}, None, 200
-    if name == "catalog.offerings.read":
-        return f"/v1/catalog/offerings/{foreign.offering_key}", {}, None, 404
-    if name == "appointments.find_slots":
-        return (
-            "/v1/appointments/slots",
-            {
-                "offering_version_id": str(foreign.offering_version_id),
-                "window_start": "2030-01-07T13:00:00+00:00",
-                "window_end": "2030-01-07T16:00:00+00:00",
-            },
-            None,
-            404,
-        )
-    if name == "appointments.book":
-        return (
-            "/v1/appointments",
-            {},
-            {"option_id": objects.actor_option_id, "subject_party_id": str(foreign.party_id)},
-            422,
-        )
-    if name == "appointments.read":
-        return f"/v1/appointments/{objects.reservation_id}", {}, None, 404
-    if name == "appointments.cancel":
-        return (
-            f"/v1/appointments/{objects.reservation_id}/cancel",
-            {},
-            {"expected_revision": objects.reservation_revision, "reason": "cross tenant"},
-            404,
-        )
-    if name == "appointments.reschedule":
-        return (
-            f"/v1/appointments/{objects.reservation_id}/reschedule",
-            {},
-            {
-                "option_id": objects.actor_option_id,
-                "expected_revision": objects.reservation_revision,
-            },
-            404,
-        )
-    if name == "appointments.attendance":
-        return (
-            f"/v1/appointments/{objects.reservation_id}/attendance",
-            {},
-            {"response": "accepted", "expected_revision": objects.reservation_revision},
-            404,
-        )
-    if name == "queue.list":
-        return "/v1/queues", {}, None, 200
-    if name == "queue.join":
-        return (
-            f"/v1/queues/{actor.queue_id}/join",
-            {},
-            {"subject_party_id": str(foreign.party_id), "offering_id": str(actor.offering_id)},
-            422,
-        )
-    if name == "queue.status":
-        return (
-            f"/v1/queues/{foreign.queue_id}/status",
-            {"subject_party_id": str(actor.party_id)},
-            None,
-            404,
-        )
-    if name == "queue.leave":
-        return (
-            f"/v1/queues/{foreign.queue_id}/entries/{objects.queue_entry_id}/leave",
-            {},
-            {"expected_revision": objects.queue_entry_revision, "reason": "cross tenant"},
-            404,
-        )
-    if name == "queue.call_next":
-        return f"/v1/queues/{foreign.queue_id}/call-next", {}, None, 404
-    if name == "waitlist.join":
-        return (
-            "/v1/waitlist",
-            {},
-            {"offering_id": str(actor.offering_id), "subject_party_id": str(foreign.party_id)},
-            422,
-        )
-    if name == "waitlist.read":
-        return f"/v1/waitlist/{objects.waitlist_entry_id}", {}, None, 404
-    if name == "waitlist.leave":
-        return (
-            f"/v1/waitlist/{objects.waitlist_entry_id}/leave",
-            {},
-            {"expected_revision": objects.waitlist_revision, "reason": "cross tenant"},
-            404,
-        )
-    if name == "requests.submit":
-        return (
-            f"/v1/requests/definitions/{foreign.request_key}/submit",
-            {},
-            {"payload": {"message": "cross tenant"}},
-            404,
-        )
-    if name == "requests.read":
-        return f"/v1/requests/{objects.request_id}", {}, None, 404
-    if name == "requests.cancel":
-        return (
-            f"/v1/requests/{objects.request_id}/cancel",
-            {},
-            {"reason": "cross tenant", "expected_revision": objects.request_revision},
-            404,
-        )
-    if name == "reminders.create":
-        return (
-            "/v1/reminders",
-            {},
-            {
-                "subject_party_id": str(foreign.party_id),
-                "purpose": "medication_reminder",
-                "timezone": "America/Santo_Domingo",
-                "daily_times": ["08:00:00"],
-                "channel_policy": {"channels": ["email"]},
-                "template_key": "medication-reminder",
-                "template_version": 1,
-            },
-            403,
-        )
-    if name == "reminders.read":
-        return f"/v1/reminders/{objects.reminder_plan_id}", {}, None, 404
-    if name == "reminders.cancel":
-        return (
-            f"/v1/reminders/{objects.reminder_plan_id}/cancel",
-            {},
-            {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
-            404,
-        )
-    raise AssertionError(f"missing tenant probe for {name}")
 
 
 async def _invoke(
@@ -283,7 +131,7 @@ def _test_id(operation: PublicHttpOperation) -> str:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", PUBLIC_HTTP_OPERATIONS, ids=_test_id)
+@pytest.mark.parametrize("operation", (*PUBLIC_HTTP_OPERATIONS, *F7_HTTP_OPERATIONS), ids=_test_id)
 async def test_every_public_operation_enforces_tenant_or_party_boundary_without_mutation(
     operation: PublicHttpOperation,
     e2e_admin_conn: support.PgConnection,
@@ -292,8 +140,8 @@ async def test_every_public_operation_enforces_tenant_or_party_boundary_without_
     tenant_a = seed_tenant_sandbox(e2e_admin_conn, "tenant-a")
     tenant_b = seed_tenant_sandbox(e2e_admin_conn, "tenant-b")
     actors = {
-        tenant_a.token: actor_for(tenant_a, allow_overrides=False),
-        tenant_b.token: actor_for(tenant_b, allow_overrides=True),
+        tenant_a.token: isolation_actor(tenant_a, allow_overrides=False),
+        tenant_b.token: isolation_actor(tenant_b, allow_overrides=True),
     }
     async with client_with_actors(e2e_session_factory, actors) as client:
         objects = await _seed_foreign_objects(client, e2e_admin_conn, tenant_a, tenant_b)

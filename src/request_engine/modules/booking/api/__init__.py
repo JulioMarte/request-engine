@@ -4,6 +4,9 @@ from request_engine.modules.booking.adapters.appointment_options import SignedAp
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
+from request_engine.modules.booking.adapters.db.arrival_estimate_commands import (
+    PostgresArrivalEstimateCommands,
+)
 from request_engine.modules.booking.adapters.db.attendance_commands import (
     PostgresAttendanceCommands,
 )
@@ -75,6 +78,7 @@ def install_http(
             cancel_handler=reservations,
             reschedule_handler=commitments,
             attendance_handler=PostgresAttendanceCommands(session_factory),
+            arrival_estimate_handler=PostgresArrivalEstimateCommands(session_factory),
             reservation_reader=PostgresReservationReader(session_factory),
             authority_reader=party_authority_reader,
             actor_resolver=actor_resolver,

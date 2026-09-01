@@ -77,15 +77,13 @@ def _reschedule_endpoint(
         cancel_handler=unused,
         reschedule_handler=handler,
         attendance_handler=unused,
+        arrival_estimate_handler=unused,
         reservation_reader=unused,
         authority_reader=unused,
         actor_resolver=unused,
     )
-    route = next(
-        item
-        for item in router.routes
-        if isinstance(item, APIRoute) and item.operation_id == "appointments_reschedule"
-    )
+    routes = [item for item in router.routes if isinstance(item, APIRoute)]
+    route = next(item for item in routes if item.operation_id == "appointments_reschedule")
     return cast(Callable[..., Awaitable[ReservationView]], route.endpoint)
 
 

@@ -16,6 +16,7 @@ from request_engine.modules.communications.adapters.db.delivery_store import (
 from request_engine.modules.communications.adapters.db.poisoned_task import (
     fail_poisoned_communication_task_if_orphaned,
 )
+from request_engine.modules.communications.application.errors import DeliveryConfigurationError
 from request_engine.modules.communications.contracts.delivery import (
     CommunicationDeliveryProvider,
     ProviderDeliveryResult,
@@ -55,28 +56,24 @@ class CommunicationDeliveryScheduledHandler:
         self._session_factory = session_factory
         self._scheduler = scheduler
         self._providers = providers
-        if finalization_lease_extension <= timedelta(0) or finalization_lease_extension > timedelta(
-            minutes=15
-        ):
+        if not timedelta(0) < finalization_lease_extension <= timedelta(minutes=15):
             raise ValueError("finalization_lease_extension must be > 0 and <= 15 minutes")
         self._finalization_lease_extension = finalization_lease_extension
 
     async def handle(self, lease: ScheduledActionLease) -> None:
         try:
             work = await self._prepare(lease)
+        except DeliveryConfigurationError as exc:
+            await self._fail_poisoned_task(lease, reason="delivery_configuration_invalid")
+            raise PermanentWorkError("delivery_configuration_invalid", exc.reason) from exc
         except PermanentWorkError as exc:
             await self._fail_poisoned_task(lease, reason=exc.error_class)
             raise
         if work.kind is DeliveryWorkKind.SKIP:
             return
 
-        provider_key = (
-            work.send_request.provider_key
-            if work.send_request is not None
-            else work.lookup_request.provider_key
-            if work.lookup_request is not None
-            else None
-        )
+        request = work.send_request if work.send_request is not None else work.lookup_request
+        provider_key = request.provider_key if request is not None else None
         if provider_key is None:
             raise PermanentWorkError("prepared_delivery_missing_provider")
         provider = self._providers.get(provider_key)
@@ -207,6 +204,7 @@ class CommunicationDeliveryScheduledHandler:
                     session,
                     organization_id=lease.organization_id,
                     communication_task_id=lease.subject_id,
+                    configured_provider_keys=tuple(self._providers),
                 )
 
         if (

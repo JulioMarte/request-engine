@@ -1,4 +1,5 @@
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -9,10 +10,21 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.adapters.db.dispatch_resolution import (
+    resolve_dispatch_route_and_contact_point,
+)
+from request_engine.modules.communications.adapters.db.reconcile_scheduling import (
+    RECONCILE_ACTION_TYPE as RECONCILE_ACTION_TYPE,
+)
+from request_engine.modules.communications.adapters.db.reconcile_scheduling import (
+    RECONCILE_ACTION_VERSION as RECONCILE_ACTION_VERSION,
+)
+from request_engine.modules.communications.adapters.db.reconcile_scheduling import (
+    ensure_reconciliation,
+)
 from request_engine.modules.communications.application.errors import (
     CommunicationDeliveryNotFound,
     CommunicationTaskNotFound,
-    DeliveryConfigurationError,
 )
 from request_engine.modules.communications.contracts.delivery import (
     ProviderDeliveryResult,
@@ -20,18 +32,12 @@ from request_engine.modules.communications.contracts.delivery import (
     ProviderLookupRequest,
     ProviderSendRequest,
 )
-from request_engine.modules.communications.domain.delivery_policy import (
-    DeliveryPolicy,
-    DeliveryRoute,
-    parse_delivery_policy,
-)
+from request_engine.modules.communications.domain.delivery_policy import parse_delivery_policy
 from request_engine.platform.outbox.postgres import append_outbox
 from request_engine.platform.scheduling.store import schedule_action
 
 DISPATCH_ACTION_TYPE = "dispatch_task"
 DISPATCH_ACTION_VERSION = 1
-RECONCILE_ACTION_TYPE = "reconcile_delivery"
-RECONCILE_ACTION_VERSION = 1
 
 
 class DeliveryWorkKind(StrEnum):
@@ -110,6 +116,7 @@ async def prepare_dispatch(
     *,
     organization_id: UUID,
     communication_task_id: UUID,
+    configured_provider_keys: Collection[str] = (),
 ) -> PreparedDeliveryWork:
     task = await _lock_task(session, organization_id, communication_task_id)
     task_status = cast(str, task["status"])
@@ -154,7 +161,7 @@ async def prepare_dispatch(
                 lookup_request=_lookup_request(latest),
             )
         if latest_status == "delivered":
-            await _mark_task_completed(session, organization_id, communication_task_id)
+            await _set_task_status(session, organization_id, communication_task_id, "completed")
             return PreparedDeliveryWork(
                 kind=DeliveryWorkKind.SKIP,
                 communication_task_id=communication_task_id,
@@ -183,11 +190,12 @@ async def prepare_dispatch(
             )
 
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
-    route, contact_point = await _resolve_route_and_contact_point(
+    route, provider_key, contact_point = await resolve_dispatch_route_and_contact_point(
         session,
         organization_id=organization_id,
         task=task,
         policy=policy,
+        configured_provider_keys=configured_provider_keys,
     )
     if task["contact_point_id"] is None:
         await session.execute(
@@ -242,7 +250,7 @@ async def prepare_dispatch(
                     "communication_task_id": communication_task_id,
                     "attempt_no": attempt_no,
                     "channel": route.channel,
-                    "provider_key": route.provider_key,
+                    "provider_key": provider_key,
                     "provider_idempotency_key": provider_idempotency_key,
                     "result_data": json.dumps(
                         {
@@ -283,13 +291,16 @@ async def prepare_dispatch(
         send_request=ProviderSendRequest(
             delivery_id=cast(UUID, delivery["id"]),
             communication_task_id=communication_task_id,
-            provider_key=route.provider_key,
+            provider_key=provider_key,
             provider_idempotency_key=provider_idempotency_key,
             channel=route.channel,
             destination=cast(str, contact_point["normalized_value"]),
+            contact_point_id=cast(UUID, contact_point["id"]),
             template_key=cast(str, task["template_key"]),
             template_version=cast(int, task["template_version"]),
             render_context=cast(dict[str, object], task["render_context"]),
+            expires_at=expires_at,
+            reconcile_after_seconds=policy.reconcile_after_seconds,
         ),
     )
 
@@ -302,10 +313,18 @@ async def prepare_reconciliation(
 ) -> PreparedDeliveryWork:
     delivery = await _lock_delivery(session, organization_id, delivery_id)
     task_id = cast(UUID, delivery["communication_task_id"])
-    await _lock_task(session, organization_id, task_id)
+    task = await _lock_task(session, organization_id, task_id)
+    task_status = cast(str, task["status"])
+    if task_status in {"completed", "cancelled", "failed"}:
+        return PreparedDeliveryWork(
+            kind=DeliveryWorkKind.SKIP,
+            communication_task_id=task_id,
+            delivery_id=delivery_id,
+            skip_reason=f"task_{task_status}",
+        )
     delivery_status = cast(str, delivery["status"])
     if delivery_status == "delivered":
-        await _mark_task_completed(session, organization_id, task_id)
+        await _set_task_status(session, organization_id, task_id, "completed")
         return PreparedDeliveryWork(
             kind=DeliveryWorkKind.SKIP,
             communication_task_id=task_id,
@@ -319,6 +338,28 @@ async def prepare_reconciliation(
             communication_task_id=task_id,
             delivery_id=delivery_id,
             skip_reason="non_retryable_failure",
+        )
+    db_now = await _database_now(session)
+    expires_at = cast(datetime | None, task["expires_at"])
+    if expires_at is not None and expires_at <= db_now:
+        await _mark_task_failed(session, organization_id, task_id)
+        await append_outbox(
+            session,
+            organization_id=organization_id,
+            event_type="communication.task_failed.v1",
+            aggregate_kind="CommunicationTask",
+            aggregate_id=task_id,
+            payload={
+                "communication_task_id": str(task_id),
+                "delivery_id": str(delivery_id),
+                "reason": "delivery_deadline_exceeded",
+            },
+        )
+        return PreparedDeliveryWork(
+            kind=DeliveryWorkKind.SKIP,
+            communication_task_id=task_id,
+            delivery_id=delivery_id,
+            skip_reason="task_expired",
         )
     if delivery_status == "failed":
         return PreparedDeliveryWork(
@@ -404,7 +445,7 @@ async def finalize_provider_result(
     task_terminal = False
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
     if effective.status is ProviderDeliveryStatus.DELIVERED:
-        await _mark_task_completed(session, organization_id, task_id)
+        await _set_task_status(session, organization_id, task_id, "completed")
         task_terminal = True
         await append_outbox(
             session,
@@ -420,7 +461,7 @@ async def finalize_provider_result(
         )
     elif effective.status is ProviderDeliveryStatus.FAILED:
         if effective.retryable:
-            await _mark_task_pending(session, organization_id, task_id)
+            await _set_task_status(session, organization_id, task_id, "pending")
             await _schedule_retry_dispatch(
                 session,
                 organization_id=organization_id,
@@ -444,7 +485,7 @@ async def finalize_provider_result(
                 },
             )
     else:
-        await _ensure_reconciliation(
+        await ensure_reconciliation(
             session,
             organization_id=organization_id,
             delivery_id=delivery_id,
@@ -459,88 +500,6 @@ async def finalize_provider_result(
         retryable=effective.retryable,
         task_terminal=task_terminal,
     )
-
-
-async def _resolve_route_and_contact_point(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    task: RowMapping,
-    policy: DeliveryPolicy,
-) -> tuple[DeliveryRoute, RowMapping]:
-    explicit_id = cast(UUID | None, task["contact_point_id"])
-    if explicit_id is not None:
-        point = (
-            (
-                await session.execute(
-                    text(
-                        """
-                        SELECT id, channel, normalized_value
-                        FROM request_engine.party_contact_points
-                        WHERE organization_id = :organization_id
-                          AND id = :contact_point_id
-                          AND party_id = :recipient_party_id
-                          AND active
-                        """
-                    ),
-                    {
-                        "organization_id": organization_id,
-                        "contact_point_id": explicit_id,
-                        "recipient_party_id": task["recipient_party_id"],
-                    },
-                )
-            )
-            .mappings()
-            .first()
-        )
-        if point is None:
-            raise DeliveryConfigurationError("explicit contact point is no longer usable")
-        point_channel = cast(str, point["channel"])
-        route = next(
-            (route for route in policy.routes if route.endpoint_channel == point_channel),
-            None,
-        )
-        if route is None:
-            raise DeliveryConfigurationError(
-                "explicit contact point does not match channel_policy.channels"
-            )
-        return route, point
-
-    points = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT id, channel, normalized_value
-                    FROM request_engine.party_contact_points
-                    WHERE organization_id = :organization_id
-                      AND party_id = :recipient_party_id
-                      AND active
-                      AND verified
-                    ORDER BY created_at, id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "recipient_party_id": task["recipient_party_id"],
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-    for route in policy.routes:
-        point = next(
-            (
-                candidate
-                for candidate in points
-                if cast(str, candidate["channel"]) == route.endpoint_channel
-            ),
-            None,
-        )
-        if point is not None:
-            return route, point
-    raise DeliveryConfigurationError("recipient has no usable verified contact point")
 
 
 async def _lock_task(
@@ -696,69 +655,6 @@ async def _future_dispatch_exists(
     )
 
 
-async def _ensure_reconciliation(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    delivery_id: UUID,
-    db_now: datetime,
-    delay_seconds: int,
-) -> None:
-    existing = cast(
-        bool,
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT EXISTS (
-                        SELECT 1
-                        FROM request_engine.scheduled_actions
-                        WHERE organization_id = :organization_id
-                          AND owner_module = 'communications'
-                          AND action_type = :action_type
-                          AND action_version = :action_version
-                          AND subject_kind = 'CommunicationDelivery'
-                          AND subject_id = :delivery_id
-                          AND CASE
-                              WHEN pg_catalog.pg_input_is_valid(payload ->> 'delivery_id', 'uuid')
-                              THEN (payload ->> 'delivery_id')::uuid = :delivery_id
-                              ELSE false
-                          END
-                          AND status IN ('pending', 'leased')
-                          AND attempt_count < max_attempts
-                          AND execute_at > :db_now
-                    )
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "action_type": RECONCILE_ACTION_TYPE,
-                    "action_version": RECONCILE_ACTION_VERSION,
-                    "delivery_id": delivery_id,
-                    "db_now": db_now,
-                },
-            )
-        ).scalar_one(),
-    )
-    if existing:
-        return
-
-    execute_at = db_now + timedelta(seconds=delay_seconds)
-    await schedule_action(
-        session,
-        organization_id=organization_id,
-        owner_module="communications",
-        action_type=RECONCILE_ACTION_TYPE,
-        action_version=RECONCILE_ACTION_VERSION,
-        subject_kind="CommunicationDelivery",
-        subject_id=delivery_id,
-        dedupe_key=(f"communications:reconcile:{delivery_id}:{execute_at.isoformat()}:v1"),
-        execute_at=execute_at,
-        payload={"delivery_id": str(delivery_id)},
-        max_attempts=12,
-    )
-
-
 async def _schedule_retry_dispatch(
     session: AsyncSession,
     *,
@@ -784,28 +680,12 @@ async def _schedule_retry_dispatch(
     )
 
 
-async def _mark_task_completed(
-    session: AsyncSession,
-    organization_id: UUID,
-    communication_task_id: UUID,
-) -> None:
-    await _set_task_status(session, organization_id, communication_task_id, "completed")
-
-
 async def _mark_task_failed(
     session: AsyncSession,
     organization_id: UUID,
     communication_task_id: UUID,
 ) -> None:
     await _set_task_status(session, organization_id, communication_task_id, "failed")
-
-
-async def _mark_task_pending(
-    session: AsyncSession,
-    organization_id: UUID,
-    communication_task_id: UUID,
-) -> None:
-    await _set_task_status(session, organization_id, communication_task_id, "pending")
 
 
 async def _set_task_status(

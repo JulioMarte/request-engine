@@ -8,6 +8,9 @@ from request_engine.modules.communications.contracts.tasks import (
     CommunicationTask,
     CommunicationTaskStatus,
 )
+from request_engine.modules.communications.domain.delivery_policy import (
+    patient_transactional_channel_policy,
+)
 from request_engine.modules.operational_recovery.application.workflow_commands import (
     CommunicateImpactRecoveryActionCommand,
 )
@@ -39,7 +42,7 @@ class FakeCommunications:
             purpose=request.purpose.value,
             source_kind="OperationalRecoveryExecution",
             source_id=request.execution_id,
-            channel_policy={"kind": "transactional"},
+            channel_policy=patient_transactional_channel_policy(),
             template_key=f"operational_recovery.{request.purpose.name.lower()}",
             template_version=1,
             render_context=request.render_context,

@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.application.errors import SubjectAuthorityRequired
+from request_engine.modules.booking.contracts.arrival_estimates import ArrivalEstimateSource
 from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 
 
@@ -14,6 +15,11 @@ class SubjectAuthorityEvidence:
     scope_key: str
     representation_id: UUID | None = None
     authority_kind: AuthorityKind | None = None
+
+    def derived_source_kind(self) -> ArrivalEstimateSource:
+        if self.mode == "operator":
+            return ArrivalEstimateSource.OPERATOR
+        return ArrivalEstimateSource.CUSTOMER
 
     def audit_details(self) -> dict[str, object]:
         return {

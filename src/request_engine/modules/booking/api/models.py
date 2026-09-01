@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from request_engine.modules.booking.contracts.appointments import AppointmentSlot, Reservation
+from request_engine.modules.booking.contracts.arrival_estimates import ReservationArrivalEstimate
 from request_engine.modules.booking.contracts.attendance import ReservationAttendanceState
 
 
@@ -56,6 +57,39 @@ class AttendanceResponseBody(BaseModel):
     expected_revision: int = Field(gt=0)
 
 
+class ArrivalEstimateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    estimated_arrival_at: datetime
+    expected_revision: int = Field(gt=0)
+
+    @field_validator("estimated_arrival_at")
+    @classmethod
+    def _require_timezone_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            raise ValueError("estimated_arrival_at must include a UTC offset")
+        return value
+
+
+class ArrivalEstimateView(BaseModel):
+    reservation_id: UUID
+    reservation_revision: int
+    estimate_id: UUID
+    estimated_arrival_at: datetime
+    source_kind: str
+    asserted_at: datetime
+
+    @classmethod
+    def from_contract(cls, estimate: ReservationArrivalEstimate) -> "ArrivalEstimateView":
+        return cls(
+            reservation_id=estimate.reservation_id,
+            reservation_revision=estimate.reservation_revision,
+            estimate_id=estimate.estimate_id,
+            estimated_arrival_at=estimate.estimated_arrival_at,
+            source_kind=estimate.source_kind.value,
+            asserted_at=estimate.asserted_at,
+        )
+
+
 class AttendanceStateView(BaseModel):
     reservation_id: UUID
     reservation_revision: int
@@ -88,6 +122,7 @@ class ReservationView(BaseModel):
     status: str
     revision: int
     attendance_status: str
+    estimated_arrival_at: datetime | None = None
 
     @classmethod
     def from_contract(cls, reservation: Reservation) -> "ReservationView":
@@ -101,4 +136,5 @@ class ReservationView(BaseModel):
             status=reservation.status.value,
             revision=reservation.revision,
             attendance_status=reservation.attendance_status.value,
+            estimated_arrival_at=reservation.estimated_arrival_at,
         )

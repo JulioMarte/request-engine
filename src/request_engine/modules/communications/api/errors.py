@@ -2,6 +2,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.communications.application.errors import (
+    DeliveryConfigurationError,
     RecipientNotFound,
     ReminderPlanNotActive,
     ReminderPlanNotFound,
@@ -15,14 +16,14 @@ from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorR
 async def communications_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, CommunicationsError):
         raise exc
-    status_code, body = _communications_error(exc)
+    status_code, body = resolve_communications_error(exc)
     return JSONResponse(
         status_code=status_code,
         content=ErrorEnvelope(error=body).model_dump(mode="json"),
     )
 
 
-def _communications_error(exc: CommunicationsError) -> tuple[int, ErrorBody]:
+def resolve_communications_error(exc: CommunicationsError) -> tuple[int, ErrorBody]:
     if isinstance(exc, RecipientNotFound):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="tenant_reference_not_usable",
@@ -69,6 +70,13 @@ def _communications_error(exc: CommunicationsError) -> tuple[int, ErrorBody]:
                 "reminder_plan_id": str(exc.reminder_plan_id),
                 "status": exc.status,
             },
+        )
+    if isinstance(exc, DeliveryConfigurationError):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
+            code="invalid_channel_policy",
+            message=exc.reason,
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"field": "channel_policy"},
         )
     return status.HTTP_500_INTERNAL_SERVER_ERROR, ErrorBody(
         code="communications_error",

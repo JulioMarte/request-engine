@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
+from request_engine.modules.booking.api.arrival_estimate_routes import add_arrival_estimate_routes
 from request_engine.modules.booking.api.dependencies import IdempotencyKey
 from request_engine.modules.booking.api.discovery_booking import book_selected_option
 from request_engine.modules.booking.api.models import (
@@ -15,6 +16,7 @@ from request_engine.modules.booking.api.models import (
     RescheduleReservationBody,
     ReservationView,
 )
+from request_engine.modules.booking.application import errors as booking_errors
 from request_engine.modules.booking.application.authority import SUBJECT_OVERRIDE_PERMISSION
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentHandler,
@@ -23,6 +25,9 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
     CancelReservationCommand,
     CancelReservationHandler,
     cancel_reservation,
+)
+from request_engine.modules.booking.application.commands.record_arrival_estimate import (
+    RecordArrivalEstimateHandler,
 )
 from request_engine.modules.booking.application.commands.record_attendance import (
     RecordAttendanceResponseCommand,
@@ -34,15 +39,7 @@ from request_engine.modules.booking.application.commands.reschedule_reservation 
     RescheduleReservationHandler,
     reschedule_reservation,
 )
-from request_engine.modules.booking.application.errors import (
-    ContextualCommitmentUnsupported,
-    ReservationNotFound,
-)
-from request_engine.modules.booking.application.queries.find_appointment_slots import (
-    AppointmentAvailabilityReader,
-    FindAppointmentSlotsQuery,
-    find_appointment_slots,
-)
+from request_engine.modules.booking.application.queries import find_appointment_slots
 from request_engine.modules.booking.application.queries.get_reservation_status import (
     ReservationReader,
     get_reservation_status,
@@ -57,13 +54,14 @@ from request_engine.platform.security.http import ActorResolver, require_capabil
 
 def create_router(
     *,
-    availability_reader: AppointmentAvailabilityReader,
+    availability_reader: find_appointment_slots.AppointmentAvailabilityReader,
     option_codec: AppointmentOptionCodec,
     discovery_handoff_reader: DiscoveryHandoffReader,
     book_handler: BookAppointmentHandler,
     cancel_handler: CancelReservationHandler,
     reschedule_handler: RescheduleReservationHandler,
     attendance_handler: RecordAttendanceResponseHandler,
+    arrival_estimate_handler: RecordArrivalEstimateHandler,
     reservation_reader: ReservationReader,
     authority_reader: PartyAuthorityReader,
     actor_resolver: ActorResolver,
@@ -83,9 +81,9 @@ def create_router(
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> tuple[AppointmentSlotView, ...]:
         require_capability(actor, "appointments.find_slots")
-        result = await find_appointment_slots(
+        result = await find_appointment_slots.find_appointment_slots(
             availability_reader,
-            FindAppointmentSlotsQuery(
+            find_appointment_slots.FindAppointmentSlotsQuery(
                 organization_id=actor.organization_id,
                 offering_version_id=offering_version_id,
                 window_start=window_start,
@@ -133,7 +131,7 @@ def create_router(
             allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),
         )
         if reservation is None:
-            raise ReservationNotFound(reservation_id)
+            raise booking_errors.ReservationNotFound(reservation_id)
         return ReservationView.from_contract(reservation)
 
     async def cancel(
@@ -166,7 +164,7 @@ def create_router(
         require_capability(actor, "appointments.reschedule")
         option = option_codec.decode(actor.organization_id, body.option_id)
         if option.is_contextual:
-            raise ContextualCommitmentUnsupported("reschedule")
+            raise booking_errors.ContextualCommitmentUnsupported("reschedule")
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
@@ -255,4 +253,5 @@ def create_router(
         methods=["POST"],
         response_model=AttendanceStateView,
     )
+    add_arrival_estimate_routes(router, arrival_estimate_handler, actor_resolver)
     return router

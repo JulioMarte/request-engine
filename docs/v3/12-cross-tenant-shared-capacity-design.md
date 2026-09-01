@@ -160,6 +160,10 @@ Cancellation, Hold confirmation, SlotOffer acceptance/promotion and release oper
 
 The public Booking API returns the same opaque `appointment_unavailable` response for local and shared contention. The global HTTP integrity handler does not translate arbitrary `23P01` errors into Booking failures.
 
+### Post-V3 booking API surface note (F7d)
+
+The F7 arrival-estimate slice touched Booking's API composition (`api/__init__.py`, `api/errors.py`) and `reservation_commands.py` read plumbing without touching capacity semantics: it added a public `appointments.record_arrival_estimate` capability whose command takes only the reservation row lock, never resource locks, and records no capacity claims; its typed errors (`ReservationNotConfirmed`, `ArrivalEstimateInvalid`, revision conflict) ride the existing booking error envelope. Shared-capacity lock order, `guard_capacity_claim` and the `23P01` boundary above are unchanged by that slice.
+
 ### Post-V3 contextual booking extension
 
 F1 operational profile/contextual supply extends direct Booking with Resource-at-Location configuration while preserving every shared-capacity rule above.
