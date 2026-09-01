@@ -46,13 +46,34 @@ def test_party_lookup_is_a_public_query() -> None:
     assert definition.idempotency is IdempotencyPolicy.NONE
 
 
+def test_read_revisions_is_a_public_query() -> None:
+    definition = capability_definition("parties.read_revisions")
+    assert definition is not None
+    assert definition.kind is CapabilityKind.QUERY
+    assert definition.exposure is CapabilityExposure.PUBLIC
+    assert definition.idempotency is IdempotencyPolicy.NONE
+
+
+def test_rollback_identity_is_a_public_idempotent_command() -> None:
+    definition = capability_definition("parties.rollback_identity")
+    assert definition is not None
+    assert definition.kind is CapabilityKind.COMMAND
+    assert definition.exposure is CapabilityExposure.PUBLIC
+    assert definition.idempotency is IdempotencyPolicy.REQUIRED
+
+
 def test_bot_grant_subset_does_not_satisfy_operator_only_commands() -> None:
-    """Confirm and corrections are grant-based: creation/lookup grants never satisfy them."""
+    """Confirm, corrections and history/rollback are grant-based: creation/lookup
+    grants never satisfy them."""
 
     for granted in BOT_CAPABILITY_SUBSET:
         assert not grant_satisfies(granted, "parties.confirm_contact_point")
         for correction in OPERATOR_CORRECTIONS:
             assert not grant_satisfies(granted, correction)
+        assert not grant_satisfies(granted, "parties.read_revisions")
+        assert not grant_satisfies(granted, "parties.rollback_identity")
     assert grant_satisfies("parties.confirm_contact_point", "parties.confirm_contact_point")
     for correction in OPERATOR_CORRECTIONS:
         assert grant_satisfies(correction, correction)
+    assert grant_satisfies("parties.read_revisions", "parties.read_revisions")
+    assert grant_satisfies("parties.rollback_identity", "parties.rollback_identity")

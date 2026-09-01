@@ -251,6 +251,7 @@ possession by acting from that channel.
 - The ledger rejects UPDATE and DELETE at the database level for every role.
 - Rollback is a semantic operator command that applies a prior revision's state as a
   **new** revision (`rollback`); history is never rewritten or deleted.
+  Rollback restores identity state; verification remains monotone (I-S0b-4).
 - A read surface exposes the revision ledger for audit ("quién editó, cuándo, desde
   dónde") and for building restore UX.
 

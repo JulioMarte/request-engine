@@ -1,13 +1,17 @@
 """Published tenancy party registry connection surfaces."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
 
-class RegisteredVia(StrEnum):
+class PartySourceKind(StrEnum):
+    """Whose authority produced an attribution-bearing change (§9.1)."""
+
     OPERATOR = "operator"
-    BOT = "bot"
+    SUBJECT = "subject"
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +33,7 @@ class PartyContactPoint:
     channel: str
     normalized_value: str
     verified: bool
-    registered_via: RegisteredVia | None
+    source_kind: PartySourceKind | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +53,23 @@ class RegisteredParty:
     active: bool
     contact_points: tuple[PartyContactPoint, ...]
     documents: tuple[PartyIdentityDocument, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PartyRevision:
+    """One append-only identity revision of a Party (docs/v3/38 §9.3).
+
+    `snapshot` is the immutable JSON-able full identity state recorded with
+    the revision; it stays a plain mapping on purpose (no over-modelling).
+    """
+
+    revision: int
+    change_kind: str
+    display_name: str
+    active: bool
+    source_kind: PartySourceKind | None
+    platform: str | None
+    actor_principal_id: UUID | None
+    attributed_operator_principal_id: UUID | None
+    created_at: datetime
+    snapshot: Mapping[str, object]

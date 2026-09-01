@@ -18,8 +18,8 @@ from request_engine.modules.tenancy.application.commands import register_party
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
     PartyDocumentInput,
+    PartySourceKind,
     RegisteredParty,
-    RegisteredVia,
 )
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.http import CapabilityRequired
@@ -106,7 +106,9 @@ async def test_register_maps_body_to_command_and_derives_attribution_server_side
 
     assert response.status_code == 201, response.text
     command = registration.commands[0]
-    assert command.registered_via is RegisteredVia.BOT
+    assert command.source_kind is PartySourceKind.SUBJECT
+    assert command.principal_id == actor.principal_id
+    assert command.platform is None
     assert command.contact_points == (PartyContactPointInput("phone", "+18095551234"),)
     assert command.documents == (PartyDocumentInput("cedula", "40212345678"),)
 

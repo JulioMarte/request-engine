@@ -19,10 +19,10 @@ from request_engine.modules.tenancy.application.commands.confirm_party_contact_p
 from request_engine.platform.db.session import SessionFactory
 
 from ._party_commands import (
-    bot_registered_contact_point,
     confirm_command,
     confirm_key,
     registry_commands,
+    secondhand_unverified_contact_point,
 )
 from ._party_support import (
     PgConnection,
@@ -41,7 +41,9 @@ async def test_concurrent_confirm_replay_executes_single_flip(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
-    world, party, contact = await bot_registered_contact_point(admin_conn, app_session_factory)
+    world, party, contact = await secondhand_unverified_contact_point(
+        admin_conn, app_session_factory
+    )
     commands = registry_commands(app_session_factory)
     key = confirm_key(contact.contact_point_id)
     blocker = connect()
@@ -93,7 +95,7 @@ async def test_concurrent_confirm_replay_executes_single_flip(
     assert first.contact_point_id == second.contact_point_id
     assert contact_point_row(admin_conn, world.organization_id, contact.contact_point_id) == (
         True,
-        "bot",
+        "subject",
         True,
     )
     audits = audit_rows(admin_conn, world.organization_id, "parties.confirm_contact_point")

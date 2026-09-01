@@ -28,6 +28,7 @@ from request_engine.modules.tenancy.application.queries.lookup_parties import (
     PartyLookupQuery,
     lookup_parties,
 )
+from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 
 from ._party_commands import register_command
@@ -70,6 +71,7 @@ def _document_command(
         party_id=party_id,
         kind=kind,
         value=value,
+        source_kind=PartySourceKind.OPERATOR,
         idempotency_key=f"doc-{uuid4().hex}",
     )
 

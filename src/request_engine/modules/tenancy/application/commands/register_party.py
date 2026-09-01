@@ -7,8 +7,8 @@ from uuid import UUID
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
     PartyDocumentInput,
+    PartySourceKind,
     RegisteredParty,
-    RegisteredVia,
 )
 from request_engine.modules.tenancy.domain.party_identity import (
     normalize_identity_document,
@@ -21,10 +21,12 @@ class RegisterPartyCommand:
     organization_id: UUID
     principal_id: UUID
     display_name: str
-    registered_via: RegisteredVia
+    source_kind: PartySourceKind
     idempotency_key: str
     contact_points: tuple[PartyContactPointInput, ...] = ()
     documents: tuple[PartyDocumentInput, ...] = ()
+    platform: str | None = None
+    technical_principal_id: UUID | None = None
 
 
 class RegisterPartyHandler(Protocol):

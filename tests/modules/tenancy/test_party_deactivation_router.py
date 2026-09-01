@@ -19,8 +19,8 @@ from request_engine.modules.tenancy.application.commands import (
 )
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
+    PartySourceKind,
     RegisteredParty,
-    RegisteredVia,
 )
 from request_engine.platform.security.context import ActorContext
 
@@ -51,7 +51,7 @@ class _RecordingDeactivations:
             "whatsapp",
             "+18095551234",
             True,
-            RegisteredVia.OPERATOR,
+            PartySourceKind.OPERATOR,
         )
 
     async def deactivate_party(

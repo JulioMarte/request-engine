@@ -73,7 +73,7 @@ def contact_point_row(
     conn: PgConnection, organization_id: UUID, contact_point_id: UUID
 ) -> tuple[Any, ...]:
     row = conn.execute(
-        "SELECT verified, registered_via, active"
+        "SELECT verified, source_kind, active"
         " FROM request_engine.party_contact_points"
         " WHERE organization_id = %s AND id = %s",
         (organization_id, contact_point_id),

@@ -4,7 +4,10 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.tenancy.contracts.party_registry import PartyIdentityDocument
+from request_engine.modules.tenancy.contracts.party_registry import (
+    PartyIdentityDocument,
+    PartySourceKind,
+)
 from request_engine.modules.tenancy.domain.party_identity import normalize_identity_document
 
 
@@ -15,7 +18,10 @@ class AddPartyDocumentCommand:
     party_id: UUID
     kind: str
     value: str
+    source_kind: PartySourceKind
     idempotency_key: str
+    platform: str | None = None
+    technical_principal_id: UUID | None = None
 
 
 class AddPartyDocumentHandler(Protocol):

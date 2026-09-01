@@ -18,6 +18,10 @@ from request_engine.entrypoints.http.module_composition import install_business_
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.security.acting_operator import (
+    ActingOperatorActorResolver,
+    OperatorActorResolver,
+)
 from request_engine.platform.security.discovery import (
     BaselineTenantCapabilityPolicy,
     TenantCapabilityPolicy,
@@ -56,6 +60,7 @@ def create_app(
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
+    operator_actor_resolver: OperatorActorResolver | None = None,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around explicit external ports."""
 
@@ -70,7 +75,8 @@ def create_app(
         signing_key = configured_key.encode("utf-8")
 
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
-    request_actor_resolver = RequestExecutionActorResolver(actor_resolver)
+    relay_actor_resolver = ActingOperatorActorResolver(actor_resolver, operator_actor_resolver)
+    request_actor_resolver = RequestExecutionActorResolver(relay_actor_resolver)
     execution_actor_resolver = TenantCapabilityActorResolver(request_actor_resolver, policy)
     app = FastAPI(
         title="Request Engine",

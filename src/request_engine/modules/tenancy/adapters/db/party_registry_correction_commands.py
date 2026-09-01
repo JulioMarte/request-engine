@@ -1,10 +1,7 @@
 """PostgreSQL `parties.rename` and `parties.add_document` command adapters.
 
-Operator-granted corrections on an existing, active Party: the display name
-is a mutable label corrected through `parties.rename`; identity documents are
-immutable facts added through `parties.add_document` with the normalization
-and unique active-value backstop of registration. One Session, one tenant
-transaction, idempotent replay, audited; no outbox events.
+Operator-granted corrections on an existing, active Party: idempotent replay,
+audited; no outbox events. One Session, one tenant transaction.
 """
 
 from typing import Never

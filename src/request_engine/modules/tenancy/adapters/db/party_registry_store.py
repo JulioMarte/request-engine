@@ -12,8 +12,10 @@ from request_engine.modules.tenancy.application.errors import PartyNotFound
 _INSERT_PARTY_SQL = text(
     """
     INSERT INTO request_engine.parties
-        (organization_id, party_kind, display_name, created_by_principal_id)
-    VALUES (:organization_id, 'person', :display_name, :principal_id)
+        (organization_id, party_kind, display_name, created_by_principal_id, source_kind,
+         platform, relay_principal_id)
+    VALUES (:organization_id, 'person', :display_name, :principal_id, :source_kind,
+            :platform, :relay_principal_id)
     RETURNING id
     """
 )
@@ -21,10 +23,10 @@ _INSERT_PARTY_SQL = text(
 _INSERT_CONTACT_POINT_SQL = text(
     """
     INSERT INTO request_engine.party_contact_points
-        (organization_id, party_id, channel, normalized_value, verified, registered_via,
-         created_by_principal_id)
-    VALUES (:organization_id, :party_id, :channel, :normalized_value, :verified,
-            :registered_via, :principal_id)
+        (organization_id, party_id, channel, normalized_value, verified, source_kind,
+         platform, relay_principal_id, created_by_principal_id)
+    VALUES (:organization_id, :party_id, :channel, :normalized_value, :verified, :source_kind,
+            :platform, :relay_principal_id, :principal_id)
     RETURNING id
     """
 )
@@ -32,8 +34,10 @@ _INSERT_CONTACT_POINT_SQL = text(
 _INSERT_DOCUMENT_SQL = text(
     """
     INSERT INTO request_engine.party_identity_documents
-        (organization_id, party_id, kind, normalized_value, created_by_principal_id)
-    VALUES (:organization_id, :party_id, :kind, :normalized_value, :principal_id)
+        (organization_id, party_id, kind, normalized_value, created_by_principal_id,
+         source_kind, platform, relay_principal_id)
+    VALUES (:organization_id, :party_id, :kind, :normalized_value, :principal_id,
+            :source_kind, :platform, :relay_principal_id)
     RETURNING id
     """
 )
@@ -69,6 +73,7 @@ async def insert_party(
     organization_id: UUID,
     display_name: str,
     principal_id: UUID,
+    attribution: dict[str, object],
 ) -> UUID:
     result = await session.execute(
         _INSERT_PARTY_SQL,
@@ -76,6 +81,7 @@ async def insert_party(
             "organization_id": organization_id,
             "display_name": display_name,
             "principal_id": principal_id,
+            **attribution,
         },
     )
     return cast(UUID, result.mappings().one()["id"])
@@ -85,22 +91,16 @@ async def insert_contact_points(
     session: AsyncSession,
     rows: list[dict[str, object]],
 ) -> list[RowMapping]:
-    results: list[RowMapping] = []
-    for row in rows:
-        result = await session.execute(_INSERT_CONTACT_POINT_SQL, row)
-        results.append(result.mappings().one())
-    return results
+    return [
+        (await session.execute(_INSERT_CONTACT_POINT_SQL, row)).mappings().one() for row in rows
+    ]
 
 
 async def insert_documents(
     session: AsyncSession,
     rows: list[dict[str, object]],
 ) -> list[RowMapping]:
-    results: list[RowMapping] = []
-    for row in rows:
-        result = await session.execute(_INSERT_DOCUMENT_SQL, row)
-        results.append(result.mappings().one())
-    return results
+    return [(await session.execute(_INSERT_DOCUMENT_SQL, row)).mappings().one() for row in rows]
 
 
 async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> None:

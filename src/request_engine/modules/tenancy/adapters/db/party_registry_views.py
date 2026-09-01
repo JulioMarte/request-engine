@@ -38,7 +38,7 @@ async def load_party_views(
             await session.execute(
                 text(
                     """
-                    SELECT id, party_id, channel, normalized_value, verified, registered_via
+                    SELECT id, party_id, channel, normalized_value, verified, source_kind
                     FROM request_engine.party_contact_points
                     WHERE organization_id = :organization_id
                       AND active AND party_id = ANY(:party_ids)

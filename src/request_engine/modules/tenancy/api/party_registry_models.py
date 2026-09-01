@@ -1,10 +1,11 @@
 """Transport DTOs for the tenancy party registry HTTP surface.
 
 Pydantic belongs here only; application commands and contracts stay
-framework-free. `registered_via` is never accepted from clients: the route
+framework-free. `source_kind` is never accepted from clients: the route
 derives it server-side from the authenticated principal's authority mode.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     PartyIdentityDocument,
+    PartyRevision,
     RegisteredParty,
 )
 
@@ -52,12 +54,17 @@ class AddPartyDocumentBody(BaseModel):
     value: str = Field(min_length=1, max_length=256)
 
 
+class RollbackPartyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_revision: int = Field(ge=1)
+
+
 class PartyContactPointView(BaseModel):
     contact_point_id: UUID
     channel: str
     normalized_value: str
     verified: bool
-    registered_via: str | None = None
+    source_kind: str | None = None
 
     @classmethod
     def from_contract(cls, contact_point: PartyContactPoint) -> "PartyContactPointView":
@@ -66,9 +73,7 @@ class PartyContactPointView(BaseModel):
             channel=contact_point.channel,
             normalized_value=contact_point.normalized_value,
             verified=contact_point.verified,
-            registered_via=(
-                contact_point.registered_via.value if contact_point.registered_via else None
-            ),
+            source_kind=(contact_point.source_kind.value if contact_point.source_kind else None),
         )
 
 
@@ -105,4 +110,32 @@ class RegisteredPartyView(BaseModel):
             documents=tuple(
                 PartyIdentityDocumentView.from_contract(item) for item in party.documents
             ),
+        )
+
+
+class PartyRevisionView(BaseModel):
+    revision: int
+    change_kind: str
+    display_name: str
+    active: bool
+    source_kind: str | None = None
+    platform: str | None = None
+    actor_principal_id: UUID | None = None
+    attributed_operator_principal_id: UUID | None = None
+    created_at: datetime
+    snapshot: dict[str, object]
+
+    @classmethod
+    def from_contract(cls, revision: PartyRevision) -> "PartyRevisionView":
+        return cls(
+            revision=revision.revision,
+            change_kind=revision.change_kind,
+            display_name=revision.display_name,
+            active=revision.active,
+            source_kind=(revision.source_kind.value if revision.source_kind else None),
+            platform=revision.platform,
+            actor_principal_id=revision.actor_principal_id,
+            attributed_operator_principal_id=revision.attributed_operator_principal_id,
+            created_at=revision.created_at,
+            snapshot=dict(revision.snapshot),
         )

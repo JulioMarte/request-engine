@@ -14,6 +14,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_views import (
     contact_point_by_id,
     load_party_views,
 )
+from request_engine.modules.tenancy.adapters.db.party_revision_ledger import (
+    record_party_revision,
+)
 from request_engine.modules.tenancy.application.commands import confirm_party_contact_point
 from request_engine.modules.tenancy.application.errors import PartyContactPointNotFound
 from request_engine.modules.tenancy.contracts.party_registry import PartyContactPoint
@@ -77,6 +80,13 @@ class PostgresPartyContactPointConfirmationCommands:
                     session,
                     command.organization_id,
                     command.contact_point_id,
+                )
+                await record_party_revision(
+                    session,
+                    command=command,
+                    organization_id=command.organization_id,
+                    party_id=command.party_id,
+                    change_kind="verification_flipped",
                 )
             state = (await load_party_views(session, command.organization_id, [command.party_id]))[
                 0

@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.tenancy.contracts.party_registry import RegisteredParty
+from request_engine.modules.tenancy.contracts.party_registry import (
+    PartySourceKind,
+    RegisteredParty,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +16,9 @@ class DeactivatePartyCommand:
     principal_id: UUID
     party_id: UUID
     idempotency_key: str
+    source_kind: PartySourceKind | None = None
+    platform: str | None = None
+    technical_principal_id: UUID | None = None
 
 
 class DeactivatePartyHandler(Protocol):

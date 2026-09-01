@@ -25,7 +25,7 @@ from request_engine.modules.tenancy.application.commands.add_party_contact_point
     AddPartyContactPointCommand,
 )
 from request_engine.modules.tenancy.application.errors import PartyContactPointExists
-from request_engine.modules.tenancy.contracts.party_registry import RegisteredVia
+from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 
 _DOCUMENT_CONSTRAINT = "party_identity_documents_active_value_uq"
@@ -136,7 +136,7 @@ async def test_add_contact_point_narrows_integrity_errors(
         party_id=uuid4(),
         channel="whatsapp",
         value="+18095550110",
-        registered_via=RegisteredVia.BOT,
+        source_kind=PartySourceKind.SUBJECT,
         idempotency_key="narrowing",
     )
 

@@ -123,7 +123,7 @@ async def test_contact_point_deactivation_never_trips_the_verification_guard(
     )
 
     assert deactivated.verified is True
-    verified, registered_via, active = contact_point_row(
+    verified, source_kind, active = contact_point_row(
         admin_conn, world.organization_id, contact.contact_point_id
     )
-    assert (verified, registered_via, active) == (True, "operator", False)
+    assert (verified, source_kind, active) == (True, "operator", False)

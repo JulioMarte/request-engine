@@ -21,7 +21,7 @@ from request_engine.modules.tenancy.application.queries.lookup_parties import (
     PartyLookupQuery,
     lookup_parties,
 )
-from request_engine.modules.tenancy.contracts.party_registry import RegisteredVia
+from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 
 from ._party_commands import register_command, registry_commands
@@ -72,7 +72,7 @@ async def test_shared_phone_lookup_returns_every_bound_party(
     )
     assert {party.party_id for party in by_phone} == {jose.party_id, maria.party_id}
     assert all(
-        contact.verified and contact.registered_via is RegisteredVia.OPERATOR
+        contact.verified and contact.source_kind is PartySourceKind.OPERATOR
         for party in by_phone
         for contact in party.contact_points
     )
