@@ -164,6 +164,10 @@ The public Booking API returns the same opaque `appointment_unavailable` respons
 
 The F7 arrival-estimate slice touched Booking's API composition (`api/__init__.py`, `api/errors.py`) and `reservation_commands.py` read plumbing without touching capacity semantics: it added a public `appointments.record_arrival_estimate` capability whose command takes only the reservation row lock, never resource locks, and records no capacity claims; its typed errors (`ReservationNotConfirmed`, `ArrivalEstimateInvalid`, revision conflict) ride the existing booking error envelope. Shared-capacity lock order, `guard_capacity_claim` and the `23P01` boundary above are unchanged by that slice.
 
+### Post-V3 http bootstrap composition note (S0b-R2)
+
+The S0b-R2 party-governance slice touched `bootstrap/http.py` composition plumbing only: it passes the deployment-supplied acting-operator capability source through to the entrypoint's operator resolution (the relay admitted by `platform.acting_for_operator` then runs semantic capability checks against the *operator's* tenant-filtered grant set). It introduces no shared-capacity surface, no cross-tenant read or write path, and no change to lock order or the `23P01` boundary above; all party/revision/staff mutations remain strictly tenant-scoped and enforced by the relay's fail-closed checks described in `docs/v3/38` §9.1.
+
 ### Post-V3 contextual booking extension
 
 F1 operational profile/contextual supply extends direct Booking with Resource-at-Location configuration while preserving every shared-capacity rule above.

@@ -15,6 +15,7 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "discovery_app.py",
     "discovery_availability_app.py",
     "errors.py",
+    "error_handlers.py",
     "module_composition.py",
     "operational_app.py",
     "operational_composition.py",
