@@ -6,11 +6,14 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.communications.application.errors import DeliveryConfigurationError
 from request_engine.modules.communications.domain.delivery_policy import (
     DeliveryPolicy,
     DeliveryRoute,
     resolve_provider_key,
+)
+from request_engine.modules.communications.domain.errors import (
+    DeliveryConfigurationError,
+    RecipientChannelUnavailable,
 )
 
 
@@ -48,7 +51,7 @@ async def resolve_dispatch_route_and_contact_point(
             .first()
         )
         if point is None:
-            raise DeliveryConfigurationError("explicit contact point is no longer usable")
+            raise RecipientChannelUnavailable("pinned contact point is no longer usable")
         point_channel = cast(str, point["channel"])
         route = next(
             (route for route in policy.routes if route.endpoint_channel == point_channel),
@@ -58,7 +61,7 @@ async def resolve_dispatch_route_and_contact_point(
             raise DeliveryConfigurationError(
                 "explicit contact point does not match channel_policy.channels"
             )
-        return route, _bound_provider_key(route, configured_provider_keys), point
+        return route, resolve_provider_key(route.provider_key, configured_provider_keys), point
 
     points = (
         (
@@ -93,12 +96,5 @@ async def resolve_dispatch_route_and_contact_point(
             None,
         )
         if point is not None:
-            return route, _bound_provider_key(route, configured_provider_keys), point
+            return route, resolve_provider_key(route.provider_key, configured_provider_keys), point
     raise DeliveryConfigurationError("recipient has no usable verified contact point")
-
-
-def _bound_provider_key(
-    route: DeliveryRoute,
-    configured_provider_keys: Collection[str],
-) -> str:
-    return resolve_provider_key(route.provider_key, configured_provider_keys)

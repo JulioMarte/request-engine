@@ -10,8 +10,15 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from request_engine.modules.communications.adapters.db.dispatch_resolution import (
-    resolve_dispatch_route_and_contact_point,
+from request_engine.modules.communications.adapters.db.dispatch_actions import (
+    DISPATCH_ACTION_TYPE as DISPATCH_ACTION_TYPE,
+)
+from request_engine.modules.communications.adapters.db.dispatch_actions import (
+    DISPATCH_ACTION_VERSION as DISPATCH_ACTION_VERSION,
+)
+from request_engine.modules.communications.adapters.db.escalation_triggers import (
+    close_task_failed_and_escalate,
+    resolve_route_or_escalate_unreachable,
 )
 from request_engine.modules.communications.adapters.db.reconcile_scheduling import (
     RECONCILE_ACTION_TYPE as RECONCILE_ACTION_TYPE,
@@ -35,9 +42,6 @@ from request_engine.modules.communications.contracts.delivery import (
 from request_engine.modules.communications.domain.delivery_policy import parse_delivery_policy
 from request_engine.platform.outbox.postgres import append_outbox
 from request_engine.platform.scheduling.store import schedule_action
-
-DISPATCH_ACTION_TYPE = "dispatch_task"
-DISPATCH_ACTION_VERSION = 1
 
 
 class DeliveryWorkKind(StrEnum):
@@ -63,6 +67,15 @@ class FinalizedDelivery:
     status: ProviderDeliveryStatus
     retryable: bool
     task_terminal: bool
+
+
+def _skip_work(communication_task_id: UUID, skip_reason: str) -> PreparedDeliveryWork:
+    return PreparedDeliveryWork(
+        kind=DeliveryWorkKind.SKIP,
+        communication_task_id=communication_task_id,
+        delivery_id=None,
+        skip_reason=skip_reason,
+    )
 
 
 async def fail_poisoned_communication_task(
@@ -121,34 +134,22 @@ async def prepare_dispatch(
     task = await _lock_task(session, organization_id, communication_task_id)
     task_status = cast(str, task["status"])
     if task_status in {"completed", "cancelled", "failed"}:
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=communication_task_id,
-            delivery_id=None,
-            skip_reason=f"task_{task_status}",
-        )
+        return _skip_work(communication_task_id, f"task_{task_status}")
 
     db_now = await _database_now(session)
     expires_at = cast(datetime | None, task["expires_at"])
     if expires_at is not None and expires_at <= db_now:
-        await _mark_task_failed(session, organization_id, communication_task_id)
-        await append_outbox(
+        await close_task_failed_and_escalate(
             session,
             organization_id=organization_id,
-            event_type="communication.task_failed.v1",
-            aggregate_kind="CommunicationTask",
-            aggregate_id=communication_task_id,
+            communication_task_id=communication_task_id,
             payload={
                 "communication_task_id": str(communication_task_id),
                 "reason": "expired_before_delivery",
             },
+            trigger="delivery_deadline_missed",
         )
-        return PreparedDeliveryWork(
-            kind=DeliveryWorkKind.SKIP,
-            communication_task_id=communication_task_id,
-            delivery_id=None,
-            skip_reason="task_expired",
-        )
+        return _skip_work(communication_task_id, "task_expired")
 
     latest = await _latest_delivery(session, organization_id, communication_task_id)
     if latest is not None:
@@ -190,13 +191,16 @@ async def prepare_dispatch(
             )
 
     policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
-    route, provider_key, contact_point = await resolve_dispatch_route_and_contact_point(
+    resolved = await resolve_route_or_escalate_unreachable(
         session,
         organization_id=organization_id,
         task=task,
         policy=policy,
         configured_provider_keys=configured_provider_keys,
     )
+    if resolved is None:
+        return _skip_work(communication_task_id, "recipient_channel_unreachable")
+    route, provider_key, contact_point = resolved
     if task["contact_point_id"] is None:
         await session.execute(
             text(
@@ -342,18 +346,16 @@ async def prepare_reconciliation(
     db_now = await _database_now(session)
     expires_at = cast(datetime | None, task["expires_at"])
     if expires_at is not None and expires_at <= db_now:
-        await _mark_task_failed(session, organization_id, task_id)
-        await append_outbox(
+        await close_task_failed_and_escalate(
             session,
             organization_id=organization_id,
-            event_type="communication.task_failed.v1",
-            aggregate_kind="CommunicationTask",
-            aggregate_id=task_id,
+            communication_task_id=task_id,
             payload={
                 "communication_task_id": str(task_id),
                 "delivery_id": str(delivery_id),
                 "reason": "delivery_deadline_exceeded",
             },
+            trigger="delivery_deadline_missed",
         )
         return PreparedDeliveryWork(
             kind=DeliveryWorkKind.SKIP,
@@ -470,20 +472,18 @@ async def finalize_provider_result(
                 execute_at=db_now + timedelta(seconds=policy.retry_after_seconds),
             )
         else:
-            await _mark_task_failed(session, organization_id, task_id)
-            task_terminal = True
-            await append_outbox(
+            await close_task_failed_and_escalate(
                 session,
                 organization_id=organization_id,
-                event_type="communication.task_failed.v1",
-                aggregate_kind="CommunicationTask",
-                aggregate_id=task_id,
+                communication_task_id=task_id,
                 payload={
                     "communication_task_id": str(task_id),
                     "delivery_id": str(delivery_id),
                     "reason": "provider_non_retryable_failure",
                 },
+                trigger="definitive_failure",
             )
+            task_terminal = True
     else:
         await ensure_reconciliation(
             session,
