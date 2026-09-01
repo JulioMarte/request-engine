@@ -6,6 +6,7 @@ from uuid import UUID
 
 from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
+    build_communication_provider_event_handlers,
 )
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
@@ -116,7 +117,7 @@ def create_worker() -> WorkerProcess:
         communication_providers=providers,
         outbox_publisher=_outbox_publisher(),
         outbox_internal_handlers={},
-        provider_event_handlers={},
+        provider_event_handlers=build_communication_provider_event_handlers(domain_sessions),
         reservation_lifecycle_factory=lambda factory: ReservationLifecycleOutboxHandler(
             worker_principal_id=worker_principal_id,
             reader=PostgresReservationLifecycleReader(factory),
