@@ -300,3 +300,16 @@ application/vertical concern and owns no tables.
 - Existing commands, states and public APIs gain nothing breaking; every slice must keep
   the degenerate behavior of existing surfaces unchanged (see per-slice equivalence
   proofs).
+
+## 12. Incubating: voice confirmation channel
+
+Voice joins the F7 channel vocabulary as an **incubating** channel (planned in
+`docs/v3/40-s3-delivery-escalation-plan.md` T7). Task and confirmation-intent semantics
+are channel-agnostic today; `voice` only extends the closed channel set. The voice
+outcome contract is the provider-event callback surface: a voice report enters like any
+other transport outcome and is recorded through the same fenced finalize. Conversational
+execution, TTS and call orchestration belong to the external gateway layer — an external
+gateway executes calls; Request Engine owns the confirmation intent and records the
+reported outcome. This section is **structure-only until implemented with evidence**:
+like every other slice, the voice channel is normative only once its implementation and
+proofs are merged.
