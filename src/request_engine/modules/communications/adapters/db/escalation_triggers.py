@@ -29,9 +29,7 @@ from request_engine.modules.communications.domain.delivery_policy import (
     DeliveryPolicy,
     DeliveryRoute,
 )
-from request_engine.modules.communications.domain.errors import (
-    RecipientChannelUnavailable,
-)
+from request_engine.modules.communications.domain.errors import RecipientChannelUnavailable
 from request_engine.modules.communications.domain.escalation_policy import (
     validate_escalation_trigger,
 )
