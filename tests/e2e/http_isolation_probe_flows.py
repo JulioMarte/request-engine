@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .http_isolation_probe_flows_s0b import foreign_request as _s0b_request
 from .http_surface import PublicHttpOperation
 
 if TYPE_CHECKING:
@@ -100,4 +101,6 @@ def foreign_request(
             {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
             404,
         )
+    if name.startswith("parties."):
+        return _s0b_request(operation, actor, foreign, objects)
     raise AssertionError(f"missing tenant probe for {name}")

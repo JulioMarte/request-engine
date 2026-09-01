@@ -53,6 +53,9 @@ The V3 baseline already owns `request_engine.parties` and `request_engine.party_
   - `party_contact_points.created_by_principal_id uuid NULL`,
   - `party_identity_documents.created_by_principal_id uuid NULL`,
   - `party_contact_points.registered_via text NULL CHECK in ('operator','bot')`.
+- `party_contact_points` guard trigger (I-S0b-4 backstop): an UPDATE that would flip
+  `verified` from true downward is rejected by the database, so verification monotonicity
+  holds even against direct runtime-role SQL, not only through the confirm command.
 - Partial unique index so one Party has at most one active document per kind.
 
 Attribution is a **durable fact about who registered**, never an authority source: the
@@ -61,9 +64,9 @@ trusted boundary remains the authenticated principal (see §5).
 ## 3. Normalization (tenancy-owned, pure, unit-tested)
 
 - `phone` / `whatsapp`: E.164 digits with leading `+`; Dominican local formats
-  (`(809) 555-1234`, `809-555-1234`, `1 809 555 1234`, `18295551234`) normalize to
-  `+18095551234`. Reject values with fewer than 10 / more than 15 digits after
-  normalization.
+  (`(809) 555-1234`, `809-555-1234`, `1 809 555 1234`) normalize to
+  `+18095551234`, and `18295551234` normalizes to `+18295551234`. Reject values with
+  fewer than 10 / more than 15 digits after normalization.
 - `cedula`: digits only (`402-1234567-8` → `40212345678`); reject anything that is not
   exactly 11 digits after normalization.
 - `passport`: uppercase alphanumerics, 6–17 chars.

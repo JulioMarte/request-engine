@@ -16,8 +16,8 @@ from .http_isolation_probes import (
 from .http_isolation_probes import (
     foreign_request as _foreign_request,
 )
-from .http_surface import PUBLIC_HTTP_OPERATIONS, PublicHttpOperation, TenantIsolationMode
-from .http_surface_f7 import F7_HTTP_OPERATIONS
+from .http_surface import PublicHttpOperation, TenantIsolationMode
+from .http_surface_current import MATRIX_OPERATIONS
 from .tenant_sandbox import (
     TenantSandbox,
     auth,
@@ -131,7 +131,7 @@ def _test_id(operation: PublicHttpOperation) -> str:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", (*PUBLIC_HTTP_OPERATIONS, *F7_HTTP_OPERATIONS), ids=_test_id)
+@pytest.mark.parametrize("operation", MATRIX_OPERATIONS, ids=_test_id)
 async def test_every_public_operation_enforces_tenant_or_party_boundary_without_mutation(
     operation: PublicHttpOperation,
     e2e_admin_conn: support.PgConnection,

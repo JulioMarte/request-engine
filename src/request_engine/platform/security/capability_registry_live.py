@@ -13,6 +13,9 @@ from request_engine.platform.security.capability_registry_operational_copilot im
 from request_engine.platform.security.capability_registry_operational_recovery import (
     OPERATIONAL_RECOVERY_CAPABILITIES,
 )
+from request_engine.platform.security.capability_registry_party_registry import (
+    PARTY_REGISTRY_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_queue_live import LIVE_QUEUE_CAPABILITIES
 from request_engine.platform.security.capability_types import CapabilityDefinition
 
@@ -23,4 +26,5 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     + BOOKING_OPERATIONAL_CAPABILITIES
     + OPERATIONAL_RECOVERY_CAPABILITIES
     + OPERATIONAL_COPILOT_CAPABILITIES
+    + PARTY_REGISTRY_CAPABILITIES
 )

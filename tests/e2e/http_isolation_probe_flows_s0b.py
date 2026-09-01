@@ -1,0 +1,52 @@
+"""S0b party registry tenant-isolation probe flows (`parties.*` operations).
+
+Expected outcomes are mutation-free for the actor's own tenant: the register
+probe fails transport/application validation, the contact-point probes address
+a foreign-tenant Party the actor's tenant context cannot see, and the lookup
+probe is read-only.
+"""
+
+from typing import TYPE_CHECKING
+
+from .http_surface import PROBE_UUID_2
+
+if TYPE_CHECKING:
+    from .http_isolation_probes import ForeignObjects
+    from .http_surface import PublicHttpOperation
+    from .tenant_sandbox import TenantSandbox
+
+
+def foreign_request(
+    operation: "PublicHttpOperation",
+    actor: "TenantSandbox",
+    foreign: "TenantSandbox",
+    objects: "ForeignObjects",
+) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
+    del actor, objects
+    if operation.name == "parties.register":
+        return (
+            "/v1/parties",
+            {},
+            {
+                "display_name": "Isolation Probe",
+                "documents": [{"kind": "cedula", "value": "12345"}],
+            },
+            422,
+        )
+    if operation.name == "parties.add_contact_point":
+        return (
+            f"/v1/parties/{foreign.party_id}/contact-points",
+            {},
+            {"channel": "phone", "value": "+18295550100"},
+            404,
+        )
+    if operation.name == "parties.confirm_contact_point":
+        return (
+            f"/v1/parties/{foreign.party_id}/contact-points/{PROBE_UUID_2}/confirm",
+            {},
+            None,
+            404,
+        )
+    if operation.name == "parties.lookup":
+        return ("/v1/parties/lookup", {"mode": "phone", "value": "+18295550100"}, None, 200)
+    raise AssertionError(f"missing S0b tenant probe for {operation.name}")
