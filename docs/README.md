@@ -347,3 +347,12 @@ Temporary hardening/amendment documents may be created during adversarial review
 Everything under `legacy/` is historical and non-authoritative unless an explicit task asks to inspect it.
 
 The domain/transaction contracts have precedence over implementation convenience. SQL and Python implement accepted contracts; they must not silently redefine them.
+
+## 16. Handoff documentation
+
+`handoff/` is the onboarding entry point for the next engineer or AI agent picking up the repository with zero context. It is operational documentation, not a competing specification; canonical contracts keep precedence.
+
+1. `handoff/00-repository-operating-manual.md` — branch/lane discipline, the CI traps that actually cost cycles (immutable V3 baseline, frozen error-code literals, line-budget ratchet, documentation contract, test lanes, SIGKILL tests, migrations, RLS context), the validation workflow and the effective working pattern.
+2. `handoff/01-product-roadmap-state.md` — what the product is, what is shipped, the reordered round-3 roadmap, and what does not exist yet (pre-first-deployment).
+
+Further numbered handoff documents (`handoff/02`–`handoff/07`) cover the remaining roadmap slices and follow the same evidence rules.
