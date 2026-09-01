@@ -37,6 +37,7 @@ EXPECTED_CAPABILITIES = (
     "appointments.cancel|public|command|required|required|appointments.manage|appointments.subject_override|booking.cancel_reservation|1",
     "appointments.reschedule|public|command|required|required|appointments.manage|appointments.subject_override|booking.reschedule_reservation|1",
     "appointments.confirm_attendance|public|command|required|required|appointments.manage|appointments.subject_override||1",
+    "appointments.record_arrival_estimate|public|command|required|required|appointments.manage|appointments.subject_override||1",
     "appointments.subject_override|operator|command|required|none|||booking.subject_override|0",
     "queue.list|public|query|none|none|||queue.read|1",
     "queue.join|public|command|required|none|queue.join|queue.subject_override||1",

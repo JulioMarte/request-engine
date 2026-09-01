@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
@@ -13,16 +15,12 @@ async def booking_error_handler(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=status_code, content=content)
 
 
-def _status_conflict(
-    exc: booking_errors.ReservationStateConflict,
-    code: str,
-) -> ErrorBody:
-    return ErrorBody(
-        code=code,
-        message=str(exc),
-        resolution=ErrorResolution.REFRESH_AND_RETRY,
-        details={"reservation_id": str(exc.reservation_id), "status": exc.status},
-    )
+def _status_conflict_fields(exc: booking_errors.ReservationStateConflict) -> dict[str, Any]:
+    return {
+        "message": str(exc),
+        "resolution": ErrorResolution.REFRESH_AND_RETRY,
+        "details": {"reservation_id": str(exc.reservation_id), "status": exc.status},
+    }
 
 
 def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
@@ -99,11 +97,17 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
             details={},
         )
     if isinstance(exc, booking_errors.ReservationNotConfirmed):
-        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_confirmed")
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_not_confirmed", **_status_conflict_fields(exc)
+        )
     if isinstance(exc, booking_errors.ReservationNotCancellable):
-        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_cancellable")
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_not_cancellable", **_status_conflict_fields(exc)
+        )
     if isinstance(exc, booking_errors.ReservationNotReschedulable):
-        return status.HTTP_409_CONFLICT, _status_conflict(exc, "reservation_not_reschedulable")
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="reservation_not_reschedulable", **_status_conflict_fields(exc)
+        )
     if isinstance(exc, booking_errors.ArrivalEstimateInvalid):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="arrival_estimate_invalid",
