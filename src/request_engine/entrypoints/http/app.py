@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
-from request_engine.entrypoints.http.errors import add_global_error_handlers
+from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
