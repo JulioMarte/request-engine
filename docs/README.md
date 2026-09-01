@@ -146,6 +146,17 @@ execute delivery and conversation; Request Engine owns delivery truth, escalatio
 identity binding, intent validation and every typed mutation. Slices land append-only and
 are normative only once implemented with evidence.
 
+## 8.1 Active S0b contract — party registry & lookup
+
+Primary documents:
+
+1. `v3/38-s0b-party-registry-contract.md` — **normative S0b contract** (tenancy-owned Party/contact-point/document registry, operator-asserted verification, bot principal creation mode, attribution facts, lookup semantics).
+2. `v3/39-s0b-party-registry-plan.md` — build order, proofs and explicitly deferred concerns.
+
+S0b is the Round-3 reordering root of the F7 roadmap: no front-desk slice can ship while
+no API can produce the parties, contact points and identity documents that booking, queue,
+communications and every configuration surface already reference.
+
 ## 9. Active F6 contract — external-agent tooling
 
 Primary contract:

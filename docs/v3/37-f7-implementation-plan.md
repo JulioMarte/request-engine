@@ -177,6 +177,11 @@ Reordered build order: **S0b (party registry + lookup + contact-point verificati
 S3 (escalation) → day board (FU-1, full scope incl. attendance + estimates) → S5 (triage
 subset) → S4 (inbound, with R3-4 identity mode) → S6.**
 
+S0b is now normative in `docs/v3/38-s0b-party-registry-contract.md` (plan:
+`docs/v3/39-s0b-party-registry-plan.md`); its owner decisions absorb the bot creation
+mode that R3-4 had queued for S4's identity work (verification stays operator-asserted;
+the R3-4 authority mode remains an S4 concern).
+
 ## Validation discipline
 
 - Every slice runs the repository canonical lane that owns its proof:
