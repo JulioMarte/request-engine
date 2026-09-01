@@ -613,3 +613,63 @@ evidence = ["contract", "invariant", "adversarial", "concurrency"]
 guarantee = "INV-COPILOT-ADMISSION-001"
 path = "tests/e2e/test_f6_discovery_concurrency.py"
 evidence = ["contract", "invariant", "adversarial", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-LINEAGE-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_step_race.py"
+evidence = ["invariant", "concurrency"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-LINEAGE-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_schema.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-LINEAGE-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_replay_and_window.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-LINEAGE-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_step.py"
+evidence = ["invariant", "contract"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-LINEAGE-001"
+path = "tests/e2e/test_communication_dispatch_escalation.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-TERMINAL-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_terminals.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-NOTIFICATION-TERMINAL-001"
+path = "tests/integration/v3_worker_runtime/test_escalation_schema.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-DELIVERY-OUTCOME-001"
+path = "tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.py"
+evidence = ["invariant", "adversarial"]
+
+[[proofs]]
+guarantee = "INV-DELIVERY-OUTCOME-001"
+path = "tests/integration/v3_worker_runtime/test_delivery_outcome_events.py"
+evidence = ["invariant", "contract"]
+
+[[proofs]]
+guarantee = "INV-CONTACT-VERIFICATION-001"
+path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTACT-VERIFICATION-001"
+path = "tests/integration/s0b_party_registry/test_staff_contact_guard.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTACT-VERIFICATION-001"
+path = "tests/integration/s0b_party_registry/test_staff_contact_verification.py"
+evidence = ["invariant", "contract"]

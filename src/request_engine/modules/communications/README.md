@@ -59,11 +59,45 @@ The initial `channel_policy` surface is intentionally small:
   "channels": ["whatsapp", "sms"],
   "provider_key": "provider-name",
   "retry_after_seconds": 60,
-  "reconcile_after_seconds": 300
+  "reconcile_after_seconds": 300,
+  "max_escalations_per_task": 2,
+  "max_contacts_per_subject_per_day": 5
 }
 ```
 
 `channels` is ordered. `sms` and `voice` resolve against a `phone` ContactPoint; `email` and `whatsapp` resolve against matching endpoint types. An explicit ContactPoint must still match the policy and remain active. Automatic endpoint selection only uses active, verified ContactPoints.
+
+## Delivery escalation (F7b, docs/v3/36 section 4)
+
+A terminally failed channel attempt no longer ends the notification: the
+escalation step (`adapters/db/escalation_commands.py`) walks the policy
+channel ladder sequentially. Triggers are a closed vocabulary —
+`definitive_failure` (non-retryable provider result), `delivery_deadline_missed`
+(expiry gates), `recipient_unreachable` (pinned channel lost its contact
+point) — wired in `escalation_triggers.py` at the delivery-store failure
+sites; they commit atomically with the task-failure marking.
+
+- One escalation decision = one ledger row
+  (`communication_escalations`, append-only) plus one child task whose
+  deterministic dedupe key is `communication:escalation:{parent}:{to_channel}:{ordinal}:v1`.
+  The parent row lock serializes decisions; a live lineage task or an existing
+  ledger row makes a repeated trigger a no-op; at most one live task per
+  lineage is backstopped by the `communication_tasks_live_lineage_uq` index.
+- The next channel is the first policy channel after the last attempted one
+  with an active+verified contact point; channels without one count as
+  exhausted. The child is pinned to that channel's contact point and enters
+  the ordinary dispatch machinery. A child created after the parent deadline
+  still receives one workable delivery window (`max(parent.expires_at, now +
+  max(retry, reconcile) seconds)`).
+- Guards: `max_escalations_per_task` (default 2) bounds ladder length; the
+  fatigue guard counts communication tasks created today for the recipient
+  party across all lineages (`max_contacts_per_subject_per_day`, default 5).
+- Terminal lineage facts are never silent: no remaining channel closes with
+  `communication.lineage_unreachable.v1` (reason `unreachable`), ordinal
+  exhaustion with reason `escalation_exhausted`, guard refusal with reason
+  `fatigue_limited`. A recipient that no policy channel can reach at all
+  still ends in the durable `delivery_configuration_invalid` poison, since
+  there is no channel to escalate to.
 
 ## Reservation-relative communications
 

@@ -157,6 +157,19 @@ S0b is the Round-3 reordering root of the F7 roadmap: no front-desk slice can sh
 no API can produce the parties, contact points and identity documents that booking, queue,
 communications and every configuration surface already reference.
 
+## 8.2 S3 implementation plan — delivery escalation
+
+Primary documents:
+
+1. `v3/40-s3-delivery-escalation-plan.md` — build order (T1–T8), proofs and deferred
+   concerns for the F7b escalation slice (S3).
+
+S3 implements the escalation half of the F7 contract (§4) on top of the merged F7a
+transport: provider-event outcome ingestion, sequential channel fallback with lineage and
+guards, the single-delivery-executor decision, and the FU-2..FU-7 dispositions registered
+in `v3/37-f7-implementation-plan.md`. Voice confirmation is admitted only as incubating
+structure (contract §12), normative once implemented with evidence.
+
 ## 9. Active F6 contract — external-agent tooling
 
 Primary contract:

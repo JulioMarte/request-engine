@@ -10,7 +10,6 @@ class ProviderDeliveryStatus(StrEnum):
     DELIVERED = "delivered"
     FAILED = "failed"
     AMBIGUOUS = "ambiguous"
-    NOT_FOUND = "not_found"
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +24,7 @@ class ProviderSendRequest:
     template_key: str
     template_version: int
     render_context: dict[str, object]
+    attempt_no: int
     expires_at: datetime | None = None
     reconcile_after_seconds: int | None = None
 

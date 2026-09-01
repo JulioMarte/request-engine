@@ -6,6 +6,7 @@ from uuid import UUID
 
 from request_engine.bootstrap.communication_providers import (
     build_communication_delivery_providers,
+    build_communication_provider_event_handlers,
 )
 from request_engine.bootstrap.worker import build_worker_process
 from request_engine.entrypoints.worker.app import WorkerProcess
@@ -24,9 +25,6 @@ from request_engine.modules.booking.adapters.db.lifecycle_reader import (
 )
 from request_engine.modules.booking.adapters.db.lifecycle_scheduling import (
     PostgresReservationLifecycleScheduling,
-)
-from request_engine.modules.booking.adapters.db.slot_offer_capacity import (
-    PostgresSlotOfferCapacity,
 )
 from request_engine.modules.booking.adapters.worker.no_show import NoShowScheduledHandler
 from request_engine.modules.communications.adapters.db.reservation_lifecycle_intent import (
@@ -116,7 +114,7 @@ def create_worker() -> WorkerProcess:
         communication_providers=providers,
         outbox_publisher=_outbox_publisher(),
         outbox_internal_handlers={},
-        provider_event_handlers={},
+        provider_event_handlers=build_communication_provider_event_handlers(domain_sessions),
         reservation_lifecycle_factory=lambda factory: ReservationLifecycleOutboxHandler(
             worker_principal_id=worker_principal_id,
             reader=PostgresReservationLifecycleReader(factory),
@@ -124,7 +122,7 @@ def create_worker() -> WorkerProcess:
             notifications=PostgresReservationLifecycleNotificationIntent(factory),
             recovery=PostgresReleasedSlotRecovery(
                 factory,
-                capacity=PostgresSlotOfferCapacity(),
+                capacity=CapacitySafeSlotOfferCapacity(),
                 notification=PostgresSlotOfferNotificationIntent(),
             ),
         ),

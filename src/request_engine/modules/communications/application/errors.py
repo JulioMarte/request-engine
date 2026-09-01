@@ -30,12 +30,6 @@ class CommunicationDedupeConflict(CommunicationsError):
         self.dedupe_key = dedupe_key
 
 
-class DeliveryProviderNotConfigured(CommunicationsError):
-    def __init__(self, provider_key: str) -> None:
-        super().__init__(f"communication provider {provider_key!r} is not configured")
-        self.provider_key = provider_key
-
-
 class CommunicationTaskNotFound(CommunicationsError):
     def __init__(self, communication_task_id: UUID) -> None:
         super().__init__(f"CommunicationTask {communication_task_id} was not found")
@@ -79,10 +73,3 @@ class ReminderSubjectAuthorityRequired(CommunicationsError):
         )
         self.subject_party_id = subject_party_id
         self.scope_key = scope_key
-
-
-class UnsupportedScheduledAction(CommunicationsError):
-    def __init__(self, owner_module: str, action_type: str, action_version: int) -> None:
-        super().__init__(
-            f"unsupported scheduled action {owner_module}:{action_type}:v{action_version}"
-        )

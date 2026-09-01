@@ -8,7 +8,7 @@ def _source(path: str) -> str:
 
 def test_i47_delivery_status_is_confined_to_communications_state() -> None:
     paths = (
-        "src/request_engine/modules/communications/adapters/worker/delivery_worker.py",
+        "src/request_engine/modules/communications/adapters/worker/scheduled_delivery.py",
         "src/request_engine/modules/communications/adapters/db/delivery_store.py",
     )
     forbidden_module_prefixes = (

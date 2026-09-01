@@ -215,3 +215,31 @@ statement = "Rejected or failed public/runtime operations expose bounded, reprod
 severity = "high"
 required_evidence = ["contract", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-NOTIFICATION-LINEAGE-001"
+statement = "A notification escalation lineage advances sequentially: at most one live channel task exists per lineage (application step plus partial-unique DB backstop), concurrent escalation triggers serialize to exactly one next-channel child with deterministic loser semantics, and a replayed escalation decision is a no-op."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-NOTIFICATION-TERMINAL-001"
+statement = "An exhausted notification lineage always closes in an operator-visible terminal fact (fatigue_limited or unreachable) instead of silence, every escalation decision is audited through the append-only escalation ledger, and ledger identity and history cannot be rewritten."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-DELIVERY-OUTCOME-001"
+statement = "Transport outcome reports are persisted before interpretation and deduped; only fenced finalize mutates delivery state, a late contradictory report cannot downgrade a terminal delivery state, a report about an unknown identity is a durable no-op, and a malformed report becomes a rejected durable fact rather than guessed delivery state."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-CONTACT-VERIFICATION-001"
+statement = "Party and staff contact points are created unverified and become verified only through the explicit confirmation command; verification is monotonic (no role can downgrade a verified contact point through direct mutation) and deactivation never rewrites verification provenance."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]

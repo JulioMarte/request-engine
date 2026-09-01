@@ -107,7 +107,7 @@ An OutboxMessage is not marked delivered merely because an internal handler ran.
 
 The runtime does not silently discard events. A deployment must provide an explicit publisher implementation, even when that publisher targets an in-process or self-hosted transport.
 
-The `OutboxPublisher` protocol is runtime-checkable, and composition must validate the supplied publisher at process startup: `bootstrap/reference_worker_factory.py` resolves `REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY` and rejects a factory that does not yield an `OutboxPublisher` (naming the environment variable in the error) instead of deferring the failure to the first publish. This is the composition-side counterpart of the no-silent-discard rule above; the reference factory's full environment contract (`REQUEST_ENGINE_WEBHOOK_BASE_URL`, `REQUEST_ENGINE_WEBHOOK_AUTH_HEADER`, `REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) is the documented composition path a deployment may name via `REQUEST_ENGINE_WORKER_FACTORY` (see `37-f7-implementation-plan.md`).
+The `OutboxPublisher` protocol is runtime-checkable, and composition must validate the supplied publisher at process startup: `bootstrap/reference_worker_factory.py` resolves `REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY` and rejects a factory that does not yield an `OutboxPublisher` (naming the environment variable in the error) instead of deferring the failure to the first publish. This is the composition-side counterpart of the no-silent-discard rule above; the reference factory's full environment contract is specified in "Reference worker factory environment contract" below, and the composition path a deployment names via `REQUEST_ENGINE_WORKER_FACTORY`.
 
 A technical Outbox `claim_token` is capability material and is not part of the integration event. `OutboxPipelineProcessor` therefore supports an explicit fenced-internal-handler surface that receives `(OutboxEvent, claim_token)` while the publisher receives only the capability-token-free `OutboxEvent`. Event types registered on the fenced surface cannot also be registered on the generic internal-handler surface.
 
@@ -138,6 +138,18 @@ dead       = worker/infrastructure retries exhausted or permanent handler failur
 ```
 
 Provider payload is never business authority by itself. ProviderEvent handlers raise `RejectedWorkError` for semantic rejection; only the ProviderEvent runtime receives the fenced reject capability. Rejection requested on another runtime is a configuration failure rather than a silent conversion to dead-letter state.
+
+### Reference handler registration for delivery outcome reports
+
+The reference worker factory registers exactly one provider-event handler under the connection key `(provider_key="webhook", connection_key="primary")` (`bootstrap/communication_providers.py`). The connection key must match the deployment's authenticated callback adapter for the webhook transport; an unmatched report fails loud instead of being silently dropped.
+
+A delivery outcome report is the persisted provider-event payload. Contract:
+
+- `dedupe_key` (required non-empty string) — echoes the delivery's provider idempotency key. The delivery row is resolved authoritatively from the authenticated lease's `(provider_key, connection_key)` plus this key; a client-sent delivery id is never trusted. A report about an unknown key is a durable no-op (nothing is created).
+- `status` (required) — one of `accepted`, `delivered`, `failed`. Anything outside that vocabulary is a typed rejection, never a guessed state.
+- `retryable` (optional boolean, default `false`), `provider_message_id` (optional non-empty string), `result_data` (optional object).
+
+Finalize runs in one tenant transaction through the same fenced path as reconcile polling: terminal-monotonic, replay no-op. A malformed report becomes a rejected durable ProviderEvent fact (`RejectedWorkError`), never silence or invented delivery state.
 
 ## Manual replay
 
@@ -209,3 +221,14 @@ The ScheduledAction router is assembled in a dedicated bootstrap component so ad
 `WorkerProcess.run_once()` is a bounded operational probe and returns per-stream `WorkerItemOutcome` evidence. `WorkerProcess.run(stop_event)` is the long-lived process boundary.
 
 The installed `request-engine-worker` command loads one trusted zero-argument deployment factory from `--factory module:attribute` or `REQUEST_ENGINE_WORKER_FACTORY`. Provider selection, publisher configuration, and credentials remain explicit deployment concerns; the launcher does not infer transports or install silent no-op adapters. `SIGINT` and `SIGTERM` set the shared graceful-shutdown event.
+
+## Reference worker factory environment contract
+
+`request_engine.bootstrap.reference_worker_factory.create_worker` is the documented `REQUEST_ENGINE_WORKER_FACTORY` target. It reads these variables once at process startup; every one is required unless stated otherwise, and a missing or malformed value raises before any I/O (the process fails loudly instead of composing a degraded runtime):
+
+- `REQUEST_ENGINE_WEBHOOK_BASE_URL` — base HTTPS URL of the remote delivery webhook transport. Without it no delivery provider is registered and every send fails through the existing `provider_not_configured` path, so it is required for the documented deployment.
+- `REQUEST_ENGINE_WEBHOOK_AUTH_HEADER` — optional, form `Header-Name: value`; sent on every webhook handoff/status request. Present but malformed (no `:` separator or empty name/value) is a startup failure, not a silent unauthenticated transport.
+- `REQUEST_ENGINE_WORKER_DATABASE_URL` — PostgreSQL DSN for the worker-role credential; owns all claim/fence/finalize control-store traffic.
+- `REQUEST_ENGINE_APP_DATABASE_URL` — PostgreSQL DSN for the app-role credential; owns all authoritative domain transactions (scheduled business handlers, provider-event interpretation, reservation-lifecycle consequences). Composition keeps the two factories distinct and rejects reuse of one factory for both roles.
+- `REQUEST_ENGINE_WORKER_PRINCIPAL_ID` — UUID of the worker principal used to attribute authoritative writes made by scheduled handlers (no-show evaluation, reservation lifecycle).
+- `REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY` — `module:attribute` path to a zero-argument factory that yields the deployment's `OutboxPublisher`. It is imported and called at startup; a missing module/attribute, a non-callable factory, or a non-`OutboxPublisher` result is a startup failure naming the variable. There is no default publisher: no deployment silently discards outbox events.

@@ -47,13 +47,16 @@ def send_request() -> ProviderSendRequest:
         delivery_id=uuid4(),
         communication_task_id=task_id,
         provider_key="webhook",
-        provider_idempotency_key=f"communication:{task_id}:attempt:2",
+        # Opaque key with no parseable attempt tail: the handoff payload must
+        # carry attempt_no from the explicit contract field, never the key.
+        provider_idempotency_key=f"communication:{task_id}:attempt-two",
         channel="email",
         destination="patient@example.test",
         contact_point_id=uuid4(),
         template_key="booking-confirmed",
         template_version=3,
         render_context={"clinic": "Sala 4"},
+        attempt_no=2,
         expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
         reconcile_after_seconds=300,
     )

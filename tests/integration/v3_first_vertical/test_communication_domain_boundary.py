@@ -16,8 +16,8 @@ from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.communications.adapters.db.communication_commands import (
     PostgresCommunicationCommands,
 )
-from request_engine.modules.communications.adapters.worker.delivery_worker import (
-    CommunicationDeliveryWorker,
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
 )
 from request_engine.modules.communications.application.commands.create_communication_task import (
     CreateCommunicationTaskCommand,
@@ -35,11 +35,8 @@ from request_engine.platform.scheduling.postgres import PostgresScheduledActionW
 from .booking_boundary_fixture import create_booking_boundary_fixture
 
 PgConnection = Connection[Any]
-BookingState = tuple[
-    tuple[object, ...],
-    tuple[tuple[object, ...], ...],
-    tuple[tuple[object, ...], ...],
-]
+PgRow = tuple[object, ...]
+BookingState = tuple[PgRow, tuple[PgRow, ...], tuple[PgRow, ...]]
 
 
 class BoundaryProvider:
@@ -174,13 +171,14 @@ async def test_i47_provider_delivery_status_cannot_mutate_source_reservation_gra
     scheduler = PostgresScheduledActionWorker(worker_session_factory)
     lease = next(item for item in await scheduler.claim(limit=500) if item.subject_id == task.id)
     provider = BoundaryProvider()
-    outcome = await CommunicationDeliveryWorker(
+    handler = CommunicationDeliveryScheduledHandler(
         session_factory,
         scheduler,
         {"boundary": provider},
-    ).process(lease)
+    )
+    await handler.handle(lease)
+    assert await scheduler.complete(lease) is True
 
-    assert outcome.detail == "delivered"
     assert len(provider.send_requests) == 1
     assert provider.send_requests[0].communication_task_id == task.id
     after = _booking_state(

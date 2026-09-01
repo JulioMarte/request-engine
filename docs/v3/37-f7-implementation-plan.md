@@ -99,6 +99,8 @@ memory; F4 projection and the operator board cannot see them.
 
 ## S3 — F7b Delivery escalation policy (after S1)
 
+Status: **implemented** — landed in PR #107 with T1-T8 (`docs/v3/40`); acceptance criteria all proven.
+
 **Problem:** definitive channel failure is terminal; unreachable patients are silent.
 
 **Deliverable:** closed-trigger escalation with sequential channel fallback, lineage and
@@ -207,12 +209,12 @@ and the publisher-factory isinstance guard.
 | # | Item | Why it matters to the product goal | Lands with |
 |---|---|---|---|
 | FU-1 | Operator day board: who is coming / confirmed / late / movable — for reservations AND attendance state (not only the estimate) | Goal criterion 4 is NOT-MET: no day view exists at any layer today; the secretary polls reservation-by-reservation | Dedicated slice (highest priority after S4) |
-| FU-2 | Provider-event ingestion handler mapping transport outcome reports to fenced delivery finalize (callback half of contract §3; today `delivered` arrives only via lookup polling ~`reconcile_after_seconds`) | Closes the delivered-state loop in near-real-time; required before S3 escalation trusts outcomes | S3 (prerequisite) |
-| FU-3 | Decide the legacy `CommunicationDeliveryWorker` (test-composed) vs the scheduled handler: it does not poison on `DeliveryConfigurationError` | Divergent failure semantics between two delivery executors invites silent-stuck regressions in test compositions | S3 |
-| FU-4 | `ProviderDeliveryStatus.NOT_FOUND` remains armed in finalize (FAILED + retryable -> resend) though the webhook provider no longer emits it; also `attempt_no` is derived by parsing the dedupe-key tail | Armed-but-unreachable resend vocabulary and string coupling; both need an explicit disposition | S3 |
-| FU-5 | Consider `CapacitySafeSlotOfferCapacity` boundary in the reference-factory slot-recovery composition (raw adapter mirrored from the composition tests) | Consistency with the safe-capacity boundary used by the expiry handler in the same runtime | S3 |
-| FU-6 | Reference worker factory env contract (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) documentation in `docs/v3/10-worker-runtime-hardening.md` | Deployment-facing configuration contract belongs in the canonical hardening doc | docs change with S3 |
-| FU-7 | Recovery impact-communication policy: recovery tasks now use the shared transactional channel set + dispatch-time provider binding; confirm recipients resolve verified contact points as intended | Recovery communications are the F5 surface most exposed to the new fail-fast semantics | verify with S3 |
+| FU-2 | Provider-event ingestion handler mapping transport outcome reports to fenced delivery finalize (callback half of contract §3; today `delivered` arrives only via lookup polling ~`reconcile_after_seconds`) | Closes the delivered-state loop in near-real-time; required before S3 escalation trusts outcomes | decided in doc 40 T1: S3 prerequisite, provider-event handler → fenced finalize |
+| FU-3 | Decide the legacy `CommunicationDeliveryWorker` (test-composed) vs the scheduled handler: it does not poison on `DeliveryConfigurationError` | Divergent failure semantics between two delivery executors invites silent-stuck regressions in test compositions | decided in doc 40 T5: retire the legacy worker; scheduled handler becomes the single delivery executor |
+| FU-4 | `ProviderDeliveryStatus.NOT_FOUND` remains armed in finalize (FAILED + retryable -> resend) though the webhook provider no longer emits it; also `attempt_no` is derived by parsing the dedupe-key tail | Armed-but-unreachable resend vocabulary and string coupling; both need an explicit disposition | decided in doc 40 T6: remove NOT_FOUND from the vocabulary/finalize mapping; explicit `attempt_no` on `ProviderSendRequest` |
+| FU-5 | Consider `CapacitySafeSlotOfferCapacity` boundary in the reference-factory slot-recovery composition (raw adapter mirrored from the composition tests) | Consistency with the safe-capacity boundary used by the expiry handler in the same runtime | decided in doc 40 T8: both reference-runtime compositions use `CapacitySafeSlotOfferCapacity` |
+| FU-6 | Reference worker factory env contract (`REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY`, `REQUEST_ENGINE_WORKER_PRINCIPAL_ID`) documentation in `docs/v3/10-worker-runtime-hardening.md` | Deployment-facing configuration contract belongs in the canonical hardening doc | decided in doc 40 T8: document the env contract in `docs/v3/10` with S3 |
+| FU-7 | Recovery impact-communication policy: recovery tasks now use the shared transactional channel set + dispatch-time provider binding; confirm recipients resolve verified contact points as intended | Recovery communications are the F5 surface most exposed to the new fail-fast semantics | verified with S3: recipients resolve verified contact points; result recorded in doc 40 T8 |
 
 ## Composition contract for the webhook transport (S1)
 
@@ -220,6 +222,11 @@ The reference worker factory `bootstrap/reference_worker_factory.py` is the docu
 composition path a deployment may name via `REQUEST_ENGINE_WORKER_FACTORY`. Configuration
 is explicit and fails loud at startup: `REQUEST_ENGINE_WEBHOOK_BASE_URL` (required),
 `REQUEST_ENGINE_WEBHOOK_AUTH_HEADER` (optional, `Header-Name: value`), plus the existing
-worker runtime variables. Tenants select the transport per channel via
+worker runtime variables; the full environment contract is specified in
+`10-worker-runtime-hardening.md`. Tenants select the transport per channel via
 `channel_policy.provider_key = "webhook"`. Provider selection remains a deployment concern;
 no adapter is ever inferred.
+
+Since doc 40 T6, the handoff payload's `attempt_no` is an explicit `ProviderSendRequest`
+field always populated from the delivery attempt counter (no longer derived by parsing the
+dedupe-key tail); consumers relying on a null `attempt_no` for first attempts must adapt.

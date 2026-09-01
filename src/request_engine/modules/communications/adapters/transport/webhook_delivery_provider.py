@@ -97,12 +97,11 @@ class WebhookDeliveryProvider:
 
 
 def _handoff_payload(request: ProviderSendRequest) -> dict[str, object]:
-    tail = request.provider_idempotency_key.rsplit(":", 1)[-1]
     return {
         "delivery_id": str(request.delivery_id),
         "communication_task_id": str(request.communication_task_id),
         "dedupe_key": request.provider_idempotency_key,
-        "attempt_no": int(tail) if tail.isdigit() else None,
+        "attempt_no": request.attempt_no,
         "provider_key": request.provider_key,
         "channel": request.channel,
         "recipient": {

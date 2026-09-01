@@ -9,8 +9,8 @@ from psycopg import Connection
 from request_engine.modules.communications.adapters.db.communication_commands import (
     PostgresCommunicationCommands,
 )
-from request_engine.modules.communications.adapters.worker.delivery_worker import (
-    CommunicationDeliveryWorker,
+from request_engine.modules.communications.adapters.worker.scheduled_delivery import (
+    CommunicationDeliveryScheduledHandler,
 )
 from request_engine.modules.communications.application.commands.create_communication_task import (
     CreateCommunicationTaskCommand,
@@ -59,8 +59,7 @@ class FakeProvider:
         self.send_requests.append(request)
         if self._lock_probe is not None:
             self._lock_probe(request.communication_task_id)
-        if not self._send_results:
-            raise AssertionError("unexpected provider send")
+        assert self._send_results, "unexpected provider send"
         result = self._send_results.pop(0)
         if isinstance(result, Exception):
             raise result
@@ -229,14 +228,14 @@ async def test_delivery_provider_io_runs_after_authoritative_transaction_commit(
         ],
         lock_probe=assert_task_is_not_locked,
     )
-    worker = CommunicationDeliveryWorker(
+    worker = CommunicationDeliveryScheduledHandler(
         session_factory,
         scheduler,
         {"fake": provider},
     )
 
-    outcome = await worker.process(lease)
-    assert outcome.detail == "delivered"
+    await worker.handle(lease)
+    assert await scheduler.complete(lease) is True
     assert len(provider.send_requests) == 1
     assert len(provider.lookup_requests) == 0
 
@@ -282,30 +281,30 @@ async def test_ambiguous_send_reconciles_without_blind_resend(
             )
         ],
     )
-    worker = CommunicationDeliveryWorker(
+    worker = CommunicationDeliveryScheduledHandler(
         session_factory,
         scheduler,
         {"fake": provider},
     )
 
-    first = await worker.process(dispatch_lease)
-    assert first.detail == "ambiguous"
-    assert first.delivery_id is not None
+    await worker.handle(dispatch_lease)
+    assert await scheduler.complete(dispatch_lease) is True
     assert len(provider.send_requests) == 1
+    delivery_id = provider.send_requests[0].delivery_id
 
     _force_action_due(
         admin_conn,
         organization_id=fixture.organization_id,
         action_type="reconcile_delivery",
-        subject_id=first.delivery_id,
+        subject_id=delivery_id,
     )
     reconcile_lease = await _claim_action_for_subject(
         scheduler,
-        subject_id=first.delivery_id,
+        subject_id=delivery_id,
     )
-    reconciled = await worker.process(reconcile_lease)
+    await worker.handle(reconcile_lease)
+    assert await scheduler.complete(reconcile_lease) is True
 
-    assert reconciled.detail == "delivered"
     assert len(provider.send_requests) == 1
     assert len(provider.lookup_requests) == 1
     assert provider.lookup_requests[0].provider_idempotency_key == (
@@ -342,29 +341,30 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
             ),
         ],
     )
-    worker = CommunicationDeliveryWorker(
+    worker = CommunicationDeliveryScheduledHandler(
         session_factory,
         scheduler,
         {"fake": provider},
     )
 
     dispatch_lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
-    accepted = await worker.process(dispatch_lease)
-    assert accepted.detail == "accepted"
-    assert accepted.delivery_id is not None
+    await worker.handle(dispatch_lease)
+    assert await scheduler.complete(dispatch_lease) is True
+    delivery_id = provider.send_requests[0].delivery_id
+    assert len(provider.send_requests) == 1
 
     _force_action_due(
         admin_conn,
         organization_id=fixture.organization_id,
         action_type="reconcile_delivery",
-        subject_id=accepted.delivery_id,
+        subject_id=delivery_id,
     )
     first_reconcile = await _claim_action_for_subject(
         scheduler,
-        subject_id=accepted.delivery_id,
+        subject_id=delivery_id,
     )
-    still_accepted = await worker.process(first_reconcile)
-    assert still_accepted.detail == "accepted"
+    await worker.handle(first_reconcile)
+    assert await scheduler.complete(first_reconcile) is True
 
     future_count = admin_conn.execute(
         """
@@ -375,7 +375,7 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
           AND subject_id = %s
           AND status = 'pending'
         """,
-        (fixture.organization_id, accepted.delivery_id),
+        (fixture.organization_id, delivery_id),
     ).fetchone()
     assert future_count == (1,)
 
@@ -383,14 +383,14 @@ async def test_repeated_accepted_reconciliation_schedules_one_future_followup(
         admin_conn,
         organization_id=fixture.organization_id,
         action_type="reconcile_delivery",
-        subject_id=accepted.delivery_id,
+        subject_id=delivery_id,
     )
     second_reconcile = await _claim_action_for_subject(
         scheduler,
-        subject_id=accepted.delivery_id,
+        subject_id=delivery_id,
     )
-    delivered = await worker.process(second_reconcile)
-    assert delivered.detail == "delivered"
+    await worker.handle(second_reconcile)
+    assert await scheduler.complete(second_reconcile) is True
     assert len(provider.send_requests) == 1
     assert len(provider.lookup_requests) == 2
 
@@ -415,15 +415,15 @@ async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
             )
         ],
     )
-    worker = CommunicationDeliveryWorker(
+    worker = CommunicationDeliveryScheduledHandler(
         session_factory,
         scheduler,
         {"fake": provider},
     )
 
     original_lease = await _claim_action_for_subject(scheduler, subject_id=task_id)
-    failed = await worker.process(original_lease)
-    assert failed.detail == "failed"
+    await worker.handle(original_lease)
+    assert await scheduler.complete(original_lease) is True
     assert len(provider.send_requests) == 1
 
     retry_row = admin_conn.execute(
@@ -445,5 +445,5 @@ async def test_retryable_failure_keeps_backoff_work_separate_from_old_action(
     # A completed lease is stale authority. The preparation fence must reject its
     # replay before another provider call, even though the durable retry exists.
     with pytest.raises(LeaseLostWorkError, match="delivery_prepare_fence_lost"):
-        await worker.process(original_lease)
+        await worker.handle(original_lease)
     assert len(provider.send_requests) == 1
