@@ -47,6 +47,29 @@ def foreign_request(
             None,
             404,
         )
+    if operation.name == "parties.rename":
+        return (
+            f"/v1/parties/{foreign.party_id}/rename",
+            {},
+            {"display_name": "Isolation Probe"},
+            404,
+        )
+    if operation.name == "parties.add_document":
+        return (
+            f"/v1/parties/{foreign.party_id}/documents",
+            {},
+            {"kind": "cedula", "value": "40212345678"},
+            404,
+        )
+    if operation.name == "parties.deactivate_contact_point":
+        return (
+            f"/v1/parties/{foreign.party_id}/contact-points/{PROBE_UUID_2}/deactivate",
+            {},
+            None,
+            404,
+        )
+    if operation.name == "parties.deactivate":
+        return (f"/v1/parties/{foreign.party_id}/deactivate", {}, None, 404)
     if operation.name == "parties.lookup":
         return ("/v1/parties/lookup", {"mode": "phone", "value": "+18295550100"}, None, 200)
     raise AssertionError(f"missing S0b tenant probe for {operation.name}")

@@ -12,11 +12,22 @@ from request_engine.platform.security.capability_types import (
 )
 
 BOT_CAPABILITY_SUBSET = ("parties.register", "parties.add_contact_point", "parties.lookup")
+OPERATOR_CORRECTIONS = (
+    "parties.rename",
+    "parties.add_document",
+    "parties.deactivate_contact_point",
+    "parties.deactivate",
+)
 
 
 @pytest.mark.parametrize(
     "key",
-    ("parties.register", "parties.add_contact_point", "parties.confirm_contact_point"),
+    (
+        "parties.register",
+        "parties.add_contact_point",
+        "parties.confirm_contact_point",
+        *OPERATOR_CORRECTIONS,
+    ),
 )
 def test_party_commands_are_public_idempotent_commands_without_revision(key: str) -> None:
     definition = capability_definition(key)
@@ -35,9 +46,13 @@ def test_party_lookup_is_a_public_query() -> None:
     assert definition.idempotency is IdempotencyPolicy.NONE
 
 
-def test_bot_grant_subset_does_not_satisfy_confirm_contact_point() -> None:
-    """The confirm gate is grant-based: creation/lookup grants never satisfy it."""
+def test_bot_grant_subset_does_not_satisfy_operator_only_commands() -> None:
+    """Confirm and corrections are grant-based: creation/lookup grants never satisfy them."""
 
     for granted in BOT_CAPABILITY_SUBSET:
         assert not grant_satisfies(granted, "parties.confirm_contact_point")
+        for correction in OPERATOR_CORRECTIONS:
+            assert not grant_satisfies(granted, correction)
     assert grant_satisfies("parties.confirm_contact_point", "parties.confirm_contact_point")
+    for correction in OPERATOR_CORRECTIONS:
+        assert grant_satisfies(correction, correction)

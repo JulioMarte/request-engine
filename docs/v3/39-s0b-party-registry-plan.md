@@ -56,6 +56,7 @@ same branch; exact-head CI is the merge evidence.
 ## Explicitly deferred
 
 - R3-4 bot-as-subject authority mode (S4) — S0b only lets a bot *create/lookup*.
-- Party update/merge/deactivate surfaces — not needed for the first clinic workflow;
-  revisit when a real use case exists.
+- Party merge — the only remaining deferred Party correction; the operator-granted
+  rename, add-document, contact-point deactivation and Party deactivation surfaces
+  shipped as the S0b correction batch (`docs/v3/38` §4).
 - Any inbound-message verification round-trip (verification codes) — S4 territory.

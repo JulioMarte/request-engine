@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 from .operational_support import PgConnection, new_org
 from .tenant_sandbox import ALL_PUBLIC_CAPABILITIES, client_with_actors
@@ -75,6 +75,7 @@ async def test_bot_registration_is_never_verified_until_operator_confirms(
             organization_id=organization_id,
             principal_id=bot_id,
             capabilities=PARTY_CAPABILITIES - {"parties.confirm_contact_point"},
+            principal_kind=PrincipalKind.INTEGRATION,
         ),
     }
     async with client_with_actors(e2e_session_factory, actors) as client:

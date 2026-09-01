@@ -48,18 +48,27 @@ async def register_party(
     contact_points: list[PartyContactPointInput] = []
     seen_contacts: set[tuple[str, str]] = set()
     for contact in command.contact_points:
-        normalized = normalize_party_contact_value(contact.channel, contact.value)
+        try:
+            normalized = normalize_party_contact_value(contact.channel, contact.value)
+        except ValueError as error:
+            raise ValueError(f"contact point {contact.value!r}: {error}") from None
         key = (contact.channel, normalized)
         if key in seen_contacts:
-            raise ValueError(f"duplicate contact point: {contact.channel} {normalized}")
+            raise ValueError(
+                f"duplicate contact point: {contact.channel} {contact.value!r}"
+                f" (normalized {normalized})"
+            )
         seen_contacts.add(key)
         contact_points.append(PartyContactPointInput(contact.channel, normalized))
     documents: list[PartyDocumentInput] = []
     seen_kinds: set[str] = set()
     for document in command.documents:
-        normalized = normalize_identity_document(document.kind, document.value)
+        try:
+            normalized = normalize_identity_document(document.kind, document.value)
+        except ValueError as error:
+            raise ValueError(f"document {document.value!r}: {error}") from None
         if document.kind in seen_kinds:
-            raise ValueError(f"duplicate document kind: {document.kind}")
+            raise ValueError(f"duplicate document kind: {document.kind} (value {document.value!r})")
         seen_kinds.add(document.kind)
         documents.append(PartyDocumentInput(document.kind, normalized))
     return await handler.register_party(

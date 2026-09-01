@@ -71,28 +71,25 @@ def _app(actor: ActorContext, failing: _FailingRegistry) -> FastAPI:
     return app
 
 
-async def _post_register(failing: _FailingRegistry) -> tuple[int, dict[str, object]]:
+async def _post(
+    failing: _FailingRegistry, path: str, payload: dict[str, object]
+) -> tuple[int, dict[str, object]]:
     async with AsyncClient(
         transport=ASGITransport(app=_app(_actor(), failing)), base_url="http://test"
     ) as client:
         response = await client.post(
-            "/v1/parties",
-            json={"display_name": "Jose Perez"},
-            headers={"Idempotency-Key": f"error-mapping-{uuid4().hex}"},
+            path, json=payload, headers={"Idempotency-Key": f"error-mapping-{uuid4().hex}"}
         )
     return response.status_code, response.json()["error"]
+
+
+async def _post_register(failing: _FailingRegistry) -> tuple[int, dict[str, object]]:
+    return await _post(failing, "/v1/parties", {"display_name": "Jose Perez"})
 
 
 async def _post_add_contact_point(failing: _FailingRegistry) -> tuple[int, dict[str, object]]:
-    async with AsyncClient(
-        transport=ASGITransport(app=_app(_actor(), failing)), base_url="http://test"
-    ) as client:
-        response = await client.post(
-            f"/v1/parties/{uuid4()}/contact-points",
-            json={"channel": "phone", "value": "+18295551234"},
-            headers={"Idempotency-Key": f"error-mapping-{uuid4().hex}"},
-        )
-    return response.status_code, response.json()["error"]
+    payload: dict[str, object] = {"channel": "phone", "value": "+18295551234"}
+    return await _post(failing, f"/v1/parties/{uuid4()}/contact-points", payload)
 
 
 @pytest.mark.asyncio
@@ -101,6 +98,21 @@ async def test_document_conflict_maps_to_conflict_envelope() -> None:
     assert status == 409
     assert error["code"] == "party_document_conflict"
     assert error["resolution"] == "fix_request"
+
+
+@pytest.mark.asyncio
+async def test_document_conflict_details_carry_existing_party_identity() -> None:
+    existing_party_id = uuid4()
+    conflict = PartyDocumentConflict(
+        "dup cedula", existing_party_id=existing_party_id, existing_display_name="Alma Bien"
+    )
+    status, error = await _post_register(_FailingRegistry(conflict))
+    assert status == 409
+    assert error["details"] == {
+        "reason": "dup cedula",
+        "existing_party_id": str(existing_party_id),
+        "existing_display_name": "Alma Bien",
+    }
 
 
 @pytest.mark.asyncio

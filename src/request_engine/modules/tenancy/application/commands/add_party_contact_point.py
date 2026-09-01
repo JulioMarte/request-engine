@@ -41,5 +41,8 @@ async def add_party_contact_point(
 
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
-    normalized = normalize_party_contact_value(command.channel, command.value)
+    try:
+        normalized = normalize_party_contact_value(command.channel, command.value)
+    except ValueError as error:
+        raise ValueError(f"contact point {command.value!r}: {error}") from None
     return await handler.add_party_contact_point(replace(command, value=normalized))

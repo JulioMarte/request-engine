@@ -17,7 +17,7 @@ from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     RegisteredVia,
 )
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 
 class _FixedActorResolver:
@@ -78,16 +78,19 @@ def _app(actor: ActorContext, commands: _RecordingContactPointCommands) -> FastA
     return app
 
 
-def _actor(*capabilities: str) -> ActorContext:
+def _actor(*capabilities: str, principal_kind: PrincipalKind = PrincipalKind.HUMAN) -> ActorContext:
     return ActorContext(
-        organization_id=uuid4(), principal_id=uuid4(), capabilities=frozenset(capabilities)
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        capabilities=frozenset(capabilities),
+        principal_kind=principal_kind,
     )
 
 
 @pytest.mark.asyncio
 async def test_add_contact_point_derives_bot_attribution_and_maps_view() -> None:
     commands = _RecordingContactPointCommands(_bot_contact_point())
-    actor = _actor("parties.add_contact_point")
+    actor = _actor("parties.add_contact_point", principal_kind=PrincipalKind.INTEGRATION)
     async with AsyncClient(
         transport=ASGITransport(app=_app(actor, commands)), base_url="http://test"
     ) as client:

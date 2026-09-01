@@ -150,7 +150,7 @@ are normative only once implemented with evidence.
 
 Primary documents:
 
-1. `v3/38-s0b-party-registry-contract.md` — **normative S0b contract** (tenancy-owned Party/contact-point/document registry, operator-asserted verification, bot principal creation mode, attribution facts, lookup semantics).
+1. `v3/38-s0b-party-registry-contract.md` — **normative S0b contract** (tenancy-owned Party/contact-point/document registry, operator-asserted verification, bot principal creation mode with placeholder naming, attribution facts, lookup semantics, operator-granted correction commands).
 2. `v3/39-s0b-party-registry-plan.md` — build order, proofs and explicitly deferred concerns.
 
 S0b is the Round-3 reordering root of the F7 roadmap: no front-desk slice can ship while

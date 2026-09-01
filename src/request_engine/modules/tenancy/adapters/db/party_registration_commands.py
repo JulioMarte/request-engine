@@ -8,6 +8,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_codec import (
     party_from_json,
     party_to_json,
 )
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
+    raise_document_conflict,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import (
     contact_point_rows,
     document_rows,
@@ -21,7 +24,6 @@ from request_engine.modules.tenancy.adapters.db.party_registry_views import (
     load_party_views,
 )
 from request_engine.modules.tenancy.application.commands import register_party
-from request_engine.modules.tenancy.application.errors import PartyDocumentConflict
 from request_engine.modules.tenancy.contracts.party_registry import RegisteredParty
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
@@ -81,14 +83,8 @@ class PostgresPartyRegistrationCommands:
                     display_name=command.display_name,
                     principal_id=command.principal_id,
                 )
-                await insert_contact_points(
-                    session,
-                    contact_point_rows(command, party_id),
-                )
-                await insert_documents(
-                    session,
-                    document_rows(command, party_id),
-                )
+                await insert_contact_points(session, contact_point_rows(command, party_id))
+                await insert_documents(session, document_rows(command, party_id))
                 state = (await load_party_views(session, command.organization_id, [party_id]))[0]
                 await append_audit(
                     session,
@@ -117,13 +113,9 @@ class PostgresPartyRegistrationCommands:
                         "contact_point_count": len(state.contact_points),
                     },
                 )
-                await complete_idempotency(
-                    session,
-                    idempotency_id,
-                    {"party": party_to_json(state)},
-                )
+                await complete_idempotency(session, idempotency_id, {"party": party_to_json(state)})
                 return state
-        except IntegrityError:
-            raise PartyDocumentConflict(
-                "identity document value already registered for another party"
-            ) from None
+        except IntegrityError as exc:
+            await raise_document_conflict(
+                self._session_factory, command.organization_id, command.documents, exc
+            )

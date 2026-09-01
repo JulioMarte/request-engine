@@ -5,6 +5,9 @@ from uuid import UUID
 from request_engine.modules.tenancy.application.commands.add_party_contact_point import (
     AddPartyContactPointCommand,
 )
+from request_engine.modules.tenancy.application.commands.add_party_document import (
+    AddPartyDocumentCommand,
+)
 from request_engine.modules.tenancy.application.commands.register_party import (
     RegisterPartyCommand,
 )
@@ -44,6 +47,18 @@ def single_contact_point_row(
             "normalized_value": command.value,
             "verified": _verified_for(command.registered_via),
             "registered_via": command.registered_via.value,
+            "principal_id": command.principal_id,
+        }
+    ]
+
+
+def single_document_row(command: AddPartyDocumentCommand) -> list[dict[str, object]]:
+    return [
+        {
+            "organization_id": command.organization_id,
+            "party_id": command.party_id,
+            "kind": command.kind,
+            "normalized_value": command.value,
             "principal_id": command.principal_id,
         }
     ]

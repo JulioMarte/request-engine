@@ -29,7 +29,6 @@ CREATE TABLE request_engine.party_identity_documents (
     created_by_principal_id uuid,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-    UNIQUE (organization_id, kind, normalized_value),
     FOREIGN KEY (organization_id, party_id)
         REFERENCES request_engine.parties (organization_id, id),
     FOREIGN KEY (organization_id, created_by_principal_id)
@@ -39,7 +38,10 @@ CREATE TABLE request_engine.party_identity_documents (
 CREATE UNIQUE INDEX party_identity_documents_one_active_per_kind_uq
     ON request_engine.party_identity_documents (organization_id, party_id, kind)
     WHERE active;
-CREATE INDEX party_identity_documents_exact_lookup_idx
+-- I-S0b-1: one document value of a kind per tenant among ACTIVE rows. The
+-- partial unique index also serves the exact-lookup predicate (same columns,
+-- same partial predicate); an inactive fact never blocks re-registration.
+CREATE UNIQUE INDEX party_identity_documents_active_value_uq
     ON request_engine.party_identity_documents (organization_id, kind, normalized_value)
     WHERE active;
 

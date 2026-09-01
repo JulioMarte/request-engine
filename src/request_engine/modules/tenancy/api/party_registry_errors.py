@@ -43,13 +43,32 @@ async def party_registry_error_handler(_: Request, exc: Exception) -> JSONRespon
     return _response(status_code, body)
 
 
+def _document_conflict_details(exc: PartyDocumentConflict) -> dict[str, object]:
+    details: dict[str, object] = {"reason": exc.reason}
+    if exc.existing_party_id is not None:
+        details["existing_party_id"] = str(exc.existing_party_id)
+    if exc.existing_display_name is not None:
+        details["existing_display_name"] = exc.existing_display_name
+    return details
+
+
+def _contact_point_not_found_details(exc: PartyContactPointNotFound) -> dict[str, object]:
+    details: dict[str, object] = {"party_id": str(exc.party_id)}
+    if exc.contact_point_id is not None:
+        details["contact_point_id"] = str(exc.contact_point_id)
+    else:
+        details["channel"] = exc.channel or ""
+        details["normalized_value"] = exc.normalized_value or ""
+    return details
+
+
 def _party_registry_error(exc: PartyRegistryError) -> tuple[int, ErrorBody]:
     if isinstance(exc, PartyDocumentConflict):
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="party_document_conflict",
             message=str(exc),
             resolution=ErrorResolution.FIX_REQUEST,
-            details={"reason": exc.reason},
+            details=_document_conflict_details(exc),
         )
     if isinstance(exc, PartyContactPointExists):
         return status.HTTP_409_CONFLICT, ErrorBody(
@@ -67,10 +86,7 @@ def _party_registry_error(exc: PartyRegistryError) -> tuple[int, ErrorBody]:
             code="party_contact_point_not_found",
             message=str(exc),
             resolution=ErrorResolution.FIX_REQUEST,
-            details={
-                "party_id": str(exc.party_id),
-                "contact_point_id": str(exc.contact_point_id),
-            },
+            details=_contact_point_not_found_details(exc),
         )
     if isinstance(exc, PartyNotFound):
         return status.HTTP_404_NOT_FOUND, ErrorBody(

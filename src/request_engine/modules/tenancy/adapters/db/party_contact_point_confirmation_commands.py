@@ -59,7 +59,10 @@ class PostgresPartyContactPointConfirmationCommands:
             )
             if replay is not None:
                 state = party_from_json(cast(dict[str, object], replay["party"]))
-                return cast(PartyContactPoint, contact_point_by_id(state, command.contact_point_id))
+                affected = contact_point_by_id(state, command.contact_point_id)
+                if affected is None:
+                    raise PartyContactPointNotFound(command.party_id, command.contact_point_id)
+                return affected
             locked = await lock_contact_point(
                 session,
                 command.organization_id,

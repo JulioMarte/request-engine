@@ -21,7 +21,7 @@ from request_engine.modules.tenancy.contracts.party_registry import (
     RegisteredParty,
     RegisteredVia,
 )
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.http import CapabilityRequired
 
 
@@ -57,9 +57,12 @@ def _registered_party() -> RegisteredParty:
     )
 
 
-def _actor(*capabilities: str) -> ActorContext:
+def _actor(*capabilities: str, principal_kind: PrincipalKind = PrincipalKind.HUMAN) -> ActorContext:
     return ActorContext(
-        organization_id=uuid4(), principal_id=uuid4(), capabilities=frozenset(capabilities)
+        organization_id=uuid4(),
+        principal_id=uuid4(),
+        capabilities=frozenset(capabilities),
+        principal_kind=principal_kind,
     )
 
 
@@ -83,21 +86,13 @@ def _app(actor: ActorContext, registration: _RecordingRegistration) -> FastAPI:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("grants", "expected_via"),
-    [
-        (("parties.register", "appointments.subject_override"), RegisteredVia.OPERATOR),
-        (("parties.register",), RegisteredVia.BOT),
-    ],
-)
-async def test_register_maps_body_to_command_and_derives_attribution_server_side(
-    grants: tuple[str, ...], expected_via: RegisteredVia
-) -> None:
-    """Transport values pass verbatim; attribution derives from actor authority only."""
+async def test_register_maps_body_to_command_and_derives_attribution_server_side() -> None:
+    """Transport values pass verbatim; attribution derives from the principal kind."""
 
     registration = _RecordingRegistration(_registered_party())
+    actor = _actor("parties.register", principal_kind=PrincipalKind.INTEGRATION)
     async with AsyncClient(
-        transport=ASGITransport(app=_app(_actor(*grants), registration)), base_url="http://test"
+        transport=ASGITransport(app=_app(actor, registration)), base_url="http://test"
     ) as client:
         response = await client.post(
             "/v1/parties",
@@ -111,7 +106,7 @@ async def test_register_maps_body_to_command_and_derives_attribution_server_side
 
     assert response.status_code == 201, response.text
     command = registration.commands[0]
-    assert command.registered_via is expected_via
+    assert command.registered_via is RegisteredVia.BOT
     assert command.contact_points == (PartyContactPointInput("phone", "+18095551234"),)
     assert command.documents == (PartyDocumentInput("cedula", "40212345678"),)
 

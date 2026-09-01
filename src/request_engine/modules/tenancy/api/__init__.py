@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
@@ -16,6 +16,12 @@ from request_engine.modules.tenancy.adapters.db.party_registry_reader import (
     PostgresPartyLookupReader,
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
+from request_engine.modules.tenancy.api.party_registry_correction_routes import (
+    add_party_correction_routes,
+)
+from request_engine.modules.tenancy.api.party_registry_deactivation_routes import (
+    add_party_deactivation_routes,
+)
 from request_engine.modules.tenancy.api.party_registry_errors import (
     add_party_registry_error_handlers,
 )
@@ -25,6 +31,7 @@ from request_engine.modules.tenancy.contracts.authority import (
     PartyAuthorityReader,
 )
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
 
@@ -53,6 +60,10 @@ def install_http(
     commands = PostgresPartyRegistryCommands(session_factory)
     add_party_registry_error_handlers(app)
     router = APIRouter(prefix="/v1/parties", tags=["parties"])
+
+    async def authenticated_actor(request: Request) -> ActorContext:
+        return await actor_resolver.resolve_actor(request)
+
     add_party_registry_routes(
         router,
         register_handler=commands,
@@ -60,6 +71,18 @@ def install_http(
         confirm_handler=commands,
         lookup_reader=PostgresPartyLookupReader(session_factory),
         actor_resolver=actor_resolver,
+    )
+    add_party_correction_routes(
+        router,
+        rename_handler=commands,
+        add_document_handler=commands,
+        authenticated_actor=authenticated_actor,
+    )
+    add_party_deactivation_routes(
+        router,
+        deactivate_contact_point_handler=commands,
+        deactivate_party_handler=commands,
+        authenticated_actor=authenticated_actor,
     )
     app.include_router(router)
 

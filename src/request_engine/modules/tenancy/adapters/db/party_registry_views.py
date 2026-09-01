@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from request_engine.modules.tenancy.adapters.db.party_registry_codec import view_from_rows
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
+    PartyIdentityDocument,
     RegisteredParty,
 )
 
@@ -73,6 +74,25 @@ async def load_party_views(
         for party_id in party_ids
         if party_id in party_by_id
     ]
+
+
+def document_by_id(state: RegisteredParty, document_id: UUID) -> PartyIdentityDocument | None:
+    return next(
+        (document for document in state.documents if document.document_id == document_id), None
+    )
+
+
+def document_by_kind_value(
+    state: RegisteredParty, kind: str, normalized_value: str
+) -> PartyIdentityDocument | None:
+    return next(
+        (
+            document
+            for document in state.documents
+            if document.kind == kind and document.normalized_value == normalized_value
+        ),
+        None,
+    )
 
 
 def contact_point_by_id(state: RegisteredParty, contact_point_id: UUID) -> PartyContactPoint | None:

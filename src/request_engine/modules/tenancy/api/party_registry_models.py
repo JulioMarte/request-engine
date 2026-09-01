@@ -41,6 +41,17 @@ class AddPartyContactPointBody(BaseModel):
     value: str = Field(min_length=1, max_length=256)
 
 
+class RenamePartyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=512)
+
+
+class AddPartyDocumentBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1, max_length=256)
+
+
 class PartyContactPointView(BaseModel):
     contact_point_id: UUID
     channel: str

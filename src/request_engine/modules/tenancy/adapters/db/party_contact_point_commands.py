@@ -9,6 +9,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_codec import (
     party_from_json,
     party_to_json,
 )
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
+    raise_contact_point_conflict,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import (
     single_contact_point_row,
 )
@@ -25,7 +28,7 @@ from request_engine.modules.tenancy.application.commands import (
     add_party_contact_point,
 )
 from request_engine.modules.tenancy.application.errors import (
-    PartyContactPointExists,
+    PartyContactPointNotFound,
 )
 from request_engine.modules.tenancy.contracts.party_registry import PartyContactPoint
 from request_engine.platform.audit.postgres import append_audit
@@ -77,10 +80,14 @@ class PostgresPartyContactPointCommands:
                 )
                 if replay is not None:
                     state = party_from_json(cast(dict[str, object], replay["party"]))
-                    return cast(
-                        PartyContactPoint,
-                        contact_point_by_value(state, command.channel, command.value),
-                    )
+                    affected = contact_point_by_value(state, command.channel, command.value)
+                    if affected is None:
+                        raise PartyContactPointNotFound(
+                            command.party_id,
+                            channel=command.channel,
+                            normalized_value=command.value,
+                        )
+                    return affected
                 await lock_party(session, command.organization_id, command.party_id)
                 inserted = await insert_contact_points(session, single_contact_point_row(command))
                 contact_point_id = cast(UUID, inserted[0]["id"])
@@ -110,10 +117,8 @@ class PostgresPartyContactPointCommands:
                     {"party": party_to_json(state)},
                 )
                 affected = contact_point_by_id(state, contact_point_id)
-                return cast(PartyContactPoint, affected)
-        except IntegrityError:
-            raise PartyContactPointExists(
-                command.party_id,
-                command.channel,
-                command.value,
-            ) from None
+                if affected is None:
+                    raise PartyContactPointNotFound(command.party_id, contact_point_id)
+                return affected
+        except IntegrityError as exc:
+            raise_contact_point_conflict(command, exc)

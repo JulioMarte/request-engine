@@ -35,16 +35,25 @@ def register_command(
     *,
     display_name: str,
     whatsapp: str | None = None,
+    phone: str | None = None,
     cedula: str | None = None,
     registered_via: RegisteredVia = RegisteredVia.OPERATOR,
 ) -> RegisterPartyCommand:
+    contact_points: tuple[PartyContactPointInput, ...] = ()
+    if whatsapp or phone:
+        channels = [("whatsapp", whatsapp), ("phone", phone)]
+        contact_points = tuple(
+            PartyContactPointInput(channel, value)
+            for channel, value in channels
+            if value is not None
+        )
     return RegisterPartyCommand(
         organization_id=organization_id,
         principal_id=principal_id,
         display_name=display_name,
         registered_via=registered_via,
         idempotency_key=f"register-{uuid4().hex}",
-        contact_points=(PartyContactPointInput("whatsapp", whatsapp),) if whatsapp else (),
+        contact_points=contact_points,
         documents=(PartyDocumentInput("cedula", cedula),) if cedula else (),
     )
 

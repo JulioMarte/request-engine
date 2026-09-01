@@ -3,14 +3,18 @@
 Lookup semantics:
 
 - `phone`: normalized exact match across active `phone`/`whatsapp` contact
-  points; may return many parties (shared family number is expected).
+  points; may return many parties (shared family number is expected). A
+  party holding the same normalized value on both channels appears exactly
+  once (`SELECT DISTINCT`).
 - `document`: normalized exact match on `(kind, value)` among active
   identity documents; `document_kind` defaults to `cedula`.
-- `name`: case-insensitive exact-prefix match on `lower(display_name)`.
-  The application layer accent-folds the prefix term (name search key); the
-  SQL-side comparison is `lower()` only, so accent folding does NOT apply to
-  the stored names: prefix "jos" matches "José Pérez" but prefix "jose" does
-  not. Honest S0b limitation chosen over adding a stored search-key column.
+- `name`: case-insensitive, accent-insensitive, whitespace-collapsed prefix
+  match. The application layer folds the prefix term (`name_search_key`);
+  the SQL side folds the stored name with the same accent map — translate()
+  over the accented Latin characters (a e i o u with grave/acute/umlaut/
+  circumflex, plus ñ->n and ç->c, lower and upper forms) — and collapses
+  whitespace runs with regexp_replace, so stored "José  Pérez" is found by
+  prefix "jose perez". The Python and SQL fold maps must stay aligned.
 
 Reads take no locks beyond the tenant RLS context; results are ordered by
 display_name and capped at 50 parties.
@@ -50,7 +54,7 @@ async def _match_phone(session: AsyncSession, query: lookup_parties.PartyLookupQ
     rows = await session.execute(
         text(
             """
-            SELECT p.id
+            SELECT DISTINCT p.id, p.display_name
             FROM request_engine.parties p
             JOIN request_engine.party_contact_points c
               ON c.organization_id = p.organization_id AND c.party_id = p.id
@@ -106,12 +110,21 @@ async def _match_name_prefix(
             FROM request_engine.parties p
             WHERE p.organization_id = :organization_id
               AND p.active
-              AND lower(p.display_name) LIKE :prefix ESCAPE '\\'
+              AND translate(
+                    regexp_replace(lower(p.display_name), '\\s+', ' ', 'g'),
+                    :accent_from,
+                    :accent_to
+                  ) LIKE :prefix ESCAPE '\\'
             ORDER BY p.display_name, p.id
             LIMIT 50
             """
         ),
-        {"organization_id": query.organization_id, "prefix": _like_prefix(query.value)},
+        {
+            "organization_id": query.organization_id,
+            "prefix": _like_prefix(query.value),
+            "accent_from": _ACCENT_FROM,
+            "accent_to": _ACCENT_TO,
+        },
     )
     return list(rows.scalars().all())
 
@@ -119,3 +132,7 @@ async def _match_name_prefix(
 def _like_prefix(search_key: str) -> str:
     escaped = search_key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"{escaped}%"
+
+
+_ACCENT_FROM = "áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ"
+_ACCENT_TO = "aaaaaeeeeiiiiooooouuuuncAAAAAEEEEIIIIOOOOOUUUUNC"

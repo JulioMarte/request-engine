@@ -13,6 +13,10 @@ ISOLATION_ACTOR_GRANTS = frozenset(
         "parties.register",
         "parties.add_contact_point",
         "parties.confirm_contact_point",
+        "parties.rename",
+        "parties.add_document",
+        "parties.deactivate_contact_point",
+        "parties.deactivate",
         "parties.lookup",
     }
 )

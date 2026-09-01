@@ -18,6 +18,13 @@ from request_engine.platform.public_contacts import PublicContactValidationError
         ("18295551234", "+18295551234"),
         ("(849) 555-9876", "+18495559876"),
         ("+18095551234", "+18095551234"),
+        ("+1 809 555 1234", "+18095551234"),
+        # A "+"-prefixed invalid NANP local number converges with the bare
+        # local format instead of being stored as a divergent E.164 identity.
+        ("+8095551234", "+18095551234"),
+        # A leading double-zero international prefix is stripped before the
+        # digit logic, so it converges with the same identity.
+        ("00 1 809 555 1234", "+18095551234"),
     ],
 )
 def test_phone_channels_normalize_nanp_formats(raw: str, expected: str) -> None:
@@ -25,10 +32,17 @@ def test_phone_channels_normalize_nanp_formats(raw: str, expected: str) -> None:
     assert normalize_party_contact_value("whatsapp", raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["809555123", "55512345", "809555abcd"])
+@pytest.mark.parametrize("raw", ["809555123", "55512345", "809555abcd", "+596123456"])
 def test_phone_channels_reject_invalid_values(raw: str) -> None:
     with pytest.raises(PublicContactValidationError):
         normalize_party_contact_value("phone", raw)
+
+
+def test_phone_channels_enforce_ten_digit_floor() -> None:
+    """A 9-digit +E.164 value is below the contract floor and rejected."""
+
+    with pytest.raises(PublicContactValidationError):
+        normalize_party_contact_value("whatsapp", "+596123456")
 
 
 def test_email_delegates_to_platform_helper() -> None:

@@ -35,6 +35,10 @@ This slice succeeds when:
 3. **Shared phone numbers are allowed** across Parties (family reality). Phone lookup is
    inherently multi-match; callers must handle a list.
 4. **Search covers name, phone, and identity document (cédula).**
+5. **Bot-created Parties get a visible placeholder name.** A bot principal
+   creates Parties with `display_name = "WhatsApp <normalized number>"`; the
+   placeholder is a visible label only and is corrected by an operator via
+   `parties.rename`.
 
 ## 2. Schema additions (migration `0023`, append-only)
 
@@ -45,18 +49,22 @@ The V3 baseline already owns `request_engine.parties` and `request_engine.party_
   - `organization_id`, `party_id` (tenant composite FK to parties),
   - `kind` CHECK in (`cedula`, `passport`), `normalized_value` text,
   - `active` bool default true, standard timestamps,
-  - UNIQUE `(organization_id, kind, normalized_value)` — one document value of a given
-    kind belongs to at most one active identity per tenant,
-  - index for exact lookup on `(organization_id, kind, normalized_value)`.
+  - partial UNIQUE INDEX `(organization_id, kind, normalized_value) WHERE active` —
+    a document value of a given kind belongs to at most one **active** identity per
+    tenant (I-S0b-1: uniqueness holds among active rows); the same index serves the
+    exact-lookup predicate,
+  - partial UNIQUE INDEX `(organization_id, party_id, kind) WHERE active` so one Party
+    holds at most one active document per kind.
 - Attribution columns, additive:
   - `parties.created_by_principal_id uuid NULL`,
   - `party_contact_points.created_by_principal_id uuid NULL`,
   - `party_identity_documents.created_by_principal_id uuid NULL`,
   - `party_contact_points.registered_via text NULL CHECK in ('operator','bot')`.
+- `party_contact_points` lookup index `(organization_id, normalized_value, channel)
+  WHERE active` (migration `0024`) serving the phone lookup predicate.
 - `party_contact_points` guard trigger (I-S0b-4 backstop): an UPDATE that would flip
   `verified` from true downward is rejected by the database, so verification monotonicity
   holds even against direct runtime-role SQL, not only through the confirm command.
-- Partial unique index so one Party has at most one active document per kind.
 
 Attribution is a **durable fact about who registered**, never an authority source: the
 trusted boundary remains the authenticated principal (see §5).
@@ -87,6 +95,29 @@ Commands (semantic, idempotent via standard replay keys):
   contact point to `verified = true`. Bot principals receive `403` by capability gate,
   not by convention.
 
+Operator-granted correction commands (week-1 front-desk reality: facts get corrected).
+All four are grant-gated like every other capability, are **never granted to bot
+principals** (§5), are audited and idempotent via standard replay keys, and emit no
+outbox events (`parties.register` remains the only outbox emitter — its
+`party.registered.v1` payload contract is `party_id`, `display_name`,
+`contact_point_count`: consumer-visible, PII-minimal by decision). Party
+existence/active is checked with a row lock; corrections targeting an inactive party
+fail closed with the typed not-found:
+
+- `parties.rename` — correct a Party `display_name`. The display name is a mutable
+  label; identity facts, contact points and documents are untouched. No DB guard
+  blocks it (the documents guard is separate).
+- `parties.add_document` — add one identity document to an **existing** Party (e.g.
+  the cédula learned on a second visit). Normalization matches `parties.register`
+  and the same unique active-value backstop applies: duplicate values map to the
+  typed conflict enriched with the holder Party (id + display name); a second
+  active document of the same kind for the same Party is a typed conflict too.
+- `parties.deactivate_contact_point` — set a contact point's `active = false`.
+  `verified` is untouched, so verification monotonicity (I-S0b-4) is preserved.
+- `parties.deactivate` — set `parties.active = false`. Lookups already filter
+  `p.active`, so a deactivated Party disappears from every lookup mode.
+  Re-deactivating an inactive Party succeeds idempotently.
+
 Queries (read-only):
 
 - `parties.lookup` with exactly one of `phone`, `document`, `name`:
@@ -105,8 +136,17 @@ subset via their principal capability set.
 
 - The intermediary (Chatwoot/bot layer) authenticates as its own **bot principal** with
   a restricted capability set. It has no more authority than its capabilities grant.
+- Bot provisioning recipe: grant exactly `parties.register`,
+  `parties.add_contact_point` and `parties.lookup` — never
+  `parties.confirm_contact_point`, `parties.rename`, `parties.add_document`,
+  `parties.deactivate_contact_point` or `parties.deactivate`.
 - `registered_via` and `created_by_principal_id` answer *"who put this fact in the
   system"* for audits and support. They are descriptive, not decisional.
+- Operator/bot attribution (`registered_via`) derives from the authenticated
+  principal's kind: `HUMAN` principals are operators, `INTEGRATION`/`SYSTEM`
+  principals are bots. It never derives from a capability key — capability sets
+  decide what a principal may do; the principal kind decides how its writes are
+  attributed.
 - Attributing a human agent behind the intermediary is that layer's concern; RE stores
   only the authenticated principal identity. If Chatwoot later supplies a staff-actor
   hint, it must arrive through an authenticated operator principal or an explicit
@@ -139,7 +179,7 @@ subset via their principal capability set.
 ## 8. Proofs
 
 - Module tests: normalization table (DR formats), verification derivation by principal
-  mode, capability-gate rejections, lookup multi-match shape.
+  kind, capability-gate rejections, lookup multi-match shape.
 - PostgreSQL tests (real 18): cédula unique backstop race (two connections, one loser),
   confirm-command monotonicity under concurrent replay, shared-phone multi-party lookup,
   bot-created contact point never verified.

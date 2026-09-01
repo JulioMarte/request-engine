@@ -85,20 +85,22 @@ async def insert_contact_points(
     session: AsyncSession,
     rows: list[dict[str, object]],
 ) -> list[RowMapping]:
-    if not rows:
-        return []
-    result = await session.execute(_INSERT_CONTACT_POINT_SQL, rows)
-    return list(result.mappings().all())
+    results: list[RowMapping] = []
+    for row in rows:
+        result = await session.execute(_INSERT_CONTACT_POINT_SQL, row)
+        results.append(result.mappings().one())
+    return results
 
 
 async def insert_documents(
     session: AsyncSession,
     rows: list[dict[str, object]],
 ) -> list[RowMapping]:
-    if not rows:
-        return []
-    result = await session.execute(_INSERT_DOCUMENT_SQL, rows)
-    return list(result.mappings().all())
+    results: list[RowMapping] = []
+    for row in rows:
+        result = await session.execute(_INSERT_DOCUMENT_SQL, row)
+        results.append(result.mappings().one())
+    return results
 
 
 async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> None:

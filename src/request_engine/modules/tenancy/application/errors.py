@@ -14,10 +14,24 @@ class PartyNotFound(PartyRegistryError):
 
 
 class PartyContactPointNotFound(PartyRegistryError):
-    def __init__(self, party_id: UUID, contact_point_id: UUID) -> None:
-        super().__init__(f"Contact point {contact_point_id} was not found on Party {party_id}")
+    def __init__(
+        self,
+        party_id: UUID,
+        contact_point_id: UUID | None = None,
+        *,
+        channel: str | None = None,
+        normalized_value: str | None = None,
+    ) -> None:
+        identifier = (
+            str(contact_point_id)
+            if contact_point_id is not None
+            else f"{channel} {normalized_value}"
+        )
+        super().__init__(f"Contact point {identifier} was not found on Party {party_id}")
         self.party_id = party_id
         self.contact_point_id = contact_point_id
+        self.channel = channel
+        self.normalized_value = normalized_value
 
 
 class PartyContactPointExists(PartyRegistryError):
@@ -31,6 +45,14 @@ class PartyContactPointExists(PartyRegistryError):
 
 
 class PartyDocumentConflict(PartyRegistryError):
-    def __init__(self, reason: str) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        existing_party_id: UUID | None = None,
+        existing_display_name: str | None = None,
+    ) -> None:
         super().__init__(f"party identity document conflict: {reason}")
         self.reason = reason
+        self.existing_party_id = existing_party_id
+        self.existing_display_name = existing_display_name

@@ -7,8 +7,9 @@ holds both before any commit: the winner is parked at the audit append point
 after inserting its document row; the loser then blocks on the unique index
 entry the winner's in-flight insert created. Exactly one commits; the loser
 raises the typed `PartyDocumentConflict` and its transaction rolls back.
-Removing the migration's UNIQUE (organization_id, kind, normalized_value)
-backstop would let both commits succeed and the assertions below would fail.
+Removing the migration's partial UNIQUE (organization_id, kind,
+normalized_value) WHERE active backstop would let both commits succeed and
+the assertions below would fail.
 """
 
 import asyncio
@@ -84,7 +85,7 @@ async def test_concurrent_register_with_same_cedula_loses_once(
         )
         blocker.commit()
         winner = await asyncio.wait_for(winner_task, timeout=5)
-        with pytest.raises(PartyDocumentConflict):
+        with pytest.raises(PartyDocumentConflict) as conflict:
             await asyncio.wait_for(loser_task, timeout=5)
     finally:
         if not blocker.closed:
@@ -93,6 +94,9 @@ async def test_concurrent_register_with_same_cedula_loses_once(
         if loser_task is not None and not loser_task.done():
             loser_task.cancel()
 
+    loser_conflict = conflict.value
+    assert loser_conflict.existing_party_id == winner.party_id
+    assert loser_conflict.existing_display_name == "Alma Bien"
     assert winner.documents[0].normalized_value == _CEDULA
     rows = document_rows(admin_conn, world.organization_id, _CEDULA)
     assert [(str(row[0]), row[1], row[2], row[3]) for row in rows] == [

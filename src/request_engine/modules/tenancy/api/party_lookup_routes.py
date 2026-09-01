@@ -30,7 +30,7 @@ def add_party_lookup_routes(
     async def lookup_route(
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         mode: PartyLookupMode,
-        value: str = Query(min_length=1),
+        value: str = Query(min_length=1, max_length=128),
         document_kind: str = PartyDocumentKind.CEDULA.value,
     ) -> tuple[RegisteredPartyView, ...]:
         require_capability(actor, "parties.lookup")
@@ -56,4 +56,8 @@ def add_party_lookup_routes(
         methods=["GET"],
         response_model=tuple[RegisteredPartyView, ...],
         response_model_exclude_none=True,
+        description=(
+            "Lookup returns at most 50 parties (no has_more field; narrow the term"
+            " instead). `document_kind` defaults to 'cedula'."
+        ),
     )
