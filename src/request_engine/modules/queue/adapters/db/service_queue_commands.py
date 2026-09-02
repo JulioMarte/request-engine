@@ -13,6 +13,10 @@ from request_engine.modules.queue.adapters.db.tenant_references import (
     require_active_subject_party,
     require_tenant_reference,
 )
+from request_engine.modules.queue.adapters.db.triage_selection import (
+    consume_active_skips,
+    lock_next_eligible_entry,
+)
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand
 from request_engine.modules.queue.application.errors import (
@@ -178,33 +182,21 @@ class PostgresServiceQueueCommands:
                 return _queue_entry_from_json(cast(dict[str, object], replay_entry))
 
             await _lock_active_queue(session, command.organization_id, command.queue_id)
-
-            next_row = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT id
-                        FROM request_engine.queue_entries
-                        WHERE organization_id = :organization_id
-                          AND service_queue_id = :queue_id
-                          AND status = 'waiting'
-                        ORDER BY admitted_at, id
-                        LIMIT 1
-                        FOR UPDATE
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "queue_id": command.queue_id,
-                    },
-                )
-            ).first()
-
-            if next_row is None:
+            entry_id = await lock_next_eligible_entry(
+                session,
+                command.organization_id,
+                command.queue_id,
+            )
+            if entry_id is None:
                 await _complete_idempotency(session, idempotency_id, {"entry": None})
                 return None
 
-            entry_id = cast(UUID, next_row[0])
+            await consume_active_skips(
+                session,
+                command.organization_id,
+                command.queue_id,
+                entry_id,
+            )
             row = (
                 (
                     await session.execute(

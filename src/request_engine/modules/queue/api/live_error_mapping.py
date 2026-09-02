@@ -8,10 +8,14 @@ from request_engine.modules.queue.application.live_errors import (
     WorkloadClassificationRevisionConflict,
     WorkloadKeyConflict,
 )
+from request_engine.modules.queue.api.triage_error_mapping import triage_error
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
 
 
 def live_queue_error(exc: QueueError) -> tuple[int, ErrorBody] | None:
+    mapped_triage = triage_error(exc)
+    if mapped_triage is not None:
+        return mapped_triage
     if isinstance(exc, QueueEntryNotClassifiable):
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="queue_entry_not_classifiable",
