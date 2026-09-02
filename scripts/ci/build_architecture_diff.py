@@ -114,9 +114,12 @@ def _suppression_diff(base_ref: str, paths: list[Path]) -> dict[str, object]:
         after_source = path.read_text(encoding="utf-8") if path.is_file() else None
         if after_source is not None and generated_reason(path, after_source) is not None:
             continue
-        if after_source is None and before_source is not None:
-            if generated_reason(path, before_source) is not None:
-                continue
+        if (
+            after_source is None
+            and before_source is not None
+            and generated_reason(path, before_source) is not None
+        ):
+            continue
 
         before = suppression_observation(before_source or "")
         after = suppression_observation(after_source or "")
@@ -247,20 +250,32 @@ def render_summary(payload: dict[str, object]) -> str:
         coupling = {}
     if not isinstance(suppressions, dict):
         suppressions = {}
+    if isinstance(provenance, dict):
+        test_mode = provenance.get("test_mode")
+        source_head_sha = provenance.get("source_head_sha")
+        tested_sha = provenance.get("tested_sha")
+    else:
+        test_mode = None
+        source_head_sha = None
+        tested_sha = None
+    navigation_count = len(navigation) if isinstance(navigation, list) else 0
     lines = [
         "## Architecture diff",
         "",
-        f"Test mode: `{provenance.get('test_mode') if isinstance(provenance, dict) else None}`",
-        f"Source head: `{provenance.get('source_head_sha') if isinstance(provenance, dict) else None}`",
-        f"Tested tree: `{provenance.get('tested_sha') if isinstance(provenance, dict) else None}`",
+        f"Test mode: `{test_mode}`",
+        f"Source head: `{source_head_sha}`",
+        f"Tested tree: `{tested_sha}`",
         "",
         f"Added module edges: **{len(coupling.get('added_edges', []))}**",
         f"Removed module edges: **{len(coupling.get('removed_edges', []))}**",
         f"Contract-usage deltas: **{len(coupling.get('contract_usage_deltas', []))}**",
         f"Suppression delta on changed Python: **{suppressions.get('delta', 0):+}**",
-        f"Navigation-shape deltas: **{len(navigation) if isinstance(navigation, list) else 0}**",
+        f"Navigation-shape deltas: **{navigation_count}**",
         "",
-        "No architecture score is computed. These deltas provide review context; HARD invariants remain independent.",
+        (
+            "No architecture score is computed. These deltas provide review context; "
+            "HARD invariants remain independent."
+        ),
     ]
     return "\n".join(lines)
 
