@@ -39,11 +39,11 @@ async def test_call_next_vs_recall_hold_serializes_without_called_held_state(
     world = create_f7e_selection_fixture(admin_conn)
     first, second, _third = world.entry_ids
     barrier = AsyncTwoPartyBarrier()
-    original_queue_lock = queue_module._lock_active_queue
+    original_queue_lock = queue_module.lock_active_queue
     original_hold_lock = recall_hold_module.lock_active_queue
     monkeypatch.setattr(
         queue_module,
-        "_lock_active_queue",
+        "lock_active_queue",
         gated_lock(barrier, original_queue_lock),
     )
     monkeypatch.setattr(
