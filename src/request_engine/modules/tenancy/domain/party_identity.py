@@ -16,6 +16,7 @@ class PartyIdentityValidationError(ValueError):
 class PartyDocumentKind(StrEnum):
     CEDULA = "cedula"
     PASSPORT = "passport"
+    RNC = "rnc"
 
 
 _PHONE_SEPARATORS = re.compile(r"[\s().-]+")
@@ -24,8 +25,10 @@ _NANP_COUNTRY = re.compile(r"1[2-9][0-9]{9}")
 _PHONE_MIN_DIGITS = 10
 _DOCUMENT_SEPARATORS = re.compile(r"[\s.-]+")
 _CEDULA = re.compile(r"[0-9]{11}")
+_RNC = re.compile(r"[0-9]{9}")
 _PASSPORT = re.compile(r"[A-Z0-9]{6,17}")
 _CEDULA_AUTHORITY = "DO:JCE"
+_RNC_AUTHORITY = "DO:DGII"
 
 
 def normalize_party_contact_value(channel: str, value: str) -> str:
@@ -59,7 +62,7 @@ def _document_kind(kind: str) -> PartyDocumentKind:
 
 
 def normalize_identity_document_authority(kind: str, authority: str | None) -> str:
-    """Canonicalize the issuer namespace used to distinguish document identities."""
+    """Canonicalize the issuer namespace used to distinguish strong identities."""
 
     document_kind = _document_kind(kind)
     candidate = authority.strip().upper() if authority is not None else ""
@@ -67,6 +70,10 @@ def normalize_identity_document_authority(kind: str, authority: str | None) -> s
         if candidate and candidate != _CEDULA_AUTHORITY:
             raise PartyIdentityValidationError("cedula authority must be DO:JCE")
         return _CEDULA_AUTHORITY
+    if document_kind is PartyDocumentKind.RNC:
+        if candidate and candidate != _RNC_AUTHORITY:
+            raise PartyIdentityValidationError("rnc authority must be DO:DGII")
+        return _RNC_AUTHORITY
     if not candidate:
         raise PartyIdentityValidationError("passport issuing authority is required")
     if not is_iso_3166_alpha2(candidate):
@@ -77,7 +84,7 @@ def normalize_identity_document_authority(kind: str, authority: str | None) -> s
 
 
 def normalize_identity_document(kind: str, value: str) -> str:
-    """Normalize an identity document value for its kind."""
+    """Normalize a strong identity value for its kind."""
 
     document_kind = _document_kind(kind)
     cleaned = value.strip()
@@ -85,6 +92,11 @@ def normalize_identity_document(kind: str, value: str) -> str:
         digits = _DOCUMENT_SEPARATORS.sub("", cleaned)
         if not _CEDULA.fullmatch(digits):
             raise PartyIdentityValidationError("cedula must be exactly 11 digits")
+        return digits
+    if document_kind is PartyDocumentKind.RNC:
+        digits = _DOCUMENT_SEPARATORS.sub("", cleaned)
+        if not _RNC.fullmatch(digits):
+            raise PartyIdentityValidationError("rnc must be exactly 9 digits")
         return digits
     candidate = cleaned.upper()
     if not _PASSPORT.fullmatch(candidate):
