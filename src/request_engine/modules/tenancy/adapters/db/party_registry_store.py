@@ -40,7 +40,7 @@ _INSERT_DOCUMENT_SQL = text(
     """
 )
 _LOCK_PARTY_SQL = text(
-    "SELECT active FROM request_engine.parties "
+    "SELECT active, party_kind FROM request_engine.parties "
     "WHERE organization_id = :organization_id AND id = :party_id FOR UPDATE"
 )
 _LOCK_CONTACT_POINT_SQL = text(
@@ -93,7 +93,7 @@ async def insert_documents(
     return [(await session.execute(_INSERT_DOCUMENT_SQL, row)).mappings().one() for row in rows]
 
 
-async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> None:
+async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> str:
     result = await session.execute(
         _LOCK_PARTY_SQL,
         {"organization_id": organization_id, "party_id": party_id},
@@ -101,6 +101,7 @@ async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUI
     row = result.mappings().first()
     if row is None or not cast(bool, row["active"]):
         raise PartyNotFound(party_id)
+    return cast(str, row["party_kind"])
 
 
 async def lock_contact_point(
