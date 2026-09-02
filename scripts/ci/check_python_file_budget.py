@@ -15,6 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from quality_metrics import (  # noqa: E402
+    business_module_dependency_snapshot,
     classify_path,
     effective_code_lines,
     generated_reason,
@@ -211,6 +212,121 @@ def _navigation_candidate(
     }
 
 
+def _module_records(snapshot: dict[str, object]) -> dict[str, dict[str, object]]:
+    raw = snapshot.get("modules", [])
+    if not isinstance(raw, list):
+        return {}
+    records: dict[str, dict[str, object]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        module = item.get("module")
+        if isinstance(module, str):
+            records[module] = item
+    return records
+
+
+def _edge_pairs(snapshot: dict[str, object]) -> set[tuple[str, str]]:
+    raw = snapshot.get("edges", [])
+    if not isinstance(raw, list):
+        return set()
+    pairs: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source")
+        target = item.get("target")
+        if isinstance(source, str) and isinstance(target, str):
+            pairs.add((source, target))
+    return pairs
+
+
+def _coupling_candidates(
+    base_snapshot: dict[str, object], current_snapshot: dict[str, object]
+) -> list[dict[str, object]]:
+    base_records = _module_records(base_snapshot)
+    current_records = _module_records(current_snapshot)
+    candidates: list[dict[str, object]] = []
+    for module, current in sorted(current_records.items()):
+        previous = base_records.get(module, {})
+        current_outbound = current.get("outbound_modules", [])
+        previous_outbound = previous.get("outbound_modules", [])
+        current_set = set(current_outbound) if isinstance(current_outbound, list) else set()
+        previous_set = set(previous_outbound) if isinstance(previous_outbound, list) else set()
+        added = sorted(str(item) for item in current_set - previous_set)
+        if not added:
+            continue
+
+        fan_out = int(current.get("fan_out", 0))
+        previous_fan_out = int(previous.get("fan_out", 0))
+        fan_in = int(current.get("fan_in", 0))
+        previous_fan_in = int(previous.get("fan_in", 0))
+        path = f"src/request_engine/modules/{module}"
+        candidates.append(
+            {
+                "candidate_id": _candidate_id("QR-COUPLING-001", path, module),
+                "classification": "REVIEW_CANDIDATE",
+                "trigger_id": "QR-COUPLING-001",
+                "scope": {
+                    "path": path,
+                    "category": "module_coupling",
+                    "subject": module,
+                },
+                "facts": [
+                    {
+                        "kind": "module_fan_out",
+                        "subject": module,
+                        "value": fan_out,
+                        "tool": "python:ast-import-graph",
+                        "interpretation": "none",
+                    },
+                    {
+                        "kind": "module_fan_in",
+                        "subject": module,
+                        "value": fan_in,
+                        "tool": "python:ast-import-graph",
+                        "interpretation": "none",
+                    },
+                    {
+                        "kind": "added_outbound_dependency_count",
+                        "subject": module,
+                        "value": len(added),
+                        "tool": "python:ast-import-graph",
+                        "interpretation": "none",
+                    },
+                    {
+                        "kind": "added_outbound_modules",
+                        "subject": module,
+                        "value": ",".join(added),
+                        "tool": "python:ast-import-graph",
+                        "interpretation": "none",
+                    },
+                ],
+                "deltas": [
+                    {
+                        "kind": "module_fan_out",
+                        "before": previous_fan_out,
+                        "after": fan_out,
+                        "delta": fan_out - previous_fan_out,
+                    },
+                    {
+                        "kind": "module_fan_in",
+                        "before": previous_fan_in,
+                        "after": fan_in,
+                        "delta": fan_in - previous_fan_in,
+                    },
+                ],
+                "review_questions": [
+                    "Does each new synchronous dependency represent a real capability need?",
+                    "Is this module still the correct owner/coordinator for the added dependencies?",
+                    "Would an event, read model, or existing contract reduce coupling without hiding it?",
+                    "Would a helper/service-locator merely hide the same dependency from the graph?",
+                ],
+            }
+        )
+    return candidates
+
+
 def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]]:
     candidates: list[dict[str, object]] = []
     for diagnostic in diagnostics:
@@ -322,9 +438,15 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         if navigation_candidate is not None:
             candidates.append(navigation_candidate)
 
+    base_coupling = business_module_dependency_snapshot(base_ref)
+    current_coupling = business_module_dependency_snapshot()
+    candidates.extend(_coupling_candidates(base_coupling, current_coupling))
+
     if include_ruff:
         candidates.extend(run_ruff_c901(files))
 
+    base_edges = _edge_pairs(base_coupling)
+    current_edges = _edge_pairs(current_coupling)
     return {
         "schema_version": SCAN_SCHEMA,
         "base_sha": _sha(base_ref),
@@ -333,10 +455,23 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         "thresholds": {
             "effective_file_loc_review_candidate": FILE_LOC_REVIEW_THRESHOLD,
             "mccabe_review_candidate": MCCABE_REVIEW_THRESHOLD,
+            "module_coupling": "no numeric threshold; new outbound dependency edges trigger review",
             "threshold_status": "calibration-triggers-not-architecture-cliffs",
         },
         "measurements": measurements,
         "navigation_observations": observations,
+        "module_coupling": {
+            "base": base_coupling,
+            "current": current_coupling,
+            "added_edges": [
+                {"source": source, "target": target}
+                for source, target in sorted(current_edges - base_edges)
+            ],
+            "removed_edges": [
+                {"source": source, "target": target}
+                for source, target in sorted(base_edges - current_edges)
+            ],
+        },
         "invariant_failures": [],
         "candidates": candidates,
         "semantic_review_protocol": SEMANTIC_REVIEW_PROTOCOL,
@@ -365,8 +500,8 @@ def _render_candidates(candidates: list[object]) -> list[str]:
         [
             "AGENT ACTION:",
             f"1. Read {AGENT_REVIEW_PLAYBOOK} and {SEMANTIC_REVIEW_PROTOCOL}.",
-            "2. Do NOT split files or extract helpers solely to reduce LOC, C901, or file count.",
-            "3. Review responsibility, complexity, side effects, locality, ownership, and gaming.",
+            "2. Do NOT split files, hide dependencies, or extract helpers solely to lower metrics.",
+            "3. Review responsibility, complexity, side effects, locality, ownership, and coupling.",
             (
                 "4. Return HEALTHY_AS_IS, REVIEW_CONCERN, REFACTOR_RECOMMENDED, "
                 "ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT."
@@ -398,13 +533,16 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
         return
     raw_candidates = report.get("candidates", [])
     candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 0
+    coupling = report.get("module_coupling", {})
+    added_edges = coupling.get("added_edges", []) if isinstance(coupling, dict) else []
     summary = [
         "## Python maintainability signals",
         "",
         f"**Candidates:** {candidate_count}",
         "**Invariant failures:** 0",
+        f"**New module dependency edges:** {len(added_edges) if isinstance(added_edges, list) else 0}",
         f"**Scan schema:** `{report.get('schema_version', SCAN_SCHEMA)}`",
-        "**Authority:** heuristic maintainability signals are non-blocking.",
+        "**Authority:** heuristic maintainability/coupling signals are non-blocking.",
         "",
         "```text",
         feedback,
@@ -433,6 +571,7 @@ def main() -> int:
         RuntimeError,
         subprocess.SubprocessError,
         SyntaxError,
+        UnicodeDecodeError,
         ValueError,
     ) as exc:
         print("[QUALITY-SENSOR-ERROR] deterministic maintainability scan could not complete.")
