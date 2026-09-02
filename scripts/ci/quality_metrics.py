@@ -199,8 +199,16 @@ def _business_module_sources_at_ref(ref: str) -> list[tuple[Path, str]]:
 
 
 def business_module_dependency_snapshot(ref: str | None = None) -> dict[str, object]:
-    sources = _current_business_module_sources() if ref is None else _business_module_sources_at_ref(ref)
-    modules = {module for path, _ in sources if (module := business_module_for_path(path)) is not None}
+    sources = (
+        _current_business_module_sources()
+        if ref is None
+        else _business_module_sources_at_ref(ref)
+    )
+    modules = {
+        module
+        for path, _ in sources
+        if (module := business_module_for_path(path)) is not None
+    }
     edges: set[tuple[str, str]] = set()
     for path, source in sources:
         edges.update(module_import_edges_from_source(path, source))
