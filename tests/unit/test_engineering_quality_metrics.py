@@ -90,6 +90,39 @@ def test_navigation_observation_identifies_only_obvious_forwarding_shape() -> No
     assert substantive["forwarding_only_functions"] is False
 
 
+def test_module_import_edges_measure_real_cross_module_dependencies() -> None:
+    metrics = _load_metrics()
+    edges = cast(
+        Callable[[Path, str], set[tuple[str, str]]],
+        metrics.module_import_edges_from_source,
+    )
+    path = Path("src/request_engine/modules/booking/application/use_case.py")
+    source = "\n".join(
+        [
+            "from request_engine.modules.queue.contracts import QueueRead",
+            "from request_engine.modules import catalog",
+            "from ..contracts import ReservationView",
+            "from .ports import BookingStore",
+            "",
+        ]
+    )
+    assert edges(path, source) == {
+        ("booking", "catalog"),
+        ("booking", "queue"),
+    }
+
+
+def test_relative_cross_module_import_is_resolved_semantically() -> None:
+    metrics = _load_metrics()
+    edges = cast(
+        Callable[[Path, str], set[tuple[str, str]]],
+        metrics.module_import_edges_from_source,
+    )
+    path = Path("src/request_engine/modules/booking/application/use_case.py")
+    source = "from ...queue.contracts import QueueRead\n"
+    assert edges(path, source) == {("booking", "queue")}
+
+
 def test_ruff_complexity_parser_preserves_measurement_without_interpretation() -> None:
     metrics = _load_metrics()
     parse = cast(
