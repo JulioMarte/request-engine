@@ -36,10 +36,7 @@ async def test_f7e_same_day_selection_http_journey_reaches_postgres_owner(
     async with client_with_actors(e2e_session_factory, {sandbox.token: actor}) as client:
         joined = await client.post(
             f"/v1/queues/{sandbox.queue_id}/join",
-            json={
-                "subject_party_id": str(sandbox.party_id),
-                "offering_id": str(sandbox.offering_id),
-            },
+            json={"subject_party_id": str(sandbox.party_id)},
             headers=auth(sandbox, idempotency_key=f"f7e-join-{uuid4().hex}"),
         )
         assert joined.status_code == 201, joined.text
