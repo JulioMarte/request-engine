@@ -95,6 +95,7 @@ def project_live_capacity(
         if live_headroom is None or scheduled_headroom is None
         else live_headroom - scheduled_headroom
     )
+    live_intake_headroom = None if has_active_recall_hold else live_headroom
     return LiveCapacityProjection(
         observed_at=observed_at,
         state=state,
@@ -106,6 +107,6 @@ def project_live_capacity(
         items=tuple(projected),
         scheduled_committed_workload_seconds=scheduled_committed,
         scheduled_headroom_seconds=scheduled_headroom,
-        live_intake_headroom_seconds=live_headroom,
+        live_intake_headroom_seconds=live_intake_headroom,
         live_vs_scheduled_headroom_delta_seconds=delta,
     )
