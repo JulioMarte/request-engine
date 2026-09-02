@@ -12,6 +12,10 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_codec import (
     adoption_from_json,
     adoption_to_json,
 )
+from request_engine.modules.tenancy.adapters.db.identity_exchange_conflicts import (
+    existing_adopted_party,
+    is_identity_already_adopted_violation,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
     raise_document_conflict,
 )
@@ -19,6 +23,7 @@ from request_engine.modules.tenancy.application.identity_exchange import (
     AdoptPortableIdentityCommand,
 )
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
+    IdentityExchangeAlreadyAdopted,
     IdentityExchangeUnavailable,
 )
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
@@ -99,6 +104,15 @@ class PostgresPortableIdentityAdopter:
                 )
                 return result
         except IntegrityError as exc:
+            if is_identity_already_adopted_violation(exc):
+                existing_party_id = await existing_adopted_party(
+                    self._session_factory,
+                    command.organization_id,
+                    command.candidate_ref,
+                    command.principal_id,
+                )
+                if existing_party_id is not None:
+                    raise IdentityExchangeAlreadyAdopted(existing_party_id) from None
             await raise_document_conflict(
                 self._session_factory,
                 command.organization_id,
