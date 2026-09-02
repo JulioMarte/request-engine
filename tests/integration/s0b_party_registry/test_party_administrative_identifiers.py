@@ -100,12 +100,8 @@ async def test_same_tenant_member_id_conflicts_and_replay_is_stable(
         first.party_id,
         idempotency_key="insurance-replay",
     )
-    created = await admin_identifier_commands.add_party_administrative_identifier(
-        commands, command
-    )
-    replay = await admin_identifier_commands.add_party_administrative_identifier(
-        commands, command
-    )
+    created = await admin_identifier_commands.add_party_administrative_identifier(commands, command)
+    replay = await admin_identifier_commands.add_party_administrative_identifier(commands, command)
     assert replay.identifier_id == created.identifier_id
 
     with pytest.raises(PartyAdministrativeIdentifierConflict) as conflict:
