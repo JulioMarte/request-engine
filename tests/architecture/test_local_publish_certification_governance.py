@@ -29,9 +29,11 @@ def test_contributor_workflow_distinguishes_commit_push_and_merge_authority() ->
     assert "PostgreSQL" in contributing
 
 
-def test_hook_is_a_thin_router_not_a_second_ci_definition() -> None:
+def test_hook_is_thin_and_uses_managed_certifier_not_working_tree_policy() -> None:
     hook = HOOK.read_text(encoding="utf-8")
-    assert "scripts/dev/certify_push.py" in hook
+    assert "certify_push.py" in hook
+    assert "hook_dir" in hook
+    assert "repo_root/scripts/dev/certify_push.py" not in hook
     for duplicated_command in ("ruff", "pyright", "pytest", "tests/architecture"):
         assert duplicated_command not in hook
 
