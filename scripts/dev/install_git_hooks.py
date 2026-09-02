@@ -9,6 +9,7 @@ from pathlib import Path
 
 HOOK_NAME = "pre-push"
 HOOK_SOURCE = Path(".githooks") / HOOK_NAME
+CERTIFIER_SOURCE = Path("scripts") / "dev" / "certify_push.py"
 MANAGED_ROOT = Path("request-engine") / "hooks"
 
 
@@ -45,17 +46,23 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _copy_managed(source: Path, target: Path, *, executable: bool) -> None:
+    shutil.copyfile(source, target)
+    if executable and os.name != "nt":
+        target.chmod(0o755)
+
+
 def install(root: Path) -> int:
-    source = root / HOOK_SOURCE
-    if not source.is_file():
-        raise RuntimeError(f"tracked hook template is missing: {source}")
+    hook_source = root / HOOK_SOURCE
+    certifier_source = root / CERTIFIER_SOURCE
+    for source in (hook_source, certifier_source):
+        if not source.is_file():
+            raise RuntimeError(f"tracked hook dependency is missing: {source}")
 
     hooks = managed_hooks_path(root)
     hooks.mkdir(parents=True, exist_ok=True)
-    target = hooks / HOOK_NAME
-    shutil.copyfile(source, target)
-    if os.name != "nt":
-        target.chmod(0o755)
+    _copy_managed(hook_source, hooks / HOOK_NAME, executable=True)
+    _copy_managed(certifier_source, hooks / CERTIFIER_SOURCE.name, executable=False)
 
     _git("config", "--local", "core.hooksPath", str(hooks), cwd=root)
     print(f"[PASS] Request Engine Git hooks installed at {hooks}")
@@ -64,9 +71,11 @@ def install(root: Path) -> int:
 
 
 def check(root: Path) -> int:
-    source = root / HOOK_SOURCE
     hooks = managed_hooks_path(root)
-    target = hooks / HOOK_NAME
+    hook_source = root / HOOK_SOURCE
+    certifier_source = root / CERTIFIER_SOURCE
+    managed_hook = hooks / HOOK_NAME
+    managed_certifier = hooks / CERTIFIER_SOURCE.name
     configured = _git(
         "config",
         "--local",
@@ -77,15 +86,23 @@ def check(root: Path) -> int:
     ).stdout.strip()
 
     failures: list[str] = []
-    if not source.is_file():
-        failures.append(f"tracked hook template missing: {source}")
-    if not target.is_file():
-        failures.append(f"managed hook missing: {target}")
+    expected = (
+        (hook_source, managed_hook, "managed pre-push hook"),
+        (certifier_source, managed_certifier, "managed push certifier"),
+    )
+    for source, target, label in expected:
+        if not source.is_file():
+            failures.append(f"tracked source missing: {source}")
+            continue
+        if not target.is_file():
+            failures.append(f"{label} missing: {target}")
+            continue
+        if _digest(source) != _digest(target):
+            failures.append(f"{label} differs from its tracked source")
+
     if configured != str(hooks):
         failures.append(f"core.hooksPath is {configured or '<unset>'}; expected {hooks}")
-    if source.is_file() and target.is_file() and _digest(source) != _digest(target):
-        failures.append("managed pre-push hook differs from the tracked template")
-    if target.is_file() and os.name != "nt" and not os.access(target, os.X_OK):
+    if managed_hook.is_file() and os.name != "nt" and not os.access(managed_hook, os.X_OK):
         failures.append("managed pre-push hook is not executable")
 
     if failures:
@@ -95,7 +112,7 @@ def check(root: Path) -> int:
         print("Run: uv run python scripts/dev/install_git_hooks.py")
         return 1
 
-    print(f"[PASS] Request Engine pre-push hook is installed and current: {target}")
+    print(f"[PASS] Request Engine pre-push hook is installed and current: {managed_hook}")
     return 0
 
 
