@@ -76,6 +76,15 @@ def test_f7e_relations_force_rls_and_hide_foreign_tenant_rows(
                     second.principal_id,
                 ),
             )
-        assert denied.value.sqlstate == "42501"
+        # PostgreSQL executes BEFORE row triggers before the RLS WITH CHECK. Under the
+        # tenant-scoped runtime role the invariant trigger cannot resolve foreign queue
+        # references, so either the opaque invariant guard (23514) or RLS itself (42501)
+        # may reject first. Both must fail closed without creating a foreign row.
+        assert denied.value.sqlstate in {"23514", "42501"}
+        assert admin_conn.execute(
+            "SELECT count(*) FROM request_engine.queue_recall_holds "
+            "WHERE organization_id=%s AND queue_entry_id=%s",
+            (second.organization_id, second.entry_ids[2]),
+        ).fetchone() == (0,)
     finally:
         app_conn.close()
