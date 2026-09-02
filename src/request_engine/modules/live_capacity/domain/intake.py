@@ -41,6 +41,7 @@ def evaluate_intake(
         projected_candidate is not None
         and estimate.duration_seconds is not None
         and projection.state is not ProjectionState.INDETERMINATE
+        and not has_active_recall_hold
     ):
         starts_at = projected_candidate.estimated_start
         ends_at = projected_candidate.estimated_end
