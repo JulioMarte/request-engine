@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -44,9 +45,18 @@ value = 1
     assert budget.effective_code_lines(source) == 4
 
 
+def _candidate_function(
+    budget: ModuleType,
+) -> Callable[[Path, int, int | None], dict[str, object] | None]:
+    return cast(
+        Callable[[Path, int, int | None], dict[str, object] | None],
+        budget._file_loc_candidate,
+    )
+
+
 def test_file_loc_threshold_creates_non_blocking_candidate_not_violation() -> None:
     budget = _load_budget_module()
-    candidate_fn = cast(Any, budget._file_loc_candidate)
+    candidate_fn = _candidate_function(budget)
     path = Path("src/request_engine/example.py")
 
     assert candidate_fn(path, 120, None) is None
@@ -58,7 +68,7 @@ def test_file_loc_threshold_creates_non_blocking_candidate_not_violation() -> No
 
 def test_previously_oversized_file_is_still_review_evidence_not_a_ratchet_failure() -> None:
     budget = _load_budget_module()
-    candidate_fn = cast(Any, budget._file_loc_candidate)
+    candidate_fn = _candidate_function(budget)
     path = Path("tests/example.py")
 
     shrunk = candidate_fn(path, 130, 140)
@@ -67,8 +77,10 @@ def test_previously_oversized_file_is_still_review_evidence_not_a_ratchet_failur
     assert grown is not None
     assert shrunk["classification"] == "REVIEW_CANDIDATE"
     assert grown["classification"] == "REVIEW_CANDIDATE"
-    assert cast(list[dict[str, object]], shrunk["deltas"])[0]["delta"] == -10
-    assert cast(list[dict[str, object]], grown["deltas"])[0]["delta"] == 1
+    shrunk_deltas = cast(list[dict[str, object]], shrunk["deltas"])
+    grown_deltas = cast(list[dict[str, object]], grown["deltas"])
+    assert shrunk_deltas[0]["delta"] == -10
+    assert grown_deltas[0]["delta"] == 1
 
 
 def test_changed_python_files_cover_scripts_and_migrations_and_ignore_generated(
