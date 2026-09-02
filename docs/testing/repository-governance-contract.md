@@ -111,7 +111,7 @@ Semantic operation names should expose intent (`BookAppointment`, `JoinQueue`, `
 
 ### Python maintainability signals
 
-Python file size, function-level control-flow complexity, navigability observations, and module-coupling measurements are **deterministic heuristic/trend signals**, not semantic architecture invariants.
+Python file size, function-level control-flow complexity, navigation observations, and business-module coupling measurements are **deterministic heuristic/trend signals**, not semantic architecture invariants.
 
 Current calibration triggers are:
 
@@ -121,7 +121,18 @@ Ruff C901 McCabe > 10                     -> QR-CPLX-001 REVIEW_CANDIDATE
 new direct outbound business-module edge -> QR-COUPLING-001 REVIEW_CANDIDATE
 ```
 
-These values/events are attention triggers, not claims that a numeric level is a scientific quality cliff.
+These values/events are attention triggers, not claims that `120`, `10`, or a particular fan-in/fan-out value is a scientific quality cliff. They may be recalibrated from repository evidence without implying that code immediately above a numeric value is defective.
+
+For each business module:
+
+```text
+fan-in  = number of distinct business modules that directly import it
+fan-out = number of distinct business modules it directly imports
+```
+
+The baseline records direct business-module edges, inbound/outbound module sets, fan-in/fan-out distributions and coupling outliers. There is deliberately no `fan-out > N = failure` or `fan-in > N = failure` rule. Stable high coupling is trend/outlier evidence requiring context, not proof of bad architecture.
+
+`QR-COUPLING-001` is delta-driven: it surfaces review when a change adds a new direct outbound business-module dependency. This complements rather than replaces the existing HARD dependency rules. An unapproved edge or cross-module internal import may still fail those semantic architecture fitness functions independently.
 
 The scanner MUST distinguish measurement from interpretation:
 
@@ -132,22 +143,7 @@ The scanner MUST distinguish measurement from interpretation:
 - agents MUST NOT split files, create wrappers, hide module dependencies, or extract helpers solely to reduce LOC, C901, fan-out, or file count;
 - a failure of the deterministic sensor itself may fail CI because evidence collection did not complete, but that failure is a tooling failure, not a maintainability verdict.
 
-#### Fan-in / fan-out
-
-For each business module:
-
-```text
-fan-in  = number of distinct business modules that directly import it
-fan-out = number of distinct business modules it directly imports
-```
-
-The actual graph is derived from direct Python imports under `src/request_engine/modules/*`. The baseline records module fan-in/fan-out, direct inbound/outbound module sets, graph edges, distributions and outliers.
-
-There is deliberately no `fan-out > N = failure` or `fan-in > N = failure` rule. Stable high coupling is trend/outlier evidence requiring context, not proof of bad architecture.
-
-`QR-COUPLING-001` is delta-driven: it surfaces a review candidate when a change introduces a new direct outbound business-module dependency. This complements rather than replaces the HARD dependency rules. An unapproved or internal dependency may still fail the existing semantic architecture fitness functions independently.
-
-A reviewer asks whether the new synchronous edge is genuinely required, whether ownership remains correct, and whether an existing contract, event, read model, or other explicit boundary better expresses the relationship. A service locator, generic shared helper, runtime import, re-export, or forwarding facade MUST NOT be introduced merely to hide the dependency from fan-out measurement.
+A service locator, generic shared helper, runtime import, re-export, or forwarding facade MUST NOT be introduced merely to hide a real dependency from fan-out measurement.
 
 When a candidate is emitted, follow:
 
@@ -156,7 +152,7 @@ When a candidate is emitted, follow:
 
 The review must prioritize responsibility, genuine reasoning complexity, side effects, cohesion, locality, ownership, abstraction value, testability, coupling, and Goodhart/gaming risk. A large cohesive/declarative file may remain unchanged. A small decision-heavy function may warrant refactoring. A high-fan-out orchestrator may be healthy when its role explicitly owns coordination; the number alone does not decide.
 
-No heuristic maintainability/coupling signal may override or weaken a HARD architecture/correctness invariant. Any future proposal to make LOC, McCabe, fan-in, fan-out, fragmentation, or another heuristic merge-blocking must satisfy the documented HARD-gate proof obligation and receive explicit normative approval.
+No heuristic maintainability signal may override or weaken a HARD architecture/correctness invariant. Any future proposal to make LOC, McCabe, fan-in, fan-out, fragmentation, or another heuristic merge-blocking must satisfy the documented HARD-gate proof obligation and receive explicit normative approval.
 
 ## 4. LLM instruction integrity
 
