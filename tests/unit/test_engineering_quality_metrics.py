@@ -36,13 +36,9 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
     metrics = _load_metrics()
     classify = cast(Any, metrics.classify_path)
     assert (
-        classify(Path("src/request_engine/modules/booking/domain/policy.py"))
-        == "production_domain"
+        classify(Path("src/request_engine/modules/booking/domain/policy.py")) == "production_domain"
     )
-    assert (
-        classify(Path("src/request_engine/bootstrap/runtime.py"))
-        == "production_composition"
-    )
+    assert classify(Path("src/request_engine/bootstrap/runtime.py")) == "production_composition"
     assert classify(Path("tests/unit/test_policy.py")) == "tests"
     assert classify(Path("scripts/ci/probe.py")) == "scripts"
     assert classify(Path("migrations/versions/0002_probe.py")) == "migrations"
@@ -56,10 +52,13 @@ def test_generated_detection_is_explicit_and_does_not_treat_migration_header_as_
     generated_path_reason = generated_reason(Path("src/generated/client.py"), "value = 1\n")
     assert generated_path_reason == "generated-path:generated"
     assert generated_reason(Path("src/client.py"), "# @generated\nvalue = 1\n") is not None
-    assert generated_reason(
-        Path("migrations/versions/0002_probe.py"),
-        "# generated during migration authoring, review before commit\nvalue = 1\n",
-    ) is None
+    assert (
+        generated_reason(
+            Path("migrations/versions/0002_probe.py"),
+            "# generated during migration authoring, review before commit\nvalue = 1\n",
+        )
+        is None
+    )
 
 
 def test_navigation_observation_identifies_only_obvious_forwarding_shape() -> None:
