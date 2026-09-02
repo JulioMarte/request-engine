@@ -3,6 +3,9 @@ from fastapi import APIRouter, FastAPI, Request
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
+from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_reader import (
+    PostgresPartyAdministrativeIdentifierReader,
+)
 from request_engine.modules.tenancy.adapters.db.party_authority_operational_reader import (
     PostgresOperationalAuthorityPartyReader,
 )
@@ -22,6 +25,12 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_commands impor
     PostgresPrincipalContactCommands,
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
+from request_engine.modules.tenancy.api.party_administrative_identifier_errors import (
+    add_party_administrative_identifier_error_handlers,
+)
+from request_engine.modules.tenancy.api.party_administrative_identifier_routes import (
+    add_party_administrative_identifier_routes,
+)
 from request_engine.modules.tenancy.api.party_registry_correction_routes import (
     add_party_correction_routes,
 )
@@ -69,7 +78,9 @@ def install_http(
     """Connect the public tenancy party registry HTTP surface."""
 
     commands = PostgresPartyRegistryCommands(session_factory)
+    admin_identifier_reader = PostgresPartyAdministrativeIdentifierReader(session_factory)
     add_party_registry_error_handlers(app)
+    add_party_administrative_identifier_error_handlers(app)
     add_staff_contact_error_handlers(app)
     router = APIRouter(prefix="/v1/parties", tags=["parties"])
 
@@ -83,6 +94,12 @@ def install_http(
         confirm_handler=commands,
         lookup_reader=PostgresPartyLookupReader(session_factory),
         actor_resolver=actor_resolver,
+    )
+    add_party_administrative_identifier_routes(
+        router,
+        add_handler=commands,
+        reader=admin_identifier_reader,
+        authenticated_actor=authenticated_actor,
     )
     add_party_correction_routes(
         router,
