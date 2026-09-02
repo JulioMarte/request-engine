@@ -1,4 +1,4 @@
-"""`parties.lookup` application query: phone / document / name-prefix lookup."""
+"""`parties.lookup` application query for weak locators, strong IDs and names."""
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -17,6 +17,7 @@ from request_engine.modules.tenancy.domain.party_identity import (
 
 class PartyLookupMode(StrEnum):
     PHONE = "phone"
+    EMAIL = "email"
     DOCUMENT = "document"
     NAME = "name"
 
@@ -42,6 +43,9 @@ async def lookup_parties(
         raise ValueError("lookup value is required")
     if query.mode is PartyLookupMode.PHONE:
         normalized = normalize_party_contact_value("phone", query.value)
+        return await reader.lookup(replace(query, value=normalized))
+    if query.mode is PartyLookupMode.EMAIL:
+        normalized = normalize_party_contact_value("email", query.value)
         return await reader.lookup(replace(query, value=normalized))
     if query.mode is PartyLookupMode.DOCUMENT:
         authority = normalize_identity_document_authority(
