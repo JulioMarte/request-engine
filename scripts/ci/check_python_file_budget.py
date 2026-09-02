@@ -318,9 +318,18 @@ def _coupling_candidates(
                 ],
                 "review_questions": [
                     "Does each new synchronous dependency represent a real capability need?",
-                    "Is this module still the correct owner/coordinator for the added dependencies?",
-                    "Would an event, read model, or existing contract reduce coupling without hiding it?",
-                    "Would a helper/service-locator merely hide the same dependency from the graph?",
+                    (
+                        "Is this module still the correct owner/coordinator for the added "
+                        "dependencies?"
+                    ),
+                    (
+                        "Would an event, read model, or existing contract reduce coupling "
+                        "without hiding it?"
+                    ),
+                    (
+                        "Would a helper/service-locator merely hide the same dependency "
+                        "from the graph?"
+                    ),
                 ],
             }
         )
@@ -361,7 +370,10 @@ def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]
                 ],
                 "deltas": [],
                 "review_questions": [
-                    "Where does the reasoning load come from: branches, state, ordering, or effects?",
+                    (
+                        "Where does the reasoning load come from: branches, state, "
+                        "ordering, or effects?"
+                    ),
                     "Can decision structure be simplified without distributing it across helpers?",
                     "Would extraction create a real responsibility boundary and preserve locality?",
                 ],
@@ -455,7 +467,9 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         "thresholds": {
             "effective_file_loc_review_candidate": FILE_LOC_REVIEW_THRESHOLD,
             "mccabe_review_candidate": MCCABE_REVIEW_THRESHOLD,
-            "module_coupling": "no numeric threshold; new outbound dependency edges trigger review",
+            "module_coupling": (
+                "no numeric threshold; new outbound dependency edges trigger review"
+            ),
             "threshold_status": "calibration-triggers-not-architecture-cliffs",
         },
         "measurements": measurements,
@@ -501,13 +515,19 @@ def _render_candidates(candidates: list[object]) -> list[str]:
             "AGENT ACTION:",
             f"1. Read {AGENT_REVIEW_PLAYBOOK} and {SEMANTIC_REVIEW_PROTOCOL}.",
             "2. Do NOT split files, hide dependencies, or extract helpers solely to lower metrics.",
-            "3. Review responsibility, complexity, side effects, locality, ownership, and coupling.",
+            (
+                "3. Review responsibility, complexity, side effects, locality, ownership, "
+                "and coupling."
+            ),
             (
                 "4. Return HEALTHY_AS_IS, REVIEW_CONCERN, REFACTOR_RECOMMENDED, "
                 "ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT."
             ),
             "5. If code changes, rerun deterministic architecture and relevant behavior proofs.",
-            "Deterministic architecture/correctness invariant failures remain independently blocking.",
+            (
+                "Deterministic architecture/correctness invariant failures remain "
+                "independently blocking."
+            ),
         ]
     )
     return lines
@@ -535,12 +555,13 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
     candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 0
     coupling = report.get("module_coupling", {})
     added_edges = coupling.get("added_edges", []) if isinstance(coupling, dict) else []
+    edge_count = len(added_edges) if isinstance(added_edges, list) else 0
     summary = [
         "## Python maintainability signals",
         "",
         f"**Candidates:** {candidate_count}",
         "**Invariant failures:** 0",
-        f"**New module dependency edges:** {len(added_edges) if isinstance(added_edges, list) else 0}",
+        f"**New module dependency edges:** {edge_count}",
         f"**Scan schema:** `{report.get('schema_version', SCAN_SCHEMA)}`",
         "**Authority:** heuristic maintainability/coupling signals are non-blocking.",
         "",
@@ -556,7 +577,9 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Emit non-blocking Python maintainability evidence.")
+    parser = argparse.ArgumentParser(
+        description="Emit non-blocking Python maintainability evidence."
+    )
     parser.add_argument("--base-ref", default="HEAD^")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
