@@ -25,10 +25,9 @@ def is_identity_already_adopted_violation(exc: IntegrityError) -> bool:
 
 
 def is_portable_identity_join_violation(exc: IntegrityError) -> bool:
-    return (
-        getattr(exc.orig, "sqlstate", None) == _UNIQUE_SQLSTATE
-        and _PORTABLE_IDENTITY_JOIN in str(exc.orig)
-    )
+    return getattr(
+        exc.orig, "sqlstate", None
+    ) == _UNIQUE_SQLSTATE and _PORTABLE_IDENTITY_JOIN in str(exc.orig)
 
 
 async def existing_adopted_party(
