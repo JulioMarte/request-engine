@@ -29,6 +29,7 @@ def project_live_capacity(
     scheduled_work_items: tuple[ProjectionWorkItem, ...] = (),
     has_open_interruption: bool = False,
     has_open_resource_activity: bool = False,
+    has_active_recall_hold: bool = False,
 ) -> LiveCapacityProjection:
     usable = usable_intervals(observed_at, intervals)
     operational_seconds = sum(
@@ -42,6 +43,8 @@ def project_live_capacity(
         blockers.append(ProjectionReason.OPEN_INTERRUPTION)
     if has_open_resource_activity:
         blockers.append(ProjectionReason.OPEN_RESOURCE_ACTIVITY)
+    if has_active_recall_hold:
+        blockers.append(ProjectionReason.ACTIVE_RECALL_HOLD)
     if blockers:
         return LiveCapacityProjection(
             observed_at=observed_at,
