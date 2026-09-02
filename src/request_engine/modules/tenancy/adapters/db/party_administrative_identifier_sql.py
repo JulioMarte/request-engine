@@ -3,8 +3,8 @@
 from sqlalchemy import text
 
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import attribution_values
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    AddPartyAdministrativeIdentifierCommand,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as admin_identifier_commands,
 )
 
 INSERT_IDENTIFIER = text(
@@ -36,7 +36,9 @@ FIND_IDENTIFIER = text(
 )
 
 
-def fingerprint_values(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
+def fingerprint_values(
+    command: admin_identifier_commands.AddPartyAdministrativeIdentifierCommand,
+) -> dict[str, object]:
     return {
         "party_id": str(command.party_id),
         "kind": command.kind,
@@ -49,7 +51,9 @@ def fingerprint_values(command: AddPartyAdministrativeIdentifierCommand) -> dict
     }
 
 
-def sql_values(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
+def sql_values(
+    command: admin_identifier_commands.AddPartyAdministrativeIdentifierCommand,
+) -> dict[str, object]:
     return {
         "organization_id": command.organization_id,
         "party_id": command.party_id,
