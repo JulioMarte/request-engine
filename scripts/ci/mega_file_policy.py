@@ -24,14 +24,18 @@ CORE_MEGA_CATEGORIES = frozenset(
 )
 MEGA_POLICY_AUTHORITY_PATHS = frozenset(
     {
+        ".githooks/pre-push",
         ".github/workflows/ci.yml",
         "docs/engineering-quality/mega-file-circuit-breaker.md",
         "docs/engineering-quality/mega-file-exceptions.v1.json",
         "scripts/ci/check_python_file_budget.py",
         "scripts/ci/check_quality_policy_separation.py",
         "scripts/ci/ci_jobs.py",
+        "scripts/ci/local_push_profile.py",
         "scripts/ci/mega_file_policy.py",
         "scripts/ci/quality_metrics.py",
+        "scripts/dev/certify_push.py",
+        "scripts/dev/install_git_hooks.py",
         "src/request_engine/AGENTS.md",
     }
 )
@@ -207,8 +211,8 @@ def policy_self_modification_failure(
         ],
         "deltas": [],
         "reason": (
-            "the change modifies core product Python and the mega-file policy authority "
-            "that judges that product change"
+            "the change modifies core product Python and the quality-policy authority "
+            "that judges or certifies that product change"
         ),
         "exception_source": "separate-governance-change-required",
         "remediation": (
