@@ -36,4 +36,5 @@ class PostgresIntakeEvaluationReader:
             estimate=estimate,
             has_open_interruption=has_open_interruption(snapshot),
             has_open_resource_activity=snapshot.delivery.open_resource_activity is not None,
+            has_active_recall_hold=snapshot.queue.has_active_recall_hold,
         )
