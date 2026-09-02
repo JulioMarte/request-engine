@@ -5,8 +5,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
-
 DEFAULT_SCHEMA = Path("docs/engineering-quality/schemas/quality-evidence-v2.schema.json")
 
 
@@ -28,6 +26,11 @@ def schema_version(schema: Any) -> str:
 
 
 def validate_packets(schema_path: Path, packet_dir: Path) -> list[str]:
+    # jsonschema is deliberately an ephemeral CI dependency supplied by
+    # `uv run --with jsonschema==...`; importing it here keeps the reusable
+    # version/provenance helpers importable by the normal unit-test environment.
+    from jsonschema import Draft202012Validator
+
     schema = _load_json(schema_path)
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
@@ -53,7 +56,7 @@ def main() -> int:
         schema = _load_json(args.schema)
         version = schema_version(schema)
         failures = validate_packets(args.schema, args.packet_dir)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (ImportError, OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[QUALITY-EVIDENCE-SCHEMA-ERROR] {exc}")
         return 2
     if failures:
