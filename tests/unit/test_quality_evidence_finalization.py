@@ -101,8 +101,7 @@ def test_finalized_packet_distinguishes_source_head_from_tested_tree(monkeypatch
         for item in results
     )
     assert any(
-        item["fitness_id"] == "FF-ARCH-DIFF-001" and item["status"] == "pass"
-        for item in results
+        item["fitness_id"] == "FF-ARCH-DIFF-001" and item["status"] == "pass" for item in results
     )
     context = cast(list[str], packet["context_manifest"])
     assert "docs/engineering-quality/semantic-review-protocol.md" in context
