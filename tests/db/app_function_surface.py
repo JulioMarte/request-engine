@@ -22,15 +22,35 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_cmd.schedule_recovery_reassessment(p_organization_id uuid, "
         "p_service_queue_id uuid, p_revision bigint)"
     ),
+    (
+        "request_engine.bind_consumed_identity_candidate_v1(p_candidate_id uuid, "
+        "p_party_id uuid, p_consent_fields text[], p_principal_id uuid)"
+    ),
+    (
+        "request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, "
+        "p_fingerprint text, p_principal_id uuid)"
+    ),
     "request_engine.current_authenticated_principal_id()",
     "request_engine.current_correlation_id()",
     "request_engine.current_organization_id()",
+    (
+        "request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, "
+        "p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid)"
+    ),
+    (
+        "request_engine.identity_exchange_existing_party_v1(p_candidate_id uuid, "
+        "p_principal_id uuid)"
+    ),
     (
         "request_engine.lock_current_party_authority(p_organization_id uuid, "
         "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
     ),
     "request_engine.lookup_active_service_classification(p_key text)",
     "request_engine.lookup_service_classification(p_id uuid)",
+    (
+        "request_engine.publish_portable_person_v1(p_party_id uuid, p_kind text, "
+        "p_authority text, p_fingerprint text, p_consent_fields text[], p_principal_id uuid)"
+    ),
     "request_engine.read_discovery_booking_handoff(p_token_hash text)",
     (
         "request_engine.resolve_current_party_authority(p_organization_id uuid, "
