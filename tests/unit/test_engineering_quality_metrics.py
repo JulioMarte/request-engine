@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -19,8 +20,11 @@ def _load_metrics() -> ModuleType:
 
 def test_nearest_rank_distribution_is_deterministic() -> None:
     metrics = _load_metrics()
-    distribution = cast(Any, metrics.distribution)(list(range(1, 101)))
-    assert distribution == {
+    distribution = cast(
+        Callable[[list[int]], dict[str, int | None]],
+        metrics.distribution,
+    )
+    assert distribution(list(range(1, 101))) == {
         "count": 100,
         "min": 1,
         "p50": 50,
@@ -34,7 +38,7 @@ def test_nearest_rank_distribution_is_deterministic() -> None:
 
 def test_code_categories_cover_production_tests_scripts_migrations_and_config() -> None:
     metrics = _load_metrics()
-    classify = cast(Any, metrics.classify_path)
+    classify = cast(Callable[[Path], str | None], metrics.classify_path)
     assert (
         classify(Path("src/request_engine/modules/booking/domain/policy.py")) == "production_domain"
     )
@@ -48,7 +52,10 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
 
 def test_generated_detection_is_explicit_and_does_not_treat_migration_header_as_generated() -> None:
     metrics = _load_metrics()
-    generated_reason = cast(Any, metrics.generated_reason)
+    generated_reason = cast(
+        Callable[[Path, str | None], str | None],
+        metrics.generated_reason,
+    )
     generated_path_reason = generated_reason(Path("src/generated/client.py"), "value = 1\n")
     assert generated_path_reason == "generated-path:generated"
     assert generated_reason(Path("src/client.py"), "# @generated\nvalue = 1\n") is not None
@@ -63,7 +70,10 @@ def test_generated_detection_is_explicit_and_does_not_treat_migration_header_as_
 
 def test_navigation_observation_identifies_only_obvious_forwarding_shape() -> None:
     metrics = _load_metrics()
-    observe = cast(Any, metrics.navigation_observation)
+    observe = cast(
+        Callable[[Path, str], dict[str, object]],
+        metrics.navigation_observation,
+    )
     wrapper = observe(
         Path("src/request_engine/modules/booking/application/wrapper.py"),
         "from .owner import run\n\ndef execute(value: int) -> int:\n    return run(value)\n",
@@ -79,7 +89,10 @@ def test_navigation_observation_identifies_only_obvious_forwarding_shape() -> No
 
 def test_ruff_complexity_parser_preserves_measurement_without_interpretation() -> None:
     metrics = _load_metrics()
-    parse = cast(Any, metrics.parse_ruff_complexity_payload)
+    parse = cast(
+        Callable[[Any], list[dict[str, object]]],
+        metrics.parse_ruff_complexity_payload,
+    )
     records = parse(
         [
             {
