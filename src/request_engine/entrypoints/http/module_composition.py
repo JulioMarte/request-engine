@@ -5,6 +5,7 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
+from request_engine.entrypoints.http.tenancy_composition import install_tenancy_http
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.live_capacity import (
@@ -28,9 +29,7 @@ from request_engine.modules.delivery.api import install_http as install_delivery
 from request_engine.modules.delivery.api.live_capacity import (
     build_live_capacity_source as build_delivery_live_capacity_source,
 )
-from request_engine.modules.discovery.api.publication_runtime import (
-    build_discovery_publication_runtime,
-)
+from request_engine.modules.discovery.api.publication_runtime import build_discovery_publication_runtime
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
@@ -52,8 +51,7 @@ def install_business_modules(
     appointment_option_signing_key: bytes,
     identity_exchange_fingerprint_key: bytes | None = None,
 ) -> None:
-    party_authority_reader = tenancy_api.build_party_authority_reader(session_factory)
-    tenancy_api.install_http(
+    party_authority_reader = install_tenancy_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
