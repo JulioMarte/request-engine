@@ -47,6 +47,7 @@ async def test_staff_read_exposes_active_recall_hold_and_clears_after_release(
     held = next(item for item in held_entries if item.queue_entry_id == first)
     assert held.recall_hold_kind == "until_customer_initiates"
     assert held.recall_hold_release_at is None
+    assert held.recall_hold_reason == "stepped_away"
     assert held.queue_revision == hold.queue_entry_revision
 
     await commands.release_recall_hold(
@@ -64,3 +65,4 @@ async def test_staff_read_exposes_active_recall_hold_and_clears_after_release(
     released = next(item for item in released_entries if item.queue_entry_id == first)
     assert released.recall_hold_kind is None
     assert released.recall_hold_release_at is None
+    assert released.recall_hold_reason is None
