@@ -22,6 +22,7 @@ class ProjectionReason(StrEnum):
     UNKNOWN_WORKLOAD_DURATION = "unknown_workload_duration"
     OPEN_INTERRUPTION = "open_interruption"
     OPEN_RESOURCE_ACTIVITY = "open_resource_activity"
+    ACTIVE_RECALL_HOLD = "active_recall_hold"
     NO_REMAINING_AVAILABILITY = "no_remaining_availability"
 
 
