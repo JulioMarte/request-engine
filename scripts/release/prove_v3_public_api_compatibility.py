@@ -10,9 +10,7 @@ from scripts.release import prove_v3_public_api_contract as frozen
 
 _CAPABILITY_MISMATCH = "capability registry baseline mismatch"
 _LITERAL_ERROR_PREFIX = "frozen V3 public error codes are missing: "
-_POST_V3_ERROR_MODULES = (
-    Path("src/request_engine/modules/queue/api/core_error_mapping.py"),
-)
+_POST_V3_ERROR_MODULES = (Path("src/request_engine/modules/queue/api/core_error_mapping.py"),)
 
 
 def _literal_error_codes(path: Path) -> set[str]:
