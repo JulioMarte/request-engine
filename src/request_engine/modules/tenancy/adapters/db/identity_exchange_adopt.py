@@ -12,9 +12,15 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_codec import (
     adoption_from_json,
     adoption_to_json,
 )
-from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import raise_document_conflict
-from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
-from request_engine.modules.tenancy.application.identity_exchange_errors import IdentityExchangeUnavailable
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
+    raise_document_conflict,
+)
+from request_engine.modules.tenancy.application.identity_exchange import (
+    AdoptPortableIdentityCommand,
+)
+from request_engine.modules.tenancy.application.identity_exchange_errors import (
+    IdentityExchangeUnavailable,
+)
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 from request_engine.modules.tenancy.contracts.party_registry import PartyDocumentInput
 from request_engine.modules.tenancy.domain.identity_exchange import (
@@ -65,7 +71,9 @@ class PostgresPortableIdentityAdopter:
             PartyDocumentInput(document.kind, document.value, document.authority),
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idempotency_id, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -75,7 +83,9 @@ class PostgresPortableIdentityAdopter:
                     fingerprint=idem_fingerprint,
                 )
                 if replay is not None:
-                    return adoption_from_json(cast(Mapping[str, object], replay["adoption"]))
+                    return adoption_from_json(
+                        cast(Mapping[str, object], replay["adoption"])
+                    )
                 result = await write_identity_adoption(
                     session,
                     command,
