@@ -100,23 +100,21 @@ def test_core_agent_instructions_keep_extreme_file_size_nonblocking() -> None:
     instructions = CORE_AGENTS.read_text(encoding="utf-8")
     for required in (
         "QR-FSIZE-001 REVIEW_CANDIDATE",
-        "500/501 is not a HARD architecture boundary",
+        "not a HARD architecture boundary",
         "HEALTHY_AS_IS",
         "mechanically splitting a cohesive file",
-        "Do not weaken deterministic semantic architecture/correctness invariants",
+        "deterministic semantic architecture/correctness invariants",
     ):
         assert required in instructions
     assert "QR-MEGA-001 — HARD" not in instructions
-    assert "500 effective code-bearing lines** is a deterministic `INVARIANT_FAILURE`" not in instructions
+    assert "deterministic `INVARIANT_FAILURE` unless" not in instructions
 
 
-def test_mega_policy_documents_hard_retirement_and_longitudinal_revisit() -> None:
+def test_mega_policy_documents_review_semantics_and_revisit_evidence() -> None:
     policy = MEGA_POLICY.read_text(encoding="utf-8")
-    for required in (
-        "RETIRED_AS_HARD",
-        "501 effective lines directly implies an architecture violation",
-        "HIGH-SIGNAL STRUCTURAL REVIEW CONCEPT",
-        "longitudinal repository evidence",
-        "QR-MEGA-GOV-001 is also retired as a HARD co-occurrence invariant",
-    ):
-        assert required in policy
+    assert "RETIRED_AS_HARD" in policy
+    assert "HIGH-SIGNAL STRUCTURAL REVIEW CONCEPT" in policy
+    assert "longitudinal repository evidence" in policy
+    assert "co-occurrence invariant" in policy
+    assert "line count alone" in policy
+    assert "What remediations did humans and coding agents choose?" in policy
