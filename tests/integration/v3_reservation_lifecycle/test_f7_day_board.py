@@ -50,6 +50,7 @@ async def test_day_board_composes_eta_and_check_in_without_erasing_assertion(
         organization_id=world.organization_id,
         window_start=start_at - timedelta(hours=1),
         window_end=end_at + timedelta(hours=1),
+        location_id=world.location_id,
     )
 
     before = await get_day_board(reader, query)
