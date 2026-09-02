@@ -8,9 +8,17 @@ from request_engine.modules.tenancy.api.party_contact_point_routes import (
     add_party_contact_point_routes,
 )
 from request_engine.modules.tenancy.api.party_lookup_routes import add_party_lookup_routes
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
-from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
-from request_engine.modules.tenancy.api.party_registry_models import RegisteredPartyView, RegisterPartyBody
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
+from request_engine.modules.tenancy.api.party_registry_errors import (
+    PartyRegistryInputInvalid,
+)
+from request_engine.modules.tenancy.api.party_registry_models import (
+    RegisteredPartyView,
+    RegisterPartyBody,
+)
 from request_engine.modules.tenancy.application.commands.add_party_contact_point import (
     AddPartyContactPointHandler,
 )
