@@ -1,7 +1,6 @@
 """PostgreSQL publication adapter for S0d portable identity profiles."""
 
 from typing import cast
-from uuid import UUID
 
 from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import LOCAL_CEDULA, PUBLISH
 from request_engine.modules.tenancy.application.identity_exchange import PublishPortableProfileCommand
@@ -26,7 +25,7 @@ class PostgresPortableProfilePublisher:
         self._session_factory = session_factory
         self._fingerprint_key = fingerprint_key
 
-    async def publish_portable_profile(self, command: PublishPortableProfileCommand) -> UUID:
+    async def publish_portable_profile(self, command: PublishPortableProfileCommand) -> None:
         fingerprint = command_fingerprint(
             _CAPABILITY,
             {
@@ -45,7 +44,7 @@ class PostgresPortableProfilePublisher:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return UUID(str(replay["portable_person_id"]))
+                return
             cedula = (
                 await session.execute(
                     LOCAL_CEDULA,
@@ -61,37 +60,30 @@ class PostgresPortableProfilePublisher:
                 )
             except RuntimeError as error:
                 raise IdentityExchangeUnavailable(str(error)) from None
-            portable_person_id = cast(
-                UUID,
-                (
-                    await session.execute(
-                        PUBLISH,
-                        {
-                            "party_id": command.party_id,
-                            "fingerprint": identity_fingerprint,
-                            "consented_fields": list(command.consented_fields),
-                            "principal_id": command.principal_id,
-                        },
-                    )
-                ).scalar_one(),
-            )
+            published = (
+                await session.execute(
+                    PUBLISH,
+                    {
+                        "party_id": command.party_id,
+                        "fingerprint": identity_fingerprint,
+                        "consented_fields": list(command.consented_fields),
+                        "principal_id": command.principal_id,
+                    },
+                )
+            ).scalar_one()
+            if published is not True:
+                raise RuntimeError("portable profile publication did not complete")
             await append_audit(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
                 command_name=_CAPABILITY,
-                aggregate_kind="PortablePerson",
-                aggregate_id=portable_person_id,
+                aggregate_kind="PartyPortableProfile",
+                aggregate_id=command.party_id,
                 idempotency_id=idempotency_id,
                 details={
-                    "party_id": str(command.party_id),
                     "proof_kind": command.proof_kind,
                     "consented_fields": list(command.consented_fields),
                 },
             )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"portable_person_id": str(portable_person_id)},
-            )
-            return portable_person_id
+            await complete_idempotency(session, idempotency_id, {"published": True})
