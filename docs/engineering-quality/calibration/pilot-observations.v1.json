@@ -1,0 +1,84 @@
+{
+  "schema_version": "semantic-review-pilot/v1",
+  "repository": "JulioMarte/request-engine",
+  "policy_protocol": "SRP-1",
+  "observations": [
+    {
+      "case_id": "ci-jobs-large-cohesive-orchestrator",
+      "source_path": "scripts/ci/ci_jobs.py",
+      "observed_at_sha": "7d0b4f9b0e69f2c6e18de73ec6703af43fa10ea0",
+      "trigger_context": ["QR-FSIZE-001"],
+      "model_verdict": "HEALTHY_AS_IS",
+      "model_confidence": "MEDIUM",
+      "model_evidence": [
+        "The file owns one canonical concern: declaring and executing reusable CI jobs.",
+        "The large JOBS registry is mostly declarative configuration rather than branch-heavy business reasoning.",
+        "The execution helpers are local to the registry they execute, which preserves navigation locality."
+      ],
+      "counterargument": "The declarative job registry and runner machinery could evolve independently enough to justify separation later.",
+      "recommended_action": "Keep intact for now; monitor complexity and navigation rather than splitting solely for file LOC.",
+      "human_verdict": null,
+      "human_reviewer": null,
+      "human_rationale": null
+    },
+    {
+      "case_id": "governance-test-froze-review-wording",
+      "source_path": "tests/architecture/test_quality_review_governance.py",
+      "observed_at_sha": "83597ac1cb22530587a7963ac8be24bd508b5a19",
+      "trigger_context": ["semantic-review", "architecture-test-failure"],
+      "model_verdict": "REFACTOR_RECOMMENDED",
+      "model_confidence": "HIGH",
+      "model_evidence": [
+        "The test required the exact phrase 'solely to reduce' rather than the protected anti-gaming behavior.",
+        "A harmless wording change caused the architecture suite to fail even though the policy meaning remained present.",
+        "The assertion therefore froze FLEXIBLE prose instead of a HARD/CONTROLLED property."
+      ],
+      "counterargument": "Exact phrases can make agent instructions discoverable, but that does not justify treating prose wording as architecture.",
+      "recommended_action": "Assert the semantic ingredients independently and keep failure messages tied to the protected behavior.",
+      "human_verdict": null,
+      "human_reviewer": null,
+      "human_rationale": null
+    },
+    {
+      "case_id": "legacy-file-budget-unit-contract",
+      "source_path": "tests/unit/test_python_file_budget.py",
+      "observed_at_sha": "7d0b4f9b0e69f2c6e18de73ec6703af43fa10ea0",
+      "trigger_context": ["unit-test-failure", "policy-migration"],
+      "model_verdict": "REFACTOR_RECOMMENDED",
+      "model_confidence": "HIGH",
+      "model_evidence": [
+        "Two unit tests still called the removed violation() API and encoded 120 LOC as a HARD blocker.",
+        "Reintroducing a compatibility shim would recreate policy/enforcement split-brain.",
+        "The replacement behavior is a REVIEW_CANDIDATE with measured before/after delta, not a ratchet failure."
+      ],
+      "counterargument": "A temporary shim could reduce migration work, but it would preserve a misleading API whose name and semantics are intentionally retired.",
+      "recommended_action": "Rewrite the unit contract around non-blocking candidate semantics and broader code-category discovery.",
+      "human_verdict": null,
+      "human_reviewer": null,
+      "human_rationale": null
+    },
+    {
+      "case_id": "successful-sensor-output-hidden-by-compact-ci",
+      "source_path": "scripts/ci/check_python_file_budget.py",
+      "observed_at_sha": "6de02b45a5ab97d278edaedc4ed7ac691075f99c",
+      "trigger_context": ["agent-feedback", "ci-ux"],
+      "model_verdict": "REFACTOR_RECOMMENDED",
+      "model_confidence": "HIGH",
+      "model_evidence": [
+        "The canonical CI runner intentionally suppresses stdout from successful steps.",
+        "A non-blocking REVIEW_CANDIDATE could therefore exist while the visible job log only showed a generic PASS line.",
+        "That made the evidence technically correct but operationally invisible to coding agents."
+      ],
+      "counterargument": "Full verbose logs would also expose the findings, but would make every successful CI step noisier.",
+      "recommended_action": "Publish concise candidate guidance to GITHUB_STEP_SUMMARY while retaining machine-readable JSON.",
+      "human_verdict": null,
+      "human_reviewer": null,
+      "human_rationale": null
+    }
+  ],
+  "human_label_policy": {
+    "missing_label": "null",
+    "no_imputation": true,
+    "reason": "Human/model agreement must never be manufactured from model output or inferred from a green test."
+  }
+}
