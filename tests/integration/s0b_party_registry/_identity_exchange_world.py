@@ -8,9 +8,11 @@ from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
     PostgresPartyRegistryCommands,
 )
 from request_engine.modules.tenancy.application.commands import (
-    add_party_administrative_identifier as admin_identifier_commands,
     add_party_document,
     register_party,
+)
+from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
+    add_party_administrative_identifier,
 )
 from request_engine.modules.tenancy.application.identity_exchange import (
     publish_portable_profile,
@@ -62,7 +64,7 @@ async def published_source(
                 authority=authority,
             ),
         )
-    await admin_identifier_commands.add_party_administrative_identifier(
+    await add_party_administrative_identifier(
         commands,
         identifier_command(
             world.organization_id,
