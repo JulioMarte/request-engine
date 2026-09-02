@@ -1,4 +1,5 @@
-from fastapi import status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
@@ -12,7 +13,19 @@ from request_engine.modules.queue.application.errors import (
     SubjectAuthorityRequired,
     TenantReferenceNotUsable,
 )
-from request_engine.platform.http.errors import ErrorBody, ErrorResolution
+from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
+
+
+async def queue_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, QueueError):
+        raise exc
+    from request_engine.modules.queue.api.error_handler import resolve_queue_error
+
+    status_code, body = resolve_queue_error(exc)
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorEnvelope(error=body).model_dump(mode="json"),
+    )
 
 
 def core_queue_error(exc: QueueError) -> tuple[int, ErrorBody] | None:
