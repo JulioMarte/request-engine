@@ -25,9 +25,7 @@ async def test_wrong_document_does_not_consume_candidate(
     app_session_factory: SessionFactory,
 ) -> None:
     cedula = "40200000002"
-    _, _, matcher, adopter = await published_source(
-        admin_conn, app_session_factory, value=cedula
-    )
+    _, _, matcher, adopter = await published_source(admin_conn, app_session_factory, value=cedula)
     destination = create_party_registry_world(admin_conn, prefix="s0d-private")
 
     with operator_actor(destination.organization_id, destination.operator_principal_id):

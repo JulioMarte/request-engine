@@ -48,7 +48,5 @@ async def lookup_parties(
             query.document_kind, query.document_authority
         )
         normalized = normalize_identity_document(query.document_kind, query.value)
-        return await reader.lookup(
-            replace(query, value=normalized, document_authority=authority)
-        )
+        return await reader.lookup(replace(query, value=normalized, document_authority=authority))
     return await reader.lookup(replace(query, value=name_search_key(query.value)))

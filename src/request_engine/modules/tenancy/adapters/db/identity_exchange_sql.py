@@ -39,6 +39,5 @@ BIND_CANDIDATE = text(
 )
 
 EXISTING_BOUND_PARTY = text(
-    "SELECT request_engine.identity_exchange_existing_party_v1("
-    ":candidate_ref, :principal_id)"
+    "SELECT request_engine.identity_exchange_existing_party_v1(:candidate_ref, :principal_id)"
 )

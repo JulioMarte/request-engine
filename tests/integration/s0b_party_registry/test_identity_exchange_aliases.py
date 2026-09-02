@@ -33,9 +33,7 @@ async def test_one_portable_person_can_be_found_by_cedula_or_passport(
 ) -> None:
     cedula = "40200000004"
     passport = "SC2468101"
-    source, party, _, _ = await published_source(
-        admin_conn, app_session_factory, value=cedula
-    )
+    source, party, _, _ = await published_source(admin_conn, app_session_factory, value=cedula)
     commands = PostgresPartyRegistryCommands(app_session_factory)
     await add_party_document.add_party_document(
         commands,

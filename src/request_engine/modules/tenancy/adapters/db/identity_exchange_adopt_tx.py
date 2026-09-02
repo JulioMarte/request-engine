@@ -43,17 +43,21 @@ async def write_identity_adoption(
     if authority is None:
         raise IdentityExchangeCandidateInvalid("scoped document authority is required")
     row = (
-        await session.execute(
-            CONSUME_CANDIDATE,
-            {
-                "candidate_ref": command.candidate_ref,
-                "kind": command.document_kind,
-                "authority": authority,
-                "fingerprint": fingerprint,
-                "principal_id": command.principal_id,
-            },
+        (
+            await session.execute(
+                CONSUME_CANDIDATE,
+                {
+                    "candidate_ref": command.candidate_ref,
+                    "kind": command.document_kind,
+                    "authority": authority,
+                    "fingerprint": fingerprint,
+                    "principal_id": command.principal_id,
+                },
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
     if row is None:
         raise IdentityExchangeCandidateInvalid("candidate is invalid, expired or consumed")
     profile = cast(Mapping[str, object], row["profile"])
@@ -69,9 +73,7 @@ async def write_identity_adoption(
         source_kind=command.source_kind,
         idempotency_key=command.idempotency_key,
         contact_points=contacts,
-        documents=(
-            PartyDocumentInput(command.document_kind, command.document_value, authority),
-        ),
+        documents=(PartyDocumentInput(command.document_kind, command.document_value, authority),),
         platform=command.platform,
         technical_principal_id=command.technical_principal_id,
     )

@@ -83,6 +83,16 @@ BEGIN
         v_profile := v_profile || jsonb_build_object('insurance_identifiers', v_insurance);
     END IF;
 
+    -- Serialize the global identifier decision and every publication for one
+    -- tenant-local Party. This closes both same-document cross-tenant races
+    -- and concurrent alias publication for the same local person.
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(p_kind || ':' || p_authority || ':' || p_fingerprint, 0)
+    );
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended(v_org::text || ':' || p_party_id::text, 0)
+    );
+
     SELECT b.portable_person_id INTO v_bound_person
     FROM request_engine.organization_person_bindings b
     WHERE b.organization_id = v_org AND b.party_id = p_party_id AND b.active
@@ -106,8 +116,6 @@ BEGIN
     IF v_person IS NULL THEN
         INSERT INTO request_engine.portable_person_identities DEFAULT VALUES
         RETURNING id INTO v_person;
-        INSERT INTO request_engine.portable_person_profiles(portable_person_id, profile)
-        VALUES (v_person, v_profile);
     END IF;
 
     IF v_identifier_person IS NULL THEN
@@ -115,6 +123,13 @@ BEGIN
             (portable_person_id, kind, authority, fingerprint)
         VALUES (v_person, p_kind, p_authority, p_fingerprint);
     END IF;
+
+    INSERT INTO request_engine.portable_person_profiles(portable_person_id, profile)
+    VALUES (v_person, v_profile)
+    ON CONFLICT (portable_person_id) DO UPDATE
+    SET profile = EXCLUDED.profile,
+        active = true,
+        updated_at = clock_timestamp();
 
     SELECT b.party_id INTO v_bound_party
     FROM request_engine.organization_person_bindings b

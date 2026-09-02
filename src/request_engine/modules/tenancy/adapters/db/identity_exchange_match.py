@@ -39,9 +39,7 @@ class PostgresPortableIdentityMatcher:
         authority = command.document_authority
         if authority is None:
             raise IdentityExchangeUnavailable("scoped document authority is required")
-        document = ScopedIdentityDocument(
-            command.document_kind, authority, command.document_value
-        )
+        document = ScopedIdentityDocument(command.document_kind, authority, command.document_value)
         try:
             fingerprint = identity_document_fingerprint(self._fingerprint_key, document)
         except RuntimeError as error:

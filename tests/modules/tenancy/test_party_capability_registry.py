@@ -20,6 +20,11 @@ OPERATOR_CORRECTIONS = (
     "parties.deactivate",
 )
 OPERATOR_QUERIES = ("parties.lookup_administrative_identifier", "parties.read_revisions")
+IDENTITY_EXCHANGE = (
+    "identity_exchange.publish",
+    "identity_exchange.match",
+    "identity_exchange.adopt",
+)
 
 
 @pytest.mark.parametrize(
@@ -49,6 +54,15 @@ def test_party_queries_are_public_and_non_idempotent(key: str) -> None:
     assert definition.idempotency is IdempotencyPolicy.NONE
 
 
+@pytest.mark.parametrize("key", IDENTITY_EXCHANGE)
+def test_identity_exchange_commands_are_operator_only_and_idempotent(key: str) -> None:
+    definition = capability_definition(key)
+    assert definition is not None
+    assert definition.kind is CapabilityKind.COMMAND
+    assert definition.exposure is CapabilityExposure.OPERATOR
+    assert definition.idempotency is IdempotencyPolicy.REQUIRED
+
+
 def test_rollback_identity_is_a_public_idempotent_command() -> None:
     definition = capability_definition("parties.rollback_identity")
     assert definition is not None
@@ -66,10 +80,14 @@ def test_bot_grant_subset_does_not_satisfy_operator_only_capabilities() -> None:
             assert not grant_satisfies(granted, correction)
         for query in OPERATOR_QUERIES:
             assert not grant_satisfies(granted, query)
+        for identity_capability in IDENTITY_EXCHANGE:
+            assert not grant_satisfies(granted, identity_capability)
         assert not grant_satisfies(granted, "parties.rollback_identity")
     assert grant_satisfies("parties.confirm_contact_point", "parties.confirm_contact_point")
     for correction in OPERATOR_CORRECTIONS:
         assert grant_satisfies(correction, correction)
     for query in OPERATOR_QUERIES:
         assert grant_satisfies(query, query)
+    for identity_capability in IDENTITY_EXCHANGE:
+        assert grant_satisfies(identity_capability, identity_capability)
     assert grant_satisfies("parties.rollback_identity", "parties.rollback_identity")

@@ -47,6 +47,4 @@ async def add_party_document(
         normalized = normalize_identity_document(command.kind, command.value)
     except ValueError as error:
         raise ValueError(f"document {command.value!r}: {error}") from None
-    return await handler.add_party_document(
-        replace(command, value=normalized, authority=authority)
-    )
+    return await handler.add_party_document(replace(command, value=normalized, authority=authority))

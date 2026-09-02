@@ -54,7 +54,9 @@ def operator_actor(organization_id: UUID, principal_id: UUID) -> Iterator[None]:
         reset_actor_context(token)
 
 
-def adapters(session_factory: SessionFactory) -> tuple[
+def adapters(
+    session_factory: SessionFactory,
+) -> tuple[
     PostgresPortableProfilePublisher,
     PostgresPortableIdentityMatcher,
     PostgresPortableIdentityAdopter,

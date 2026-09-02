@@ -32,9 +32,8 @@ def _reports_constraint(exc: IntegrityError, constraint: str) -> bool:
 
 
 def _unique_violation(exc: IntegrityError, constraint: str) -> bool:
-    return (
-        getattr(exc.orig, "sqlstate", None) == _UNIQUE_SQLSTATE
-        and _reports_constraint(exc, constraint)
+    return getattr(exc.orig, "sqlstate", None) == _UNIQUE_SQLSTATE and _reports_constraint(
+        exc, constraint
     )
 
 
@@ -77,16 +76,20 @@ async def raise_document_conflict(
     async with tenant_transaction(session_factory, organization_id) as session:
         for document in documents:
             row = (
-                await session.execute(
-                    _CONFLICTING_DOCUMENT_SQL,
-                    {
-                        "organization_id": organization_id,
-                        "kind": document.kind,
-                        "authority": document.authority,
-                        "value": document.value,
-                    },
+                (
+                    await session.execute(
+                        _CONFLICTING_DOCUMENT_SQL,
+                        {
+                            "organization_id": organization_id,
+                            "kind": document.kind,
+                            "authority": document.authority,
+                            "value": document.value,
+                        },
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             if row is not None:
                 raise PartyDocumentConflict(
                     "identity document value already registered for another party",

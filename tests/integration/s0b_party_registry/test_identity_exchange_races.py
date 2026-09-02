@@ -31,9 +31,7 @@ async def test_concurrent_alias_adoptions_create_one_local_party(
 ) -> None:
     cedula = "40200000005"
     passport = "SC1357913"
-    source, party, _, _ = await published_source(
-        admin_conn, app_session_factory, value=cedula
-    )
+    source, party, _, _ = await published_source(admin_conn, app_session_factory, value=cedula)
     matcher, adopter = await publish_additional_document(
         app_session_factory,
         source,

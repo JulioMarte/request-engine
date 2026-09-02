@@ -57,7 +57,5 @@ def identity_document_fingerprint(
 
     if key is None or len(key) < _MINIMUM_KEY_BYTES:
         raise RuntimeError("identity exchange key must contain at least 32 bytes")
-    message = (
-        f"{_NAMESPACE}|{document.kind}|{document.authority}|{document.value}"
-    ).encode()
+    message = (f"{_NAMESPACE}|{document.kind}|{document.authority}|{document.value}").encode()
     return hmac.new(key, message, hashlib.sha256).hexdigest()
