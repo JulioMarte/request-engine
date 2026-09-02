@@ -10,9 +10,10 @@ from typing import Any
 
 DEFAULT_SCAN = Path(".ci/python-quality-signals.json")
 DEFAULT_BASELINE = Path(".ci/engineering-quality-baseline.json")
+DEFAULT_ARCHITECTURE_DIFF = Path(".ci/architecture-diff.json")
 DEFAULT_SUMMARY = Path(".ci/python-quality.json")
 DEFAULT_OUTPUT = Path(".ci/quality-evidence")
-SCHEMA_VERSION = "quality-evidence/v1"
+SCHEMA_VERSION = "quality-evidence/v2"
 
 FITNESS_IDS = {
     "file-budget": "FF-SIGNAL-SCAN-001",
@@ -65,6 +66,7 @@ def _context_manifest(scope: dict[str, Any]) -> list[str]:
         "docs/engineering-quality/semantic-review-protocol.md",
         "docs/engineering-quality/engineering-quality-architecture-constitution.md",
         "docs/testing/repository-governance-contract.md",
+        ".ci/architecture-diff.json",
     ]
     module = _module_for_path(path_text)
     if module is not None:
@@ -75,7 +77,7 @@ def _context_manifest(scope: dict[str, Any]) -> list[str]:
 
 
 def _architecture_results(
-    summary: dict[str, Any], baseline: dict[str, Any]
+    summary: dict[str, Any], baseline: dict[str, Any], architecture_diff: dict[str, Any]
 ) -> list[dict[str, object]]:
     raw_steps = summary.get("steps", [])
     steps = raw_steps if isinstance(raw_steps, list) else []
@@ -85,7 +87,13 @@ def _architecture_results(
             "status": "pass",
             "source": "engineering-quality-baseline",
             "details": str(baseline.get("repository_sha", "")),
-        }
+        },
+        {
+            "fitness_id": "FF-ARCH-DIFF-001",
+            "status": "pass",
+            "source": "architecture-diff",
+            "details": str(architecture_diff.get("schema_version", "")),
+        },
     ]
     seen: set[str] = {"quality-baseline"}
     for raw in steps:
@@ -128,10 +136,40 @@ def _candidate_trigger_ids(candidate: dict[str, Any]) -> list[str]:
     return [str(trigger_id)] if trigger_id else []
 
 
+def _verified_provenance(
+    scan: dict[str, Any], baseline: dict[str, Any], architecture_diff: dict[str, Any]
+) -> dict[str, str]:
+    raw = architecture_diff.get("provenance")
+    if not isinstance(raw, dict):
+        raise ValueError("architecture diff is missing provenance")
+    base_sha = str(raw.get("base_sha", ""))
+    source_head_sha = str(raw.get("source_head_sha", ""))
+    tested_sha = str(raw.get("tested_sha", ""))
+    test_mode = str(raw.get("test_mode", ""))
+    if scan.get("base_sha") != base_sha:
+        raise ValueError("scan base SHA does not match architecture-diff provenance")
+    if scan.get("head_sha") != tested_sha:
+        raise ValueError("scan tested tree does not match architecture-diff provenance")
+    if baseline.get("repository_sha") != tested_sha:
+        raise ValueError("baseline tree does not match architecture-diff tested tree")
+    if test_mode not in {"PR_INTEGRATION_CANDIDATE", "BRANCH_HEAD"}:
+        raise ValueError(f"unsupported test_mode={test_mode!r}")
+    return {
+        "base_sha": base_sha,
+        "source_head_sha": source_head_sha,
+        "tested_sha": tested_sha,
+        "test_mode": test_mode,
+    }
+
+
 def build_packets(
-    scan: dict[str, Any], baseline: dict[str, Any], summary: dict[str, Any]
+    scan: dict[str, Any],
+    baseline: dict[str, Any],
+    summary: dict[str, Any],
+    architecture_diff: dict[str, Any],
 ) -> list[dict[str, object]]:
-    architecture_results = _architecture_results(summary, baseline)
+    provenance = _verified_provenance(scan, baseline, architecture_diff)
+    architecture_results = _architecture_results(summary, baseline, architecture_diff)
     raw_candidates = scan.get("candidates", [])
     candidates = raw_candidates if isinstance(raw_candidates, list) else []
     tools = {
@@ -151,8 +189,10 @@ def build_packets(
             "classification": "REVIEW_CANDIDATE",
             "trigger_ids": _candidate_trigger_ids(raw_candidate),
             "repository": os.environ.get("GITHUB_REPOSITORY", "JulioMarte/request-engine"),
-            "base_sha": str(scan.get("base_sha", "")),
-            "head_sha": str(scan.get("head_sha", "")),
+            "base_sha": provenance["base_sha"],
+            "source_head_sha": provenance["source_head_sha"],
+            "tested_sha": provenance["tested_sha"],
+            "test_mode": provenance["test_mode"],
             "scope": {
                 "path": str(scope.get("path", "")),
                 "category": str(scope.get("category", "")),
@@ -169,6 +209,7 @@ def build_packets(
                 "scan_schema": str(scan.get("schema_version", "")),
                 "baseline_schema": str(baseline.get("schema_version", "")),
                 "baseline_sha": str(baseline.get("repository_sha", "")),
+                "architecture_diff_schema": str(architecture_diff.get("schema_version", "")),
                 "tools": tools,
             },
             "authority": "heuristic-signals-are-non-blocking",
@@ -188,7 +229,7 @@ def write_packets(packets: list[dict[str, object]], output_dir: Path) -> None:
         target.write_text(json.dumps(packet, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         names.append(target.name)
     index = {
-        "schema_version": "quality-evidence-index/v1",
+        "schema_version": "quality-evidence-index/v2",
         "packet_schema": SCHEMA_VERSION,
         "count": len(names),
         "packets": names,
@@ -203,10 +244,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scan", type=Path, default=DEFAULT_SCAN)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
+    parser.add_argument("--architecture-diff", type=Path, default=DEFAULT_ARCHITECTURE_DIFF)
     parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
-    missing = [path for path in (args.scan, args.baseline, args.summary) if not path.is_file()]
+    required = (args.scan, args.baseline, args.architecture_diff, args.summary)
+    missing = [path for path in required if not path.is_file()]
     if missing:
         print("[QUALITY-EVIDENCE-FINALIZE-ERROR] required evidence input is missing")
         for path in missing:
@@ -215,13 +258,14 @@ def main() -> int:
     try:
         scan = _load_object(args.scan)
         baseline = _load_object(args.baseline)
+        architecture_diff = _load_object(args.architecture_diff)
         summary = _load_object(args.summary)
-        packets = build_packets(scan, baseline, summary)
+        packets = build_packets(scan, baseline, summary, architecture_diff)
         write_packets(packets, args.output_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[QUALITY-EVIDENCE-FINALIZE-ERROR] {exc}")
         return 2
-    print(f"[PASS] finalized {len(packets)} quality-evidence/v1 packet(s).")
+    print(f"[PASS] finalized {len(packets)} {SCHEMA_VERSION} packet(s).")
     print(f"Evidence index: {args.output_dir / 'index.json'}")
     return 0
 
