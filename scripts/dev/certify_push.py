@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -180,7 +181,7 @@ def _prune_run_directories(storage: Path) -> None:
 
 
 @contextmanager
-def _detached_worktree(root: Path, commit_sha: str):  # type: ignore[no-untyped-def]
+def _detached_worktree(root: Path, commit_sha: str) -> Iterator[Path]:
     parent = Path(tempfile.mkdtemp(prefix="request-engine-push-cert-"))
     worktree = parent / "tree"
     added = False
@@ -229,7 +230,9 @@ def _quality_signal_counts(path: Path) -> tuple[int, int]:
         return 0, 0
     candidates = payload.get("candidates")
     failures = payload.get("invariant_failures")
-    candidate_count = len(cast(list[object], candidates)) if isinstance(candidates, list) else 0
+    candidate_count = (
+        len(cast(list[object], candidates)) if isinstance(candidates, list) else 0
+    )
     failure_count = len(cast(list[object], failures)) if isinstance(failures, list) else 0
     return candidate_count, failure_count
 
