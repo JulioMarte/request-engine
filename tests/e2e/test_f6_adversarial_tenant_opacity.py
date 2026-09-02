@@ -19,10 +19,18 @@ pytestmark = [
 ]
 
 
-def _name(conn: PgConnection, table: str, object_id: object) -> str:
-    assert table in {"resources", "offerings"}
+def _resource_name(conn: PgConnection, object_id: object) -> str:
     row = conn.execute(
-        f"SELECT display_name FROM request_engine.{table} WHERE id=%s",  # noqa: S608
+        "SELECT display_name FROM request_engine.resources WHERE id=%s",
+        (object_id,),
+    ).fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+def _offering_name(conn: PgConnection, object_id: object) -> str:
+    row = conn.execute(
+        "SELECT display_name FROM request_engine.offerings WHERE id=%s",
         (object_id,),
     ).fetchone()
     assert row is not None
@@ -39,12 +47,12 @@ async def test_f6_lookup_tools_never_surface_foreign_tenant_entities(
     async with client_with_actors(e2e_session_factory, actors) as client:
         resources = await client.get(
             "/v1/operational-copilot/tools/resources",
-            params={"reference": _name(e2e_admin_conn, "resources", foreign.resource_id)},
+            params={"reference": _resource_name(e2e_admin_conn, foreign.resource_id)},
             headers=auth(local),
         )
         offerings = await client.get(
             "/v1/operational-copilot/tools/offerings",
-            params={"reference": _name(e2e_admin_conn, "offerings", foreign.offering_id)},
+            params={"reference": _offering_name(e2e_admin_conn, foreign.offering_id)},
             headers=auth(local),
         )
         queues = await client.get(
