@@ -105,7 +105,7 @@ async def test_concurrent_alias_adoptions_create_one_local_party(
         "SELECT "
         "(SELECT count(*) FROM request_engine.parties "
         " WHERE organization_id = %s AND display_name = 'María Gómez'), "
-        "(SELECT count(*) FROM request_engine.organization_person_bindings "
+        "(SELECT count(*) FROM request_engine.organization_party_bindings "
         " WHERE organization_id = %s AND active)",
         (destination.organization_id, destination.organization_id),
     ).fetchone()
