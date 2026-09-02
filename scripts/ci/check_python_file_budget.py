@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
 import subprocess
 import tokenize
@@ -294,6 +295,30 @@ def write_report(report: dict[str, object], output: Path) -> None:
     output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_github_summary(report: dict[str, object], feedback: str, output: Path) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    raw_candidates = report.get("candidates", [])
+    candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 0
+    summary = [
+        "## Python maintainability signals",
+        "",
+        f"**Candidates:** {candidate_count}",
+        f"**Evidence schema:** `{report.get('schema_version', EVIDENCE_SCHEMA)}`",
+        "**Authority:** heuristic signals are non-blocking; HARD invariants remain authoritative.",
+        "",
+        "```text",
+        feedback,
+        "```",
+        "",
+        f"Machine-readable evidence: `{output.as_posix()}`",
+        "",
+    ]
+    with Path(summary_path).open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(summary))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Emit non-blocking Python maintainability evidence for semantic review."
@@ -304,12 +329,14 @@ def main() -> int:
     try:
         report = build_report(args.base_ref)
         write_report(report, args.output)
+        feedback = render_feedback(report)
+        write_github_summary(report, feedback, args.output)
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         print("[QUALITY-SENSOR-ERROR] deterministic maintainability scan could not complete.")
         print("This is a tooling failure, not a semantic verdict.")
         print(f"- {exc}")
         return 2
-    print(render_feedback(report))
+    print(feedback)
     print(f"Evidence: {args.output}")
     return 0
 
