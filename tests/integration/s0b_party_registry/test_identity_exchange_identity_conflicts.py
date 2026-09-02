@@ -47,12 +47,12 @@ async def test_alias_document_cannot_join_two_existing_portable_people(
         )
 
     counts = admin_conn.execute(
-        "SELECT count(DISTINCT b.portable_person_id), "
+        "SELECT count(DISTINCT b.portable_party_id), "
         "count(DISTINCT i.id) FILTER "
         "(WHERE i.kind = 'passport' AND i.authority = 'DO') "
-        "FROM request_engine.organization_person_bindings b "
-        "LEFT JOIN request_engine.portable_person_identifiers i "
-        "ON i.portable_person_id = b.portable_person_id AND i.active "
+        "FROM request_engine.organization_party_bindings b "
+        "LEFT JOIN request_engine.portable_party_identifiers i "
+        "ON i.portable_party_id = b.portable_party_id AND i.active "
         "WHERE b.organization_id IN (%s, %s) AND b.active",
         (first.organization_id, second.organization_id),
     ).fetchone()
