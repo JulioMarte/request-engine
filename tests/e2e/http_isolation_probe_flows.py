@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .http_isolation_probe_flows_f7 import (
-    F7_PROBE_NAMES,
-    foreign_request as _f7_request,
-)
+from .http_isolation_probe_flows_f7 import F7_PROBE_NAMES
+from .http_isolation_probe_flows_f7 import foreign_request as _f7_request
 from .http_isolation_probe_flows_s0b import foreign_request as _s0b_request
 from .http_surface import PublicHttpOperation
 
