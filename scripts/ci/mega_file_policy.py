@@ -22,7 +22,34 @@ CORE_MEGA_CATEGORIES = frozenset(
         "production_domain",
     }
 )
+MEGA_POLICY_AUTHORITY_PATHS = frozenset(
+    {
+        ".github/workflows/ci.yml",
+        "docs/engineering-quality/mega-file-circuit-breaker.md",
+        "docs/engineering-quality/mega-file-exceptions.v1.json",
+        "scripts/ci/check_python_file_budget.py",
+        "scripts/ci/ci_jobs.py",
+        "scripts/ci/mega_file_policy.py",
+        "scripts/ci/quality_metrics.py",
+        "src/request_engine/AGENTS.md",
+    }
+)
 REGISTRY_SCHEMA_VERSION = "mega-file-exceptions/v1"
+
+
+def is_core_mega_scope(path: Path, category: str) -> bool:
+    """Return whether the file belongs to the protected handwritten core surface."""
+    if category in CORE_MEGA_CATEGORIES:
+        return True
+    parts = path.parts
+    if len(parts) >= 4 and parts[:3] == ("src", "request_engine", "modules"):
+        # Module-root install/composition surfaces are core even though the broad
+        # metrics classifier reports them as production_other. Concrete adapters
+        # remain outside the 500 eLOC circuit breaker during calibration.
+        return "adapters" not in parts[4:5]
+    if len(parts) >= 3 and parts[:2] == ("src", "request_engine"):
+        return parts[2] in {"bootstrap", "entrypoints"}
+    return False
 
 
 def _validated_exception(entry: Any) -> dict[str, object]:
@@ -84,7 +111,7 @@ def mega_file_failure(
     base_exceptions: dict[str, dict[str, object]],
 ) -> dict[str, object] | None:
     """Return a blocking finding only for anomalous handwritten core growth."""
-    if category not in CORE_MEGA_CATEGORIES or current <= MEGA_FILE_HARD_LIMIT:
+    if not is_core_mega_scope(path, category) or current <= MEGA_FILE_HARD_LIMIT:
         return None
 
     path_text = path.as_posix()
@@ -139,5 +166,52 @@ def mega_file_failure(
         "remediation": (
             "Improve cohesion through a real responsibility boundary, or obtain a separate "
             "architecture exception merged into the branch base before retrying this change."
+        ),
+    }
+
+
+def policy_self_modification_failure(
+    *,
+    changed_paths: set[str],
+    changed_core_python: list[Path],
+) -> dict[str, object] | None:
+    """Reject product changes that also modify the gate that judges them."""
+    policy_changes = sorted(changed_paths & MEGA_POLICY_AUTHORITY_PATHS)
+    if not policy_changes or not changed_core_python:
+        return None
+    core_paths = sorted(path.as_posix() for path in changed_core_python)
+    return {
+        "classification": "INVARIANT_FAILURE",
+        "trigger_id": "QR-MEGA-GOV-001",
+        "scope": {
+            "path": "<repository-policy>",
+            "category": "governance",
+            "subject": "mega-file-policy-authority",
+        },
+        "facts": [
+            {
+                "kind": "policy_authority_paths_changed",
+                "subject": "mega-file-policy-authority",
+                "value": policy_changes,
+                "tool": "git:diff",
+                "interpretation": "same-change-policy-and-product-modification",
+            },
+            {
+                "kind": "core_python_paths_changed",
+                "subject": "handwritten-core-product-python",
+                "value": core_paths,
+                "tool": "git:diff",
+                "interpretation": "same-change-policy-and-product-modification",
+            },
+        ],
+        "deltas": [],
+        "reason": (
+            "the change modifies core product Python and the mega-file policy authority "
+            "that judges that product change"
+        ),
+        "exception_source": "separate-governance-change-required",
+        "remediation": (
+            "Separate governance/policy evolution from the product implementation, merge the "
+            "governance decision first, then rebuild/rebase and re-prove the product change."
         ),
     }
