@@ -8,6 +8,7 @@ from request_engine.modules.tenancy.contracts.identity_exchange import (
     IdentityAdoptionResult,
     IdentityMatchResult,
 )
+from request_engine.modules.tenancy.contracts.party_kind import PartyKind
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.modules.tenancy.domain.identity_exchange import (
     normalize_portable_fields,
@@ -16,6 +17,9 @@ from request_engine.modules.tenancy.domain.identity_exchange import (
 )
 from request_engine.modules.tenancy.domain.party_identity import (
     normalize_identity_document_authority,
+)
+from request_engine.modules.tenancy.domain.party_subject_identity import (
+    party_kind_for_document,
 )
 
 _PROOF = "operator_document_witness"
@@ -87,12 +91,23 @@ def _validate_proof(proof_kind: str, idempotency_key: str) -> None:
         raise ValueError("idempotency_key is required")
 
 
+def _portable_fields_for_document(
+    fields: tuple[str, ...],
+    document_kind: str,
+) -> tuple[str, ...]:
+    party_kind = party_kind_for_document(document_kind)
+    return require_adoptable_fields(
+        fields,
+        allow_insurance_member=party_kind is PartyKind.PERSON,
+    )
+
+
 async def publish_portable_profile(
     handler: PublishPortableProfileHandler,
     command: PublishPortableProfileCommand,
 ) -> None:
     _validate_proof(command.proof_kind, command.idempotency_key)
-    fields = require_adoptable_fields(command.consented_fields)
+    fields = _portable_fields_for_document(command.consented_fields, command.document_kind)
     authority = normalize_identity_document_authority(
         command.document_kind, command.document_authority
     )
@@ -130,7 +145,7 @@ async def adopt_portable_identity(
     document = normalize_witnessed_document(
         command.document_kind, command.document_authority, command.document_value
     )
-    fields = require_adoptable_fields(command.consented_fields)
+    fields = _portable_fields_for_document(command.consented_fields, document.kind)
     return await handler.adopt_portable_identity(
         replace(
             command,
