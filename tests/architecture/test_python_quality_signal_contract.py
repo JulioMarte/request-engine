@@ -107,8 +107,14 @@ def test_c901_json_becomes_evidence_without_semantic_claim() -> None:
 
 
 def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
-    monkeypatch.setattr(signals, "_module_file_count", lambda _ref, _root: 10)
-    monkeypatch.setattr(signals, "_current_module_file_count", lambda _root: 11)
+    def previous_file_count(_ref: str, _root: Path) -> int:
+        return 10
+
+    def current_file_count(_root: Path) -> int:
+        return 11
+
+    monkeypatch.setattr(signals, "_module_file_count", previous_file_count)
+    monkeypatch.setattr(signals, "_current_module_file_count", current_file_count)
     observation: dict[str, object] = {
         "function_count": 1,
         "one_call_forwarder_count": 1,
@@ -209,8 +215,16 @@ def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path:
     def build_report_stub(_base_ref: str) -> dict[str, object]:
         return report
 
+    def write_report_stub(_report: dict[str, object], _output: Path) -> None:
+        return None
+
+    def write_summary_stub(
+        _report: dict[str, object], _feedback: str, _output: Path
+    ) -> None:
+        return None
+
     monkeypatch.setattr(signals, "build_report", build_report_stub)
-    monkeypatch.setattr(signals, "write_report", lambda _report, _output: None)
-    monkeypatch.setattr(signals, "write_github_summary", lambda _report, _feedback, _output: None)
+    monkeypatch.setattr(signals, "write_report", write_report_stub)
+    monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
     assert signals.main() == 0
