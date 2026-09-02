@@ -1,5 +1,5 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 from uuid import UUID, uuid4
 
 from request_engine.modules.tenancy.adapters.db.identity_exchange_adopt import (
@@ -19,7 +19,10 @@ from request_engine.modules.tenancy.application.identity_exchange import (
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext, PrincipalKind
-from request_engine.platform.security.execution_context import bind_actor_context, reset_actor_context
+from request_engine.platform.security.execution_context import (
+    bind_actor_context,
+    reset_actor_context,
+)
 
 KEY = b"integration-identity-exchange-key-32-bytes-minimum"
 PROOF = "operator_document_witness"
