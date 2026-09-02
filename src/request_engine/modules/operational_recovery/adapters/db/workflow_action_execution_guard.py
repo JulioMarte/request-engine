@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
 
-_LOCK_NAMESPACE = 0x5245434F  # "RECO"
+_LOCK_HASH_SEED = 0x5245434F  # "RECO"
 
 
 @asynccontextmanager
@@ -23,20 +23,19 @@ async def serialize_recovery_action_execution(
     reacquire the same action and resume from its durable owner-step state.
     """
 
-    lock_identity = str(action_id)
+    lock_identity = f"request-engine:operational-recovery:action:{action_id}"
     async with session_factory() as session, session.begin():
         await session.execute(
             text(
                 """
                 SELECT pg_advisory_xact_lock(
-                    :namespace,
-                    hashtext(:lock_identity)
+                    hashtextextended(:lock_identity, :hash_seed)
                 )
                 """
             ),
             {
-                "namespace": _LOCK_NAMESPACE,
                 "lock_identity": lock_identity,
+                "hash_seed": _LOCK_HASH_SEED,
             },
         )
         yield
