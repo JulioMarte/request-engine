@@ -28,6 +28,8 @@ For ordinary feature, fix, refactor, test, documentation, release-proof, or agen
 9. merge into `development` and delete the merged work branch;
 10. only then start the next ordinary work branch from the new `development` HEAD.
 
+After a merge, `.github/development-integration-lane` still holds the merged (deleted) branch name; step 4 of the next work item is to overwrite it with the new work branch name.
+
 `tmp/*` branches are scratch/reconciliation space only and MUST NOT become ordinary PR heads.
 
 The only normal pull request allowed to target `main` is the release promotion `development -> main` after the integrated `development` state has passed the required release proof again.
@@ -241,7 +243,26 @@ python scripts/ci/ci_jobs.py python-quality
 
 It owns the non-blocking Python maintainability signal scan, dependency/environment consistency, Ruff, Pyright, security/dependency checks, architecture tests, unit tests and module tests. PostgreSQL/current-product changes additionally run the appropriate PostgreSQL 18 runner described by `docs/testing/README.md` and the relevant module/migration instructions.
 
+`python-quality` does NOT include the engineering-quality wrapper steps that `.github/workflows/ci.yml` runs around it: baseline build, architecture diff vs base, quality-policy separation, evidence finalization, evidence schema validation, calibration summary and test-architecture inventory. To reproduce the full evidence chain locally (PRs use the base SHA and `QUALITY_TEST_MODE=PR_INTEGRATION_CANDIDATE`; locally use the integration base):
+
+```bash
+export QUALITY_BASE_REF=origin/development QUALITY_SOURCE_HEAD_SHA=$(git rev-parse HEAD) QUALITY_TEST_MODE=BRANCH_HEAD
+uv run python scripts/ci/build_engineering_quality_baseline.py --output .ci/engineering-quality-baseline.json
+uv run python scripts/ci/build_architecture_diff.py --base-ref "$QUALITY_BASE_REF" --output .ci/architecture-diff.json
+python scripts/ci/ci_jobs.py python-quality --summary-output .ci/python-quality.json --log-dir .ci/logs
+QUALITY_POLICY_BASE_REF=$QUALITY_BASE_REF python scripts/ci/check_quality_policy_separation.py --base-ref "$QUALITY_POLICY_BASE_REF"
+python scripts/ci/finalize_quality_evidence.py --scan .ci/python-quality-signals.json --baseline .ci/engineering-quality-baseline.json --architecture-diff .ci/architecture-diff.json --summary .ci/python-quality.json --output-dir .ci/quality-evidence
+uv run --with jsonschema python scripts/ci/validate_quality_evidence.py --schema docs/engineering-quality/schemas/quality-evidence-v2.schema.json --packet-dir .ci/quality-evidence
+python scripts/ci/summarize_quality_calibration.py --input docs/engineering-quality/calibration/pilot-observations.v1.json --output .ci/calibration/human-model-summary.json
+```
+
 Exact-head CI remains the merge evidence. Never claim a check passed unless it actually ran against the intended execution environment; report skipped or unavailable checks explicitly.
+
+## Engineering-quality signals: blocking vs non-blocking
+
+- The wrapper steps in `.github/workflows/ci.yml` (baseline build, architecture diff vs base, quality-policy separation, evidence finalization, evidence schema validation, calibration summary, test-architecture inventory) fail the `python-quality` job when they fail.
+- `QR-*` maintainability signals (`QR-FSIZE-001`, `QR-CPLX-001`, `QR-NAV-001`, `QR-COUPLING-001`) never block; they only emit `REVIEW_CANDIDATE` evidence.
+- A deterministic `INVARIANT_FAILURE` comes only from deterministic architecture/correctness tests, never from a maintainability signal.
 
 ## Documentation rule
 

@@ -57,7 +57,7 @@ For database-dependent behavior, read `docs/testing/evidence-authoring-guide.md`
 
 ## Canonical CI ownership
 
-`.github/workflows/ci.yml` owns runner/service setup and passes execution context into the repository CI entry points. It should not independently redefine the content of a canonical test/quality job.
+`.github/workflows/ci.yml` owns runner/service setup and passes execution context into the repository CI entry points. The accepted composition shape is: canonical job content lives in `scripts/ci/ci_jobs.py`, while the workflow adds orchestration wrapper steps (engineering-quality baseline build, architecture diff vs base, quality-policy separation, evidence finalization, evidence schema validation, calibration summary, test-architecture inventory) that carry provenance environment variables such as `QUALITY_BASE_REF`, `QUALITY_SOURCE_HEAD_SHA`, `QUALITY_TEST_MODE`, `QUALITY_POLICY_BASE_REF` and `FILE_BUDGET_BASE_REF`. These wrapper steps are workflow-owned orchestration, not a redefinition of the canonical job content.
 
 `scripts/ci/ci_jobs.py` is the executable source of truth for named reusable CI jobs such as `python-quality`. The current `python-quality` sequence owns the Python effective-line budget, environment/lock consistency, Ruff, Pyright, security/dependency checks, architecture tests, unit tests and module tests. The workflow passes `FILE_BUDGET_BASE_REF` so the file-budget ratchet can compare the current change with the correct integration base; local execution falls back to `HEAD^`.
 

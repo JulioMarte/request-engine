@@ -64,7 +64,7 @@ Canonical governance and executable enforcement have been explicitly promoted an
 | 0. Policy direction | `ACCEPTED_FOR_CALIBRATION` | semantic-over-metric authority defined; normative promotion pending |
 | 1. Repository baseline | `IMPLEMENTED_FOR_CALIBRATION` | categorized LOC/function/C901 and module fan-in/fan-out distributions exist |
 | 2. Deterministic sensors | `IMPLEMENTED_FOR_CALIBRATION` | QR-FSIZE, QR-CPLX, QR-NAV and QR-COUPLING are executable and non-blocking |
-| 3. Evidence packets | `IMPLEMENTED_FOR_CALIBRATION` | `quality-scan/v1`, `quality-evidence/v1`, schema and validator exist |
+| 3. Evidence packets | `IMPLEMENTED_FOR_CALIBRATION` | `quality-scan/v1` discovery, current `quality-evidence/v2` packets, schema and validator exist (`quality-evidence/v1` is historical) |
 | 4. Semantic review pilot | `IMPLEMENTED_FOR_CALIBRATION` | playbook/protocol and pilot observations exist; more real-PR/human data needed |
 | 5. Reviewer/fixer + re-proof | `IMPLEMENTED_FOR_CALIBRATION` | separation rules and deterministic re-proof remain authoritative |
 | 6. Calibration | `ACTIVE / INCOMPLETE` | longitudinal human labels, cost/latency, coupling outcomes and disagreement data remain incomplete |
@@ -183,8 +183,8 @@ Discovery and semantic handoff remain separate:
 quality-scan/v1
     -> run-level discovery and graph deltas
 
-quality-evidence/v1
-    -> candidate-level review packet
+quality-evidence/v2
+    -> candidate-level review packet (v1 is historical)
 ```
 
 Evidence packets include candidate/trigger IDs, repository/base/head SHA, scope/module/category/files, deterministic facts/deltas, architecture/quality state, context manifest, review questions, provenance and authority metadata.

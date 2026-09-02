@@ -170,6 +170,14 @@ test_mode
 
 For pull requests, GitHub normally tests a synthetic integration candidate. `source_head_sha` and `tested_sha` are therefore expected to differ. Evidence finalization fails if baseline, scan and architecture-diff artifacts disagree about the tested tree.
 
+### For the PR author
+
+A red `Finalize quality evidence packets` or `Validate quality evidence schema` step is an evidence-integrity failure, not a code failure. `finalize_quality_evidence.py` fails when the baseline, the signal scan and the architecture diff disagree about which tree was tested — see the provenance distinction above.
+
+Evidence packets are uploaded as the artifact `python-quality-evidence-source-<head>-tested-<sha>`. `source_head_sha` is the feature/source branch commit; `tested_sha` is the exact checked-out tree CI executed. Review evidence whose `tested_sha` matches the revision you are judging.
+
+`jsonschema` is deliberately an ephemeral CI dependency (`uv run --with jsonschema`); it must NOT be added to the project lockfile.
+
 ## Semantic review and human calibration
 
 `semantic-review-protocol.md` and `agent-semantic-review-playbook.md` define the reviewer contract.

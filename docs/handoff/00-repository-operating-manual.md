@@ -76,7 +76,8 @@ Each as: **trap → what fails → what to do.**
 - **Trap:** adding even one line to a legacy oversized file, or writing a new file over
   120 effective lines. "Effective lines" = tokenize-based code lines; comments and
   blank lines are free, **docstrings count**. Limits: soft target 100, hard max 120.
-- **Fails:** the `file-budget` step of python-quality:
+- **Fails:** the `file-budget` step of python-quality *(superseded: the file budget is now a
+  non-blocking REVIEW_CANDIDATE signal, not a hard failure; see docs/engineering-quality/)*:
   `scripts/ci/check_python_file_budget.py --base-ref origin/development`. Files already
   over 120 are **ratcheted**: they may not grow by a single line
   (`previous -> current` growth is a hard failure).

@@ -15,7 +15,7 @@ target = 100
 hard maximum = 120
 ```
 
-New or previously compliant files above 120 fail the canonical Python quality job; legacy oversized files are ratcheted.
+At the audited state, new or previously compliant files above 120 failed the canonical Python quality job and legacy oversized files were ratcheted. The retirement decision (this record) demoted this to a non-blocking `QR-FSIZE-001` `REVIEW_CANDIDATE` signal; files above 120 no longer fail CI.
 
 Current governance simultaneously says:
 
