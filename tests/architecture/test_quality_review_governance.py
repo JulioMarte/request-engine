@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOK = "docs/engineering-quality/agent-semantic-review-playbook.md"
@@ -59,11 +58,10 @@ def test_agent_instructions_forbid_metric_gaming_and_llm_override() -> None:
 
 
 def test_c901_is_calibrated_but_not_part_of_blocking_global_ruff_selection() -> None:
-    pyproject = cast(dict[str, Any], tomllib.loads(_read("pyproject.toml")))
-    ruff = cast(dict[str, Any], pyproject["tool"])["ruff"]
-    lint = cast(dict[str, Any], ruff)["lint"]
-    selected = cast(list[str], cast(dict[str, Any], lint)["select"])
-    mccabe = cast(dict[str, Any], cast(dict[str, Any], lint)["mccabe"])
+    pyproject = tomllib.loads(_read("pyproject.toml"))
+    lint = pyproject["tool"]["ruff"]["lint"]
+    selected = lint["select"]
+    mccabe = lint["mccabe"]
     assert mccabe["max-complexity"] == 10
     assert "C901" not in selected, (
         "C901 is a calibration/review sensor. Do not add it to blocking global Ruff selection "
