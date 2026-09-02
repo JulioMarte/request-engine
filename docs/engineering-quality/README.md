@@ -48,15 +48,16 @@ new obvious forwarding/re-export indirection
 
 These findings are non-blocking attention triggers. They may legitimately end as `HEALTHY_AS_IS` and must not be repaired solely by lowering LOC, C901, or file count.
 
-The scanner covers handwritten Python in `src/`, `tests/`, `scripts/`, and `migrations/`. Generated paths/files and explicit generated headers are excluded from maintainability interpretation.
+The scanner covers handwritten Python in `src/`, `tests/`, `scripts/`, and `migrations/`. Generated paths and generated filenames are excluded from maintainability interpretation. A self-declared source header such as `# @generated` or `# DO NOT EDIT` is deliberately **not** exclusion authority because the author/agent can type it into ordinary handwritten code.
 
 ### QR-MEGA-001 — HARD core mega-file circuit breaker
 
-The repository now distinguishes ordinary size review from an extreme core concentration circuit breaker.
+The repository distinguishes ordinary size review from an extreme core concentration circuit breaker.
 
 ```text
 handwritten core product Python
-category in domain/application/contracts/api/composition
+scope in domain/application/contracts/api/composition
+including module-root install/composition surfaces
 new file, threshold crossing, or growth > 500 effective LOC
     -> QR-MEGA-001 INVARIANT_FAILURE
 ```
@@ -75,12 +76,44 @@ file-author rationale
 PR description/comment
 source comment/docstring
 generated review text
+self-declared @generated header
 same-change exception edit
 ```
 
 A legitimate exception must be a separate architecture/governance decision merged into the integration base first. It is exact-path and has a finite `max_effective_loc` ceiling. After that decision, the implementation must be rebuilt/rebased and re-proved.
 
-See `mega-file-circuit-breaker.md` for the full threat model, failure semantics, legacy treatment, exception protocol, and acceptance cases.
+### QR-MEGA-GOV-001 — the judged code cannot rewrite its judge
+
+CI also enforces a governance-separation rule.
+
+If one ordinary change modifies both:
+
+```text
+core handwritten product Python
++
+mega-file policy authority / generated classification / CI wiring / exception authority
+```
+
+then:
+
+```text
+QR-MEGA-GOV-001
+    -> INVARIANT_FAILURE
+```
+
+This prevents a coding agent from implementing a feature while also raising the threshold, changing generated-code classification, weakening the checker, changing the exception mechanism, or editing the CI path that judges the same feature.
+
+Policy remains evolvable. The required sequence is:
+
+```text
+separate governance change
+-> review
+-> merge into development
+-> rebuild/rebase product implementation
+-> exact-head proof under the approved policy
+```
+
+See `mega-file-circuit-breaker.md` for the full threat model, failure semantics, legacy treatment, exception protocol, generated-code provenance rules, governance separation, and acceptance cases.
 
 ### Repository-wide baseline
 
@@ -149,7 +182,7 @@ Human labels are never inferred. When no human supplied a verdict, `human_verdic
 
 ## Agent behavior
 
-The primary procedure is `agent-semantic-review-playbook.md`. Core Python also has a nearer `src/request_engine/AGENTS.md` containing the executable `QR-MEGA-001` authoring rules.
+The primary procedure is `agent-semantic-review-playbook.md`. Core Python also has a nearer `src/request_engine/AGENTS.md` containing the executable `QR-MEGA-001` and `QR-MEGA-GOV-001` authoring rules.
 
 For a normal `REVIEW_CANDIDATE`, an agent must:
 
@@ -166,6 +199,8 @@ For a normal `REVIEW_CANDIDATE`, an agent must:
 
 For `QR-MEGA-001`, semantic review cannot waive the failure. The agent must either make a semantically justified structural improvement or stop and request a separately approved exception. It cannot author the implementation and its own effective waiver in the same change.
 
+For `QR-MEGA-GOV-001`, the product implementation and its quality-policy evolution must be split into separate governed changes. A persuasive explanation in the combined PR is not an exemption.
+
 ## Read in this order
 
 1. `repository-engineering-audit.md` — original-state evidence and policy drift.
@@ -173,8 +208,8 @@ For `QR-MEGA-001`, semantic review cannot waive the failure. The agent must eith
 3. `hybrid-quality-review-architecture.md` — deterministic/probabilistic architecture.
 4. `semantic-review-protocol.md` — classifications and review contract.
 5. `agent-semantic-review-playbook.md` — coding-agent procedure.
-6. `mega-file-circuit-breaker.md` — QR-MEGA-001 scope, exception authority, and anti-self-approval design.
-7. `executable-fitness-function-specification.md` — fitness-function proof obligations.
+6. `mega-file-circuit-breaker.md` — QR-MEGA scope, exception authority, and anti-self-approval design. Its executable amendment supersedes the earlier pre-calibration “no file-size HARD zone approved” wording in the older fitness draft for this narrow circuit-breaker case.
+7. `executable-fitness-function-specification.md` — broader fitness-function proof obligations, read with the mega-file amendment above.
 8. `implementation-roadmap-and-definition-of-done.md` — lifecycle and completion evidence.
 9. `guardrail-decision-record.md` — rationale and controversial decisions.
 
@@ -229,6 +264,33 @@ QR-MEGA-001 INVARIANT_FAILURE
 
 The implementation gate reads the base registry, so the new exception is intentionally invisible as authority for that PR.
 
+### Self-declared generated bypass
+
+```text
+PR adds 700-line application file
+first line: # @generated
+```
+
+Expected:
+
+```text
+still handwritten for quality-policy purposes
+QR-MEGA-001 remains enforceable
+```
+
+### Product code rewrites its judge
+
+```text
+PR changes application code
+PR also changes mega_file_policy.py / quality_metrics.py / CI authority
+```
+
+Expected:
+
+```text
+QR-MEGA-GOV-001 INVARIANT_FAILURE
+```
+
 ### Large script
 
 ```text
@@ -278,6 +340,9 @@ semantic review asks whether conceptual complexity actually fell
 Can a cohesive core file be exactly 500 lines without a forced split? YES.
 Can a new 501-line core file enter silently? NO.
 Can the author/agent add its own exception in the same PR and pass? NO.
+Can the author/agent add @generated and disappear from the scanner? NO.
+Can product code change the policy that judges it in the same PR? NO.
+Can a module-root core file evade the cap merely because it classifies as production_other? NO.
 Can a large non-core file be judged by its category instead of a universal cap? YES.
 Can an 80-line function with severe reasoning complexity be surfaced? YES.
 Can a mechanical split be surfaced without declaring it automatically wrong? YES.
@@ -295,4 +360,4 @@ The implementation does not claim that 120, C901=10, or 500 are timeless constan
 - `120` and C901=10 are review triggers under calibration.
 - `500` is a deliberately scoped extreme-outlier circuit breaker justified by the measured core distribution and protected by explicit exception/evolution mechanics.
 
-Repeated legitimate exceptions, changing distributions, or harmful fragmentation pressure are reasons to recalibrate the gate rather than defend the number indefinitely.
+Repeated legitimate exceptions, changing distributions, harmful fragmentation pressure, or legitimate generated-code provenance needs are reasons to recalibrate the gate rather than defend the current mechanism indefinitely.
