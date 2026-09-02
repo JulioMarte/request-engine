@@ -76,6 +76,7 @@ class StaffQueueEntryView(BaseModel):
     service_completed_at: datetime | None
     recall_hold_kind: str | None
     recall_hold_release_at: datetime | None
+    recall_hold_reason: str | None
     queue_revision: int
     service_revision: int | None
 
@@ -102,6 +103,7 @@ class StaffQueueEntryView(BaseModel):
             service_completed_at=item.service_completed_at,
             recall_hold_kind=item.recall_hold_kind,
             recall_hold_release_at=item.recall_hold_release_at,
+            recall_hold_reason=item.recall_hold_reason,
             queue_revision=item.queue_revision,
             service_revision=item.service_revision,
         )
