@@ -218,9 +218,7 @@ def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path:
     def write_report_stub(_report: dict[str, object], _output: Path) -> None:
         return None
 
-    def write_summary_stub(
-        _report: dict[str, object], _feedback: str, _output: Path
-    ) -> None:
+    def write_summary_stub(_report: dict[str, object], _feedback: str, _output: Path) -> None:
         return None
 
     monkeypatch.setattr(signals, "build_report", build_report_stub)
