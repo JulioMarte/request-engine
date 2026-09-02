@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.queue.contracts.same_day_selection import RecallHold, RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHold,
+    RecallHoldKind,
+    RecallHoldReason,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +19,7 @@ class RecallHoldCommand:
     expected_revision: int
     kind: RecallHoldKind
     release_at: datetime | None
-    reason: str | None
+    reason: RecallHoldReason | None
     idempotency_key: str
 
 
