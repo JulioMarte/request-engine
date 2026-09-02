@@ -12,6 +12,9 @@ from request_engine.modules.queue.adapters.db.live_queue_commands import (
     PostgresLiveQueueCommands,
 )
 from request_engine.modules.queue.adapters.db.live_queue_reader import PostgresLiveQueueReader
+from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
+    PostgresSameDaySelectionCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_catalog_reader import (
     PostgresServiceQueueCatalogReader,
 )
@@ -28,6 +31,9 @@ from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.intake_errors import queue_intake_stopped_handler
 from request_engine.modules.queue.api.live_router import create_live_router
 from request_engine.modules.queue.api.router import create_router
+from request_engine.modules.queue.api.same_day_selection_router import (
+    create_same_day_selection_router,
+)
 from request_engine.modules.queue.application.errors import QueueError
 from request_engine.modules.queue.application.slot_offer_notifications import (
     SlotOfferNotificationPort,
@@ -52,7 +58,7 @@ def install_http(
     actor_resolver: ActorResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
 ) -> None:
-    """Connect Queue customer, waitlist and F3 live-operation surfaces."""
+    """Connect Queue customer, waitlist and live-operation surfaces."""
 
     commands = PostgresServiceQueueCommands(session_factory)
     waitlist_commands = PostgresWaitlistCommands(session_factory)
@@ -87,5 +93,11 @@ def install_http(
             commands=PostgresLiveQueueCommands(session_factory),
             reader=PostgresLiveQueueReader(session_factory),
             actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
+        create_same_day_selection_router(
+            PostgresSameDaySelectionCommands(session_factory),
+            actor_resolver,
         )
     )
