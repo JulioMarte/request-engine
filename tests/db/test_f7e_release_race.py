@@ -2,10 +2,10 @@ import asyncio
 from uuid import uuid4
 
 import pytest
-
 from f7e_selection_assertions import call_next_command
 from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
 from f7e_selection_race_barrier import AsyncTwoPartyBarrier, gated_lock
+
 from request_engine.modules.queue.adapters.db import release_recall_hold as release_module
 from request_engine.modules.queue.adapters.db import service_queue_commands as queue_module
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
@@ -18,7 +18,10 @@ from request_engine.modules.queue.application.commands.recall_hold import Recall
 from request_engine.modules.queue.application.commands.release_recall_hold import (
     ReleaseRecallHoldCommand,
 )
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind, RecallHoldReason
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
