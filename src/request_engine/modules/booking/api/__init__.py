@@ -66,6 +66,9 @@ def install_http(
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
+    # Register the static operator route before /{reservation_id}; Starlette
+    # resolves matching routes in registration order.
+    install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     app.include_router(
         create_router(
             availability_reader=PostgresAppointmentAvailabilityReader(session_factory),
@@ -81,7 +84,6 @@ def install_http(
             actor_resolver=actor_resolver,
         )
     )
-    install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
 
 
 def install_operational_http(

@@ -1,9 +1,8 @@
-"""S0b party registry tenant-isolation probe flows (`parties.*` operations).
+"""S0b/S0c Party registry tenant-isolation probe flows (`parties.*`).
 
-Expected outcomes are mutation-free for the actor's own tenant: the register
-probe fails transport/application validation, the contact-point probes address
-a foreign-tenant Party the actor's tenant context cannot see, and the lookup
-probe is read-only.
+Expected outcomes are mutation-free for the actor's own tenant. Resource
+mutations address a foreign Party the actor cannot see; tenant-scoped lookups
+and identifier lists are read-only and filter foreign rows.
 """
 
 from typing import TYPE_CHECKING
@@ -78,6 +77,22 @@ def foreign_request(
             {},
             {"target_revision": 1},
             404,
+        )
+    if operation.name == "parties.add_administrative_identifier":
+        return (
+            f"/v1/parties/{foreign.party_id}/administrative-identifiers",
+            {},
+            {"kind": "insurance_member", "issuer": "ARS Probe", "value": "MEMBER-001"},
+            404,
+        )
+    if operation.name == "parties.list_administrative_identifiers":
+        return (f"/v1/parties/{foreign.party_id}/administrative-identifiers", {}, None, 200)
+    if operation.name == "parties.lookup_administrative_identifier":
+        return (
+            "/v1/parties/lookup/administrative-identifier",
+            {"kind": "insurance_member", "issuer": "ARS Probe", "value": "MEMBER-001"},
+            None,
+            200,
         )
     if operation.name == "staff.register_contact":
         return ("/v1/staff/contacts", {}, {"channel": "phone", "value": "12"}, 422)
