@@ -66,7 +66,7 @@ F7_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
                 "expected_revision": 1,
                 "kind": "until_customer_initiates",
                 "release_at": None,
-                "reason": "probe",
+                "reason": "operator_override",
             },
         ),
     ),
