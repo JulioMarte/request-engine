@@ -1,5 +1,6 @@
 from fastapi import status
 
+from request_engine.modules.queue.api.triage_error_mapping import triage_error
 from request_engine.modules.queue.application.errors import QueueError
 from request_engine.modules.queue.application.live_errors import (
     QueueEntryNotClassifiable,
@@ -8,7 +9,6 @@ from request_engine.modules.queue.application.live_errors import (
     WorkloadClassificationRevisionConflict,
     WorkloadKeyConflict,
 )
-from request_engine.modules.queue.api.triage_error_mapping import triage_error
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
 
 

@@ -12,7 +12,11 @@ from request_engine.modules.queue.adapters.db.triage_entry import (
     queue_id_for_entry,
 )
 from request_engine.modules.queue.adapters.db.triage_gate import active_gate
-from request_engine.modules.queue.adapters.db.triage_idempotency import acquire, complete, fingerprint
+from request_engine.modules.queue.adapters.db.triage_idempotency import (
+    acquire,
+    complete,
+    fingerprint,
+)
 from request_engine.modules.queue.adapters.db.triage_selection import lock_next_eligible_entry
 from request_engine.modules.queue.application.commands.triage import SkipCommand
 from request_engine.modules.queue.application.triage_errors import (

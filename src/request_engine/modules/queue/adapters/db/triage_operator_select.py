@@ -6,8 +6,15 @@ from request_engine.modules.queue.adapters.db.live_queue_locking import lock_act
 from request_engine.modules.queue.adapters.db.triage_audit import append_triage_audit
 from request_engine.modules.queue.adapters.db.triage_called import mark_entry_called
 from request_engine.modules.queue.adapters.db.triage_codec import result_from_json, result_to_json
-from request_engine.modules.queue.adapters.db.triage_entry import lock_waiting_entry, queue_id_for_entry
-from request_engine.modules.queue.adapters.db.triage_idempotency import acquire, complete, fingerprint
+from request_engine.modules.queue.adapters.db.triage_entry import (
+    lock_waiting_entry,
+    queue_id_for_entry,
+)
+from request_engine.modules.queue.adapters.db.triage_idempotency import (
+    acquire,
+    complete,
+    fingerprint,
+)
 from request_engine.modules.queue.application.commands.triage import OperatorSelectCommand
 from request_engine.modules.queue.contracts.triage import QueueTriageResult
 from request_engine.platform.db.session import SessionFactory, tenant_transaction

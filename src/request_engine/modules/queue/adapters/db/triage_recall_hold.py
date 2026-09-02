@@ -12,7 +12,11 @@ from request_engine.modules.queue.adapters.db.triage_entry import (
 from request_engine.modules.queue.adapters.db.triage_gate import active_gate
 from request_engine.modules.queue.adapters.db.triage_hold_store import insert_recall_hold
 from request_engine.modules.queue.adapters.db.triage_hold_validation import validate_recall_hold
-from request_engine.modules.queue.adapters.db.triage_idempotency import acquire, complete, fingerprint
+from request_engine.modules.queue.adapters.db.triage_idempotency import (
+    acquire,
+    complete,
+    fingerprint,
+)
 from request_engine.modules.queue.application.commands.triage import RecallHoldCommand
 from request_engine.modules.queue.application.triage_errors import (
     QueueEntryAlreadyHeld,
