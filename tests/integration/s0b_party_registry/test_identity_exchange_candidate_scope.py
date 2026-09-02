@@ -32,17 +32,19 @@ async def test_candidate_is_scoped_to_destination_organization(
             match_command(first.organization_id, first.operator_principal_id, cedula),
         )
     assert match.candidate_ref is not None
-    with operator_actor(second.organization_id, second.operator_principal_id):
-        with pytest.raises(IdentityExchangeCandidateInvalid):
-            await adopt_portable_identity(
-                adopter,
-                adopt_command(
-                    second.organization_id,
-                    second.operator_principal_id,
-                    match.candidate_ref,
-                    value=cedula,
-                ),
-            )
+    with (
+        operator_actor(second.organization_id, second.operator_principal_id),
+        pytest.raises(IdentityExchangeCandidateInvalid),
+    ):
+        await adopt_portable_identity(
+            adopter,
+            adopt_command(
+                second.organization_id,
+                second.operator_principal_id,
+                match.candidate_ref,
+                value=cedula,
+            ),
+        )
     with operator_actor(first.organization_id, first.operator_principal_id):
         adopted = await adopt_portable_identity(
             adopter,
@@ -75,14 +77,16 @@ async def test_expired_candidate_cannot_be_adopted(
         "SET expires_at = clock_timestamp() - interval '1 second' WHERE id = %s",
         (match.candidate_ref,),
     )
-    with operator_actor(destination.organization_id, destination.operator_principal_id):
-        with pytest.raises(IdentityExchangeCandidateInvalid):
-            await adopt_portable_identity(
-                adopter,
-                adopt_command(
-                    destination.organization_id,
-                    destination.operator_principal_id,
-                    match.candidate_ref,
-                    value=cedula,
-                ),
-            )
+    with (
+        operator_actor(destination.organization_id, destination.operator_principal_id),
+        pytest.raises(IdentityExchangeCandidateInvalid),
+    ):
+        await adopt_portable_identity(
+            adopter,
+            adopt_command(
+                destination.organization_id,
+                destination.operator_principal_id,
+                match.candidate_ref,
+                value=cedula,
+            ),
+        )
