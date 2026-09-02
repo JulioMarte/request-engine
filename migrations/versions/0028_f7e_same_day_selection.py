@@ -49,7 +49,7 @@ CREATE TABLE request_engine.queue_recall_holds (
         reason IS NULL
         OR reason IN ('stepped_away', 'temporarily_unavailable', 'operator_override')
     ),
-    CHECK (release_reason IS NULL OR char_length(release_reason) <= 120),
+    CHECK (release_reason IS NULL OR release_reason IN ('replaced', 'operator_release')),
     CHECK (released_at IS NULL OR released_at >= created_at),
     CHECK (
         (released_at IS NULL AND released_by_principal_id IS NULL AND release_reason IS NULL)
