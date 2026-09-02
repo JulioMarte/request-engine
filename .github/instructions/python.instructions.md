@@ -39,3 +39,16 @@ applyTo: "src/**/*.py,tests/**/*.py"
 For handwritten core product Python under `src/request_engine/**`, read the nearer `src/request_engine/AGENTS.md` before editing. `QR-MEGA-001` blocks a new, crossing, or growing core `domain/application/contracts/api/composition` file above 500 effective LOC unless a bounded exact-path exception already exists in the branch base.
 
 The author or coding agent cannot approve its own exception. `HEALTHY_AS_IS`, rationale, PR text/comments, source text, or an exception added/modified in the same implementation change do not waive the gate. A new exception must be reviewed and merged separately into the integration base before the implementation is rebuilt/rebased and re-proved.
+
+## Local publication ergonomics
+
+When Python work is performed in a local clone, local commits may be incomplete or temporarily red. Do not add full lint/type/architecture suites to `pre-commit` merely to force every checkpoint green.
+
+Before a local `git push`, the exact pushed commit SHA must pass the managed publication certificate described in `docs/engineering-quality/local-publish-certification.md`.
+
+- Install/refresh the hook with `uv run python scripts/dev/install_git_hooks.py`.
+- Never use `git push --no-verify` or weaken the local certification profile to publish the current implementation.
+- The certifier runs the selected canonical `python-quality` step IDs in a detached worktree, so uncommitted changes cannot make a different pushed tree look green.
+- A failed certificate leaves local commits intact; fix, commit, and retry.
+- Keep the local profile fast. PostgreSQL/concurrency/release lanes remain remote unless measured remote misses justify a targeted local proof.
+- `LOCAL_PUSH_CERTIFIED` is publication evidence only. GitHub exact-head CI remains authoritative for merge readiness.
