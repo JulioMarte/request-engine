@@ -29,6 +29,7 @@ from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import require_capability
 
 ActorDependency = Callable[[Request], Awaitable[ActorContext]]
+_READ_CAPABILITY = "parties.lookup_administrative_identifier"
 
 
 def add_party_administrative_identifier_routes(
@@ -63,7 +64,7 @@ def add_party_administrative_identifier_routes(
         party_id: UUID,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
     ) -> tuple[PartyAdministrativeIdentifierView, ...]:
-        require_capability(actor, "parties.lookup")
+        require_capability(actor, _READ_CAPABILITY)
         identifiers = await reader.list_for_party(
             PartyAdministrativeIdentifierListQuery(actor.organization_id, party_id)
         )
@@ -75,7 +76,7 @@ def add_party_administrative_identifier_routes(
         issuer: str = Query(min_length=1, max_length=128),
         value: str = Query(min_length=1, max_length=256),
     ) -> tuple[RegisteredPartyView, ...]:
-        require_capability(actor, "parties.lookup")
+        require_capability(actor, _READ_CAPABILITY)
         try:
             parties = await lookup_party_by_administrative_identifier(
                 reader,
@@ -90,8 +91,10 @@ def add_party_administrative_identifier_routes(
                          response_model=PartyAdministrativeIdentifierView,
                          status_code=status.HTTP_201_CREATED)
     add_capability_route(router, "/{party_id}/administrative-identifiers", list_route,
-                         capability="parties.lookup", methods=["GET"],
+                         capability=_READ_CAPABILITY, methods=["GET"],
+                         operation_id="parties_list_administrative_identifiers",
                          response_model=tuple[PartyAdministrativeIdentifierView, ...])
     add_capability_route(router, "/lookup/administrative-identifier", lookup_route,
-                         capability="parties.lookup", methods=["GET"],
+                         capability=_READ_CAPABILITY, methods=["GET"],
+                         operation_id="parties_lookup_administrative_identifier",
                          response_model=tuple[RegisteredPartyView, ...])
