@@ -1,3 +1,4 @@
+from typing import LiteralString
 from uuid import UUID, uuid4
 
 import pytest
@@ -115,7 +116,7 @@ def _current_hold(
     ).fetchone()
 
 
-def _count(conn: PgConnection, sql: str, params: tuple[object, ...]) -> int:
+def _count(conn: PgConnection, sql: LiteralString, params: tuple[object, ...]) -> int:
     row = conn.execute(sql, params).fetchone()
     assert row is not None
     return int(row[0])
