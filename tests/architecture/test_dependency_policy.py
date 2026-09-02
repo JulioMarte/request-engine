@@ -5,7 +5,8 @@ from pathlib import Path
 from dependency_policy import FRAMEWORK_OR_INFRA_PREFIXES, MODULE_DEPENDENCY_POLICY
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MODULES_ROOT = REPO_ROOT / "src" / "request_engine" / "modules"
+SRC_ROOT = REPO_ROOT / "src"
+MODULES_ROOT = SRC_ROOT / "request_engine" / "modules"
 ALL_MODULES = frozenset(
     path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
 )
@@ -17,14 +18,33 @@ def _python_files(root: Path) -> list[Path]:
     return [path for path in root.rglob("*.py") if "__pycache__" not in path.parts]
 
 
+def _resolved_import_from(path: Path, node: ast.ImportFrom) -> str | None:
+    if node.level == 0:
+        return node.module
+    try:
+        relative = path.relative_to(SRC_ROOT)
+    except ValueError:
+        return node.module
+    package = list(relative.parts[:-1])
+    climb = node.level - 1
+    if climb > len(package):
+        return None
+    resolved = package[: len(package) - climb]
+    if node.module:
+        resolved.extend(node.module.split("."))
+    return ".".join(resolved)
+
+
 def _imports(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imported: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imported.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            resolved = _resolved_import_from(path, node)
+            if resolved:
+                imported.extend(f"{resolved}.{alias.name}" for alias in node.names)
     return imported
 
 
@@ -96,6 +116,16 @@ def _find_cycle(graph: dict[str, set[str]]) -> tuple[str, ...] | None:
         if cycle is not None:
             return cycle
     return None
+
+
+def test_relative_cross_module_import_is_not_a_dependency_policy_bypass() -> None:
+    path = SRC_ROOT / "request_engine/modules/booking/application/probe.py"
+    tree = ast.parse("from ...queue.contracts import QueueRead\n")
+    node = tree.body[0]
+    assert isinstance(node, ast.ImportFrom)
+    assert _resolved_import_from(path, node) == "request_engine.modules.queue.contracts"
+    target = _cross_module_target("booking", "request_engine.modules.queue.contracts.QueueRead")
+    assert target == ("queue", "contracts")
 
 
 def test_every_business_module_has_an_explicit_dependency_policy() -> None:
