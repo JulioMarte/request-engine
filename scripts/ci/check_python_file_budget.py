@@ -356,8 +356,7 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         "base_sha": _sha(base_ref),
         "head_sha": _sha("HEAD"),
         "authority": (
-            "heuristic-signals-are-non-blocking; "
-            "QR-MEGA-001-core-circuit-breaker-is-blocking"
+            "heuristic-signals-are-non-blocking; QR-MEGA-001-core-circuit-breaker-is-blocking"
         ),
         "thresholds": {
             "effective_file_loc_review_candidate": FILE_LOC_REVIEW_THRESHOLD,
