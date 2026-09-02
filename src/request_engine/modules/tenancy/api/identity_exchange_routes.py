@@ -7,14 +7,19 @@ from fastapi import APIRouter, Depends, Request, status
 from request_engine.modules.tenancy.api.identity_exchange_dependencies import (
     require_operator_document_witness,
 )
-from request_engine.modules.tenancy.api.identity_exchange_errors import IdentityExchangeInputInvalid
+from request_engine.modules.tenancy.api.identity_exchange_errors import (
+    IdentityExchangeInputInvalid,
+)
 from request_engine.modules.tenancy.api.identity_exchange_models import (
     IdentityAdoptionBody,
     IdentityAdoptionView,
     IdentityMatchBody,
     IdentityMatchView,
 )
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
 from request_engine.modules.tenancy.application.identity_exchange import (
     AdoptPortableIdentityCommand,
     AdoptPortableIdentityHandler,
