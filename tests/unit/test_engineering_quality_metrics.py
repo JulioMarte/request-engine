@@ -51,6 +51,17 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
     assert classify(Path(".github/workflows/ci.yml")) == "config"
 
 
+def test_business_module_path_excludes_modules_package_root() -> None:
+    metrics = _load_metrics()
+    module_for_path = cast(
+        Callable[[Path], str | None],
+        metrics.business_module_for_path,
+    )
+    assert module_for_path(Path("src/request_engine/modules/__init__.py")) is None
+    assert module_for_path(Path("src/request_engine/modules/booking/__init__.py")) == "booking"
+    assert module_for_path(Path("src/request_engine/modules/booking/domain/policy.py")) == "booking"
+
+
 def test_generated_detection_requires_controlled_path_or_filename() -> None:
     metrics = _load_metrics()
     generated_reason = cast(
