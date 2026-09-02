@@ -13,6 +13,7 @@ from request_engine.platform.security.capability_types import (
 
 BOT_CAPABILITY_SUBSET = ("parties.register", "parties.add_contact_point", "parties.lookup")
 OPERATOR_CORRECTIONS = (
+    "parties.add_administrative_identifier",
     "parties.rename",
     "parties.add_document",
     "parties.deactivate_contact_point",
@@ -63,8 +64,7 @@ def test_rollback_identity_is_a_public_idempotent_command() -> None:
 
 
 def test_bot_grant_subset_does_not_satisfy_operator_only_commands() -> None:
-    """Confirm, corrections and history/rollback are grant-based: creation/lookup
-    grants never satisfy them."""
+    """Creation/lookup grants never satisfy operator-only mutation or history grants."""
 
     for granted in BOT_CAPABILITY_SUBSET:
         assert not grant_satisfies(granted, "parties.confirm_contact_point")
