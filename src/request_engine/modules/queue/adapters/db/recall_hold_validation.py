@@ -4,8 +4,6 @@ from request_engine.modules.queue.contracts.same_day_selection import RecallHold
 
 
 def validate_recall_hold_shape(command: RecallHoldCommand) -> None:
-    if command.reason is not None and len(command.reason) > 500:
-        raise RecallHoldInvalid("recall hold reason exceeds 500 characters")
     if command.kind is RecallHoldKind.UNTIL_TIME:
         if command.release_at is None or command.release_at.utcoffset() is None:
             raise RecallHoldInvalid("until_time requires an offset-aware release_at")
