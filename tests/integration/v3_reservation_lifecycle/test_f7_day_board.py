@@ -50,7 +50,6 @@ async def test_day_board_composes_eta_and_check_in_without_erasing_assertion(
         organization_id=world.organization_id,
         window_start=start_at - timedelta(hours=1),
         window_end=end_at + timedelta(hours=1),
-        location_id=world.location_id,
     )
 
     before = await get_day_board(reader, query)
@@ -61,6 +60,17 @@ async def test_day_board_composes_eta_and_check_in_without_erasing_assertion(
     assert before[0].attendance_outcome_status == "pending"
     assert before[0].reported_arrival_estimate_at == estimate.estimated_arrival_at
     assert before[0].effective_arrival_estimate_at == estimate.estimated_arrival_at
+
+    filtered = await get_day_board(
+        reader,
+        GetDayBoardQuery(
+            organization_id=world.organization_id,
+            window_start=query.window_start,
+            window_end=query.window_end,
+            location_id=uuid4(),
+        ),
+    )
+    assert filtered == ()
 
     await check_in_reservation(
         PostgresAttendanceCommands(session_factory),
