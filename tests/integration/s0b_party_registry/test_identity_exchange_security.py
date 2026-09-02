@@ -111,10 +111,12 @@ async def test_runtime_app_cannot_select_global_portable_profiles(
     app_session_factory: SessionFactory,
 ) -> None:
     destination = create_party_registry_world(admin_conn, prefix="s0d-sql-private")
-    with operator_actor(destination.organization_id, destination.operator_principal_id):
-        with pytest.raises(DBAPIError):
-            async with tenant_transaction(
-                app_session_factory,
-                destination.organization_id,
-            ) as session:
-                await session.execute(text("SELECT * FROM request_engine.portable_person_profiles"))
+    with (
+        operator_actor(destination.organization_id, destination.operator_principal_id),
+        pytest.raises(DBAPIError),
+    ):
+        async with tenant_transaction(
+            app_session_factory,
+            destination.organization_id,
+        ) as session:
+            await session.execute(text("SELECT * FROM request_engine.portable_person_profiles"))
