@@ -55,7 +55,7 @@ class AdoptPortableIdentityCommand:
 
 
 class PublishPortableProfileHandler(Protocol):
-    async def publish_portable_profile(self, command: PublishPortableProfileCommand) -> UUID: ...
+    async def publish_portable_profile(self, command: PublishPortableProfileCommand) -> None: ...
 
 
 class MatchPortableIdentityHandler(Protocol):
@@ -80,10 +80,10 @@ def _validate_proof(proof_kind: str, idempotency_key: str) -> None:
 async def publish_portable_profile(
     handler: PublishPortableProfileHandler,
     command: PublishPortableProfileCommand,
-) -> UUID:
+) -> None:
     _validate_proof(command.proof_kind, command.idempotency_key)
     fields = require_adoptable_fields(command.consented_fields)
-    return await handler.publish_portable_profile(replace(command, consented_fields=fields))
+    await handler.publish_portable_profile(replace(command, consented_fields=fields))
 
 
 async def match_portable_identity(
