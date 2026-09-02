@@ -17,9 +17,10 @@ class PostgresDayBoardReader:
     async def get_day_board(self, query: GetDayBoardQuery) -> tuple[DayBoardEntry, ...]:
         async with tenant_transaction(self._session_factory, query.organization_id) as session:
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT reservation_id, subject_party_id, subject_display_name,
                                offering_version_id, location_id,
                                lower(during) AS start_at, upper(during) AS end_at,
@@ -34,16 +35,19 @@ class PostgresDayBoardReader:
                         ORDER BY lower(during), reservation_id
                         LIMIT :limit
                         """
-                    ),
-                    {
-                        "organization_id": query.organization_id,
-                        "window_start": query.window_start,
-                        "window_end": query.window_end,
-                        "location_id": query.location_id,
-                        "limit": query.limit,
-                    },
+                        ),
+                        {
+                            "organization_id": query.organization_id,
+                            "window_start": query.window_start,
+                            "window_end": query.window_end,
+                            "location_id": query.location_id,
+                            "limit": query.limit,
+                        },
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return tuple(_entry_from_row(row) for row in rows)
 
 
