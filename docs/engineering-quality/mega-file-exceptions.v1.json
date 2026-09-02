@@ -1,5 +1,5 @@
 {
   "schema_version": "mega-file-exceptions/v1",
-  "policy": "Exceptions authorize only the exact path and eLOC ceiling recorded here. The quality gate reads this registry from the branch base, so an exception added or changed in the same implementation PR cannot waive QR-MEGA-001.",
+  "policy": "Historical calibration registry retained after QR-MEGA-001 was retired as a HARD gate. Entries are not current merge authorization while file size remains review-only.",
   "exceptions": []
 }
