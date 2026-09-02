@@ -1,9 +1,4 @@
-"""Operator-granted party correction routes (`parties.rename`, `parties.add_document`).
-
-Transport route handlers map request values verbatim into application
-commands: document normalization happens only in the application layer, and
-these capabilities are grant-gated like every other party registry command.
-"""
+"""Operator-granted party correction routes (`parties.rename`, `parties.add_document`)."""
 
 from collections.abc import Awaitable, Callable
 from typing import Annotated
@@ -11,10 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
 
-from request_engine.modules.tenancy.api.party_registry_dependencies import (
-    IdempotencyKey,
-    source_kind,
-)
+from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
 from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
 from request_engine.modules.tenancy.api.party_registry_models import (
     AddPartyDocumentBody,
@@ -22,10 +14,7 @@ from request_engine.modules.tenancy.api.party_registry_models import (
     RegisteredPartyView,
     RenamePartyBody,
 )
-from request_engine.modules.tenancy.application.commands import (
-    add_party_document,
-    rename_party,
-)
+from request_engine.modules.tenancy.application.commands import add_party_document, rename_party
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import require_capability
@@ -81,6 +70,7 @@ def add_party_correction_routes(
                     party_id=party_id,
                     kind=body.kind,
                     value=body.value,
+                    authority=body.authority,
                     source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
                     platform=actor.platform,
