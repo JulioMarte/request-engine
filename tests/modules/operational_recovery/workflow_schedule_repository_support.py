@@ -1,4 +1,6 @@
-from collections.abc import Mapping
+import asyncio
+from collections.abc import AsyncGenerator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import cast
 from uuid import UUID
@@ -45,6 +47,7 @@ class FakeWorkflowRepository:
             1,
         )
         self.action: RecoveryAction | None = None
+        self._execution_lock = asyncio.Lock()
 
     async def get_incident(
         self,
@@ -95,6 +98,12 @@ class FakeWorkflowRepository:
             None,
         )
         return self.action, True
+
+    @asynccontextmanager
+    async def serialize_action_execution(self, *, action_id: UUID) -> AsyncGenerator[None]:
+        assert action_id == ACTION
+        async with self._execution_lock:
+            yield
 
     async def transition_action(
         self,

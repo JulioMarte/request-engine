@@ -1,18 +1,17 @@
 from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
 from uuid import UUID
 
-from request_engine.modules.operational_recovery.adapters.db.workflow_action_prepare import (
-    prepare_action_row,
-)
-from request_engine.modules.operational_recovery.adapters.db.workflow_action_transition import (
-    transition_action_row,
-)
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
     RecoveryActionKind,
     RecoveryActionStatus,
 )
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+
+from .workflow_action_execution_guard import serialize_recovery_action_execution
+from .workflow_action_prepare import prepare_action_row
+from .workflow_action_transition import transition_action_row
 
 
 class PostgresRecoveryActionStore:
@@ -43,6 +42,12 @@ class PostgresRecoveryActionStore:
                 expected_source_revision=expected_source_revision,
                 payload=payload,
             )
+
+    def serialize_action_execution(self, *, action_id: UUID) -> AbstractAsyncContextManager[None]:
+        return serialize_recovery_action_execution(
+            self._session_factory,
+            action_id=action_id,
+        )
 
     async def transition_action(
         self,
