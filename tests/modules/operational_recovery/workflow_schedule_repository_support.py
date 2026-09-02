@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import cast
@@ -100,7 +100,9 @@ class FakeWorkflowRepository:
         return self.action, True
 
     @asynccontextmanager
-    async def serialize_action_execution(self, *, action_id: UUID) -> AsyncIterator[None]:
+    async def serialize_action_execution(
+        self, *, action_id: UUID
+    ) -> AsyncGenerator[None, None]:
         assert action_id == ACTION
         async with self._execution_lock:
             yield
