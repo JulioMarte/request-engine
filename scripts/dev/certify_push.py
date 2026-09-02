@@ -230,9 +230,7 @@ def _quality_signal_counts(path: Path) -> tuple[int, int]:
         return 0, 0
     candidates = payload.get("candidates")
     failures = payload.get("invariant_failures")
-    candidate_count = (
-        len(cast(list[object], candidates)) if isinstance(candidates, list) else 0
-    )
+    candidate_count = len(cast(list[object], candidates)) if isinstance(candidates, list) else 0
     failure_count = len(cast(list[object], failures)) if isinstance(failures, list) else 0
     return candidate_count, failure_count
 
