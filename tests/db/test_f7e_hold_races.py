@@ -1,9 +1,9 @@
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
+from f7e_selection_fixture import F7eSelectionFixture, PgConnection, create_f7e_selection_fixture
 from f7e_selection_race_barrier import AsyncTwoPartyBarrier, gated_lock
 from request_engine.modules.queue.adapters.db import recall_hold as recall_hold_module
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
@@ -56,7 +56,11 @@ async def test_concurrent_recall_holds_create_exactly_one_current_hold(
     assert revision == (2,)
 
 
-def _hold_command(world, entry_id, suffix: str) -> RecallHoldCommand:
+def _hold_command(
+    world: F7eSelectionFixture,
+    entry_id: UUID,
+    suffix: str,
+) -> RecallHoldCommand:
     return RecallHoldCommand(
         organization_id=world.organization_id,
         principal_id=world.principal_id,
