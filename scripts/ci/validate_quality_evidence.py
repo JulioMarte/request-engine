@@ -47,7 +47,10 @@ def main() -> int:
         print("[QUALITY-EVIDENCE-INVALID] generated packet(s) do not satisfy quality-evidence/v1")
         for failure in failures:
             print(f"- {failure}")
-        print("AGENT ACTION: fix packet generation or evolve the versioned schema explicitly; do not bypass validation.")
+        print(
+            "AGENT ACTION: fix packet generation or evolve the versioned schema explicitly; "
+            "do not bypass validation."
+        )
         return 1
     print("[PASS] quality-evidence/v1 packets satisfy JSON Schema Draft 2020-12.")
     return 0
