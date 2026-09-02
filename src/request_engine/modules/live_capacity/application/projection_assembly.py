@@ -48,4 +48,5 @@ def assemble_live_capacity_projection(snapshot: ProjectionSnapshot) -> LiveCapac
         scheduled_work_items=scheduled_commitments(snapshot),
         has_open_interruption=has_open_interruption(snapshot),
         has_open_resource_activity=snapshot.delivery.open_resource_activity is not None,
+        has_active_recall_hold=snapshot.queue.has_active_recall_hold,
     )
