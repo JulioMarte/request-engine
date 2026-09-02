@@ -50,9 +50,15 @@ def install_business_modules(
     actor_resolver: ActorResolver,
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
+    identity_exchange_fingerprint_key: bytes | None = None,
 ) -> None:
     party_authority_reader = tenancy_api.build_party_authority_reader(session_factory)
-    tenancy_api.install_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
+    tenancy_api.install_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
+        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
+    )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_booking_http(
