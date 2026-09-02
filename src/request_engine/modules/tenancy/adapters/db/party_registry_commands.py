@@ -1,5 +1,8 @@
 """Published tenancy party registry command adapter (parties.* capabilities)."""
 
+from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_commands import (
+    PostgresPartyAdministrativeIdentifierCommands,
+)
 from request_engine.modules.tenancy.adapters.db.party_contact_point_commands import (
     PostgresPartyContactPointCommands,
 )
@@ -24,17 +27,16 @@ class PostgresPartyRegistryCommands(
     PostgresPartyRegistrationCommands,
     PostgresPartyContactPointCommands,
     PostgresPartyContactPointConfirmationCommands,
+    PostgresPartyAdministrativeIdentifierCommands,
     PostgresPartyCorrectionCommands,
     PostgresPartyDeactivationCommands,
     PostgresPartyRollbackCommands,
 ):
     """Tenancy-owned idempotent party registry commands.
 
-    Composition of the per-capability command adapters: `parties.register`,
-    `parties.add_contact_point`, `parties.confirm_contact_point`, the
-    operator-granted correction surface (`parties.rename`,
-    `parties.add_document`, `parties.deactivate_contact_point`,
-    `parties.deactivate`) and `parties.rollback_identity`. Each capability
-    owns one Session, one explicit tenant transaction, standard idempotency
-    replay and typed conflict mapping.
+    Composition of the per-capability command adapters: registration, contact
+    points, administrative identifiers, operator-granted corrections,
+    deactivation and identity rollback. Each mutation owns one Session, one
+    explicit tenant transaction, standard idempotency replay and typed
+    conflict mapping.
     """
