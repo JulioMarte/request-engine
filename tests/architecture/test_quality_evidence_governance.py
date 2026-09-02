@@ -11,7 +11,6 @@ BEFORE_AFTER = (
     ROOT / "docs" / "engineering-quality" / "calibration" / "reviewer-fixer-evidence.v1.json"
 )
 CORE_AGENTS = ROOT / "src" / "request_engine" / "AGENTS.md"
-MEGA_REGISTRY = ROOT / "docs" / "engineering-quality" / "mega-file-exceptions.v1.json"
 MEGA_POLICY = ROOT / "docs" / "engineering-quality" / "mega-file-circuit-breaker.md"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 VALIDATOR = ROOT / "scripts" / "ci" / "validate_quality_evidence.py"
@@ -97,32 +96,27 @@ def test_reviewer_fixer_evidence_contains_deterministic_reproof_not_self_certifi
     assert all(item.get("reviewer_role") != item.get("fixer_role") for item in entries)
 
 
-def test_core_agent_instructions_make_mega_file_self_approval_invalid() -> None:
+def test_core_agent_instructions_keep_extreme_file_size_nonblocking() -> None:
     instructions = CORE_AGENTS.read_text(encoding="utf-8")
     for required in (
-        "QR-MEGA-001",
-        "QR-MEGA-GOV-001",
-        "500 effective code-bearing lines",
-        "Self-justification is not authority",
-        "same implementation change",
-        "must be reviewed and merged into the integration base",
-        "MUST NOT edit the mega-file checker",
-        "Do not split a cohesive file",
+        "QR-FSIZE-001 REVIEW_CANDIDATE",
+        "500/501 is not a HARD architecture boundary",
+        "HEALTHY_AS_IS",
+        "mechanically splitting a cohesive file",
+        "Do not weaken deterministic semantic architecture/correctness invariants",
     ):
         assert required in instructions
-
-    generated_policy = instructions.lower()
-    assert "# @generated" in instructions
-    assert "exemption authority" in generated_policy
-    assert "author/agent says so" in generated_policy
-    assert "generated merely because" in generated_policy
+    assert "QR-MEGA-001 — HARD" not in instructions
+    assert "500 effective code-bearing lines** is a deterministic `INVARIANT_FAILURE`" not in instructions
 
 
-def test_mega_file_registry_starts_bounded_and_base_authority_is_documented() -> None:
-    registry = _json(MEGA_REGISTRY)
-    assert registry["schema_version"] == "mega-file-exceptions/v1"
-    assert registry["exceptions"] == []
-    assert "same implementation PR cannot waive QR-MEGA-001" in str(registry["policy"])
+def test_mega_policy_documents_hard_retirement_and_longitudinal_revisit() -> None:
     policy = MEGA_POLICY.read_text(encoding="utf-8")
-    assert "reads the exception registry from the branch base" in policy
-    assert "cannot authorize that PR" in policy
+    for required in (
+        "RETIRED_AS_HARD",
+        "501 effective lines directly implies an architecture violation",
+        "HIGH-SIGNAL STRUCTURAL REVIEW CONCEPT",
+        "longitudinal repository evidence",
+        "QR-MEGA-GOV-001 is also retired as a HARD co-occurrence invariant",
+    ):
+        assert required in policy
