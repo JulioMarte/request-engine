@@ -29,6 +29,9 @@ parse_c901 = cast(
     Callable[[list[dict[str, Any]]], list[dict[str, object]]], signals.parse_ruff_c901
 )
 render_feedback = cast(Callable[[dict[str, object]], str], signals.render_feedback)
+write_github_summary = cast(
+    Callable[[dict[str, object], str, Path], None], signals.write_github_summary
+)
 
 
 def _fact(candidate: dict[str, object]) -> dict[str, object]:
@@ -91,11 +94,41 @@ def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
         assert required in feedback
 
 
+def test_successful_candidate_is_written_to_github_step_summary(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
+    assert candidate is not None
+    report = {
+        "schema_version": "quality-evidence/v1",
+        "candidates": [candidate],
+    }
+    feedback = render_feedback(report)
+    summary_path = tmp_path / "step-summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
+
+    write_github_summary(report, feedback, Path(".ci/python-quality-signals.json"))
+
+    summary = summary_path.read_text(encoding="utf-8")
+    for required in (
+        "Python maintainability signals",
+        "Candidates:** 1",
+        "quality-evidence/v1",
+        "heuristic signals are non-blocking",
+        "REVIEW_CANDIDATE",
+        "HEALTHY_AS_IS",
+        "agent-semantic-review-playbook.md",
+        ".ci/python-quality-signals.json",
+    ):
+        assert required in summary
+
+
 def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path: Path) -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
     report = {"candidates": [candidate]}
     monkeypatch.setattr(signals, "build_report", lambda _base_ref: report)
     monkeypatch.setattr(signals, "write_report", lambda _report, _output: None)
+    monkeypatch.setattr(signals, "write_github_summary", lambda _report, _feedback, _output: None)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
     assert signals.main() == 0
