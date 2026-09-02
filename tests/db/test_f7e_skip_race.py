@@ -33,8 +33,8 @@ async def test_skip_vs_call_next_records_the_fifo_head_seen_under_queue_lock(
     barrier = AsyncTwoPartyBarrier()
     monkeypatch.setattr(
         queue_module,
-        "_lock_active_queue",
-        gated_lock(barrier, queue_module._lock_active_queue),
+        "lock_active_queue",
+        gated_lock(barrier, queue_module.lock_active_queue),
     )
     monkeypatch.setattr(
         skip_module,
