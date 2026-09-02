@@ -8,6 +8,7 @@ from request_engine.modules.queue.contracts.same_day_selection import (
     OperatorSelectReason,
     RecallHold,
     RecallHoldKind,
+    RecallHoldReason,
     SkipReason,
     SkipResult,
 )
@@ -26,7 +27,7 @@ class RecallHoldBody(BaseModel):
     expected_revision: int = Field(ge=1)
     kind: RecallHoldKind
     release_at: datetime | None = None
-    reason: str | None = Field(default=None, max_length=500)
+    reason: RecallHoldReason | None = None
 
 
 class ReleaseRecallHoldBody(BaseModel):
@@ -49,7 +50,7 @@ class RecallHoldView(BaseModel):
     queue_entry_revision: int
     kind: RecallHoldKind
     release_at: datetime | None
-    reason: str | None
+    reason: RecallHoldReason | None
     created_at: datetime
     released_at: datetime | None
 
