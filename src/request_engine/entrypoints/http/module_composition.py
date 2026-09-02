@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 
+import request_engine.modules.booking.api.day_board_http as day_board_http
 import request_engine.modules.operational_copilot.api as copilot_api
 import request_engine.modules.queue.api as queue_api
 import request_engine.modules.tenancy.api as tenancy_api
-from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
-from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
-from request_engine.modules.booking.api import day_board_http, install_http as install_booking_http
+from request_engine.bootstrap import recovery_catalog, recovery_queue
+from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
@@ -97,8 +97,8 @@ def install_business_modules(
         capacity=recovery_capacity,
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
-        intake=QueueRecoveryIntakeAdapter(queue_runtime.intake),
-        location_schedule=CatalogRecoveryLocationAdapter(
+        intake=recovery_queue.QueueRecoveryIntakeAdapter(queue_runtime.intake),
+        location_schedule=recovery_catalog.CatalogRecoveryLocationAdapter(
             build_recovery_location_schedule_port(session_factory)
         ),
         assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
