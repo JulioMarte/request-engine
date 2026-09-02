@@ -1,6 +1,6 @@
 """Add tenant-scoped Party administrative identifiers (S0c).
 
-Revision ID: 0027_s0c_party_administrative_ids
+Revision ID: 0027_s0c_party_admin_ids
 Revises: 0026_s3_escalation_lineage
 Create Date: 2026-09-01
 """
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0027_s0c_party_administrative_ids"
+revision: str = "0027_s0c_party_admin_ids"
 down_revision: str | Sequence[str] | None = "0026_s3_escalation_lineage"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
