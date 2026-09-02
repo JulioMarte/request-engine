@@ -85,9 +85,7 @@ def _candidate_id(trigger_id: str, path: str, subject: str) -> str:
     return f"QR-{hashlib.sha256(raw).hexdigest()[:12]}"
 
 
-def _file_loc_candidate(
-    path: Path, current: int, previous: int | None
-) -> dict[str, object] | None:
+def _file_loc_candidate(path: Path, current: int, previous: int | None) -> dict[str, object] | None:
     if current <= FILE_LOC_REVIEW_THRESHOLD:
         return None
     path_text = path.as_posix()
