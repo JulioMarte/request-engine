@@ -177,7 +177,7 @@ jobs:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
       PGUSER: postgres
-      PGPPASSWORD: postgres
+      PGPASSWORD: postgres
       PGMAINTENANCE_DB: postgres
       V3_PROOF_DATABASE_PREFIX: request_engine_v3_phase6
     steps:
