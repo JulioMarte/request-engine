@@ -17,4 +17,20 @@ F7_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             },
         ),
     ),
+    PublicHttpOperation(
+        "front_desk.day_board",
+        "GET",
+        "/v1/front-desk/day-board",
+        "front_desk.day_board.read",
+        False,
+        False,
+        TenantIsolationMode.FILTERED,
+        HttpProbe(
+            "/v1/front-desk/day-board",
+            query=(
+                ("window_start", "2030-01-07T00:00:00+00:00"),
+                ("window_end", "2030-01-08T00:00:00+00:00"),
+            ),
+        ),
+    ),
 )
