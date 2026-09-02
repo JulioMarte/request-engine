@@ -25,16 +25,37 @@ Until a human reviews a pilot case, its record remains:
 }
 ```
 
-`scripts/ci/summarize_quality_calibration.py` intentionally emits:
+`scripts/ci/summarize_quality_calibration.py` intentionally emits no agreement or false-positive percentage until genuine human evidence exists. Missing labels are never imputed from model output.
 
-```text
-paired_observations = 0
-exact_agreement_rate = null
+## Separate verdict agreement from signal usefulness
+
+Exact model/human agreement is not enough to judge a guardrail. A model may choose a different semantic verdict while the underlying signal was still useful, or may happen to choose the same verdict even when the metric was a poor trigger.
+
+When an actual human disposes a case, the record MAY add:
+
+```json
+{
+  "human_disposition": "TRUE_POSITIVE | FALSE_POSITIVE | ACCEPTED_TRADEOFF | INSUFFICIENT_CONTEXT",
+  "action_taken": "NONE | REFACTOR | ARCHITECTURE_CHANGE | POLICY_CHANGE | DEFERRED",
+  "post_change_outcome": "NOT_APPLICABLE | IMPROVED | NEUTRAL | WORSENED | UNKNOWN",
+  "gaming_observed": false
+}
 ```
 
-when no genuine paired labels exist. This is valid calibration output, not missing-data fabrication.
+These fields are invalid unless `human_verdict` is also genuinely populated. CI validates that relationship so model output cannot manufacture human usefulness evidence.
 
-When human labels are added, the same script reports model/human verdict counts, exact agreement, a confusion matrix, and remaining unlabeled case IDs.
+The generated calibration summary reports independently:
+
+- model verdict counts;
+- human verdict counts;
+- exact agreement and confusion matrix;
+- true-positive / false-positive / accepted-trade-off dispositions;
+- actions actually taken;
+- post-change outcomes;
+- observed metric-gaming cases;
+- still-unlabeled cases.
+
+A future proposal to strengthen a heuristic should use these human dispositions and outcomes, not merely the fact that the signal fired or that a refactor reduced a metric.
 
 ## Pilot interpretation
 
@@ -54,7 +75,8 @@ A remediation record is not complete because a metric decreased. It must identif
 3. semantic verdict and protected property;
 4. fixer commit/patch;
 5. post-change facts;
-6. deterministic re-proof and exact head;
-7. any remaining unrelated failure.
+6. deterministic re-proof and exact tested tree;
+7. any remaining unrelated failure;
+8. whether navigation/coupling or suppression pressure worsened even if the original metric improved.
 
 Reviewer and fixer roles remain distinct even when the same automation system invokes both phases.
