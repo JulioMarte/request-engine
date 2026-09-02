@@ -3,8 +3,8 @@ from uuid import UUID, uuid4
 from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_reader import (
     PostgresPartyAdministrativeIdentifierReader,
 )
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    AddPartyAdministrativeIdentifierCommand,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as admin_identifier_commands,
 )
 from request_engine.modules.tenancy.application.queries.party_administrative_identifiers import (
     PartyAdministrativeIdentifierLookupQuery,
@@ -20,8 +20,8 @@ def identifier_command(
     *,
     value: str = "MEM-001 23",
     idempotency_key: str | None = None,
-) -> AddPartyAdministrativeIdentifierCommand:
-    return AddPartyAdministrativeIdentifierCommand(
+) -> admin_identifier_commands.AddPartyAdministrativeIdentifierCommand:
+    return admin_identifier_commands.AddPartyAdministrativeIdentifierCommand(
         organization_id=organization_id,
         principal_id=principal_id,
         party_id=party_id,
