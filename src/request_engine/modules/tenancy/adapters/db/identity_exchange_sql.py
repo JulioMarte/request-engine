@@ -26,7 +26,7 @@ CREATE_CANDIDATE = text(
 
 CONSUME_CANDIDATE = text(
     """
-    SELECT portable_person_id, profile
+    SELECT profile
     FROM request_engine.consume_identity_exchange_candidate_v1(
         :candidate_ref, :fingerprint, :principal_id
     )
