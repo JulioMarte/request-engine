@@ -21,6 +21,7 @@ def evaluate_intake(
     estimate: WorkloadEstimate,
     has_open_interruption: bool = False,
     has_open_resource_activity: bool = False,
+    has_active_recall_hold: bool = False,
 ) -> IntakeEvaluation:
     candidate = ProjectionWorkItem(
         key=_INTAKE_SENTINEL,
@@ -33,6 +34,7 @@ def evaluate_intake(
         work_items=(*existing_work, candidate),
         has_open_interruption=has_open_interruption,
         has_open_resource_activity=has_open_resource_activity,
+        has_active_recall_hold=has_active_recall_hold,
     )
     projected_candidate = projection.items[-1] if projection.items else None
     if (
