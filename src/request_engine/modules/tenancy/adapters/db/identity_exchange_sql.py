@@ -15,7 +15,7 @@ LOCAL_DOCUMENT = text(
 )
 
 PUBLISH = text(
-    "SELECT request_engine.publish_portable_person_v1("
+    "SELECT request_engine.publish_portable_party_v1("
     ":party_id, :kind, :authority, :fingerprint, :consented_fields, :principal_id)"
 )
 
