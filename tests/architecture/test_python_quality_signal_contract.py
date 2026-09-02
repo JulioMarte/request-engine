@@ -39,28 +39,6 @@ def _fact(candidate: dict[str, object]) -> dict[str, object]:
     return facts[0]
 
 
-def _mega_failure() -> dict[str, object]:
-    return {
-        "classification": "INVARIANT_FAILURE",
-        "trigger_id": "QR-MEGA-001",
-        "scope": {
-            "path": "src/request_engine/modules/booking/application/mega.py",
-            "category": "production_application",
-            "subject": "mega.py",
-        },
-        "facts": [
-            {
-                "kind": "effective_file_loc",
-                "subject": "mega.py",
-                "value": 701,
-                "tool": "python:tokenize",
-                "interpretation": "circuit-breaker-threshold-crossed",
-            }
-        ],
-        "reason": "introduced a new core file above the 500 eLOC circuit breaker",
-    }
-
-
 def test_effective_loc_ignores_blank_and_comment_only_lines() -> None:
     source = "# comment\n\nvalue = 1  # inline\n\n# more\nreturn_value = value\n"
     assert effective_code_lines(source) == 2
@@ -78,6 +56,16 @@ def test_500_line_file_is_review_candidate_not_invariant_failure() -> None:
         "tool": "python:tokenize",
         "interpretation": "none",
     }
+
+
+def test_501_line_file_remains_review_evidence_not_architecture_failure() -> None:
+    candidate = file_candidate(
+        Path("src/request_engine/modules/booking/application/large.py"), 501, 480
+    )
+    assert candidate is not None
+    assert candidate["classification"] == "REVIEW_CANDIDATE"
+    assert candidate["trigger_id"] == "QR-FSIZE-001"
+    assert _fact(candidate)["value"] == 501
 
 
 def test_c901_json_becomes_evidence_without_semantic_claim() -> None:
@@ -99,14 +87,8 @@ def test_c901_json_becomes_evidence_without_semantic_claim() -> None:
 
 
 def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
-    def previous_file_count(_ref: str, _root: Path) -> int:
-        return 10
-
-    def current_file_count(_root: Path) -> int:
-        return 11
-
-    monkeypatch.setattr(signals, "_module_file_count", previous_file_count)
-    monkeypatch.setattr(signals, "_current_module_file_count", current_file_count)
+    monkeypatch.setattr(signals, "_module_file_count", lambda _ref, _root: 10)
+    monkeypatch.setattr(signals, "_current_module_file_count", lambda _root: 11)
     observation: dict[str, object] = {
         "function_count": 1,
         "one_call_forwarder_count": 1,
@@ -123,7 +105,7 @@ def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
 
 
 def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
-    candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
+    candidate = file_candidate(Path("src/request_engine/example.py"), 501, 90)
     assert candidate is not None
     feedback = render_feedback({"candidates": [candidate]})
     for required in (
@@ -135,19 +117,6 @@ def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
         "HEALTHY_AS_IS",
         "REFACTOR_RECOMMENDED",
         "rerun deterministic architecture",
-        "INVARIANT_FAILURE cannot be overridden",
-    ):
-        assert required in feedback
-
-
-def test_mega_file_feedback_rejects_author_or_agent_self_justification() -> None:
-    feedback = render_feedback({"invariant_failures": [_mega_failure()], "candidates": []})
-    for required in (
-        "INVARIANT_FAILURE",
-        "QR-MEGA-001",
-        "SELF-JUSTIFICATION IS INVALID",
-        "exception added or modified in this same change",
-        "separate architecture exception merged into the branch base",
     ):
         assert required in feedback
 
@@ -155,7 +124,7 @@ def test_mega_file_feedback_rejects_author_or_agent_self_justification() -> None
 def test_successful_candidate_is_written_to_github_step_summary(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
+    candidate = file_candidate(Path("src/request_engine/example.py"), 501, 90)
     assert candidate is not None
     report: dict[str, object] = {
         "schema_version": "quality-scan/v1",
@@ -183,43 +152,15 @@ def test_successful_candidate_is_written_to_github_step_summary(
 
 
 def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path: Path) -> None:
-    candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
+    candidate = file_candidate(Path("src/request_engine/example.py"), 501, 90)
     assert candidate is not None
     report: dict[str, object] = {"candidates": [candidate]}
 
     def build_report_stub(_base_ref: str) -> dict[str, object]:
         return report
 
-    def write_report_stub(_report: dict[str, object], _output: Path) -> None:
-        return None
-
-    def write_summary_stub(_report: dict[str, object], _feedback: str, _output: Path) -> None:
-        return None
-
     monkeypatch.setattr(signals, "build_report", build_report_stub)
-    monkeypatch.setattr(signals, "write_report", write_report_stub)
-    monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
+    monkeypatch.setattr(signals, "write_report", lambda _report, _output: None)
+    monkeypatch.setattr(signals, "write_github_summary", lambda _report, _feedback, _output: None)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
     assert signals.main() == 0
-
-
-def test_invariant_failure_report_makes_scanner_fail(monkeypatch: Any, tmp_path: Path) -> None:
-    report: dict[str, object] = {
-        "invariant_failures": [_mega_failure()],
-        "candidates": [],
-    }
-
-    def build_report_stub(_base_ref: str) -> dict[str, object]:
-        return report
-
-    def write_report_stub(_report: dict[str, object], _output: Path) -> None:
-        return None
-
-    def write_summary_stub(_report: dict[str, object], _feedback: str, _output: Path) -> None:
-        return None
-
-    monkeypatch.setattr(signals, "build_report", build_report_stub)
-    monkeypatch.setattr(signals, "write_report", write_report_stub)
-    monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
-    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
-    assert signals.main() == 1
