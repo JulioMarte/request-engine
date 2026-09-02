@@ -14,6 +14,9 @@ ISOLATION_ACTOR_GRANTS = frozenset(
         "parties.rollback_identity",
         "parties.add_administrative_identifier",
         "parties.lookup_administrative_identifier",
+        "queue.operator_select",
+        "queue.recall_hold",
+        "queue.skip",
         "staff.manage_own_admin_contact",
         "staff.confirm_own_admin_contact",
     }

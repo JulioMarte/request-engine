@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .http_isolation_probe_flows_s0b import foreign_request as _s0b_request
+from .http_isolation_probe_flows_s5 import (
+    S5_ISOLATION_OPERATIONS,
+    foreign_request as _s5_request,
+)
 from .http_surface import PublicHttpOperation
 
 if TYPE_CHECKING:
@@ -17,6 +21,8 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
+    if name in S5_ISOLATION_OPERATIONS:
+        return _s5_request(operation, actor, foreign, objects)
     if name == "queue.list":
         return "/v1/queues", {}, None, 200
     if name == "queue.join":
