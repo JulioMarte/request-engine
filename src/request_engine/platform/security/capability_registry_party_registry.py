@@ -57,6 +57,11 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Look up Parties by phone, identity document or display-name prefix.",
     ),
     query_capability(
+        "parties.lookup_administrative_identifier",
+        CapabilityExposure.PUBLIC,
+        "Read and resolve tenant-owned Party administrative identifiers.",
+    ),
+    query_capability(
         "parties.read_revisions",
         CapabilityExposure.PUBLIC,
         "Read the append-only identity revision ledger of a person Party.",
