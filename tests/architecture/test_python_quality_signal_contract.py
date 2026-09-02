@@ -76,6 +76,25 @@ def test_c901_json_becomes_evidence_without_semantic_claim() -> None:
     assert _fact(candidate)["interpretation"] == "none"
 
 
+def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
+    navigation_candidate = cast(Any, signals._navigation_candidate)
+    monkeypatch.setattr(signals, "_module_file_count", lambda _ref, _root: 10)
+    monkeypatch.setattr(signals, "_current_module_file_count", lambda _root: 11)
+    observation = {
+        "function_count": 1,
+        "one_call_forwarder_count": 1,
+        "forwarding_only_functions": True,
+        "reexport_only_module": False,
+        "interpretation": "none",
+    }
+    path = Path("src/request_engine/modules/booking/application/new_wrapper.py")
+    candidate = navigation_candidate(path, observation, is_new=True, base_ref="base")
+    assert candidate is not None
+    assert candidate["trigger_id"] == "QR-NAV-001"
+    assert candidate["classification"] == "REVIEW_CANDIDATE"
+    assert navigation_candidate(path, observation, is_new=False, base_ref="base") is None
+
+
 def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
@@ -100,7 +119,7 @@ def test_successful_candidate_is_written_to_github_step_summary(
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
     report: dict[str, object] = {
-        "schema_version": "quality-evidence/v1",
+        "schema_version": "quality-scan/v1",
         "candidates": [candidate],
     }
     feedback = render_feedback(report)
@@ -113,7 +132,7 @@ def test_successful_candidate_is_written_to_github_step_summary(
     for required in (
         "Python maintainability signals",
         "Candidates:** 1",
-        "quality-evidence/v1",
+        "quality-scan/v1",
         "heuristic signals are non-blocking",
         "REVIEW_CANDIDATE",
         "HEALTHY_AS_IS",
