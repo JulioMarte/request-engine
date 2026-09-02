@@ -64,9 +64,7 @@ def _symbols(record: dict[str, object] | None) -> set[str]:
     return {str(item) for item in raw} if isinstance(raw, list) else set()
 
 
-def _coupling_diff(
-    base: dict[str, object], current: dict[str, object]
-) -> dict[str, object]:
+def _coupling_diff(base: dict[str, object], current: dict[str, object]) -> dict[str, object]:
     base_records = _edge_records(base)
     current_records = _edge_records(current)
     base_edges = set(base_records)
