@@ -6,6 +6,7 @@ import math
 import subprocess
 import tarfile
 import tokenize
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,12 @@ IGNORED_TOKEN_TYPES = {
     tokenize.DEDENT,
 }
 BUSINESS_MODULE_ROOT = ("src", "request_engine", "modules")
+SUPPRESSION_MARKERS = {
+    "noqa": "noqa",
+    "type_ignore": "type: ignore",
+    "nosec": "nosec",
+    "pragma_no_cover": "pragma: no cover",
+}
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -153,6 +160,50 @@ def _business_targets_from_import(path: Path, node: ast.Import | ast.ImportFrom)
     return targets
 
 
+def _contract_import_symbols(
+    path: Path, node: ast.Import | ast.ImportFrom
+) -> dict[str, set[str]]:
+    """Return target-module contract symbols consumed by one import statement.
+
+    This is deliberately evidence, not an API-size verdict. Symbols are recorded
+    only when the import is visibly through the target module's ``contracts``
+    surface; hidden/runtime dependencies remain a separate threat-model concern.
+    """
+    usage: dict[str, set[str]] = defaultdict(set)
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            parts = alias.name.split(".")
+            if len(parts) < 4 or parts[:2] != ["request_engine", "modules"]:
+                continue
+            target = parts[2]
+            if parts[3] != "contracts":
+                continue
+            suffix = ".".join(parts[4:]) or "<contracts-package>"
+            usage[target].add(suffix)
+        return usage
+
+    resolved = _resolved_import_from(path, node)
+    if not resolved:
+        return usage
+    parts = resolved.split(".")
+    if len(parts) >= 4 and parts[:2] == ["request_engine", "modules"]:
+        target = parts[2]
+        if parts[3] == "contracts":
+            prefix = ".".join(parts[4:])
+            for alias in node.names:
+                symbol = f"{prefix}.{alias.name}" if prefix else alias.name
+                usage[target].add(symbol)
+        elif len(parts) == 3:
+            for alias in node.names:
+                if alias.name == "contracts":
+                    usage[target].add("<contracts-package>")
+    elif resolved == "request_engine.modules":
+        # ``from request_engine.modules import booking`` is an edge but not a
+        # published-contract consumption and therefore adds no contract symbol.
+        return usage
+    return usage
+
+
 def module_import_edges_from_source(path: Path, source: str) -> set[tuple[str, str]]:
     source_module = business_module_for_path(path)
     if source_module is None:
@@ -166,6 +217,44 @@ def module_import_edges_from_source(path: Path, source: str) -> set[tuple[str, s
             if target != source_module:
                 edges.add((source_module, target))
     return edges
+
+
+def module_contract_usage_from_source(
+    path: Path, source: str
+) -> dict[tuple[str, str], set[str]]:
+    source_module = business_module_for_path(path)
+    if source_module is None:
+        return {}
+    tree = ast.parse(source, filename=path.as_posix())
+    usage: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Import | ast.ImportFrom):
+            continue
+        for target, symbols in _contract_import_symbols(path, node).items():
+            if target != source_module:
+                usage[(source_module, target)].update(symbols)
+    return dict(usage)
+
+
+def suppression_observation(source: str) -> dict[str, object]:
+    """Count explicit local suppression comments without interpreting intent."""
+    counts: Counter[str] = Counter()
+    occurrences: list[dict[str, object]] = []
+    tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+    for token in tokens:
+        if token.type != tokenize.COMMENT:
+            continue
+        lowered = token.string.lower()
+        for kind, marker in SUPPRESSION_MARKERS.items():
+            if marker in lowered:
+                counts[kind] += 1
+                occurrences.append({"kind": kind, "line": token.start[0]})
+    return {
+        "total": sum(counts.values()),
+        "counts": dict(sorted(counts.items())),
+        "occurrences": occurrences,
+        "interpretation": "none",
+    }
 
 
 def _current_business_module_sources() -> list[tuple[Path, str]]:
@@ -209,8 +298,11 @@ def business_module_dependency_snapshot(ref: str | None = None) -> dict[str, obj
         module for path, _ in sources if (module := business_module_for_path(path)) is not None
     }
     edges: set[tuple[str, str]] = set()
+    contract_usage: dict[tuple[str, str], set[str]] = defaultdict(set)
     for path, source in sources:
         edges.update(module_import_edges_from_source(path, source))
+        for edge, symbols in module_contract_usage_from_source(path, source).items():
+            contract_usage[edge].update(symbols)
     for source, target in edges:
         modules.add(source)
         modules.add(target)
@@ -228,10 +320,18 @@ def business_module_dependency_snapshot(ref: str | None = None) -> dict[str, obj
                 "outbound_modules": outbound,
             }
         )
-    return {
-        "modules": module_records,
-        "edges": [{"source": source, "target": target} for source, target in sorted(edges)],
-    }
+    edge_records = []
+    for source, target in sorted(edges):
+        symbols = sorted(contract_usage.get((source, target), set()))
+        edge_records.append(
+            {
+                "source": source,
+                "target": target,
+                "contract_symbol_count": len(symbols),
+                "contract_symbols": symbols,
+            }
+        )
+    return {"modules": module_records, "edges": edge_records}
 
 
 def function_records(path: Path, source: str) -> list[dict[str, object]]:
