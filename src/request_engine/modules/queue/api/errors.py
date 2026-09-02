@@ -111,3 +111,11 @@ def core_queue_error(exc: QueueError) -> tuple[int, ErrorBody] | None:
             details={"entry_id": str(exc.entry_id), "status": exc.status},
         )
     return None
+
+
+# Frozen V3 provenance: the public fallback code remains literal in this module.
+_FROZEN_QUEUE_FALLBACK = ErrorBody(
+    code="queue_error",
+    message="the queue command failed",
+    resolution=ErrorResolution.OPERATOR_INTERVENTION,
+)
