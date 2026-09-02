@@ -48,7 +48,7 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     "request_engine.lookup_active_service_classification(p_key text)",
     "request_engine.lookup_service_classification(p_id uuid)",
     (
-        "request_engine.publish_portable_person_v1(p_party_id uuid, p_kind text, "
+        "request_engine.publish_portable_party_v1(p_party_id uuid, p_kind text, "
         "p_authority text, p_fingerprint text, p_consent_fields text[], p_principal_id uuid)"
     ),
     "request_engine.read_discovery_booking_handoff(p_token_hash text)",
