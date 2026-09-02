@@ -31,7 +31,7 @@ async def test_recall_hold_blocks_fifo_until_explicit_release(
     f7e = PostgresSameDaySelectionCommands(command_session_factory)
     queue = PostgresServiceQueueCommands(command_session_factory)
 
-    await f7e.recall_hold(
+    hold = await f7e.recall_hold(
         RecallHoldCommand(
             organization_id=world.organization_id,
             principal_id=world.principal_id,
@@ -44,18 +44,22 @@ async def test_recall_hold_blocks_fifo_until_explicit_release(
             idempotency_key=f"hold-{uuid4().hex}",
         )
     )
+    assert hold.queue_entry_revision == 2
     called = await queue.call_next(call_next_command(world, "while-held"))
     assert called is not None and called.id == second
 
-    await f7e.release_recall_hold(
+    released = await f7e.release_recall_hold(
         ReleaseRecallHoldCommand(
             organization_id=world.organization_id,
             principal_id=world.principal_id,
             queue_id=world.queue_id,
             queue_entry_id=first,
+            hold_id=hold.id,
+            expected_revision=hold.queue_entry_revision,
             idempotency_key=f"release-{uuid4().hex}",
         )
     )
+    assert released is not None and released.queue_entry_revision == 3
     recalled = await queue.call_next(call_next_command(world, "after-release"))
     assert recalled is not None and recalled.id == first
 
