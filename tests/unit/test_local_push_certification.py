@@ -3,10 +3,11 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ContextManager, cast
+from typing import Any, cast
 
 import pytest
 
@@ -78,7 +79,7 @@ def test_detached_worktree_certifies_commit_not_dirty_working_tree(tmp_path: Pat
 
     certifier = _load(CERTIFIER, "certify_push_worktree_test")
     factory = cast(
-        Callable[[Path, str], ContextManager[Path]],
+        Callable[[Path, str], AbstractContextManager[Path]],
         certifier._detached_worktree,
     )
     with factory(tmp_path, commit_sha) as worktree:
@@ -138,11 +139,3 @@ def test_hook_installer_is_idempotent_and_uses_git_common_dir(tmp_path: Path) ->
     target = hooks / "pre-push"
     assert target.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
     assert _git(tmp_path, "config", "--local", "--get", "core.hooksPath") == str(hooks)
-
-
-def test_internal_worktree_context_manager_annotation_is_not_part_of_public_contract() -> None:
-    # This guards test ergonomics: callers use the context-manager behavior, not
-    # an implementation-specific generator type or private temporary-path shape.
-    certifier = _load(CERTIFIER, "certify_push_context_test")
-    factory = cast(Callable[[Path, str], Iterator[Path]], certifier._detached_worktree)
-    assert callable(factory)
