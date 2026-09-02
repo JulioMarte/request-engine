@@ -57,6 +57,9 @@ def test_quality_evidence_uses_versioned_draft_2020_12_schema() -> None:
 
 def test_successful_quality_evidence_is_persisted_for_longitudinal_calibration() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "Enforce quality-policy separation" in workflow
+    assert "check_quality_policy_separation.py" in workflow
+    assert "QUALITY_POLICY_BASE_REF" in workflow
     assert "Finalize quality evidence packets" in workflow
     assert "Validate quality evidence schema" in workflow
     assert "Summarize semantic review calibration" in workflow
@@ -98,10 +101,14 @@ def test_core_agent_instructions_make_mega_file_self_approval_invalid() -> None:
     instructions = CORE_AGENTS.read_text(encoding="utf-8")
     for required in (
         "QR-MEGA-001",
+        "QR-MEGA-GOV-001",
         "500 effective code-bearing lines",
         "Self-justification is not authority",
         "same implementation change",
         "must be reviewed and merged into the integration base",
+        "# @generated",
+        "not exemption authority",
+        "MUST NOT edit the mega-file checker",
         "Do not split a cohesive file",
     ):
         assert required in instructions
