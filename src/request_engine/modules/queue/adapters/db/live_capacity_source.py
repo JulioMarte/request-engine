@@ -4,6 +4,9 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from request_engine.modules.queue.adapters.db.live_capacity_completed_reservations import (
+    read_completed_reservation_ids,
+)
 from request_engine.modules.queue.adapters.db.live_capacity_customer_source import (
     read_customer_projection_target,
 )
@@ -56,28 +59,12 @@ class PostgresQueueProjectionSource:
             .mappings()
             .all()
         )
-        completed = frozenset[UUID]()
-        if relevant_reservation_ids:
-            completed_rows = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT DISTINCT reservation_id
-                        FROM request_engine.queue_entries
-                        WHERE organization_id = :organization_id
-                          AND service_queue_id = :queue_id
-                          AND status = 'completed'
-                          AND reservation_id = ANY(CAST(:reservation_ids AS uuid[]))
-                        """
-                    ),
-                    {
-                        "organization_id": organization_id,
-                        "queue_id": queue_id,
-                        "reservation_ids": list(relevant_reservation_ids),
-                    },
-                )
-            ).scalars()
-            completed = frozenset(cast(UUID, value) for value in completed_rows)
+        completed = await read_completed_reservation_ids(
+            session,
+            organization_id=organization_id,
+            queue_id=queue_id,
+            reservation_ids=relevant_reservation_ids,
+        )
         recall_held = await has_active_recall_hold(
             session,
             organization_id=organization_id,
