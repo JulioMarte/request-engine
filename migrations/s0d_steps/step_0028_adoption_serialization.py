@@ -85,6 +85,44 @@ BEGIN
 END
 $function$;
 
+CREATE FUNCTION request_engine.identity_exchange_existing_party_v1(
+    p_candidate_id uuid,
+    p_principal_id uuid
+) RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, request_engine
+AS $function$
+DECLARE
+    v_org uuid;
+    v_actor uuid;
+    v_party uuid;
+BEGIN
+    v_org := nullif(current_setting('request_engine.organization_id', true), '')::uuid;
+    v_actor := nullif(current_setting('request_engine.authenticated_principal_id', true), '')::uuid;
+    IF v_org IS NULL OR v_actor IS NULL OR v_actor <> p_principal_id THEN
+        RAISE EXCEPTION 'identity adoption actor context mismatch' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT b.party_id INTO v_party
+    FROM request_engine.identity_exchange_candidates c
+    JOIN request_engine.organization_person_bindings b
+      ON b.organization_id = c.organization_id
+     AND b.portable_person_id = c.portable_person_id
+     AND b.active
+    WHERE c.id = p_candidate_id
+      AND c.organization_id = v_org
+      AND c.created_by_principal_id = p_principal_id
+    LIMIT 1;
+    RETURN v_party;
+END
+$function$;
+
+REVOKE ALL ON FUNCTION request_engine.identity_exchange_existing_party_v1(uuid,uuid)
+    FROM PUBLIC, request_engine_worker;
+GRANT EXECUTE ON FUNCTION request_engine.identity_exchange_existing_party_v1(uuid,uuid)
+    TO request_engine_app;
+
 RESET ROLE;
 RESET search_path;
 """
