@@ -45,7 +45,10 @@ CREATE TABLE request_engine.queue_recall_holds (
         (hold_kind = 'until_time' AND release_at IS NOT NULL)
         OR (hold_kind = 'until_customer_initiates' AND release_at IS NULL)
     ),
-    CHECK (reason IS NULL OR char_length(reason) <= 500),
+    CHECK (
+        reason IS NULL
+        OR reason IN ('stepped_away', 'temporarily_unavailable', 'operator_override')
+    ),
     CHECK (release_reason IS NULL OR char_length(release_reason) <= 120),
     CHECK (released_at IS NULL OR released_at >= created_at),
     CHECK (
