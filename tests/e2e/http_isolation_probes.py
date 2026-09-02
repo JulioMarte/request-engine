@@ -10,6 +10,7 @@ from .tenant_sandbox import TenantSandbox, actor_for
 ISOLATION_ACTOR_GRANTS = frozenset(
     {
         "appointments.record_arrival_estimate",
+        "front_desk.day_board.read",
         "parties.register",
         "parties.add_contact_point",
         "parties.confirm_contact_point",
