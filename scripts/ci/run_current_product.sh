@@ -143,6 +143,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f7-day-board.xml"
 
+# F7e same-day selection is current product truth once merged. Run every F7e
+# PostgreSQL proof so recall-hold lifecycle, selection serialization, RLS,
+# database constraints and adversarial command races cannot regress silently.
+uv run pytest \
+  tests/db/test_f7e_*.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f7e-same-day-selection-db.xml"
+
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
 # they must not disappear merely because V3 historical execution was separated.
