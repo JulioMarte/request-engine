@@ -4,13 +4,15 @@ from collections.abc import Mapping
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy.engine import RowMapping
+
 from request_engine.modules.tenancy.contracts.party_administrative_identifiers import (
     PartyAdministrativeIdentifier,
     PartyAdministrativeIdentifierKind,
 )
 
 
-def identifier_from_mapping(row: Mapping[str, object]) -> PartyAdministrativeIdentifier:
+def identifier_from_mapping(row: RowMapping) -> PartyAdministrativeIdentifier:
     return PartyAdministrativeIdentifier(
         identifier_id=cast(UUID, row["id"]),
         party_id=cast(UUID, row["party_id"]),
