@@ -62,6 +62,7 @@ def install_http(
 
     commands = PostgresServiceQueueCommands(session_factory)
     waitlist_commands = PostgresWaitlistCommands(session_factory)
+    selection_commands = PostgresSameDaySelectionCommands(session_factory)
     slot_offer_commands = (
         PostgresSlotOfferCommands(
             session_factory,
@@ -97,7 +98,10 @@ def install_http(
     )
     app.include_router(
         create_same_day_selection_router(
-            PostgresSameDaySelectionCommands(session_factory),
-            actor_resolver,
+            operator_select_executor=selection_commands,
+            skip_executor=selection_commands,
+            recall_hold_executor=selection_commands,
+            release_hold_executor=selection_commands,
+            actor_resolver=actor_resolver,
         )
     )
