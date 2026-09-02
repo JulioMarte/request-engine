@@ -3,12 +3,16 @@
 from collections.abc import Mapping
 from typing import cast
 
-from sqlalchemy import text
-
 from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_codec import (
     identifier_from_json,
     identifier_from_mapping,
     identifier_to_json,
+)
+from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_sql import (
+    FIND_IDENTIFIER,
+    INSERT_IDENTIFIER,
+    fingerprint_values,
+    sql_values,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import attribution_values
 from request_engine.modules.tenancy.adapters.db.party_registry_store import lock_party
@@ -30,24 +34,6 @@ from request_engine.platform.idempotency.postgres import (
 )
 
 _CAPABILITY = "parties.add_administrative_identifier"
-_INSERT = text("""
-INSERT INTO request_engine.party_administrative_identifiers
- (organization_id, party_id, kind, issuer, normalized_issuer, value, normalized_value,
-  created_by_principal_id, source_kind, platform, relay_principal_id)
-VALUES
- (:organization_id, :party_id, :kind, :issuer, :normalized_issuer, :value, :normalized_value,
-  :principal_id, :source_kind, :platform, :relay_principal_id)
-ON CONFLICT DO NOTHING
-RETURNING id, party_id, kind, issuer, normalized_issuer, value, normalized_value, active
-""")
-_FIND = text("""
-SELECT id, party_id, kind, issuer, normalized_issuer, value, normalized_value, active
-FROM request_engine.party_administrative_identifiers
-WHERE organization_id = :organization_id AND kind = :kind AND normalized_issuer = :normalized_issuer
-  AND active AND (normalized_value = :normalized_value OR party_id = :party_id)
-ORDER BY (normalized_value = :normalized_value) DESC
-LIMIT 1
-""")
 
 
 class PostgresPartyAdministrativeIdentifierCommands:
@@ -55,11 +41,12 @@ class PostgresPartyAdministrativeIdentifierCommands:
         self._session_factory = session_factory
 
     async def add_party_administrative_identifier(
-        self, command: AddPartyAdministrativeIdentifierCommand
+        self,
+        command: AddPartyAdministrativeIdentifierCommand,
     ) -> PartyAdministrativeIdentifier:
-        fingerprint = command_fingerprint(_CAPABILITY, _fingerprint(command))
+        fingerprint = command_fingerprint(_CAPABILITY, fingerprint_values(command))
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
-            idem_id, replay = await acquire_idempotency(
+            idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
                 principal_id=command.principal_id,
@@ -70,26 +57,16 @@ class PostgresPartyAdministrativeIdentifierCommands:
             if replay is not None:
                 payload = cast(Mapping[str, object], replay["identifier"])
                 return identifier_from_json(payload)
+
             await lock_party(session, command.organization_id, command.party_id)
-            params = _sql_params(command)
-            row = (await session.execute(_INSERT, params)).mappings().first()
-            if row is None:
-                existing = (await session.execute(_FIND, params)).mappings().first()
-                if existing is None:
-                    raise RuntimeError("administrative identifier conflict could not be resolved")
-                identifier = identifier_from_mapping(existing)
-                if (
-                    identifier.party_id != command.party_id
-                    or identifier.normalized_value != command.normalized_value
-                ):
-                    raise PartyAdministrativeIdentifierConflict(
-                        kind=command.kind,
-                        issuer=command.issuer,
-                        normalized_value=command.normalized_value,
-                        existing_party_id=identifier.party_id,
-                    )
-            else:
-                identifier = identifier_from_mapping(row)
+            params = sql_values(command)
+            row = (await session.execute(INSERT_IDENTIFIER, params)).mappings().first()
+            identifier = (
+                identifier_from_mapping(row)
+                if row is not None
+                else await self._resolve_conflict(session, command, params)
+            )
+            if row is not None:
                 await append_audit(
                     session,
                     organization_id=command.organization_id,
@@ -97,23 +74,41 @@ class PostgresPartyAdministrativeIdentifierCommands:
                     command_name=_CAPABILITY,
                     aggregate_kind="PartyAdministrativeIdentifier",
                     aggregate_id=identifier.identifier_id,
-                    idempotency_id=idem_id,
-                    details={"party_id": str(command.party_id), "kind": command.kind,
-                             "issuer": command.issuer, "normalized_value": command.normalized_value},
+                    idempotency_id=idempotency_id,
+                    details={
+                        "party_id": str(command.party_id),
+                        "kind": command.kind,
+                        "issuer": command.issuer,
+                        "normalized_value": command.normalized_value,
+                        **attribution_values(command),
+                    },
                 )
-            await complete_idempotency(session, idem_id, {"identifier": identifier_to_json(identifier)})
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"identifier": identifier_to_json(identifier)},
+            )
             return identifier
 
-
-def _fingerprint(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
-    return {"party_id": str(command.party_id), "kind": command.kind, "issuer": command.issuer,
-            "normalized_issuer": command.normalized_issuer, "value": command.value,
-            "normalized_value": command.normalized_value, "source_kind": command.source_kind.value,
-            "platform": command.platform}
-
-
-def _sql_params(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
-    return {"organization_id": command.organization_id, "party_id": command.party_id,
-            "principal_id": command.principal_id, "kind": command.kind, "issuer": command.issuer,
-            "normalized_issuer": command.normalized_issuer, "value": command.value,
-            "normalized_value": command.normalized_value, **attribution_values(command)}
+    async def _resolve_conflict(
+        self,
+        session: object,
+        command: AddPartyAdministrativeIdentifierCommand,
+        params: dict[str, object],
+    ) -> PartyAdministrativeIdentifier:
+        result = await session.execute(FIND_IDENTIFIER, params)  # type: ignore[attr-defined]
+        row = result.mappings().first()
+        if row is None:
+            raise RuntimeError("administrative identifier conflict could not be resolved")
+        identifier = identifier_from_mapping(row)
+        if (
+            identifier.party_id == command.party_id
+            and identifier.normalized_value == command.normalized_value
+        ):
+            return identifier
+        raise PartyAdministrativeIdentifierConflict(
+            kind=command.kind,
+            issuer=command.issuer,
+            normalized_value=command.normalized_value,
+            existing_party_id=identifier.party_id,
+        )
