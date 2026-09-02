@@ -22,9 +22,10 @@ class PostgresReservationDayBoardReader:
     ) -> tuple[ReservationDayBoardEntry, ...]:
         async with tenant_transaction(self._session_factory, organization_id) as session:
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT reservation_id, offering_version_id, subject_party_id,
                                subject_display_name, location_id,
                                lower(during) AS start_at, upper(during) AS end_at,
@@ -37,14 +38,17 @@ class PostgresReservationDayBoardReader:
                            AND during && tstzrange(:window_start, :window_end, '[)')
                          ORDER BY lower(during), reservation_id
                         """
-                    ),
-                    {
-                        "organization_id": organization_id,
-                        "window_start": window_start,
-                        "window_end": window_end,
-                    },
+                        ),
+                        {
+                            "organization_id": organization_id,
+                            "window_start": window_start,
+                            "window_end": window_end,
+                        },
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         return tuple(_entry_from_row(row) for row in rows)
 
 
