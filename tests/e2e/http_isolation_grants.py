@@ -1,0 +1,20 @@
+ISOLATION_ACTOR_GRANTS = frozenset(
+    {
+        "appointments.day_board",
+        "appointments.record_arrival_estimate",
+        "parties.register",
+        "parties.add_contact_point",
+        "parties.confirm_contact_point",
+        "parties.rename",
+        "parties.add_document",
+        "parties.deactivate_contact_point",
+        "parties.deactivate",
+        "parties.lookup",
+        "parties.read_revisions",
+        "parties.rollback_identity",
+        "parties.add_administrative_identifier",
+        "parties.lookup_administrative_identifier",
+        "staff.manage_own_admin_contact",
+        "staff.confirm_own_admin_contact",
+    }
+)
