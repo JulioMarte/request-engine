@@ -17,7 +17,11 @@ from request_engine.modules.queue.adapters.db.service_queue_commands import (
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 from request_engine.modules.queue.application.commands.recall_hold import RecallHoldCommand
 from request_engine.modules.queue.application.same_day_selection_errors import QueueEntryNotSelectable
-from request_engine.modules.queue.contracts.same_day_selection import RecallHold, RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHold,
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.modules.queue.contracts.service_queue import QueueEntry
 from request_engine.platform.db.session import SessionFactory
 
@@ -66,7 +70,7 @@ async def test_call_next_vs_recall_hold_serializes_without_called_held_state(
                 expected_revision=1,
                 kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
                 release_at=None,
-                reason="race proof",
+                reason=RecallHoldReason.OPERATOR_OVERRIDE,
                 idempotency_key=f"race-hold-{uuid4().hex}",
             )
         ),
