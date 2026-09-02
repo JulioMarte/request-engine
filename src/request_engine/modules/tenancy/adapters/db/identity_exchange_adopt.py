@@ -12,16 +12,15 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_codec import (
     adoption_from_json,
     adoption_to_json,
 )
-from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
-    raise_document_conflict,
-)
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import raise_document_conflict
 from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
-from request_engine.modules.tenancy.application.identity_exchange_errors import (
-    IdentityExchangeUnavailable,
-)
+from request_engine.modules.tenancy.application.identity_exchange_errors import IdentityExchangeUnavailable
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 from request_engine.modules.tenancy.contracts.party_registry import PartyDocumentInput
-from request_engine.modules.tenancy.domain.identity_exchange import cedula_fingerprint
+from request_engine.modules.tenancy.domain.identity_exchange import (
+    ScopedIdentityDocument,
+    identity_document_fingerprint,
+)
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
     acquire_idempotency,
@@ -41,20 +40,30 @@ class PostgresPortableIdentityAdopter:
         self,
         command: AdoptPortableIdentityCommand,
     ) -> IdentityAdoptionResult:
+        authority = command.document_authority
+        if authority is None:
+            raise IdentityExchangeUnavailable("scoped document authority is required")
+        document = ScopedIdentityDocument(
+            command.document_kind, authority, command.document_value
+        )
         try:
-            fingerprint = cedula_fingerprint(self._fingerprint_key, command.document_value)
+            fingerprint = identity_document_fingerprint(self._fingerprint_key, document)
         except RuntimeError as error:
             raise IdentityExchangeUnavailable(str(error)) from None
         idem_fingerprint = command_fingerprint(
             _CAPABILITY,
             {
                 "candidate_ref": str(command.candidate_ref),
+                "document_kind": document.kind,
+                "document_authority": document.authority,
                 "fingerprint": fingerprint,
                 "consented_fields": list(command.consented_fields),
                 "proof_kind": command.proof_kind,
             },
         )
-        documents = (PartyDocumentInput("cedula", command.document_value),)
+        documents = (
+            PartyDocumentInput(document.kind, document.value, document.authority),
+        )
         try:
             async with tenant_transaction(self._session_factory, command.organization_id) as session:
                 idempotency_id, replay = await acquire_idempotency(
