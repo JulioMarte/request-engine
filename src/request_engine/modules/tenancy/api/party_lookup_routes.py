@@ -32,6 +32,7 @@ def add_party_lookup_routes(
         mode: PartyLookupMode,
         value: str = Query(min_length=1, max_length=128),
         document_kind: str = PartyDocumentKind.CEDULA.value,
+        document_authority: str | None = None,
     ) -> tuple[RegisteredPartyView, ...]:
         require_capability(actor, "parties.lookup")
         try:
@@ -42,6 +43,7 @@ def add_party_lookup_routes(
                     mode=mode,
                     value=value,
                     document_kind=document_kind,
+                    document_authority=document_authority,
                 ),
             )
         except ValueError as error:
@@ -57,7 +59,7 @@ def add_party_lookup_routes(
         response_model=tuple[RegisteredPartyView, ...],
         response_model_exclude_none=True,
         description=(
-            "Lookup returns at most 50 parties (no has_more field; narrow the term"
-            " instead). `document_kind` defaults to 'cedula'."
+            "Lookup returns at most 50 parties. Cédula authority defaults to DO:JCE; "
+            "passport lookup requires a 2-letter issuing-country authority."
         ),
     )
