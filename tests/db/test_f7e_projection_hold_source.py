@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -62,8 +62,8 @@ async def test_projection_hold_source_ignores_hold_after_entry_leaves_waiting(
 
 async def _has_hold(
     session_factory: SessionFactory,
-    organization_id,
-    queue_id,
+    organization_id: UUID,
+    queue_id: UUID,
     observed_at: datetime,
 ) -> bool:
     async with tenant_transaction(session_factory, organization_id) as session:
