@@ -31,7 +31,10 @@ class PostgresDayBoardReader:
                         FROM request_read.reservation_day_v1
                         WHERE organization_id = :organization_id
                           AND during && tstzrange(:window_start, :window_end, '[)')
-                          AND (:location_id IS NULL OR location_id = :location_id)
+                          AND (
+                              CAST(:location_id AS uuid) IS NULL
+                              OR location_id = CAST(:location_id AS uuid)
+                          )
                         ORDER BY lower(during), reservation_id
                         LIMIT :limit
                         """
