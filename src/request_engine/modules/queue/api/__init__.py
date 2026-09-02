@@ -27,7 +27,7 @@ from request_engine.modules.queue.adapters.db.service_queue_reader import (
 from request_engine.modules.queue.adapters.db.slot_offer_commands import PostgresSlotOfferCommands
 from request_engine.modules.queue.adapters.db.waitlist_commands import PostgresWaitlistCommands
 from request_engine.modules.queue.adapters.db.waitlist_reader import PostgresWaitlistEntryReader
-from request_engine.modules.queue.api.error_handler import queue_error_handler
+from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.intake_errors import queue_intake_stopped_handler
 from request_engine.modules.queue.api.live_router import create_live_router
 from request_engine.modules.queue.api.router import create_router
