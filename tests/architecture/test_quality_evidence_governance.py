@@ -10,6 +10,9 @@ PILOT = ROOT / "docs" / "engineering-quality" / "calibration" / "pilot-observati
 BEFORE_AFTER = (
     ROOT / "docs" / "engineering-quality" / "calibration" / "reviewer-fixer-evidence.v1.json"
 )
+CORE_AGENTS = ROOT / "src" / "request_engine" / "AGENTS.md"
+MEGA_REGISTRY = ROOT / "docs" / "engineering-quality" / "mega-file-exceptions.v1.json"
+MEGA_POLICY = ROOT / "docs" / "engineering-quality" / "mega-file-circuit-breaker.md"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 VALIDATOR = ROOT / "scripts" / "ci" / "validate_quality_evidence.py"
 
@@ -81,3 +84,26 @@ def test_reviewer_fixer_evidence_contains_deterministic_reproof_not_self_certifi
             proved.append(item)
     assert proved
     assert all(item.get("reviewer_role") != item.get("fixer_role") for item in entries)
+
+
+def test_core_agent_instructions_make_mega_file_self_approval_invalid() -> None:
+    instructions = CORE_AGENTS.read_text(encoding="utf-8")
+    for required in (
+        "QR-MEGA-001",
+        "500 effective code-bearing lines",
+        "Self-justification is not authority",
+        "same implementation change",
+        "must be reviewed and merged into the integration base",
+        "Do not split a cohesive file",
+    ):
+        assert required in instructions
+
+
+def test_mega_file_registry_starts_bounded_and_base_authority_is_documented() -> None:
+    registry = _json(MEGA_REGISTRY)
+    assert registry["schema_version"] == "mega-file-exceptions/v1"
+    assert registry["exceptions"] == []
+    assert "same implementation PR cannot waive QR-MEGA-001" in str(registry["policy"])
+    policy = MEGA_POLICY.read_text(encoding="utf-8")
+    assert "reads the exception registry from the branch base" in policy
+    assert "cannot authorize that PR" in policy
