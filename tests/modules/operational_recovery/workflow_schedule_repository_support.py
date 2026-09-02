@@ -100,9 +100,7 @@ class FakeWorkflowRepository:
         return self.action, True
 
     @asynccontextmanager
-    async def serialize_action_execution(
-        self, *, action_id: UUID
-    ) -> AsyncGenerator[None]:
+    async def serialize_action_execution(self, *, action_id: UUID) -> AsyncGenerator[None]:
         assert action_id == ACTION
         async with self._execution_lock:
             yield
