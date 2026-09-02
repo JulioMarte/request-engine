@@ -12,9 +12,9 @@ from ._party_world import create_party_registry_world
 pytestmark = [pytest.mark.integration, pytest.mark.postgres, pytest.mark.security]
 
 _GLOBAL_TABLES = (
-    "portable_person_identities",
-    "portable_person_identifiers",
-    "portable_person_profiles",
+    "portable_party_identities",
+    "portable_party_identifiers",
+    "portable_party_profiles",
     "identity_exchange_candidates",
 )
 
