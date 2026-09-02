@@ -41,10 +41,11 @@ class PostgresLiveQueueReader:
                                    staff.service_started_at, staff.service_completed_at,
                                    hold.hold_kind AS recall_hold_kind,
                                    hold.release_at AS recall_hold_release_at,
+                                   hold.reason AS recall_hold_reason,
                                    staff.queue_revision, staff.service_revision
                               FROM request_read.live_service_staff_v1 AS staff
                               LEFT JOIN LATERAL (
-                                  SELECT h.hold_kind, h.release_at
+                                  SELECT h.hold_kind, h.release_at, h.reason
                                     FROM request_engine.queue_recall_holds AS h
                                    WHERE h.organization_id = :organization_id
                                      AND h.queue_entry_id = staff.queue_entry_id
