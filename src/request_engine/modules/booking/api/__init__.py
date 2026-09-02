@@ -21,9 +21,6 @@ from request_engine.modules.booking.adapters.db.contextual_supply_lifecycle_comm
 from request_engine.modules.booking.adapters.db.contextual_terms_supersession_commands import (
     PostgresContextualTermsSupersessionCommands,
 )
-from request_engine.modules.booking.adapters.db.day_board_reader import (
-    PostgresReservationDayBoardReader,
-)
 from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
@@ -34,7 +31,6 @@ from request_engine.modules.booking.adapters.discovery_error_boundary import (
 from request_engine.modules.booking.adapters.discovery_handoff_reader import (
     PostgresDiscoveryHandoffReader,
 )
-from request_engine.modules.booking.api.day_board_router import create_day_board_router
 from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
@@ -85,8 +81,12 @@ def install_http(
             actor_resolver=actor_resolver,
         )
     )
-    app.include_router(
-        create_day_board_router(PostgresReservationDayBoardReader(session_factory), actor_resolver)
+    from request_engine.modules.booking.api.day_board_install import install_day_board_http
+
+    install_day_board_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
     )
 
 
