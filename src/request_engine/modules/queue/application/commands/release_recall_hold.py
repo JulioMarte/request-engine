@@ -11,6 +11,8 @@ class ReleaseRecallHoldCommand:
     principal_id: UUID
     queue_id: UUID
     queue_entry_id: UUID
+    hold_id: UUID
+    expected_revision: int
     idempotency_key: str
 
 
