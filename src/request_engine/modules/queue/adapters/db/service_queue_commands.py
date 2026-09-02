@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
 from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
     lock_eligible_fifo_entries,
 )
@@ -18,11 +19,7 @@ from request_engine.modules.queue.adapters.db.tenant_references import (
 )
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 from request_engine.modules.queue.application.commands.join_queue import JoinQueueCommand
-from request_engine.modules.queue.application.errors import (
-    AlreadyInQueue,
-    QueueInactive,
-    QueueNotFound,
-)
+from request_engine.modules.queue.application.errors import AlreadyInQueue
 from request_engine.modules.queue.contracts.service_queue import QueueEntry, QueueEntryStatus
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
@@ -84,7 +81,7 @@ class PostgresServiceQueueCommands:
                 allow_operator_override=command.allow_subject_override,
             )
 
-            await _lock_active_queue(session, command.organization_id, command.queue_id)
+            await lock_active_queue(session, command.organization_id, command.queue_id)
 
             existing = (
                 await session.execute(
@@ -180,7 +177,7 @@ class PostgresServiceQueueCommands:
                     return None
                 return _queue_entry_from_json(cast(dict[str, object], replay_entry))
 
-            await _lock_active_queue(session, command.organization_id, command.queue_id)
+            await lock_active_queue(session, command.organization_id, command.queue_id)
             eligible = await lock_eligible_fifo_entries(
                 session,
                 command.organization_id,
@@ -268,31 +265,6 @@ class PostgresServiceQueueCommands:
                 {"entry": _queue_entry_to_json(entry)},
             )
             return entry
-
-
-async def _lock_active_queue(
-    session: AsyncSession,
-    organization_id: UUID,
-    queue_id: UUID,
-) -> None:
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT active
-                FROM request_engine.service_queues
-                WHERE organization_id = :organization_id
-                  AND id = :queue_id
-                FOR UPDATE
-                """
-            ),
-            {"organization_id": organization_id, "queue_id": queue_id},
-        )
-    ).first()
-    if row is None:
-        raise QueueNotFound(queue_id)
-    if row[0] is not True:
-        raise QueueInactive(queue_id)
 
 
 async def _acquire_idempotency(
