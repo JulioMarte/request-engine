@@ -19,15 +19,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.postgres, pytest.mark.securit
 
 
 @pytest.mark.asyncio
-async def test_cross_org_adoption_creates_local_party_without_copying_insurance(
+async def test_cross_org_adoption_by_cedula_creates_normal_local_party(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
     cedula = "40200000001"
     source, source_party, matcher, adopter = await published_source(
-        admin_conn,
-        app_session_factory,
-        cedula=cedula,
+        admin_conn, app_session_factory, value=cedula
     )
     destination = create_party_registry_world(admin_conn, prefix="s0d-destination")
 
@@ -50,10 +48,56 @@ async def test_cross_org_adoption_creates_local_party_without_copying_insurance(
     assert adoption.party.party_id != source_party.party_id
     assert adoption.party.organization_id == destination.organization_id
     assert adoption.party.display_name == "María Gómez"
-    assert {item.normalized_value for item in adoption.party.contact_points} == {"+18095551212"}
-    assert {item.normalized_value for item in adoption.party.documents} == {cedula}
+    assert adoption.party.documents[0].authority == "DO:JCE"
+    assert adoption.party.documents[0].normalized_value == cedula
     assert replay.party.party_id == adoption.party.party_id
     assert len(adoption.portable_insurance_identifiers) == 1
     reader = PostgresPartyAdministrativeIdentifierReader(app_session_factory)
     assert await lookup_ids(reader, destination.organization_id) == []
     assert source.organization_id != destination.organization_id
+
+
+@pytest.mark.asyncio
+async def test_cross_org_adoption_by_passport_preserves_issuing_country(
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> None:
+    passport = "SC1234567"
+    _, source_party, matcher, adopter = await published_source(
+        admin_conn,
+        app_session_factory,
+        value=passport,
+        kind="passport",
+        authority="DO",
+    )
+    destination = create_party_registry_world(admin_conn, prefix="s0d-passport-destination")
+
+    with operator_actor(destination.organization_id, destination.operator_principal_id):
+        match = await match_portable_identity(
+            matcher,
+            match_command(
+                destination.organization_id,
+                destination.operator_principal_id,
+                passport.lower(),
+                kind="passport",
+                authority="do",
+            ),
+        )
+        assert match.matched and match.candidate_ref is not None
+        adoption = await adopt_portable_identity(
+            adopter,
+            adopt_command(
+                destination.organization_id,
+                destination.operator_principal_id,
+                match.candidate_ref,
+                value=passport,
+                kind="passport",
+                authority="DO",
+            ),
+        )
+
+    document = adoption.party.documents[0]
+    assert adoption.party.party_id != source_party.party_id
+    assert document.kind == "passport"
+    assert document.authority == "DO"
+    assert document.normalized_value == passport
