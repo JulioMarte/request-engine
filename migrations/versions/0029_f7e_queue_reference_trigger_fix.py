@@ -1,6 +1,6 @@
 """Fix F7e queue-reference trigger row-shape handling.
 
-Revision ID: 0029_f7e_queue_reference_trigger_fix
+Revision ID: 0029_f7e_queue_ref_fix
 Revises: 0028_f7e_same_day_selection
 Create Date: 2026-09-02
 """
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0029_f7e_queue_reference_trigger_fix"
+revision: str = "0029_f7e_queue_ref_fix"
 down_revision: str | Sequence[str] | None = "0028_f7e_same_day_selection"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
