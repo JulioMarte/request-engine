@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 from request_engine.modules.tenancy.api.identity_exchange_dependencies import (
@@ -46,8 +48,8 @@ def test_portable_consent_is_allowlisted_and_adoption_requires_name() -> None:
 
 def test_raw_integration_cannot_assert_operator_document_witness() -> None:
     integration = ActorContext(
-        organization_id=__import__("uuid").uuid4(),
-        principal_id=__import__("uuid").uuid4(),
+        organization_id=uuid4(),
+        principal_id=uuid4(),
         capabilities=frozenset({"identity_exchange.match"}),
         principal_kind=PrincipalKind.INTEGRATION,
     )
@@ -57,8 +59,8 @@ def test_raw_integration_cannot_assert_operator_document_witness() -> None:
 
 def test_effective_human_operator_can_assert_document_witness() -> None:
     human = ActorContext(
-        organization_id=__import__("uuid").uuid4(),
-        principal_id=__import__("uuid").uuid4(),
+        organization_id=uuid4(),
+        principal_id=uuid4(),
         capabilities=frozenset({"identity_exchange.match"}),
         principal_kind=PrincipalKind.HUMAN,
     )
