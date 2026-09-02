@@ -6,8 +6,12 @@ import pytest
 from request_engine.modules.booking.adapters.db.arrival_estimate_commands import (
     PostgresArrivalEstimateCommands,
 )
-from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
-from request_engine.modules.booking.adapters.db.day_board_reader import PostgresDayBoardReader
+from request_engine.modules.booking.adapters.db.attendance_commands import (
+    PostgresAttendanceCommands,
+)
+from request_engine.modules.booking.adapters.db.day_board_reader import (
+    PostgresDayBoardReader,
+)
 from request_engine.modules.booking.application.commands.check_in_reservation import (
     CheckInReservationCommand,
     check_in_reservation,
