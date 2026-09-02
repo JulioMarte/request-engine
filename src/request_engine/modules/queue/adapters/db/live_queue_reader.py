@@ -31,20 +31,35 @@ class PostgresLiveQueueReader:
                     await session.execute(
                         text(
                             """
-                            SELECT queue_entry_id, queue_id, subject_party_id,
-                                   subject_display_name, reservation_id, status,
-                                   scheduled_at, arrived_at, admitted_at, called_at,
-                                   expected_workload_key, service_session_id,
-                                   service_status, actual_resource_id,
-                                   actual_location_id, actual_workload_key,
-                                   service_started_at, service_completed_at,
-                                   queue_revision, service_revision
-                              FROM request_read.live_service_staff_v1
-                             WHERE organization_id = :organization_id
-                               AND queue_id = :queue_id
-                               AND queue_entry_id IS NOT NULL
-                               AND status IN ('waiting','called','serving')
-                             ORDER BY admitted_at, queue_entry_id
+                            SELECT staff.queue_entry_id, staff.queue_id,
+                                   staff.subject_party_id, staff.subject_display_name,
+                                   staff.reservation_id, staff.status, staff.scheduled_at,
+                                   staff.arrived_at, staff.admitted_at, staff.called_at,
+                                   staff.expected_workload_key, staff.service_session_id,
+                                   staff.service_status, staff.actual_resource_id,
+                                   staff.actual_location_id, staff.actual_workload_key,
+                                   staff.service_started_at, staff.service_completed_at,
+                                   hold.hold_kind AS recall_hold_kind,
+                                   hold.release_at AS recall_hold_release_at,
+                                   staff.queue_revision, staff.service_revision
+                              FROM request_read.live_service_staff_v1 AS staff
+                              LEFT JOIN LATERAL (
+                                  SELECT h.hold_kind, h.release_at
+                                    FROM request_engine.queue_recall_holds AS h
+                                   WHERE h.organization_id = :organization_id
+                                     AND h.queue_entry_id = staff.queue_entry_id
+                                     AND h.released_at IS NULL
+                                     AND (
+                                         h.hold_kind = 'until_customer_initiates'
+                                         OR h.release_at > clock_timestamp()
+                                     )
+                                   LIMIT 1
+                              ) AS hold ON true
+                             WHERE staff.organization_id = :organization_id
+                               AND staff.queue_id = :queue_id
+                               AND staff.queue_entry_id IS NOT NULL
+                               AND staff.status IN ('waiting','called','serving')
+                             ORDER BY staff.admitted_at, staff.queue_entry_id
                             """
                         ),
                         {"organization_id": organization_id, "queue_id": queue_id},
