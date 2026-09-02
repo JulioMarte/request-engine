@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.contracts.day_board import DayBoardEntry
+
+_MAX_WINDOW = timedelta(hours=48)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,8 +31,3 @@ async def get_day_board(
     if not 1 <= query.limit <= 500:
         raise ValueError("day board limit must be between 1 and 500")
     return await reader.get_day_board(query)
-
-
-from datetime import timedelta
-
-_MAX_WINDOW = timedelta(hours=48)
