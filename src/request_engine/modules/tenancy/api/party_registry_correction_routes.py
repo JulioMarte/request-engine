@@ -6,15 +6,23 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
 
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
-from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
+from request_engine.modules.tenancy.api.party_registry_errors import (
+    PartyRegistryInputInvalid,
+)
 from request_engine.modules.tenancy.api.party_registry_models import (
     AddPartyDocumentBody,
     PartyIdentityDocumentView,
     RegisteredPartyView,
     RenamePartyBody,
 )
-from request_engine.modules.tenancy.application.commands import add_party_document, rename_party
+from request_engine.modules.tenancy.application.commands import (
+    add_party_document,
+    rename_party,
+)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import require_capability
