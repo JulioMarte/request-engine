@@ -11,7 +11,11 @@ from request_engine.modules.queue.adapters.db.same_day_selection_commands import
 )
 from request_engine.modules.queue.application.commands.recall_hold import RecallHoldCommand
 from request_engine.modules.queue.application.errors import QueueEntryRevisionConflict
-from request_engine.modules.queue.contracts.same_day_selection import RecallHold, RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHold,
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -69,6 +73,6 @@ def _hold_command(
         expected_revision=1,
         kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
         release_at=None,
-        reason=f"race-{suffix}",
+        reason=RecallHoldReason.OPERATOR_OVERRIDE,
         idempotency_key=f"hold-race-{suffix}-{uuid4().hex}",
     )
