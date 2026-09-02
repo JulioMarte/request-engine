@@ -26,4 +26,17 @@ When deterministic tooling emits `REVIEW_CANDIDATE`, follow `docs/engineering-qu
 
 For handwritten core product Python, also obey the nearest `src/request_engine/AGENTS.md`. `QR-MEGA-001` is a HARD circuit breaker for new/crossing/growing core files above 500 effective LOC. The author or coding agent cannot approve its own exception: rationale, `HEALTHY_AS_IS`, PR text, comments, or an exception added/modified in the same implementation change do not waive the gate. A valid exception must already exist in the branch base after a separate architecture decision.
 
+## Local publication
+
+When operating in a local clone, commits may be incomplete/red checkpoints. Do not add a mandatory pre-commit full-quality gate.
+
+Before `git push`, use the repository-managed exact-SHA publication certificate from `docs/engineering-quality/local-publish-certification.md`. Install/refresh it with `uv run python scripts/dev/install_git_hooks.py`.
+
+- Never use `git push --no-verify` or disable/replace the hook to publish around a failure.
+- The certificate must test the exact pushed commit in a detached worktree, not dirty uncommitted files.
+- On failure, keep local commits intact, fix normally, commit, and retry.
+- `LOCAL_PUSH_CERTIFIED` means only that the exact SHA passed the fast local publication profile against the recorded base/toolchain. It is not merge evidence.
+- Full GitHub pull-request CI remains mandatory and must not be skipped because a local certificate exists.
+- When working directly in GitHub without a local clone, use the normal remote CI feedback loop; no local certificate is expected.
+
 Prefer mechanical validation over prose-only convention. Run relevant tests/lint/type checks and never report a check as passing unless it actually ran.
