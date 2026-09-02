@@ -8,7 +8,6 @@ from request_engine.platform.security.http import ActorResolver
 
 def install_day_board_http(
     app: FastAPI,
-    *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
 ) -> None:
