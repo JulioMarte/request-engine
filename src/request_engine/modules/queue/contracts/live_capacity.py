@@ -24,6 +24,7 @@ class QueueProjectionSnapshot:
     observed_at: datetime
     entries: tuple[QueueProjectionEntry, ...]
     completed_reservation_ids: frozenset[UUID] = frozenset()
+    has_active_recall_hold: bool = False
 
 
 @dataclass(frozen=True, slots=True)
