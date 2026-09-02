@@ -24,4 +24,6 @@ When deterministic tooling emits `REVIEW_CANDIDATE`, follow `docs/engineering-qu
 - Never override a deterministic `INVARIANT_FAILURE`; fix the boundary or use explicit architecture evolution.
 - Review first and edit second. After any fix, rerun deterministic architecture, lint/type, relevant behavior tests, and any correctness-sensitive proof required by the change. Do not claim success from a lower metric alone.
 
+For handwritten core product Python, also obey the nearest `src/request_engine/AGENTS.md`. `QR-MEGA-001` is a HARD circuit breaker for new/crossing/growing core files above 500 effective LOC. The author or coding agent cannot approve its own exception: rationale, `HEALTHY_AS_IS`, PR text, comments, or an exception added/modified in the same implementation change do not waive the gate. A valid exception must already exist in the branch base after a separate architecture decision.
+
 Prefer mechanical validation over prose-only convention. Run relevant tests/lint/type checks and never report a check as passing unless it actually ran.
