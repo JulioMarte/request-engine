@@ -8,6 +8,9 @@ from request_engine.modules.queue.adapters.db.recall_hold_persistence import (
     recall_hold_from_json,
     recall_hold_to_json,
 )
+from request_engine.modules.queue.adapters.db.recall_hold_validation import (
+    validate_recall_hold_shape,
+)
 from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
     lock_waiting_entry_in_queue,
 )
@@ -31,7 +34,7 @@ async def recall_hold(
     session_factory: SessionFactory,
     command: RecallHoldCommand,
 ) -> RecallHold:
-    _validate_shape(command)
+    validate_recall_hold_shape(command)
     fingerprint = command_fingerprint(
         "queue.recall_hold",
         {
@@ -121,13 +124,3 @@ async def recall_hold(
         )
         await complete_idempotency(session, idem, {"hold": recall_hold_to_json(hold)})
         return hold
-
-
-def _validate_shape(command: RecallHoldCommand) -> None:
-    if command.reason is not None and len(command.reason) > 500:
-        raise RecallHoldInvalid("recall hold reason exceeds 500 characters")
-    if command.kind is RecallHoldKind.UNTIL_TIME:
-        if command.release_at is None or command.release_at.utcoffset() is None:
-            raise RecallHoldInvalid("until_time requires an offset-aware release_at")
-    elif command.release_at is not None:
-        raise RecallHoldInvalid("until_customer_initiates does not accept release_at")
