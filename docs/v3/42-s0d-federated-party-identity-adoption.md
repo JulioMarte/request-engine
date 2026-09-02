@@ -1,55 +1,57 @@
 # S0d — Federated Party identity adoption
 
-Status: normative design and implementation contract stacked on S0c.
+Status: normative design and implementation contract.
 Owner module: `tenancy`.
-This contract supersedes the older "no cross-clinic matching" assumption in `docs/v3/38` §9.4;
-clinical/operational tenant isolation remains unchanged.
+This contract extends S0b/S0c and supersedes their older assumptions where explicitly stated here.
+Clinical, booking and operational tenant isolation remains unchanged.
 
 ## 1. Purpose
 
-Independent organizations keep independent tenant-owned `Party` records. A patient may choose to
-reuse a small allowlisted set of identity/contact facts already supplied elsewhere. S0d models
-**exact match + consented adoption**, never cross-organization Party merge.
+Independent organizations keep independent tenant-owned `Party` records. S0d provides a narrow
+privacy bridge for **exact strong-identifier match + consented adoption**. It is not a global Party
+registry and never reparents or merges tenant-owned Parties.
 
-A government identity document is an equality signal. Possessing or knowing its number is not
-authorization to read another tenant's data.
+`Party` keeps the V3 kinds:
 
-## 2. Hard privacy boundary
+```text
+person
+organization
+```
 
-- `Party`, appointments, queue/service history, communications, payments and clinical facts never
-  move between organizations.
-- Match never returns source organization, source Party id, name, phone, insurer or other PII.
-- The destination always creates its own local Party.
-- The destination captures the witnessed identity document again; raw document values are never
-  copied from the portable profile.
-- Portable data is opt-in and field-scoped.
-- Raw bot/integration principals cannot assert an in-person document witness.
+A reservation does not require a government identifier. A Party may be created with only a display
+name and optional contact points; strong identifiers can be learned later. This is necessary for
+walk-in, phone, WhatsApp and ordinary front-desk intake.
 
-## 3. Proof admitted in this tranche
+## 2. Identity strength and local lookup
 
-The first admitted proof is `operator_document_witness`:
+Identity signals are deliberately separated by strength.
 
-1. an authorized human operator sees the patient's identity document;
-2. the operator enters document kind, issuing authority and value;
-3. the patient explicitly agrees to the requested portable fields;
-4. Request Engine records the effective operator, proof kind and consented fields.
+### Weak locators
 
-Remote subject verification remains unsupported until a real channel-possession or equivalent
-identity proof exists. The API fails closed rather than inventing one.
+`phone`, `whatsapp` and `email` are tenant-local locators. They are normalized for exact lookup but
+are **not unique identities**:
 
-## 4. Scoped identity document key
+- one phone number may belong to several family members;
+- one email may be shared by a household, office or business;
+- phone numbers and addresses may later be reassigned.
 
-The canonical identity-document key is:
+Lookup therefore returns every matching active Party. Weak locators must never trigger automatic
+merge, deduplication or cross-organization federation.
+
+### Strong identifiers
+
+The strong key is:
 
 ```text
 (kind, authority, normalized_value)
 ```
 
-Initial strong-document allowlist:
+Current allowlist:
 
 ```text
-cedula   | DO:JCE | normalized 11-digit cédula
-passport | <ISO-3166 alpha-2 issuing country> | normalized passport number
+person       | cedula   | DO:JCE                         | 11 digits
+person       | passport | ISO-3166 alpha-2 issuer        | 6-17 alphanumerics
+organization | rnc      | DO:DGII                        | 9 digits
 ```
 
 Examples:
@@ -58,73 +60,131 @@ Examples:
 cedula   | DO:JCE | 40212345678
 passport | DO     | SC1234567
 passport | US     | SC1234567
+rnc      | DO:DGII| 101850043
 ```
 
-The two passport examples are deliberately different identities even though the number is equal.
-A passport therefore never matches without an issuing authority.
+Equal passport numbers from different issuers are different identities. RNC is the Dominican
+strong identifier for a `party_kind="organization"`; S0d does not introduce a redundant
+`legal_entity` Party kind.
 
-S0d amends the S0b local document model to carry `authority`. Existing cédulas are backfilled to
-`DO:JCE`. A legacy passport that predates S0d and lacks issuer data remains locally readable but is
-**not federable until its authority is corrected**; S0d never guesses a country.
+A Party/document mismatch is rejected before persistence and PostgreSQL independently enforces the
+same invariant. `party_kind` is immutable after Party creation and is part of registration's
+idempotency fingerprint.
 
-The global equality index stores only HMAC-SHA256 over the scoped key:
+### RNC validation boundary
+
+Current RNC validation is intentionally limited to canonical issuer and syntactic shape: separators
+are removed and the result must be exactly nine digits. This does **not** claim that the number
+exists, is active at DGII, belongs to the stated business name or passed an official online
+verification. Such verification is a separate external-evidence capability and must not be faked by
+normalization code.
+
+## 3. Hard privacy boundary
+
+- Parties, appointments, reservations, queues, service history, communications, payments and
+  clinical facts never move between organizations.
+- Match never returns source organization, source Party id, display name, contact information,
+  taxpayer name, insurer or other PII.
+- The destination always creates its own local Party.
+- The destination operator witnesses and submits the strong identifier again; raw source document
+  values are never copied from a portable profile.
+- Portable fields are opt-in and field-scoped.
+- A shared phone/email is never used as a global match key.
+- Knowing a cédula, passport or RNC is an equality signal, not authorization to read another
+  tenant's data.
+
+## 4. Admitted proof
+
+The first proof is `operator_document_witness`:
+
+1. an authorized human operator sees the relevant document/identifier evidence;
+2. the operator supplies kind, authority and value;
+3. the subject or authorized business representative agrees to the portable fields;
+4. Request Engine records effective operator, proof kind and consent fields.
+
+A raw integration/bot principal cannot assert this proof. Remote subject proof remains unsupported
+until a real channel-possession or equivalent verification contract exists.
+
+## 5. Keyed global equality
+
+The global equality index stores HMAC-SHA256 over:
 
 ```text
 identity-exchange:v1|document|{kind}|{authority}|{normalized_value}
 ```
 
-No raw document value and no enumerable unsalted hash is stored globally.
+The key is configured with `REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY` or an explicitly injected secret
+of at least 32 bytes. There is no insecure default. Raw identifiers and enumerable unsalted hashes
+are not stored in the global index.
 
-Insurance membership remains tenant-local administrative identity and an optional portable fact.
-It is not an independent cross-organization person-match key.
+Key rotation is not yet transparent because fingerprints change. Dual-key lookup/reindex remains a
+deferred operational requirement.
 
-## 5. Multiple strong documents for one person
+## 6. Portable Party model and aliases
 
-One portable person may have multiple active strong identifiers:
+One portable Party may have multiple compatible strong aliases. For a person:
 
 ```text
-Portable Person
+Portable Party(kind=person)
   ├─ cedula   | DO:JCE | <fingerprint>
   └─ passport | DO     | <fingerprint>
 ```
 
-Publishing a second document for an already-bound local Party attaches that identifier to the same
-portable person. If a new document would instead join two already-distinct portable persons, the
-operation fails with a conflict. S0d never performs a silent global merge.
+An organization currently federates through RNC. Strong identifiers may only attach to a portable
+Party of the compatible Party kind. Publishing a new alias through an already-proven local binding
+may extend the same portable identity. If a new identifier would join two existing portable
+identities, publication fails with a conflict; S0d never silently merges them.
 
-This keeps document aliases separate from same-tenant Party duplicate resolution.
+## 7. Portable field policy
 
-## 6. Portable fact allowlist
-
-A patient may consent to any subset of:
+Both Party kinds may consent to:
 
 - `display_name`;
 - `phone` (active phone/WhatsApp facts);
-- `email`;
-- `insurance_member` (issuer + member/policy value).
+- `email`.
 
-Automatic adoption requires `display_name` consent. Never portable through S0d: reservations,
-appointments, queue/service history, clinical facts, notes, diagnoses, medical records,
-communication history, payments or source organization/provider identity.
+`insurance_member` is person-only. It remains a tenant-local S0c administrative identifier and is
+never an independent global match key. When consented for a person, adoption returns it as a
+suggestion; writing it locally still requires the normal S0c capability.
 
-## 7. Persistence and privilege boundary
+Automatic adoption requires `display_name` consent. Never portable through S0d: appointments,
+reservations, queue/service history, clinical facts, notes, diagnoses, records, communication
+history, payments, source organization/provider identity or authorization/representation grants.
 
-S0d adds:
+For organizations, RNC does not imply that any particular human may act for the organization.
+Representation remains a separate authority model.
 
-- `portable_person_identities` — opaque global person identity;
-- `portable_person_identifiers` — `(kind, authority, keyed fingerprint)` aliases;
-- `portable_person_profiles` — consented portable snapshot;
-- `identity_exchange_candidates` — short-lived destination-scoped opaque references carrying the
-  exact document namespace used for the match;
-- `organization_person_bindings` — explicit local Party ↔ portable-person link with proof and
-  consent provenance.
+## 8. Persistence and privilege boundary
 
-Global identity/profile/candidate tables are not directly readable or writable by
-`request_engine_app` or `request_engine_worker`. Narrow `SECURITY DEFINER` functions are the runtime
-bridge. Local bindings remain tenant-isolated with FORCE RLS and are not directly exposed to the app
-role.
+S0d owns:
 
-## 8. HTTP surface
+- `portable_party_identities` — opaque global identity plus immutable Party kind;
+- `portable_party_identifiers` — `(kind, authority, keyed fingerprint)` aliases;
+- `portable_party_profiles` — publisher-scoped consented snapshots keyed by portable Party and
+  `publisher_organization_id`;
+- `identity_exchange_candidates` — short-lived destination/principal-scoped opaque references;
+- `organization_party_bindings` — local Party ↔ portable Party proof/binding.
+
+Publisher-scoped profiles prevent one organization from overwriting another organization's
+consented snapshot. Global identity/profile/candidate tables are not directly readable or writable
+by `request_engine_app` or `request_engine_worker`. Runtime access is only through reviewed narrow
+`SECURITY DEFINER` functions. The executable function surface is allowlisted by CI.
+
+## 9. HTTP surface
+
+### Local Party intake and lookup
+
+`POST /v1/parties` accepts `party_kind` (`person` default, or `organization`) and does not require a
+strong identifier.
+
+`GET /v1/parties/lookup` supports:
+
+```text
+phone    -> exact normalized phone/WhatsApp locator, multi-match
+email    -> exact normalized email locator, multi-match
+document -> exact scoped strong identifier
+name     -> normalized name-prefix search
+```
 
 ### Publish
 
@@ -132,35 +192,14 @@ role.
 
 Capability: `identity_exchange.publish`. Idempotency required.
 
-Example:
-
-```json
-{
-  "document_kind": "passport",
-  "document_authority": "DO",
-  "consented_fields": ["display_name", "phone", "insurance_member"],
-  "proof_kind": "operator_document_witness"
-}
-```
-
-The server reads that exact existing local document and the consented Party facts. Clients never
-submit a replacement portable profile. Success returns only `{"published": true}`; no stable global
-person id is exposed.
+The server reads the requested active local strong identifier and consented local facts. Clients do
+not submit an arbitrary replacement portable profile. Success exposes no global identity id.
 
 ### Match
 
 `POST /v1/identity-exchange/matches`
 
 Capability: `identity_exchange.match`. Idempotency required.
-
-```json
-{
-  "document_kind": "passport",
-  "document_authority": "DO",
-  "document_value": "SC1234567",
-  "proof_kind": "operator_document_witness"
-}
-```
 
 No match:
 
@@ -174,7 +213,8 @@ Match:
 {"matched": true, "candidate_ref": "<opaque uuid>"}
 ```
 
-No PII or source-tenant metadata accompanies the result.
+The candidate is short lived, bound to destination organization, principal, identifier namespace
+and fingerprint. No source-tenant metadata accompanies it.
 
 ### Adopt
 
@@ -182,78 +222,83 @@ No PII or source-tenant metadata accompanies the result.
 
 Capability: `identity_exchange.adopt`. Idempotency required.
 
-The operator resubmits the same scoped witnessed document, candidate and import consent. Request
-Engine recomputes the fingerprint, consumes only a candidate created for the same
-`kind + authority + fingerprint`, creates a normal destination Party through the Party registration
-persistence path and creates the binding in the same transaction.
+The operator resubmits the candidate and same witnessed scoped identifier. Request Engine verifies
+the candidate, creates a normal destination Party with the portable Party's immutable Party kind,
+stores the destination-witnessed strong identifier and binds the local Party in one transaction.
+The source raw identifier is never copied.
 
-If the match was made using `passport | DO | SC1234567`, the destination Party receives that
-passport from the destination operator's witnessed input. S0d never manufactures a cédula.
+If an organization has already adopted that portable identity, a competing/different-alias attempt
+fails with `409 identity_exchange_already_adopted` and may expose only the winning
+`existing_party_id` from that same destination organization.
 
-Portable insurance identifiers are returned after authorization but remain an explicit S0c write;
-adoption does not bypass `parties.add_administrative_identifier`.
+## 10. Concurrency and duplicate semantics
 
-### Revoke
+- Same-tenant strong-identifier uniqueness is enforced in PostgreSQL.
+- Shared phone/email values deliberately do not serialize or deduplicate Parties.
+- Cross-organization publication of the same strong identity converges on one portable Party.
+- Adoption serializes on `(destination organization, portable Party)` using a transaction-scoped
+  advisory lock; unrelated organizations do not block each other.
+- Candidate expiry is rechecked after lock acquisition, so waiting cannot extend authorization.
+- Concurrent candidates through different aliases can create at most one destination binding.
+- The losing adoption transaction rolls back Party creation and returns the destination-local
+  winning Party id through the typed conflict path.
+- Same-tenant Party merge/supersession remains a separate explicit workflow.
 
-Portability revocation remains the next S0d tranche. Until a patient can revoke publication cleanly,
-S0d is not complete for production portability governance.
+## 11. Capabilities and bots
 
-## 9. Capabilities and bots
-
-Operator capabilities:
+Operator capabilities are:
 
 - `identity_exchange.publish`;
 - `identity_exchange.match`;
 - `identity_exchange.adopt`.
 
-They are excluded from the default bot grant subset. A raw integration principal cannot satisfy
-`operator_document_witness`; an admitted acting-operator relay remains attributed to the verified
-human and subject to the normal capability gate.
+They are excluded from the default bot grant subset. An admitted acting-operator relay must still
+resolve to a verified human operator with the semantic capability; an integration cannot launder
+authority by declaring a human id.
 
-## 10. Configuration
+## 12. PostgreSQL and application proof obligations
 
-Cross-organization equality requires `REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY` or an explicit injected
-key with at least 32 bytes. Without it, the rest of Request Engine starts but S0d commands fail
-closed. There is no insecure default.
+Current-product proof must demonstrate at least:
 
-Key rotation is not yet transparent because fingerprints change. A future rotation contract must
-support dual-key lookup/reindex before operators rotate this secret.
+1. Party registration succeeds without cédula/passport/RNC;
+2. shared phone and shared email lookup return all matching local Parties without merging them;
+3. `organization` Parties can be created without RNC and later resolved exactly by RNC;
+4. person↔cédula/passport and organization↔RNC compatibility is enforced in application and DB;
+5. `party_kind` is immutable and participates in registration idempotency;
+6. runtime app/worker cannot directly select global portable tables;
+7. the global index stores keyed fingerprints, never raw strong identifiers;
+8. match returns only opaque candidate metadata before adoption;
+9. wrong identifier + valid candidate fails without consuming the valid candidate;
+10. cédula defaults to `DO:JCE`; passport requires an assigned ISO issuer; RNC defaults to
+    `DO:DGII`;
+11. equal passport numbers from different issuers do not match;
+12. one portable person may gain cédula + passport aliases without duplicating the portable Party;
+13. an alias that would join distinct portable identities fails rather than merging them;
+14. cross-organization RNC adoption creates a local `organization` Party and never imports
+    person-only insurance identifiers;
+15. publisher snapshots remain organization-scoped;
+16. source organization/Party ids never appear in match/adoption responses;
+17. replay is stable;
+18. concurrent alias adoption produces one local Party/binding and a typed loser conflict;
+19. existing bot grants imply none of the S0d capabilities;
+20. the reviewed runtime EXECUTE allowlist exactly matches the granted S0d bridge functions.
 
-## 11. Duplicate semantics
+## 13. Explicit limitations and deferred work
 
-- Same organization: local Party lookup wins before federated match.
-- Cross organization: adoption creates a new local Party bound to the same portable person.
-- Multiple strong documents may alias one portable person only through an already-proven local
-  binding or the same existing scoped identifier.
-- No cross-organization Party merge or history rewrite.
-- Same-tenant duplicate Party resolution remains a separate explicit `parties.merge`/supersession
-  workflow.
+S0d is not a national patient/customer/company registry, fuzzy MPI, EHR, insurance eligibility
+service, DGII verification service or authorization directory.
 
-## 12. PostgreSQL proof obligations
+Deferred work includes:
 
-Current-product proof must demonstrate:
+- portability revocation;
+- HMAC key rotation/reindex;
+- remote subject proof;
+- same-tenant Party merge/supersession;
+- richer profile freshness/conflict policy across multiple publishers;
+- verified external RNC status/name evidence;
+- additional strong identifier kinds with explicit issuer and normalization contracts.
 
-1. runtime app/worker roles cannot select global identity/profile tables;
-2. the global index stores keyed fingerprints, never raw identity-document values;
-3. match returns only an opaque candidate before adoption;
-4. raw integration/bot actors cannot assert `operator_document_witness`;
-5. wrong document + valid candidate fails without consuming the valid candidate;
-6. candidate consumption is bound to document kind, authority and fingerprint;
-7. adoption creates a tenant-local Party using the destination-witnessed scoped document;
-8. cédula adoption defaults to `DO:JCE` without changing existing caller ergonomics;
-9. passport adoption requires an issuing country and preserves it locally;
-10. equal passport numbers from different issuing countries do not match;
-11. one portable person can gain both cédula and passport identifiers without duplicating the
-    portable person;
-12. an identifier that would join two portable persons fails rather than silently merging them;
-13. source organization/Party ids never appear in match/adoption responses;
-14. replay is stable and concurrent adoption cannot create duplicate local bindings;
-15. existing bot grants imply none of the S0d capabilities.
-
-## 13. Explicit limitations
-
-S0d is an identity-portability mechanism, not a national patient record, fuzzy MPI search UI, EHR,
-insurance eligibility service or clinical data exchange. Only document kinds with an explicit
-normalization and issuing-authority policy may become match keys. Adding a new `kind` requires a
-contract amendment, normalizer, issuer semantics and PostgreSQL proofs; there is no generic
-"arbitrary document" escape hatch.
+The current app-trust model also keeps the HMAC key in the application layer. PostgreSQL verifies
+that a compatible scoped local document exists but cannot independently recompute an app-held HMAC.
+A threat model in which the runtime application role itself is compromised would require moving the
+fingerprinting secret behind a stronger DB/service boundary.
