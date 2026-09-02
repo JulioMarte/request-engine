@@ -2,6 +2,9 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.queue.api.live_error_mapping import live_queue_error
+from request_engine.modules.queue.api.same_day_selection_error_mapping import (
+    same_day_selection_error,
+)
 from request_engine.modules.queue.api.waitlist_error_mapping import waitlist_error
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
@@ -35,6 +38,9 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
     mapped_live = live_queue_error(exc)
     if mapped_live is not None:
         return mapped_live
+    mapped_same_day = same_day_selection_error(exc)
+    if mapped_same_day is not None:
+        return mapped_same_day
     if isinstance(exc, TenantReferenceNotUsable):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="tenant_reference_not_usable",
