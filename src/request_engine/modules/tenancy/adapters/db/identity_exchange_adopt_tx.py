@@ -22,6 +22,7 @@ from request_engine.modules.tenancy.application.identity_exchange_errors import 
 )
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 from request_engine.modules.tenancy.contracts.party_registry import PartyDocumentInput
+from request_engine.modules.tenancy.domain.party_subject_identity import party_kind_for_document
 
 
 async def write_identity_adoption(
@@ -56,6 +57,7 @@ async def write_identity_adoption(
     register_command = RegisterPartyCommand(
         organization_id=command.organization_id,
         principal_id=command.principal_id,
+        party_kind=party_kind_for_document(command.document_kind),
         display_name=command.display_name,
         source_kind=command.source_kind,
         idempotency_key=command.idempotency_key,
