@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-
 from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
+
 from request_engine.modules.queue.adapters.db.live_capacity_recall_hold import (
     has_active_recall_hold,
 )
