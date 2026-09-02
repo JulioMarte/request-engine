@@ -9,7 +9,9 @@ from request_engine.modules.queue.adapters.db.recall_hold_persistence import (
     recall_hold_to_json,
 )
 from request_engine.modules.queue.adapters.db.recall_hold_read import lock_current_recall_hold
-from request_engine.modules.queue.adapters.db.release_recall_hold_persistence import release_hold_by_id
+from request_engine.modules.queue.adapters.db.release_recall_hold_persistence import (
+    release_hold_by_id,
+)
 from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
     lock_waiting_entry_in_queue,
 )
