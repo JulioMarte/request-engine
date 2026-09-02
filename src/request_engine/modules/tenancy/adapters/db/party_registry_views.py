@@ -23,11 +23,9 @@ async def load_party_views(
     party_rows = (
         await session.execute(
             text(
-                """
-                SELECT id AS party_id, organization_id, party_kind, display_name, active
-                FROM request_engine.parties
-                WHERE organization_id = :organization_id AND id = ANY(:party_ids)
-                """
+                "SELECT id AS party_id, organization_id, party_kind, display_name, active "
+                "FROM request_engine.parties "
+                "WHERE organization_id = :organization_id AND id = ANY(:party_ids)"
             ),
             {"organization_id": organization_id, "party_ids": party_ids},
         )
@@ -37,13 +35,10 @@ async def load_party_views(
         (
             await session.execute(
                 text(
-                    """
-                    SELECT id, party_id, channel, normalized_value, verified, source_kind
-                    FROM request_engine.party_contact_points
-                    WHERE organization_id = :organization_id
-                      AND active AND party_id = ANY(:party_ids)
-                    ORDER BY created_at, id
-                    """
+                    "SELECT id, party_id, channel, normalized_value, verified, source_kind "
+                    "FROM request_engine.party_contact_points "
+                    "WHERE organization_id = :organization_id AND active "
+                    "AND party_id = ANY(:party_ids) ORDER BY created_at, id"
                 ),
                 {"organization_id": organization_id, "party_ids": party_ids},
             )
@@ -53,13 +48,10 @@ async def load_party_views(
         (
             await session.execute(
                 text(
-                    """
-                    SELECT id, party_id, kind, normalized_value
-                    FROM request_engine.party_identity_documents
-                    WHERE organization_id = :organization_id
-                      AND active AND party_id = ANY(:party_ids)
-                    ORDER BY created_at, id
-                    """
+                    "SELECT id, party_id, kind, authority, normalized_value "
+                    "FROM request_engine.party_identity_documents "
+                    "WHERE organization_id = :organization_id AND active "
+                    "AND party_id = ANY(:party_ids) ORDER BY created_at, id"
                 ),
                 {"organization_id": organization_id, "party_ids": party_ids},
             )
@@ -82,14 +74,16 @@ def document_by_id(state: RegisteredParty, document_id: UUID) -> PartyIdentityDo
     )
 
 
-def document_by_kind_value(
-    state: RegisteredParty, kind: str, normalized_value: str
+def document_by_identity(
+    state: RegisteredParty, kind: str, authority: str, normalized_value: str
 ) -> PartyIdentityDocument | None:
     return next(
         (
             document
             for document in state.documents
-            if document.kind == kind and document.normalized_value == normalized_value
+            if document.kind == kind
+            and document.authority == authority
+            and document.normalized_value == normalized_value
         ),
         None,
     )
