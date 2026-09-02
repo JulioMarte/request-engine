@@ -91,9 +91,7 @@ async def operator_select(
                 "principal_id": command.principal_id,
             },
         )
-        revision = await mark_entry_called(
-            session, command.organization_id, command.queue_entry_id
-        )
+        revision = await mark_entry_called(session, command.organization_id, command.queue_entry_id)
         result = QueueTriageResult(
             command.queue_entry_id,
             queue_id,

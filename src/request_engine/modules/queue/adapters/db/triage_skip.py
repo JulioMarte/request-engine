@@ -68,9 +68,7 @@ async def skip(
             raise QueueEntryAlreadyHeld(command.queue_entry_id)
         if gate == "skip":
             raise QueueEntryAlreadySkipped(command.queue_entry_id)
-        head_id = await lock_next_eligible_entry(
-            session, command.organization_id, queue_id
-        )
+        head_id = await lock_next_eligible_entry(session, command.organization_id, queue_id)
         if head_id != command.queue_entry_id:
             raise QueueEntryNotCurrentHead(command.queue_entry_id)
         await session.execute(

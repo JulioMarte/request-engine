@@ -16,9 +16,7 @@ def validate_recall_hold(command: RecallHoldCommand) -> None:
         return
     if command.condition_kind is RecallHoldKind.UNTIL_EVENT:
         if command.event_key != "external_step_completed" or command.until_at is not None:
-            raise InvalidRecallHold(
-                "until_event requires event_key=external_step_completed"
-            )
+            raise InvalidRecallHold("until_event requires event_key=external_step_completed")
         return
     if command.until_at is not None or command.event_key is not None:
         raise InvalidRecallHold("until_customer_initiates has no condition payload")
