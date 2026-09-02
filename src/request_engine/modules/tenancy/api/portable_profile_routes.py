@@ -44,7 +44,7 @@ def add_portable_profile_routes(
         require_capability(actor, _CAPABILITY)
         require_operator_document_witness(actor)
         try:
-            portable_person_id = await publish_portable_profile(
+            await publish_portable_profile(
                 publisher,
                 PublishPortableProfileCommand(
                     organization_id=actor.organization_id,
@@ -60,7 +60,7 @@ def add_portable_profile_routes(
             )
         except ValueError as error:
             raise IdentityExchangeInputInvalid(str(error)) from None
-        return PublishPortableProfileView(portable_person_id=portable_person_id)
+        return PublishPortableProfileView()
 
     add_capability_route(
         router,
