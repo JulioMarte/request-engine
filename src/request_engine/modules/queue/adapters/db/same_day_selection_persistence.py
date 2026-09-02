@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import text
@@ -81,7 +82,7 @@ async def close_current_hold(
     organization_id: UUID,
     queue_entry_id: UUID,
     principal_id: UUID,
-    release_reason: str,
+    release_reason: Literal["replaced"],
 ) -> RowMapping | None:
     return (
         (
