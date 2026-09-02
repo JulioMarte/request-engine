@@ -33,6 +33,7 @@ def test_active_recall_hold_preserves_capacity_but_withholds_timeline() -> None:
     assert projection.remaining_operational_seconds == 4 * 60 * 60
     assert projection.projected_remaining_workload_seconds == 1800
     assert projection.live_headroom_seconds == (4 * 60 * 60) - 1800
+    assert projection.live_intake_headroom_seconds is None
     assert projection.projected_end_at is None
     assert len(projection.items) == 1
     assert projection.items[0].estimated_start is None
