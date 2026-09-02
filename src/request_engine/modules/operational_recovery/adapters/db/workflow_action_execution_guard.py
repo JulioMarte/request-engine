@@ -14,7 +14,7 @@ async def serialize_recovery_action_execution(
     session_factory: SessionFactory,
     *,
     action_id: UUID,
-) -> AsyncGenerator[None, None]:
+) -> AsyncGenerator[None]:
     """Allow only one active executor for one durable RecoveryAction.
 
     The transaction owns only a PostgreSQL advisory lock. Business owner writes
