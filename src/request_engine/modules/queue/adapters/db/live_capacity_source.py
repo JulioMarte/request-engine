@@ -7,6 +7,9 @@ from sqlalchemy import text
 from request_engine.modules.queue.adapters.db.live_capacity_customer_source import (
     read_customer_projection_target,
 )
+from request_engine.modules.queue.adapters.db.live_capacity_recall_hold import (
+    has_active_recall_hold,
+)
 from request_engine.modules.queue.contracts.live_capacity import (
     CustomerQueueProjectionTarget,
     QueueProjectionEntry,
@@ -75,6 +78,12 @@ class PostgresQueueProjectionSource:
                 )
             ).scalars()
             completed = frozenset(cast(UUID, value) for value in completed_rows)
+        recall_held = await has_active_recall_hold(
+            session,
+            organization_id=organization_id,
+            queue_id=queue_id,
+            observed_at=observed_at,
+        )
         return QueueProjectionSnapshot(
             queue_id=queue_id,
             observed_at=observed_at,
@@ -94,6 +103,7 @@ class PostgresQueueProjectionSource:
                 for row in rows
             ),
             completed_reservation_ids=completed,
+            has_active_recall_hold=recall_held,
         )
 
     async def read_customer_projection_target(
