@@ -83,12 +83,14 @@ Conceptual schema:
 
 ```json
 {
-  "schema_version": "quality-evidence/v1",
+  "schema_version": "quality-evidence/v2",
   "candidate_id": "QR-2026-00421",
   "trigger_ids": ["QR-CPLX-001", "QR-FSIZE-001"],
   "repository": "JulioMarte/request-engine",
   "base_sha": "...",
-  "head_sha": "...",
+  "source_head_sha": "...",
+  "tested_sha": "...",
+  "test_mode": "PR_INTEGRATION_CANDIDATE | BRANCH_HEAD",
   "scope": {
     "module": "booking",
     "category": "production_application",
@@ -104,6 +106,8 @@ Conceptual schema:
   "provenance": {}
 }
 ```
+
+The current packet schema is `quality-evidence/v2` (`docs/engineering-quality/schemas/quality-evidence-v2.schema.json`); `quality-evidence/v1` is historical.
 
 ### 4.1 Fact records
 
