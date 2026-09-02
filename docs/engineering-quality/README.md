@@ -1,14 +1,20 @@
 # Engineering Quality & Architecture Guardrails
 
-> **Lifecycle:** `IMPLEMENTED_FOR_CALIBRATION` / **NOT NORMATIVE**.
+> **Lifecycle status:** `IMPLEMENTED_FOR_CALIBRATION` / **NOT NORMATIVE**.
 >
-> The normative repository-governance contract remains `docs/testing/repository-governance-contract.md` until an explicit promotion updates repository precedence.
+> **Historical audit base:** `development@a0eab9f48e91c900e2060a6bbef0812160910b6c`.
+>
+> Merge readiness is determined only by the full GitHub integration CI graph for the current PR tip. This document does not self-certify a commit SHA.
 
 ## Purpose
 
-Request Engine quality governance exists to make the normal route to green CI align with code that is cohesive, navigable, locally understandable, low in genuine reasoning complexity, correctly owned, and easy to evolve.
+This package defines and calibrates the engineering-quality model used to keep Request Engine maintainable without turning weak proxies into architecture policy.
 
-The governing priority is:
+The target property is:
+
+> The normal route to green CI should, for the important cases, also be the route toward code that is cohesive, navigable, locally understandable, low in genuine reasoning complexity, correctly encapsulated, and easy to evolve.
+
+The governing hierarchy is:
 
 ```text
 semantic architecture / ownership
@@ -18,9 +24,7 @@ semantic architecture / ownership
     > quantitative metrics
 ```
 
-A metric is evidence. It is not architecture merely because CI can measure it.
-
-## Current operating model
+The operating model is:
 
 ```text
 DETERMINISTIC PROOF
@@ -32,9 +36,23 @@ SEMANTIC REVIEW WHEN NEEDED
 DETERMINISTIC RE-VERIFICATION
 ```
 
-Deterministic architecture/correctness invariants remain blocking. Semantic review cannot waive them.
+An LLM is an analyst of evidence. It is not a replacement for architecture tests, type checking, PostgreSQL proof, security checks, or GitHub integration CI.
 
-Maintainability sensors are intentionally non-blocking:
+## Lifecycle and authority
+
+The engineering-quality Constitution and Fitness Specification are accepted for calibration, not yet promoted to repository-wide normative precedence. Green CI proves implementation correctness for a tested integration candidate; it does not silently create architecture policy.
+
+Current canonical repository governance outside this package remains `docs/testing/repository-governance-contract.md`. Normative promotion requires an explicit decision and `docs/README.md` precedence update.
+
+## Current deterministic architecture authority
+
+Existing semantic architecture/correctness checks remain blocking where they directly protect accepted invariants, including module public surfaces, approved dependency direction, cycles, inward layer dependencies, platform ownership, composition boundaries, security/authority/transactional guarantees, PostgreSQL behavior, compatibility, and product contracts.
+
+A deterministic `INVARIANT_FAILURE` cannot be converted into a pass by semantic review.
+
+## Maintainability and structural review signals
+
+The compatibility entry point `scripts/ci/check_python_file_budget.py` now emits non-blocking structured evidence.
 
 ```text
 effective file LOC > 120
@@ -45,122 +63,109 @@ Ruff C901 McCabe > 10
 
 new obvious forwarding/re-export indirection
     -> QR-NAV-001 REVIEW_CANDIDATE
+
+new direct outbound business-module dependency
+    -> QR-COUPLING-001 REVIEW_CANDIDATE
 ```
 
-`HEALTHY_AS_IS` is a valid outcome. A change MUST NOT be called a maintainability improvement solely because a metric decreases while cohesion, locality, navigability, ownership clarity, or architectural integrity gets worse.
+These are attention triggers, not architecture verdicts. `HEALTHY_AS_IS` and `INSUFFICIENT_CONTEXT` remain valid outcomes.
 
-## Architecture invariants
+### Fan-in / fan-out
 
-The strongest engineering-quality gates remain semantic and deterministic. They protect properties such as:
+`scripts/ci/build_engineering_quality_baseline.py` records the actual direct AST import graph between `src/request_engine/modules/*` business modules.
 
-- cross-module use of supported contract surfaces;
-- approved dependency direction;
-- acyclic business-module dependencies;
-- inward domain/application dependency boundaries;
-- technical `platform` ownership;
-- composition through supported module surfaces.
+For each module it reports:
 
-These are fundamentally different from LOC, McCabe, file count, or similar proxies.
+```text
+fan-in
+    = number of distinct business modules with direct imports into this module
 
-## File-size policy
+fan-out
+    = number of distinct business modules this module directly imports
+```
 
-File size is a secondary maintainability signal, not an architectural invariant and not a direct measurement of cohesion.
+The baseline also records inbound/outbound module names, total direct edges, fan-in/fan-out distributions and highest-coupling outliers.
 
-The experimental `QR-MEGA-001` rule that treated a new/crossing/growing scoped core file above 500 effective LOC as `INVARIANT_FAILURE` has been **retired as HARD during calibration**.
+There is deliberately **no** rule such as:
 
-A 501-line file may be healthy, an acceptable trade-off, or a real maintainability problem. The number alone cannot decide which.
+```text
+fan-out > N -> failure
+```
 
-Files above 500 eLOC are still automatically visible through `QR-FSIZE-001` because they exceed the ordinary review threshold. Review should ask whether there is a real independently changing responsibility, not how to reach 499 lines.
+A stable high fan-out value is trend/outlier evidence. It does not fail CI by itself.
 
-See `mega-file-circuit-breaker.md` for the experiment disposition and evidence required before any future HARD proposal.
+`QR-COUPLING-001` is delta-driven. It appears when a change adds a new direct outbound business-module dependency. The review asks whether the synchronous edge is genuinely required, whether ownership remains correct, and whether an existing contract/event/read model provides a cleaner connection.
 
-## Governance self-modification
+Removing an edge and changes in fan-in/fan-out are retained in the machine-readable graph delta even when they do not create a review candidate.
 
-The former `QR-MEGA-GOV-001` HARD rule rejected broad product+policy co-occurrence. That was wider than the protected risk and could force unrelated PR splitting.
+Metric gaming is explicitly invalid. A coding agent must not hide a dependency behind a service locator, generic shared helper, runtime import, re-export facade, or forwarding wrapper merely to reduce measured fan-out.
 
-Current policy is narrower:
+### File-size HARD experiment retired
 
-> A change SHOULD NOT weaken a gate in a way that materially changes the verdict from which that same change benefits.
+The earlier calibration experiment that treated a new/crossing/growing scoped core file above 500 effective LOC as `QR-MEGA-001 INVARIANT_FAILURE` is retired as HARD.
 
-`scripts/ci/check_quality_policy_separation.py` now surfaces product/policy co-occurrence for causal governance review. Co-occurrence alone does not fail CI.
+The repository cannot defend the claim that 501 effective lines directly constitutes an architecture violation. Extreme size remains visible through file-size review evidence. A future HARD proposal would require longitudinal evidence satisfying the full HARD-gate proof obligation, including false-positive pressure, coding-agent response and second-order navigation effects.
+
+### Governance co-occurrence
+
+The earlier broad `QR-MEGA-GOV-001` HARD product+policy co-occurrence rule is also retired. Product and governance files may legitimately change together.
+
+The remaining principle is causal: review whether a governance change can materially alter a verdict from which the same product change benefits. Co-occurrence alone is not an invariant failure.
+
+## Baseline and evidence
+
+`scripts/ci/build_engineering_quality_baseline.py` produces `engineering-quality-baseline/v1` evidence with categorized distributions for:
+
+- effective Python file LOC;
+- function LOC;
+- Ruff C901 McCabe per function;
+- nonblank configuration LOC;
+- business-module fan-in;
+- business-module fan-out;
+- direct business-module dependency edges.
+
+Percentiles and outliers describe the repository. They do not become thresholds automatically.
+
+`scripts/ci/finalize_quality_evidence.py` produces `quality-evidence/v1` packets for semantic-review candidates. Evidence packets preserve deterministic facts, deltas, context, review questions and architecture/quality proof state.
 
 ## Semantic review
 
-When a maintainability candidate is emitted, use:
+`semantic-review-protocol.md` and `agent-semantic-review-playbook.md` define the reviewer contract.
 
-- `agent-semantic-review-playbook.md` for coding-agent procedure;
-- `semantic-review-protocol.md` for evidence/disposition semantics.
+Review must consider responsibility, real reasoning complexity, side effects, cohesion, locality, ownership, abstraction value, testability, coupling and Goodhart/gaming risk.
 
-Review must consider responsibility, real reasoning complexity, side effects, locality, ownership, abstraction value, testability, and Goodhart/gaming risk.
+A lower LOC/C901/fan-out value is not evidence of improvement if the remediation worsens locality, ownership, navigability, duplication or architectural clarity.
 
-Do not split files, extract wrappers, add interfaces, or move logic solely to reduce LOC/C901/file count.
-
-## Measurement and calibration
-
-`scripts/ci/build_engineering_quality_baseline.py` records repository distributions by code category for available maintainability signals. Percentiles describe the repository; they do not become policy automatically.
-
-Calibration should increasingly focus on independent structural evidence, especially dependency/fan-out hotspots and whether metric-triggered remediation increases fragmentation/navigation cost.
-
-A future proposal to make any heuristic HARD must satisfy the documented HARD-gate proof obligation with longitudinal repository evidence, including false positives, false negatives, gaming behavior, likely coding-agent remediation, and second-order architecture effects.
-
-## Evidence packets
-
-`quality-scan/v1` records deterministic measurements and review candidates.
-
-`quality-evidence/v1` provides validated per-candidate review context. Evidence infrastructure is supporting machinery, not a second architecture authority.
-
-If evidence governance becomes more expensive than the decisions it improves, simplify it.
+After any remediation, deterministic proof must run again.
 
 ## Local Publish Certification
 
-`local-publish-certification.md` is a **developer-experience / publication-integrity adjunct**, not an architecture fitness function and not part of the semantic quality hierarchy above.
+Local Publish Certification remains implemented as a developer-experience / publication-integrity adjunct. It is not an architecture fitness function and cannot replace GitHub integration CI.
 
-It may certify a local pushed SHA before publication, but it cannot waive or replace GitHub integration proof and it must not be used as evidence that a maintainability metric is architecturally correct.
+## Calibration obligations before normative promotion
 
-Keeping this distinction explicit prevents workflow tooling from silently becoming architecture policy.
+Before future `NORMATIVE` promotion:
 
-## Current document roles
+1. reconcile Constitution and Fitness Specification into one coherent authority;
+2. verify every HARD rule against the full HARD-gate proof obligation;
+3. collect representative longitudinal human review evidence;
+4. observe metric-gaming and fragmentation/navigation effects;
+5. inspect fan-in/fan-out deltas and recurring coupling hotspots across real PRs;
+6. recalibrate or retire noisy signals;
+7. explicitly update `docs/README.md` precedence;
+8. prove the final promoted implementation through the required GitHub integration graph.
 
-| Document | Role |
-|---|---|
-| `engineering-quality-architecture-constitution.md` | accepted-for-calibration design principles; not normative yet |
-| `executable-fitness-function-specification.md` | proposed target fitness functions and HARD proof obligations |
-| `repository-engineering-audit.md` | historical audit evidence |
-| `guardrail-decision-record.md` | design provenance |
-| `semantic-review-protocol.md` | semantic-review evidence contract |
-| `agent-semantic-review-playbook.md` | agent review procedure |
-| `mega-file-circuit-breaker.md` | retired HARD experiment and recalibration requirements |
-| `local-publish-certification.md` | separate developer-experience/publication-integrity design |
-| `implementation-roadmap-and-definition-of-done.md` | implementation/calibration/promotion status |
-| `calibration/` | pilot and future longitudinal evidence |
+No heuristic threshold becomes HARD because it matches a percentile, because a tool can block CI, or because an LLM repeatedly agrees with it.
 
-## Promotion rule
+## Read in this order
 
-This package does not become normative because a PR is green.
-
-Promotion requires an explicit governance decision that:
-
-1. reconciles the Constitution and Fitness Specification into one coherent authority;
-2. confirms every HARD rule satisfies the proof obligation;
-3. demonstrates that heuristic signals remain non-blocking unless independently justified;
-4. reviews calibration evidence and exception pressure;
-5. updates `docs/README.md` precedence explicitly;
-6. proves the promoted implementation through the required integration CI.
-
-## Acceptance test for the governance system
-
-The quality system is healthy only if the cheapest normal response to a failure or warning tends to improve the property actually being protected.
-
-It must have sufficient reason **not** to prefer:
-
-```text
-smaller files + more wrappers + more hops
-```
-
-over:
-
-```text
-cohesive responsibilities + clear ownership + short reasoning paths + explicit boundaries
-```
-
-That is the standard against which the guardrails themselves must continue to be reviewed.
+1. `README.md` — current lifecycle and implemented calibration model.
+2. `repository-engineering-audit.md` — historical audit evidence.
+3. `engineering-quality-architecture-constitution.md` — architecture principles accepted for calibration.
+4. `executable-fitness-function-specification.md` — fitness-function classifications and proof obligations, including `FF-TREND-001` fan-in/fan-out observation.
+5. `hybrid-quality-review-architecture.md` — deterministic/semantic review architecture.
+6. `semantic-review-protocol.md` — semantic classifications and authority.
+7. `agent-semantic-review-playbook.md` — coding-agent procedure.
+8. `implementation-roadmap-and-definition-of-done.md` — phase status and promotion obligations.
+9. `calibration/README.md` — evidence interpretation.
+10. `local-publish-certification.md` — developer publication workflow, intentionally outside architecture fitness authority.
