@@ -2,13 +2,16 @@
 
 from typing import cast
 
-from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import LOCAL_CEDULA, PUBLISH
+from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import LOCAL_DOCUMENT, PUBLISH
 from request_engine.modules.tenancy.application.identity_exchange import PublishPortableProfileCommand
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeProfileInvalid,
     IdentityExchangeUnavailable,
 )
-from request_engine.modules.tenancy.domain.identity_exchange import cedula_fingerprint
+from request_engine.modules.tenancy.domain.identity_exchange import (
+    ScopedIdentityDocument,
+    identity_document_fingerprint,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -26,10 +29,15 @@ class PostgresPortableProfilePublisher:
         self._fingerprint_key = fingerprint_key
 
     async def publish_portable_profile(self, command: PublishPortableProfileCommand) -> None:
+        authority = command.document_authority
+        if authority is None:
+            raise IdentityExchangeProfileInvalid("scoped document authority is required")
         fingerprint = command_fingerprint(
             _CAPABILITY,
             {
                 "party_id": str(command.party_id),
+                "document_kind": command.document_kind,
+                "document_authority": authority,
                 "consented_fields": list(command.consented_fields),
                 "proof_kind": command.proof_kind,
             },
@@ -45,18 +53,25 @@ class PostgresPortableProfilePublisher:
             )
             if replay is not None:
                 return
-            cedula = (
+            value = (
                 await session.execute(
-                    LOCAL_CEDULA,
-                    {"organization_id": command.organization_id, "party_id": command.party_id},
+                    LOCAL_DOCUMENT,
+                    {
+                        "organization_id": command.organization_id,
+                        "party_id": command.party_id,
+                        "kind": command.document_kind,
+                        "authority": authority,
+                    },
                 )
             ).scalar_one_or_none()
-            if cedula is None:
-                raise IdentityExchangeProfileInvalid("active Party with cédula is required")
+            if value is None:
+                raise IdentityExchangeProfileInvalid(
+                    "active Party with requested scoped identity document is required"
+                )
             try:
-                identity_fingerprint = cedula_fingerprint(
+                identity_fingerprint = identity_document_fingerprint(
                     self._fingerprint_key,
-                    cast(str, cedula),
+                    ScopedIdentityDocument(command.document_kind, authority, cast(str, value)),
                 )
             except RuntimeError as error:
                 raise IdentityExchangeUnavailable(str(error)) from None
@@ -65,6 +80,8 @@ class PostgresPortableProfilePublisher:
                     PUBLISH,
                     {
                         "party_id": command.party_id,
+                        "kind": command.document_kind,
+                        "authority": authority,
                         "fingerprint": identity_fingerprint,
                         "consented_fields": list(command.consented_fields),
                         "principal_id": command.principal_id,
@@ -82,6 +99,8 @@ class PostgresPortableProfilePublisher:
                 aggregate_id=command.party_id,
                 idempotency_id=idempotency_id,
                 details={
+                    "document_kind": command.document_kind,
+                    "document_authority": authority,
                     "proof_kind": command.proof_kind,
                     "consented_fields": list(command.consented_fields),
                 },
