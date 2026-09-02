@@ -20,6 +20,7 @@ async def insert_recall_hold(
     organization_id: UUID,
     queue_id: UUID,
     queue_entry_id: UUID,
+    queue_entry_revision: int,
     kind: RecallHoldKind,
     release_at: datetime | None,
     reason: str | None,
@@ -55,14 +56,15 @@ async def insert_recall_hold(
         .mappings()
         .one()
     )
-    return recall_hold_from_row(row)
+    return recall_hold_from_row(row, queue_entry_revision)
 
 
-def recall_hold_from_row(row: RowMapping) -> RecallHold:
+def recall_hold_from_row(row: RowMapping, queue_entry_revision: int) -> RecallHold:
     return RecallHold(
         id=cast(UUID, row["id"]),
         queue_id=cast(UUID, row["service_queue_id"]),
         queue_entry_id=cast(UUID, row["queue_entry_id"]),
+        queue_entry_revision=queue_entry_revision,
         kind=RecallHoldKind(cast(str, row["hold_kind"])),
         release_at=cast(datetime | None, row["release_at"]),
         reason=cast(str | None, row["reason"]),
@@ -76,6 +78,7 @@ def recall_hold_to_json(item: RecallHold) -> dict[str, object]:
         "id": str(item.id),
         "queue_id": str(item.queue_id),
         "queue_entry_id": str(item.queue_entry_id),
+        "queue_entry_revision": item.queue_entry_revision,
         "kind": item.kind.value,
         "release_at": item.release_at.isoformat() if item.release_at else None,
         "reason": item.reason,
@@ -91,6 +94,7 @@ def recall_hold_from_json(data: dict[str, object]) -> RecallHold:
         id=UUID(cast(str, data["id"])),
         queue_id=UUID(cast(str, data["queue_id"])),
         queue_entry_id=UUID(cast(str, data["queue_entry_id"])),
+        queue_entry_revision=cast(int, data["queue_entry_revision"]),
         kind=RecallHoldKind(cast(str, data["kind"])),
         release_at=datetime.fromisoformat(release_at) if release_at else None,
         reason=cast(str | None, data["reason"]),
