@@ -21,18 +21,15 @@ _PHONE_SEPARATORS = re.compile(r"[\s().-]+")
 _NANP_LOCAL = re.compile(r"[2-9][0-9]{9}")
 _NANP_COUNTRY = re.compile(r"1[2-9][0-9]{9}")
 _PHONE_MIN_DIGITS = 10
+_DOCUMENT_SEPARATORS = re.compile(r"[\s.-]+")
+_CEDULA = re.compile(r"[0-9]{11}")
+_PASSPORT = re.compile(r"[A-Z0-9]{6,17}")
+_PASSPORT_AUTHORITY = re.compile(r"[A-Z]{2}")
+_CEDULA_AUTHORITY = "DO:JCE"
 
 
 def normalize_party_contact_value(channel: str, value: str) -> str:
-    """Normalize a party contact point value, tolerating Dominican local formats.
-
-    For phone/whatsapp, separators are stripped first; a leading "+" and a
-    leading double-zero international prefix ("00 1 809 555 1234") are then
-    dropped so a "+"/"00" candidate goes through the same NANP digit logic as
-    a bare local format — "+8095551234" and "809-555-1234" converge to the
-    same "+1"-prefixed identity. The contract floor (docs/v3/38 §3) applies
-    after canonicalization: at least 10 digits, so "+596123456" is rejected.
-    """
+    """Normalize a party contact point value, tolerating Dominican local formats."""
 
     cleaned = value.strip()
     if channel not in {"phone", "whatsapp"}:
@@ -54,18 +51,35 @@ def normalize_party_contact_value(channel: str, value: str) -> str:
     return canonical
 
 
-_DOCUMENT_SEPARATORS = re.compile(r"[\s.-]+")
-_CEDULA = re.compile(r"[0-9]{11}")
-_PASSPORT = re.compile(r"[A-Z0-9]{6,17}")
+def _document_kind(kind: str) -> PartyDocumentKind:
+    try:
+        return PartyDocumentKind(kind)
+    except ValueError:
+        raise PartyIdentityValidationError(f"unsupported identity document kind: {kind}") from None
+
+
+def normalize_identity_document_authority(kind: str, authority: str | None) -> str:
+    """Canonicalize the issuer namespace used to distinguish document identities."""
+
+    document_kind = _document_kind(kind)
+    candidate = authority.strip().upper() if authority is not None else ""
+    if document_kind is PartyDocumentKind.CEDULA:
+        if candidate and candidate != _CEDULA_AUTHORITY:
+            raise PartyIdentityValidationError("cedula authority must be DO:JCE")
+        return _CEDULA_AUTHORITY
+    if not candidate:
+        raise PartyIdentityValidationError("passport issuing authority is required")
+    if not _PASSPORT_AUTHORITY.fullmatch(candidate):
+        raise PartyIdentityValidationError(
+            "passport issuing authority must be a 2-letter ISO country code"
+        )
+    return candidate
 
 
 def normalize_identity_document(kind: str, value: str) -> str:
     """Normalize an identity document value for its kind."""
 
-    try:
-        document_kind = PartyDocumentKind(kind)
-    except ValueError:
-        raise PartyIdentityValidationError(f"unsupported identity document kind: {kind}") from None
+    document_kind = _document_kind(kind)
     cleaned = value.strip()
     if document_kind is PartyDocumentKind.CEDULA:
         digits = _DOCUMENT_SEPARATORS.sub("", cleaned)
@@ -79,15 +93,7 @@ def normalize_identity_document(kind: str, value: str) -> str:
 
 
 def name_search_key(display_name: str) -> str:
-    """Return the accent-insensitive prefix-matching key for a display name.
-
-    Lowercase + casefold, Unicode NFKD with combining marks stripped
-    (accents fold to their ASCII base letter), whitespace runs collapsed.
-    The stored-name SQL mirror in
-    `party_registry_reader._match_name_prefix` folds the same accented
-    Latin characters (a e i o u with grave/acute/umlaut/circumflex, plus
-    ñ->n and ç->c) via translate(); the two maps must stay aligned.
-    """
+    """Return the accent-insensitive prefix-matching key for a display name."""
 
     decomposed = unicodedata.normalize("NFKD", display_name.casefold())
     without_marks = "".join(char for char in decomposed if not unicodedata.combining(char))
