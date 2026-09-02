@@ -9,6 +9,7 @@ from typing import Any, cast
 ROOT = Path(__file__).resolve().parents[2]
 FINALIZER = ROOT / "scripts" / "ci" / "finalize_quality_evidence.py"
 CALIBRATION = ROOT / "scripts" / "ci" / "summarize_quality_calibration.py"
+VALIDATOR = ROOT / "scripts" / "ci" / "validate_quality_evidence.py"
 
 
 def _load(path: Path, name: str) -> ModuleType:
@@ -141,6 +142,24 @@ def test_evidence_finalization_rejects_mismatched_tested_tree(monkeypatch: Any) 
         assert "baseline tree does not match" in str(exc)
     else:
         raise AssertionError("mismatched tested-tree provenance was accepted")
+
+
+def test_validator_reports_the_selected_schema_version_semantically() -> None:
+    validator = _load(VALIDATOR, "quality_validator_under_test")
+    resolve_version = cast(Callable[[Any], str], validator.schema_version)
+    assert (
+        resolve_version(
+            {
+                "properties": {
+                    "schema_version": {
+                        "const": "quality-evidence/v2",
+                    }
+                }
+            }
+        )
+        == "quality-evidence/v2"
+    )
+    assert resolve_version({"properties": {}}) == "selected quality-evidence schema"
 
 
 def test_human_model_calibration_never_imputes_missing_human_labels() -> None:
