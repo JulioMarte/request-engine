@@ -54,6 +54,8 @@ def add_identity_exchange_routes(
                 MatchPortableIdentityCommand(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
+                    document_kind=body.document_kind,
+                    document_authority=body.document_authority,
                     document_value=body.document_value,
                     proof_kind=body.proof_kind,
                     idempotency_key=idempotency_key,
@@ -77,6 +79,8 @@ def add_identity_exchange_routes(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
                     candidate_ref=body.candidate_ref,
+                    document_kind=body.document_kind,
+                    document_authority=body.document_authority,
                     document_value=body.document_value,
                     consented_fields=body.consented_fields,
                     proof_kind=body.proof_kind,
