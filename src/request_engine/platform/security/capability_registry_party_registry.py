@@ -54,7 +54,7 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "parties.lookup",
         CapabilityExposure.PUBLIC,
-        "Look up Parties by phone, identity document, administrative identifier or name.",
+        "Look up Parties by phone, identity document or display-name prefix.",
     ),
     query_capability(
         "parties.read_revisions",
