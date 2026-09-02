@@ -2,9 +2,15 @@
 
 from uuid import UUID
 
-from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import CREATE_CANDIDATE
-from request_engine.modules.tenancy.application.identity_exchange import MatchPortableIdentityCommand
-from request_engine.modules.tenancy.application.identity_exchange_errors import IdentityExchangeUnavailable
+from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
+    CREATE_CANDIDATE,
+)
+from request_engine.modules.tenancy.application.identity_exchange import (
+    MatchPortableIdentityCommand,
+)
+from request_engine.modules.tenancy.application.identity_exchange_errors import (
+    IdentityExchangeUnavailable,
+)
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityMatchResult
 from request_engine.modules.tenancy.domain.identity_exchange import (
     ScopedIdentityDocument,
@@ -76,7 +82,10 @@ class PostgresPortableIdentityMatcher:
                 )
             ).scalar_one_or_none()
             candidate_ref = UUID(str(candidate)) if candidate else None
-            result = IdentityMatchResult(matched=candidate_ref is not None, candidate_ref=candidate_ref)
+            result = IdentityMatchResult(
+                matched=candidate_ref is not None,
+                candidate_ref=candidate_ref,
+            )
             await append_audit(
                 session,
                 organization_id=command.organization_id,
