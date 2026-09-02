@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -14,7 +14,7 @@ async def serialize_recovery_action_execution(
     session_factory: SessionFactory,
     *,
     action_id: UUID,
-) -> AsyncIterator[None]:
+) -> AsyncGenerator[None, None]:
     """Allow only one active executor for one durable RecoveryAction.
 
     The transaction owns only a PostgreSQL advisory lock. Business owner writes
