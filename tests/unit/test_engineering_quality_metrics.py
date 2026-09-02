@@ -43,6 +43,7 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
         classify(Path("src/request_engine/modules/booking/domain/policy.py")) == "production_domain"
     )
     assert classify(Path("src/request_engine/bootstrap/runtime.py")) == "production_composition"
+    assert classify(Path("src/request_engine/entrypoints/http/app.py")) == "production_composition"
     assert classify(Path("tests/unit/test_policy.py")) == "tests"
     assert classify(Path("scripts/ci/probe.py")) == "scripts"
     assert classify(Path("migrations/versions/0002_probe.py")) == "migrations"
@@ -50,7 +51,7 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
     assert classify(Path(".github/workflows/ci.yml")) == "config"
 
 
-def test_generated_detection_is_explicit_and_does_not_treat_migration_header_as_generated() -> None:
+def test_generated_detection_requires_controlled_path_or_filename_not_self_declared_header() -> None:
     metrics = _load_metrics()
     generated_reason = cast(
         Callable[[Path, str | None], str | None],
@@ -58,7 +59,9 @@ def test_generated_detection_is_explicit_and_does_not_treat_migration_header_as_
     )
     generated_path_reason = generated_reason(Path("src/generated/client.py"), "value = 1\n")
     assert generated_path_reason == "generated-path:generated"
-    assert generated_reason(Path("src/client.py"), "# @generated\nvalue = 1\n") is not None
+    assert generated_reason(Path("src/client_generated.py"), "value = 1\n") == "generated-filename"
+    assert generated_reason(Path("src/client.py"), "# @generated\nvalue = 1\n") is None
+    assert generated_reason(Path("src/client.py"), "# DO NOT EDIT\nvalue = 1\n") is None
     assert (
         generated_reason(
             Path("migrations/versions/0002_probe.py"),
