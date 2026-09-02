@@ -5,8 +5,12 @@ from fastapi import APIRouter, FastAPI, Request
 from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_reader import (
     PostgresPartyAdministrativeIdentifierReader,
 )
-from request_engine.modules.tenancy.adapters.db.party_registry_commands import PostgresPartyRegistryCommands
-from request_engine.modules.tenancy.adapters.db.party_registry_reader import PostgresPartyLookupReader
+from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
+    PostgresPartyRegistryCommands,
+)
+from request_engine.modules.tenancy.adapters.db.party_registry_reader import (
+    PostgresPartyLookupReader,
+)
 from request_engine.modules.tenancy.adapters.db.party_revision_history_reader import (
     PostgresPartyRevisionHistoryReader,
 )
@@ -16,9 +20,15 @@ from request_engine.modules.tenancy.api.party_administrative_identifier_errors i
 from request_engine.modules.tenancy.api.party_administrative_identifier_routes import (
     add_party_administrative_identifier_routes,
 )
-from request_engine.modules.tenancy.api.party_registry_correction_routes import add_party_correction_routes
-from request_engine.modules.tenancy.api.party_registry_deactivation_routes import add_party_deactivation_routes
-from request_engine.modules.tenancy.api.party_registry_errors import add_party_registry_error_handlers
+from request_engine.modules.tenancy.api.party_registry_correction_routes import (
+    add_party_correction_routes,
+)
+from request_engine.modules.tenancy.api.party_registry_deactivation_routes import (
+    add_party_deactivation_routes,
+)
+from request_engine.modules.tenancy.api.party_registry_errors import (
+    add_party_registry_error_handlers,
+)
 from request_engine.modules.tenancy.api.party_registry_routes import add_party_registry_routes
 from request_engine.modules.tenancy.api.party_revision_routes import add_party_revision_routes
 from request_engine.platform.db.session import SessionFactory
