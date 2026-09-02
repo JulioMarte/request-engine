@@ -55,7 +55,17 @@ class RecallHoldView(BaseModel):
 
     @classmethod
     def from_contract(cls, item: RecallHold) -> "RecallHoldView":
-        return cls(**item.__dict__)
+        return cls(
+            id=item.id,
+            queue_id=item.queue_id,
+            queue_entry_id=item.queue_entry_id,
+            queue_entry_revision=item.queue_entry_revision,
+            kind=item.kind,
+            release_at=item.release_at,
+            reason=item.reason,
+            created_at=item.created_at,
+            released_at=item.released_at,
+        )
 
 
 class SkipQueueHeadView(BaseModel):
