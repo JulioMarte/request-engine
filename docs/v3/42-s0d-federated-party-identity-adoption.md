@@ -2,6 +2,8 @@
 
 Status: normative design and implementation contract stacked on S0c.
 Owner module: `tenancy`.
+This contract supersedes the older "no cross-clinic matching" assumption in `docs/v3/38` §9.4;
+clinical/operational tenant isolation remains unchanged.
 
 ## 1. Purpose
 
