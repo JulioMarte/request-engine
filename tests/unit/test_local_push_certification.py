@@ -7,7 +7,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import pytest
 
@@ -16,6 +16,10 @@ CERTIFIER = ROOT / "scripts" / "dev" / "certify_push.py"
 INSTALLER = ROOT / "scripts" / "dev" / "install_git_hooks.py"
 PROFILE = ROOT / "scripts" / "ci" / "local_push_profile.py"
 CI_JOBS = ROOT / "scripts" / "ci" / "ci_jobs.py"
+
+
+class _StepLike(Protocol):
+    key: str
 
 
 def _load(path: Path, name: str) -> ModuleType:
@@ -144,10 +148,8 @@ def test_missing_development_base_fails_with_fetch_guidance(tmp_path: Path) -> N
 def test_local_profile_reuses_canonical_python_quality_step_ids() -> None:
     profile = _load(PROFILE, "local_push_profile_test")
     ci_jobs = _load(CI_JOBS, "ci_jobs_for_push_profile_test")
-    raw_jobs: Any = ci_jobs.JOBS
-    assert isinstance(raw_jobs, dict)
-    python_quality: Any = raw_jobs["python-quality"]
-    canonical_keys = {str(step.key) for step in python_quality}
+    jobs = cast(dict[str, tuple[_StepLike, ...]], ci_jobs.JOBS)
+    canonical_keys = {step.key for step in jobs["python-quality"]}
     configured = cast(tuple[str, ...], profile.PYTHON_QUALITY_STEPS)
     remote_only = cast(tuple[str, ...], profile.REMOTE_ONLY_PYTHON_QUALITY_STEPS)
 
