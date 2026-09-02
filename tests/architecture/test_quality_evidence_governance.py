@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "docs" / "engineering-quality" / "schemas" / "quality-evidence-v1.schema.json"
@@ -17,23 +17,27 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 VALIDATOR = ROOT / "scripts" / "ci" / "validate_quality_evidence.py"
 
 
-def _json(path: Path) -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+def _json(path: Path) -> dict[str, object]:
+    payload: object = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    return cast(dict[str, object], payload)
 
 
-def _object_list(value: Any) -> list[dict[str, Any]]:
+def _object_list(value: object) -> list[dict[str, object]]:
     assert isinstance(value, list)
-    assert all(isinstance(item, dict) for item in value)
-    return cast(list[dict[str, Any]], value)
+    items = cast(list[object], value)
+    assert all(isinstance(item, dict) for item in items)
+    return cast(list[dict[str, object]], items)
 
 
 def test_quality_evidence_uses_versioned_draft_2020_12_schema() -> None:
     schema = _json(SCHEMA)
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["additionalProperties"] is False
-    raw_required: Any = schema["required"]
+    raw_required = schema["required"]
     assert isinstance(raw_required, list)
-    required = {str(item) for item in raw_required}
+    required_items = cast(list[object], raw_required)
+    required = {str(item) for item in required_items}
     assert {
         "candidate_id",
         "trigger_ids",
@@ -70,17 +74,21 @@ def test_pilot_observations_are_real_model_records_without_fabricated_human_labe
     assert any(item.get("human_verdict") is None for item in observations)
     policy = payload["human_label_policy"]
     assert isinstance(policy, dict)
-    assert policy.get("no_imputation") is True
+    typed_policy = cast(dict[str, object], policy)
+    assert typed_policy.get("no_imputation") is True
 
 
 def test_reviewer_fixer_evidence_contains_deterministic_reproof_not_self_certification() -> None:
     payload = _json(BEFORE_AFTER)
     entries = _object_list(payload["entries"])
     assert entries
-    proved: list[dict[str, Any]] = []
+    proved: list[dict[str, object]] = []
     for item in entries:
         reproof = item.get("deterministic_reproof")
-        if isinstance(reproof, dict) and reproof.get("workflow_run_id") is not None:
+        if not isinstance(reproof, dict):
+            continue
+        typed_reproof = cast(dict[str, object], reproof)
+        if typed_reproof.get("workflow_run_id") is not None:
             proved.append(item)
     assert proved
     assert all(item.get("reviewer_role") != item.get("fixer_role") for item in entries)
