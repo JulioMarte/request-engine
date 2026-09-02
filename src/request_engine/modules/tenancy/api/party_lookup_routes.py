@@ -1,4 +1,4 @@
-"""`parties.lookup` HTTP route: phone / document / display-name prefix lookup."""
+"""`parties.lookup` HTTP route for contact, strong-ID and display-name lookup."""
 
 from collections.abc import Awaitable, Callable
 from typing import Annotated
@@ -59,7 +59,8 @@ def add_party_lookup_routes(
         response_model=tuple[RegisteredPartyView, ...],
         response_model_exclude_none=True,
         description=(
-            "Lookup returns at most 50 parties. Cédula authority defaults to DO:JCE; "
-            "passport lookup requires a 2-letter issuing-country authority."
+            "Phone and email are weak locators and may return multiple Parties. "
+            "Cédula authority defaults to DO:JCE; RNC defaults to DO:DGII; "
+            "passport lookup requires an assigned ISO issuing-country authority."
         ),
     )
