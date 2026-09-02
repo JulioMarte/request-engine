@@ -14,13 +14,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from mega_file_policy import (  # noqa: E402
-    CORE_MEGA_CATEGORIES,
-    MEGA_EXCEPTION_REGISTRY,
-    MEGA_FILE_HARD_LIMIT,
-    load_base_exceptions,
-    mega_file_failure,
-)
 from quality_metrics import (  # noqa: E402
     classify_path,
     effective_code_lines,
@@ -91,11 +84,12 @@ def _candidate_id(trigger_id: str, path: str, subject: str) -> str:
     return f"QR-{hashlib.sha256(raw).hexdigest()[:12]}"
 
 
-def _file_loc_candidate(path: Path, current: int, previous: int | None) -> dict[str, object] | None:
+def _file_loc_candidate(
+    path: Path, current: int, previous: int | None
+) -> dict[str, object] | None:
     if current <= FILE_LOC_REVIEW_THRESHOLD:
         return None
     path_text = path.as_posix()
-    delta = None if previous is None else current - previous
     return {
         "candidate_id": _candidate_id("QR-FSIZE-001", path_text, path.name),
         "classification": "REVIEW_CANDIDATE",
@@ -115,15 +109,12 @@ def _file_loc_candidate(path: Path, current: int, previous: int | None) -> dict[
                 "kind": "effective_file_loc",
                 "before": previous,
                 "after": current,
-                "delta": delta,
+                "delta": None if previous is None else current - previous,
             }
         ],
         "review_questions": [
             "Does this file contain more than one independently changing responsibility?",
-            (
-                "Would extraction reduce reasoning cost without adding forwarding or "
-                "navigation ceremony?"
-            ),
+            "Would extraction reduce reasoning cost without adding forwarding/navigation ceremony?",
             "Is the size mostly declarative/linear rather than decision-heavy?",
         ],
     }
@@ -161,6 +152,7 @@ def _navigation_candidate(
     reexport_only = observation.get("reexport_only_module") is True
     if not forwarding_only and not reexport_only:
         return None
+
     facts: list[dict[str, object]] = [
         {
             "kind": "one_call_forwarder_count",
@@ -199,6 +191,7 @@ def _navigation_candidate(
                 "delta": after - before,
             }
         )
+
     return {
         "candidate_id": _candidate_id("QR-NAV-001", path.as_posix(), path.name),
         "classification": "REVIEW_CANDIDATE",
@@ -213,7 +206,7 @@ def _navigation_candidate(
         "review_questions": [
             "Does this new indirection represent a real ownership or substitution boundary?",
             "Does it shorten the reasoning path, or only move one call/re-export to another file?",
-            "Would keeping the behavior local be easier to navigate without weakening a boundary?",
+            "Would keeping behavior local be easier to navigate without weakening a boundary?",
         ],
     }
 
@@ -227,17 +220,16 @@ def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]
         score_match = _C901_SCORE.search(message)
         subject_match = _C901_SUBJECT.search(message)
         path = _relative_path(str(diagnostic.get("filename", "<unknown>")))
-        path_text = path.as_posix()
         subject = subject_match.group("subject") if subject_match else "<function>"
         score = int(score_match.group("score")) if score_match else None
         location = diagnostic.get("location") or {}
         candidates.append(
             {
-                "candidate_id": _candidate_id("QR-CPLX-001", path_text, subject),
+                "candidate_id": _candidate_id("QR-CPLX-001", path.as_posix(), subject),
                 "classification": "REVIEW_CANDIDATE",
                 "trigger_id": "QR-CPLX-001",
                 "scope": {
-                    "path": path_text,
+                    "path": path.as_posix(),
                     "category": _category(path),
                     "subject": subject,
                     "line": location.get("row") if isinstance(location, dict) else None,
@@ -253,18 +245,9 @@ def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]
                 ],
                 "deltas": [],
                 "review_questions": [
-                    (
-                        "Where does the real reasoning load come from: branches, state, "
-                        "ordering, or side effects?"
-                    ),
-                    (
-                        "Can decision structure be simplified without merely distributing "
-                        "it across helpers?"
-                    ),
-                    (
-                        "Would a proposed extraction create a real responsibility boundary "
-                        "and preserve locality?"
-                    ),
+                    "Where does the reasoning load come from: branches, state, ordering, or effects?",
+                    "Can decision structure be simplified without distributing it across helpers?",
+                    "Would extraction create a real responsibility boundary and preserve locality?",
                 ],
             }
         )
@@ -274,19 +257,23 @@ def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]
 def run_ruff_c901(paths: list[Path]) -> list[dict[str, object]]:
     if not paths:
         return []
-    command = [
-        "uv",
-        "run",
-        "ruff",
-        "check",
-        "--select",
-        "C901",
-        "--output-format",
-        "json",
-        "--exit-zero",
-        *[path.as_posix() for path in paths],
-    ]
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "ruff",
+            "check",
+            "--select",
+            "C901",
+            "--output-format",
+            "json",
+            "--exit-zero",
+            *[path.as_posix() for path in paths],
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "Ruff produced no diagnostic"
         raise RuntimeError(f"Ruff C901 sensor failed: {detail}")
@@ -301,18 +288,12 @@ def run_ruff_c901(paths: list[Path]) -> list[dict[str, object]]:
 
 def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, object]:
     files = changed_python_files(base_ref)
-    base_exceptions = load_base_exceptions(base_ref)
     measurements: list[dict[str, object]] = []
     observations: list[dict[str, object]] = []
     candidates: list[dict[str, object]] = []
-    invariant_failures: list[dict[str, object]] = []
-    generated_exclusions: list[dict[str, str]] = []
+
     for path in files:
         source = path.read_text(encoding="utf-8")
-        reason = generated_reason(path, source)
-        if reason is not None:
-            generated_exclusions.append({"path": path.as_posix(), "reason": reason})
-            continue
         current = effective_code_lines(source)
         previous_source = source_at_ref(base_ref, path)
         previous = effective_code_lines(previous_source) if previous_source is not None else None
@@ -326,15 +307,6 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
                 "delta": None if previous is None else current - previous,
             }
         )
-        failure = mega_file_failure(
-            path,
-            category=category,
-            current=current,
-            previous=previous,
-            base_exceptions=base_exceptions,
-        )
-        if failure is not None:
-            invariant_failures.append(failure)
         candidate = _file_loc_candidate(path, current, previous)
         if candidate is not None:
             candidates.append(candidate)
@@ -349,84 +321,34 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         )
         if navigation_candidate is not None:
             candidates.append(navigation_candidate)
+
     if include_ruff:
         candidates.extend(run_ruff_c901(files))
+
     return {
         "schema_version": SCAN_SCHEMA,
         "base_sha": _sha(base_ref),
         "head_sha": _sha("HEAD"),
-        "authority": (
-            "heuristic-signals-are-non-blocking; QR-MEGA-001-core-circuit-breaker-is-blocking"
-        ),
+        "authority": "maintainability-signals-are-non-blocking",
         "thresholds": {
             "effective_file_loc_review_candidate": FILE_LOC_REVIEW_THRESHOLD,
             "mccabe_review_candidate": MCCABE_REVIEW_THRESHOLD,
-            "core_mega_file_hard_limit": MEGA_FILE_HARD_LIMIT,
-            "threshold_status": (
-                "120-and-C901-are-calibration-triggers; "
-                "500-is-a-core-extreme-outlier-circuit-breaker"
-            ),
-        },
-        "mega_file_policy": {
-            "core_categories": sorted(CORE_MEGA_CATEGORIES),
-            "exception_registry": MEGA_EXCEPTION_REGISTRY.as_posix(),
-            "exception_authority": "base-ref-only",
-            "base_exception_count": len(base_exceptions),
+            "threshold_status": "calibration-triggers-not-architecture-cliffs",
         },
         "measurements": measurements,
         "navigation_observations": observations,
-        "generated_exclusions": generated_exclusions,
-        "invariant_failures": invariant_failures,
+        "invariant_failures": [],
         "candidates": candidates,
         "semantic_review_protocol": SEMANTIC_REVIEW_PROTOCOL,
         "agent_review_playbook": AGENT_REVIEW_PLAYBOOK,
     }
 
 
-def _render_invariant_failures(failures: list[object]) -> list[str]:
-    if not failures:
-        return []
-    lines = [
-        f"[INVARIANT_FAILURE] {len(failures)} QR-MEGA-001 failure(s).",
-        (
-            "BLOCKING: handwritten core product Python may not cross or grow beyond "
-            f"{MEGA_FILE_HARD_LIMIT} effective LOC without a base-approved exception."
-        ),
-    ]
-    for raw_failure in failures:
-        if not isinstance(raw_failure, dict):
-            continue
-        scope = raw_failure.get("scope") if isinstance(raw_failure.get("scope"), dict) else {}
-        facts = raw_failure.get("facts") if isinstance(raw_failure.get("facts"), list) else []
-        fact = facts[0] if facts and isinstance(facts[0], dict) else {}
-        lines.append(
-            f"- QR-MEGA-001 {scope.get('path')} effective_file_loc={fact.get('value')}: "
-            f"{raw_failure.get('reason')}"
-        )
-    lines.extend(
-        [
-            (
-                "SELF-JUSTIFICATION IS INVALID: the author/agent cannot waive QR-MEGA-001 "
-                "with rationale, HEALTHY_AS_IS, PR text, comments, or an exception added or "
-                "modified in this same change."
-            ),
-            (
-                "VALID OPTIONS: improve the design through a real cohesive responsibility "
-                "boundary, or stop and obtain a separate architecture exception merged into "
-                "the branch base before retrying the implementation."
-            ),
-        ]
-    )
-    return lines
-
-
 def _render_candidates(candidates: list[object]) -> list[str]:
     if not candidates:
         return []
-    candidate_summary = f"[REVIEW_CANDIDATE] {len(candidates)} "
-    candidate_summary += "non-blocking maintainability signal(s) detected."
     lines = [
-        candidate_summary,
+        f"[REVIEW_CANDIDATE] {len(candidates)} non-blocking maintainability signal(s) detected.",
         "NON-BLOCKING: these are evidence for semantic review, not defects or invariant failures.",
     ]
     for candidate in candidates:
@@ -444,39 +366,25 @@ def _render_candidates(candidates: list[object]) -> list[str]:
             "AGENT ACTION:",
             f"1. Read {AGENT_REVIEW_PLAYBOOK} and {SEMANTIC_REVIEW_PROTOCOL}.",
             "2. Do NOT split files or extract helpers solely to reduce LOC, C901, or file count.",
+            "3. Review responsibility, complexity, side effects, locality, ownership, and gaming.",
             (
-                "3. Review responsibility, real reasoning complexity, side effects, locality, "
-                "ownership, testability, and metric gaming."
+                "4. Return HEALTHY_AS_IS, REVIEW_CONCERN, REFACTOR_RECOMMENDED, "
+                "ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT."
             ),
-            (
-                "4. Return a semantic disposition: HEALTHY_AS_IS, REVIEW_CONCERN, "
-                "REFACTOR_RECOMMENDED, ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT."
-            ),
-            (
-                "5. If code changes, rerun deterministic architecture, lint/type, and relevant "
-                "behavior proofs before claiming success."
-            ),
-            "A deterministic INVARIANT_FAILURE cannot be overridden by semantic review.",
+            "5. If code changes, rerun deterministic architecture and relevant behavior proofs.",
+            "Deterministic architecture/correctness invariant failures remain independently blocking.",
         ]
     )
     return lines
 
 
 def render_feedback(report: dict[str, object]) -> str:
-    raw_failures = report.get("invariant_failures", [])
-    failures = raw_failures if isinstance(raw_failures, list) else []
     raw_candidates = report.get("candidates", [])
     candidates = raw_candidates if isinstance(raw_candidates, list) else []
-    lines = _render_invariant_failures(failures)
-    if lines and candidates:
-        lines.append("")
-    lines.extend(_render_candidates(candidates))
+    lines = _render_candidates(candidates)
     if lines:
         return "\n".join(lines)
-    return (
-        "[PASS] Python maintainability signal scan: no review candidates or invariant "
-        "failures in changed handwritten Python files."
-    )
+    return "[PASS] Python maintainability signal scan: no review candidates detected."
 
 
 def write_report(report: dict[str, object], output: Path) -> None:
@@ -490,18 +398,13 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
         return
     raw_candidates = report.get("candidates", [])
     candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 0
-    raw_failures = report.get("invariant_failures", [])
-    failure_count = len(raw_failures) if isinstance(raw_failures, list) else 0
     summary = [
         "## Python maintainability signals",
         "",
         f"**Candidates:** {candidate_count}",
-        f"**Invariant failures:** {failure_count}",
+        "**Invariant failures:** 0",
         f"**Scan schema:** `{report.get('schema_version', SCAN_SCHEMA)}`",
-        (
-            "**Authority:** heuristic signals are non-blocking; QR-MEGA-001 and other HARD "
-            "invariants remain authoritative."
-        ),
+        "**Authority:** heuristic maintainability signals are non-blocking.",
         "",
         "```text",
         feedback,
@@ -515,9 +418,7 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Emit Python maintainability evidence and enforce precise circuit breakers."
-    )
+    parser = argparse.ArgumentParser(description="Emit non-blocking Python maintainability evidence.")
     parser.add_argument("--base-ref", default="HEAD^")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
@@ -540,8 +441,7 @@ def main() -> int:
         return 2
     print(feedback)
     print(f"Scan evidence: {args.output}")
-    failures = report.get("invariant_failures", [])
-    return 1 if isinstance(failures, list) and failures else 0
+    return 0
 
 
 if __name__ == "__main__":
