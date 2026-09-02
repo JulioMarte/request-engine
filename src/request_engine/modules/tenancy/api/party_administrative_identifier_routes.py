@@ -10,13 +10,14 @@ from request_engine.modules.tenancy.api.party_administrative_identifier_models i
     AddPartyAdministrativeIdentifierBody,
     PartyAdministrativeIdentifierView,
 )
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
 from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
 from request_engine.modules.tenancy.api.party_registry_models import RegisteredPartyView
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    AddPartyAdministrativeIdentifierCommand,
-    AddPartyAdministrativeIdentifierHandler,
-    add_party_administrative_identifier,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as admin_identifier_commands,
 )
 from request_engine.modules.tenancy.application.queries.party_administrative_identifiers import (
     PartyAdministrativeIdentifierListQuery,
@@ -35,7 +36,7 @@ _READ_CAPABILITY = "parties.lookup_administrative_identifier"
 def add_party_administrative_identifier_routes(
     router: APIRouter,
     *,
-    add_handler: AddPartyAdministrativeIdentifierHandler,
+    add_handler: admin_identifier_commands.AddPartyAdministrativeIdentifierHandler,
     reader: PartyAdministrativeIdentifierReader,
     authenticated_actor: ActorDependency,
 ) -> None:
@@ -47,13 +48,19 @@ def add_party_administrative_identifier_routes(
     ) -> PartyAdministrativeIdentifierView:
         require_capability(actor, "parties.add_administrative_identifier")
         try:
-            identifier = await add_party_administrative_identifier(
+            identifier = await admin_identifier_commands.add_party_administrative_identifier(
                 add_handler,
-                AddPartyAdministrativeIdentifierCommand(
-                    organization_id=actor.organization_id, principal_id=actor.principal_id,
-                    party_id=party_id, kind=body.kind, issuer=body.issuer, value=body.value,
-                    source_kind=source_kind(actor), idempotency_key=idempotency_key,
-                    platform=actor.platform, technical_principal_id=actor.technical_principal_id,
+                admin_identifier_commands.AddPartyAdministrativeIdentifierCommand(
+                    organization_id=actor.organization_id,
+                    principal_id=actor.principal_id,
+                    party_id=party_id,
+                    kind=body.kind,
+                    issuer=body.issuer,
+                    value=body.value,
+                    source_kind=source_kind(actor),
+                    idempotency_key=idempotency_key,
+                    platform=actor.platform,
+                    technical_principal_id=actor.technical_principal_id,
                 ),
             )
         except ValueError as error:
@@ -78,23 +85,41 @@ def add_party_administrative_identifier_routes(
     ) -> tuple[RegisteredPartyView, ...]:
         require_capability(actor, _READ_CAPABILITY)
         try:
-            parties = await lookup_party_by_administrative_identifier(
-                reader,
-                PartyAdministrativeIdentifierLookupQuery(actor.organization_id, kind, issuer, value),
+            query = PartyAdministrativeIdentifierLookupQuery(
+                actor.organization_id,
+                kind,
+                issuer,
+                value,
             )
+            parties = await lookup_party_by_administrative_identifier(reader, query)
         except ValueError as error:
             raise PartyRegistryInputInvalid(str(error)) from None
         return tuple(RegisteredPartyView.from_contract(party) for party in parties)
 
-    add_capability_route(router, "/{party_id}/administrative-identifiers", add_route,
-                         capability="parties.add_administrative_identifier", methods=["POST"],
-                         response_model=PartyAdministrativeIdentifierView,
-                         status_code=status.HTTP_201_CREATED)
-    add_capability_route(router, "/{party_id}/administrative-identifiers", list_route,
-                         capability=_READ_CAPABILITY, methods=["GET"],
-                         operation_id="parties_list_administrative_identifiers",
-                         response_model=tuple[PartyAdministrativeIdentifierView, ...])
-    add_capability_route(router, "/lookup/administrative-identifier", lookup_route,
-                         capability=_READ_CAPABILITY, methods=["GET"],
-                         operation_id="parties_lookup_administrative_identifier",
-                         response_model=tuple[RegisteredPartyView, ...])
+    add_capability_route(
+        router,
+        "/{party_id}/administrative-identifiers",
+        add_route,
+        capability="parties.add_administrative_identifier",
+        methods=["POST"],
+        response_model=PartyAdministrativeIdentifierView,
+        status_code=status.HTTP_201_CREATED,
+    )
+    add_capability_route(
+        router,
+        "/{party_id}/administrative-identifiers",
+        list_route,
+        capability=_READ_CAPABILITY,
+        methods=["GET"],
+        operation_id="parties_list_administrative_identifiers",
+        response_model=tuple[PartyAdministrativeIdentifierView, ...],
+    )
+    add_capability_route(
+        router,
+        "/lookup/administrative-identifier",
+        lookup_route,
+        capability=_READ_CAPABILITY,
+        methods=["GET"],
+        operation_id="parties_lookup_administrative_identifier",
+        response_model=tuple[RegisteredPartyView, ...],
+    )
