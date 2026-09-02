@@ -56,9 +56,9 @@ def test_f7e_relations_force_rls_and_hide_foreign_tenant_rows(
             "SELECT set_config('request_engine.organization_id',%s,false)",
             (str(first.organization_id),),
         )
-        assert app_conn.execute(
-            "SELECT id FROM request_engine.queue_recall_holds"
-        ).fetchall() == [(first_hold,)]
+        assert app_conn.execute("SELECT id FROM request_engine.queue_recall_holds").fetchall() == [
+            (first_hold,)
+        ]
         assert app_conn.execute(
             "SELECT id FROM request_engine.queue_selection_facts"
         ).fetchall() == [(first_fact,)]
