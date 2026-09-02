@@ -22,6 +22,11 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Confirm an unverified Party contact point as verified.",
     ),
     command_capability(
+        "parties.add_administrative_identifier",
+        CapabilityExposure.PUBLIC,
+        "Add a tenant-owned third-party administrative identifier to a Party.",
+    ),
+    command_capability(
         "parties.rename",
         CapabilityExposure.PUBLIC,
         "Correct the display name of a person Party.",
@@ -49,7 +54,7 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
         "parties.lookup",
         CapabilityExposure.PUBLIC,
-        "Look up Parties by phone, identity document or display-name prefix.",
+        "Look up Parties by phone, identity document, administrative identifier or name.",
     ),
     query_capability(
         "parties.read_revisions",
