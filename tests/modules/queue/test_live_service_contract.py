@@ -55,6 +55,9 @@ def test_customer_queue_projection_excludes_staff_execution_fields() -> None:
         "actual_location_id",
         "service_started_at",
         "service_completed_at",
+        "recall_hold_kind",
+        "recall_hold_release_at",
+        "recall_hold_reason",
     }
     fields = set(QueueStatusView.model_fields)
     assert forbidden.isdisjoint(fields)
