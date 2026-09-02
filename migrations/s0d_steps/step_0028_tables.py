@@ -144,11 +144,16 @@ REVOKE ALL ON request_engine.portable_person_identifiers FROM PUBLIC;
 REVOKE ALL ON request_engine.portable_person_profiles FROM PUBLIC;
 REVOKE ALL ON request_engine.identity_exchange_candidates FROM PUBLIC;
 REVOKE ALL ON request_engine.organization_person_bindings FROM PUBLIC;
-REVOKE ALL ON request_engine.portable_person_identities FROM request_engine_app, request_engine_worker;
-REVOKE ALL ON request_engine.portable_person_identifiers FROM request_engine_app, request_engine_worker;
-REVOKE ALL ON request_engine.portable_person_profiles FROM request_engine_app, request_engine_worker;
-REVOKE ALL ON request_engine.identity_exchange_candidates FROM request_engine_app, request_engine_worker;
-REVOKE ALL ON request_engine.organization_person_bindings FROM request_engine_app, request_engine_worker;
+REVOKE ALL ON request_engine.portable_person_identities
+    FROM request_engine_app, request_engine_worker;
+REVOKE ALL ON request_engine.portable_person_identifiers
+    FROM request_engine_app, request_engine_worker;
+REVOKE ALL ON request_engine.portable_person_profiles
+    FROM request_engine_app, request_engine_worker;
+REVOKE ALL ON request_engine.identity_exchange_candidates
+    FROM request_engine_app, request_engine_worker;
+REVOKE ALL ON request_engine.organization_person_bindings
+    FROM request_engine_app, request_engine_worker;
 GRANT ALL PRIVILEGES ON request_engine.portable_person_identities TO request_engine_admin;
 GRANT ALL PRIVILEGES ON request_engine.portable_person_identifiers TO request_engine_admin;
 GRANT ALL PRIVILEGES ON request_engine.portable_person_profiles TO request_engine_admin;
