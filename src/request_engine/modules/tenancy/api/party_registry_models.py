@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from request_engine.modules.tenancy.contracts.party_kind import PartyKind
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     PartyIdentityDocument,
@@ -28,6 +29,7 @@ class PartyDocumentInputModel(BaseModel):
 
 class RegisterPartyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    party_kind: PartyKind = PartyKind.PERSON
     display_name: str = Field(min_length=1, max_length=512)
     contact_points: tuple[PartyContactPointInputModel, ...] = ()
     documents: tuple[PartyDocumentInputModel, ...] = ()
@@ -92,6 +94,7 @@ class PartyIdentityDocumentView(BaseModel):
 
 class RegisteredPartyView(BaseModel):
     party_id: UUID
+    party_kind: PartyKind
     display_name: str
     active: bool
     contact_points: tuple[PartyContactPointView, ...]
@@ -101,6 +104,7 @@ class RegisteredPartyView(BaseModel):
     def from_contract(cls, party: RegisteredParty) -> "RegisteredPartyView":
         return cls(
             party_id=party.party_id,
+            party_kind=PartyKind(party.party_kind),
             display_name=party.display_name,
             active=party.active,
             contact_points=tuple(
