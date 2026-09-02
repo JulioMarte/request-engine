@@ -19,14 +19,12 @@ from request_engine.modules.tenancy.application.identity_exchange import (
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext, PrincipalKind
-from request_engine.platform.security.execution_context import (
-    bind_actor_context,
-    reset_actor_context,
-)
+from request_engine.platform.security.execution_context import bind_actor_context, reset_actor_context
 
 KEY = b"integration-identity-exchange-key-32-bytes-minimum"
 PROOF = "operator_document_witness"
 CEDULA = "40212345678"
+PASSPORT = "SC1234567"
 
 
 @contextmanager
@@ -65,11 +63,20 @@ def adapters(session_factory: SessionFactory) -> tuple[
     )
 
 
-def publish_command(org: UUID, principal: UUID, party: UUID) -> PublishPortableProfileCommand:
+def publish_command(
+    org: UUID,
+    principal: UUID,
+    party: UUID,
+    *,
+    kind: str = "cedula",
+    authority: str | None = None,
+) -> PublishPortableProfileCommand:
     return PublishPortableProfileCommand(
         organization_id=org,
         principal_id=principal,
         party_id=party,
+        document_kind=kind,
+        document_authority=authority,
         consented_fields=("display_name", "phone", "insurance_member"),
         proof_kind=PROOF,
         idempotency_key=f"publish-{uuid4().hex}",
@@ -78,10 +85,19 @@ def publish_command(org: UUID, principal: UUID, party: UUID) -> PublishPortableP
     )
 
 
-def match_command(org: UUID, principal: UUID, value: str = CEDULA) -> MatchPortableIdentityCommand:
+def match_command(
+    org: UUID,
+    principal: UUID,
+    value: str = CEDULA,
+    *,
+    kind: str = "cedula",
+    authority: str | None = None,
+) -> MatchPortableIdentityCommand:
     return MatchPortableIdentityCommand(
         organization_id=org,
         principal_id=principal,
+        document_kind=kind,
+        document_authority=authority,
         document_value=value,
         proof_kind=PROOF,
         idempotency_key=f"match-{uuid4().hex}",
@@ -94,12 +110,16 @@ def adopt_command(
     candidate: UUID,
     *,
     value: str = CEDULA,
+    kind: str = "cedula",
+    authority: str | None = None,
     key: str | None = None,
 ) -> AdoptPortableIdentityCommand:
     return AdoptPortableIdentityCommand(
         organization_id=org,
         principal_id=principal,
         candidate_ref=candidate,
+        document_kind=kind,
+        document_authority=authority,
         document_value=value,
         consented_fields=("display_name", "phone", "insurance_member"),
         proof_kind=PROOF,
