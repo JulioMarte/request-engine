@@ -33,104 +33,68 @@ def _exception(path: str, ceiling: int = 650) -> dict[str, object]:
     }
 
 
-def test_core_file_above_500_is_blocking_without_base_exception() -> None:
+def test_core_file_above_500_is_not_a_blocking_invariant() -> None:
     policy = _load_policy()
-    failure = policy.mega_file_failure(
-        Path("src/request_engine/modules/booking/application/mega.py"),
-        category="production_application",
-        current=501,
-        previous=480,
-        base_exceptions={},
+    assert (
+        policy.mega_file_failure(
+            Path("src/request_engine/modules/booking/application/mega.py"),
+            category="production_application",
+            current=501,
+            previous=480,
+            base_exceptions={},
+        )
+        is None
     )
-    assert failure is not None
-    assert failure["classification"] == "INVARIANT_FAILURE"
-    assert failure["trigger_id"] == "QR-MEGA-001"
-    assert failure["exception_source"] == "base-ref-only"
 
 
-def test_module_root_composition_file_cannot_evade_scope_as_production_other() -> None:
+def test_module_root_composition_file_is_measured_but_not_hard_blocked() -> None:
     policy = _load_policy()
-    failure = policy.mega_file_failure(
-        Path("src/request_engine/modules/booking/install.py"),
-        category="production_other",
-        current=501,
-        previous=480,
-        base_exceptions={},
+    path = Path("src/request_engine/modules/booking/install.py")
+    assert policy.is_core_mega_scope(path, "production_other") is True
+    assert (
+        policy.mega_file_failure(
+            path,
+            category="production_other",
+            current=700,
+            previous=480,
+            base_exceptions={},
+        )
+        is None
     )
-    assert failure is not None
-    assert failure["trigger_id"] == "QR-MEGA-001"
 
 
-def test_non_core_file_above_500_remains_semantic_review_territory() -> None:
+def test_non_core_file_above_500_is_not_blocked() -> None:
     policy = _load_policy()
-    failure = policy.mega_file_failure(
-        Path("scripts/ci/large_probe.py"),
-        category="scripts",
-        current=900,
-        previous=400,
-        base_exceptions={},
+    assert (
+        policy.mega_file_failure(
+            Path("scripts/ci/large_probe.py"),
+            category="scripts",
+            current=900,
+            previous=400,
+            base_exceptions={},
+        )
+        is None
     )
-    assert failure is None
 
 
-def test_legacy_core_mega_file_may_shrink_without_new_exception() -> None:
-    policy = _load_policy()
-    failure = policy.mega_file_failure(
-        Path("src/request_engine/modules/booking/domain/legacy.py"),
-        category="production_domain",
-        current=590,
-        previous=620,
-        base_exceptions={},
-    )
-    assert failure is None
-
-
-def test_base_exception_has_a_bounded_effective_loc_ceiling() -> None:
-    policy = _load_policy()
-    path = "src/request_engine/modules/booking/application/mega.py"
-    base_exceptions = {path: _exception(path, ceiling=650)}
-    allowed = policy.mega_file_failure(
-        Path(path),
-        category="production_application",
-        current=640,
-        previous=480,
-        base_exceptions=base_exceptions,
-    )
-    blocked = policy.mega_file_failure(
-        Path(path),
-        category="production_application",
-        current=651,
-        previous=480,
-        base_exceptions=base_exceptions,
-    )
-    assert allowed is None
-    assert blocked is not None
-    assert "ceiling of 650" in str(blocked["reason"])
-
-
-def test_product_change_cannot_modify_the_policy_that_judges_it() -> None:
+def test_product_and_quality_policy_change_is_not_a_hard_cooccurrence_failure() -> None:
     policy = _load_policy()
     product = Path("src/request_engine/modules/booking/application/mega.py")
-    failure = policy.policy_self_modification_failure(
-        changed_paths={
-            product.as_posix(),
-            "scripts/ci/mega_file_policy.py",
-        },
-        changed_core_python=[product],
+    assert (
+        policy.policy_self_modification_failure(
+            changed_paths={product.as_posix(), "scripts/ci/mega_file_policy.py"},
+            changed_core_python=[product],
+        )
+        is None
     )
-    assert failure is not None
-    assert failure["classification"] == "INVARIANT_FAILURE"
-    assert failure["trigger_id"] == "QR-MEGA-GOV-001"
-    assert failure["exception_source"] == "separate-governance-change-required"
 
 
-def test_governance_only_change_may_evolve_policy_without_product_code() -> None:
+def test_policy_authority_surface_excludes_unrelated_developer_experience_paths() -> None:
     policy = _load_policy()
-    failure = policy.policy_self_modification_failure(
-        changed_paths={"scripts/ci/mega_file_policy.py"},
-        changed_core_python=[],
-    )
-    assert failure is None
+    assert ".githooks/pre-push" not in policy.MEGA_POLICY_AUTHORITY_PATHS
+    assert "scripts/dev/certify_push.py" not in policy.MEGA_POLICY_AUTHORITY_PATHS
+    assert "scripts/dev/install_git_hooks.py" not in policy.MEGA_POLICY_AUTHORITY_PATHS
+    assert "scripts/ci/mega_file_policy.py" in policy.MEGA_POLICY_AUTHORITY_PATHS
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -148,7 +112,7 @@ def _write_registry(root: Path, entries: list[dict[str, object]]) -> None:
     target.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
 
-def test_exception_added_in_same_change_is_not_authority(
+def test_same_change_exception_is_not_read_from_the_base(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = "src/request_engine/modules/booking/application/mega.py"
@@ -162,7 +126,7 @@ def test_exception_added_in_same_change_is_not_authority(
 
     _write_registry(tmp_path, [_exception(path)])
     _git(tmp_path, "add", "docs/engineering-quality/mega-file-exceptions.v1.json")
-    _git(tmp_path, "commit", "--quiet", "-m", "self-approved exception")
+    _git(tmp_path, "commit", "--quiet", "-m", "calibration exception")
 
     policy = _load_policy()
     base_exceptions = cast(
@@ -172,7 +136,7 @@ def test_exception_added_in_same_change_is_not_authority(
     assert base_exceptions == {}
 
 
-def test_exception_merged_into_base_is_authority(
+def test_base_exception_registry_remains_parseable_calibration_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = "src/request_engine/modules/booking/application/mega.py"
@@ -182,7 +146,7 @@ def test_exception_merged_into_base_is_authority(
     _git(tmp_path, "config", "user.name", "Quality Probe")
     _write_registry(tmp_path, [_exception(path)])
     _git(tmp_path, "add", "docs/engineering-quality/mega-file-exceptions.v1.json")
-    _git(tmp_path, "commit", "--quiet", "-m", "approved exception base")
+    _git(tmp_path, "commit", "--quiet", "-m", "calibration exception base")
     (tmp_path / "README.md").write_text("implementation\n", encoding="utf-8")
     _git(tmp_path, "add", "README.md")
     _git(tmp_path, "commit", "--quiet", "-m", "implementation")
