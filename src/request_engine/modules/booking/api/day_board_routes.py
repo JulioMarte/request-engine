@@ -31,7 +31,7 @@ def create_day_board_router(*, reader: DayBoardReader, actor_resolver: ActorReso
         limit: Annotated[int, Query(ge=1, le=500)] = 500,
     ) -> tuple[DayBoardEntryView, ...]:
         require_capability(actor, "front_desk.day_board.read")
-        _validate_window(window_start, window_end)
+        validate_day_board_window(window_start, window_end)
         entries = await get_day_board(
             reader,
             GetDayBoardQuery(
@@ -55,7 +55,7 @@ def create_day_board_router(*, reader: DayBoardReader, actor_resolver: ActorReso
     return router
 
 
-def _validate_window(window_start: datetime, window_end: datetime) -> None:
+def validate_day_board_window(window_start: datetime, window_end: datetime) -> None:
     detail: str | None = None
     if window_start.utcoffset() is None or window_end.utcoffset() is None:
         detail = "day board timestamps must include a timezone offset"
