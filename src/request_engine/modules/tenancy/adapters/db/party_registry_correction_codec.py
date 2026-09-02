@@ -7,7 +7,10 @@ from sqlalchemy.engine import RowMapping
 
 from request_engine.modules.tenancy.adapters.db.party_registry_codec import party_from_json
 from request_engine.modules.tenancy.adapters.db.party_registry_views import document_by_identity
-from request_engine.modules.tenancy.application.errors import PartyContactPointNotFound, PartyNotFound
+from request_engine.modules.tenancy.application.errors import (
+    PartyContactPointNotFound,
+    PartyNotFound,
+)
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPoint,
     PartyIdentityDocument,
