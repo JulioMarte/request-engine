@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if command -v python >/dev/null 2>&1; then
+  exec python "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+fi
+
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --no-sync python "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+fi
+
+printf '%s\n' \
+  '[LOCAL_PUSH_CERT] FAIL: Python 3 (or uv) is required to run Request Engine pre-push certification.' \
+  'Install the repository development toolchain, then retry git push.' >&2
+exit 1
