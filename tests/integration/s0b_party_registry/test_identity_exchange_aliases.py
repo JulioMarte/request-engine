@@ -60,12 +60,12 @@ async def test_one_portable_person_can_be_found_by_cedula_or_passport(
         )
 
     row = admin_conn.execute(
-        "SELECT b.portable_person_id, count(i.id) "
-        "FROM request_engine.organization_person_bindings b "
-        "JOIN request_engine.portable_person_identifiers i "
-        "ON i.portable_person_id = b.portable_person_id AND i.active "
+        "SELECT b.portable_party_id, count(i.id) "
+        "FROM request_engine.organization_party_bindings b "
+        "JOIN request_engine.portable_party_identifiers i "
+        "ON i.portable_party_id = b.portable_party_id AND i.active "
         "WHERE b.organization_id = %s AND b.party_id = %s AND b.active "
-        "GROUP BY b.portable_person_id",
+        "GROUP BY b.portable_party_id",
         (source.organization_id, party.party_id),
     ).fetchone()
     assert row is not None and int(row[1]) == 2
