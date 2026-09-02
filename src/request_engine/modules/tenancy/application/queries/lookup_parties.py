@@ -10,6 +10,7 @@ from request_engine.modules.tenancy.domain.party_identity import (
     PartyDocumentKind,
     name_search_key,
     normalize_identity_document,
+    normalize_identity_document_authority,
     normalize_party_contact_value,
 )
 
@@ -26,6 +27,7 @@ class PartyLookupQuery:
     mode: PartyLookupMode
     value: str
     document_kind: str = PartyDocumentKind.CEDULA.value
+    document_authority: str | None = None
 
 
 class PartyLookupReader(Protocol):
@@ -36,19 +38,17 @@ async def lookup_parties(
     reader: PartyLookupReader,
     query: PartyLookupQuery,
 ) -> tuple[RegisteredParty, ...]:
-    """Normalize the lookup term, then delegate to the reader.
-
-    The reader receives the already-normalized lookup value: an E.164 phone
-    number, a normalized identity document value, or the accent-folded name
-    search key used as a display-name prefix term.
-    """
-
     if not query.value.strip():
         raise ValueError("lookup value is required")
     if query.mode is PartyLookupMode.PHONE:
         normalized = normalize_party_contact_value("phone", query.value)
         return await reader.lookup(replace(query, value=normalized))
     if query.mode is PartyLookupMode.DOCUMENT:
+        authority = normalize_identity_document_authority(
+            query.document_kind, query.document_authority
+        )
         normalized = normalize_identity_document(query.document_kind, query.value)
-        return await reader.lookup(replace(query, value=normalized))
+        return await reader.lookup(
+            replace(query, value=normalized, document_authority=authority)
+        )
     return await reader.lookup(replace(query, value=name_search_key(query.value)))
