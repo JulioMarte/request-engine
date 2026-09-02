@@ -1,11 +1,14 @@
 from datetime import timedelta
-from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
 from f7e_selection_assertions import call_next_command
-from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
+from f7e_selection_fixture import (
+    F7eSelectionFixture,
+    PgConnection,
+    create_f7e_selection_fixture,
+)
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
     PostgresSameDaySelectionCommands,
 )
@@ -93,7 +96,12 @@ async def test_stale_hold_commands_cannot_replace_or_release_newer_intent(
     assert second_hold.queue_entry_revision == first_hold.queue_entry_revision + 1
 
 
-def _customer_hold(world, entry_id, revision: int, suffix: str) -> RecallHoldCommand:
+def _customer_hold(
+    world: F7eSelectionFixture,
+    entry_id: UUID,
+    revision: int,
+    suffix: str,
+) -> RecallHoldCommand:
     return RecallHoldCommand(
         organization_id=world.organization_id,
         principal_id=world.principal_id,
