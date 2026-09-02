@@ -9,11 +9,14 @@ from request_engine.modules.tenancy.api.party_registry_models import RegisteredP
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 
 ProofKind = Literal["operator_document_witness"]
+DocumentKind = Literal["cedula", "passport"]
 
 
 class PublishPortableProfileBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    document_kind: DocumentKind
+    document_authority: str | None = Field(default=None, min_length=1, max_length=64)
     consented_fields: tuple[str, ...] = Field(min_length=1)
     proof_kind: ProofKind
 
@@ -21,12 +24,14 @@ class PublishPortableProfileBody(BaseModel):
 class PublishPortableProfileView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    published: bool = True
+    published: bool
 
 
 class IdentityMatchBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    document_kind: DocumentKind
+    document_authority: str | None = Field(default=None, min_length=1, max_length=64)
     document_value: str = Field(min_length=1, max_length=64)
     proof_kind: ProofKind
 
@@ -42,6 +47,8 @@ class IdentityAdoptionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate_ref: UUID
+    document_kind: DocumentKind
+    document_authority: str | None = Field(default=None, min_length=1, max_length=64)
     document_value: str = Field(min_length=1, max_length=64)
     consented_fields: tuple[str, ...] = Field(min_length=1)
     proof_kind: ProofKind
