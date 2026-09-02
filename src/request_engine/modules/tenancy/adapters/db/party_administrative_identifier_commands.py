@@ -71,15 +71,17 @@ class PostgresPartyAdministrativeIdentifierCommands:
                 payload = cast(Mapping[str, object], replay["identifier"])
                 return identifier_from_json(payload)
             await lock_party(session, command.organization_id, command.party_id)
-            params = {**_fingerprint(command), "organization_id": command.organization_id,
-                      "principal_id": command.principal_id, **attribution_values(command)}
+            params = _sql_params(command)
             row = (await session.execute(_INSERT, params)).mappings().first()
             if row is None:
                 existing = (await session.execute(_FIND, params)).mappings().first()
                 if existing is None:
                     raise RuntimeError("administrative identifier conflict could not be resolved")
                 identifier = identifier_from_mapping(existing)
-                if identifier.party_id != command.party_id or identifier.normalized_value != command.normalized_value:
+                if (
+                    identifier.party_id != command.party_id
+                    or identifier.normalized_value != command.normalized_value
+                ):
                     raise PartyAdministrativeIdentifierConflict(
                         kind=command.kind,
                         issuer=command.issuer,
@@ -104,7 +106,14 @@ class PostgresPartyAdministrativeIdentifierCommands:
 
 
 def _fingerprint(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
-    return {"party_id": command.party_id, "kind": command.kind, "issuer": command.issuer,
+    return {"party_id": str(command.party_id), "kind": command.kind, "issuer": command.issuer,
             "normalized_issuer": command.normalized_issuer, "value": command.value,
             "normalized_value": command.normalized_value, "source_kind": command.source_kind.value,
             "platform": command.platform}
+
+
+def _sql_params(command: AddPartyAdministrativeIdentifierCommand) -> dict[str, object]:
+    return {"organization_id": command.organization_id, "party_id": command.party_id,
+            "principal_id": command.principal_id, "kind": command.kind, "issuer": command.issuer,
+            "normalized_issuer": command.normalized_issuer, "value": command.value,
+            "normalized_value": command.normalized_value, **attribution_values(command)}
