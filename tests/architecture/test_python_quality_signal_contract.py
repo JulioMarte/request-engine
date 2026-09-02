@@ -32,12 +32,6 @@ render_feedback = cast(Callable[[dict[str, object]], str], signals.render_feedba
 write_github_summary = cast(
     Callable[[dict[str, object], str, Path], None], signals.write_github_summary
 )
-navigation_candidate = cast(
-    Callable[
-        [Path, dict[str, object]], dict[str, object] | None
-    ],
-    signals._navigation_candidate,
-)
 
 
 def _fact(candidate: dict[str, object]) -> dict[str, object]:
@@ -45,12 +39,34 @@ def _fact(candidate: dict[str, object]) -> dict[str, object]:
     return facts[0]
 
 
+def _mega_failure() -> dict[str, object]:
+    return {
+        "classification": "INVARIANT_FAILURE",
+        "trigger_id": "QR-MEGA-001",
+        "scope": {
+            "path": "src/request_engine/modules/booking/application/mega.py",
+            "category": "production_application",
+            "subject": "mega.py",
+        },
+        "facts": [
+            {
+                "kind": "effective_file_loc",
+                "subject": "mega.py",
+                "value": 701,
+                "tool": "python:tokenize",
+                "interpretation": "circuit-breaker-threshold-crossed",
+            }
+        ],
+        "reason": "introduced a new core file above the 500 eLOC circuit breaker",
+    }
+
+
 def test_effective_loc_ignores_blank_and_comment_only_lines() -> None:
     source = "# comment\n\nvalue = 1  # inline\n\n# more\nreturn_value = value\n"
     assert effective_code_lines(source) == 2
 
 
-def test_large_file_is_review_candidate_not_invariant_failure() -> None:
+def test_500_line_file_is_review_candidate_not_invariant_failure() -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
     assert candidate["classification"] == "REVIEW_CANDIDATE"
@@ -124,6 +140,18 @@ def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
         assert required in feedback
 
 
+def test_mega_file_feedback_rejects_author_or_agent_self_justification() -> None:
+    feedback = render_feedback({"invariant_failures": [_mega_failure()], "candidates": []})
+    for required in (
+        "INVARIANT_FAILURE",
+        "QR-MEGA-001",
+        "SELF-JUSTIFICATION IS INVALID",
+        "exception added or modified in this same change",
+        "separate architecture exception merged into the branch base",
+    ):
+        assert required in feedback
+
+
 def test_successful_candidate_is_written_to_github_step_summary(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
@@ -143,6 +171,7 @@ def test_successful_candidate_is_written_to_github_step_summary(
     for required in (
         "Python maintainability signals",
         "Candidates:** 1",
+        "Invariant failures:** 0",
         "quality-scan/v1",
         "heuristic signals are non-blocking",
         "REVIEW_CANDIDATE",
@@ -172,3 +201,25 @@ def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path:
     monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
     assert signals.main() == 0
+
+
+def test_invariant_failure_report_makes_scanner_fail(monkeypatch: Any, tmp_path: Path) -> None:
+    report: dict[str, object] = {
+        "invariant_failures": [_mega_failure()],
+        "candidates": [],
+    }
+
+    def build_report_stub(_base_ref: str) -> dict[str, object]:
+        return report
+
+    def write_report_stub(_report: dict[str, object], _output: Path) -> None:
+        return None
+
+    def write_summary_stub(_report: dict[str, object], _feedback: str, _output: Path) -> None:
+        return None
+
+    monkeypatch.setattr(signals, "build_report", build_report_stub)
+    monkeypatch.setattr(signals, "write_report", write_report_stub)
+    monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
+    assert signals.main() == 1
