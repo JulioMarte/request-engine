@@ -48,6 +48,19 @@ def test_core_file_above_500_is_blocking_without_base_exception() -> None:
     assert failure["exception_source"] == "base-ref-only"
 
 
+def test_module_root_composition_file_cannot_evade_scope_as_production_other() -> None:
+    policy = _load_policy()
+    failure = policy.mega_file_failure(
+        Path("src/request_engine/modules/booking/install.py"),
+        category="production_other",
+        current=501,
+        previous=480,
+        base_exceptions={},
+    )
+    assert failure is not None
+    assert failure["trigger_id"] == "QR-MEGA-001"
+
+
 def test_non_core_file_above_500_remains_semantic_review_territory() -> None:
     policy = _load_policy()
     failure = policy.mega_file_failure(
@@ -93,6 +106,31 @@ def test_base_exception_has_a_bounded_effective_loc_ceiling() -> None:
     assert allowed is None
     assert blocked is not None
     assert "ceiling of 650" in str(blocked["reason"])
+
+
+def test_product_change_cannot_modify_the_policy_that_judges_it() -> None:
+    policy = _load_policy()
+    product = Path("src/request_engine/modules/booking/application/mega.py")
+    failure = policy.policy_self_modification_failure(
+        changed_paths={
+            product.as_posix(),
+            "scripts/ci/mega_file_policy.py",
+        },
+        changed_core_python=[product],
+    )
+    assert failure is not None
+    assert failure["classification"] == "INVARIANT_FAILURE"
+    assert failure["trigger_id"] == "QR-MEGA-GOV-001"
+    assert failure["exception_source"] == "separate-governance-change-required"
+
+
+def test_governance_only_change_may_evolve_policy_without_product_code() -> None:
+    policy = _load_policy()
+    failure = policy.policy_self_modification_failure(
+        changed_paths={"scripts/ci/mega_file_policy.py"},
+        changed_core_python=[],
+    )
+    assert failure is None
 
 
 def _git(cwd: Path, *args: str) -> None:
