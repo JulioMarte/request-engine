@@ -69,11 +69,11 @@ async def test_concurrent_cross_org_publication_converges_to_one_portable_person
 
     await asyncio.gather(publish(first, first_party), publish(second, second_party))
     counts = admin_conn.execute(
-        "SELECT count(DISTINCT b.portable_person_id), count(DISTINCT i.id), "
+        "SELECT count(DISTINCT b.portable_party_id), count(DISTINCT i.id), "
         "count(DISTINCT b.id) "
-        "FROM request_engine.organization_person_bindings b "
-        "JOIN request_engine.portable_person_identifiers i "
-        "ON i.portable_person_id = b.portable_person_id AND i.active "
+        "FROM request_engine.organization_party_bindings b "
+        "JOIN request_engine.portable_party_identifiers i "
+        "ON i.portable_party_id = b.portable_party_id AND i.active "
         "WHERE b.organization_id IN (%s, %s) AND b.active",
         (first.organization_id, second.organization_id),
     ).fetchone()
@@ -96,9 +96,10 @@ async def test_republish_replaces_snapshot_when_consent_is_reduced(
     with operator_actor(world.organization_id, world.operator_principal_id):
         await publish_portable_profile(publisher, command)
     row = admin_conn.execute(
-        "SELECT p.profile FROM request_engine.portable_person_profiles p "
-        "JOIN request_engine.organization_person_bindings b "
-        "ON b.portable_person_id = p.portable_person_id "
+        "SELECT p.profile FROM request_engine.portable_party_profiles p "
+        "JOIN request_engine.organization_party_bindings b "
+        "ON b.portable_party_id = p.portable_party_id "
+        "AND b.organization_id = p.publisher_organization_id "
         "WHERE b.organization_id = %s AND b.party_id = %s AND b.active",
         (world.organization_id, party.party_id),
     ).fetchone()
