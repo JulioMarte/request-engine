@@ -82,9 +82,7 @@ def check(root: Path) -> int:
     if not target.is_file():
         failures.append(f"managed hook missing: {target}")
     if configured != str(hooks):
-        failures.append(
-            f"core.hooksPath is {configured or '<unset>'}; expected {hooks}"
-        )
+        failures.append(f"core.hooksPath is {configured or '<unset>'}; expected {hooks}")
     if source.is_file() and target.is_file() and _digest(source) != _digest(target):
         failures.append("managed pre-push hook differs from the tracked template")
     if target.is_file() and os.name != "nt" and not os.access(target, os.X_OK):
