@@ -57,7 +57,10 @@ def test_pilot_observations_are_real_model_records_without_fabricated_human_labe
     observations = payload["observations"]
     assert isinstance(observations, list) and len(observations) >= 4
     assert all(isinstance(item, dict) and item.get("model_verdict") for item in observations)
-    assert any(isinstance(item, dict) and item.get("human_verdict") is None for item in observations)
+    assert any(
+        isinstance(item, dict) and item.get("human_verdict") is None
+        for item in observations
+    )
     policy = payload["human_label_policy"]
     assert isinstance(policy, dict)
     assert policy.get("no_imputation") is True
@@ -75,4 +78,8 @@ def test_reviewer_fixer_evidence_contains_deterministic_reproof_not_self_certifi
         and item["deterministic_reproof"].get("workflow_run_id") is not None
     ]
     assert proved
-    assert all(item.get("reviewer_role") != item.get("fixer_role") for item in entries if isinstance(item, dict))
+    assert all(
+        item.get("reviewer_role") != item.get("fixer_role")
+        for item in entries
+        if isinstance(item, dict)
+    )
