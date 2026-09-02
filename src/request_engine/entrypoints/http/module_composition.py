@@ -7,6 +7,7 @@ from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAda
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
+from request_engine.modules.booking.api.day_board_http import install_day_board_http
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
 )
@@ -61,6 +62,11 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
+    )
+    install_day_board_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
     )
     queue_api.install_http(
         app,
