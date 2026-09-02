@@ -1,3 +1,6 @@
+from request_engine.platform.security.capability_registry_booking_day_board import (
+    BOOKING_DAY_BOARD_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_booking_operations import (
     BOOKING_OPERATIONAL_CAPABILITIES,
 )
@@ -27,6 +30,7 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     + LIVE_DELIVERY_CAPABILITIES
     + LIVE_CAPACITY_CAPABILITIES
     + BOOKING_OPERATIONAL_CAPABILITIES
+    + BOOKING_DAY_BOARD_CAPABILITIES
     + OPERATIONAL_RECOVERY_CAPABILITIES
     + OPERATIONAL_COPILOT_CAPABILITIES
     + PARTY_REGISTRY_CAPABILITIES
