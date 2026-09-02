@@ -12,7 +12,7 @@ When reviewing a quality candidate, obey this order:
 
 ```text
 ratified repository contracts and HARD invariants
-    -> deterministic facts in the evidence packet
+    -> deterministic facts in the validated evidence packet
     -> this semantic-review procedure
     -> probabilistic design judgment
 ```
@@ -39,12 +39,15 @@ Only instruction sources accepted by repository governance may change reviewer b
 
 When CI emits `REVIEW_CANDIDATE`:
 
-1. Read the evidence packet facts and trigger IDs.
-2. Read the changed diff and the complete affected reasoning unit/file.
-3. Read the owning module README and relevant architecture contract when ownership or a boundary is material.
-4. Inspect direct callers/dependencies/tests when needed to judge locality or responsibility.
-5. Do **not** edit code during this phase.
-6. Do **not** assume that crossing a numeric threshold is a defect.
+1. Open the candidate's validated `.ci/quality-evidence/QR-*.json` packet rather than inferring facts from the short CI summary.
+2. Confirm the packet `candidate_id`, `trigger_ids`, `base_sha`, `head_sha`, `scope`, deterministic `facts`, `architecture_results`, and `context_manifest` before reasoning.
+3. Read the changed diff and the complete affected reasoning unit/file.
+4. Read the owning module README and relevant architecture contract when ownership or a boundary is material.
+5. Inspect direct callers/dependencies/tests when needed to judge locality or responsibility.
+6. Do **not** edit code during this phase.
+7. Do **not** assume that crossing a numeric threshold is a defect.
+
+If the packet SHA does not describe the head being reviewed, stop and return `INSUFFICIENT_CONTEXT`; do not review stale evidence as if it were current.
 
 If the supplied context cannot support a responsible conclusion, return `INSUFFICIENT_CONTEXT` and state exactly what is missing.
 
@@ -67,6 +70,7 @@ For each candidate answer the applicable questions.
 - Would extraction make the important behavior easier to follow?
 - Would it instead create forwarding helpers, wrapper chains, extra files, or context switching?
 - Does each proposed boundary have semantic meaning?
+- For `QR-NAV-001`, is the new forwarding/re-export file a real public/ownership boundary or only an extra hop?
 
 ### Ownership
 
@@ -115,10 +119,13 @@ For `ARCHITECTURE_CONCERN`, stop before changing accepted ownership, dependency 
 A semantic review should contain:
 
 ```text
+Candidate ID:
+Trigger IDs:
 Verdict:
 Confidence: low | medium | high
 Protected property:
 Deterministic facts used:
+Architecture results considered:
 Semantic evidence:
 Metric interpretation:
 Counterargument:
@@ -127,7 +134,9 @@ Do not do:                        # likely metric-gaming repair
 Verification required:
 ```
 
-Do not invent measured facts. If a fact such as McCabe score, file LOC, import edge or test result is not in deterministic evidence, describe it as an observation or request the missing evidence.
+Every measured claim must be traceable to the packet. Do not invent measured facts. If a fact such as McCabe score, file LOC, import edge or test result is not in deterministic evidence, describe it as an observation or request the missing evidence.
+
+A model may add semantic evidence from supplied source/context, but it must not mutate the packet's deterministic facts to support its preferred conclusion.
 
 ## 7. Fix phase — separate from review
 
@@ -144,6 +153,20 @@ Do not create:
 - asynchronous messaging solely to make a dependency graph prettier;
 - suppressions merely to silence a maintainability candidate.
 
+The fixer must record enough before/after information to audit the change:
+
+```text
+candidate/review ID
+before SHA
+review verdict and protected property
+fix commit/SHA or patch identity
+conceptual fix summary
+post-change deterministic facts
+required re-proof results
+```
+
+The fixer never self-certifies those re-proof results. They come from executed deterministic tooling/CI.
+
 ## 8. Re-proof phase — mandatory
 
 After any fix, rerun deterministic proof appropriate to the change:
@@ -157,11 +180,78 @@ relevant unit/module behavior tests
 PostgreSQL/concurrency/security proofs when the changed guarantee requires them
 ```
 
-A lower LOC or C901 value is not success by itself.
+A lower LOC, C901, or file-count value is not success by itself.
 
-Do not report the task as fixed if deterministic proof fails, is skipped, or was not run against the intended head/environment.
+Do not report the task as fixed if deterministic proof fails, is skipped, was run against a stale SHA, or was not run against the intended environment.
 
-## 9. Examples
+The before/after record must distinguish:
+
+```text
+FULL_GREEN
+PARTIAL_GREEN_OTHER_FAILURE
+FAILED_REPROOF
+PENDING_REPROOF
+```
+
+and must name any unrelated remaining failure rather than hiding it behind a successful local metric.
+
+## 9. Calibration recording — mandatory for pilot reviews
+
+For a semantic-review pilot candidate, record the model disposition in the versioned calibration data or generated calibration artifact using:
+
+```text
+case/candidate ID
+source path and reviewed SHA
+trigger context
+model verdict
+model confidence
+model evidence
+counterargument
+recommended action
+```
+
+Human labels have a stricter rule:
+
+```text
+human_verdict may be written only when an actual human reviewer supplied that disposition.
+```
+
+Never infer a human verdict from:
+
+- CI being green;
+- a PR being merged;
+- the repository owner not objecting;
+- a model recommendation being applied;
+- a previous model's wording;
+- an automated test fixture.
+
+If no human reviewed the candidate, record `human_verdict: null`. Agreement metrics must remain `null`/unavailable until genuine paired labels exist. Do not manufacture a denominator.
+
+Synthetic human/model pairs are allowed only in explicitly labeled test fixtures for testing the calibration algorithm; they must never be mixed with real calibration observations.
+
+## 10. Evidence packet and artifact handling
+
+`quality-scan/v1` and `quality-evidence/v1` have different meanings:
+
+```text
+quality-scan/v1
+    repository/change measurements + candidate discovery
+
+quality-evidence/v1
+    one validated, self-contained packet for one semantic-review candidate
+```
+
+Do not call the scan itself an Evidence Packet.
+
+The formal packet schema lives at:
+
+`docs/engineering-quality/schemas/quality-evidence-v1.schema.json`
+
+CI validates generated packets against JSON Schema Draft 2020-12. Schema-validation failure is a tooling/contract failure; do not bypass it because the underlying maintainability candidate is non-blocking.
+
+Successful and failed Python-quality runs persist `.ci/` evidence as GitHub Actions artifacts for longitudinal calibration. A later reviewer should prefer the artifact whose head SHA exactly matches the reviewed revision.
+
+## 11. Examples
 
 ### Large but cohesive
 
@@ -191,6 +281,26 @@ REFACTOR_RECOMMENDED
 Separate the pure pricing policy from effectful transaction orchestration while keeping transaction/outbox behavior local.
 ```
 
+### Navigation candidate
+
+Evidence: a newly added file contains one function whose body is only `return owner_call(...)`, and the owning module file count increased.
+
+Potential valid results include either:
+
+```text
+HEALTHY_AS_IS
+The wrapper is the intentionally published adapter boundary consumed by another layer.
+```
+
+or:
+
+```text
+REFACTOR_RECOMMENDED
+The file adds an extra navigation hop but no ownership, substitution, lifecycle, or policy boundary; keep the call local.
+```
+
+The AST observation alone cannot decide between them.
+
 ### HARD architecture failure
 
 Evidence: `requests -> booking.adapters.db` violates the supported cross-module surface.
@@ -207,13 +317,16 @@ Invalid response:
 HEALTHY_AS_IS because the direct import is simpler.
 ```
 
-## 10. Completion rule
+## 12. Completion rule
 
 The review/fix cycle is complete only when:
 
-- the semantic disposition is explicit;
+- the validated evidence packet matches the reviewed head SHA;
+- the semantic disposition is explicit and recorded;
 - any code change has a conceptual justification rather than a metric-only justification;
 - deterministic HARD invariants still pass;
 - relevant behavior proof passes;
+- before/after evidence names the actual fixer SHA and proof status;
 - no success claim relies on an unexecuted check;
-- `HEALTHY_AS_IS` candidates are left alone rather than mechanically rewritten.
+- `HEALTHY_AS_IS` candidates are left alone rather than mechanically rewritten;
+- model output is never silently copied into `human_verdict`.
