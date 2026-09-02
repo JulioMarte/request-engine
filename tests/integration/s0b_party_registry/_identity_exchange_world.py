@@ -15,7 +15,9 @@ from request_engine.modules.tenancy.application.commands.add_party_document impo
 )
 from request_engine.modules.tenancy.application.commands.register_party import register_party
 from request_engine.modules.tenancy.application.identity_exchange import publish_portable_profile
+from request_engine.modules.tenancy.contracts.party_kind import PartyKind
 from request_engine.modules.tenancy.contracts.party_registry import RegisteredParty
+from request_engine.modules.tenancy.domain.party_subject_identity import party_kind_for_document
 from request_engine.platform.db.session import SessionFactory
 
 from ._identity_exchange_support import adapters, operator_actor, publish_command
@@ -40,17 +42,20 @@ async def published_source(
 ]:
     world = create_party_registry_world(admin_conn, prefix="s0d-source")
     commands = PostgresPartyRegistryCommands(app_session_factory)
+    party_kind = party_kind_for_document(kind)
     party = await register_party(
         commands,
         register_command(
             world.organization_id,
             world.operator_principal_id,
-            display_name="María Gómez",
+            party_kind=party_kind,
+            display_name=("Acme Dominicana SRL" if party_kind is PartyKind.ORGANIZATION else "María Gómez"),
             phone="809-555-1212",
             cedula=value if kind == "cedula" else None,
+            rnc=value if kind == "rnc" else None,
         ),
     )
-    if kind != "cedula":
+    if kind not in {"cedula", "rnc"}:
         await add_party_document(
             commands,
             document_command(
@@ -62,14 +67,15 @@ async def published_source(
                 authority=authority,
             ),
         )
-    await administrative_identifier_command.add_party_administrative_identifier(
-        commands,
-        identifier_command(
-            world.organization_id,
-            world.operator_principal_id,
-            party.party_id,
-        ),
-    )
+    if party_kind is PartyKind.PERSON:
+        await administrative_identifier_command.add_party_administrative_identifier(
+            commands,
+            identifier_command(
+                world.organization_id,
+                world.operator_principal_id,
+                party.party_id,
+            ),
+        )
     publisher, matcher, adopter = adapters(app_session_factory)
     with operator_actor(world.organization_id, world.operator_principal_id):
         await publish_portable_profile(
