@@ -64,6 +64,7 @@ def add_party_registry_routes(
                 RegisterPartyCommand(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
+                    party_kind=body.party_kind,
                     display_name=body.display_name,
                     source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
