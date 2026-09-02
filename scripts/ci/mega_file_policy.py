@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from quality_metrics import git
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from quality_metrics import git  # noqa: E402
 
 MEGA_FILE_HARD_LIMIT = 500
 MEGA_EXCEPTION_REGISTRY = Path("docs/engineering-quality/mega-file-exceptions.v1.json")
@@ -56,9 +61,7 @@ def load_base_exceptions(base_ref: str) -> dict[str, dict[str, object]]:
     if not isinstance(payload, dict):
         raise ValueError("mega-file exception registry must be a JSON object")
     if payload.get("schema_version") != REGISTRY_SCHEMA_VERSION:
-        raise ValueError(
-            f"mega-file exception registry must use {REGISTRY_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"mega-file exception registry must use {REGISTRY_SCHEMA_VERSION}")
     raw_entries = payload.get("exceptions")
     if not isinstance(raw_entries, list):
         raise ValueError("mega-file exception registry must contain an exceptions list")
