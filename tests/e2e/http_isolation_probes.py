@@ -9,6 +9,7 @@ from .tenant_sandbox import TenantSandbox, actor_for
 
 ISOLATION_ACTOR_GRANTS = frozenset(
     {
+        "appointments.day_board",
         "appointments.record_arrival_estimate",
         "parties.register",
         "parties.add_contact_point",
@@ -71,6 +72,16 @@ def foreign_request(
             },
             None,
             404,
+        )
+    if name == "appointments.day_board":
+        return (
+            "/v1/appointments/day-board",
+            {
+                "window_start": "2030-01-07T13:00:00+00:00",
+                "window_end": "2030-01-07T16:00:00+00:00",
+            },
+            None,
+            200,
         )
     if name == "appointments.book":
         return (

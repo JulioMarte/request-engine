@@ -41,7 +41,7 @@ def create_day_board_router(
     reader: ReservationDayBoardReader,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
-    router = APIRouter()
+    router = APIRouter(prefix="/v1")
 
     async def actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
