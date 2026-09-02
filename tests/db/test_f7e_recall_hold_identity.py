@@ -1,12 +1,12 @@
 from uuid import UUID, uuid4
 
 import pytest
-
 from f7e_selection_fixture import (
     F7eSelectionFixture,
     PgConnection,
     create_f7e_selection_fixture,
 )
+
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
     PostgresSameDaySelectionCommands,
 )
@@ -15,7 +15,10 @@ from request_engine.modules.queue.application.commands.release_recall_hold impor
     ReleaseRecallHoldCommand,
 )
 from request_engine.modules.queue.application.same_day_selection_errors import RecallHoldConflict
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind, RecallHoldReason
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
