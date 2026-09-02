@@ -1,22 +1,71 @@
 # Request Engine core Python — agent guardrails
 
-These instructions apply to handwritten Python under `src/request_engine/**` and add stricter rules to the repository-root `AGENTS.md`.
+These instructions apply to handwritten Python under `src/request_engine/**` and add path-specific guidance to the repository-root `AGENTS.md`.
 
-## QR-MEGA-001 — HARD mega-file circuit breaker
+## Maintainability metrics are review signals
 
-For handwritten core product Python classified as `domain`, `application`, `contracts`, `api`, or composition/bootstrap/entrypoint code, a new file, threshold crossing, or growth beyond **500 effective code-bearing lines** is a deterministic `INVARIANT_FAILURE` unless the exact path is covered by a bounded exception that already existed in the branch base. Module-root install/composition files are also protected even when the broad metrics classifier labels them `production_other`.
+File LOC, function LOC, McCabe complexity, file count, and navigation observations are evidence. They are not architecture by themselves.
 
-**Self-justification is not authority.** An author or coding agent MUST NOT waive `QR-MEGA-001` with its own rationale, `HEALTHY_AS_IS` verdict, PR description/comment, source comment, generated review text, or by adding/modifying `docs/engineering-quality/mega-file-exceptions.v1.json` in the same implementation change. The gate intentionally reads exceptions from the base ref, so same-change exception edits are invalid for that change.
+For changed Python:
 
-A source header such as `# @generated`, `# generated file`, or `# DO NOT EDIT` is also **not** exemption authority. Handwritten code does not become generated merely because the author/agent says so in a comment. Generated-code exclusion requires the controlled path/filename conventions recognized by repository tooling; do not move product logic into a generated-looking path or filename to evade quality review.
+```text
+effective file LOC > 120
+    -> QR-FSIZE-001 REVIEW_CANDIDATE
 
-An implementation change MUST NOT edit the mega-file checker, generated-code classification, CI wiring, exception authority, or this scoped agent policy while also changing core product Python. `QR-MEGA-GOV-001` enforces that separation. If the policy itself needs to evolve, make that a separate governance change, merge it into the integration base, then rebuild/rebase the product implementation against the approved policy.
+Ruff C901 McCabe > 10
+    -> QR-CPLX-001 REVIEW_CANDIDATE
+```
 
-When `QR-MEGA-001` fires, the agent has only two valid paths:
+A core file above 500 effective code-bearing lines is an extreme outlier worth careful review, but **500/501 is not a HARD architecture boundary**. The former `QR-MEGA-001 INVARIANT_FAILURE` experiment has been retired during calibration.
 
-1. improve the design through a real responsibility/ownership boundary without mechanically fragmenting the code; or
-2. stop the implementation and request a separate architecture exception with an exact path, bounded eLOC ceiling, rationale, and approval reference. That exception must be reviewed and merged into the integration base before the implementation is rebuilt/rebased and re-proved.
+When a large or complex file is surfaced:
 
-Do not move business policy into adapters, `platform`, root-level technical files, or another less-protected category merely to escape the 500 eLOC scope. Ownership/layer invariants and semantic review still apply even where the category-specific mega threshold differs.
+1. review responsibility and reason to change;
+2. inspect real control-flow/side-effect complexity;
+3. preserve locality when behavior belongs together;
+4. extract only when there is a real ownership/responsibility boundary or a materially clearer reasoning unit;
+5. do not target `499`, a lower C901 score, or a smaller file count as the definition of success.
 
-Do not split a cohesive file into wrappers, one-function helpers, `utils`, `services`, `common`, or other navigation-only fragments merely to get below 500. `QR-NAV-001`, C901 evidence, architecture tests, and semantic review remain counter-pressure against this form of metric gaming.
+`HEALTHY_AS_IS` is valid when the evidence does not justify structural change.
+
+## Do not game the sensors
+
+Agents MUST NOT make metrics green by:
+
+- mechanically splitting a cohesive file;
+- creating forwarding wrappers or one-function helper modules;
+- proliferating interfaces/factories without a real substitution or ownership boundary;
+- moving business logic into `platform`, adapters, `shared`, `common`, or utility buckets;
+- duplicating logic to avoid a dependency or size signal;
+- adding source comments such as `@generated` merely to evade measurement.
+
+Generated-code exclusion uses controlled repository provenance, not author-declared comments.
+
+## Governance changes
+
+Product code and quality-policy files may legitimately change in the same PR. Their co-occurrence is not itself an architecture violation.
+
+However, a change SHOULD NOT weaken a gate in a way that materially changes a verdict from which that same change benefits. When product and policy change together, review that causal relationship explicitly.
+
+Do not weaken deterministic semantic architecture/correctness invariants merely to make a product change pass.
+
+## What remains HARD
+
+A semantic reviewer or LLM cannot waive deterministic invariant failures such as:
+
+- unsupported cross-module internal dependencies;
+- unapproved dependency direction;
+- dependency cycles;
+- inward-layer/framework violations;
+- platform/business dependency violations;
+- composition bypass of supported module surfaces;
+- security, authority, transaction, PostgreSQL, compatibility, and product-contract invariants governed elsewhere.
+
+## Required review path
+
+When deterministic quality tooling emits `REVIEW_CANDIDATE`, follow:
+
+- `docs/engineering-quality/agent-semantic-review-playbook.md`;
+- `docs/engineering-quality/semantic-review-protocol.md`.
+
+If remediation changes code, rerun the deterministic architecture, lint/type, and relevant behavior proofs. A lower metric alone is not proof of improvement.
