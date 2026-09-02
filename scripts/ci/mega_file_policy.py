@@ -28,6 +28,7 @@ MEGA_POLICY_AUTHORITY_PATHS = frozenset(
         "docs/engineering-quality/mega-file-circuit-breaker.md",
         "docs/engineering-quality/mega-file-exceptions.v1.json",
         "scripts/ci/check_python_file_budget.py",
+        "scripts/ci/check_quality_policy_separation.py",
         "scripts/ci/ci_jobs.py",
         "scripts/ci/mega_file_policy.py",
         "scripts/ci/quality_metrics.py",
