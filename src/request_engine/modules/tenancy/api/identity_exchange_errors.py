@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
+    IdentityExchangeAlreadyAdopted,
     IdentityExchangeCandidateInvalid,
     IdentityExchangeError,
     IdentityExchangeOperatorRequired,
@@ -48,12 +49,20 @@ async def _exchange_error(_: Request, exc: Exception) -> JSONResponse:
             str(exc),
             ErrorResolution.FIX_REQUEST,
         )
+    if isinstance(exc, IdentityExchangeAlreadyAdopted):
+        return _response(
+            status.HTTP_409_CONFLICT,
+            "identity_exchange_already_adopted",
+            str(exc),
+            ErrorResolution.CHOOSE_ALTERNATIVE,
+            details={"existing_party_id": str(exc.existing_party_id)},
+        )
     if isinstance(exc, IdentityExchangeCandidateInvalid):
         return _response(
             status.HTTP_409_CONFLICT,
             "identity_exchange_candidate_invalid",
             str(exc),
-            ErrorResolution.RETRY,
+            ErrorResolution.REFRESH_AND_RETRY,
         )
     if isinstance(exc, IdentityExchangeProfileInvalid):
         return _response(
@@ -70,8 +79,15 @@ def _response(
     code: str,
     message: str,
     resolution: ErrorResolution,
+    *,
+    details: dict[str, object] | None = None,
 ) -> JSONResponse:
-    body = ErrorBody(code=code, message=message, resolution=resolution, details={})
+    body = ErrorBody(
+        code=code,
+        message=message,
+        resolution=resolution,
+        details=details or {},
+    )
     return JSONResponse(
         status_code=status_code,
         content=ErrorEnvelope(error=body).model_dump(mode="json"),
