@@ -1,7 +1,6 @@
 import pytest
-from psycopg.errors import CheckViolation
-
 from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
+from psycopg.errors import CheckViolation
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 
