@@ -3,6 +3,8 @@
 from collections.abc import Mapping
 from typing import cast
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from request_engine.modules.tenancy.adapters.db.party_administrative_identifier_codec import (
     identifier_from_json,
     identifier_from_mapping,
@@ -92,12 +94,11 @@ class PostgresPartyAdministrativeIdentifierCommands:
 
     async def _resolve_conflict(
         self,
-        session: object,
+        session: AsyncSession,
         command: AddPartyAdministrativeIdentifierCommand,
         params: dict[str, object],
     ) -> PartyAdministrativeIdentifier:
-        result = await session.execute(FIND_IDENTIFIER, params)  # type: ignore[attr-defined]
-        row = result.mappings().first()
+        row = (await session.execute(FIND_IDENTIFIER, params)).mappings().first()
         if row is None:
             raise RuntimeError("administrative identifier conflict could not be resolved")
         identifier = identifier_from_mapping(row)
