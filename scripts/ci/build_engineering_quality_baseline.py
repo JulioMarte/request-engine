@@ -156,9 +156,7 @@ def build_baseline() -> dict[str, object]:
         int(item["fan_in"]) for item in coupling_modules if isinstance(item.get("fan_in"), int)
     ]
     fan_out_values = [
-        int(item["fan_out"])
-        for item in coupling_modules
-        if isinstance(item.get("fan_out"), int)
+        int(item["fan_out"]) for item in coupling_modules if isinstance(item.get("fan_out"), int)
     ]
     coupling_summary = {
         "edge_count": len(coupling.get("edges", []))
