@@ -83,3 +83,39 @@ async def published_source(
             ),
         )
     return world, party, matcher, adopter
+
+
+async def publish_additional_document(
+    app_session_factory: SessionFactory,
+    world: PartyRegistryWorld,
+    party: RegisteredParty,
+    *,
+    kind: str,
+    value: str,
+    authority: str,
+) -> tuple[PostgresPortableIdentityMatcher, PostgresPortableIdentityAdopter]:
+    commands = PostgresPartyRegistryCommands(app_session_factory)
+    await add_party_document.add_party_document(
+        commands,
+        document_command(
+            world.organization_id,
+            world.operator_principal_id,
+            party.party_id,
+            kind,
+            value,
+            authority=authority,
+        ),
+    )
+    publisher, matcher, adopter = adapters(app_session_factory)
+    with operator_actor(world.organization_id, world.operator_principal_id):
+        await publish_portable_profile(
+            publisher,
+            publish_command(
+                world.organization_id,
+                world.operator_principal_id,
+                party.party_id,
+                kind=kind,
+                authority=authority,
+            ),
+        )
+    return matcher, adopter
