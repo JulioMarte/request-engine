@@ -59,6 +59,12 @@ def adapters(
     )
 
 
+def portable_fields(kind: str) -> tuple[str, ...]:
+    if kind == "rnc":
+        return ("display_name", "phone")
+    return ("display_name", "phone", "insurance_member")
+
+
 def publish_command(
     org: UUID,
     principal: UUID,
@@ -73,7 +79,7 @@ def publish_command(
         party_id=party,
         document_kind=kind,
         document_authority=authority,
-        consented_fields=("display_name", "phone", "insurance_member"),
+        consented_fields=portable_fields(kind),
         proof_kind=PROOF,
         idempotency_key=f"publish-{uuid4().hex}",
         source_kind=PartySourceKind.OPERATOR,
@@ -119,7 +125,7 @@ def adopt_command(
         document_authority=authority,
         document_value=value,
         display_name=display_name,
-        consented_fields=("display_name", "phone", "insurance_member"),
+        consented_fields=portable_fields(kind),
         proof_kind=PROOF,
         idempotency_key=key or f"adopt-{uuid4().hex}",
         source_kind=PartySourceKind.OPERATOR,
