@@ -36,6 +36,18 @@ def test_indeterminate_projection_is_material_without_numeric_shortfall() -> Non
     assert decision.impact_kind is RecoveryImpactKind.INDETERMINATE
 
 
+def test_recall_hold_partial_timeline_is_not_material_without_shortfall() -> None:
+    decision = classify_recovery_assessment(
+        assessment(
+            projection_state=ProjectionState.PARTIAL,
+            projection_reasons=(ProjectionReason.ACTIVE_RECALL_HOLD,),
+        )
+    )
+    assert decision.material is False
+    assert decision.resolve is True
+    assert decision.escalation_level == 0
+
+
 def test_live_only_shortfall_is_delay_and_not_structural_capacity_shortfall() -> None:
     decision = classify_recovery_assessment(
         assessment(live_shortfall_seconds=1800, shortfall_seconds=1800)
