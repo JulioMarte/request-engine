@@ -14,7 +14,9 @@ from request_engine.modules.queue.adapters.db.recall_hold_validation import (
 from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
     lock_waiting_entry_in_queue,
 )
-from request_engine.modules.queue.adapters.db.same_day_selection_persistence import close_current_hold
+from request_engine.modules.queue.adapters.db.same_day_selection_persistence import (
+    close_current_hold,
+)
 from request_engine.modules.queue.adapters.db.same_day_selection_revision import (
     bump_waiting_entry_revision,
 )
