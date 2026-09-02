@@ -8,10 +8,6 @@ if TYPE_CHECKING:
     from .http_isolation_probes import ForeignObjects
     from .tenant_sandbox import TenantSandbox
 
-S5_ISOLATION_OPERATIONS = frozenset(
-    {"queue.operator_select", "queue.recall_hold", "queue.skip"}
-)
-
 
 def foreign_request(
     operation: PublicHttpOperation,
