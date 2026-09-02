@@ -3,7 +3,6 @@ from uuid import UUID
 
 import psycopg
 import pytest
-
 from f7e_selection_fixture import (
     F7eSelectionFixture,
     PgConnection,
