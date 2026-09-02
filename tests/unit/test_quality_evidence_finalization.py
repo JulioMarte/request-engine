@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -22,8 +23,12 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
     monkeypatch: Any,
 ) -> None:
     finalizer = _load(FINALIZER, "quality_finalizer_under_test")
-    monkeypatch.setattr(finalizer, "_tool_version", lambda _command, _fallback: "ruff 0.test")
-    scan = {
+
+    def tool_version_stub(_command: list[str], _fallback: str) -> str:
+        return "ruff 0.test"
+
+    monkeypatch.setattr(finalizer, "_tool_version", tool_version_stub)
+    scan: dict[str, Any] = {
         "schema_version": "quality-scan/v1",
         "base_sha": "a" * 40,
         "head_sha": "b" * 40,
@@ -52,18 +57,22 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
             }
         ],
     }
-    baseline = {
+    baseline: dict[str, Any] = {
         "schema_version": "engineering-quality-baseline/v1",
         "repository_sha": "b" * 40,
     }
-    summary = {
+    summary: dict[str, Any] = {
         "job": "python-quality",
         "steps": [
             {"key": "architecture", "status": "PASS", "log": ".ci/logs/architecture.log"},
             {"key": "pyright", "status": "PASS", "log": ".ci/logs/pyright.log"},
         ],
     }
-    packets = cast(Any, finalizer.build_packets)(scan, baseline, summary)
+    build_packets = cast(
+        Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], list[dict[str, object]]],
+        finalizer.build_packets,
+    )
+    packets = build_packets(scan, baseline, summary)
     assert len(packets) == 1
     packet = packets[0]
     assert packet["schema_version"] == "quality-evidence/v1"
@@ -73,6 +82,10 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
         item["fitness_id"] == "FF-ARCHITECTURE-SUITE-001" and item["status"] == "pass"
         for item in results
     )
+    assert any(
+        item["fitness_id"] == "FF-QUALITY-BASELINE-001" and item["status"] == "pass"
+        for item in results
+    )
     context = cast(list[str], packet["context_manifest"])
     assert "docs/engineering-quality/semantic-review-protocol.md" in context
     assert packet["authority"] == "heuristic-signals-are-non-blocking"
@@ -80,7 +93,10 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
 
 def test_human_model_calibration_never_imputes_missing_human_labels() -> None:
     calibration = _load(CALIBRATION, "quality_calibration_under_test")
-    summarize = cast(Any, calibration.summarize)
+    summarize = cast(
+        Callable[[dict[str, Any]], dict[str, object]],
+        calibration.summarize,
+    )
     summary = summarize(
         {
             "schema_version": "semantic-review-pilot/v1",
