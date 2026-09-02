@@ -55,6 +55,7 @@ class PostgresCustomerLiveCapacityReader:
             has_open_resource_activity=(
                 projection_snapshot.delivery.open_resource_activity is not None
             ),
+            has_active_recall_hold=projection_snapshot.queue.has_active_recall_hold,
         )
         item_key = target.queue_entry_id
         active = projection_snapshot.delivery.active_service
