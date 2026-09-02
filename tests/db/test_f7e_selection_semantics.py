@@ -15,7 +15,11 @@ from request_engine.modules.queue.application.commands.release_recall_hold impor
     ReleaseRecallHoldCommand,
 )
 from request_engine.modules.queue.application.commands.skip_queue_head import SkipQueueHeadCommand
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind, SkipReason
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+    SkipReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -40,7 +44,7 @@ async def test_recall_hold_blocks_fifo_until_explicit_release(
             expected_revision=1,
             kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
             release_at=None,
-            reason="patient stepped outside",
+            reason=RecallHoldReason.STEPPED_AWAY,
             idempotency_key=f"hold-{uuid4().hex}",
         )
     )
