@@ -135,6 +135,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/s0b-party-registry.xml"
 
+# F7 operator day-board composition is current product truth once merged. Run
+# its owner-backed PostgreSQL journey explicitly so ETA/check-in composition and
+# runtime tenant isolation cannot regress while the HTTP surface remains green.
+uv run pytest \
+  tests/integration/v3_reservation_lifecycle/test_f7_day_board.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/f7-day-board.xml"
+
 # Production-like HTTP/runtime journeys are current-product evidence. They run
 # against current Alembic head with real app/worker runtime roles and PostgreSQL;
 # they must not disappear merely because V3 historical execution was separated.
