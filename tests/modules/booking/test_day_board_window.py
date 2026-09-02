@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -16,14 +16,8 @@ def test_day_board_accepts_bounded_timezone_aware_window() -> None:
     ("start", "end"),
     [
         (datetime(2030, 1, 7, 4), datetime(2030, 1, 8, 4)),
-        (
-            datetime(2030, 1, 8, tzinfo=timezone.utc),
-            datetime(2030, 1, 7, tzinfo=timezone.utc),
-        ),
-        (
-            datetime(2030, 1, 7, tzinfo=timezone.utc),
-            datetime(2030, 1, 9, tzinfo=timezone.utc),
-        ),
+        (datetime(2030, 1, 8, tzinfo=UTC), datetime(2030, 1, 7, tzinfo=UTC)),
+        (datetime(2030, 1, 7, tzinfo=UTC), datetime(2030, 1, 9, tzinfo=UTC)),
     ],
 )
 def test_day_board_rejects_ambiguous_or_unbounded_windows(

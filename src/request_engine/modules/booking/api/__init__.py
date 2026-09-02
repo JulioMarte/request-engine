@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 
 from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
+from request_engine.modules.booking.adapters.db import attendance_commands
 from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
     PostgresAppointmentAvailabilityReader,
 )
 from request_engine.modules.booking.adapters.db.arrival_estimate_commands import (
     PostgresArrivalEstimateCommands,
 )
-from request_engine.modules.booking.adapters.db.attendance_commands import PostgresAttendanceCommands
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeBookingCommitmentCommands,
     CapacitySafeReservationCommands,
@@ -31,6 +31,7 @@ from request_engine.modules.booking.adapters.discovery_error_boundary import (
 from request_engine.modules.booking.adapters.discovery_handoff_reader import (
     PostgresDiscoveryHandoffReader,
 )
+from request_engine.modules.booking.api.day_board_install import install_day_board_http
 from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.api.operational_assignment_router import (
     create_operational_assignment_router,
@@ -73,15 +74,13 @@ def install_http(
             book_handler=DiscoverySafeBookAppointmentHandler(reservations),
             cancel_handler=reservations,
             reschedule_handler=commitments,
-            attendance_handler=PostgresAttendanceCommands(session_factory),
+            attendance_handler=attendance_commands.PostgresAttendanceCommands(session_factory),
             arrival_estimate_handler=PostgresArrivalEstimateCommands(session_factory),
             reservation_reader=PostgresReservationReader(session_factory),
             authority_reader=party_authority_reader,
             actor_resolver=actor_resolver,
         )
     )
-    from request_engine.modules.booking.api.day_board_install import install_day_board_http
-
     install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
 
 
