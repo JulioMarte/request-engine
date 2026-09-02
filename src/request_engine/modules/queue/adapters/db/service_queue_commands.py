@@ -183,14 +183,25 @@ class PostgresServiceQueueCommands:
                 await session.execute(
                     text(
                         """
-                        SELECT id
-                        FROM request_engine.queue_entries
-                        WHERE organization_id = :organization_id
-                          AND service_queue_id = :queue_id
-                          AND status = 'waiting'
-                        ORDER BY admitted_at, id
+                        SELECT qe.id
+                        FROM request_engine.queue_entries qe
+                        WHERE qe.organization_id = :organization_id
+                          AND qe.service_queue_id = :queue_id
+                          AND qe.status = 'waiting'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM request_engine.queue_recall_holds h
+                              WHERE h.organization_id = qe.organization_id
+                                AND h.queue_entry_id = qe.id
+                                AND h.released_at IS NULL
+                                AND (
+                                    h.hold_kind = 'until_customer_initiates'
+                                    OR h.release_at > clock_timestamp()
+                                )
+                          )
+                        ORDER BY qe.admitted_at, qe.id
                         LIMIT 1
-                        FOR UPDATE
+                        FOR UPDATE OF qe
                         """
                     ),
                     {
