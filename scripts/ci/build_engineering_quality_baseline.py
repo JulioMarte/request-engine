@@ -128,9 +128,7 @@ def build_baseline() -> dict[str, object]:
     for record in mccabe:
         record["category"] = categories_by_path.get(str(record["path"]), "python_other")
 
-    by_category: dict[str, dict[str, list[int]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
+    by_category: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for record in files:
         value = record.get("value")
         if isinstance(value, int):
