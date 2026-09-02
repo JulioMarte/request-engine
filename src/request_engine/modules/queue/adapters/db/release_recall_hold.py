@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
 from request_engine.modules.queue.adapters.db.live_queue_recording import record_queue_fact
@@ -7,7 +8,7 @@ from request_engine.modules.queue.adapters.db.recall_hold_persistence import (
     recall_hold_from_row,
     recall_hold_to_json,
 )
-from request_engine.modules.queue.adapters.db.recall_hold_read import lock_active_recall_hold
+from request_engine.modules.queue.adapters.db.recall_hold_read import lock_current_recall_hold
 from request_engine.modules.queue.adapters.db.release_recall_hold_persistence import release_hold_by_id
 from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
     lock_waiting_entry_in_queue,
@@ -19,6 +20,7 @@ from request_engine.modules.queue.application.commands.release_recall_hold impor
     ReleaseRecallHoldCommand,
 )
 from request_engine.modules.queue.application.errors import QueueEntryRevisionConflict
+from request_engine.modules.queue.application.same_day_selection_errors import RecallHoldConflict
 from request_engine.modules.queue.contracts.same_day_selection import RecallHold
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -69,15 +71,17 @@ async def release_recall_hold(
                 command.expected_revision,
                 actual_revision,
             )
-        active = await lock_active_recall_hold(
+        active = await lock_current_recall_hold(
             session,
             command.organization_id,
             command.queue_entry_id,
-            command.hold_id,
         )
         if active is None:
             await complete_idempotency(session, idem, {"hold": None})
             return None
+        active_hold_id = cast(UUID, active["id"])
+        if active_hold_id != command.hold_id:
+            raise RecallHoldConflict(command.queue_entry_id, command.hold_id, active_hold_id)
 
         released = await release_hold_by_id(
             session,
