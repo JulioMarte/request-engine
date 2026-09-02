@@ -26,9 +26,7 @@ async def test_wrong_document_does_not_consume_candidate(
 ) -> None:
     cedula = "40200000002"
     _, _, matcher, adopter = await published_source(
-        admin_conn,
-        app_session_factory,
-        cedula=cedula,
+        admin_conn, app_session_factory, value=cedula
     )
     destination = create_party_registry_world(admin_conn, prefix="s0d-private")
 
@@ -61,12 +59,41 @@ async def test_wrong_document_does_not_consume_candidate(
 
 
 @pytest.mark.asyncio
-async def test_global_index_stores_fingerprint_not_raw_cedula(
+async def test_same_passport_number_from_different_country_does_not_match(
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> None:
+    passport = "SC7654321"
+    _, _, matcher, _ = await published_source(
+        admin_conn,
+        app_session_factory,
+        value=passport,
+        kind="passport",
+        authority="DO",
+    )
+    destination = create_party_registry_world(admin_conn, prefix="s0d-passport-isolation")
+    with operator_actor(destination.organization_id, destination.operator_principal_id):
+        result = await match_portable_identity(
+            matcher,
+            match_command(
+                destination.organization_id,
+                destination.operator_principal_id,
+                passport,
+                kind="passport",
+                authority="US",
+            ),
+        )
+    assert not result.matched
+    assert result.candidate_ref is None
+
+
+@pytest.mark.asyncio
+async def test_global_index_stores_fingerprint_not_raw_document(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
 ) -> None:
     cedula = "40200000003"
-    await published_source(admin_conn, app_session_factory, cedula=cedula)
+    await published_source(admin_conn, app_session_factory, value=cedula)
     row = admin_conn.execute(
         "SELECT fingerprint FROM request_engine.portable_person_identifiers "
         "WHERE kind = 'cedula' ORDER BY created_at DESC LIMIT 1"
@@ -90,6 +117,4 @@ async def test_runtime_app_cannot_select_global_portable_profiles(
                 app_session_factory,
                 destination.organization_id,
             ) as session:
-                await session.execute(
-                    text("SELECT * FROM request_engine.portable_person_profiles")
-                )
+                await session.execute(text("SELECT * FROM request_engine.portable_person_profiles"))
