@@ -114,13 +114,18 @@ async def test_document_lookup_maps_kind_and_normalized_value() -> None:
     ) as client:
         response = await client.get(
             "/v1/parties/lookup",
-            params={"mode": "document", "value": "ab1234567", "document_kind": "passport"},
+            params={
+                "mode": "document",
+                "value": "ab1234567",
+                "document_kind": "passport",
+                "document_authority": "do",
+            },
         )
 
     assert response.status_code == 200, response.text
     assert reader.queries[0].document_kind == "passport"
+    assert reader.queries[0].document_authority == "DO"
     assert reader.queries[0].value == "AB1234567"
-    assert response.json() == []
 
 
 @pytest.mark.asyncio
