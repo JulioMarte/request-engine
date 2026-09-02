@@ -8,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.queue.adapters.db.same_day_selection_locking import (
+    lock_eligible_fifo_entries,
+)
 from request_engine.modules.queue.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.queue.adapters.db.tenant_references import (
     require_active_subject_party,
@@ -178,44 +181,17 @@ class PostgresServiceQueueCommands:
                 return _queue_entry_from_json(cast(dict[str, object], replay_entry))
 
             await _lock_active_queue(session, command.organization_id, command.queue_id)
-
-            next_row = (
-                await session.execute(
-                    text(
-                        """
-                        SELECT qe.id
-                        FROM request_engine.queue_entries qe
-                        WHERE qe.organization_id = :organization_id
-                          AND qe.service_queue_id = :queue_id
-                          AND qe.status = 'waiting'
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM request_engine.queue_recall_holds h
-                              WHERE h.organization_id = qe.organization_id
-                                AND h.queue_entry_id = qe.id
-                                AND h.released_at IS NULL
-                                AND (
-                                    h.hold_kind = 'until_customer_initiates'
-                                    OR h.release_at > clock_timestamp()
-                                )
-                          )
-                        ORDER BY qe.admitted_at, qe.id
-                        LIMIT 1
-                        FOR UPDATE OF qe
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "queue_id": command.queue_id,
-                    },
-                )
-            ).first()
-
-            if next_row is None:
+            eligible = await lock_eligible_fifo_entries(
+                session,
+                command.organization_id,
+                command.queue_id,
+                limit=1,
+            )
+            if not eligible:
                 await _complete_idempotency(session, idempotency_id, {"entry": None})
                 return None
 
-            entry_id = cast(UUID, next_row[0])
+            entry_id = eligible[0]
             row = (
                 (
                     await session.execute(
