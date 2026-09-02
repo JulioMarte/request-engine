@@ -50,6 +50,8 @@ def add_portable_profile_routes(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
                     party_id=party_id,
+                    document_kind=body.document_kind,
+                    document_authority=body.document_authority,
                     consented_fields=body.consented_fields,
                     proof_kind=body.proof_kind,
                     idempotency_key=idempotency_key,
@@ -60,7 +62,7 @@ def add_portable_profile_routes(
             )
         except ValueError as error:
             raise IdentityExchangeInputInvalid(str(error)) from None
-        return PublishPortableProfileView()
+        return PublishPortableProfileView(published=True)
 
     add_capability_route(
         router,
