@@ -12,7 +12,10 @@ SRC_ROOT = ROOT / "src"
 
 
 def _load_policy_test() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("dependency_policy_guardrail_under_test", POLICY_TEST)
+    spec = importlib.util.spec_from_file_location(
+        "dependency_policy_guardrail_under_test",
+        POLICY_TEST,
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
