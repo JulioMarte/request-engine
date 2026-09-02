@@ -11,7 +11,7 @@ CREATE FUNCTION request_engine.publish_portable_person_v1(
     p_fingerprint text,
     p_consent_fields text[],
     p_principal_id uuid
-) RETURNS uuid
+) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, request_engine
@@ -108,7 +108,7 @@ BEGIN
             p_consent_fields, p_principal_id
         );
     END IF;
-    RETURN v_person;
+    RETURN true;
 END
 $function$;
 
@@ -159,7 +159,7 @@ CREATE FUNCTION request_engine.consume_identity_exchange_candidate_v1(
     p_candidate_id uuid,
     p_fingerprint text,
     p_principal_id uuid
-) RETURNS TABLE (portable_person_id uuid, profile jsonb)
+) RETURNS TABLE (profile jsonb)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, request_engine
@@ -185,7 +185,7 @@ BEGIN
         RETURN;
     END IF;
     RETURN QUERY
-    SELECT p.portable_person_id, p.profile
+    SELECT p.profile
     FROM request_engine.portable_person_profiles p
     JOIN request_engine.portable_person_identities i
       ON i.id = p.portable_person_id AND i.active
