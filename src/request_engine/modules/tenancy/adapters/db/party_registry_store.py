@@ -14,7 +14,7 @@ _INSERT_PARTY_SQL = text(
     INSERT INTO request_engine.parties
         (organization_id, party_kind, display_name, created_by_principal_id, source_kind,
          platform, relay_principal_id)
-    VALUES (:organization_id, 'person', :display_name, :principal_id, :source_kind,
+    VALUES (:organization_id, :party_kind, :display_name, :principal_id, :source_kind,
             :platform, :relay_principal_id)
     RETURNING id
     """
@@ -59,6 +59,7 @@ async def insert_party(
     session: AsyncSession,
     *,
     organization_id: UUID,
+    party_kind: str,
     display_name: str,
     principal_id: UUID,
     attribution: dict[str, object],
@@ -67,6 +68,7 @@ async def insert_party(
         _INSERT_PARTY_SQL,
         {
             "organization_id": organization_id,
+            "party_kind": party_kind,
             "display_name": display_name,
             "principal_id": principal_id,
             **attribution,
