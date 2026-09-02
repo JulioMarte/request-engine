@@ -1,9 +1,10 @@
-"""`parties.register` application command: create a person Party with contacts/documents."""
+"""`parties.register` application command for person or organization Parties."""
 
 from dataclasses import dataclass, replace
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.modules.tenancy.contracts.party_kind import PartyKind
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
     PartyDocumentInput,
@@ -15,6 +16,9 @@ from request_engine.modules.tenancy.domain.party_identity import (
     normalize_identity_document_authority,
     normalize_party_contact_value,
 )
+from request_engine.modules.tenancy.domain.party_subject_identity import (
+    require_document_party_kind,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +28,7 @@ class RegisterPartyCommand:
     display_name: str
     source_kind: PartySourceKind
     idempotency_key: str
+    party_kind: PartyKind = PartyKind.PERSON
     contact_points: tuple[PartyContactPointInput, ...] = ()
     documents: tuple[PartyDocumentInput, ...] = ()
     platform: str | None = None
@@ -44,6 +49,10 @@ async def register_party(
         raise ValueError("display_name is required")
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
+    try:
+        party_kind = PartyKind(command.party_kind)
+    except ValueError:
+        raise ValueError(f"unsupported party_kind: {command.party_kind}") from None
     contact_points: list[PartyContactPointInput] = []
     seen_contacts: set[tuple[str, str]] = set()
     for contact in command.contact_points:
@@ -63,6 +72,7 @@ async def register_party(
     seen_documents: set[tuple[str, str]] = set()
     for document in command.documents:
         try:
+            require_document_party_kind(party_kind, document.kind)
             authority = normalize_identity_document_authority(document.kind, document.authority)
             normalized = normalize_identity_document(document.kind, document.value)
         except ValueError as error:
@@ -76,5 +86,10 @@ async def register_party(
         seen_documents.add(key)
         documents.append(PartyDocumentInput(document.kind, normalized, authority))
     return await handler.register_party(
-        replace(command, contact_points=tuple(contact_points), documents=tuple(documents))
+        replace(
+            command,
+            party_kind=party_kind,
+            contact_points=tuple(contact_points),
+            documents=tuple(documents),
+        )
     )
