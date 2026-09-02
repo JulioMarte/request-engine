@@ -12,6 +12,7 @@ class OperatorSelectCommand:
     principal_id: UUID
     queue_id: UUID
     queue_entry_id: UUID
+    expected_revision: int
     reason: OperatorSelectReason
     idempotency_key: str
 
