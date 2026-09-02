@@ -28,6 +28,7 @@ class RecallHold:
     id: UUID
     queue_id: UUID
     queue_entry_id: UUID
+    queue_entry_revision: int
     kind: RecallHoldKind
     release_at: datetime | None
     reason: str | None
