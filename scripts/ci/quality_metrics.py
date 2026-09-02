@@ -154,9 +154,7 @@ def _function_is_one_call_forwarder(node: ast.FunctionDef | ast.AsyncFunctionDef
 def navigation_observation(path: Path, source: str) -> dict[str, object]:
     tree = ast.parse(source, filename=path.as_posix())
     body = [node for node in tree.body if not _is_docstring(node)]
-    functions = [
-        node for node in body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    ]
+    functions = [node for node in body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)]
     forwarding = [node for node in functions if _function_is_one_call_forwarder(node)]
     reexport_allowed = (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign)
     reexport_only = bool(body) and all(isinstance(node, reexport_allowed) for node in body)
