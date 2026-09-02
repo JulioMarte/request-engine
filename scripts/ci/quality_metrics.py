@@ -4,6 +4,7 @@ import ast
 import io
 import math
 import subprocess
+import tarfile
 import tokenize
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ IGNORED_TOKEN_TYPES = {
     tokenize.INDENT,
     tokenize.DEDENT,
 }
+BUSINESS_MODULE_ROOT = ("src", "request_engine", "modules")
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -106,6 +108,126 @@ def classify_path(path: Path) -> str | None:
     if path.suffix == ".py":
         return "python_other"
     return None
+
+
+def business_module_for_path(path: Path) -> str | None:
+    parts = path.parts
+    if len(parts) >= 4 and parts[:3] == BUSINESS_MODULE_ROOT:
+        return parts[3]
+    return None
+
+
+def _resolved_import_from(path: Path, node: ast.ImportFrom) -> str | None:
+    if node.level == 0:
+        return node.module
+    parts = list(path.parts)
+    if not parts or parts[0] != "src":
+        return None
+    package = parts[1:-1]
+    climb = node.level - 1
+    if climb > len(package):
+        return None
+    resolved = package[: len(package) - climb]
+    if node.module:
+        resolved.extend(node.module.split("."))
+    return ".".join(resolved)
+
+
+def _business_targets_from_import(path: Path, node: ast.Import | ast.ImportFrom) -> set[str]:
+    targets: set[str] = set()
+    if isinstance(node, ast.Import):
+        names = [alias.name for alias in node.names]
+    else:
+        resolved = _resolved_import_from(path, node)
+        names = [resolved] if resolved else []
+        if resolved == "request_engine.modules":
+            names.extend(f"{resolved}.{alias.name}" for alias in node.names)
+    for name in names:
+        if not name:
+            continue
+        parts = name.split(".")
+        if len(parts) >= 3 and parts[:2] == ["request_engine", "modules"]:
+            targets.add(parts[2])
+    return targets
+
+
+def module_import_edges_from_source(path: Path, source: str) -> set[tuple[str, str]]:
+    source_module = business_module_for_path(path)
+    if source_module is None:
+        return set()
+    tree = ast.parse(source, filename=path.as_posix())
+    edges: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Import | ast.ImportFrom):
+            continue
+        for target in _business_targets_from_import(path, node):
+            if target != source_module:
+                edges.add((source_module, target))
+    return edges
+
+
+def _current_business_module_sources() -> list[tuple[Path, str]]:
+    sources: list[tuple[Path, str]] = []
+    for path in tracked_files():
+        if business_module_for_path(path) is None or path.suffix != ".py" or not path.is_file():
+            continue
+        source = path.read_text(encoding="utf-8")
+        if generated_reason(path, source) is None:
+            sources.append((path, source))
+    return sources
+
+
+def _business_module_sources_at_ref(ref: str) -> list[tuple[Path, str]]:
+    result = subprocess.run(
+        ["git", "archive", "--format=tar", ref, "/".join(BUSINESS_MODULE_ROOT)],
+        check=True,
+        capture_output=True,
+    )
+    sources: list[tuple[Path, str]] = []
+    with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not member.name.endswith(".py"):
+                continue
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                continue
+            path = Path(member.name)
+            source = extracted.read().decode("utf-8")
+            if generated_reason(path, source) is None:
+                sources.append((path, source))
+    return sources
+
+
+def business_module_dependency_snapshot(ref: str | None = None) -> dict[str, object]:
+    sources = _current_business_module_sources() if ref is None else _business_module_sources_at_ref(ref)
+    modules = {module for path, _ in sources if (module := business_module_for_path(path)) is not None}
+    edges: set[tuple[str, str]] = set()
+    for path, source in sources:
+        edges.update(module_import_edges_from_source(path, source))
+    for source, target in edges:
+        modules.add(source)
+        modules.add(target)
+
+    module_records: list[dict[str, object]] = []
+    for module in sorted(modules):
+        outbound = sorted(target for source, target in edges if source == module)
+        inbound = sorted(source for source, target in edges if target == module)
+        module_records.append(
+            {
+                "module": module,
+                "fan_in": len(inbound),
+                "fan_out": len(outbound),
+                "inbound_modules": inbound,
+                "outbound_modules": outbound,
+            }
+        )
+    return {
+        "modules": module_records,
+        "edges": [
+            {"source": source, "target": target}
+            for source, target in sorted(edges)
+        ],
+    }
 
 
 def function_records(path: Path, source: str) -> list[dict[str, object]]:
