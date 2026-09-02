@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 
+import request_engine.modules.booking.api.live_capacity as booking_live_capacity
+import request_engine.modules.booking.api.operational_schedule as booking_operational_schedule
+import request_engine.modules.booking.api.recovery_schedule as booking_recovery_schedule
+import request_engine.modules.catalog.api.recovery_schedule as catalog_recovery_schedule
 import request_engine.modules.operational_copilot.api as copilot_api
 import request_engine.modules.queue.api as queue_api
 import request_engine.modules.tenancy.api as tenancy_api
@@ -7,21 +11,9 @@ from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAda
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
-from request_engine.modules.booking.api.live_capacity import (
-    build_live_capacity_source as build_booking_live_capacity_source,
-)
-from request_engine.modules.booking.api.operational_schedule import (
-    build_operational_assignment_schedule_port,
-)
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
-from request_engine.modules.booking.api.recovery_schedule import (
-    build_recovery_assignment_schedule_port,
-)
 from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
-from request_engine.modules.catalog.api.recovery_schedule import (
-    build_recovery_location_schedule_port,
-)
 from request_engine.modules.communications.api import install_http as install_communications_http
 from request_engine.modules.communications.api.recovery import build_recovery_communication_port
 from request_engine.modules.delivery.api import install_http as install_delivery_http
@@ -75,7 +67,7 @@ def install_business_modules(
         slot_offer_ports=slot_offer_ports,
     )
     install_delivery_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    booking_capacity = build_booking_live_capacity_source()
+    booking_capacity = booking_live_capacity.build_live_capacity_source()
     queue_capacity = build_queue_live_capacity_source()
     delivery_capacity = build_delivery_live_capacity_source()
     install_live_capacity_http(
@@ -104,9 +96,11 @@ def install_business_modules(
         communications=build_recovery_communication_port(session_factory),
         intake=QueueRecoveryIntakeAdapter(queue_runtime.intake),
         location_schedule=CatalogRecoveryLocationAdapter(
-            build_recovery_location_schedule_port(session_factory)
+            catalog_recovery_schedule.build_recovery_location_schedule_port(session_factory)
         ),
-        assignment_schedule=build_recovery_assignment_schedule_port(session_factory),
+        assignment_schedule=booking_recovery_schedule.build_recovery_assignment_schedule_port(
+            session_factory
+        ),
     )
     copilot_api.install_http(
         app,
@@ -117,7 +111,9 @@ def install_business_modules(
         recovery_executor=recovery.service,
         intake_executor=recovery.workflow,
         extend_day_executor=recovery.workflow,
-        operational_schedule=build_operational_assignment_schedule_port(session_factory),
+        operational_schedule=booking_operational_schedule.build_operational_assignment_schedule_port(
+            session_factory
+        ),
         discovery_executor=discovery_runtime,
         discovery_reader=discovery_runtime,
         booking_reader=build_copilot_booking_reader(session_factory),
