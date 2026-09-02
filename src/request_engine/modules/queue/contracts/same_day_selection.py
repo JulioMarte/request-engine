@@ -17,6 +17,12 @@ class RecallHoldKind(StrEnum):
     UNTIL_CUSTOMER_INITIATES = "until_customer_initiates"
 
 
+class RecallHoldReason(StrEnum):
+    STEPPED_AWAY = "stepped_away"
+    TEMPORARILY_UNAVAILABLE = "temporarily_unavailable"
+    OPERATOR_OVERRIDE = "operator_override"
+
+
 class SkipReason(StrEnum):
     TEMPORARILY_UNAVAILABLE = "temporarily_unavailable"
     NO_RESPONSE = "no_response"
@@ -31,7 +37,7 @@ class RecallHold:
     queue_entry_revision: int
     kind: RecallHoldKind
     release_at: datetime | None
-    reason: str | None
+    reason: RecallHoldReason | None
     created_at: datetime
     released_at: datetime | None
 
