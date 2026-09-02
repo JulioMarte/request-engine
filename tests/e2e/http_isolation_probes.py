@@ -11,6 +11,10 @@ ISOLATION_ACTOR_GRANTS = frozenset(
     {
         "appointments.record_arrival_estimate",
         "front_desk.day_board.read",
+        "queue.operator_select",
+        "queue.recall_hold",
+        "queue.release_recall_hold",
+        "queue.skip",
         "parties.register",
         "parties.add_contact_point",
         "parties.confirm_contact_point",
