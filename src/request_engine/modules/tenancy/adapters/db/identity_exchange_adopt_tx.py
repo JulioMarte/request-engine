@@ -15,9 +15,7 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
     BIND_CANDIDATE,
     CONSUME_CANDIDATE,
 )
-from request_engine.modules.tenancy.adapters.db.party_registration_write import (
-    write_registered_party,
-)
+from request_engine.modules.tenancy.adapters.db.party_registration_write import write_registered_party
 from request_engine.modules.tenancy.application.commands.register_party import RegisterPartyCommand
 from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
@@ -35,11 +33,16 @@ async def write_identity_adoption(
     fingerprint: str,
     idempotency_id: UUID,
 ) -> IdentityAdoptionResult:
+    authority = command.document_authority
+    if authority is None:
+        raise IdentityExchangeCandidateInvalid("scoped document authority is required")
     row = (
         await session.execute(
             CONSUME_CANDIDATE,
             {
                 "candidate_ref": command.candidate_ref,
+                "kind": command.document_kind,
+                "authority": authority,
                 "fingerprint": fingerprint,
                 "principal_id": command.principal_id,
             },
@@ -60,7 +63,9 @@ async def write_identity_adoption(
         source_kind=command.source_kind,
         idempotency_key=command.idempotency_key,
         contact_points=contacts,
-        documents=(PartyDocumentInput("cedula", command.document_value),),
+        documents=(
+            PartyDocumentInput(command.document_kind, command.document_value, authority),
+        ),
         platform=command.platform,
         technical_principal_id=command.technical_principal_id,
     )
@@ -71,6 +76,8 @@ async def write_identity_adoption(
         idempotency_id=idempotency_id,
         audit_details={
             "candidate_ref": str(command.candidate_ref),
+            "document_kind": command.document_kind,
+            "document_authority": authority,
             "proof_kind": command.proof_kind,
             "consented_fields": list(command.consented_fields),
         },
