@@ -28,6 +28,7 @@ _OPERATION_ID_OVERRIDES = {
     "operational_copilot.tools.operational_day_extension": "copilot_extend_operational_day",
     "operational_copilot.tools.discovery_publish": "copilot_publish_discovery_supply",
     "operational_copilot.tools.discovery_revoke": "copilot_revoke_discovery_publication",
+    "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
 }
 
 
