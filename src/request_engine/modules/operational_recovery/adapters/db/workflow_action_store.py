@@ -2,15 +2,9 @@ from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from uuid import UUID
 
-from request_engine.modules.operational_recovery.adapters.db.workflow_action_execution_guard import (
-    serialize_recovery_action_execution,
-)
-from request_engine.modules.operational_recovery.adapters.db.workflow_action_prepare import (
-    prepare_action_row,
-)
-from request_engine.modules.operational_recovery.adapters.db.workflow_action_transition import (
-    transition_action_row,
-)
+from .workflow_action_execution_guard import serialize_recovery_action_execution
+from .workflow_action_prepare import prepare_action_row
+from .workflow_action_transition import transition_action_row
 from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryAction,
     RecoveryActionKind,
