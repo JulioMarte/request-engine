@@ -22,4 +22,7 @@ EXPECTED_TABLE_EXCEPTIONS = {
     # S0b2 (§9.3): the party identity revision ledger is append-only for the
     # app role; UPDATE/DELETE are denied by grants and by the 0025 guard.
     "party_identity_revisions": (True, True, False, False, False, False, False),
+    # F7e: selection facts are an immutable operational audit ledger. The app
+    # may read/append facts but cannot revise or delete a recorded selection.
+    "queue_selection_facts": (True, True, False, False, False, False, False),
 }
