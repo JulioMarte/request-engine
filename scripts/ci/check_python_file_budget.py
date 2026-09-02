@@ -113,7 +113,10 @@ def _file_loc_candidate(
         ],
         "review_questions": [
             "Does this file contain more than one independently changing responsibility?",
-            "Would extraction reduce reasoning cost without adding forwarding or navigation ceremony?",
+            (
+                "Would extraction reduce reasoning cost without adding forwarding or "
+                "navigation ceremony?"
+            ),
             "Is the size mostly declarative/linear rather than decision-heavy?",
         ],
     }
