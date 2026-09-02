@@ -75,7 +75,7 @@ def test_new_edge_and_contract_width_are_reported_separately() -> None:
         Callable[[dict[str, object], dict[str, object]], dict[str, object]],
         module._coupling_diff,
     )
-    base = {"modules": [], "edges": []}
+    base: dict[str, object] = {"modules": [], "edges": []}
     result = coupling_diff(base, _snapshot(["Read", "Command"]))
     assert result["added_edges"] == [{"source": "consumer", "target": "provider"}]
     deltas = cast(list[dict[str, object]], result["contract_usage_deltas"])
