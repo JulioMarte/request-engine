@@ -105,9 +105,11 @@ LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_target_queue_id uuid;
+    v_target_status text;
     v_called_queue_id uuid;
+    v_called_status text;
 BEGIN
-    SELECT service_queue_id INTO v_target_queue_id
+    SELECT service_queue_id, status INTO v_target_queue_id, v_target_status
       FROM request_engine.queue_entries
      WHERE organization_id = NEW.organization_id
        AND id = NEW.queue_entry_id;
@@ -116,14 +118,34 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
 
+    IF TG_TABLE_NAME = 'queue_recall_holds' AND v_target_status <> 'waiting' THEN
+        RAISE EXCEPTION 'recall hold requires a waiting QueueEntry'
+            USING ERRCODE = '23514';
+    END IF;
+
+    IF TG_TABLE_NAME = 'queue_selection_facts' THEN
+        IF NEW.selection_kind = 'skip' AND v_target_status <> 'waiting' THEN
+            RAISE EXCEPTION 'skip fact requires the skipped QueueEntry to remain waiting'
+                USING ERRCODE = '23514';
+        END IF;
+        IF NEW.selection_kind = 'operator_select' AND v_target_status <> 'called' THEN
+            RAISE EXCEPTION 'operator selection fact requires a called QueueEntry'
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
     IF TG_TABLE_NAME = 'queue_selection_facts'
        AND NEW.called_queue_entry_id IS NOT NULL THEN
-        SELECT service_queue_id INTO v_called_queue_id
+        SELECT service_queue_id, status INTO v_called_queue_id, v_called_status
           FROM request_engine.queue_entries
          WHERE organization_id = NEW.organization_id
            AND id = NEW.called_queue_entry_id;
         IF v_called_queue_id IS NULL OR v_called_queue_id <> NEW.service_queue_id THEN
             RAISE EXCEPTION 'F7e called QueueEntry must belong to referenced ServiceQueue'
+                USING ERRCODE = '23514';
+        END IF;
+        IF v_called_status <> 'called' THEN
+            RAISE EXCEPTION 'F7e called QueueEntry must be in called state'
                 USING ERRCODE = '23514';
         END IF;
     END IF;
