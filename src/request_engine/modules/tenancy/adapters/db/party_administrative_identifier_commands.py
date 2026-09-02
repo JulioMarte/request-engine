@@ -21,8 +21,8 @@ from request_engine.modules.tenancy.adapters.db.party_registry_store import lock
 from request_engine.modules.tenancy.application.administrative_identifier_errors import (
     PartyAdministrativeIdentifierConflict,
 )
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    AddPartyAdministrativeIdentifierCommand,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as admin_identifier_commands,
 )
 from request_engine.modules.tenancy.contracts.party_administrative_identifiers import (
     PartyAdministrativeIdentifier,
@@ -44,7 +44,7 @@ class PostgresPartyAdministrativeIdentifierCommands:
 
     async def add_party_administrative_identifier(
         self,
-        command: AddPartyAdministrativeIdentifierCommand,
+        command: admin_identifier_commands.AddPartyAdministrativeIdentifierCommand,
     ) -> PartyAdministrativeIdentifier:
         fingerprint = command_fingerprint(_CAPABILITY, fingerprint_values(command))
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
@@ -95,7 +95,7 @@ class PostgresPartyAdministrativeIdentifierCommands:
     async def _resolve_conflict(
         self,
         session: AsyncSession,
-        command: AddPartyAdministrativeIdentifierCommand,
+        command: admin_identifier_commands.AddPartyAdministrativeIdentifierCommand,
         params: dict[str, object],
     ) -> PartyAdministrativeIdentifier:
         row = (await session.execute(FIND_IDENTIFIER, params)).mappings().first()
