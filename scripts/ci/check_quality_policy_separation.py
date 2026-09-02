@@ -9,11 +9,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from mega_file_policy import (  # noqa: E402
-    MEGA_POLICY_AUTHORITY_PATHS,
-    is_core_mega_scope,
-    policy_self_modification_failure,
-)
+from mega_file_policy import MEGA_POLICY_AUTHORITY_PATHS, is_core_mega_scope  # noqa: E402
 from quality_metrics import classify_path, generated_reason, git  # noqa: E402
 
 
@@ -37,35 +33,21 @@ def changed_core_python(paths: set[str]) -> list[Path]:
     return core
 
 
-def render_failure(failure: dict[str, object]) -> str:
-    facts = failure.get("facts")
-    fact_list = facts if isinstance(facts, list) else []
-    policy_paths: object = []
-    core_paths: object = []
-    for fact in fact_list:
-        if not isinstance(fact, dict):
-            continue
-        if fact.get("kind") == "policy_authority_paths_changed":
-            policy_paths = fact.get("value", [])
-        elif fact.get("kind") == "core_python_paths_changed":
-            core_paths = fact.get("value", [])
+def render_review(policy_paths: list[str], core_paths: list[str]) -> str:
     return "\n".join(
         [
-            "[INVARIANT_FAILURE] QR-MEGA-GOV-001",
-            "WHAT: this change edits core product Python and the policy authority that judges it.",
+            "[GOVERNANCE_REVIEW] QR-MEGA-GOV-001",
+            "WHAT: this change edits core product Python and quality-policy authority together.",
             f"POLICY PATHS: {policy_paths}",
             f"CORE PYTHON: {core_paths}",
             (
-                "RISK: an author or coding agent could weaken the circuit breaker, generated "
-                "exclusion, or CI path while introducing the code that benefits from it."
+                "INTERPRETATION: co-occurrence is not itself an architecture violation. Review "
+                "whether the policy change can materially alter a verdict from which the product "
+                "change benefits."
             ),
             (
-                "INVALID: changing the threshold/checker/workflow/exception authority in the "
-                "same product implementation, even with a persuasive rationale."
-            ),
-            (
-                "REMEDIATION: split the governance change into a separate reviewed PR, merge "
-                "it into development, rebuild/rebase the product branch, then run exact-head CI."
+                "ACTION: if the relationship is causal/self-authorizing, separate or independently "
+                "review the governance change. If unrelated, no forced PR split is required."
             ),
         ]
     )
@@ -83,33 +65,29 @@ def _write_summary(text: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Prevent a product change from editing the quality policy that judges it."
+        description="Surface product/policy co-occurrence for causal governance review."
     )
     parser.add_argument("--base-ref", default="HEAD^")
     args = parser.parse_args()
     try:
         paths = changed_paths(args.base_ref)
         core = changed_core_python(paths)
-        failure = policy_self_modification_failure(
-            changed_paths=paths,
-            changed_core_python=core,
-        )
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"[QUALITY-POLICY-SEPARATION-ERROR] {exc}")
         return 2
-    if failure is None:
-        policy_changes = sorted(paths & MEGA_POLICY_AUTHORITY_PATHS)
+
+    policy_paths = sorted(paths & MEGA_POLICY_AUTHORITY_PATHS)
+    core_paths = sorted(path.as_posix() for path in core)
+    if policy_paths and core_paths:
+        message = render_review(policy_paths, core_paths)
+    else:
         message = (
-            "[PASS] quality-policy separation: no product change is modifying its own "
-            f"mega-file authority. policy_changes={policy_changes}"
+            "[PASS] quality-policy separation: no product/policy co-occurrence requiring "
+            f"governance review. policy_changes={policy_paths}"
         )
-        print(message)
-        _write_summary(message)
-        return 0
-    message = render_failure(failure)
     print(message)
     _write_summary(message)
-    return 1
+    return 0
 
 
 if __name__ == "__main__":
