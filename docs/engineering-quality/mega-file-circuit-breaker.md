@@ -1,305 +1,146 @@
-# QR-MEGA-001 — Core Mega-File Circuit Breaker
+# QR-MEGA-001 — Extreme Core File Review Signal
 
-> **Status:** executable policy in calibration.
+> **Status:** `RETIRED_AS_HARD` / retained as calibration provenance.
 >
-> **Purpose:** prevent accidental or agent-driven concentration of core handwritten product logic into extreme files without reviving the old universal low-LOC architecture proxy.
->
-> **Amendment precedence:** this executable decision supersedes the earlier pre-calibration statements in `executable-fitness-function-specification.md` that said no file-size HARD zone had yet been approved. `FF-FSIZE-001` remains a heuristic review signal; `QR-MEGA-001` is a separate, scoped extreme-outlier circuit breaker. The larger fitness specification must be read with this amendment until its next consolidated revision.
+> **Current authority:** file size is a heuristic maintainability signal. It does not define an architectural invariant. The normative repository governance contract in `docs/testing/repository-governance-contract.md` takes precedence.
 
-## Protected property
+## Decision
 
-Request Engine should not admit an extreme new concentration of core product code by accident. This rule is a **circuit breaker**, not a claim that 501 lines are inherently bad architecture.
-
-The maintainability model remains:
+The experimental rule:
 
 ```text
-> 120 effective LOC
+new / crossing / growing scoped core file > 500 effective LOC
+    -> QR-MEGA-001 INVARIANT_FAILURE
+```
+
+is no longer blocking.
+
+The reason is semantic rather than numerical: the repository cannot defend the claim that `501` effective lines directly implies an architecture violation. The earlier experiment itself acknowledged that a 501-line file can remain cohesive, locally understandable, and correctly owned. Calling that state an `INVARIANT_FAILURE` therefore overstated what the measurement proved.
+
+Current behavior is:
+
+```text
+effective file LOC > 120
     -> QR-FSIZE-001 REVIEW_CANDIDATE
     -> semantic review
 
-> 500 effective LOC in scoped core handwritten Python
-    -> QR-MEGA-001 INVARIANT_FAILURE
-    -> explicit intervention required
+files far into the tail, including > 500 eLOC core files
+    -> remain highly salient review evidence
+    -> do not fail CI solely because of line count
 ```
 
-The first threshold asks a question. The second stops an extreme shape from entering silently.
+## Protected property
 
-## Scope
+Request Engine SHOULD detect unusually large concentrations of handwritten core product code early enough for reviewers to ask whether responsibilities, ownership, or reasoning surfaces have accumulated improperly.
 
-`QR-MEGA-001` applies to handwritten core Python classified as:
+The protected property is **not** `file <= 500 lines`.
+
+A healthy review asks:
+
+- Does the file contain multiple independently changing responsibilities?
+- Is the file large but mostly declarative or linear?
+- Is the difficult reasoning concentrated in one function even if the file is moderate in size?
+- Would extraction create a real ownership/responsibility boundary?
+- Would extraction instead create wrappers, helpers, re-exports, or extra navigation?
+
+## Why the HARD experiment was retired
+
+The original 500 eLOC experiment had useful properties:
+
+- it was scoped to core product categories rather than universal;
+- it used repository measurements before choosing an extreme region;
+- it anticipated coding-agent threshold gaming;
+- it prevented same-change self-approved exceptions;
+- it distinguished generated provenance from source comments.
+
+Those properties made it a much better experiment than the old universal 100/120 hard cap.
+
+They did not solve the central HARD-gate proof problem:
 
 ```text
-production_domain
-production_application
-production_contracts
-production_api
-production_composition
+file size
+    !=
+cohesion
+    !=
+architectural integrity
 ```
 
-It also protects module-root install/composition Python under `src/request_engine/modules/<module>/` even when the broad metrics classifier reports that file as `production_other`. Entrypoint/bootstrap composition is treated as core composition.
-
-It does not become a universal 500-line repository cap.
-
-Adapters, tests, scripts, migrations, configuration, and generated code retain their differentiated policies. They may still produce `QR-FSIZE-001`, `QR-CPLX-001`, `QR-NAV-001`, or other review evidence.
-
-Moving business policy into adapters, `platform`, a root technical file, or another category merely to escape the circuit breaker is not a valid remediation; normal ownership/layer invariants and semantic review continue to apply.
-
-## Why 500 is defensible here
-
-The repository-wide baseline measured before this gate showed core-file maxima materially below 500 effective LOC while other categories had very different distributions. In the observed baseline, application/contracts/API/domain/composition maxima were roughly 118–355 eLOC, while adapters, tests, scripts, and migrations reached much larger sizes.
-
-Therefore 500 is intentionally positioned as an **extreme core outlier circuit breaker**, not as the repository's definition of maintainability.
-
-The number must be revisited if repository distributions or legitimate exception pressure change materially.
-
-## Blocking semantics
-
-A scoped core file fails `QR-MEGA-001` when a changed file:
-
-- is newly introduced above 500 effective LOC;
-- crosses from `<=500` to `>500`; or
-- is already legacy `>500` and grows beyond its previous effective LOC without a valid base-approved exception.
-
-A legacy mega-file may shrink without first obtaining an exception. Shrinkage is not blocked merely because the resulting file remains above 500.
-
-## Exception authority
-
-Exceptions live in:
-
-`docs/engineering-quality/mega-file-exceptions.v1.json`
-
-Each exception must identify:
+The normal literal response of a coding agent to a blocking numeric cliff can still be:
 
 ```text
-exact Python path
-bounded max_effective_loc ceiling
-substantive rationale
-approval_ref
+501-line cohesive file
+    -> split into 450 + 51
+    -> add a helper/forwarder
+    -> CI green
 ```
 
-The critical authorization rule is:
+That is exactly the Goodhart behavior the engineering-quality contract is intended to prevent.
 
-> **The implementation gate reads the exception registry from the branch base, not from the changed working tree.**
+## Current classification
 
-Therefore an exception created or modified in the same implementation PR cannot authorize that PR.
-
-A valid new exception requires a separate architecture/governance decision to be reviewed and merged into the integration base first. The implementation must then be rebuilt/rebased from that base and re-proved.
-
-This is deliberate protection against self-approval by both humans and coding agents.
-
-## Generated-code authority
-
-A source comment is not provenance.
-
-The following are **not** sufficient to exclude handwritten product code from the scanner:
+`QR-MEGA-001` is best understood as:
 
 ```text
-# @generated
-# generated file
-# DO NOT EDIT
-# generated by ...
+HIGH-SIGNAL STRUCTURAL REVIEW CONCEPT
 ```
 
-An author or agent can type any of those strings. Treating them as exemption authority would make the gate trivial to bypass.
-
-Current generated-code exclusion therefore relies on controlled path/filename conventions rather than self-declared source text. The repository baseline showed no tracked file relying on header-only generated exclusion when this change was introduced.
-
-If Request Engine later needs generated output outside those controlled conventions, add a provenance mechanism through a separate governance decision rather than restoring comment-only authority.
-
-## Governance separation — QR-MEGA-GOV-001
-
-The same implementation must not change core product Python **and** the policy authority that judges the mega-file rule.
-
-CI separately checks protected policy surfaces including the mega-file checker, shared quality classification, CI wiring, exception registry, and scoped core agent policy. When a branch changes those authority surfaces together with core product Python:
+not:
 
 ```text
-QR-MEGA-GOV-001
-    -> INVARIANT_FAILURE
+DIRECT INVARIANT
 ```
 
-This prevents a coding agent from doing variants of:
+A future dedicated extreme-outlier review candidate MAY be implemented if it contributes useful independent evidence beyond `QR-FSIZE-001`. It MUST remain non-blocking until a new HARD-gate review demonstrates that the proxy is precise enough to justify blocking.
 
-```text
-create 700-line feature
-+ raise MEGA_FILE_HARD_LIMIT to 800
+## Calibration required before any future HARD proposal
 
-create 700-line feature
-+ change generated detection
+A future proposal to make an extreme size region blocking MUST include longitudinal repository evidence, not only a baseline distribution. At minimum it should answer:
 
-create 700-line feature
-+ weaken/remove the CI step
+1. How often did the extreme signal fire on real changes?
+2. What fraction were `HEALTHY_AS_IS` or acceptable trade-offs?
+3. What fraction represented genuine maintainability problems?
+4. What remediations did humans and coding agents choose?
+5. How often did remediation create wrapper/helper/file fragmentation?
+6. Did navigation cost rise after metric-driven fixes?
+7. Would a different signal such as function complexity, fan-out, or responsibility evidence have predicted the problem more directly?
+8. Is the false-positive rate low enough for HARD enforcement?
 
-create 700-line feature
-+ rewrite the exception rule
-```
+Percentiles alone do not answer these questions.
 
-A policy evolution must be a separate governance change merged into the integration base first. The product implementation is then rebuilt/rebased against that approved policy.
+## Exception registry
 
-This is not meant to make policy immutable. It means **the beneficiary of a policy change cannot change the judge and the judged code in the same ordinary implementation change**.
+`mega-file-exceptions.v1.json` is retained temporarily as calibration/historical evidence for the abandoned HARD experiment. It is not current merge authorization and is not needed to keep a cohesive >500 eLOC file in the repository while file size remains review-only.
 
-## Invalid justification
+If a future HARD rule is approved, exception semantics must be specified by that newer normative decision rather than inferred from this historical experiment.
 
-The following do **not** waive `QR-MEGA-001`:
+## QR-MEGA-GOV-001 disposition
 
-- an LLM saying `HEALTHY_AS_IS`;
-- the file author stating that the file is cohesive;
-- a PR description or comment;
-- source comments/docstrings;
-- generated review text;
-- a self-declared generated header;
-- lowering C901 while remaining above the mega-file threshold;
-- adding an exception entry in the same implementation change;
-- editing the checker/test/CI wiring in the same product change;
-- moving business logic to a less-protected category solely to evade the threshold.
+The former rule rejected any ordinary change containing both core product Python and a broad set of quality-policy authority paths.
 
-A semantic explanation can support a **separate exception decision**, but it cannot be its own authorization.
+That predicate was broader than the risk it attempted to prevent. It could reject an unrelated product change and developer-experience/governance maintenance merely because both occurred in one PR.
 
-## Valid remediation
+Therefore `QR-MEGA-GOV-001` is also retired as a HARD co-occurrence invariant.
 
-When the gate fires, there are two legitimate paths.
+The underlying principle remains useful:
 
-### 1. Improve the design
+> A change SHOULD NOT weaken a gate in a way that materially changes the verdict from which that same change benefits.
 
-Refactor only when there is a real semantic boundary such as:
+That is a causal governance-review principle. If future tooling can detect that relationship precisely enough, it may emit review evidence. Ordinary product+policy co-occurrence is not itself an architecture violation.
 
-- independently changing responsibility;
-- clear ownership split;
-- pure policy separable from effectful orchestration;
-- stable public/adapter boundary;
-- materially shorter reasoning path.
+## What remains HARD
 
-The goal is not `499`.
+This decision does **not** weaken semantic architecture invariants. Deterministic violations such as the following remain blocking under their existing fitness functions and governance:
 
-A change such as:
+- unsupported cross-module internal dependencies;
+- unapproved dependency direction;
+- dependency cycles;
+- domain/application/framework leakage;
+- business-policy leakage into technical platform through forbidden dependencies;
+- composition bypass of supported module surfaces;
+- security, authority, transactional, PostgreSQL, compatibility, and product-contract invariants already governed elsewhere.
 
-```text
-701-line cohesive file
-    -> 480-line file
-    -> 221-line forwarding/helper file
-```
+An LLM or human review cannot waive those deterministic invariant failures.
 
-is not automatically an improvement and should be challenged by `QR-NAV-001` and semantic review.
+## Revisit trigger
 
-### 2. Obtain a prior exception
-
-Stop the implementation. Create a separate architecture/governance change containing the exact-path bounded exception and rationale. Have that decision reviewed and merged into the base. Then rebuild/rebase the implementation and rerun exact-head deterministic proof.
-
-The exception ceiling must be finite. If the file later exceeds that ceiling, the gate blocks again.
-
-## Coding-agent threat model
-
-A coding agent is good at producing plausible rationale and at optimizing literal thresholds. The policy therefore assumes these likely gaming strategies:
-
-```text
-write 700 lines -> add exception -> claim cohesion
-write 700 lines -> add @generated -> disappear from scanner
-write 700 lines -> raise/change the checker threshold
-write 700 lines -> remove the CI enforcement step
-write 700 lines -> move policy into a less-protected category
-write 700 lines -> split into wrapper/helper files
-write 700 lines -> lower C901 but preserve one giant responsibility container
-write 700 lines -> edit the test/allowlist
-```
-
-The countermeasures are:
-
-```text
-base-ref-only exception authority
-+
-QR-MEGA-GOV-001 policy/product separation
-+
-controlled generated-code provenance
-+
-QR-NAV-001 fragmentation diagnostics
-+
-C901/function evidence
-+
-semantic ownership/layer review
-+
-unchanged HARD architecture invariants
-+
-exact-head re-proof
-```
-
-No repository-local guardrail can defend against an actor with authority to deliberately rewrite every branch-protection and CI control. The target threat model is accidental design erosion and literal/goal-seeking coding-agent behavior inside the normal governed contribution path, not a malicious repository administrator.
-
-## Failure UX
-
-A `QR-MEGA-001` failure must tell the agent:
-
-```text
-WHAT: QR-MEGA-001 failed
-WHERE: exact path
-FACT: current and previous effective LOC
-AUTHORITY: exception registry is read from base ref only
-INVALID: self-justification/same-change exception
-VALID PATHS: meaningful semantic refactor OR separate pre-approved exception
-RE-PROOF: exact-head deterministic CI required afterward
-```
-
-A `QR-MEGA-GOV-001` failure must tell the agent:
-
-```text
-WHAT: product code and its quality-policy authority changed together
-POLICY PATHS: exact authority files changed
-CORE PYTHON: exact product paths changed
-RISK: the change can weaken the judge that evaluates itself
-INVALID: persuasive rationale in the same PR
-VALID PATH: merge governance separately, rebuild/rebase, re-proof
-```
-
-A message that only says `701 > 500` is insufficient because it teaches metric optimization instead of the policy.
-
-## Acceptance tests
-
-The implementation is correct only if all of these remain true:
-
-```text
-500-line scoped core file
-    -> no QR-MEGA-001 failure
-    -> QR-FSIZE-001 review remains possible
-
-501-line new application file, no base exception
-    -> QR-MEGA-001 INVARIANT_FAILURE
-
-501-line module-root install.py classified production_other
-    -> QR-MEGA-001 INVARIANT_FAILURE
-
-900-line script
-    -> no QR-MEGA-001
-    -> review signals may still apply
-
-620 -> 590 legacy core file
-    -> allowed shrink
-
-480 -> 640 core file with base-approved ceiling 650
-    -> allowed by the circuit breaker
-
-480 -> 651 with base-approved ceiling 650
-    -> QR-MEGA-001 failure
-
-implementation PR adds 700-line core file + its own exception
-    -> still QR-MEGA-001 failure
-
-implementation PR adds @generated header to handwritten core file
-    -> header does not create generated-code exemption
-
-implementation PR edits core product Python + mega policy authority
-    -> QR-MEGA-GOV-001 INVARIANT_FAILURE
-
-exception merged first, implementation rebased afterward
-    -> exception may authorize only its exact path and ceiling
-```
-
-## Revisit triggers
-
-Recalibrate this rule if any of the following becomes true:
-
-- repeated legitimate exceptions accumulate;
-- core baseline distributions move materially toward 500;
-- the normal repair repeatedly causes harmful fragmentation despite QR-NAV review;
-- a different metric predicts extreme responsibility concentration with materially better precision;
-- core category definitions change;
-- generated-code provenance needs to support legitimate output outside current path/filename conventions.
-
-The goal is to prevent accidental mega-files, not to preserve the number 500 forever.
+Revisit a dedicated extreme-file signal when representative real-PR evidence exists. The goal is not to preserve the number `500`; the goal is to detect responsibility concentration without teaching humans or agents to optimize line count at the expense of cohesion and locality.
