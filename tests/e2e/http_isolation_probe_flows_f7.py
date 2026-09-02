@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 F7_PROBE_NAMES = frozenset(
     {
+        "appointments.arrival_estimate",
         "front_desk.day_board",
         "queue.operator_select",
         "queue.recall_hold",
@@ -27,6 +28,16 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
+    if name == "appointments.arrival_estimate":
+        return (
+            f"/v1/appointments/{objects.reservation_id}/arrival-estimate",
+            {},
+            {
+                "estimated_arrival_at": "2030-01-07T13:30:00+00:00",
+                "expected_revision": objects.reservation_revision,
+            },
+            404,
+        )
     if name == "front_desk.day_board":
         return (
             "/v1/front-desk/day-board",
