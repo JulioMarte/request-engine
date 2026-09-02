@@ -58,8 +58,7 @@ def test_pilot_observations_are_real_model_records_without_fabricated_human_labe
     assert isinstance(observations, list) and len(observations) >= 4
     assert all(isinstance(item, dict) and item.get("model_verdict") for item in observations)
     assert any(
-        isinstance(item, dict) and item.get("human_verdict") is None
-        for item in observations
+        isinstance(item, dict) and item.get("human_verdict") is None for item in observations
     )
     policy = payload["human_label_policy"]
     assert isinstance(policy, dict)
