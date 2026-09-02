@@ -5,8 +5,7 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
-from request_engine.entrypoints.http.tenancy_composition import install_tenancy_http
-from request_engine.modules.booking.api import install_http as install_booking_http
+from request_engine.entrypoints.http.foundation_composition import install_foundation_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
@@ -18,7 +17,6 @@ from request_engine.modules.booking.api.recovery import build_recovery_booking_p
 from request_engine.modules.booking.api.recovery_schedule import (
     build_recovery_assignment_schedule_port,
 )
-from request_engine.modules.catalog.api import install_http as install_catalog_http
 from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
 from request_engine.modules.catalog.api.recovery_schedule import (
     build_recovery_location_schedule_port,
@@ -37,7 +35,6 @@ from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
 )
-from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
@@ -51,20 +48,12 @@ def install_business_modules(
     appointment_option_signing_key: bytes,
     identity_exchange_fingerprint_key: bytes | None = None,
 ) -> None:
-    party_authority_reader = install_tenancy_http(
+    install_foundation_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
-        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
-    )
-    install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    install_booking_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-        party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
+        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
     )
     queue_api.install_http(
         app,
