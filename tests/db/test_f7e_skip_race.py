@@ -2,9 +2,9 @@ import asyncio
 from uuid import uuid4
 
 import pytest
-
 from f7e_selection_fixture import PgConnection, create_f7e_selection_fixture
 from f7e_selection_race_barrier import AsyncTwoPartyBarrier, gated_lock
+
 from request_engine.modules.queue.adapters.db import service_queue_commands as queue_module
 from request_engine.modules.queue.adapters.db import skip_queue_head as skip_module
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
