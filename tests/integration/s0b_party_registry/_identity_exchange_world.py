@@ -1,3 +1,4 @@
+import request_engine.modules.tenancy.application.commands as tenancy_commands
 from request_engine.modules.tenancy.adapters.db.identity_exchange_adopt import (
     PostgresPortableIdentityAdopter,
 )
@@ -6,13 +7,6 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_match import (
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
     PostgresPartyRegistryCommands,
-)
-from request_engine.modules.tenancy.application.commands import (
-    add_party_document,
-    register_party,
-)
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    add_party_administrative_identifier,
 )
 from request_engine.modules.tenancy.application.identity_exchange import (
     publish_portable_profile,
@@ -42,7 +36,7 @@ async def published_source(
 ]:
     world = create_party_registry_world(admin_conn, prefix="s0d-source")
     commands = PostgresPartyRegistryCommands(app_session_factory)
-    party = await register_party.register_party(
+    party = await tenancy_commands.register_party.register_party(
         commands,
         register_command(
             world.organization_id,
@@ -53,7 +47,7 @@ async def published_source(
         ),
     )
     if kind != "cedula":
-        await add_party_document.add_party_document(
+        await tenancy_commands.add_party_document.add_party_document(
             commands,
             document_command(
                 world.organization_id,
@@ -64,7 +58,7 @@ async def published_source(
                 authority=authority,
             ),
         )
-    await add_party_administrative_identifier(
+    await tenancy_commands.add_party_administrative_identifier.add_party_administrative_identifier(
         commands,
         identifier_command(
             world.organization_id,
@@ -97,7 +91,7 @@ async def publish_additional_document(
     authority: str,
 ) -> tuple[PostgresPortableIdentityMatcher, PostgresPortableIdentityAdopter]:
     commands = PostgresPartyRegistryCommands(app_session_factory)
-    await add_party_document.add_party_document(
+    await tenancy_commands.add_party_document.add_party_document(
         commands,
         document_command(
             world.organization_id,
