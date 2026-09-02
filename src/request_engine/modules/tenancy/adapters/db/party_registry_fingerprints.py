@@ -8,6 +8,7 @@ from request_engine.modules.tenancy.application.commands.register_party import R
 
 def register_fingerprint(command: RegisterPartyCommand) -> dict[str, object]:
     return {
+        "party_kind": command.party_kind.value,
         "display_name": command.display_name,
         "source_kind": command.source_kind.value,
         "platform": command.platform,
