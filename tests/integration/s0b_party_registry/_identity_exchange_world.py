@@ -12,7 +12,9 @@ from request_engine.modules.tenancy.application.commands import (
     add_party_document,
     register_party,
 )
-from request_engine.modules.tenancy.application.identity_exchange import publish_portable_profile
+from request_engine.modules.tenancy.application.identity_exchange import (
+    publish_portable_profile,
+)
 from request_engine.modules.tenancy.contracts.party_registry import RegisteredParty
 from request_engine.platform.db.session import SessionFactory
 
