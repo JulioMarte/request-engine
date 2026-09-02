@@ -17,7 +17,10 @@ from request_engine.modules.tenancy.adapters.db.party_registry_correction_codec 
     replay_party,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import single_document_row
-from request_engine.modules.tenancy.adapters.db.party_registry_store import insert_documents, lock_party
+from request_engine.modules.tenancy.adapters.db.party_registry_store import (
+    insert_documents,
+    lock_party,
+)
 from request_engine.modules.tenancy.adapters.db.party_registry_views import document_by_id
 from request_engine.modules.tenancy.application.commands import add_party_document, rename_party
 from request_engine.modules.tenancy.application.errors import PartyNotFound
