@@ -1,4 +1,5 @@
 from request_engine.platform.security.capability_registry_foundation import FOUNDATION_CAPABILITIES
+from request_engine.platform.security.capability_registry_front_desk import FRONT_DESK_CAPABILITIES
 from request_engine.platform.security.capability_registry_live import LIVE_CAPABILITIES
 from request_engine.platform.security.capability_registry_requests import REQUEST_CAPABILITIES
 from request_engine.platform.security.capability_registry_waitlist import (
@@ -14,6 +15,7 @@ from request_engine.platform.security.capability_types import (
 
 CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     FOUNDATION_CAPABILITIES
+    + FRONT_DESK_CAPABILITIES
     + LIVE_CAPABILITIES
     + WAITLIST_REMINDER_CAPABILITIES
     + REQUEST_CAPABILITIES
