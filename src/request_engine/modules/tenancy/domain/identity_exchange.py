@@ -32,10 +32,16 @@ def normalize_portable_fields(fields: tuple[str, ...]) -> tuple[str, ...]:
     return normalized
 
 
-def require_adoptable_fields(fields: tuple[str, ...]) -> tuple[str, ...]:
+def require_adoptable_fields(
+    fields: tuple[str, ...],
+    *,
+    allow_insurance_member: bool = True,
+) -> tuple[str, ...]:
     normalized = normalize_portable_fields(fields)
     if _REQUIRED_ADOPTION_FIELDS - set(normalized):
         raise ValueError("display_name consent is required for automatic adoption")
+    if not allow_insurance_member and "insurance_member" in normalized:
+        raise ValueError("insurance_member is only portable for person Parties")
     return normalized
 
 
