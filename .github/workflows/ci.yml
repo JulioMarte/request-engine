@@ -54,6 +54,13 @@ jobs:
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
           --log-dir .ci/logs
+      - name: Enforce quality-policy separation
+        if: always()
+        env:
+          QUALITY_POLICY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: >-
+          python scripts/ci/check_quality_policy_separation.py
+          --base-ref "$QUALITY_POLICY_BASE_REF"
       - name: Finalize quality evidence packets
         if: always()
         run: >-
