@@ -62,7 +62,6 @@ def install_http(
     party_authority_reader: PartyAuthorityReader,
     appointment_option_signing_key: bytes,
 ) -> None:
-    """Connect the public Booking HTTP surface."""
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
@@ -83,11 +82,7 @@ def install_http(
     )
     from request_engine.modules.booking.api.day_board_install import install_day_board_http
 
-    install_day_board_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
+    install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
 
 
 def install_operational_http(
