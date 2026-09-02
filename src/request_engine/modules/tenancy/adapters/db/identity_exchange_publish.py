@@ -2,8 +2,13 @@
 
 from typing import cast
 
-from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import LOCAL_DOCUMENT, PUBLISH
-from request_engine.modules.tenancy.application.identity_exchange import PublishPortableProfileCommand
+from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
+    LOCAL_DOCUMENT,
+    PUBLISH,
+)
+from request_engine.modules.tenancy.application.identity_exchange import (
+    PublishPortableProfileCommand,
+)
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeProfileInvalid,
     IdentityExchangeUnavailable,
@@ -71,7 +76,11 @@ class PostgresPortableProfilePublisher:
             try:
                 identity_fingerprint = identity_document_fingerprint(
                     self._fingerprint_key,
-                    ScopedIdentityDocument(command.document_kind, authority, cast(str, value)),
+                    ScopedIdentityDocument(
+                        command.document_kind,
+                        authority,
+                        cast(str, value),
+                    ),
                 )
             except RuntimeError as error:
                 raise IdentityExchangeUnavailable(str(error)) from None
@@ -105,4 +114,8 @@ class PostgresPortableProfilePublisher:
                     "consented_fields": list(command.consented_fields),
                 },
             )
-            await complete_idempotency(session, idempotency_id, {"published": True})
+            await complete_idempotency(
+                session,
+                idempotency_id,
+                {"published": True},
+            )
