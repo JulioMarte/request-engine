@@ -4,11 +4,12 @@ from uuid import UUID
 
 from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import CREATE_CANDIDATE
 from request_engine.modules.tenancy.application.identity_exchange import MatchPortableIdentityCommand
-from request_engine.modules.tenancy.application.identity_exchange_errors import (
-    IdentityExchangeUnavailable,
-)
+from request_engine.modules.tenancy.application.identity_exchange_errors import IdentityExchangeUnavailable
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityMatchResult
-from request_engine.modules.tenancy.domain.identity_exchange import cedula_fingerprint
+from request_engine.modules.tenancy.domain.identity_exchange import (
+    ScopedIdentityDocument,
+    identity_document_fingerprint,
+)
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -29,13 +30,24 @@ class PostgresPortableIdentityMatcher:
         self,
         command: MatchPortableIdentityCommand,
     ) -> IdentityMatchResult:
+        authority = command.document_authority
+        if authority is None:
+            raise IdentityExchangeUnavailable("scoped document authority is required")
+        document = ScopedIdentityDocument(
+            command.document_kind, authority, command.document_value
+        )
         try:
-            fingerprint = cedula_fingerprint(self._fingerprint_key, command.document_value)
+            fingerprint = identity_document_fingerprint(self._fingerprint_key, document)
         except RuntimeError as error:
             raise IdentityExchangeUnavailable(str(error)) from None
         idempotency_fingerprint = command_fingerprint(
             _CAPABILITY,
-            {"fingerprint": fingerprint, "proof_kind": command.proof_kind},
+            {
+                "document_kind": document.kind,
+                "document_authority": document.authority,
+                "fingerprint": fingerprint,
+                "proof_kind": command.proof_kind,
+            },
         )
         async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
@@ -55,7 +67,12 @@ class PostgresPortableIdentityMatcher:
             candidate = (
                 await session.execute(
                     CREATE_CANDIDATE,
-                    {"fingerprint": fingerprint, "principal_id": command.principal_id},
+                    {
+                        "kind": document.kind,
+                        "authority": document.authority,
+                        "fingerprint": fingerprint,
+                        "principal_id": command.principal_id,
+                    },
                 )
             ).scalar_one_or_none()
             candidate_ref = UUID(str(candidate)) if candidate else None
@@ -68,7 +85,12 @@ class PostgresPortableIdentityMatcher:
                 aggregate_kind="IdentityExchangeMatch",
                 aggregate_id=candidate_ref or idempotency_id,
                 idempotency_id=idempotency_id,
-                details={"matched": result.matched, "proof_kind": command.proof_kind},
+                details={
+                    "document_kind": document.kind,
+                    "document_authority": document.authority,
+                    "matched": result.matched,
+                    "proof_kind": command.proof_kind,
+                },
             )
             await complete_idempotency(
                 session,
