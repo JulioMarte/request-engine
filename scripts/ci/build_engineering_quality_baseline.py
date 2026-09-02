@@ -14,6 +14,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from quality_metrics import (  # noqa: E402
+    business_module_dependency_snapshot,
     classify_path,
     distribution,
     effective_code_lines,
@@ -148,6 +149,29 @@ def build_baseline() -> dict[str, object]:
             metric: distribution(values) for metric, values in sorted(metrics.items())
         }
 
+    coupling = business_module_dependency_snapshot()
+    raw_modules = coupling.get("modules", [])
+    coupling_modules = [item for item in raw_modules if isinstance(item, dict)]
+    fan_in_values = [
+        int(item["fan_in"]) for item in coupling_modules if isinstance(item.get("fan_in"), int)
+    ]
+    fan_out_values = [
+        int(item["fan_out"])
+        for item in coupling_modules
+        if isinstance(item.get("fan_out"), int)
+    ]
+    coupling_summary = {
+        "edge_count": len(coupling.get("edges", []))
+        if isinstance(coupling.get("edges"), list)
+        else 0,
+        "distributions": {
+            "fan_in": distribution(fan_in_values),
+            "fan_out": distribution(fan_out_values),
+        },
+        "modules": coupling_modules,
+        "edges": coupling.get("edges", []),
+    }
+
     return {
         "schema_version": SCHEMA_VERSION,
         "repository_sha": repository_sha(),
@@ -157,12 +181,17 @@ def build_baseline() -> dict[str, object]:
             "function_loc": "AST physical span from lineno through end_lineno",
             "function_mccabe": "Ruff C901 with calibration threshold forced to 0",
             "config_loc": "nonblank text lines; no Python threshold is applied",
+            "module_coupling": (
+                "AST direct imports between src/request_engine/modules business modules; "
+                "fan-out counts distinct outbound modules and fan-in distinct inbound modules"
+            ),
             "generated_policy": (
-                "tracked generated-path, generated-filename, and explicit generated-header "
-                "markers are excluded from maintainability distributions"
+                "controlled generated paths and generated filename conventions are excluded; "
+                "source comments are not generated-code authority"
             ),
         },
         "categories": categories,
+        "module_coupling": coupling_summary,
         "records": {
             "files": files,
             "functions": functions,
@@ -172,6 +201,8 @@ def build_baseline() -> dict[str, object]:
             "file_loc": _top_records(files, "value"),
             "function_loc": _top_records(functions, "function_loc"),
             "function_mccabe": _top_records(mccabe, "mccabe"),
+            "module_fan_in": _top_records(coupling_modules, "fan_in"),
+            "module_fan_out": _top_records(coupling_modules, "fan_out"),
         },
         "generated_exclusions": generated,
     }
@@ -214,6 +245,44 @@ def render_summary(baseline: dict[str, object]) -> str:
                 )
                 + " |"
             )
+
+    coupling = baseline.get("module_coupling")
+    if isinstance(coupling, dict):
+        modules = coupling.get("modules")
+        if isinstance(modules, list):
+            lines.extend(
+                [
+                    "",
+                    "## Business-module coupling",
+                    "",
+                    f"Direct cross-module import edges: **{coupling.get('edge_count', 0)}**",
+                    "",
+                    "| Module | Fan-in | Fan-out | Inbound | Outbound |",
+                    "|---|---:|---:|---|---|",
+                ]
+            )
+            for raw in modules:
+                if not isinstance(raw, dict):
+                    continue
+                inbound = raw.get("inbound_modules", [])
+                outbound = raw.get("outbound_modules", [])
+                lines.append(
+                    "| "
+                    + " | ".join(
+                        [
+                            str(raw.get("module")),
+                            str(raw.get("fan_in")),
+                            str(raw.get("fan_out")),
+                            ", ".join(str(item) for item in inbound)
+                            if isinstance(inbound, list)
+                            else "",
+                            ", ".join(str(item) for item in outbound)
+                            if isinstance(outbound, list)
+                            else "",
+                        ]
+                    )
+                    + " |"
+                )
     return "\n".join(lines)
 
 
