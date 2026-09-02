@@ -9,6 +9,7 @@ from request_engine.platform.db.session import SessionFactory
 
 from . import operational_support as support
 from .evidence import durable_snapshot
+from .http_isolation_probe_flows_s0c import foreign_identifier
 from .http_isolation_probes import (
     ForeignObjects,
     isolation_actor,
@@ -90,6 +91,15 @@ async def _seed_foreign_objects(
         headers=auth(foreign_tenant, idempotency_key=f"foreign-reminder-{uuid4().hex}"),
     )
     assert reminder.status_code == 201, reminder.text
+    administrative_identifier = await client.post(
+        f"/v1/parties/{foreign_tenant.party_id}/administrative-identifiers",
+        json=foreign_identifier(),
+        headers=auth(
+            foreign_tenant,
+            idempotency_key=f"foreign-admin-id-{uuid4().hex}",
+        ),
+    )
+    assert administrative_identifier.status_code == 201, administrative_identifier.text
     request_view = submitted.json()["request"]
     return ForeignObjects(
         reservation_id=UUID(booked.json()["id"]),
