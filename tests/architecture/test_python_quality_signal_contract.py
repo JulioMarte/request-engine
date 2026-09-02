@@ -99,7 +99,7 @@ def test_successful_candidate_is_written_to_github_step_summary(
 ) -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
-    report = {
+    report: dict[str, object] = {
         "schema_version": "quality-evidence/v1",
         "candidates": [candidate],
     }
@@ -126,9 +126,19 @@ def test_successful_candidate_is_written_to_github_step_summary(
 def test_candidate_report_does_not_make_scanner_fail(monkeypatch: Any, tmp_path: Path) -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 500, 90)
     assert candidate is not None
-    report = {"candidates": [candidate]}
-    monkeypatch.setattr(signals, "build_report", lambda _base_ref: report)
-    monkeypatch.setattr(signals, "write_report", lambda _report, _output: None)
-    monkeypatch.setattr(signals, "write_github_summary", lambda _report, _feedback, _output: None)
+    report: dict[str, object] = {"candidates": [candidate]}
+
+    def build_report_stub(_base_ref: str) -> dict[str, object]:
+        return report
+
+    def write_report_stub(_report: dict[str, object], _output: Path) -> None:
+        return None
+
+    def write_summary_stub(_report: dict[str, object], _feedback: str, _output: Path) -> None:
+        return None
+
+    monkeypatch.setattr(signals, "build_report", build_report_stub)
+    monkeypatch.setattr(signals, "write_report", write_report_stub)
+    monkeypatch.setattr(signals, "write_github_summary", write_summary_stub)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(tmp_path / "signals.json")])
     assert signals.main() == 0
