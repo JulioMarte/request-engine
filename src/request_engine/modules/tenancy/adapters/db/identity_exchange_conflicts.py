@@ -10,6 +10,7 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
 _BINDING_PERSON_UNIQUE = "organization_person_binding_person_uq"
+_ALREADY_ADOPTED = "portable identity already adopted by organization"
 _PORTABLE_IDENTITY_JOIN = "document would join two portable identities"
 _UNIQUE_SQLSTATE = "23505"
 
@@ -17,6 +18,8 @@ _UNIQUE_SQLSTATE = "23505"
 def is_identity_already_adopted_violation(exc: IntegrityError) -> bool:
     if getattr(exc.orig, "sqlstate", None) != _UNIQUE_SQLSTATE:
         return False
+    if _ALREADY_ADOPTED in str(exc.orig):
+        return True
     diagnostic = getattr(exc.orig, "diag", None)
     constraint = getattr(diagnostic, "constraint_name", None)
     if constraint is not None:
