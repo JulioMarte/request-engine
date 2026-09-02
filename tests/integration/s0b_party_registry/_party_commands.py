@@ -8,9 +8,7 @@ from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
 from request_engine.modules.tenancy.application.commands.add_party_document import (
     AddPartyDocumentCommand,
 )
-from request_engine.modules.tenancy.application.commands.register_party import (
-    RegisterPartyCommand,
-)
+from request_engine.modules.tenancy.application.commands.register_party import RegisterPartyCommand
 from request_engine.modules.tenancy.application.commands.rename_party import RenamePartyCommand
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
@@ -77,6 +75,8 @@ def document_command(
     party_id: UUID,
     kind: str,
     value: str,
+    *,
+    authority: str | None = None,
 ) -> AddPartyDocumentCommand:
     return AddPartyDocumentCommand(
         organization_id=organization_id,
@@ -84,6 +84,7 @@ def document_command(
         party_id=party_id,
         kind=kind,
         value=value,
+        authority=authority,
         source_kind=PartySourceKind.OPERATOR,
         idempotency_key=f"doc-{uuid4().hex}",
     )
