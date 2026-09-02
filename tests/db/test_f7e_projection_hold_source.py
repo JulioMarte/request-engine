@@ -11,7 +11,10 @@ from request_engine.modules.queue.adapters.db.same_day_selection_commands import
     PostgresSameDaySelectionCommands,
 )
 from request_engine.modules.queue.application.commands.recall_hold import RecallHoldCommand
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -34,7 +37,7 @@ async def test_projection_hold_source_ignores_hold_after_entry_leaves_waiting(
             expected_revision=1,
             kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
             release_at=None,
-            reason="projection proof",
+            reason=RecallHoldReason.OPERATOR_OVERRIDE,
             idempotency_key=f"projection-hold-{uuid4().hex}",
         )
     )
@@ -43,7 +46,7 @@ async def test_projection_hold_source_ignores_hold_after_entry_leaves_waiting(
 
     admin_conn.execute(
         "UPDATE request_engine.queue_entries "
-        "SET status='cancelled', revision=revision+1 "
+        "SET status='cancelled', revision=revision+1, updated_at=clock_timestamp() "
         "WHERE organization_id=%s AND id=%s",
         (world.organization_id, first),
     )
