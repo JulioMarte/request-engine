@@ -9,6 +9,7 @@ async def lock_active_recall_hold(
     session: AsyncSession,
     organization_id: UUID,
     queue_entry_id: UUID,
+    hold_id: UUID,
 ) -> RowMapping | None:
     return (
         (
@@ -20,6 +21,7 @@ async def lock_active_recall_hold(
                     FROM request_engine.queue_recall_holds
                     WHERE organization_id = :organization_id
                       AND queue_entry_id = :queue_entry_id
+                      AND id = :hold_id
                       AND released_at IS NULL
                       AND (
                           hold_kind = 'until_customer_initiates'
@@ -28,7 +30,11 @@ async def lock_active_recall_hold(
                     FOR UPDATE
                     """
                 ),
-                {"organization_id": organization_id, "queue_entry_id": queue_entry_id},
+                {
+                    "organization_id": organization_id,
+                    "queue_entry_id": queue_entry_id,
+                    "hold_id": hold_id,
+                },
             )
         )
         .mappings()
