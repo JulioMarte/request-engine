@@ -160,9 +160,7 @@ def _business_targets_from_import(path: Path, node: ast.Import | ast.ImportFrom)
     return targets
 
 
-def _contract_import_symbols(
-    path: Path, node: ast.Import | ast.ImportFrom
-) -> dict[str, set[str]]:
+def _contract_import_symbols(path: Path, node: ast.Import | ast.ImportFrom) -> dict[str, set[str]]:
     """Return target-module contract symbols consumed by one import statement.
 
     This is deliberately evidence, not an API-size verdict. Symbols are recorded
@@ -219,9 +217,7 @@ def module_import_edges_from_source(path: Path, source: str) -> set[tuple[str, s
     return edges
 
 
-def module_contract_usage_from_source(
-    path: Path, source: str
-) -> dict[tuple[str, str], set[str]]:
+def module_contract_usage_from_source(path: Path, source: str) -> dict[tuple[str, str], set[str]]:
     source_module = business_module_for_path(path)
     if source_module is None:
         return {}
