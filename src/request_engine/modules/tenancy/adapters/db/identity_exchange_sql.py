@@ -37,3 +37,8 @@ BIND_CANDIDATE = text(
     "SELECT request_engine.bind_consumed_identity_candidate_v1("
     ":candidate_ref, :party_id, :consented_fields, :principal_id)"
 )
+
+EXISTING_BOUND_PARTY = text(
+    "SELECT request_engine.identity_exchange_existing_party_v1("
+    ":candidate_ref, :principal_id)"
+)
