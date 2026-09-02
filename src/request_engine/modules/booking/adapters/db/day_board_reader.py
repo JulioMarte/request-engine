@@ -20,7 +20,13 @@ class PostgresDayBoardReader:
                 await session.execute(
                     text(
                         """
-                        SELECT *
+                        SELECT reservation_id, subject_party_id, subject_display_name,
+                               offering_version_id, location_id,
+                               lower(during) AS start_at, upper(during) AS end_at,
+                               status, revision, attendance_status,
+                               attendance_responded_at, attendance_outcome_status,
+                               checked_in_at, no_show_at, reported_arrival_estimate_at,
+                               effective_arrival_estimate_at, arrival_estimate_source_kind
                         FROM request_read.reservation_day_v1
                         WHERE organization_id = :organization_id
                           AND during && tstzrange(:window_start, :window_end, '[)')
@@ -48,8 +54,8 @@ def _entry_from_row(row: RowMapping) -> DayBoardEntry:
         subject_display_name=cast(str, row["subject_display_name"]),
         offering_version_id=cast(UUID, row["offering_version_id"]),
         location_id=cast(UUID | None, row["location_id"]),
-        start_at=cast(datetime, row["during"].lower),
-        end_at=cast(datetime, row["during"].upper),
+        start_at=cast(datetime, row["start_at"]),
+        end_at=cast(datetime, row["end_at"]),
         reservation_status=cast(str, row["status"]),
         reservation_revision=cast(int, row["revision"]),
         attendance_status=cast(str, row["attendance_status"]),
