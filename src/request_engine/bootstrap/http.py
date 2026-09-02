@@ -19,6 +19,7 @@ def build_http_app(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     appointment_option_signing_key: bytes | None = None,
+    identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
 ) -> FastAPI:
@@ -28,6 +29,7 @@ def build_http_app(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         appointment_option_signing_key=appointment_option_signing_key,
+        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         tenant_capability_policy=tenant_capability_policy,
         operator_capability_source=operator_capability_source,
         slot_offer_ports=QueueSlotOfferHttpPorts(
