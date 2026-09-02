@@ -61,6 +61,24 @@ async def test_wrong_document_does_not_consume_candidate(
 
 
 @pytest.mark.asyncio
+async def test_global_index_stores_fingerprint_not_raw_cedula(
+    admin_conn: PgConnection,
+    app_session_factory: SessionFactory,
+) -> None:
+    cedula = "40200000003"
+    await published_source(admin_conn, app_session_factory, cedula=cedula)
+    row = admin_conn.execute(
+        "SELECT fingerprint FROM request_engine.portable_person_identifiers "
+        "WHERE kind = 'cedula' ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    fingerprint = str(row[0])
+    assert fingerprint != cedula
+    assert cedula not in fingerprint
+    assert len(fingerprint) == 64
+
+
+@pytest.mark.asyncio
 async def test_runtime_app_cannot_select_global_portable_profiles(
     admin_conn: PgConnection,
     app_session_factory: SessionFactory,
