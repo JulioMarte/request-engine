@@ -44,7 +44,6 @@ def install_business_modules(
     appointment_option_signing_key: bytes,
     identity_exchange_fingerprint_key: bytes | None = None,
 ) -> None:
-    party_authority_reader = tenancy_api.build_party_authority_reader(session_factory)
     tenancy_api.install_http(
         app,
         session_factory=session_factory,
@@ -57,7 +56,7 @@ def install_business_modules(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
-        party_authority_reader=party_authority_reader,
+        party_authority_reader=tenancy_api.build_party_authority_reader(session_factory),
         appointment_option_signing_key=appointment_option_signing_key,
     )
     queue_api.install_http(
