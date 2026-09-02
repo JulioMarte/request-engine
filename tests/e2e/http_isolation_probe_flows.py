@@ -17,6 +17,16 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
+    if name == "front_desk.day_board":
+        return (
+            "/v1/front-desk/day-board",
+            {
+                "window_start": "2030-01-07T12:00:00+00:00",
+                "window_end": "2030-01-07T16:00:00+00:00",
+            },
+            None,
+            200,
+        )
     if name == "queue.list":
         return "/v1/queues", {}, None, 200
     if name == "queue.join":
