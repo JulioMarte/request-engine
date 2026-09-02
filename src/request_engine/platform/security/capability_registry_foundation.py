@@ -81,11 +81,6 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
     ),
-    query_capability(
-        "front_desk.day_board.read",
-        CapabilityExposure.OPERATOR,
-        "Read the tenant-scoped front-desk day board without subject-by-subject authority.",
-    ),
     command_capability(
         "appointments.subject_override",
         CapabilityExposure.OPERATOR,
