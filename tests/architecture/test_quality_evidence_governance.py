@@ -106,12 +106,16 @@ def test_core_agent_instructions_make_mega_file_self_approval_invalid() -> None:
         "Self-justification is not authority",
         "same implementation change",
         "must be reviewed and merged into the integration base",
-        "# @generated",
-        "not exemption authority",
         "MUST NOT edit the mega-file checker",
         "Do not split a cohesive file",
     ):
         assert required in instructions
+
+    generated_policy = instructions.lower()
+    assert "# @generated" in instructions
+    assert "exemption authority" in generated_policy
+    assert "author/agent says so" in generated_policy
+    assert "generated merely because" in generated_policy
 
 
 def test_mega_file_registry_starts_bounded_and_base_authority_is_documented() -> None:
