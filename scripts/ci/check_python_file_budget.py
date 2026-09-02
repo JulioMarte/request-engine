@@ -14,6 +14,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from mega_file_policy import (  # noqa: E402
+    CORE_MEGA_CATEGORIES,
+    MEGA_EXCEPTION_REGISTRY,
+    MEGA_FILE_HARD_LIMIT,
+    load_base_exceptions,
+    mega_file_failure,
+)
 from quality_metrics import (  # noqa: E402
     classify_path,
     effective_code_lines,
@@ -294,9 +301,11 @@ def run_ruff_c901(paths: list[Path]) -> list[dict[str, object]]:
 
 def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, object]:
     files = changed_python_files(base_ref)
+    base_exceptions = load_base_exceptions(base_ref)
     measurements: list[dict[str, object]] = []
     observations: list[dict[str, object]] = []
     candidates: list[dict[str, object]] = []
+    invariant_failures: list[dict[str, object]] = []
     generated_exclusions: list[dict[str, str]] = []
     for path in files:
         source = path.read_text(encoding="utf-8")
@@ -307,20 +316,30 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         current = effective_code_lines(source)
         previous_source = source_at_ref(base_ref, path)
         previous = effective_code_lines(previous_source) if previous_source is not None else None
+        category = _category(path)
         measurements.append(
             {
                 "path": path.as_posix(),
-                "category": _category(path),
+                "category": category,
                 "effective_file_loc": current,
                 "previous_effective_file_loc": previous,
                 "delta": None if previous is None else current - previous,
             }
         )
+        failure = mega_file_failure(
+            path,
+            category=category,
+            current=current,
+            previous=previous,
+            base_exceptions=base_exceptions,
+        )
+        if failure is not None:
+            invariant_failures.append(failure)
         candidate = _file_loc_candidate(path, current, previous)
         if candidate is not None:
             candidates.append(candidate)
         observation = navigation_observation(path, source)
-        observation["category"] = _category(path)
+        observation["category"] = category
         observations.append(observation)
         navigation_candidate = _navigation_candidate(
             path,
@@ -336,29 +355,75 @@ def build_report(base_ref: str, *, include_ruff: bool = True) -> dict[str, objec
         "schema_version": SCAN_SCHEMA,
         "base_sha": _sha(base_ref),
         "head_sha": _sha("HEAD"),
-        "authority": "heuristic-signals-are-non-blocking",
+        "authority": (
+            "heuristic-signals-are-non-blocking; "
+            "QR-MEGA-001-core-circuit-breaker-is-blocking"
+        ),
         "thresholds": {
             "effective_file_loc_review_candidate": FILE_LOC_REVIEW_THRESHOLD,
             "mccabe_review_candidate": MCCABE_REVIEW_THRESHOLD,
-            "threshold_status": "calibration-trigger-not-quality-invariant",
+            "core_mega_file_hard_limit": MEGA_FILE_HARD_LIMIT,
+            "threshold_status": (
+                "120-and-C901-are-calibration-triggers; "
+                "500-is-a-core-extreme-outlier-circuit-breaker"
+            ),
+        },
+        "mega_file_policy": {
+            "core_categories": sorted(CORE_MEGA_CATEGORIES),
+            "exception_registry": MEGA_EXCEPTION_REGISTRY.as_posix(),
+            "exception_authority": "base-ref-only",
+            "base_exception_count": len(base_exceptions),
         },
         "measurements": measurements,
         "navigation_observations": observations,
         "generated_exclusions": generated_exclusions,
+        "invariant_failures": invariant_failures,
         "candidates": candidates,
         "semantic_review_protocol": SEMANTIC_REVIEW_PROTOCOL,
         "agent_review_playbook": AGENT_REVIEW_PLAYBOOK,
     }
 
 
-def render_feedback(report: dict[str, object]) -> str:
-    raw_candidates = report.get("candidates", [])
-    candidates = raw_candidates if isinstance(raw_candidates, list) else []
-    if not candidates:
-        return (
-            "[PASS] Python maintainability signal scan: no review candidates in changed "
-            "handwritten Python files."
+def _render_invariant_failures(failures: list[object]) -> list[str]:
+    if not failures:
+        return []
+    lines = [
+        f"[INVARIANT_FAILURE] {len(failures)} QR-MEGA-001 failure(s).",
+        (
+            "BLOCKING: handwritten core product Python may not cross or grow beyond "
+            f"{MEGA_FILE_HARD_LIMIT} effective LOC without a base-approved exception."
+        ),
+    ]
+    for raw_failure in failures:
+        if not isinstance(raw_failure, dict):
+            continue
+        scope = raw_failure.get("scope") if isinstance(raw_failure.get("scope"), dict) else {}
+        facts = raw_failure.get("facts") if isinstance(raw_failure.get("facts"), list) else []
+        fact = facts[0] if facts and isinstance(facts[0], dict) else {}
+        lines.append(
+            f"- QR-MEGA-001 {scope.get('path')} effective_file_loc={fact.get('value')}: "
+            f"{raw_failure.get('reason')}"
         )
+    lines.extend(
+        [
+            (
+                "SELF-JUSTIFICATION IS INVALID: the author/agent cannot waive QR-MEGA-001 "
+                "with rationale, HEALTHY_AS_IS, PR text, comments, or an exception added or "
+                "modified in this same change."
+            ),
+            (
+                "VALID OPTIONS: improve the design through a real cohesive responsibility "
+                "boundary, or stop and obtain a separate architecture exception merged into "
+                "the branch base before retrying the implementation."
+            ),
+        ]
+    )
+    return lines
+
+
+def _render_candidates(candidates: list[object]) -> list[str]:
+    if not candidates:
+        return []
     candidate_summary = f"[REVIEW_CANDIDATE] {len(candidates)} "
     candidate_summary += "non-blocking maintainability signal(s) detected."
     lines = [
@@ -395,7 +460,24 @@ def render_feedback(report: dict[str, object]) -> str:
             "A deterministic INVARIANT_FAILURE cannot be overridden by semantic review.",
         ]
     )
-    return "\n".join(lines)
+    return lines
+
+
+def render_feedback(report: dict[str, object]) -> str:
+    raw_failures = report.get("invariant_failures", [])
+    failures = raw_failures if isinstance(raw_failures, list) else []
+    raw_candidates = report.get("candidates", [])
+    candidates = raw_candidates if isinstance(raw_candidates, list) else []
+    lines = _render_invariant_failures(failures)
+    if lines and candidates:
+        lines.append("")
+    lines.extend(_render_candidates(candidates))
+    if lines:
+        return "\n".join(lines)
+    return (
+        "[PASS] Python maintainability signal scan: no review candidates or invariant "
+        "failures in changed handwritten Python files."
+    )
 
 
 def write_report(report: dict[str, object], output: Path) -> None:
@@ -409,12 +491,18 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
         return
     raw_candidates = report.get("candidates", [])
     candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 0
+    raw_failures = report.get("invariant_failures", [])
+    failure_count = len(raw_failures) if isinstance(raw_failures, list) else 0
     summary = [
         "## Python maintainability signals",
         "",
         f"**Candidates:** {candidate_count}",
+        f"**Invariant failures:** {failure_count}",
         f"**Scan schema:** `{report.get('schema_version', SCAN_SCHEMA)}`",
-        "**Authority:** heuristic signals are non-blocking; HARD invariants remain authoritative.",
+        (
+            "**Authority:** heuristic signals are non-blocking; QR-MEGA-001 and other HARD "
+            "invariants remain authoritative."
+        ),
         "",
         "```text",
         feedback,
@@ -429,7 +517,7 @@ def write_github_summary(report: dict[str, object], feedback: str, output: Path)
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Emit non-blocking Python maintainability evidence for semantic review."
+        description="Emit Python maintainability evidence and enforce precise circuit breakers."
     )
     parser.add_argument("--base-ref", default="HEAD^")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -439,14 +527,22 @@ def main() -> int:
         write_report(report, args.output)
         feedback = render_feedback(report)
         write_github_summary(report, feedback, args.output)
-    except (OSError, RuntimeError, subprocess.SubprocessError, SyntaxError) as exc:
+    except (
+        json.JSONDecodeError,
+        OSError,
+        RuntimeError,
+        subprocess.SubprocessError,
+        SyntaxError,
+        ValueError,
+    ) as exc:
         print("[QUALITY-SENSOR-ERROR] deterministic maintainability scan could not complete.")
         print("This is a tooling failure, not a semantic verdict.")
         print(f"- {exc}")
         return 2
     print(feedback)
     print(f"Scan evidence: {args.output}")
-    return 0
+    failures = report.get("invariant_failures", [])
+    return 1 if isinstance(failures, list) and failures else 0
 
 
 if __name__ == "__main__":
