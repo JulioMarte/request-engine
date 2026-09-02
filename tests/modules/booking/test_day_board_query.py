@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -7,6 +7,7 @@ from request_engine.modules.booking.application.queries.get_day_board import (
     GetDayBoardQuery,
     get_day_board,
 )
+from request_engine.modules.booking.contracts.day_board import DayBoardEntry
 
 _NOW = datetime(2030, 1, 7, 8, 0, tzinfo=UTC)
 
@@ -15,20 +16,24 @@ class _Reader:
     def __init__(self) -> None:
         self.queries: list[GetDayBoardQuery] = []
 
-    async def get_day_board(self, query: GetDayBoardQuery) -> tuple[()]:
+    async def get_day_board(self, query: GetDayBoardQuery) -> tuple[DayBoardEntry, ...]:
         self.queries.append(query)
         return ()
 
 
-def _query(**overrides: object) -> GetDayBoardQuery:
-    values: dict[str, object] = {
-        "organization_id": uuid4(),
-        "window_start": _NOW,
-        "window_end": _NOW + timedelta(hours=12),
-        "limit": 100,
-    }
-    values.update(overrides)
-    return GetDayBoardQuery(**values)  # type: ignore[arg-type]
+def _query(
+    *,
+    window_end: datetime = _NOW + timedelta(hours=12),
+    limit: int = 100,
+    location_id: UUID | None = None,
+) -> GetDayBoardQuery:
+    return GetDayBoardQuery(
+        organization_id=uuid4(),
+        window_start=_NOW,
+        window_end=window_end,
+        location_id=location_id,
+        limit=limit,
+    )
 
 
 @pytest.mark.asyncio
