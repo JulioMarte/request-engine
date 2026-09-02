@@ -142,8 +142,7 @@ def test_contract_usage_measures_depth_without_changing_edge_count() -> None:
     )
     path = Path("src/request_engine/modules/operational_recovery/application/use_case.py")
     booking_import = (
-        "from request_engine.modules.booking.contracts import "
-        "BookingRead, RescheduleReservation"
+        "from request_engine.modules.booking.contracts import BookingRead, RescheduleReservation"
     )
     source = "\n".join(
         [
