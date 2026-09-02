@@ -275,22 +275,30 @@ BEGIN
 END
 $function$;
 
-REVOKE ALL ON FUNCTION request_engine.publish_portable_person_v1(uuid,text,text,text,text[],uuid)
-    FROM PUBLIC, request_engine_worker;
-REVOKE ALL ON FUNCTION request_engine.create_identity_exchange_candidate_v1(text,text,text,uuid)
-    FROM PUBLIC, request_engine_worker;
-REVOKE ALL ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(uuid,text,text,text,uuid)
-    FROM PUBLIC, request_engine_worker;
-REVOKE ALL ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(uuid,uuid,text[],uuid)
-    FROM PUBLIC, request_engine_worker;
-GRANT EXECUTE ON FUNCTION request_engine.publish_portable_person_v1(uuid,text,text,text,text[],uuid)
-    TO request_engine_app;
-GRANT EXECUTE ON FUNCTION request_engine.create_identity_exchange_candidate_v1(text,text,text,uuid)
-    TO request_engine_app;
-GRANT EXECUTE ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(uuid,text,text,text,uuid)
-    TO request_engine_app;
-GRANT EXECUTE ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(uuid,uuid,text[],uuid)
-    TO request_engine_app;
+REVOKE ALL ON FUNCTION request_engine.publish_portable_person_v1(
+    uuid,text,text,text,text[],uuid
+) FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.create_identity_exchange_candidate_v1(
+    text,text,text,uuid
+) FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(
+    uuid,text,text,text,uuid
+) FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(
+    uuid,uuid,text[],uuid
+) FROM PUBLIC, request_engine_worker;
+GRANT EXECUTE ON FUNCTION request_engine.publish_portable_person_v1(
+    uuid,text,text,text,text[],uuid
+) TO request_engine_app;
+GRANT EXECUTE ON FUNCTION request_engine.create_identity_exchange_candidate_v1(
+    text,text,text,uuid
+) TO request_engine_app;
+GRANT EXECUTE ON FUNCTION request_engine.consume_identity_exchange_candidate_v1(
+    uuid,text,text,text,uuid
+) TO request_engine_app;
+GRANT EXECUTE ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(
+    uuid,uuid,text[],uuid
+) TO request_engine_app;
 
 RESET ROLE;
 RESET search_path;
