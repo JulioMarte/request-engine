@@ -4,6 +4,7 @@ import importlib.util
 import subprocess
 from pathlib import Path
 from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
@@ -43,46 +44,59 @@ value = 1
     assert budget.effective_code_lines(source) == 4
 
 
-def test_new_or_compliant_file_cannot_cross_hard_max() -> None:
+def test_file_loc_threshold_creates_non_blocking_candidate_not_violation() -> None:
     budget = _load_budget_module()
+    candidate_fn = cast(Any, budget._file_loc_candidate)
     path = Path("src/request_engine/example.py")
 
-    assert budget.violation(path, 120, None) is None
-    assert budget.violation(path, 121, None) is not None
-    assert budget.violation(path, 121, 120) is not None
+    assert candidate_fn(path, 120, None) is None
+    candidate = candidate_fn(path, 121, None)
+    assert candidate is not None
+    assert candidate["classification"] == "REVIEW_CANDIDATE"
+    assert candidate["trigger_id"] == "QR-FSIZE-001"
 
 
-def test_existing_oversized_file_is_ratcheted_not_rewritten() -> None:
+def test_previously_oversized_file_is_still_review_evidence_not_a_ratchet_failure() -> None:
     budget = _load_budget_module()
+    candidate_fn = cast(Any, budget._file_loc_candidate)
     path = Path("tests/example.py")
 
-    assert budget.violation(path, 140, 140) is None
-    assert budget.violation(path, 130, 140) is None
-    assert budget.violation(path, 141, 140) is not None
+    shrunk = candidate_fn(path, 130, 140)
+    grown = candidate_fn(path, 141, 140)
+    assert shrunk is not None
+    assert grown is not None
+    assert shrunk["classification"] == "REVIEW_CANDIDATE"
+    assert grown["classification"] == "REVIEW_CANDIDATE"
+    assert cast(list[dict[str, object]], shrunk["deltas"])[0]["delta"] == -10
+    assert cast(list[dict[str, object]], grown["deltas"])[0]["delta"] == 1
 
 
-def test_changed_python_files_include_untracked_python_files(
+def test_changed_python_files_cover_scripts_and_migrations_and_ignore_generated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def git(*args: str) -> None:
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
 
-    (tmp_path / "tests").mkdir()
+    for directory in ("tests", "scripts", "migrations"):
+        (tmp_path / directory).mkdir()
     monkeypatch.chdir(tmp_path)
     git("init", "--quiet")
-    git("config", "user.email", "budget-probe@example.invalid")
-    git("config", "user.name", "Budget Probe")
+    git("config", "user.email", "quality-probe@example.invalid")
+    git("config", "user.name", "Quality Probe")
     (tmp_path / "tests" / "base.py").write_text("value = 1\n", encoding="utf-8")
     git("add", "tests/base.py")
     git("commit", "--quiet", "-m", "base")
-    (tmp_path / "tests" / "tracked.py").write_text("value = 2\n", encoding="utf-8")
-    git("add", "tests/tracked.py")
+    (tmp_path / "scripts" / "probe.py").write_text("value = 2\n", encoding="utf-8")
+    (tmp_path / "migrations" / "probe.py").write_text("value = 3\n", encoding="utf-8")
+    (tmp_path / "tests" / "generated.py").write_text(
+        "# @generated - DO NOT EDIT\nvalue = 4\n", encoding="utf-8"
+    )
+    git("add", "scripts/probe.py", "migrations/probe.py", "tests/generated.py")
     git("commit", "--quiet", "-m", "head")
-    (tmp_path / "tests" / "untracked.py").write_text("value = 3\n", encoding="utf-8")
-    (tmp_path / "tests" / "untracked.txt").write_text("not python\n", encoding="utf-8")
+    (tmp_path / "tests" / "untracked.py").write_text("value = 5\n", encoding="utf-8")
 
     budget = _load_budget_module()
     files = budget.changed_python_files("HEAD~1")
     names = sorted(item.as_posix() for item in files)
 
-    assert names == ["tests/tracked.py", "tests/untracked.py"]
+    assert names == ["migrations/probe.py", "scripts/probe.py", "tests/untracked.py"]
