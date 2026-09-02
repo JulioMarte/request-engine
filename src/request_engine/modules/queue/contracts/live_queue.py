@@ -42,6 +42,7 @@ class StaffQueueEntry:
     service_revision: int | None
     recall_hold_kind: str | None = None
     recall_hold_release_at: datetime | None = None
+    recall_hold_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
