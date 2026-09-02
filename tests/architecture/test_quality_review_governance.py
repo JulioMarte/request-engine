@@ -12,14 +12,18 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_normative_governance_treats_loc_and_c901_as_review_signals() -> None:
+def test_normative_governance_treats_metrics_and_coupling_as_review_signals() -> None:
     governance = _read("docs/testing/repository-governance-contract.md")
     assert "120 effective-line hard maximum" not in governance
-    assert "effective file LOC > 120  -> QR-FSIZE-001 REVIEW_CANDIDATE" in governance
+    assert "QR-FSIZE-001 REVIEW_CANDIDATE" in governance
     assert "Ruff C901 McCabe > 10" in governance
+    assert "QR-COUPLING-001 REVIEW_CANDIDATE" in governance
+    assert "fan-in" in governance and "fan-out" in governance
+    assert "no `fan-out > N = failure`" in governance
     assert "a `REVIEW_CANDIDATE` does **not** block merge by itself" in governance
     assert "`HEALTHY_AS_IS` is a valid semantic-review outcome" in governance
     assert "MUST NOT split files" in governance
+    assert "hide a real dependency" in governance
 
 
 def test_agent_control_plane_routes_quality_candidates_to_one_playbook() -> None:
@@ -34,6 +38,8 @@ def test_agent_control_plane_routes_quality_candidates_to_one_playbook() -> None
     assert PROTOCOL in root_agents
     assert PROTOCOL in python_rules
     assert PROTOCOL in copilot
+    assert "QR-COUPLING-001" in python_rules
+    assert "QR-COUPLING-001" in copilot
 
 
 def test_agent_instructions_forbid_metric_gaming_and_llm_override() -> None:
@@ -55,6 +61,8 @@ def test_agent_instructions_forbid_metric_gaming_and_llm_override() -> None:
         )
     assert "Review phase — do not edit yet" in playbook
     assert "Re-proof phase — mandatory" in playbook
+    assert "service locator" in python_rules
+    assert "fan-out" in python_rules
 
 
 def test_c901_is_calibrated_but_not_part_of_blocking_global_ruff_selection() -> None:
