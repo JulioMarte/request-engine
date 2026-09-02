@@ -52,8 +52,8 @@ async def test_release_vs_call_next_has_only_serialized_selection_outcomes(
     barrier = AsyncTwoPartyBarrier()
     monkeypatch.setattr(
         queue_module,
-        "_lock_active_queue",
-        gated_lock(barrier, queue_module._lock_active_queue),
+        "lock_active_queue",
+        gated_lock(barrier, queue_module.lock_active_queue),
     )
     monkeypatch.setattr(
         release_module,
