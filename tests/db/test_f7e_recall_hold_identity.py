@@ -33,9 +33,7 @@ async def test_old_hold_id_cannot_release_new_current_hold(
     first = world.entry_ids[0]
     commands = PostgresSameDaySelectionCommands(command_session_factory)
     old = await commands.recall_hold(_hold(world, first, 1, "old"))
-    current = await commands.recall_hold(
-        _hold(world, first, old.queue_entry_revision, "current")
-    )
+    current = await commands.recall_hold(_hold(world, first, old.queue_entry_revision, "current"))
     key = f"wrong-hold-release-{uuid4().hex}"
 
     with pytest.raises(RecallHoldConflict) as raised:
@@ -57,24 +55,33 @@ async def test_old_hold_id_cannot_release_new_current_hold(
         "SELECT revision FROM request_engine.queue_entries WHERE id=%s", (first,)
     ).fetchone()
     assert revision == (current.queue_entry_revision,)
-    assert _count(
-        admin_conn,
-        "SELECT count(*) FROM request_engine.idempotency_records "
-        "WHERE organization_id=%s AND principal_id=%s AND idempotency_key=%s",
-        (world.organization_id, world.principal_id, key),
-    ) == 0
-    assert _count(
-        admin_conn,
-        "SELECT count(*) FROM request_engine.audit_records "
-        "WHERE organization_id=%s AND command_name='queue.release_recall_hold'",
-        (world.organization_id,),
-    ) == 0
-    assert _count(
-        admin_conn,
-        "SELECT count(*) FROM request_engine.outbox_messages "
-        "WHERE organization_id=%s AND event_type='queue.recall_hold_released.v1'",
-        (world.organization_id,),
-    ) == 0
+    assert (
+        _count(
+            admin_conn,
+            "SELECT count(*) FROM request_engine.idempotency_records "
+            "WHERE organization_id=%s AND principal_id=%s AND idempotency_key=%s",
+            (world.organization_id, world.principal_id, key),
+        )
+        == 0
+    )
+    assert (
+        _count(
+            admin_conn,
+            "SELECT count(*) FROM request_engine.audit_records "
+            "WHERE organization_id=%s AND command_name='queue.release_recall_hold'",
+            (world.organization_id,),
+        )
+        == 0
+    )
+    assert (
+        _count(
+            admin_conn,
+            "SELECT count(*) FROM request_engine.outbox_messages "
+            "WHERE organization_id=%s AND event_type='queue.recall_hold_released.v1'",
+            (world.organization_id,),
+        )
+        == 0
+    )
 
 
 def _hold(
