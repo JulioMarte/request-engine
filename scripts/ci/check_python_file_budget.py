@@ -250,11 +250,10 @@ def render_feedback(report: dict[str, object]) -> str:
             "[PASS] Python maintainability signal scan: no review candidates in changed "
             "Python files."
         )
+    candidate_summary = f"[REVIEW_CANDIDATE] {len(candidates)} "
+    candidate_summary += "non-blocking maintainability signal(s) detected."
     lines = [
-        (
-            f"[REVIEW_CANDIDATE] {len(candidates)} non-blocking maintainability "
-            "signal(s) detected."
-        ),
+        candidate_summary,
         "NON-BLOCKING: these are evidence for semantic review, not defects or invariant failures.",
     ]
     for candidate in candidates:
