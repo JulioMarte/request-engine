@@ -82,9 +82,7 @@ class PostgresRecoveryWorkflowRepository(RecoveryWorkflowRepository):
             payload=payload,
         )
 
-    def serialize_action_execution(
-        self, *, action_id: UUID
-    ) -> AbstractAsyncContextManager[None]:
+    def serialize_action_execution(self, *, action_id: UUID) -> AbstractAsyncContextManager[None]:
         return self._actions.serialize_action_execution(action_id=action_id)
 
     async def transition_action(
