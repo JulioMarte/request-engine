@@ -39,6 +39,26 @@ def _fact(candidate: dict[str, object]) -> dict[str, object]:
     return facts[0]
 
 
+def _coupling_snapshot(
+    module: str,
+    *,
+    fan_in: int,
+    outbound: list[str],
+) -> dict[str, object]:
+    return {
+        "modules": [
+            {
+                "module": module,
+                "fan_in": fan_in,
+                "fan_out": len(outbound),
+                "inbound_modules": [],
+                "outbound_modules": outbound,
+            }
+        ],
+        "edges": [{"source": module, "target": target} for target in outbound],
+    }
+
+
 def test_effective_loc_ignores_blank_and_comment_only_lines() -> None:
     source = "# comment\n\nvalue = 1  # inline\n\n# more\nreturn_value = value\n"
     assert effective_code_lines(source) == 2
@@ -104,6 +124,34 @@ def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
     assert signals._navigation_candidate(path, observation, is_new=False, base_ref="base") is None
 
 
+def test_fan_out_growth_emits_nonblocking_coupling_review() -> None:
+    base = _coupling_snapshot("recovery", fan_in=1, outbound=["booking", "communications"])
+    current = _coupling_snapshot(
+        "recovery",
+        fan_in=1,
+        outbound=["booking", "catalog", "communications", "queue"],
+    )
+    candidates = signals._coupling_candidates(base, current)
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["classification"] == "REVIEW_CANDIDATE"
+    assert candidate["trigger_id"] == "QR-COUPLING-001"
+    facts = cast(list[dict[str, object]], candidate["facts"])
+    assert facts[0]["kind"] == "module_fan_out"
+    assert facts[0]["value"] == 4
+    assert any(
+        fact["kind"] == "added_outbound_modules" and fact["value"] == "catalog,queue"
+        for fact in facts
+    )
+
+
+def test_high_fan_out_without_new_edges_does_not_create_numeric_cliff() -> None:
+    outbound = ["a", "b", "c", "d", "e", "f", "g"]
+    base = _coupling_snapshot("orchestrator", fan_in=3, outbound=outbound)
+    current = _coupling_snapshot("orchestrator", fan_in=3, outbound=outbound)
+    assert signals._coupling_candidates(base, current) == []
+
+
 def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
     candidate = file_candidate(Path("src/request_engine/example.py"), 501, 90)
     assert candidate is not None
@@ -113,7 +161,7 @@ def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
         "NON-BLOCKING",
         "agent-semantic-review-playbook.md",
         "semantic-review-protocol.md",
-        "Do NOT split files or extract helpers solely",
+        "Do NOT split files",
         "HEALTHY_AS_IS",
         "REFACTOR_RECOMMENDED",
         "rerun deterministic architecture",
@@ -129,6 +177,7 @@ def test_successful_candidate_is_written_to_github_step_summary(
     report: dict[str, object] = {
         "schema_version": "quality-scan/v1",
         "candidates": [candidate],
+        "module_coupling": {"added_edges": []},
     }
     feedback = render_feedback(report)
     summary_path = tmp_path / "step-summary.md"
@@ -141,8 +190,9 @@ def test_successful_candidate_is_written_to_github_step_summary(
         "Python maintainability signals",
         "Candidates:** 1",
         "Invariant failures:** 0",
+        "New module dependency edges:** 0",
         "quality-scan/v1",
-        "heuristic signals are non-blocking",
+        "non-blocking",
         "REVIEW_CANDIDATE",
         "HEALTHY_AS_IS",
         "agent-semantic-review-playbook.md",
