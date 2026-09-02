@@ -20,7 +20,10 @@ from request_engine.modules.queue.application.commands.release_recall_hold impor
     ReleaseRecallHoldCommand,
 )
 from request_engine.modules.queue.application.errors import QueueEntryRevisionConflict
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -48,7 +51,7 @@ async def test_until_time_expires_from_database_clock_without_release_worker(
             expected_revision=1,
             kind=RecallHoldKind.UNTIL_TIME,
             release_at=release_at,
-            reason=None,
+            reason=RecallHoldReason.TEMPORARILY_UNAVAILABLE,
             idempotency_key=f"timed-hold-{uuid4().hex}",
         )
     )
@@ -110,6 +113,6 @@ def _customer_hold(
         expected_revision=revision,
         kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
         release_at=None,
-        reason=suffix,
+        reason=RecallHoldReason.OPERATOR_OVERRIDE,
         idempotency_key=f"hold-{suffix}-{uuid4().hex}",
     )
