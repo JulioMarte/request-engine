@@ -43,9 +43,9 @@ def project_live_capacity(
         blockers.append(ProjectionReason.OPEN_INTERRUPTION)
     if has_open_resource_activity:
         blockers.append(ProjectionReason.OPEN_RESOURCE_ACTIVITY)
-    if has_active_recall_hold:
-        blockers.append(ProjectionReason.ACTIVE_RECALL_HOLD)
     if blockers:
+        if has_active_recall_hold:
+            blockers.append(ProjectionReason.ACTIVE_RECALL_HOLD)
         return LiveCapacityProjection(
             observed_at=observed_at,
             state=ProjectionState.INDETERMINATE,
@@ -72,7 +72,7 @@ def project_live_capacity(
             continue
         remaining = max(item.duration_seconds - item.active_service_seconds, 0)
         total += remaining
-        if unknown:
+        if unknown or has_active_recall_hold:
             projected.append(ProjectedWorkItem(item.key, None, None, remaining, item.source))
             continue
         start, end, cursor = project_one(cursor, remaining, usable)
@@ -81,11 +81,14 @@ def project_live_capacity(
     reasons: list[ProjectionReason] = []
     if unknown:
         reasons.append(ProjectionReason.UNKNOWN_WORKLOAD_DURATION)
+    if has_active_recall_hold:
+        reasons.append(ProjectionReason.ACTIVE_RECALL_HOLD)
     if not usable:
         reasons.append(ProjectionReason.NO_REMAINING_AVAILABILITY)
-    state = ProjectionState.PARTIAL if unknown else ProjectionState.KNOWN
+    partial = unknown or has_active_recall_hold
+    state = ProjectionState.PARTIAL if partial else ProjectionState.KNOWN
     known_total = None if unknown else total
-    end_at = projected[-1].estimated_end if projected and not unknown else None
+    end_at = projected[-1].estimated_end if projected and not partial else None
     live_headroom = None if known_total is None else operational_seconds - known_total
     delta = (
         None
