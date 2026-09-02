@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
 from uuid import UUID
 
 from request_engine.modules.operational_recovery.adapters.db.workflow_action_store import (
@@ -80,6 +81,9 @@ class PostgresRecoveryWorkflowRepository(RecoveryWorkflowRepository):
             expected_source_revision=expected_source_revision,
             payload=payload,
         )
+
+    def serialize_action_execution(self, *, action_id: UUID) -> AbstractAsyncContextManager[None]:
+        return self._actions.serialize_action_execution(action_id=action_id)
 
     async def transition_action(
         self,

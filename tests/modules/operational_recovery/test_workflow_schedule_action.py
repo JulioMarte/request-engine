@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 
 import pytest
@@ -47,6 +48,33 @@ async def test_extend_day_runs_both_owners_reprojects_and_resolves() -> None:
     assert action.owner_steps["booking_schedule"]["exception_id"] == str(  # type: ignore[index]
         ASSIGNMENT_EXCEPTION
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_extend_day_replay_has_one_active_executor() -> None:
+    repository = FakeWorkflowRepository()
+    location = FakeLocationSchedule()
+    schedule = FakeSchedule()
+    first, second = await asyncio.gather(
+        execute_extend_day_action(
+            command(),
+            repository=repository,
+            location_schedule=location,
+            assignment_schedule=schedule,
+            capacity=FakeCapacity(),
+        ),
+        execute_extend_day_action(
+            command(),
+            repository=repository,
+            location_schedule=location,
+            assignment_schedule=schedule,
+            capacity=FakeCapacity(),
+        ),
+    )
+    assert first.id == second.id == ACTION
+    assert first.status is second.status is RecoveryActionStatus.SUCCEEDED
+    assert len(location.requests) == 1
+    assert len(schedule.requests) == 1
 
 
 @pytest.mark.asyncio
