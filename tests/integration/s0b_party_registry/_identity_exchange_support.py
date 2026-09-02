@@ -26,8 +26,6 @@ from request_engine.platform.security.execution_context import (
 
 KEY = b"integration-identity-exchange-key-32-bytes-minimum"
 PROOF = "operator_document_witness"
-CEDULA = "40212345678"
-PASSPORT = "SC1234567"
 
 
 @contextmanager
@@ -93,7 +91,7 @@ def publish_command(
 def match_command(
     org: UUID,
     principal: UUID,
-    value: str = CEDULA,
+    value: str = "40212345678",
     *,
     kind: str = "cedula",
     authority: str | None = None,
@@ -114,7 +112,7 @@ def adopt_command(
     principal: UUID,
     candidate: UUID,
     *,
-    value: str = CEDULA,
+    value: str = "40212345678",
     kind: str = "cedula",
     authority: str | None = None,
     key: str | None = None,
