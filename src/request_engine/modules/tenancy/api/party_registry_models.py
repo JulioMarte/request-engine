@@ -106,7 +106,9 @@ class RegisteredPartyView(BaseModel):
             contact_points=tuple(
                 PartyContactPointView.from_contract(item) for item in party.contact_points
             ),
-            documents=tuple(PartyIdentityDocumentView.from_contract(item) for item in party.documents),
+            documents=tuple(
+                PartyIdentityDocumentView.from_contract(item) for item in party.documents
+            ),
         )
 
 
