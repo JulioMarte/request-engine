@@ -7,8 +7,8 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_match import (
 from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
     PostgresPartyRegistryCommands,
 )
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    add_party_administrative_identifier,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as administrative_identifier_command,
 )
 from request_engine.modules.tenancy.application.commands.add_party_document import (
     add_party_document,
@@ -62,7 +62,7 @@ async def published_source(
                 authority=authority,
             ),
         )
-    await add_party_administrative_identifier(
+    await administrative_identifier_command.add_party_administrative_identifier(
         commands,
         identifier_command(
             world.organization_id,
