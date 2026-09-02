@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_queue_entry
@@ -23,7 +24,7 @@ async def lock_waiting_entry_in_queue(
 ) -> RowMapping:
     try:
         row = await lock_queue_entry(session, organization_id, queue_entry_id)
-    except Exception as exc:
+    except NoResultFound as exc:
         raise QueueEntryNotFound(queue_id, queue_entry_id) from exc
     if cast(UUID, row["service_queue_id"]) != queue_id:
         raise QueueEntryNotFound(queue_id, queue_entry_id)
