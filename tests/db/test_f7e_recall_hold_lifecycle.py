@@ -2,13 +2,13 @@ from datetime import timedelta
 from uuid import UUID, uuid4
 
 import pytest
-
 from f7e_selection_assertions import call_next_command
 from f7e_selection_fixture import (
     F7eSelectionFixture,
     PgConnection,
     create_f7e_selection_fixture,
 )
+
 from request_engine.modules.queue.adapters.db.same_day_selection_commands import (
     PostgresSameDaySelectionCommands,
 )
