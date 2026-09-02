@@ -30,6 +30,12 @@ jobs:
     name: Python quality and architecture
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      QUALITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+      QUALITY_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALITY_TEST_MODE: ${{ github.event_name == 'pull_request' && 'PR_INTEGRATION_CANDIDATE' || 'BRANCH_HEAD' }}
+      FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
+      QUALITY_POLICY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,17 +53,18 @@ jobs:
         run: >-
           uv run python scripts/ci/build_engineering_quality_baseline.py
           --output .ci/engineering-quality-baseline.json
+      - name: Build architecture diff evidence
+        run: >-
+          uv run python scripts/ci/build_architecture_diff.py
+          --base-ref "$QUALITY_BASE_REF"
+          --output .ci/architecture-diff.json
       - name: Run canonical Python quality job
-        env:
-          FILE_BUDGET_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: >-
           python scripts/ci/ci_jobs.py python-quality
           --summary-output .ci/python-quality.json
           --log-dir .ci/logs
       - name: Enforce quality-policy separation
         if: always()
-        env:
-          QUALITY_POLICY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: >-
           python scripts/ci/check_quality_policy_separation.py
           --base-ref "$QUALITY_POLICY_BASE_REF"
@@ -67,6 +74,7 @@ jobs:
           python scripts/ci/finalize_quality_evidence.py
           --scan .ci/python-quality-signals.json
           --baseline .ci/engineering-quality-baseline.json
+          --architecture-diff .ci/architecture-diff.json
           --summary .ci/python-quality.json
           --output-dir .ci/quality-evidence
       - name: Validate quality evidence schema
@@ -74,7 +82,7 @@ jobs:
         run: >-
           uv run --with jsonschema==4.25.1
           python scripts/ci/validate_quality_evidence.py
-          --schema docs/engineering-quality/schemas/quality-evidence-v1.schema.json
+          --schema docs/engineering-quality/schemas/quality-evidence-v2.schema.json
           --packet-dir .ci/quality-evidence
       - name: Summarize semantic review calibration
         if: always()
@@ -91,7 +99,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-quality-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          name: >-
+            python-quality-evidence-source-${{ github.event.pull_request.head.sha || github.sha }}-tested-${{ github.sha }}
           path: .ci/
           include-hidden-files: true
           if-no-files-found: warn
