@@ -1,13 +1,13 @@
 from typing import cast
 
 from request_engine.modules.queue.adapters.db.live_queue_locking import lock_active_queue
-from request_engine.modules.queue.adapters.db.live_queue_recording import record_queue_fact
 from request_engine.modules.queue.adapters.db.recall_hold_persistence import (
     database_clock,
     insert_recall_hold,
     recall_hold_from_json,
     recall_hold_to_json,
 )
+from request_engine.modules.queue.adapters.db.recall_hold_recording import record_recall_hold
 from request_engine.modules.queue.adapters.db.recall_hold_validation import (
     validate_recall_hold_shape,
 )
@@ -101,26 +101,11 @@ async def recall_hold(
             reason=command.reason,
             principal_id=command.principal_id,
         )
-        await record_queue_fact(
+        await record_recall_hold(
             session,
-            organization_id=command.organization_id,
-            principal_id=command.principal_id,
+            command=command,
             idempotency_id=idem,
-            command_name="queue.recall_hold",
-            aggregate_id=command.queue_entry_id,
-            event_type="queue.recall_hold_recorded.v1",
-            details={
-                "queue_id": str(command.queue_id),
-                "hold_kind": command.kind.value,
-                "queue_entry_revision": revision,
-            },
-            payload={
-                "queue_entry_id": str(command.queue_entry_id),
-                "queue_id": str(command.queue_id),
-                "hold_kind": command.kind.value,
-                "release_at": command.release_at.isoformat() if command.release_at else None,
-                "queue_entry_revision": revision,
-            },
+            queue_entry_revision=revision,
         )
         await complete_idempotency(session, idem, {"hold": recall_hold_to_json(hold)})
         return hold
