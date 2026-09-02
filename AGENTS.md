@@ -38,6 +38,23 @@ Do not avoid conflicts by targeting a feature branch at `main`, silently stackin
 
 See `docs/architecture/branch-integration-contract.md` for the canonical policy and `CONTRIBUTING.md` for contributor steps. Never infer the development base from GitHub's default branch.
 
+## Local publish certification — mandatory for local agents
+
+Local commits are checkpoints and MAY be incomplete or red. Do not install a mandatory pre-commit quality gate.
+
+Before a local coding agent runs `git push`, it MUST use the repository-managed pre-push certification described in `docs/engineering-quality/local-publish-certification.md`.
+
+- Install or refresh the hook with `uv run python scripts/dev/install_git_hooks.py`; use `--check` to verify it.
+- The certificate applies to the exact commit SHA pushed from a detached clean worktree. Dirty/uncommitted files are intentionally excluded.
+- Never use `git push --no-verify`, disable/replace the managed hook to make progress, or claim an uncertified SHA is `LOCAL_PUSH_CERTIFIED`.
+- A failed publication check leaves local commits untouched. Fix, commit, and retry instead of deleting useful checkpoints.
+- Cached PASS authority is only for its recorded commit SHA + base SHA + toolchain fingerprint.
+- Local certification is publication permission, not merge evidence. GitHub exact-head CI and required PostgreSQL/release lanes remain authoritative.
+
+If hooks cannot be invoked automatically, run `uv run python scripts/dev/certify_push.py certify --sha HEAD --base-ref refs/remotes/origin/development`. Do not certify a weaker SHA/base and report a different pushed tip as certified.
+
+Agents working directly through GitHub have no local certificate; that is supported. They must use the full PR CI feedback/artifacts until exact-head CI passes. Local certification MUST NOT cause remote CI lanes to be skipped.
+
 ## Start here
 
 Before editing, identify the primary owner and read only the canonical material needed for the task:
