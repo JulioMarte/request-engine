@@ -11,7 +11,10 @@ from request_engine.modules.queue.application.commands.recall_hold import Recall
 from request_engine.modules.queue.application.commands.release_recall_hold import (
     ReleaseRecallHoldCommand,
 )
-from request_engine.modules.queue.contracts.same_day_selection import RecallHoldKind
+from request_engine.modules.queue.contracts.same_day_selection import (
+    RecallHoldKind,
+    RecallHoldReason,
+)
 from request_engine.platform.db.session import SessionFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
@@ -36,7 +39,7 @@ async def test_staff_read_exposes_active_recall_hold_and_clears_after_release(
             expected_revision=1,
             kind=RecallHoldKind.UNTIL_CUSTOMER_INITIATES,
             release_at=None,
-            reason="patient stepped outside",
+            reason=RecallHoldReason.STEPPED_AWAY,
             idempotency_key=f"staff-hold-{uuid4().hex}",
         )
     )
