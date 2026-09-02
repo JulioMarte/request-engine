@@ -29,6 +29,9 @@ from request_engine.modules.tenancy.contracts.party_registry import (
     PartyIdentityDocument,
     RegisteredParty,
 )
+from request_engine.modules.tenancy.domain.party_subject_identity import (
+    require_document_party_kind,
+)
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.idempotency.postgres import command_fingerprint
 
@@ -88,7 +91,8 @@ class PostgresPartyCorrectionCommands:
         )
 
         async def mutate(session: AsyncSession, idempotency_id: UUID) -> PartyIdentityDocument:
-            await lock_party(session, command.organization_id, command.party_id)
+            party_kind = await lock_party(session, command.organization_id, command.party_id)
+            require_document_party_kind(party_kind, command.kind)
             inserted = await insert_documents(session, single_document_row(command))
             state = await finish_party_state(
                 session,
