@@ -1,9 +1,4 @@
-"""Transport DTOs for the tenancy party registry HTTP surface.
-
-Pydantic belongs here only; application commands and contracts stay
-framework-free. `source_kind` is never accepted from clients: the route
-derives it server-side from the authenticated principal's authority mode.
-"""
+"""Transport DTOs for the tenancy party registry HTTP surface."""
 
 from datetime import datetime
 from uuid import UUID
@@ -28,6 +23,7 @@ class PartyDocumentInputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: str = Field(min_length=1, max_length=64)
     value: str = Field(min_length=1, max_length=256)
+    authority: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class RegisterPartyBody(BaseModel):
@@ -52,6 +48,7 @@ class AddPartyDocumentBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: str = Field(min_length=1, max_length=64)
     value: str = Field(min_length=1, max_length=256)
+    authority: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class RollbackPartyBody(BaseModel):
@@ -80,6 +77,7 @@ class PartyContactPointView(BaseModel):
 class PartyIdentityDocumentView(BaseModel):
     document_id: UUID
     kind: str
+    authority: str | None
     normalized_value: str
 
     @classmethod
@@ -87,6 +85,7 @@ class PartyIdentityDocumentView(BaseModel):
         return cls(
             document_id=document.document_id,
             kind=document.kind,
+            authority=document.authority,
             normalized_value=document.normalized_value,
         )
 
@@ -107,9 +106,7 @@ class RegisteredPartyView(BaseModel):
             contact_points=tuple(
                 PartyContactPointView.from_contract(item) for item in party.contact_points
             ),
-            documents=tuple(
-                PartyIdentityDocumentView.from_contract(item) for item in party.documents
-            ),
+            documents=tuple(PartyIdentityDocumentView.from_contract(item) for item in party.documents),
         )
 
 
