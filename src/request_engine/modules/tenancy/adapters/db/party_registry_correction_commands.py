@@ -1,8 +1,4 @@
-"""PostgreSQL `parties.rename` and `parties.add_document` command adapters.
-
-Operator-granted corrections on an existing, active Party: idempotent replay,
-audited; no outbox events. One Session, one tenant transaction.
-"""
+"""PostgreSQL `parties.rename` and `parties.add_document` command adapters."""
 
 from typing import Never
 from uuid import UUID
@@ -21,15 +17,9 @@ from request_engine.modules.tenancy.adapters.db.party_registry_correction_codec 
     replay_party,
 )
 from request_engine.modules.tenancy.adapters.db.party_registry_rows import single_document_row
-from request_engine.modules.tenancy.adapters.db.party_registry_store import (
-    insert_documents,
-    lock_party,
-)
+from request_engine.modules.tenancy.adapters.db.party_registry_store import insert_documents, lock_party
 from request_engine.modules.tenancy.adapters.db.party_registry_views import document_by_id
-from request_engine.modules.tenancy.application.commands import (
-    add_party_document,
-    rename_party,
-)
+from request_engine.modules.tenancy.application.commands import add_party_document, rename_party
 from request_engine.modules.tenancy.application.errors import PartyNotFound
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyDocumentInput,
@@ -41,17 +31,13 @@ from request_engine.platform.idempotency.postgres import command_fingerprint
 
 _RENAME_CAPABILITY = "parties.rename"
 _ADD_DOCUMENT_CAPABILITY = "parties.add_document"
-
 _RENAME_PARTY_SQL = text(
-    "UPDATE request_engine.parties"
-    " SET display_name = :display_name, updated_at = clock_timestamp()"
-    " WHERE organization_id = :organization_id AND id = :party_id"
+    "UPDATE request_engine.parties SET display_name = :display_name, "
+    "updated_at = clock_timestamp() WHERE organization_id = :organization_id AND id = :party_id"
 )
 
 
 class PostgresPartyCorrectionCommands:
-    """Operator-granted rename and document addition with idempotent replay."""
-
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
@@ -86,10 +72,16 @@ class PostgresPartyCorrectionCommands:
     async def add_party_document(
         self, command: add_party_document.AddPartyDocumentCommand
     ) -> PartyIdentityDocument:
-        document = PartyDocumentInput(command.kind, command.value)
+        authority = command.authority or ""
+        document = PartyDocumentInput(command.kind, command.value, command.authority)
         fingerprint = command_fingerprint(
             _ADD_DOCUMENT_CAPABILITY,
-            {"party_id": command.party_id, "kind": command.kind, "value": command.value},
+            {
+                "party_id": command.party_id,
+                "kind": command.kind,
+                "authority": command.authority,
+                "value": command.value,
+            },
         )
 
         async def mutate(session: AsyncSession, idempotency_id: UUID) -> PartyIdentityDocument:
@@ -100,7 +92,11 @@ class PostgresPartyCorrectionCommands:
                 command,
                 _ADD_DOCUMENT_CAPABILITY,
                 idempotency_id,
-                {"kind": command.kind, "normalized_value": command.value},
+                {
+                    "kind": command.kind,
+                    "authority": command.authority,
+                    "normalized_value": command.value,
+                },
             )
             added = document_by_id(state, UUID(str(inserted[0]["id"])))
             if added is None:
@@ -121,7 +117,9 @@ class PostgresPartyCorrectionCommands:
             command,
             _ADD_DOCUMENT_CAPABILITY,
             fingerprint,
-            lambda data: replay_document(data, command.kind, command.value, command.party_id),
+            lambda data: replay_document(
+                data, command.kind, authority, command.value, command.party_id
+            ),
             mutate,
             on_conflict,
         )
