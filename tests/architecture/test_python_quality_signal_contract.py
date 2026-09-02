@@ -32,6 +32,12 @@ render_feedback = cast(Callable[[dict[str, object]], str], signals.render_feedba
 write_github_summary = cast(
     Callable[[dict[str, object], str, Path], None], signals.write_github_summary
 )
+navigation_candidate = cast(
+    Callable[
+        [Path, dict[str, object]], dict[str, object] | None
+    ],
+    signals._navigation_candidate,
+)
 
 
 def _fact(candidate: dict[str, object]) -> dict[str, object]:
@@ -77,10 +83,15 @@ def test_c901_json_becomes_evidence_without_semantic_claim() -> None:
 
 
 def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
-    navigation_candidate = cast(Any, signals._navigation_candidate)
-    monkeypatch.setattr(signals, "_module_file_count", lambda _ref, _root: 10)
-    monkeypatch.setattr(signals, "_current_module_file_count", lambda _root: 11)
-    observation = {
+    def previous_file_count(_ref: str, _root: Path) -> int:
+        return 10
+
+    def current_file_count(_root: Path) -> int:
+        return 11
+
+    monkeypatch.setattr(signals, "_module_file_count", previous_file_count)
+    monkeypatch.setattr(signals, "_current_module_file_count", current_file_count)
+    observation: dict[str, object] = {
         "function_count": 1,
         "one_call_forwarder_count": 1,
         "forwarding_only_functions": True,
@@ -88,11 +99,11 @@ def test_qr_nav_only_flags_new_obvious_indirection(monkeypatch: Any) -> None:
         "interpretation": "none",
     }
     path = Path("src/request_engine/modules/booking/application/new_wrapper.py")
-    candidate = navigation_candidate(path, observation, is_new=True, base_ref="base")
+    candidate = signals._navigation_candidate(path, observation, is_new=True, base_ref="base")
     assert candidate is not None
     assert candidate["trigger_id"] == "QR-NAV-001"
     assert candidate["classification"] == "REVIEW_CANDIDATE"
-    assert navigation_candidate(path, observation, is_new=False, base_ref="base") is None
+    assert signals._navigation_candidate(path, observation, is_new=False, base_ref="base") is None
 
 
 def test_feedback_tells_agents_how_not_to_game_the_metric() -> None:
