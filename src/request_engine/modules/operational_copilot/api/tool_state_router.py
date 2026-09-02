@@ -15,7 +15,10 @@ from request_engine.modules.operational_copilot.contracts import AtRiskReservati
 from request_engine.modules.operational_recovery.contracts.copilot import (
     CopilotRecoveryIncidentReader,
 )
-from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
+from request_engine.modules.queue.contracts.intake import (
+    QueueIntakeControlNotConfigured,
+    QueueIntakeControlPort,
+)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
@@ -41,7 +44,14 @@ def create_tool_state_router(
         current: Annotated[ActorContext, Depends(actor)],
     ) -> QueueIntakeView:
         require_capability(current, READ_CAPABILITY)
-        state = await intake_reader.get_intake_control(current.organization_id, service_queue_id)
+        try:
+            state = await intake_reader.get_intake_control(
+                current.organization_id, service_queue_id
+            )
+        except QueueIntakeControlNotConfigured as exc:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, detail="queue intake state not found"
+            ) from exc
         return QueueIntakeView.from_state(state)
 
     async def incident(

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.queue.adapters.db.intake_control_codec import intake_state_from_row
 from request_engine.modules.queue.contracts.intake import (
+    QueueIntakeControlNotConfigured,
     QueueIntakeControlState,
     QueueIntakeStopped,
 )
@@ -40,7 +41,7 @@ async def load_intake_control(
         .one_or_none()
     )
     if row is None:
-        raise LookupError(f"ServiceQueue {service_queue_id} intake control is not configured")
+        raise QueueIntakeControlNotConfigured(service_queue_id)
     return intake_state_from_row(row)
 
 

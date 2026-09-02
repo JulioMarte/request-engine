@@ -1,0 +1,78 @@
+{
+  "schema_version": "reviewer-fixer-evidence/v1",
+  "repository": "JulioMarte/request-engine",
+  "entries": [
+    {
+      "case_id": "governance-test-froze-review-wording",
+      "reviewer_role": "semantic-reviewer",
+      "review_verdict": "REFACTOR_RECOMMENDED",
+      "before_sha": "83597ac1cb22530587a7963ac8be24bd508b5a19",
+      "protected_property": "Agent governance tests protect anti-gaming behavior without freezing incidental prose wording.",
+      "fixer_role": "coding-agent",
+      "fix_commit": "79ee1316f716056fc47e0aa2198f7689adc9e090",
+      "fix_summary": "Replace one exact-phrase architecture assertion with independent semantic ingredients and actionable failure messages.",
+      "post_change_facts": [
+        "The architecture suite later passed on a descendant containing the fix.",
+        "No architecture allowlist, ignore, or waiver was added."
+      ],
+      "deterministic_reproof": {
+        "head_sha": "7d0b4f9b0e69f2c6e18de73ec6703af43fa10ea0",
+        "workflow_run_id": 33619439738,
+        "checks": {
+          "ruff-lint": "PASS",
+          "ruff-format": "PASS",
+          "pyright": "PASS",
+          "architecture": "PASS"
+        },
+        "overall": "PARTIAL_GREEN_OTHER_UNIT_MIGRATION_FAILURE"
+      }
+    },
+    {
+      "case_id": "successful-sensor-output-hidden-by-compact-ci",
+      "reviewer_role": "semantic-reviewer",
+      "review_verdict": "REFACTOR_RECOMMENDED",
+      "before_sha": "6de02b45a5ab97d278edaedc4ed7ac691075f99c",
+      "protected_property": "A non-blocking quality finding must remain visible and actionable to agents even when the sensor step succeeds.",
+      "fixer_role": "coding-agent",
+      "fix_commit": "91d421678b86a3bbbe0ac366a2a1f20109d79d69",
+      "fix_summary": "Write concise quality candidate guidance to GITHUB_STEP_SUMMARY while preserving the JSON scan artifact.",
+      "post_change_facts": [
+        "The sensor remained non-blocking.",
+        "The canonical CI runner did not need to become globally verbose.",
+        "A unit/architecture contract verifies summary publication."
+      ],
+      "deterministic_reproof": {
+        "head_sha": "7d0b4f9b0e69f2c6e18de73ec6703af43fa10ea0",
+        "workflow_run_id": 33619439738,
+        "checks": {
+          "file-budget": "PASS",
+          "ruff-lint": "PASS",
+          "ruff-format": "PASS",
+          "pyright": "PASS",
+          "architecture": "PASS"
+        },
+        "overall": "PARTIAL_GREEN_OTHER_UNIT_MIGRATION_FAILURE"
+      }
+    },
+    {
+      "case_id": "legacy-file-budget-unit-contract",
+      "reviewer_role": "semantic-reviewer",
+      "review_verdict": "REFACTOR_RECOMMENDED",
+      "before_sha": "7d0b4f9b0e69f2c6e18de73ec6703af43fa10ea0",
+      "protected_property": "Tests must describe the migrated REVIEW_CANDIDATE contract rather than the retired universal 120-line HARD failure.",
+      "fixer_role": "coding-agent",
+      "fix_commit": "ff850e30aa9a9494dcd0f2e8c60bf309d9e1186b",
+      "fix_summary": "Replace violation()/ratchet assertions with candidate semantics and category/generated-discovery coverage.",
+      "post_change_facts": [
+        "The retired violation() API is not reintroduced as a compatibility shim.",
+        "The new unit contract checks non-blocking evidence and generated-file exclusion."
+      ],
+      "deterministic_reproof": {
+        "head_sha": null,
+        "workflow_run_id": null,
+        "checks": {},
+        "overall": "PENDING_EXACT_HEAD_REPROOF"
+      }
+    }
+  ]
+}

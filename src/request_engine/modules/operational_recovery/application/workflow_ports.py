@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -49,6 +50,10 @@ class RecoveryWorkflowRepository(RecoveryAssessmentRepository, Protocol):
         expected_source_revision: int,
         payload: Mapping[str, object],
     ) -> tuple[RecoveryAction, bool]: ...
+
+    def serialize_action_execution(
+        self, *, action_id: UUID
+    ) -> AbstractAsyncContextManager[None]: ...
 
     async def transition_action(
         self,
