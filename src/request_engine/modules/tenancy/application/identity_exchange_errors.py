@@ -23,6 +23,10 @@ class IdentityExchangeProfileInvalid(IdentityExchangeError):
     """Portable profile cannot satisfy the requested adoption."""
 
 
+class IdentityExchangeIdentityConflict(IdentityExchangeError):
+    """A strong document would join two existing portable identities."""
+
+
 class IdentityExchangeAlreadyAdopted(IdentityExchangeError):
     """Another adoption already bound this portable person in the destination tenant."""
 

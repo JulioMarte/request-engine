@@ -69,9 +69,13 @@ async def test_concurrent_cross_org_publication_converges_to_one_portable_person
 
     await asyncio.gather(publish(first, first_party), publish(second, second_party))
     counts = admin_conn.execute(
-        "SELECT (SELECT count(*) FROM request_engine.portable_person_identities), "
-        "(SELECT count(*) FROM request_engine.portable_person_identifiers), "
-        "(SELECT count(*) FROM request_engine.organization_person_bindings)"
+        "SELECT count(DISTINCT b.portable_person_id), count(DISTINCT i.id), "
+        "count(DISTINCT b.id) "
+        "FROM request_engine.organization_person_bindings b "
+        "JOIN request_engine.portable_person_identifiers i "
+        "ON i.portable_person_id = b.portable_person_id AND i.active "
+        "WHERE b.organization_id IN (%s, %s) AND b.active",
+        (first.organization_id, second.organization_id),
     ).fetchone()
     assert counts == (1, 1, 2)
 

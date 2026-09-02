@@ -7,6 +7,7 @@ from request_engine.modules.tenancy.application.identity_exchange_errors import 
     IdentityExchangeAlreadyAdopted,
     IdentityExchangeCandidateInvalid,
     IdentityExchangeError,
+    IdentityExchangeIdentityConflict,
     IdentityExchangeOperatorRequired,
     IdentityExchangeProfileInvalid,
     IdentityExchangeUnavailable,
@@ -63,6 +64,13 @@ async def _exchange_error(_: Request, exc: Exception) -> JSONResponse:
             "identity_exchange_candidate_invalid",
             str(exc),
             ErrorResolution.REFRESH_AND_RETRY,
+        )
+    if isinstance(exc, IdentityExchangeIdentityConflict):
+        return _response(
+            status.HTTP_409_CONFLICT,
+            "identity_exchange_identity_conflict",
+            str(exc),
+            ErrorResolution.OPERATOR_INTERVENTION,
         )
     if isinstance(exc, IdentityExchangeProfileInvalid):
         return _response(
