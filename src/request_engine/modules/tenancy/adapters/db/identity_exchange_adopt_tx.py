@@ -15,9 +15,15 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
     BIND_CANDIDATE,
     CONSUME_CANDIDATE,
 )
-from request_engine.modules.tenancy.adapters.db.party_registration_write import write_registered_party
-from request_engine.modules.tenancy.application.commands.register_party import RegisterPartyCommand
-from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
+from request_engine.modules.tenancy.adapters.db.party_registration_write import (
+    write_registered_party,
+)
+from request_engine.modules.tenancy.application.commands.register_party import (
+    RegisterPartyCommand,
+)
+from request_engine.modules.tenancy.application.identity_exchange import (
+    AdoptPortableIdentityCommand,
+)
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeCandidateInvalid,
     IdentityExchangeProfileInvalid,
@@ -96,8 +102,9 @@ async def write_identity_adoption(
             )
         ).scalar_one(),
     )
+    insurance = portable_insurance(profile, command.consented_fields)
     return IdentityAdoptionResult(
         party=party,
         binding_id=binding_id,
-        portable_insurance_identifiers=portable_insurance(profile, command.consented_fields),
+        portable_insurance_identifiers=insurance,
     )
