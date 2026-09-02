@@ -153,9 +153,18 @@ def parse_ruff_c901(diagnostics: list[dict[str, Any]]) -> list[dict[str, object]
                 ],
                 "deltas": [],
                 "review_questions": [
-                    "Where does the real reasoning load come from: branches, state, ordering, or side effects?",
-                    "Can decision structure be simplified without merely distributing it across helpers?",
-                    "Would a proposed extraction create a real responsibility boundary and preserve locality?",
+                    (
+                        "Where does the real reasoning load come from: branches, state, "
+                        "ordering, or side effects?"
+                    ),
+                    (
+                        "Can decision structure be simplified without merely distributing "
+                        "it across helpers?"
+                    ),
+                    (
+                        "Would a proposed extraction create a real responsibility boundary "
+                        "and preserve locality?"
+                    ),
                 ],
             }
         )
@@ -234,9 +243,15 @@ def render_feedback(report: dict[str, object]) -> str:
     raw_candidates = report.get("candidates", [])
     candidates = raw_candidates if isinstance(raw_candidates, list) else []
     if not candidates:
-        return "[PASS] Python maintainability signal scan: no review candidates in changed Python files."
+        return (
+            "[PASS] Python maintainability signal scan: no review candidates in changed "
+            "Python files."
+        )
     lines = [
-        f"[REVIEW_CANDIDATE] {len(candidates)} non-blocking maintainability signal(s) detected.",
+        (
+            f"[REVIEW_CANDIDATE] {len(candidates)} non-blocking maintainability "
+            "signal(s) detected."
+        ),
         "NON-BLOCKING: these are evidence for semantic review, not defects or invariant failures.",
     ]
     for candidate in candidates:
@@ -254,9 +269,18 @@ def render_feedback(report: dict[str, object]) -> str:
             "AGENT ACTION:",
             f"1. Read {AGENT_REVIEW_PLAYBOOK} and {SEMANTIC_REVIEW_PROTOCOL}.",
             "2. Do NOT split files or extract helpers solely to reduce LOC or C901.",
-            "3. Review responsibility, real reasoning complexity, side effects, locality, ownership, testability, and metric gaming.",
-            "4. Return a semantic disposition: HEALTHY_AS_IS, REVIEW_CONCERN, REFACTOR_RECOMMENDED, ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT.",
-            "5. If code changes, rerun deterministic architecture, lint/type, and relevant behavior proofs before claiming success.",
+            (
+                "3. Review responsibility, real reasoning complexity, side effects, locality, "
+                "ownership, testability, and metric gaming."
+            ),
+            (
+                "4. Return a semantic disposition: HEALTHY_AS_IS, REVIEW_CONCERN, "
+                "REFACTOR_RECOMMENDED, ARCHITECTURE_CONCERN, or INSUFFICIENT_CONTEXT."
+            ),
+            (
+                "5. If code changes, rerun deterministic architecture, lint/type, and relevant "
+                "behavior proofs before claiming success."
+            ),
             "A deterministic INVARIANT_FAILURE cannot be overridden by semantic review.",
         ]
     )
