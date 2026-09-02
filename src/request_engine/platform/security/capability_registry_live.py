@@ -17,6 +17,9 @@ from request_engine.platform.security.capability_registry_party_registry import 
     PARTY_REGISTRY_CAPABILITIES,
 )
 from request_engine.platform.security.capability_registry_queue_live import LIVE_QUEUE_CAPABILITIES
+from request_engine.platform.security.capability_registry_queue_same_day import (
+    SAME_DAY_QUEUE_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_staff_contacts import (
     STAFF_CONTACT_CAPABILITIES,
 )
@@ -24,6 +27,7 @@ from request_engine.platform.security.capability_types import CapabilityDefiniti
 
 LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     LIVE_QUEUE_CAPABILITIES
+    + SAME_DAY_QUEUE_CAPABILITIES
     + LIVE_DELIVERY_CAPABILITIES
     + LIVE_CAPACITY_CAPABILITIES
     + BOOKING_OPERATIONAL_CAPABILITIES
