@@ -61,6 +61,7 @@ F7 front-desk surfaces
         |  identity binding + intent validation + typed lowering (F7c)
         |  arrival-estimate fact (F7d)
         |  same-day selection facts/commands (F7e)
+        |  operator day-board read composition (F7g)
         v
 F1-F6 owner modules (booking, queue, delivery, live_capacity, recovery, copilot)
 ```
@@ -75,12 +76,13 @@ Cross-cutting rule inherited from F6 and the recovery contract:
 
 | Slice | Name | Owner module | Status |
 |---|---|---|---|
-| F7a | Remote delivery transport | communications | implemented on `feature/f7-front-desk-operations` (PR #104) |
-| F7b | Delivery escalation policy | communications | TARGET (depends on F7a) |
-| F7c | Inbound interpretation boundary | communications + owners | TARGET (depends on F7d for late-ETA) |
-| F7d | Reservation arrival estimates | booking | implemented on `feature/f7-front-desk-operations` (PR #104) |
+| F7a | Remote delivery transport | communications | implemented (PR #104) |
+| F7b | Delivery escalation policy | communications | implemented (PR #107) |
+| F7c | Inbound interpretation boundary | communications + owners | TARGET (depends on F7d) |
+| F7d | Reservation arrival estimates | booking | implemented (PR #104) |
 | F7e | Same-day selection layer (subset) | queue | TARGET (own proof lane, later) |
 | F7f | After-hours demand intake | application composition | TARGET (no core change) |
+| F7g | Operator day board | booking read composition | TARGET (implementation PR #113) |
 
 Adding another slice or another inbound intent requires this contract's amendment, a
 published owner contract for any mutation, capability disposition and acceptance evidence.
@@ -138,7 +140,7 @@ F7a adds no new truth domain. It is a transport adapter plus wiring.
 
 ## 4. F7b — Delivery escalation policy
 
-Baseline gap being closed: a definitive channel failure is currently terminal for the task.
+Baseline gap being closed: a definitive channel failure is terminal for the task.
 F7b adds deterministic, auditable, **sequential** channel fallback owned by RE.
 
 ### Trigger vocabulary (closed — no DSL, no tenant-configurable triggers)
@@ -153,8 +155,7 @@ recipient_unreachable      all contact points for the current channel exhausted
 
 - On a trigger, the current channel attempt closes terminally (with its failure class);
   a **new** `CommunicationTask` is created for the next channel in the tenant
-  `channel_policy` order, linked to the parent task (lineage of notification attempts,
-  same lineage discipline as recovery actions).
+  `channel_policy` order, linked to the parent task.
 - Escalation is **sequential, never parallel**: at most one live channel task per
   notification lineage.
 - New task dedupe keys are deterministic (parent task + channel + escalation ordinal);
@@ -220,13 +221,10 @@ New durable fact in Booking, attached to a confirmed reservation:
   authority-gated exactly like attendance recording (subject scope via representations or
   operator override), with party authority resolved in-transaction;
 - closed validation rules (advisory fact — no policy engine): an estimate in the past
-  (already an arrival/check-in fact, not an estimate) and an estimate after the
-  reservation interval end (the slot is gone; the fact can never be acted on) are
-  rejected with a typed 422; an estimate before the interval start is legal (early
-  arrival is real information); no monotonicity rule (supersede handles revisions);
+  and an estimate after the reservation interval end are rejected with a typed 422; an
+  estimate before the interval start is legal; no monotonicity rule;
 - an active estimate is **advisory input**: receptionist surfaces may display it and F4
-  projection may consume it as an input, but it must never fabricate certainty — the
-  honest-unknown rule of F4 is unchanged (no estimate -> `unknown`, never invented);
+  projection may consume it as an input, but it must never fabricate certainty;
 - recording an estimate never mutates reservation status or capacity truth.
 
 ## 7. F7e — Same-day selection layer (subset)
@@ -253,12 +251,58 @@ skip              recorded non-terminal defer of the FIFO head; entry returns to
   imminent; where truth runs out the projection degrades honestly (`partial` /
   `indeterminate`), never guesses.
 
+**Implementation gate:** this vocabulary is not sufficient by itself to change `call_next`.
+Before F7e lands, the contract must close the lifetime of `skip` and the authoritative
+release semantics for every `recall_hold` kind. An implementation must not guess those
+semantics from UI behavior.
+
 ## 8. F7f — After-hours demand intake
 
 Composition only, no new core semantics: after-hours demand lands via the existing public
 `requests.submit` command against a tenant request definition; morning conversion into
 bookings happens through existing owner commands at the application layer. F7f is an
 application/vertical concern and owns no tables.
+
+## 8.1 F7g — Operator day board
+
+F7g is the read-only operational composition required by product-goal criterion 4. It adds
+**no mutation authority and no second truth domain**. Booking owns the reservation facts;
+the day board composes owner-backed facts for an operator without requiring subject-by-subject
+representation grants.
+
+Closed surface:
+
+```text
+GET /v1/front-desk/day-board
+capability: front_desk.day_board.read (operator)
+window_start: offset-aware timestamp
+window_end: offset-aware timestamp
+location_id: optional
+limit: 1..500
+```
+
+Semantics:
+
+- the caller supplies an explicit offset-aware time window; Request Engine does not infer a
+  clinic timezone. `window_end` must be after `window_start`, and the window is bounded to
+  48 hours;
+- results are tenant-scoped by the authenticated actor, optionally filtered by location,
+  and deterministically ordered by reservation start then reservation id;
+- the read exposes only the minimum front-desk identity surface: subject Party id and
+  display name. Contact points, authority internals and unrelated PII do not cross;
+- each row exposes reservation status/revision, attendance response, attendance outcome,
+  check-in/no-show timestamps, and the current arrival-estimate assertion when present;
+- the **reported arrival estimate** remains visible as the latest durable assertion. The
+  **effective arrival estimate** is non-null only while the reservation is confirmed and
+  attendance outcome is still pending. Check-in, no-show or terminal reservation state
+  wins operationally without erasing the historical assertion;
+- cancelled/no-show rows are not silently hidden. The board returns truth for the requested
+  window; rendering policy belongs to the client;
+- the board does not compute `movable`, capacity availability, reminder delivery status or
+  recovery policy. Those remain owner-backed questions and may only join later through an
+  explicit contract amendment;
+- the database projection is a `security_invoker` read view. It owns no tables and writes
+  nothing.
 
 ## 9. What F7 must never become
 
@@ -268,7 +312,8 @@ application/vertical concern and owns no tables.
   minimal typed facts defined here cross the boundary);
 - parallel multi-channel delivery; auto-dispatch without operator commitment (F7e);
 - content invention by the transport layer (escalation decides channel/timing only);
-- a second delivery truth outside `communication_deliveries`.
+- a second delivery truth outside `communication_deliveries`;
+- a second booking/capacity truth hidden inside the day board.
 
 ## 10. Acceptance proofs (per slice; each lands with its implementation)
 
@@ -289,17 +334,22 @@ application/vertical concern and owns no tables.
   out-of-order move audited; concurrent PostgreSQL proof on the selection lock path.
 - F7f: after-hours demand visible next morning; conversion uses only existing owner
   commands.
+- F7g: PostgreSQL proof shows attendance/ETA composition and tenant isolation under the
+  runtime role; HTTP proof shows operator capability gating, explicit-window filtering,
+  location filtering and deterministic order; check-in/no-show suppresses only the
+  effective ETA while preserving the reported assertion.
 
 ## 11. Migration plan
 
-- Schema changes are new append-only Alembic revisions (next is `0022_...`).
-  `0001_initial` and the frozen V3 candidate line remain untouched.
+- Schema changes remain append-only Alembic revisions. The integrated line currently ends
+  at `0026_s3_escalation_lineage`; F7g uses `0027_f7_operator_day_board` and later slices
+  must re-check the migration head rather than assuming a number.
 - Every new table: tenant-scoped (`organization_id` composite keys), FORCE RLS, identity
   immutability triggers where facts are append-only, partial unique indexes for active
-  rows, backstop constraints at the DB layer.
+  rows, backstop constraints at the DB layer. Read views use `security_invoker`.
+- `0001_initial` and the frozen V3 candidate line remain untouched.
 - Existing commands, states and public APIs gain nothing breaking; every slice must keep
-  the degenerate behavior of existing surfaces unchanged (see per-slice equivalence
-  proofs).
+  the degenerate behavior of existing surfaces unchanged.
 
 ## 12. Incubating: voice confirmation channel
 
