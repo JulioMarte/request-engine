@@ -116,5 +116,6 @@ def test_mega_policy_documents_review_semantics_and_revisit_evidence() -> None:
     assert "HIGH-SIGNAL STRUCTURAL REVIEW CONCEPT" in policy
     assert "longitudinal repository evidence" in policy
     assert "co-occurrence invariant" in policy
-    assert "line count alone" in policy
+    assert "does not define an architectural invariant" in policy
+    assert "do not fail CI solely because of line count" in policy
     assert "What remediations did humans and coding agents choose?" in policy
