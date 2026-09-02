@@ -1,9 +1,9 @@
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from f7e_selection_fixture import F7eSelectionFixture
 from psycopg import Connection
 
-from f7e_selection_fixture import F7eSelectionFixture
 from request_engine.modules.queue.application.commands.call_next import CallNextCommand
 
 PgConnection = Connection[Any]
