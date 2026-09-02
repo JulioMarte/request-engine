@@ -1,18 +1,26 @@
 #!/usr/bin/env sh
 set -eu
 
-repo_root="$(git rev-parse --show-toplevel)"
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+certifier="$hook_dir/certify_push.py"
+
+if [ ! -f "$certifier" ]; then
+  printf '%s\n' \
+    '[LOCAL_PUSH_CERT] FAIL: managed certifier is missing or stale.' \
+    'Run: uv run python scripts/dev/install_git_hooks.py' >&2
+  exit 1
+fi
 
 if command -v python >/dev/null 2>&1; then
-  exec python "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+  exec python "$certifier" pre-push "$@"
 fi
 
 if command -v python3 >/dev/null 2>&1; then
-  exec python3 "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+  exec python3 "$certifier" pre-push "$@"
 fi
 
 if command -v uv >/dev/null 2>&1; then
-  exec uv run --no-sync python "$repo_root/scripts/dev/certify_push.py" pre-push "$@"
+  exec uv run --no-sync python "$certifier" pre-push "$@"
 fi
 
 printf '%s\n' \
