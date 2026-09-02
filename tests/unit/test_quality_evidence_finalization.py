@@ -111,10 +111,21 @@ def test_finalized_packet_distinguishes_source_head_from_tested_tree(monkeypatch
 
 def test_evidence_finalization_rejects_mismatched_tested_tree(monkeypatch: Any) -> None:
     finalizer = _load(FINALIZER, "quality_finalizer_provenance_under_test")
-    monkeypatch.setattr(finalizer, "_tool_version", lambda _command, _fallback: "test")
-    scan = {"base_sha": "a" * 40, "head_sha": "c" * 40, "candidates": []}
-    baseline = {"schema_version": "engineering-quality-baseline/v1", "repository_sha": "d" * 40}
-    architecture_diff = {
+
+    def tool_version_stub(_command: list[str], _fallback: str) -> str:
+        return "test"
+
+    monkeypatch.setattr(finalizer, "_tool_version", tool_version_stub)
+    scan: dict[str, Any] = {
+        "base_sha": "a" * 40,
+        "head_sha": "c" * 40,
+        "candidates": [],
+    }
+    baseline: dict[str, Any] = {
+        "schema_version": "engineering-quality-baseline/v1",
+        "repository_sha": "d" * 40,
+    }
+    architecture_diff: dict[str, Any] = {
         "schema_version": "architecture-diff/v1",
         "provenance": {
             "base_sha": "a" * 40,
@@ -123,8 +134,9 @@ def test_evidence_finalization_rejects_mismatched_tested_tree(monkeypatch: Any) 
             "test_mode": "PR_INTEGRATION_CANDIDATE",
         },
     }
+    summary: dict[str, Any] = {}
     try:
-        finalizer.build_packets(scan, baseline, {}, architecture_diff)
+        finalizer.build_packets(scan, baseline, summary, architecture_diff)
     except ValueError as exc:
         assert "baseline tree does not match" in str(exc)
     else:
