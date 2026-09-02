@@ -10,7 +10,7 @@ from request_engine.modules.tenancy.api.party_registry_models import RegisteredP
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 
 ProofKind = Literal["operator_document_witness"]
-DocumentKind = Literal["cedula", "passport"]
+DocumentKind = Literal["cedula", "passport", "rnc"]
 
 
 class PublishPortableProfileBody(BaseModel):
