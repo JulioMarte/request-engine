@@ -4,7 +4,7 @@ These instructions apply to handwritten Python under `src/request_engine/**` and
 
 ## Maintainability metrics are review signals
 
-File LOC, function LOC, McCabe complexity, file count, and navigation observations are evidence. They are not architecture by themselves.
+File LOC, function LOC, McCabe complexity, file count, navigation observations, fan-in, and fan-out are evidence. They are not architecture by themselves.
 
 For changed Python:
 
@@ -14,7 +14,14 @@ effective file LOC > 120
 
 Ruff C901 McCabe > 10
     -> QR-CPLX-001 REVIEW_CANDIDATE
+
+new direct outbound business-module dependency
+    -> QR-COUPLING-001 REVIEW_CANDIDATE
 ```
+
+Fan-in/fan-out have no numeric blocking threshold. A module may legitimately have high fan-out when it explicitly owns orchestration. `QR-COUPLING-001` is delta-driven and asks for review when the direct dependency neighborhood expands.
+
+When coupling changes, ask whether each new synchronous edge is required, whether ownership remains correct, and whether an existing contract/event/read model expresses the relationship better. Do not hide a real dependency behind a service locator, runtime import, generic shared helper, re-export facade, or forwarding wrapper merely to reduce measured fan-out.
 
 A core file above 500 effective code-bearing lines is an extreme outlier worth careful review, but **500/501 is not a HARD architecture boundary**. The former `QR-MEGA-001 INVARIANT_FAILURE` experiment has been retired during calibration.
 
@@ -24,7 +31,7 @@ When a large or complex file is surfaced:
 2. inspect real control-flow/side-effect complexity;
 3. preserve locality when behavior belongs together;
 4. extract only when there is a real ownership/responsibility boundary or a materially clearer reasoning unit;
-5. do not target `499`, a lower C901 score, or a smaller file count as the definition of success.
+5. do not target `499`, a lower C901 score, lower fan-out, or a smaller file count as the definition of success.
 
 `HEALTHY_AS_IS` is valid when the evidence does not justify structural change.
 
@@ -35,6 +42,7 @@ Agents MUST NOT make metrics green by:
 - mechanically splitting a cohesive file;
 - creating forwarding wrappers or one-function helper modules;
 - proliferating interfaces/factories without a real substitution or ownership boundary;
+- hiding direct dependencies behind service locators, runtime imports, or re-export facades;
 - moving business logic into `platform`, adapters, `shared`, `common`, or utility buckets;
 - duplicating logic to avoid a dependency or size signal;
 - adding source comments such as `@generated` merely to evade measurement.
