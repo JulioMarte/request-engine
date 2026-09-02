@@ -5,7 +5,7 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
-from request_engine.modules.booking import api as booking_api
+from request_engine.modules.booking.api import day_board_http, install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.live_capacity import (
     build_live_capacity_source as build_booking_live_capacity_source,
@@ -55,14 +55,14 @@ def install_business_modules(
     tenancy_api.install_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    booking_api.install_http(
+    install_booking_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         party_authority_reader=party_authority_reader,
         appointment_option_signing_key=appointment_option_signing_key,
     )
-    booking_api.day_board_http.install_day_board_http(app, session_factory, actor_resolver)
+    day_board_http.install_day_board_http(app, session_factory, actor_resolver)
     queue_api.install_http(
         app,
         session_factory=session_factory,
