@@ -112,8 +112,10 @@ def classify_path(path: Path) -> str | None:
 
 def business_module_for_path(path: Path) -> str | None:
     parts = path.parts
-    if len(parts) >= 4 and parts[:3] == BUSINESS_MODULE_ROOT:
-        return parts[3]
+    if len(parts) >= 5 and parts[:3] == BUSINESS_MODULE_ROOT:
+        module = parts[3]
+        if not module.startswith("__") and not module.endswith(".py"):
+            return module
     return None
 
 
