@@ -19,9 +19,7 @@ def _load(path: Path, name: str) -> ModuleType:
     return module
 
 
-def test_finalized_packet_attaches_deterministic_architecture_results(
-    monkeypatch: Any,
-) -> None:
+def test_finalized_packet_distinguishes_source_head_from_tested_tree(monkeypatch: Any) -> None:
     finalizer = _load(FINALIZER, "quality_finalizer_under_test")
 
     def tool_version_stub(_command: list[str], _fallback: str) -> str:
@@ -31,7 +29,7 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
     scan: dict[str, Any] = {
         "schema_version": "quality-scan/v1",
         "base_sha": "a" * 40,
-        "head_sha": "b" * 40,
+        "head_sha": "c" * 40,
         "candidates": [
             {
                 "candidate_id": "QR-0123456789ab",
@@ -59,7 +57,16 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
     }
     baseline: dict[str, Any] = {
         "schema_version": "engineering-quality-baseline/v1",
-        "repository_sha": "b" * 40,
+        "repository_sha": "c" * 40,
+    }
+    architecture_diff: dict[str, Any] = {
+        "schema_version": "architecture-diff/v1",
+        "provenance": {
+            "base_sha": "a" * 40,
+            "source_head_sha": "b" * 40,
+            "tested_sha": "c" * 40,
+            "test_mode": "PR_INTEGRATION_CANDIDATE",
+        },
     }
     summary: dict[str, Any] = {
         "job": "python-quality",
@@ -69,13 +76,20 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
         ],
     }
     build_packets = cast(
-        Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], list[dict[str, object]]],
+        Callable[
+            [dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]],
+            list[dict[str, object]],
+        ],
         finalizer.build_packets,
     )
-    packets = build_packets(scan, baseline, summary)
+    packets = build_packets(scan, baseline, summary, architecture_diff)
     assert len(packets) == 1
     packet = packets[0]
-    assert packet["schema_version"] == "quality-evidence/v1"
+    assert packet["schema_version"] == "quality-evidence/v2"
+    assert packet["base_sha"] == "a" * 40
+    assert packet["source_head_sha"] == "b" * 40
+    assert packet["tested_sha"] == "c" * 40
+    assert packet["test_mode"] == "PR_INTEGRATION_CANDIDATE"
     assert packet["trigger_ids"] == ["QR-CPLX-001"]
     results = cast(list[dict[str, object]], packet["architecture_results"])
     assert any(
@@ -86,9 +100,36 @@ def test_finalized_packet_attaches_deterministic_architecture_results(
         item["fitness_id"] == "FF-QUALITY-BASELINE-001" and item["status"] == "pass"
         for item in results
     )
+    assert any(
+        item["fitness_id"] == "FF-ARCH-DIFF-001" and item["status"] == "pass"
+        for item in results
+    )
     context = cast(list[str], packet["context_manifest"])
     assert "docs/engineering-quality/semantic-review-protocol.md" in context
+    assert ".ci/architecture-diff.json" in context
     assert packet["authority"] == "heuristic-signals-are-non-blocking"
+
+
+def test_evidence_finalization_rejects_mismatched_tested_tree(monkeypatch: Any) -> None:
+    finalizer = _load(FINALIZER, "quality_finalizer_provenance_under_test")
+    monkeypatch.setattr(finalizer, "_tool_version", lambda _command, _fallback: "test")
+    scan = {"base_sha": "a" * 40, "head_sha": "c" * 40, "candidates": []}
+    baseline = {"schema_version": "engineering-quality-baseline/v1", "repository_sha": "d" * 40}
+    architecture_diff = {
+        "schema_version": "architecture-diff/v1",
+        "provenance": {
+            "base_sha": "a" * 40,
+            "source_head_sha": "b" * 40,
+            "tested_sha": "c" * 40,
+            "test_mode": "PR_INTEGRATION_CANDIDATE",
+        },
+    }
+    try:
+        finalizer.build_packets(scan, baseline, {}, architecture_diff)
+    except ValueError as exc:
+        assert "baseline tree does not match" in str(exc)
+    else:
+        raise AssertionError("mismatched tested-tree provenance was accepted")
 
 
 def test_human_model_calibration_never_imputes_missing_human_labels() -> None:
