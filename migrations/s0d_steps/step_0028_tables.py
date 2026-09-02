@@ -108,6 +108,13 @@ CREATE TABLE request_engine.identity_exchange_candidates (
 CREATE INDEX identity_exchange_candidate_lookup_idx
     ON request_engine.identity_exchange_candidates(organization_id, id, expires_at);
 
+ALTER TABLE request_engine.identity_exchange_candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE request_engine.identity_exchange_candidates FORCE ROW LEVEL SECURITY;
+CREATE POLICY identity_exchange_candidates_tenant_policy
+    ON request_engine.identity_exchange_candidates
+    USING (organization_id = request_engine.current_organization_id())
+    WITH CHECK (organization_id = request_engine.current_organization_id());
+
 CREATE TABLE request_engine.organization_person_bindings (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     organization_id uuid NOT NULL REFERENCES request_engine.organizations(id),
