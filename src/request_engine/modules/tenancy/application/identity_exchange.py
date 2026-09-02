@@ -14,7 +14,9 @@ from request_engine.modules.tenancy.domain.identity_exchange import (
     normalize_witnessed_document,
     require_adoptable_fields,
 )
-from request_engine.modules.tenancy.domain.party_identity import normalize_identity_document_authority
+from request_engine.modules.tenancy.domain.party_identity import (
+    normalize_identity_document_authority,
+)
 
 _PROOF = "operator_document_witness"
 
