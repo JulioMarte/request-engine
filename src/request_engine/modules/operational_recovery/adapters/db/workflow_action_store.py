@@ -43,9 +43,7 @@ class PostgresRecoveryActionStore:
                 payload=payload,
             )
 
-    def serialize_action_execution(
-        self, *, action_id: UUID
-    ) -> AbstractAsyncContextManager[None]:
+    def serialize_action_execution(self, *, action_id: UUID) -> AbstractAsyncContextManager[None]:
         return serialize_recovery_action_execution(
             self._session_factory,
             action_id=action_id,
