@@ -43,7 +43,7 @@ async def recall_hold(
             "expected_revision": command.expected_revision,
             "kind": command.kind.value,
             "release_at": command.release_at,
-            "reason": command.reason,
+            "reason": command.reason.value if command.reason else None,
         },
     )
     async with tenant_transaction(session_factory, command.organization_id) as session:
