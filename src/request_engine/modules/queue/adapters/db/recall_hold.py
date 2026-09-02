@@ -12,6 +12,9 @@ from request_engine.modules.queue.adapters.db.same_day_selection_locking import 
     lock_waiting_entry_in_queue,
 )
 from request_engine.modules.queue.adapters.db.same_day_selection_persistence import close_current_hold
+from request_engine.modules.queue.adapters.db.same_day_selection_revision import (
+    bump_waiting_entry_revision,
+)
 from request_engine.modules.queue.application.commands.recall_hold import RecallHoldCommand
 from request_engine.modules.queue.application.errors import QueueEntryRevisionConflict
 from request_engine.modules.queue.application.same_day_selection_errors import RecallHoldInvalid
@@ -79,11 +82,17 @@ async def recall_hold(
             principal_id=command.principal_id,
             release_reason="replaced",
         )
+        revision = await bump_waiting_entry_revision(
+            session,
+            command.organization_id,
+            command.queue_entry_id,
+        )
         hold = await insert_recall_hold(
             session,
             organization_id=command.organization_id,
             queue_id=command.queue_id,
             queue_entry_id=command.queue_entry_id,
+            queue_entry_revision=revision,
             kind=command.kind,
             release_at=command.release_at,
             reason=command.reason,
@@ -97,12 +106,17 @@ async def recall_hold(
             command_name="queue.recall_hold",
             aggregate_id=command.queue_entry_id,
             event_type="queue.recall_hold_recorded.v1",
-            details={"queue_id": str(command.queue_id), "hold_kind": command.kind.value},
+            details={
+                "queue_id": str(command.queue_id),
+                "hold_kind": command.kind.value,
+                "queue_entry_revision": revision,
+            },
             payload={
                 "queue_entry_id": str(command.queue_entry_id),
                 "queue_id": str(command.queue_id),
                 "hold_kind": command.kind.value,
                 "release_at": command.release_at.isoformat() if command.release_at else None,
+                "queue_entry_revision": revision,
             },
         )
         await complete_idempotency(session, idem, {"hold": recall_hold_to_json(hold)})
