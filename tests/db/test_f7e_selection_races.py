@@ -1,5 +1,6 @@
 import asyncio
-from uuid import uuid4
+from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -81,8 +82,7 @@ async def test_call_next_vs_recall_hold_serializes_without_called_held_state(
     second_state = _entry_state(admin_conn, second)
     active_holds = _active_holds(admin_conn, first)
     if hold_succeeded:
-        assert first_state[0] == "waiting"
-        assert first_state[1] == 2
+        assert first_state == ("waiting", 2)
         assert second_state[0] == "called"
         assert active_holds == 1
     else:
@@ -91,20 +91,20 @@ async def test_call_next_vs_recall_hold_serializes_without_called_held_state(
         assert active_holds == 0
 
 
-def _entry_state(conn: PgConnection, entry_id):
+def _entry_state(conn: PgConnection, entry_id: UUID) -> tuple[str, int]:
     row = conn.execute(
         "SELECT status,revision FROM request_engine.queue_entries WHERE id=%s",
         (entry_id,),
     ).fetchone()
     assert row is not None
-    return row
+    return cast(tuple[str, int], row)
 
 
-def _active_holds(conn: PgConnection, entry_id) -> int:
+def _active_holds(conn: PgConnection, entry_id: UUID) -> int:
     row = conn.execute(
         "SELECT count(*) FROM request_engine.queue_recall_holds "
         "WHERE queue_entry_id=%s AND released_at IS NULL",
         (entry_id,),
     ).fetchone()
     assert row is not None
-    return row[0]
+    return cast(int, row[0])
