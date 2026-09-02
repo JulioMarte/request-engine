@@ -1,12 +1,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from request_engine.modules.booking.contracts.day_board import DayBoardEntry
 
 
 class DayBoardEntryView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     reservation_id: UUID
     subject_party_id: UUID
     subject_display_name: str
@@ -27,4 +29,4 @@ class DayBoardEntryView(BaseModel):
 
     @classmethod
     def from_contract(cls, entry: DayBoardEntry) -> "DayBoardEntryView":
-        return cls(**{field: getattr(entry, field) for field in cls.model_fields})
+        return cls.model_validate(entry)
