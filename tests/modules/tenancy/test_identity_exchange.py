@@ -44,11 +44,12 @@ def test_passport_fingerprint_is_namespaced_by_issuing_country() -> None:
     )
 
 
-def test_passport_requires_real_issuing_authority() -> None:
+def test_passport_requires_assigned_iso_issuing_authority() -> None:
     with pytest.raises(ValueError, match="issuing authority is required"):
         normalize_witnessed_document("passport", None, "SC1234567")
-    with pytest.raises(ValueError, match="2-letter ISO"):
-        normalize_witnessed_document("passport", "DOM", "SC1234567")
+    for invalid in ("DOM", "RD", "ZZ", "XX"):
+        with pytest.raises(ValueError, match="assigned ISO-3166"):
+            normalize_witnessed_document("passport", invalid, "SC1234567")
 
 
 def test_identity_exchange_has_no_insecure_key_fallback() -> None:

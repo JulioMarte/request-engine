@@ -55,6 +55,7 @@ class AdoptPortableIdentityCommand:
     document_kind: str
     document_authority: str | None
     document_value: str
+    display_name: str
     consented_fields: tuple[str, ...]
     proof_kind: str
     idempotency_key: str
@@ -123,6 +124,9 @@ async def adopt_portable_identity(
     command: AdoptPortableIdentityCommand,
 ) -> IdentityAdoptionResult:
     _validate_proof(command.proof_kind, command.idempotency_key)
+    display_name = command.display_name.strip()
+    if not display_name:
+        raise ValueError("display_name is required")
     document = normalize_witnessed_document(
         command.document_kind, command.document_authority, command.document_value
     )
@@ -133,6 +137,7 @@ async def adopt_portable_identity(
             document_kind=document.kind,
             document_authority=document.authority,
             document_value=document.value,
+            display_name=display_name,
             consented_fields=fields,
         )
     )

@@ -10,6 +10,8 @@ from collections.abc import Sequence
 from migrations.s0d_steps import (
     step_0028_adoption_serialization,
     step_0028_functions,
+    step_0028_hardening,
+    step_0028_profile_provenance,
     step_0028_tables,
 )
 
@@ -21,8 +23,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     step_0028_tables.upgrade()
+    step_0028_profile_provenance.upgrade()
     step_0028_functions.upgrade()
     step_0028_adoption_serialization.upgrade()
+    step_0028_hardening.upgrade()
 
 
 def downgrade() -> None:

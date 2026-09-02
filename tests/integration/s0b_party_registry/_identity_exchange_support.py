@@ -19,10 +19,7 @@ from request_engine.modules.tenancy.application.identity_exchange import (
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext, PrincipalKind
-from request_engine.platform.security.execution_context import (
-    bind_actor_context,
-    reset_actor_context,
-)
+from request_engine.platform.security.execution_context import bind_actor_context, reset_actor_context
 
 KEY = b"integration-identity-exchange-key-32-bytes-minimum"
 PROOF = "operator_document_witness"
@@ -35,11 +32,7 @@ def operator_actor(organization_id: UUID, principal_id: UUID) -> Generator[None]
             organization_id=organization_id,
             principal_id=principal_id,
             capabilities=frozenset(
-                {
-                    "identity_exchange.publish",
-                    "identity_exchange.match",
-                    "identity_exchange.adopt",
-                }
+                {"identity_exchange.publish", "identity_exchange.match", "identity_exchange.adopt"}
             ),
             principal_kind=PrincipalKind.HUMAN,
             authentication_method="integration_test",
@@ -115,6 +108,7 @@ def adopt_command(
     value: str = "40212345678",
     kind: str = "cedula",
     authority: str | None = None,
+    display_name: str = "María Gómez",
     key: str | None = None,
 ) -> AdoptPortableIdentityCommand:
     return AdoptPortableIdentityCommand(
@@ -124,6 +118,7 @@ def adopt_command(
         document_kind=kind,
         document_authority=authority,
         document_value=value,
+        display_name=display_name,
         consented_fields=("display_name", "phone", "insurance_member"),
         proof_kind=PROOF,
         idempotency_key=key or f"adopt-{uuid4().hex}",

@@ -7,19 +7,14 @@ from fastapi import APIRouter, Depends, Request, status
 from request_engine.modules.tenancy.api.identity_exchange_dependencies import (
     require_operator_document_witness,
 )
-from request_engine.modules.tenancy.api.identity_exchange_errors import (
-    IdentityExchangeInputInvalid,
-)
+from request_engine.modules.tenancy.api.identity_exchange_errors import IdentityExchangeInputInvalid
 from request_engine.modules.tenancy.api.identity_exchange_models import (
     IdentityAdoptionBody,
     IdentityAdoptionView,
     IdentityMatchBody,
     IdentityMatchView,
 )
-from request_engine.modules.tenancy.api.party_registry_dependencies import (
-    IdempotencyKey,
-    source_kind,
-)
+from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
 from request_engine.modules.tenancy.application.identity_exchange import (
     AdoptPortableIdentityCommand,
     AdoptPortableIdentityHandler,
@@ -68,7 +63,11 @@ def add_identity_exchange_routes(
             )
         except ValueError as error:
             raise IdentityExchangeInputInvalid(str(error)) from None
-        return IdentityMatchView(matched=result.matched, candidate_ref=result.candidate_ref)
+        return IdentityMatchView(
+            matched=result.matched,
+            candidate_ref=result.candidate_ref,
+            candidate_expires_at=result.candidate_expires_at,
+        )
 
     async def adopt_route(
         body: IdentityAdoptionBody,
@@ -87,6 +86,7 @@ def add_identity_exchange_routes(
                     document_kind=body.document_kind,
                     document_authority=body.document_authority,
                     document_value=body.document_value,
+                    display_name=body.display_name,
                     consented_fields=body.consented_fields,
                     proof_kind=body.proof_kind,
                     idempotency_key=idempotency_key,
@@ -100,12 +100,7 @@ def add_identity_exchange_routes(
         return IdentityAdoptionView.from_contract(result)
 
     add_capability_route(
-        router,
-        "/matches",
-        match_route,
-        capability=_MATCH,
-        methods=["POST"],
-        response_model=IdentityMatchView,
+        router, "/matches", match_route, capability=_MATCH, methods=["POST"], response_model=IdentityMatchView
     )
     add_capability_route(
         router,

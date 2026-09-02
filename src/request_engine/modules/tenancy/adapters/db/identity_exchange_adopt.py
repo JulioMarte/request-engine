@@ -16,12 +16,8 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_conflicts impo
     existing_adopted_party,
     is_identity_already_adopted_violation,
 )
-from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
-    raise_document_conflict,
-)
-from request_engine.modules.tenancy.application.identity_exchange import (
-    AdoptPortableIdentityCommand,
-)
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import raise_document_conflict
+from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeAlreadyAdopted,
     IdentityExchangeUnavailable,
@@ -66,6 +62,7 @@ class PostgresPortableIdentityAdopter:
                 "document_kind": document.kind,
                 "document_authority": document.authority,
                 "fingerprint": fingerprint,
+                "display_name": command.display_name,
                 "consented_fields": list(command.consented_fields),
                 "proof_kind": command.proof_kind,
             },

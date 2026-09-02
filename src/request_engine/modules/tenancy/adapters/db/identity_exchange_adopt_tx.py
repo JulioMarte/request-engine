@@ -8,25 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.tenancy.adapters.db.identity_exchange_codec import (
     portable_contacts,
-    portable_display_name,
     portable_insurance,
 )
 from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import (
     BIND_CANDIDATE,
     CONSUME_CANDIDATE,
 )
-from request_engine.modules.tenancy.adapters.db.party_registration_write import (
-    write_registered_party,
-)
-from request_engine.modules.tenancy.application.commands.register_party import (
-    RegisterPartyCommand,
-)
-from request_engine.modules.tenancy.application.identity_exchange import (
-    AdoptPortableIdentityCommand,
-)
+from request_engine.modules.tenancy.adapters.db.party_registration_write import write_registered_party
+from request_engine.modules.tenancy.application.commands.register_party import RegisterPartyCommand
+from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeCandidateInvalid,
-    IdentityExchangeProfileInvalid,
 )
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityAdoptionResult
 from request_engine.modules.tenancy.contracts.party_registry import PartyDocumentInput
@@ -61,18 +53,13 @@ async def write_identity_adoption(
     if row is None:
         raise IdentityExchangeCandidateInvalid("candidate is invalid, expired or consumed")
     profile = cast(Mapping[str, object], row["profile"])
-    try:
-        display_name = portable_display_name(profile)
-        contacts = portable_contacts(profile, command.consented_fields)
-    except ValueError as error:
-        raise IdentityExchangeProfileInvalid(str(error)) from None
     register_command = RegisterPartyCommand(
         organization_id=command.organization_id,
         principal_id=command.principal_id,
-        display_name=display_name,
+        display_name=command.display_name,
         source_kind=command.source_kind,
         idempotency_key=command.idempotency_key,
-        contact_points=contacts,
+        contact_points=(),
         documents=(PartyDocumentInput(command.document_kind, command.document_value, authority),),
         platform=command.platform,
         technical_principal_id=command.technical_principal_id,
@@ -104,9 +91,9 @@ async def write_identity_adoption(
             )
         ).scalar_one(),
     )
-    insurance = portable_insurance(profile, command.consented_fields)
     return IdentityAdoptionResult(
         party=party,
         binding_id=binding_id,
-        portable_insurance_identifiers=insurance,
+        portable_contact_suggestions=portable_contacts(profile, command.consented_fields),
+        portable_insurance_identifiers=portable_insurance(profile, command.consented_fields),
     )

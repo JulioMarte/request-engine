@@ -20,8 +20,12 @@ PUBLISH = text(
 )
 
 CREATE_CANDIDATE = text(
-    "SELECT request_engine.create_identity_exchange_candidate_v1("
-    ":kind, :authority, :fingerprint, :principal_id)"
+    """
+    SELECT candidate_ref, candidate_expires_at
+    FROM request_engine.create_identity_exchange_candidate_v1(
+        :kind, :authority, :fingerprint, :principal_id
+    )
+    """
 )
 
 CONSUME_CANDIDATE = text(

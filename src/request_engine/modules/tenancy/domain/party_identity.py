@@ -2,6 +2,7 @@ import re
 import unicodedata
 from enum import StrEnum
 
+from request_engine.modules.tenancy.domain.iso_country import is_iso_3166_alpha2
 from request_engine.platform.public_contacts import (
     PublicContactValidationError,
     normalize_public_contact_value,
@@ -24,7 +25,6 @@ _PHONE_MIN_DIGITS = 10
 _DOCUMENT_SEPARATORS = re.compile(r"[\s.-]+")
 _CEDULA = re.compile(r"[0-9]{11}")
 _PASSPORT = re.compile(r"[A-Z0-9]{6,17}")
-_PASSPORT_AUTHORITY = re.compile(r"[A-Z]{2}")
 _CEDULA_AUTHORITY = "DO:JCE"
 
 
@@ -69,9 +69,9 @@ def normalize_identity_document_authority(kind: str, authority: str | None) -> s
         return _CEDULA_AUTHORITY
     if not candidate:
         raise PartyIdentityValidationError("passport issuing authority is required")
-    if not _PASSPORT_AUTHORITY.fullmatch(candidate):
+    if not is_iso_3166_alpha2(candidate):
         raise PartyIdentityValidationError(
-            "passport issuing authority must be a 2-letter ISO country code"
+            "passport issuing authority must be an assigned ISO-3166 alpha-2 country code"
         )
     return candidate
 
