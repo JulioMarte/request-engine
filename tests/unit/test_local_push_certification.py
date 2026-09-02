@@ -68,6 +68,33 @@ def test_certificate_cache_key_changes_with_commit_base_or_toolchain() -> None:
     assert cache_key("a" * 40, "b" * 40, "toolchain-b") != baseline
 
 
+def test_cached_pass_requires_exact_commit_base_and_toolchain() -> None:
+    certifier = _load(CERTIFIER, "certify_push_cached_pass_test")
+    matches = cast(
+        Callable[..., bool],
+        certifier._certificate_matches,
+    )
+    certificate: dict[str, object] = {
+        "schema_version": "local-push-cert-cache/v1",
+        "result": "PASS",
+        "commit_sha": "a" * 40,
+        "base_sha": "b" * 40,
+        "toolchain": "toolchain-a",
+    }
+    assert matches(
+        certificate,
+        commit_sha="a" * 40,
+        base_sha="b" * 40,
+        toolchain="toolchain-a",
+    )
+    assert not matches(
+        certificate,
+        commit_sha="a" * 40,
+        base_sha="c" * 40,
+        toolchain="toolchain-a",
+    )
+
+
 def test_detached_worktree_certifies_commit_not_dirty_working_tree(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     source = tmp_path / "value.txt"
@@ -87,8 +114,8 @@ def test_detached_worktree_certifies_commit_not_dirty_working_tree(tmp_path: Pat
     assert source.read_text(encoding="utf-8") == "dirty and not part of the push\n"
 
 
-def test_local_remote_tracking_development_is_preferred_as_certificate_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_remote_tracking_development_is_preferred_as_certificate_base(
+    tmp_path: Path,
 ) -> None:
     _init_repo(tmp_path)
     (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
@@ -96,11 +123,22 @@ def test_local_remote_tracking_development_is_preferred_as_certificate_base(
     _git(tmp_path, "commit", "--quiet", "-m", "base")
     _git(tmp_path, "branch", "development")
     _git(tmp_path, "update-ref", "refs/remotes/origin/development", "HEAD")
-    monkeypatch.chdir(tmp_path)
 
     certifier = _load(CERTIFIER, "certify_push_base_test")
     resolve = cast(Callable[[Path, str], str], certifier._base_ref_for_remote)
     assert resolve(tmp_path, "origin") == "refs/remotes/origin/development"
+
+
+def test_missing_development_base_fails_with_fetch_guidance(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("base\n", encoding="utf-8")
+    _git(tmp_path, "add", "README.md")
+    _git(tmp_path, "commit", "--quiet", "-m", "base")
+
+    certifier = _load(CERTIFIER, "certify_push_missing_base_test")
+    resolve = cast(Callable[[Path, str], str], certifier._base_ref_for_remote)
+    with pytest.raises(RuntimeError, match=r"git fetch origin development"):
+        resolve(tmp_path, "origin")
 
 
 def test_local_profile_reuses_canonical_python_quality_step_ids() -> None:
@@ -123,19 +161,26 @@ def test_local_profile_reuses_canonical_python_quality_step_ids() -> None:
     assert remote_only == ("dependency-audit",)
 
 
-def test_hook_installer_is_idempotent_and_uses_git_common_dir(tmp_path: Path) -> None:
+def test_hook_installer_copies_stable_hook_and_certifier_idempotently(tmp_path: Path) -> None:
     _init_repo(tmp_path)
-    source = tmp_path / ".githooks" / "pre-push"
-    source.parent.mkdir(parents=True)
-    source.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    hook_source = tmp_path / ".githooks" / "pre-push"
+    hook_source.parent.mkdir(parents=True)
+    hook_source.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    certifier_source = tmp_path / "scripts" / "dev" / "certify_push.py"
+    certifier_source.parent.mkdir(parents=True)
+    certifier_source.write_text("print('managed certifier')\n", encoding="utf-8")
 
     installer = _load(INSTALLER, "install_git_hooks_test")
     install = cast(Callable[[Path], int], installer.install)
+    check = cast(Callable[[Path], int], installer.check)
     managed = cast(Callable[[Path], Path], installer.managed_hooks_path)
 
     assert install(tmp_path) == 0
     assert install(tmp_path) == 0
     hooks = managed(tmp_path)
-    target = hooks / "pre-push"
-    assert target.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+    assert (hooks / "pre-push").read_bytes() == hook_source.read_bytes()
+    assert (hooks / "certify_push.py").read_bytes() == certifier_source.read_bytes()
     assert _git(tmp_path, "config", "--local", "--get", "core.hooksPath") == str(hooks)
+
+    certifier_source.write_text("print('new certifier')\n", encoding="utf-8")
+    assert check(tmp_path) == 1
