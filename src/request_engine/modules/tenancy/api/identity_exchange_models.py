@@ -21,7 +21,7 @@ class PublishPortableProfileBody(BaseModel):
 class PublishPortableProfileView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    portable_person_id: UUID
+    published: bool = True
 
 
 class IdentityMatchBody(BaseModel):
