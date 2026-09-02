@@ -134,6 +134,52 @@ def test_relative_cross_module_import_is_resolved_semantically() -> None:
     assert edges(path, source) == {("booking", "queue")}
 
 
+def test_contract_usage_measures_depth_without_changing_edge_count() -> None:
+    metrics = _load_metrics()
+    usage = cast(
+        Callable[[Path, str], dict[tuple[str, str], set[str]]],
+        metrics.module_contract_usage_from_source,
+    )
+    path = Path("src/request_engine/modules/operational_recovery/application/use_case.py")
+    source = "\n".join(
+        [
+            "from request_engine.modules.booking.contracts import BookingRead, RescheduleReservation",
+            "from ...live_capacity.contracts.projection import CapacityCheckpoint",
+            "from .ports import RecoveryStore",
+            "",
+        ]
+    )
+    assert usage(path, source) == {
+        ("operational_recovery", "booking"): {"BookingRead", "RescheduleReservation"},
+        ("operational_recovery", "live_capacity"): {"projection.CapacityCheckpoint"},
+    }
+
+
+def test_suppression_observation_counts_comments_without_semantic_verdict() -> None:
+    metrics = _load_metrics()
+    observe = cast(Callable[[str], dict[str, object]], metrics.suppression_observation)
+    result = observe(
+        "\n".join(
+            [
+                "value = call()  # noqa: E501",
+                "typed = other()  # type: ignore[assignment]",
+                "secure = risky()  # nosec B101",
+                "branch = 1  # pragma: no cover",
+                "text = '# noqa is data, not a comment suppression'",
+                "",
+            ]
+        )
+    )
+    assert result["total"] == 4
+    assert result["counts"] == {
+        "noqa": 1,
+        "nosec": 1,
+        "pragma_no_cover": 1,
+        "type_ignore": 1,
+    }
+    assert result["interpretation"] == "none"
+
+
 def test_ruff_complexity_parser_preserves_measurement_without_interpretation() -> None:
     metrics = _load_metrics()
     parse = cast(
