@@ -17,13 +17,17 @@ async def has_active_recall_hold(
             text(
                 """
                 SELECT 1
-                FROM request_engine.queue_recall_holds
-                WHERE organization_id = :organization_id
-                  AND service_queue_id = :queue_id
-                  AND released_at IS NULL
+                FROM request_engine.queue_recall_holds AS hold
+                JOIN request_engine.queue_entries AS entry
+                  ON entry.organization_id = hold.organization_id
+                 AND entry.id = hold.queue_entry_id
+                WHERE hold.organization_id = :organization_id
+                  AND hold.service_queue_id = :queue_id
+                  AND entry.status = 'waiting'
+                  AND hold.released_at IS NULL
                   AND (
-                      hold_kind = 'until_customer_initiates'
-                      OR release_at > :observed_at
+                      hold.hold_kind = 'until_customer_initiates'
+                      OR hold.release_at > :observed_at
                   )
                 LIMIT 1
                 """
