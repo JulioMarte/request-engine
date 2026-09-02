@@ -11,9 +11,10 @@ from request_engine.modules.tenancy.contracts.identity_exchange import (
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 from request_engine.modules.tenancy.domain.identity_exchange import (
     normalize_portable_fields,
-    normalize_witnessed_cedula,
+    normalize_witnessed_document,
     require_adoptable_fields,
 )
+from request_engine.modules.tenancy.domain.party_identity import normalize_identity_document_authority
 
 _PROOF = "operator_document_witness"
 
@@ -23,6 +24,8 @@ class PublishPortableProfileCommand:
     organization_id: UUID
     principal_id: UUID
     party_id: UUID
+    document_kind: str
+    document_authority: str | None
     consented_fields: tuple[str, ...]
     proof_kind: str
     idempotency_key: str
@@ -35,6 +38,8 @@ class PublishPortableProfileCommand:
 class MatchPortableIdentityCommand:
     organization_id: UUID
     principal_id: UUID
+    document_kind: str
+    document_authority: str | None
     document_value: str
     proof_kind: str
     idempotency_key: str
@@ -45,6 +50,8 @@ class AdoptPortableIdentityCommand:
     organization_id: UUID
     principal_id: UUID
     candidate_ref: UUID
+    document_kind: str
+    document_authority: str | None
     document_value: str
     consented_fields: tuple[str, ...]
     proof_kind: str
@@ -83,7 +90,12 @@ async def publish_portable_profile(
 ) -> None:
     _validate_proof(command.proof_kind, command.idempotency_key)
     fields = require_adoptable_fields(command.consented_fields)
-    await handler.publish_portable_profile(replace(command, consented_fields=fields))
+    authority = normalize_identity_document_authority(
+        command.document_kind, command.document_authority
+    )
+    await handler.publish_portable_profile(
+        replace(command, document_authority=authority, consented_fields=fields)
+    )
 
 
 async def match_portable_identity(
@@ -91,8 +103,17 @@ async def match_portable_identity(
     command: MatchPortableIdentityCommand,
 ) -> IdentityMatchResult:
     _validate_proof(command.proof_kind, command.idempotency_key)
-    document = normalize_witnessed_cedula(command.document_value)
-    return await handler.match_portable_identity(replace(command, document_value=document))
+    document = normalize_witnessed_document(
+        command.document_kind, command.document_authority, command.document_value
+    )
+    return await handler.match_portable_identity(
+        replace(
+            command,
+            document_kind=document.kind,
+            document_authority=document.authority,
+            document_value=document.value,
+        )
+    )
 
 
 async def adopt_portable_identity(
@@ -100,14 +121,20 @@ async def adopt_portable_identity(
     command: AdoptPortableIdentityCommand,
 ) -> IdentityAdoptionResult:
     _validate_proof(command.proof_kind, command.idempotency_key)
-    document = normalize_witnessed_cedula(command.document_value)
+    document = normalize_witnessed_document(
+        command.document_kind, command.document_authority, command.document_value
+    )
     fields = require_adoptable_fields(command.consented_fields)
     return await handler.adopt_portable_identity(
-        replace(command, document_value=document, consented_fields=fields)
+        replace(
+            command,
+            document_kind=document.kind,
+            document_authority=document.authority,
+            document_value=document.value,
+            consented_fields=fields,
+        )
     )
 
 
 def portable_fields(fields: tuple[str, ...]) -> tuple[str, ...]:
-    """Expose normalization for publish request validation/tests."""
-
     return normalize_portable_fields(fields)
