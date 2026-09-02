@@ -51,8 +51,12 @@ class PostgresPartyAdministrativeIdentifierReader:
         async with tenant_transaction(self._session_factory, query.organization_id) as session:
             result = await session.execute(
                 _LOOKUP,
-                {"organization_id": query.organization_id, "kind": query.kind,
-                 "issuer": query.issuer, "value": query.value},
+                {
+                    "organization_id": query.organization_id,
+                    "kind": query.kind,
+                    "issuer": query.issuer,
+                    "value": query.value,
+                },
             )
             party_id = result.scalar_one_or_none()
             if party_id is None:
