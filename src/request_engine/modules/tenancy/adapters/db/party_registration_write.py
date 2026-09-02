@@ -35,6 +35,7 @@ async def write_registered_party(
     party_id = await insert_party(
         session,
         organization_id=command.organization_id,
+        party_kind=command.party_kind.value,
         display_name=command.display_name,
         principal_id=command.principal_id,
         attribution=attribution_values(command),
@@ -50,6 +51,7 @@ async def write_registered_party(
     )
     state = (await load_party_views(session, command.organization_id, [party_id]))[0]
     details: dict[str, object] = {
+        "party_kind": command.party_kind.value,
         "display_name": command.display_name,
         **attribution_values(command),
         "contact_point_count": len(state.contact_points),
