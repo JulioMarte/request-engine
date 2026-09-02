@@ -42,8 +42,8 @@ class PartyIdentityDocument:
     party_id: UUID
     document_id: UUID
     kind: str
-    authority: str | None
     normalized_value: str
+    authority: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

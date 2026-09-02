@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID, uuid4
 
@@ -29,7 +29,7 @@ PROOF = "operator_document_witness"
 
 
 @contextmanager
-def operator_actor(organization_id: UUID, principal_id: UUID) -> Iterator[None]:
+def operator_actor(organization_id: UUID, principal_id: UUID) -> Generator[None, None, None]:
     token = bind_actor_context(
         ActorContext(
             organization_id=organization_id,
