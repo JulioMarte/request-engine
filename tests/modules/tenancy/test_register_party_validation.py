@@ -1,8 +1,4 @@
-"""Application validation errors carry the caller's own raw values.
-
-Multi-item registration bodies become debuggable: the 422 detail identifies
-the offending item by its raw input value instead of only a rule description.
-"""
+"""Registration validation surfaces raw values and subject-kind incompatibilities."""
 
 from typing import cast
 from uuid import uuid4
@@ -14,6 +10,7 @@ from request_engine.modules.tenancy.application.commands.register_party import (
     RegisterPartyHandler,
     register_party,
 )
+from request_engine.modules.tenancy.contracts.party_kind import PartyKind
 from request_engine.modules.tenancy.contracts.party_registry import (
     PartyContactPointInput,
     PartyDocumentInput,
@@ -29,10 +26,12 @@ class _PassthroughHandler:
 def _command(
     contact_points: tuple[PartyContactPointInput, ...] = (),
     documents: tuple[PartyDocumentInput, ...] = (),
+    party_kind: PartyKind = PartyKind.PERSON,
 ) -> RegisterPartyCommand:
     return RegisterPartyCommand(
         organization_id=uuid4(),
         principal_id=uuid4(),
+        party_kind=party_kind,
         display_name="Jose Perez",
         source_kind=PartySourceKind.OPERATOR,
         idempotency_key="validation",
@@ -42,13 +41,53 @@ def _command(
 
 
 @pytest.mark.asyncio
+async def test_registration_does_not_require_a_strong_identifier() -> None:
+    result = await register_party(cast(RegisterPartyHandler, _PassthroughHandler()), _command())
+    command = cast(RegisterPartyCommand, result)
+    assert command.documents == ()
+    assert command.party_kind is PartyKind.PERSON
+
+
+@pytest.mark.asyncio
+async def test_organization_accepts_rnc() -> None:
+    result = await register_party(
+        cast(RegisterPartyHandler, _PassthroughHandler()),
+        _command(
+            party_kind=PartyKind.ORGANIZATION,
+            documents=(PartyDocumentInput("rnc", "1-01-85004-3"),),
+        ),
+    )
+    command = cast(RegisterPartyCommand, result)
+    assert command.documents[0].authority == "DO:DGII"
+    assert command.documents[0].value == "101850043"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("party_kind", "document"),
+    [
+        (PartyKind.PERSON, PartyDocumentInput("rnc", "101850043")),
+        (PartyKind.ORGANIZATION, PartyDocumentInput("cedula", "40212345678")),
+    ],
+)
+async def test_strong_identifier_must_match_party_kind(
+    party_kind: PartyKind,
+    document: PartyDocumentInput,
+) -> None:
+    with pytest.raises(ValueError, match="identifies a"):
+        await register_party(
+            cast(RegisterPartyHandler, _PassthroughHandler()),
+            _command(party_kind=party_kind, documents=(document,)),
+        )
+
+
+@pytest.mark.asyncio
 async def test_invalid_document_error_includes_the_raw_value() -> None:
     with pytest.raises(ValueError) as raised:
         await register_party(
             cast(RegisterPartyHandler, _PassthroughHandler()),
             _command(documents=(PartyDocumentInput("cedula", "402-12"),)),
         )
-
     assert "402-12" in str(raised.value)
 
 
@@ -59,7 +98,6 @@ async def test_invalid_contact_point_error_includes_the_raw_value() -> None:
             cast(RegisterPartyHandler, _PassthroughHandler()),
             _command(contact_points=(PartyContactPointInput("whatsapp", "+596123456"),)),
         )
-
     assert "+596123456" in str(raised.value)
 
 
@@ -75,7 +113,6 @@ async def test_duplicate_contact_point_error_includes_the_raw_value() -> None:
                 )
             ),
         )
-
     assert "809-555-1234" in str(raised.value)
     assert "+18095551234" in str(raised.value)
 
@@ -92,5 +129,4 @@ async def test_duplicate_document_kind_error_includes_the_raw_value() -> None:
                 )
             ),
         )
-
     assert "402-1234567-8" in str(raised.value)
