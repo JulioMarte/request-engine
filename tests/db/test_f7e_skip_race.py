@@ -44,7 +44,7 @@ async def test_skip_vs_call_next_records_the_fifo_head_seen_under_queue_lock(
     queue = PostgresServiceQueueCommands(command_session_factory)
     f7e = PostgresSameDaySelectionCommands(command_session_factory)
 
-    results = await asyncio.gather(
+    ordinary, skipped = await asyncio.gather(
         queue.call_next(
             CallNextCommand(
                 organization_id=world.organization_id,
@@ -64,21 +64,18 @@ async def test_skip_vs_call_next_records_the_fifo_head_seen_under_queue_lock(
         ),
     )
 
-    ordinary = results[0]
-    skipped = results[1]
-    assert isinstance(ordinary, QueueEntry)
-    assert isinstance(skipped, SkipResult)
-    if ordinary.id == first:
-        assert skipped.skipped_entry_id == second
-        assert skipped.called_entry is not None and skipped.called_entry.id == third
-    else:
-        assert skipped.skipped_entry_id == first
-        assert skipped.called_entry is not None and skipped.called_entry.id == second
-        assert ordinary.id == first
+    assert isinstance(ordinary, QueueEntry) and ordinary.id == first
+    assert isinstance(skipped, SkipResult) and skipped.called_entry is not None
+    valid_skip_outcomes = {
+        (first, second),
+        (second, third),
+    }
+    actual_skip = (skipped.skipped_entry_id, skipped.called_entry.id)
+    assert actual_skip in valid_skip_outcomes
 
     fact = admin_conn.execute(
         "SELECT queue_entry_id,called_queue_entry_id FROM request_engine.queue_selection_facts "
         "WHERE organization_id=%s AND selection_kind='skip'",
         (world.organization_id,),
     ).fetchone()
-    assert fact == (skipped.skipped_entry_id, skipped.called_entry.id)
+    assert fact == actual_skip
