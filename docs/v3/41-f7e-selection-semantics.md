@@ -1,25 +1,57 @@
-# F7e Same-Day Selection Semantics — normative amendment draft
+# F7e Same-Day Selection Semantics
 
-Status: **scratch-branch decision record** for F7e. The implementation and proofs described here are prepared on `tmp/f7e-same-day-selection-semantics` but are **not CI-validated, merged or normative product state yet**. This closes the semantic gate in `36-front-desk-operations-contract.md` §7 and must be folded into the canonical F7 contract only after the serialized integration lane is available.
+## Status
 
-## 1. Preserved invariants
+Prepared on `tmp/f7e-same-day-selection-semantics` as a normative + implementation scratch tranche layered on the F7 front-desk branch. It is not integrated product truth until the serialized F7 lane is merged and the exact-head CI of the resulting F7e branch is green.
 
-F7e does not create a priority queue or mutable queue position.
+This decision record closes the operational semantics for same-day queue exceptions without replacing FIFO with a mutable priority list.
 
-- Default selection remains FIFO by `(admitted_at, id)`.
-- Queue position remains derived.
-- `ServiceQueue` is the selection serialization root and is locked before selected/target `QueueEntry` rows.
-- `waiting`, `called`, `serving`, `completed`, `cancelled`, `no_show` remain QueueEntry lifecycle states. Hold/skip are selection facts, not lifecycle states.
-- One active QueueEntry per `(ServiceQueue, subject Party)` remains unchanged.
-- Terminal lifecycle state supersedes a recall gate. An unreleased historical hold on an entry that is no longer `waiting` is not an active gate.
-- Terminal exits remain terminal; F7e cannot resurrect them.
-- F7e records operational selection semantics only. It does not admit diagnosis, symptoms, clinical notes or clinical triage scores.
+## 1. Problem
 
-## 2. `queue.operator_select`
+F3 deliberately made `QueueEntry` ordering deterministic:
 
-Calls one specific `waiting` QueueEntry now without rewriting FIFO order.
+```text
+(admitted_at, id)
+```
 
-Closed reason set:
+That is the correct default substrate, but front-desk operation has legitimate same-day exceptions that are not equivalent to permanently reordering a queue:
+
+- a known booked customer is operationally due before a walk-in that arrived moments earlier;
+- an operator must call one specific waiting person for an explicit operational reason;
+- the current head stepped away and should remain in the queue without blocking everybody behind them;
+- the current head did not respond and should be skipped for this selection attempt only;
+- a temporarily unavailable customer may later become callable again without losing their original arrival order.
+
+Encoding all of these as changes to `admitted_at`, mutable rank numbers, delete/reinsert, or free-text “priority” would destroy auditability and make concurrency semantics ambiguous.
+
+F7e therefore keeps FIFO as durable history and introduces explicit **selection facts** and **recall holds** around it.
+
+## 2. Governing invariant
+
+The normal queue order remains immutable:
+
+```text
+FIFO identity = (admitted_at, id)
+```
+
+F7e may change **who is eligible for one selection** or **who the operator explicitly selects**, but it does not rewrite the historical FIFO key.
+
+Every mutation that can interact with `call_next` serializes through the owning `ServiceQueue` row lock.
+
+Consequently:
+
+```text
+Queue = durable waiting order
+RecallHold = temporary callability gate
+Skip = one-selection exception against current eligible FIFO head
+OperatorSelect = explicit selection of one waiting, callable entry
+```
+
+None of these become a generic ranking engine.
+
+## 3. Closed vocabularies
+
+### OperatorSelectReason
 
 ```text
 urgent_operational_need
@@ -27,40 +59,24 @@ booked_time_due
 operator_override
 ```
 
-`urgent_operational_need` is an operational dispatch annotation only. It is not a clinical-priority score and must not carry clinical text.
+These are operational facts/reasons, not clinical diagnoses or triage scores.
 
-The command requires `expected_revision`. A stale directed click must not act on a newer QueueEntry state.
-
-Protocol:
+### SkipReason
 
 ```text
-acquire idempotency
-lock ServiceQueue
-lock target QueueEntry
-validate target belongs to queue and is waiting
-validate expected_revision
-validate target has no active recall hold
-transition target to called
-append selection fact + audit + queue.entry_called.v1
-commit
+temporarily_unavailable
+no_response
+operator_override
 ```
 
-A held target fails with a typed `queue_entry_recall_held` conflict. A non-waiting or revision-stale target loses cleanly. No failed selection may leave a selection fact or `queue.entry_called.v1` event.
-
-## 3. `queue.recall_hold`
-
-Creates or replaces the current recall gate for one `waiting` QueueEntry. The QueueEntry remains `waiting`; `admitted_at` and FIFO truth do not change.
-
-Closed hold kinds:
+### RecallHoldKind
 
 ```text
 until_time
 until_customer_initiates
 ```
 
-`until_event` remains reserved in the broader F7 vocabulary but is **not implementable in v1** until a closed authoritative event-source contract exists. F7e does not invent event matching or a condition DSL.
-
-Closed operational reason set:
+### RecallHoldReason
 
 ```text
 stepped_away
@@ -68,125 +84,24 @@ temporarily_unavailable
 operator_override
 ```
 
-The reason is optional but, when present, is an enum — never free text. PostgreSQL independently enforces the same vocabulary so Queue cannot accidentally become a store for clinical/reason-for-visit prose.
+`reason` is optional but, when present, must use this vocabulary. Free text is intentionally forbidden in both the application model and PostgreSQL so Queue cannot become a shadow clinical-notes surface.
 
-### `until_time`
+### Recall hold release reason
 
-- requires an offset-aware `release_at` strictly after the database clock at command time;
-- is active while `release_at > observed database time`;
-- expires derivatively from PostgreSQL time; no ScheduledAction is required for correctness;
-- expiry does not fabricate `released_at`; the append-preserved row simply ceases to be a gate.
-
-### `until_customer_initiates`
-
-- has no timestamp expiry;
-- remains active until explicit release;
-- F7e v1 exposes operator release only. No inbound customer/bot release is inferred here.
-
-At most one unreleased hold row exists per QueueEntry. A replacement closes the previous row with closed release reason `replaced`, advances `QueueEntry.revision`, and appends a new hold row.
-
-Protocol:
-
-```text
-acquire idempotency
-lock ServiceQueue
-lock QueueEntry
-validate waiting + expected_revision
-validate hold shape / database-time rule
-close current unreleased hold if present
-increment QueueEntry revision
-append new hold fact
-append audit/outbox
-commit
-```
-
-## 4. `queue.release_recall_hold`
-
-Explicitly releases the **exact current hold the operator observed**.
-
-Required intent fence:
-
-```text
-queue_entry_id
-hold_id
-expected_revision
-```
-
-Protocol:
-
-```text
-acquire idempotency
-lock ServiceQueue
-lock QueueEntry
-validate waiting + expected_revision
-lock the current active hold for the QueueEntry
-if no active hold exists -> deterministic no-op
-if current hold id != requested hold_id -> 409 recall_hold_conflict
-otherwise release that hold
-increment QueueEntry revision
-append audit/outbox
-commit
-```
-
-This distinction is intentional. If hold A was replaced by hold B, a refreshed QueueEntry revision combined with stale `hold_id=A` must **not** report success while B remains active and must never release B. The command fails closed with the active/requested identities so the client can refresh.
-
-A successful release records closed release reason `operator_release`. PostgreSQL allows only:
+Durable release history is also closed:
 
 ```text
 replaced
 operator_release
 ```
 
-Derived `until_time` expiry does not advance QueueEntry revision and does not write release metadata.
+The application owns these transitions. Arbitrary SQL/adapters cannot write new historical explanations without changing the contract and migration backstop.
 
-## 5. `queue.skip`
+## 4. Recall hold model
 
-A skip is a **single-selection defer**, never a reorder.
+A recall hold is a durable append-preserving fact with mutable **release metadata only**.
 
-- It applies to the current **eligible** FIFO head under the ServiceQueue lock.
-- It records that head as intentionally bypassed for one selection attempt.
-- In the same transaction it calls the next eligible waiting entry, if one exists.
-- The skipped entry stays `waiting`; `admitted_at` and revision remain unchanged.
-- The skip has no future gating effect after commit.
-- If no second eligible row exists, the skip fact is still recorded and no row is called.
-
-Protocol:
-
-```text
-acquire idempotency
-lock ServiceQueue
-select+lock up to two eligible FIFO entries
-record first as skipped
-if second exists: transition second to called and emit queue.entry_called.v1
-append selection fact + audit/outbox for skip
-commit
-```
-
-One skip command can bypass exactly one head for exactly one selection attempt.
-
-## 6. Automatic `call_next` eligibility
-
-Ordinary `call_next` and `queue.skip` share one Queue-owned eligible-FIFO selector:
-
-```text
-QueueEntry.status = waiting
-AND no active recall hold at database selection time
-ORDER BY admitted_at, id
-```
-
-The degenerate path with no active holds is semantically identical to the pre-F7e FIFO rule.
-
-An `until_time` row with `release_at <= clock_timestamp()` is not active and does not require a release write before selection. Expired history is not rewritten merely to make the row callable.
-
-All F7e selection/release commands and ordinary `call_next` serialize through the same ServiceQueue lock.
-
-## 7. Durable relations and backstops
-
-### `queue_recall_holds`
-
-Queue-owned append-preserving hold history/current-gate relation.
-
-Minimum facts:
+Identity fields are immutable:
 
 ```text
 organization_id
@@ -194,109 +109,230 @@ id
 service_queue_id
 queue_entry_id
 hold_kind
-release_at?
-reason?                    # closed operational enum
+release_at
+reason
 created_by_principal_id
 created_at
-released_at?
-released_by_principal_id?
-release_reason?            # replaced | operator_release
 ```
 
-Backstops:
-
-- tenant-composite FKs to ServiceQueue, QueueEntry and principals;
-- insert target must belong to the queue and be `waiting`;
-- at most one unreleased row per QueueEntry via partial unique index;
-- hold-kind/release-at shape enforced in SQL;
-- hold reason and release reason are closed SQL vocabularies;
-- identity/meaning fields are immutable;
-- only one release transition may populate release metadata;
-- RLS and FORCE RLS are enabled.
-
-The application role may `SELECT`, `INSERT`, and `UPDATE` this relation because release is a guarded transition. DELETE is not granted.
-
-### `queue_selection_facts`
-
-Queue-owned immutable ledger for `operator_select` and `skip`.
+A hold is physically current while:
 
 ```text
-organization_id
-id
-service_queue_id
+released_at IS NULL
+```
+
+At most one physically current hold may exist for one `(organization_id, queue_entry_id)`.
+
+### until_time
+
+Requires a non-null `release_at` strictly later than the PostgreSQL database clock when created.
+
+It blocks callability only while:
+
+```text
+released_at IS NULL
+AND release_at > observed_at
+```
+
+When database time passes `release_at`, the hold becomes **derived inactive**. No worker is required and no fake release event is written.
+
+The historical row can remain physically unreleased until an operator replaces or explicitly releases it. Replacement closes the prior row atomically before inserting the next one, so the one-current-hold unique constraint cannot strand the queue after derived expiry.
+
+### until_customer_initiates
+
+Requires `release_at IS NULL` and remains blocking until an explicit release command succeeds.
+
+No inferred phone call, message, UI refresh, or passage of time clears it.
+
+## 5. Revision and stale intent
+
+Recall-hold creation/replacement and explicit release are operational changes to the `QueueEntry` and therefore advance its revision.
+
+Derived time expiry does **not** change QueueEntry revision because no durable mutation occurred.
+
+Commands requiring an observed entry use `expected_revision`:
+
+```text
+operator_select
+recall_hold
+release_recall_hold
+```
+
+`skip` is server-selected under the ServiceQueue lock and therefore has no client-provided QueueEntry revision.
+
+### Exact hold release
+
+`release_recall_hold` carries both:
+
+```text
 queue_entry_id
+hold_id
+expected_revision
+```
+
+After the ServiceQueue and waiting entry are locked:
+
+1. stale QueueEntry revision fails;
+2. no current hold is a durable no-op;
+3. if a current hold exists but its ID differs from the supplied `hold_id`, the command fails with typed `RecallHoldConflict`;
+4. only the exact current hold may transition to released.
+
+This prevents a client that refreshed the QueueEntry revision but retained a stale hold identity from believing it released a newer operator intent.
+
+The conflict transaction must leave the current hold, QueueEntry revision, idempotency row, audit and outbox unchanged.
+
+## 6. Selection semantics
+
+### call_next
+
+Unchanged default behavior:
+
+```text
+first waiting + callable entry by (admitted_at, id)
+```
+
+Entries with an active recall hold are excluded from callability.
+
+### operator_select
+
+An operator may select one exact waiting QueueEntry for a closed operational reason.
+
+The command:
+
+1. acquires the active ServiceQueue lock;
+2. locks the target waiting entry;
+3. verifies expected revision;
+4. refuses an active recall hold with typed `QueueEntryRecallHeld`;
+5. transitions only that QueueEntry to `called`;
+6. appends an immutable `operator_select` selection fact;
+7. records audit/outbox/idempotency in the same transaction.
+
+It does not rewrite any bypassed QueueEntry or FIFO key.
+
+### skip
+
+`skip` means:
+
+> Ignore the current eligible FIFO head for this selection attempt only; if a second eligible entry exists, call that second entry.
+
+Under one ServiceQueue lock it reads at most two eligible FIFO entries.
+
+If no eligible entry exists, it is a durable no-op.
+
+If one exists:
+
+- that first ID is recorded as the skipped entry;
+- it remains waiting and unchanged;
+- if a second eligible entry exists, the second is called;
+- the immutable selection fact records both the skipped target and, when present, the actual called entry.
+
+A later `call_next` starts again from normal FIFO/callability. Skip does not create a persistent rank penalty.
+
+## 7. Concurrency authority
+
+All commands that choose or change callability of QueueEntries use the same ServiceQueue serialization lock as `call_next`.
+
+Required race outcomes are therefore serializable, not “best effort.”
+
+### call_next vs operator_select
+
+Only serialized outcomes are valid. Two commands cannot independently call the same target.
+
+### call_next vs recall hold creation
+
+Valid outcomes:
+
+```text
+call_next wins first
+→ target called
+→ hold creation cannot create a hold on that non-waiting entry
+```
+
+or:
+
+```text
+hold wins first
+→ target remains waiting + held
+→ call_next excludes it
+```
+
+Never:
+
+```text
+called + active hold
+```
+
+### release vs call_next
+
+Valid outcomes:
+
+```text
+release wins first
+→ hold released
+→ call_next may call that entry
+```
+
+or:
+
+```text
+call_next observes hold first
+→ held entry excluded
+→ selection proceeds coherently
+→ release later operates only if entry remains valid for release semantics
+```
+
+Again, no final `called + active hold` state is permitted.
+
+### concurrent hold creation
+
+Both attempts serialize under the ServiceQueue lock and expected revision. One may succeed; the later stale intent cannot silently replace the newer hold.
+
+## 8. Durable selection facts
+
+`queue_selection_facts` is an append-only operational ledger.
+
+```text
 selection_kind = operator_select | skip
-reason
-selected_by_principal_id
-selected_at
-called_queue_entry_id?     # skip only
 ```
 
-Database backstops verify:
+Facts are immutable at PostgreSQL level; runtime app receives `SELECT+INSERT`, not UPDATE/DELETE.
 
-- operator-select reasons and skip reasons are closed vocabularies;
-- an `operator_select` fact points to a QueueEntry actually in `called` state;
-- a `skip` fact points to the skipped QueueEntry still in `waiting`;
-- `called_queue_entry_id`, when present, belongs to the same queue and is actually called;
-- UPDATE/DELETE are rejected.
+The database verifies:
 
-The runtime privilege contract intentionally grants the application role only `SELECT+INSERT` on this immutable ledger. This narrower shape is registered in the repository privilege exception set.
+- target QueueEntry belongs to referenced ServiceQueue;
+- operator-select target is already `called` in the same transaction;
+- skip target remains `waiting`;
+- any called QueueEntry recorded by skip belongs to the same queue and is `called`;
+- reason is valid for the selection kind.
 
-## 8. Staff read
+The ledger records exceptions without mutating the historical queue order.
 
-Queue remains the authority for live recall-hold truth. Existing `queue.staff_read` exposes current active hold information:
+## 9. F4 projection boundary
+
+A recall hold does not remove workload. It changes **when** that workload can be sequenced.
+
+F7e distinguishes sequencing uncertainty from capacity uncertainty.
+
+An active recall hold therefore yields:
 
 ```text
-recall_hold_kind?
-recall_hold_release_at?
-recall_hold_reason?
+ProjectionState.PARTIAL
+ProjectionReason.ACTIVE_RECALL_HOLD
 ```
 
-`recall_hold_reason` is the same closed operational vocabulary stored in Queue; no free-text clinical annotation is introduced.
+not `INDETERMINATE`.
 
-The live read does not store queue position. `queue.staff_history_read` does not reconstruct a live hold into terminal history; these fields are null for history rows that do not have a current gate.
+When workload durations and effective operating seconds remain known:
 
-The Booking-owned F7g day board is not changed to join Queue internals. Any future one-screen composition across Reservation and Queue facts requires an explicit owner-backed composition contract; F7e does not duplicate hold truth in Booking.
+- `projected_remaining_workload_seconds` remains known;
+- algebraic `live_headroom_seconds` may remain known;
+- projected per-entry start/end times are withheld;
+- customer ETA is withheld;
+- `live_intake_headroom_seconds` is withheld because temporal admissibility cannot be asserted.
 
-## 9. F4 projection semantics
+A time hold whose `release_at <= observed_at` is ignored by F4 even if its historical row has not yet been explicitly released.
 
-A recall hold changes **sequencing certainty**, not workload identity or planning authority.
-
-Held work remains in the Queue projection snapshot and remains counted as remaining workload. It is not deleted from capacity merely because the subject is temporarily non-callable.
-
-A projection snapshot carries `has_active_recall_hold` only when an unreleased/non-expired gate belongs to a QueueEntry that is still `waiting`.
-
-### Capacity vs timeline
-
-A recall hold by itself produces:
-
-```text
-state = partial
-reason includes active_recall_hold
-projected remaining workload = known when durations are known
-live_headroom_seconds = algebraically available when durations are known
-per-item estimated start/end = unavailable
-projected end-of-day = unavailable
-live_intake_headroom_seconds = unavailable
-```
-
-This is deliberately different from an open interruption/resource activity, which can make capacity itself `indeterminate`.
-
-The distinction prevents two opposite errors:
-
-1. pretending a held patient's workload disappeared;
-2. treating an ordinary “stepped away” fact as a severe capacity outage.
-
-### Customer projection
-
-Customer `entries_ahead` remains the derived FIFO-membership count. It is not rewritten into a speculative callable rank.
-
-While recall sequencing is partial:
-
-```text
-estimated_wait_seconds = null
-estimated_start = null
-```
+A hold attached to an entry that is no longer `waiting` is also ignored defensively.
 
 No customer sees another subject's hold reason or identity.
 
@@ -347,6 +383,16 @@ HTTP routers depend on application `Executor` Protocols only. `PostgresSameDaySe
 
 The four routes are registered through the existing `add_capability_route` and canonical capability registry; no parallel authorization mechanism is introduced.
 
+The F7 HTTP security matrix exercises every F7 operation for unauthenticated and missing-capability rejection without durable mutation. A positive F7e PostgreSQL HTTP journey additionally proves that the public composition path reaches the Queue owner for:
+
+```text
+queue.join
+→ queue.skip
+→ queue.recall_hold
+→ queue.release_recall_hold
+→ queue.operator_select
+```
+
 ## 12. Tenant isolation and privileges
 
 Both F7e relations use tenant-bound RLS with `FORCE ROW LEVEL SECURITY`.
@@ -361,7 +407,7 @@ Evidence must prove both catalog policy shape and actual row opacity:
 
 ## 13. Required PostgreSQL / contract proofs
 
-Prepared on the scratch branch; **none may be claimed passed until executed**.
+Prepared on the scratch branch; **none may be claimed passed until executed on the exact F7e head**.
 
 1. No-hold `call_next` preserves `(admitted_at,id)` FIFO behavior.
 2. `until_time` blocks before `release_at` and stops blocking after database time passes it without a release worker.
@@ -384,7 +430,11 @@ Prepared on the scratch branch; **none may be claimed passed until executed**.
 19. recall sequencing yields partial F4 timeline, preserves known workload/headroom, withholds live-intake fit and customer ETA.
 20. recall sequencing without shortfall does not create F5 recovery severity.
 21. F7e tables enforce real runtime tenant opacity under forced RLS.
-22. canonical HTTP probes cover capability, idempotency and tenant-isolation behavior.
+22. canonical HTTP surface and tenant-isolation matrices cover capability metadata, idempotency classification and foreign-tenant opacity.
+23. the F7 HTTP security matrix covers 401/403 rejection without mutation for all F7 operations.
+24. the positive F7e HTTP journey reaches PostgreSQL through the real app composition for skip/hold/release/operator-select.
+
+The current-product PostgreSQL gate explicitly executes `tests/db/test_f7e_*.py`, while the existing `tests/e2e` block executes the HTTP security, isolation, surface-contract and positive-journey proofs. Merely adding feature-local tests is not sufficient evidence.
 
 ## 14. Explicit non-goals
 
