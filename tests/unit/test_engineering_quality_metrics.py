@@ -51,7 +51,7 @@ def test_code_categories_cover_production_tests_scripts_migrations_and_config() 
     assert classify(Path(".github/workflows/ci.yml")) == "config"
 
 
-def test_generated_detection_requires_controlled_path_or_filename_not_self_declared_header() -> None:
+def test_generated_detection_requires_controlled_path_or_filename() -> None:
     metrics = _load_metrics()
     generated_reason = cast(
         Callable[[Path, str | None], str | None],
