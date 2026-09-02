@@ -9,10 +9,10 @@ from request_engine.modules.tenancy.adapters.db.party_registry_commands import (
 from request_engine.modules.tenancy.application.administrative_identifier_errors import (
     PartyAdministrativeIdentifierConflict,
 )
-from request_engine.modules.tenancy.application.commands import register_party
-from request_engine.modules.tenancy.application.commands.add_party_administrative_identifier import (
-    add_party_administrative_identifier,
+from request_engine.modules.tenancy.application.commands import (
+    add_party_administrative_identifier as admin_identifier_commands,
 )
+from request_engine.modules.tenancy.application.commands import register_party
 from request_engine.platform.db.session import SessionFactory
 
 from ._party_administrative_identifier_support import identifier_command, lookup_ids
@@ -49,7 +49,7 @@ async def test_insurance_member_lookup_is_tenant_owned(
         ),
     )
 
-    await add_party_administrative_identifier(
+    await admin_identifier_commands.add_party_administrative_identifier(
         commands,
         identifier_command(
             world_a.organization_id,
@@ -60,7 +60,7 @@ async def test_insurance_member_lookup_is_tenant_owned(
     assert await lookup_ids(reader, world_a.organization_id) == [party_a.party_id]
     assert await lookup_ids(reader, world_b.organization_id) == []
 
-    await add_party_administrative_identifier(
+    await admin_identifier_commands.add_party_administrative_identifier(
         commands,
         identifier_command(
             world_b.organization_id,
@@ -100,12 +100,16 @@ async def test_same_tenant_member_id_conflicts_and_replay_is_stable(
         first.party_id,
         idempotency_key="insurance-replay",
     )
-    created = await add_party_administrative_identifier(commands, command)
-    replay = await add_party_administrative_identifier(commands, command)
+    created = await admin_identifier_commands.add_party_administrative_identifier(
+        commands, command
+    )
+    replay = await admin_identifier_commands.add_party_administrative_identifier(
+        commands, command
+    )
     assert replay.identifier_id == created.identifier_id
 
     with pytest.raises(PartyAdministrativeIdentifierConflict) as conflict:
-        await add_party_administrative_identifier(
+        await admin_identifier_commands.add_party_administrative_identifier(
             commands,
             identifier_command(
                 world.organization_id,
