@@ -83,7 +83,7 @@ def test_previously_oversized_file_is_still_review_evidence_not_a_ratchet_failur
     assert grown_deltas[0]["delta"] == 1
 
 
-def test_changed_python_files_cover_scripts_and_migrations_and_ignore_generated(
+def test_changed_python_files_cover_categories_and_ignore_only_controlled_generated_shapes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def git(*args: str) -> None:
@@ -100,15 +100,27 @@ def test_changed_python_files_cover_scripts_and_migrations_and_ignore_generated(
     git("commit", "--quiet", "-m", "base")
     (tmp_path / "scripts" / "probe.py").write_text("value = 2\n", encoding="utf-8")
     (tmp_path / "migrations" / "probe.py").write_text("value = 3\n", encoding="utf-8")
-    (tmp_path / "tests" / "generated.py").write_text(
-        "# @generated - DO NOT EDIT\nvalue = 4\n", encoding="utf-8"
+    (tmp_path / "tests" / "probe_generated.py").write_text("value = 4\n", encoding="utf-8")
+    (tmp_path / "tests" / "fake_generated_header.py").write_text(
+        "# @generated - DO NOT EDIT\nvalue = 5\n", encoding="utf-8"
     )
-    git("add", "scripts/probe.py", "migrations/probe.py", "tests/generated.py")
+    git(
+        "add",
+        "scripts/probe.py",
+        "migrations/probe.py",
+        "tests/probe_generated.py",
+        "tests/fake_generated_header.py",
+    )
     git("commit", "--quiet", "-m", "head")
-    (tmp_path / "tests" / "untracked.py").write_text("value = 5\n", encoding="utf-8")
+    (tmp_path / "tests" / "untracked.py").write_text("value = 6\n", encoding="utf-8")
 
     budget = _load_budget_module()
     files = budget.changed_python_files("HEAD~1")
     names = sorted(item.as_posix() for item in files)
 
-    assert names == ["migrations/probe.py", "scripts/probe.py", "tests/untracked.py"]
+    assert names == [
+        "migrations/probe.py",
+        "scripts/probe.py",
+        "tests/fake_generated_header.py",
+        "tests/untracked.py",
+    ]
