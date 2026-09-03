@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, status
@@ -6,9 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from request_engine.modules.catalog.application.commands.bootstrap_catalog import (
     CatalogBootstrapHandler,
+    ChannelPolicyInput,
     CreateOfferingCommand,
     CreateResourceCapabilityCommand,
     OfferingRequirementInput,
+    ReservationPolicyInput,
     create_offering,
     create_resource_capability,
 )
@@ -36,6 +38,29 @@ class OfferingRequirementBody(BaseModel):
     quantity: int = Field(default=1, ge=1)
 
 
+class ChannelPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    channels: tuple[Literal["email", "phone", "sms", "voice", "whatsapp"], ...]
+    provider_key: str | None = Field(default=None, min_length=1, max_length=128)
+    reconcile_after_seconds: int = Field(default=300, ge=30, le=86400)
+    retry_after_seconds: int = Field(default=60, ge=30, le=86400)
+
+
+class ReservationPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: bool = False
+    reminders_before_minutes: tuple[int, ...] = ()
+    channel_policy: ChannelPolicyBody | None = None
+    attendance_confirmation_required: bool = False
+    attendance_request_before_minutes: int | None = Field(default=None, gt=0)
+    decline_action: Literal["keep", "cancel"] = "keep"
+    no_show_after_minutes: int | None = Field(default=None, gt=0)
+    slot_recovery_enabled: bool = False
+    slot_recovery_minimum_lead_minutes: int = Field(default=30, gt=0)
+
+
 class OfferingBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,6 +73,7 @@ class OfferingBody(BaseModel):
     requestable: bool = True
     slot_step_minutes: int = Field(default=30, gt=0, le=1440)
     requirements: tuple[OfferingRequirementBody, ...] = ()
+    reservation_policy: ReservationPolicyBody = ReservationPolicyBody()
 
 
 def create_bootstrap_router(
@@ -82,6 +108,17 @@ def create_bootstrap_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        policy = body.reservation_policy
+        channel_policy = (
+            ChannelPolicyInput(
+                channels=policy.channel_policy.channels,
+                provider_key=policy.channel_policy.provider_key,
+                reconcile_after_seconds=policy.channel_policy.reconcile_after_seconds,
+                retry_after_seconds=policy.channel_policy.retry_after_seconds,
+            )
+            if policy.channel_policy is not None
+            else None
+        )
         return await create_offering(
             handler,
             CreateOfferingCommand(
@@ -98,6 +135,19 @@ def create_bootstrap_router(
                 requirements=tuple(
                     OfferingRequirementInput(item.capability_id, item.quantity)
                     for item in body.requirements
+                ),
+                reservation_policy=ReservationPolicyInput(
+                    confirmation=policy.confirmation,
+                    reminders_before_minutes=policy.reminders_before_minutes,
+                    channel_policy=channel_policy,
+                    attendance_confirmation_required=policy.attendance_confirmation_required,
+                    attendance_request_before_minutes=policy.attendance_request_before_minutes,
+                    decline_action=policy.decline_action,
+                    no_show_after_minutes=policy.no_show_after_minutes,
+                    slot_recovery_enabled=policy.slot_recovery_enabled,
+                    slot_recovery_minimum_lead_minutes=(
+                        policy.slot_recovery_minimum_lead_minutes
+                    ),
                 ),
                 idempotency_key=idempotency_key,
             ),
