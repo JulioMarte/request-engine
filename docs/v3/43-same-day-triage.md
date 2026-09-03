@@ -83,7 +83,7 @@ S5 is acceptable only when PostgreSQL 18 evidence proves:
 - concurrent release versus release, release versus `call_next`, and release versus operator-select produce only valid serializable outcomes; releasing an entry that left `waiting` fails closed;
 - released entries rejoin automatic selection at their original `(admitted_at, id)` position without emitting a call event;
 - staff live Queue reads expose whether a waiting entry is currently recall-eligible and the active hold/skip fact that prevents normal recall;
-- Booking Day Board projects the active Queue recall gate without acquiring Queue mutation authority;
+- Booking Day Board projects a unique active Queue recall gate without acquiring Queue mutation authority, and exposes cardinality instead of arbitrarily choosing when multiple active QueueEntries correlate to one Reservation;
 - customer `entries_ahead` counts only waiting entries that are eligible for the next normal recall snapshot;
 - public HTTP metadata and tenant-isolation classification cover every new route.
 
@@ -105,7 +105,7 @@ active_skip_reason?
 
 `recall_eligible=true` means exactly that the QueueEntry is `waiting` and has no effective active recall hold or unconsumed skip at the read snapshot. `called`, `serving`, and terminal entries are not recall-eligible even when no gate exists.
 
-The Booking-owned Day Board remains a read-only composition. It projects the active QueueEntry and the same recall-gate facts through `request_read.reservation_day_v1`; Booking does not write, release, or reinterpret Queue facts. A Reservation with no active QueueEntry reports no Queue recall eligibility rather than fabricating `false`.
+The Booking-owned Day Board remains a read-only composition. It projects Queue correlation and recall-gate facts through `request_read.reservation_day_v1`; Booking does not write, release, or reinterpret Queue facts. `active_queue_entry_count=0` means no active QueueEntry is correlated. With exactly one active QueueEntry, the Day Board may expose its identity, status and recall gate. With more than one active QueueEntry, the count remains visible but `queue_entry_id`, `queue_entry_status`, `recall_eligible` and gate details are null: the read surface must not silently choose a "latest" QueueEntry and fabricate a single-stage truth. Multiple active QueueEntries are therefore explicit evidence requiring a future lineage/handoff contract, not an implicit workflow interpretation.
 
 Customer `entries_ahead` is likewise a snapshot of immediate normal recall order. Held or skipped waiting entries are not counted as imminent while their gate is effective. This does not promise a stable future position: a one-shot skip may be consumed and a hold may be released after the read.
 
