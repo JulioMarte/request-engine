@@ -43,9 +43,13 @@ async def test_human_front_desk_hold_refresh_release_journey(
         assert staff.json()[0]["recall_eligible"] is False
         assert board.json()[0]["reservation_id"] == reservation["id"]
         assert board.json()[0]["recall_hold_id"] == held.json()["hold"]["id"]
+        release_body = {
+            "hold_id": held.json()["hold"]["id"],
+            "expected_revision": held.json()["revision"],
+        }
         released = await client.post(
             f"{url}/release",
-            json={"hold_id": held.json()["hold"]["id"], "expected_revision": held.json()["revision"]},
+            json=release_body,
             headers=auth(sandbox, idempotency_key=f"release-{uuid4().hex}"),
         )
         assert released.status_code == 200
@@ -86,14 +90,23 @@ async def test_bot_retry_stale_ui_and_capability_rejection_are_fail_closed(
             json={"hold_id": held.json()["hold"]["id"], "expected_revision": entry["revision"]},
             headers=auth(sandbox, idempotency_key=f"stale-{uuid4().hex}"),
         )
+        release_body = {
+            "hold_id": held.json()["hold"]["id"],
+            "expected_revision": held.json()["revision"],
+        }
         denied = await client.post(
             f"{url}/release",
-            json={"hold_id": held.json()["hold"]["id"], "expected_revision": held.json()["revision"]},
+            json=release_body,
             headers={"Authorization": f"Bearer {read_only_token}", "Idempotency-Key": "denied"},
         )
+        conflict_body = {
+            **body,
+            "expected_revision": held.json()["revision"],
+            "reason": "different retry payload",
+        }
         conflict = await client.post(
             url,
-            json={**body, "expected_revision": held.json()["revision"], "reason": "different retry payload"},
+            json=conflict_body,
             headers=auth(sandbox, idempotency_key=key),
         )
         assert stale.status_code == 409
