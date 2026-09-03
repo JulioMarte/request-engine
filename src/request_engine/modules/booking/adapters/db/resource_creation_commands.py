@@ -45,7 +45,9 @@ class PostgresResourceCreationCommands:
             },
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -176,9 +178,7 @@ class PostgresResourceCreationCommands:
                         "capability_count": len(command.capability_ids),
                     },
                 )
-                await complete_idempotency(
-                    session, idem, {"resource": _state_to_json(state)}
-                )
+                await complete_idempotency(session, idem, {"resource": _state_to_json(state)})
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
@@ -208,7 +208,5 @@ def _state_from_json(value: dict[str, object]) -> ResourceBootstrapState:
         capacity_model=cast(CapacityModel, value["capacity_model"]),
         capacity_units=cast(int, value["capacity_units"]),
         availability_revision=cast(int, value["availability_revision"]),
-        capability_ids=tuple(
-            UUID(item) for item in cast(list[str], value["capability_ids"])
-        ),
+        capability_ids=tuple(UUID(item) for item in cast(list[str], value["capability_ids"])),
     )

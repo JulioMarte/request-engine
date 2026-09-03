@@ -113,14 +113,21 @@ async def create_offering(
 def _validate_reservation_policy(policy: ReservationPolicyInput) -> None:
     if any(value <= 0 for value in policy.reminders_before_minutes):
         raise ValueError("reminders_before_minutes must contain positive integers")
-    if policy.attendance_request_before_minutes is not None and policy.attendance_request_before_minutes <= 0:
+    if (
+        policy.attendance_request_before_minutes is not None
+        and policy.attendance_request_before_minutes <= 0
+    ):
         raise ValueError("attendance_request_before_minutes must be positive")
     if policy.no_show_after_minutes is not None and policy.no_show_after_minutes <= 0:
         raise ValueError("no_show_after_minutes must be positive")
     if policy.slot_recovery_minimum_lead_minutes <= 0:
         raise ValueError("slot_recovery_minimum_lead_minutes must be positive")
     channel_policy = policy.channel_policy
-    communications_enabled = policy.confirmation or bool(policy.reminders_before_minutes) or policy.attendance_confirmation_required
+    communications_enabled = (
+        policy.confirmation
+        or bool(policy.reminders_before_minutes)
+        or policy.attendance_confirmation_required
+    )
     if communications_enabled and channel_policy is None:
         raise ValueError("channel_policy is required when reservation communications are enabled")
     if channel_policy is None:

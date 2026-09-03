@@ -43,7 +43,9 @@ class PostgresCatalogBootstrapCommands:
             },
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -144,7 +146,9 @@ class PostgresCatalogBootstrapCommands:
             },
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -207,9 +211,7 @@ class PostgresCatalogBootstrapCommands:
                                 "duration_minutes": command.duration_minutes,
                                 "bookable": command.bookable,
                                 "requestable": command.requestable,
-                                "booking_policy": json.dumps(
-                                    booking_policy, separators=(",", ":")
-                                ),
+                                "booking_policy": json.dumps(booking_policy, separators=(",", ":")),
                             },
                         )
                     ).scalar_one(),
@@ -241,9 +243,7 @@ class PostgresCatalogBootstrapCommands:
                         ),
                     },
                 )
-                await complete_idempotency(
-                    session, idem, {"offering": _offering_json(state)}
-                )
+                await complete_idempotency(session, idem, {"offering": _offering_json(state)})
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
@@ -253,9 +253,7 @@ class PostgresCatalogBootstrapCommands:
             raise
 
 
-async def _validate_capabilities(
-    session: AsyncSession, command: CreateOfferingCommand
-) -> None:
+async def _validate_capabilities(session: AsyncSession, command: CreateOfferingCommand) -> None:
     capability_ids = [item.capability_id for item in command.requirements]
     if not capability_ids:
         return
@@ -364,7 +362,5 @@ def _offering_state(value: dict[str, object]) -> OfferingBootstrapState:
         offering_version_id=UUID(cast(str, value["offering_version_id"])),
         offering_key=cast(str, value["offering_key"]),
         version=cast(int, value["version"]),
-        requirement_ids=tuple(
-            UUID(item) for item in cast(list[str], value["requirement_ids"])
-        ),
+        requirement_ids=tuple(UUID(item) for item in cast(list[str], value["requirement_ids"])),
     )

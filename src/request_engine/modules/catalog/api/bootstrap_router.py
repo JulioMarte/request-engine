@@ -14,8 +14,9 @@ from request_engine.modules.catalog.application.commands.bootstrap_catalog impor
     create_offering,
     create_resource_capability,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -91,6 +92,7 @@ def create_bootstrap_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         return await create_resource_capability(
             handler,
             CreateResourceCapabilityCommand(
@@ -108,6 +110,7 @@ def create_bootstrap_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         policy = body.reservation_policy
         channel_policy = (
             ChannelPolicyInput(
@@ -145,24 +148,28 @@ def create_bootstrap_router(
                     decline_action=policy.decline_action,
                     no_show_after_minutes=policy.no_show_after_minutes,
                     slot_recovery_enabled=policy.slot_recovery_enabled,
-                    slot_recovery_minimum_lead_minutes=(
-                        policy.slot_recovery_minimum_lead_minutes
-                    ),
+                    slot_recovery_minimum_lead_minutes=(policy.slot_recovery_minimum_lead_minutes),
                 ),
                 idempotency_key=idempotency_key,
             ),
         )
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/resource-capabilities",
         capability,
+        capability="catalog.manage",
         methods=["POST"],
+        operation_id="catalog_manage_resource_capabilities",
         status_code=status.HTTP_201_CREATED,
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/offerings",
         offering,
+        capability="catalog.manage",
         methods=["POST"],
+        operation_id="catalog_manage_offerings",
         status_code=status.HTTP_201_CREATED,
     )
     return router

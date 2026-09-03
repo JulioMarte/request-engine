@@ -54,9 +54,7 @@ class PostgresServiceQueueCreationCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _state_from_json(
-                        cast(dict[str, object], replay["service_queue"])
-                    )
+                    return _state_from_json(cast(dict[str, object], replay["service_queue"]))
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -80,9 +78,7 @@ class PostgresServiceQueueCreationCommands:
                     )
                 ).first()
                 if location is None:
-                    raise QueueConfigurationConflict(
-                        "location_id is missing, inactive, or foreign"
-                    )
+                    raise QueueConfigurationConflict("location_id is missing, inactive, or foreign")
                 if command.offering_id is not None:
                     offering = (
                         await session.execute(
@@ -100,9 +96,7 @@ class PostgresServiceQueueCreationCommands:
                         )
                     ).first()
                     if offering is None:
-                        raise QueueConfigurationConflict(
-                            "offering_id is missing or foreign"
-                        )
+                        raise QueueConfigurationConflict("offering_id is missing or foreign")
                 row = (
                     (
                         await session.execute(
@@ -157,9 +151,7 @@ class PostgresServiceQueueCreationCommands:
                         "queue_key": state.queue_key,
                     },
                 )
-                await complete_idempotency(
-                    session, idem, {"service_queue": _state_to_json(state)}
-                )
+                await complete_idempotency(session, idem, {"service_queue": _state_to_json(state)})
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
@@ -186,7 +178,5 @@ def _state_from_json(value: dict[str, object]) -> ServiceQueueBootstrapState:
         queue_key=cast(str, value["queue_key"]),
         display_name=cast(str, value["display_name"]),
         location_id=UUID(cast(str, value["location_id"])),
-        offering_id=(
-            UUID(cast(str, offering_id)) if offering_id is not None else None
-        ),
+        offering_id=(UUID(cast(str, offering_id)) if offering_id is not None else None),
     )

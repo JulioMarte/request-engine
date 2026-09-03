@@ -88,6 +88,12 @@ def install_http(
             actor_resolver=actor_resolver,
         )
     )
+    app.include_router(
+        create_resource_bootstrap_router(
+            handler=PostgresResourceCreationCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
 
 
 def install_operational_http(
@@ -105,12 +111,6 @@ def install_operational_http(
         app.add_exception_handler(error_type, booking_operational_error_handler)
     config = PostgresContextualConfigCommands(session_factory)
     lifecycle = PostgresContextualSupplyLifecycleCommands(session_factory)
-    app.include_router(
-        create_resource_bootstrap_router(
-            handler=PostgresResourceCreationCommands(session_factory),
-            actor_resolver=actor_resolver,
-        )
-    )
     app.include_router(
         create_operational_assignment_router(
             assign_handler=config,

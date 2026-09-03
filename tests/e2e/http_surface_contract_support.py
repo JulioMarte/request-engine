@@ -29,6 +29,8 @@ _OPERATION_ID_OVERRIDES = {
     "operational_copilot.tools.discovery_publish": "copilot_publish_discovery_supply",
     "operational_copilot.tools.discovery_revoke": "copilot_revoke_discovery_publication",
     "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
+    "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
+    "catalog.manage.offering": "catalog_manage_offerings",
 }
 
 

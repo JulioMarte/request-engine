@@ -52,6 +52,12 @@ def install_http(
             actor_resolver=actor_resolver,
         )
     )
+    app.include_router(
+        create_bootstrap_router(
+            handler=PostgresCatalogBootstrapCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
 
 
 def install_operational_http(
@@ -84,12 +90,6 @@ def install_operational_http(
             hours_handler=PostgresOperationalConfigCommands(session_factory),
             exception_handler=profile,
             terms_handler=profile,
-            actor_resolver=actor_resolver,
-        )
-    )
-    app.include_router(
-        create_bootstrap_router(
-            handler=PostgresCatalogBootstrapCommands(session_factory),
             actor_resolver=actor_resolver,
         )
     )

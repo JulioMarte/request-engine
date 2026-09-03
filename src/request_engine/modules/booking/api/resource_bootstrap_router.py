@@ -9,8 +9,9 @@ from request_engine.modules.booking.application.commands.create_resource import 
     CreateResourceHandler,
     create_resource,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -45,6 +46,7 @@ def create_resource_bootstrap_router(
         idempotency_key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "booking.manage_supply")
         return await create_resource(
             handler,
             CreateResourceCommand(
@@ -61,5 +63,12 @@ def create_resource_bootstrap_router(
             ),
         )
 
-    router.add_api_route("", create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+    add_capability_route(
+        router,
+        "",
+        create,
+        capability="booking.manage_supply",
+        methods=["POST"],
+        status_code=status.HTTP_201_CREATED,
+    )
     return router

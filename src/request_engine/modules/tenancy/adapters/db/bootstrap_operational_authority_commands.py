@@ -47,9 +47,7 @@ class PostgresBootstrapOperationalAuthorityCommands:
             _CAPABILITY,
             {"authority_party_id": command.authority_party_id},
         )
-        async with tenant_transaction(
-            self._session_factory, command.organization_id
-        ) as session:
+        async with tenant_transaction(self._session_factory, command.organization_id) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -112,9 +110,7 @@ class PostgresBootstrapOperationalAuthorityCommands:
                 or party["party_kind"] != "organization"
             )
             if invalid_party:
-                raise ValueError(
-                    "authority_party_id must be an active organization Party"
-                )
+                raise ValueError("authority_party_id must be an active organization Party")
 
             existing_rows = (
                 (
@@ -148,14 +144,10 @@ class PostgresBootstrapOperationalAuthorityCommands:
                 for row in existing_rows
             }
             incompatible = [
-                scope
-                for scope, kind in existing.items()
-                if kind != AuthorityKind.DELEGATED.value
+                scope for scope, kind in existing.items() if kind != AuthorityKind.DELEGATED.value
             ]
             if incompatible:
-                raise PermissionError(
-                    "incompatible active operational authority already exists"
-                )
+                raise PermissionError("incompatible active operational authority already exists")
 
             for scope_key in _SCOPE_KEYS:
                 if scope_key in existing:

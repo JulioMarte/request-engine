@@ -109,4 +109,8 @@ def test_canonical_registry_contains_expected_current_surface() -> None:
         "operational_recovery.read",
         "operational_recovery.propose",
         "operational_recovery.execute",
+        "organization.bootstrap",
+        "catalog.manage",
+        "booking.manage_supply",
+        "queue.configure",
     } <= canonical_capability_keys()

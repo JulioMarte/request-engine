@@ -10,11 +10,9 @@ import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
 from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
-from request_engine.modules.booking.api import install_operational_http as install_booking_operational_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.catalog.api import install_http as install_catalog_http
-from request_engine.modules.catalog.api import install_operational_http as install_catalog_operational_http
 from request_engine.modules.catalog.api.copilot import build_copilot_catalog_reader
 from request_engine.modules.communications.api import install_http as install_communications_http
 from request_engine.modules.communications.api.recovery import build_recovery_communication_port
@@ -52,29 +50,14 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
     )
-    tenancy_api.install_operational_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
-    install_catalog_operational_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
-    )
     install_booking_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         party_authority_reader=tenancy_api.build_party_authority_reader(session_factory),
         appointment_option_signing_key=appointment_option_signing_key,
-    )
-    install_booking_operational_http(
-        app,
-        session_factory=session_factory,
-        actor_resolver=actor_resolver,
     )
     queue_api.install_http(
         app,
