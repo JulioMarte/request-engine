@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from request_engine.modules.catalog.adapters.db.bootstrap_catalog_commands import (
+    PostgresCatalogBootstrapCommands,
+)
 from request_engine.modules.catalog.adapters.db.business_info_reader import (
     PostgresBusinessInfoReader,
 )
@@ -15,6 +18,7 @@ from request_engine.modules.catalog.adapters.db.operational_config_commands impo
 from request_engine.modules.catalog.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
+from request_engine.modules.catalog.api.bootstrap_router import create_bootstrap_router
 from request_engine.modules.catalog.api.operational_errors import (
     catalog_operational_error_handler,
 )
@@ -80,6 +84,12 @@ def install_operational_http(
             hours_handler=PostgresOperationalConfigCommands(session_factory),
             exception_handler=profile,
             terms_handler=profile,
+            actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
+        create_bootstrap_router(
+            handler=PostgresCatalogBootstrapCommands(session_factory),
             actor_resolver=actor_resolver,
         )
     )
