@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import TypedDict, cast
 from uuid import uuid4
 
 from httpx import AsyncClient
@@ -18,6 +19,24 @@ FRONT_DESK_CAPABILITIES = frozenset(
 )
 
 
+class BookedReservationPayload(TypedDict):
+    id: str
+
+
+class CheckedInEntryPayload(TypedDict):
+    id: str
+    revision: int
+
+
+class RecallHoldPayload(TypedDict):
+    id: str
+
+
+class TriageResultPayload(TypedDict):
+    revision: int
+    hold: RecallHoldPayload | None
+
+
 def front_desk_actor(sandbox: TenantSandbox) -> ActorContext:
     return ActorContext(
         sandbox.organization_id,
@@ -26,7 +45,10 @@ def front_desk_actor(sandbox: TenantSandbox) -> ActorContext:
     )
 
 
-async def book_and_check_in(client: AsyncClient, sandbox: TenantSandbox) -> tuple[dict, dict]:
+async def book_and_check_in(
+    client: AsyncClient,
+    sandbox: TenantSandbox,
+) -> tuple[BookedReservationPayload, CheckedInEntryPayload]:
     slot = await first_slot(client, sandbox)
     booked = await client.post(
         "/v1/appointments",
@@ -34,14 +56,14 @@ async def book_and_check_in(client: AsyncClient, sandbox: TenantSandbox) -> tupl
         headers=auth(sandbox, idempotency_key=f"book-{uuid4().hex}"),
     )
     assert booked.status_code == 201, booked.text
-    reservation = booked.json()
+    reservation = cast(BookedReservationPayload, booked.json())
     checked_in = await client.post(
         f"/v1/queues/{sandbox.queue_id}/check-in",
         json={"subject_party_id": str(sandbox.party_id), "reservation_id": reservation["id"]},
         headers=auth(sandbox, idempotency_key=f"check-in-{uuid4().hex}"),
     )
     assert checked_in.status_code == 201, checked_in.text
-    return reservation, checked_in.json()
+    return reservation, cast(CheckedInEntryPayload, checked_in.json())
 
 
 def day_params(sandbox: TenantSandbox) -> dict[str, str]:
