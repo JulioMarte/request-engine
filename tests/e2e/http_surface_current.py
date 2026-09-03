@@ -1,5 +1,6 @@
 from .http_surface import PUBLIC_HTTP_OPERATIONS as V3_HTTP_OPERATIONS
 from .http_surface import PublicHttpOperation
+from .http_surface_day_board import DAY_BOARD_HTTP_OPERATIONS
 from .http_surface_f3 import F3_HTTP_OPERATIONS
 from .http_surface_f4 import F4_HTTP_OPERATIONS
 from .http_surface_f5 import F5_HTTP_OPERATIONS
@@ -10,6 +11,7 @@ from .http_surface_f7 import F7_HTTP_OPERATIONS
 from .http_surface_s0b import S0B_HTTP_OPERATIONS
 from .http_surface_s0b2 import S0B2_HTTP_OPERATIONS
 from .http_surface_s0c import S0C_HTTP_OPERATIONS
+from .http_surface_s5 import S5_HTTP_OPERATIONS
 
 PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     V3_HTTP_OPERATIONS
@@ -23,6 +25,8 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     + S0B_HTTP_OPERATIONS
     + S0B2_HTTP_OPERATIONS
     + S0C_HTTP_OPERATIONS
+    + DAY_BOARD_HTTP_OPERATIONS
+    + S5_HTTP_OPERATIONS
 )
 
 MATRIX_OPERATIONS: tuple[PublicHttpOperation, ...] = (
@@ -31,6 +35,8 @@ MATRIX_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     + S0B_HTTP_OPERATIONS
     + S0B2_HTTP_OPERATIONS
     + S0C_HTTP_OPERATIONS
+    + DAY_BOARD_HTTP_OPERATIONS
+    + S5_HTTP_OPERATIONS
 )
 
 
