@@ -1,12 +1,18 @@
 from datetime import UTC, datetime
-from typing import cast
-from uuid import UUID
+from uuid import uuid4
 
 import pytest
 
 from request_engine.modules.booking.adapters.db.day_board_reader import (
     PostgresReservationDayBoardReader,
 )
+from request_engine.modules.booking.adapters.db.reservation_commands import (
+    PostgresReservationCommands,
+)
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentCommand,
+)
+from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.platform.db.session import SessionFactory
 
 from .booking_boundary_fixture import create_booking_boundary_fixture
@@ -21,26 +27,24 @@ async def test_day_board_does_not_pick_one_of_multiple_active_queue_entries(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_booking_boundary_fixture(admin_conn)
-    row = admin_conn.execute(
-        """
-        INSERT INTO request_engine.reservations (
-            organization_id, offering_version_id, subject_party_id,
-            location_id, during, booking_policy_snapshot
-        ) VALUES (
-            %s, %s, %s, %s,
-            tstzrange('2026-09-03 14:00:00+00', '2026-09-03 14:30:00+00', '[)'),
-            '{}'::jsonb
-        ) RETURNING id
-        """,
-        (
-            fixture.organization_id,
-            fixture.offering_version_id,
-            fixture.subject_party_id,
-            fixture.location_id,
-        ),
-    ).fetchone()
-    assert row is not None
-    reservation_id = cast(UUID, row[0])
+    reservation = await PostgresReservationCommands(app_session_factory).book_appointment(
+        BookAppointmentCommand(
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            offering_version_id=fixture.offering_version_id,
+            subject_party_id=fixture.subject_party_id,
+            start_at=datetime(2026, 9, 7, 14, 0, tzinfo=UTC),
+            location_id=fixture.location_id,
+            resources=(
+                ResourceChoice(
+                    requirement_id=fixture.requirement_id,
+                    resource_id=fixture.resource_id,
+                ),
+            ),
+            idempotency_key=f"day-board-ambiguity-book-{uuid4().hex}",
+            allow_subject_override=True,
+        )
+    )
 
     for minute in (50, 55):
         queue_id = create_queue(admin_conn, fixture.organization_id)
@@ -55,21 +59,22 @@ async def test_day_board_does_not_pick_one_of_multiple_active_queue_entries(
                 fixture.organization_id,
                 queue_id,
                 fixture.subject_party_id,
-                reservation_id,
-                f"2026-09-03 13:{minute}:00+00",
-                f"2026-09-03 13:{minute}:00+00",
+                reservation.id,
+                f"2026-09-07 13:{minute}:00+00",
+                f"2026-09-07 13:{minute}:00+00",
             ),
         )
 
     rows = await PostgresReservationDayBoardReader(app_session_factory).read_window(
         fixture.organization_id,
-        window_start=datetime(2026, 9, 3, 0, 0, tzinfo=UTC),
-        window_end=datetime(2026, 9, 4, 0, 0, tzinfo=UTC),
+        window_start=datetime(2026, 9, 7, 0, 0, tzinfo=UTC),
+        window_end=datetime(2026, 9, 8, 0, 0, tzinfo=UTC),
         location_id=fixture.location_id,
     )
 
     assert len(rows) == 1
     item = rows[0]
+    assert item.reservation_id == reservation.id
     assert item.active_queue_entry_count == 2
     assert item.queue_entry_id is None
     assert item.queue_entry_status is None
