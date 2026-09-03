@@ -29,6 +29,8 @@ _OPERATION_ID_OVERRIDES = {
     "operational_copilot.tools.discovery_publish": "copilot_publish_discovery_supply",
     "operational_copilot.tools.discovery_revoke": "copilot_revoke_discovery_publication",
     "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
+    "staff.register_contact": "staff_manage_own_admin_contact_register",
+    "staff.request_contact_verification": "staff_manage_own_admin_contact_request_verification",
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
     "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
