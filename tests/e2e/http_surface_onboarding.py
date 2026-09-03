@@ -113,4 +113,32 @@ ONBOARDING_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             },
         ),
     ),
+    PublicHttpOperation(
+        "communications.configure_channel_policy",
+        "PUT",
+        "/v1/communications/channel-policies/{purpose}",
+        "communications.configure",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            "/v1/communications/channel-policies/appointment_confirmation",
+            body={
+                "authority_party_id": PROBE_UUID,
+                "enabled": True,
+                "channels": ["whatsapp", "sms", "email"],
+                "expected_revision": 0,
+            },
+        ),
+    ),
+    PublicHttpOperation(
+        "onboarding.readiness",
+        "GET",
+        "/v1/onboarding/readiness",
+        "onboarding.read",
+        False,
+        False,
+        TenantIsolationMode.FILTERED,
+        HttpProbe("/v1/onboarding/readiness"),
+    ),
 )

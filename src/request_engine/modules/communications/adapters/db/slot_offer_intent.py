@@ -6,6 +6,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.adapters.db.organization_channel_policy_reader import (
+    ensure_purpose_enabled,
+)
 from request_engine.modules.communications.domain.delivery_policy import (
     patient_transactional_channel_policy,
 )
@@ -27,6 +30,11 @@ class PostgresSlotOfferNotificationIntent:
         expires_at: datetime,
     ) -> UUID:
         session = _session(transaction)
+        await ensure_purpose_enabled(
+            session,
+            organization_id=organization_id,
+            purpose="slot_offer_available",
+        )
         dedupe_key = f"slot-offer:{slot_offer_id}:available:v1"
         policy_json = json.dumps(patient_transactional_channel_policy(), separators=(",", ":"))
         render_context = {

@@ -8,6 +8,14 @@ class PartyRegistryError(Exception):
     """Base class for typed party registry command failures."""
 
 
+class BootstrapAuthorityPartyInvalid(PartyRegistryError):
+    """The requested bootstrap authority Party is not a usable tenant organization Party."""
+
+    def __init__(self, party_id: UUID) -> None:
+        super().__init__(f"Party {party_id} is not an active organization Party of this tenant")
+        self.party_id = party_id
+
+
 class PartyNotFound(PartyRegistryError):
     def __init__(self, party_id: UUID) -> None:
         super().__init__(f"Party {party_id} was not found")

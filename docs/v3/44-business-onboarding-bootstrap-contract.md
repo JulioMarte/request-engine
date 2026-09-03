@@ -207,9 +207,37 @@ PUT /v1/communications/channel-policies/{purpose}
 Capability: communications.configure
 ```
 
-The first admitted purposes are the currently supported communication purposes in the Communications contract. The body configures the ordered channel/provider policy already consumed by dispatch/escalation code; it must validate rather than accept arbitrary JSON.
+`purpose` is the closed vocabulary of purposes the Communications module actually
+creates today: `appointment_confirmation`, `appointment_reminder`,
+`attendance_confirmation_request`, `slot_offer_available`,
+`operational_recovery_impact`, `operational_recovery_rescheduled`. The body
+configures the ordered channel/provider policy already consumed by
+dispatch/escalation code (`channels`, optional `provider_key`,
+`reconcile_after_seconds`, `retry_after_seconds` — same bounds as
+`parse_delivery_policy`); it must validate rather than accept arbitrary JSON.
 
-Missing policy remains distinguishable from an intentionally disabled purpose.
+The command requires the `communications.configure` capability plus
+`operations.manage_profile` operational authority and is idempotent with
+optimistic revision (`expected_revision`; a new row requires `0`).
+
+Persistence is `request_engine.organization_channel_policies` (one row per
+organization + purpose). Resolution precedence at dispatch:
+
+```text
+task-level channel_policy (anything not the hardcoded default sentinel)
+  > enabled organization policy row for the task purpose
+  > hardcoded patient-transactional default
+```
+
+Missing policy remains distinguishable from an intentionally disabled purpose:
+
+- absent row → not configured; resolution falls back to the default;
+- present with `enabled = false` → the CREATION of new intents for that purpose
+  is rejected with the typed `channel_purpose_disabled` conflict, while tasks
+  already in flight keep their own frozen `channel_policy` snapshot and are not
+  touched (including dispatch of tasks that froze the default sentinel);
+- present with `enabled = true` → the organization configuration serves as the
+  default when a task does not bring its own policy.
 
 ## 6. Readiness
 
@@ -220,23 +248,36 @@ GET /v1/onboarding/readiness
 Capability: onboarding.read
 ```
 
-Response reports owner-backed facts and blockers, not guesses:
+Response reports owner-backed facts, not guesses:
 
 ```json
 {
   "business_party": {"ready": true},
   "locations": {"ready": true, "count": 1},
   "appointments": {
-    "ready": false,
-    "blockers": ["no_bookable_offering", "no_resource_supply"]
+    "ready": true,
+    "blockers": []
   },
   "walk_in_queue": {"ready": true, "queue_count": 1},
   "communications": {
-    "ready": false,
-    "blockers": ["no_channel_policy"]
+    "ready": true,
+    "blockers": []
   }
 }
 ```
+
+Facts come from each owning module through its published contracts surface:
+
+- `business_party` — Tenancy: an active `organization` Party exists;
+- `locations` — Catalog active Location count;
+- `appointments` — blockers `no_bookable_offering` (no bookable
+  OfferingVersion) and `no_resource_supply` (no active Resource with recurring
+  availability);
+- `walk_in_queue` — at least one active ServiceQueue exists;
+- `communications` — ready by default (the hardcoded patient-transactional
+  policy applies when nothing is configured); the only blocker is
+  `channel_purpose_disabled`, present while any purpose is intentionally
+  disabled.
 
 Readiness is advisory setup state. It never mutates owners and never substitutes for owner validation at booking/join/dispatch time.
 

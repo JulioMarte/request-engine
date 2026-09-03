@@ -73,3 +73,14 @@ class ReminderSubjectAuthorityRequired(CommunicationsError):
         )
         self.subject_party_id = subject_party_id
         self.scope_key = scope_key
+
+
+class OrganizationChannelPolicyRevisionConflict(CommunicationsError):
+    def __init__(self, purpose: str, expected: int, actual: int) -> None:
+        super().__init__(
+            f"organization channel policy for {purpose} revision conflict: "
+            f"expected {expected}, current {actual}"
+        )
+        self.purpose = purpose
+        self.expected = expected
+        self.actual = actual

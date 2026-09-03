@@ -113,4 +113,6 @@ def test_canonical_registry_contains_expected_current_surface() -> None:
         "catalog.manage",
         "booking.manage_supply",
         "queue.configure",
+        "communications.configure",
+        "onboarding.read",
     } <= canonical_capability_keys()

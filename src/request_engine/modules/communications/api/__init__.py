@@ -1,10 +1,16 @@
 from fastapi import FastAPI
 
+from request_engine.modules.communications.adapters.db.organization_channel_policy_commands import (
+    PostgresOrganizationChannelPolicyCommands,
+)
 from request_engine.modules.communications.adapters.db.reminder_commands import (
     PostgresReminderCommands,
 )
 from request_engine.modules.communications.adapters.db.reminder_reader import (
     PostgresReminderPlanReader,
+)
+from request_engine.modules.communications.api.channel_policy_router import (
+    create_channel_policy_router,
 )
 from request_engine.modules.communications.api.errors import communications_error_handler
 from request_engine.modules.communications.api.router import create_router
@@ -27,6 +33,12 @@ def install_http(
         create_router(
             commands=commands,
             reader=PostgresReminderPlanReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+    app.include_router(
+        create_channel_policy_router(
+            handler=PostgresOrganizationChannelPolicyCommands(session_factory),
             actor_resolver=actor_resolver,
         )
     )

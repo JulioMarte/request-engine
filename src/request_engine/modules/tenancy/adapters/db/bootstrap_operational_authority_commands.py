@@ -7,6 +7,7 @@ from request_engine.modules.tenancy.application.commands.bootstrap_operational_a
     BootstrapOperationalAuthorityCommand,
     BootstrapOperationalAuthorityState,
 )
+from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
 from request_engine.modules.tenancy.contracts.authority import AuthorityKind
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
@@ -110,7 +111,7 @@ class PostgresBootstrapOperationalAuthorityCommands:
                 or party["party_kind"] != "organization"
             )
             if invalid_party:
-                raise ValueError("authority_party_id must be an active organization Party")
+                raise BootstrapAuthorityPartyInvalid(command.authority_party_id)
 
             existing_rows = (
                 (

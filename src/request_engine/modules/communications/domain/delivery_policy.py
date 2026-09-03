@@ -7,6 +7,7 @@ channel set for reaching a patient by any verified contact point.
 
 from collections.abc import Collection
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import cast
 
 from request_engine.modules.communications.domain.errors import DeliveryConfigurationError
@@ -22,10 +23,47 @@ _ENDPOINT_CHANNELS = {
 PATIENT_TRANSACTIONAL_CONTACT_CHANNELS = ("whatsapp", "sms", "email")
 
 
+class ChannelPolicyPurpose(StrEnum):
+    """Closed vocabulary of purposes the communications module creates today."""
+
+    APPOINTMENT_CONFIRMATION = "appointment_confirmation"
+    APPOINTMENT_REMINDER = "appointment_reminder"
+    ATTENDANCE_CONFIRMATION_REQUEST = "attendance_confirmation_request"
+    SLOT_OFFER_AVAILABLE = "slot_offer_available"
+    OPERATIONAL_RECOVERY_IMPACT = "operational_recovery_impact"
+    OPERATIONAL_RECOVERY_RESCHEDULED = "operational_recovery_rescheduled"
+
+
+ORGANIZATION_CHANNEL_PURPOSES = frozenset(item.value for item in ChannelPolicyPurpose)
+
+
 def patient_transactional_channel_policy() -> dict[str, object]:
     """Policy that reaches the patient by any verified contact point."""
 
     return {"channels": list(PATIENT_TRANSACTIONAL_CONTACT_CHANNELS)}
+
+
+def is_patient_transactional_default(policy: object) -> bool:
+    """True when a frozen task policy is exactly the hardcoded default sentinel.
+
+    Tasks created without an explicit task-level channel policy (slot-offer and
+    operational-recovery intents) freeze the default sentinel. Only such
+    sentinel policies defer to an organization-level policy at dispatch.
+    """
+
+    if not isinstance(policy, dict):
+        return False
+    entries = cast(dict[str, object], policy)
+    if set(entries) != {"channels"}:
+        return False
+    channels = entries["channels"]
+    if not isinstance(channels, list):
+        return False
+    typed_channels = cast(list[object], channels)
+    if not all(isinstance(item, str) for item in typed_channels):
+        return False
+    string_channels = cast(list[str], typed_channels)
+    return sorted(string_channels) == sorted(PATIENT_TRANSACTIONAL_CONTACT_CHANNELS)
 
 
 @dataclass(frozen=True, slots=True)

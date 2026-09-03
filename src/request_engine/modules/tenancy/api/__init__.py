@@ -3,6 +3,9 @@ from fastapi import APIRouter, FastAPI, Request
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
 )
+from request_engine.modules.tenancy.adapters.db.onboarding_party_reader import (
+    PostgresBusinessPartyReader,
+)
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
@@ -16,10 +19,14 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_commands impor
     PostgresPrincipalContactCommands,
 )
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
+    bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
 )
 from request_engine.modules.tenancy.api.identity_exchange_http import (
     install_identity_exchange_http,
+)
+from request_engine.modules.tenancy.api.onboarding_readiness_routes import (
+    create_onboarding_readiness_router,
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
@@ -27,9 +34,19 @@ from request_engine.modules.tenancy.api.staff_contact_errors import (
     add_staff_contact_error_handlers,
 )
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
 from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
+)
+from request_engine.modules.tenancy.contracts.onboarding_readiness import (
+    BusinessPartyReader,
+)
+from request_engine.modules.tenancy.contracts.onboarding_readiness import (
+    OnboardingReadinessFacts as OnboardingReadinessFacts,
+)
+from request_engine.modules.tenancy.contracts.onboarding_readiness import (
+    OnboardingReadinessFactsReader as OnboardingReadinessFactsReader,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
@@ -50,15 +67,23 @@ def build_operational_authority_party_reader(
     return PostgresOperationalAuthorityPartyReader(session_factory)
 
 
+def build_onboarding_business_party_reader(session_factory: SessionFactory) -> BusinessPartyReader:
+    """Compose the tenancy-owned business-Party readiness reader for composition roots."""
+
+    return PostgresBusinessPartyReader(session_factory)
+
+
 def install_http(
     app: FastAPI,
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     identity_exchange_fingerprint_key: bytes | None = None,
+    onboarding_facts_reader: OnboardingReadinessFactsReader | None = None,
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
+    app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
     install_party_registry_http(
         app,
         session_factory=session_factory,
@@ -91,6 +116,14 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)
+
+    if onboarding_facts_reader is not None:
+        app.include_router(
+            create_onboarding_readiness_router(
+                reader=onboarding_facts_reader,
+                actor_resolver=actor_resolver,
+            )
+        )
 
 
 def install_operational_http(

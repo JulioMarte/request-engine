@@ -32,6 +32,7 @@ _OPERATION_ID_OVERRIDES = {
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
     "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
+    "communications.configure_channel_policy": "communications_configure_channel_policy",
 }
 
 
