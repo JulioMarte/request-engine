@@ -8,6 +8,7 @@ from request_engine.modules.queue.application.commands.create_service_queue impo
     CreateServiceQueueCommand,
     ServiceQueueBootstrapState,
 )
+from request_engine.modules.queue.application.errors import QueueConfigurationConflict
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -41,7 +42,9 @@ class PostgresServiceQueueCreationCommands:
             },
         )
         try:
-            async with tenant_transaction(self._session_factory, command.organization_id) as session:
+            async with tenant_transaction(
+                self._session_factory, command.organization_id
+            ) as session:
                 idem, replay = await acquire_idempotency(
                     session,
                     organization_id=command.organization_id,
@@ -51,7 +54,9 @@ class PostgresServiceQueueCreationCommands:
                     fingerprint=fingerprint,
                 )
                 if replay is not None:
-                    return _state_from_json(cast(dict[str, object], replay["service_queue"]))
+                    return _state_from_json(
+                        cast(dict[str, object], replay["service_queue"])
+                    )
                 authority = await require_operational_authority(
                     session,
                     organization_id=command.organization_id,
@@ -68,11 +73,16 @@ class PostgresServiceQueueCreationCommands:
                               AND id = :location_id AND active
                             """
                         ),
-                        {"organization_id": command.organization_id, "location_id": command.location_id},
+                        {
+                            "organization_id": command.organization_id,
+                            "location_id": command.location_id,
+                        },
                     )
                 ).first()
                 if location is None:
-                    raise ValueError("location_id is missing, inactive, or foreign")
+                    raise QueueConfigurationConflict(
+                        "location_id is missing, inactive, or foreign"
+                    )
                 if command.offering_id is not None:
                     offering = (
                         await session.execute(
@@ -83,22 +93,36 @@ class PostgresServiceQueueCreationCommands:
                                   AND id = :offering_id
                                 """
                             ),
-                            {"organization_id": command.organization_id, "offering_id": command.offering_id},
+                            {
+                                "organization_id": command.organization_id,
+                                "offering_id": command.offering_id,
+                            },
                         )
                     ).first()
                     if offering is None:
-                        raise ValueError("offering_id is missing or foreign")
+                        raise QueueConfigurationConflict(
+                            "offering_id is missing or foreign"
+                        )
                 row = (
                     (
                         await session.execute(
                             text(
                                 """
                                 INSERT INTO request_engine.service_queues (
-                                    organization_id, location_id, offering_id, queue_key, display_name
+                                    organization_id,
+                                    location_id,
+                                    offering_id,
+                                    queue_key,
+                                    display_name
                                 ) VALUES (
-                                    :organization_id, :location_id, :offering_id, :queue_key, :display_name
+                                    :organization_id,
+                                    :location_id,
+                                    :offering_id,
+                                    :queue_key,
+                                    :display_name
                                 )
-                                RETURNING id, queue_key, display_name, location_id, offering_id
+                                RETURNING id, queue_key, display_name,
+                                          location_id, offering_id
                                 """
                             ),
                             {
@@ -128,7 +152,10 @@ class PostgresServiceQueueCreationCommands:
                     aggregate_kind="ServiceQueue",
                     aggregate_id=state.queue_id,
                     idempotency_id=idem,
-                    details={"authority": authority.audit_details(), "queue_key": state.queue_key},
+                    details={
+                        "authority": authority.audit_details(),
+                        "queue_key": state.queue_key,
+                    },
                 )
                 await complete_idempotency(
                     session, idem, {"service_queue": _state_to_json(state)}
@@ -136,7 +163,9 @@ class PostgresServiceQueueCreationCommands:
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
-                raise ValueError("queue_key already exists in this tenant") from None
+                raise QueueConfigurationConflict(
+                    "queue_key already exists in this tenant"
+                ) from None
             raise
 
 
@@ -157,5 +186,7 @@ def _state_from_json(value: dict[str, object]) -> ServiceQueueBootstrapState:
         queue_key=cast(str, value["queue_key"]),
         display_name=cast(str, value["display_name"]),
         location_id=UUID(cast(str, value["location_id"])),
-        offering_id=UUID(cast(str, offering_id)) if offering_id is not None else None,
+        offering_id=(
+            UUID(cast(str, offering_id)) if offering_id is not None else None
+        ),
     )
