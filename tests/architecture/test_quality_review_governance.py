@@ -153,6 +153,6 @@ def test_agent_instruction_file_inventory_is_fail_closed() -> None:
         ".github/copilot-instructions.md",
         ".github/instructions/python.instructions.md",
     )
-    assert AGENT_INSTRUCTION_FILES == expected_files
+    assert expected_files == AGENT_INSTRUCTION_FILES
     for path in AGENT_INSTRUCTION_FILES:
         assert (ROOT / path).is_file(), f"agent instruction surface missing: {path}"
