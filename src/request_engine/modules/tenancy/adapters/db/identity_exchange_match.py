@@ -4,8 +4,12 @@ from datetime import datetime
 from uuid import UUID
 
 from request_engine.modules.tenancy.adapters.db.identity_exchange_sql import CREATE_CANDIDATE
-from request_engine.modules.tenancy.application.identity_exchange import MatchPortableIdentityCommand
-from request_engine.modules.tenancy.application.identity_exchange_errors import IdentityExchangeUnavailable
+from request_engine.modules.tenancy.application.identity_exchange import (
+    MatchPortableIdentityCommand,
+)
+from request_engine.modules.tenancy.application.identity_exchange_errors import (
+    IdentityExchangeUnavailable,
+)
 from request_engine.modules.tenancy.contracts.identity_exchange import IdentityMatchResult
 from request_engine.modules.tenancy.domain.identity_exchange import (
     ScopedIdentityDocument,
@@ -73,16 +77,20 @@ class PostgresPortableIdentityMatcher:
                     candidate_expires_at=_expiry(replay.get("candidate_expires_at")),
                 )
             row = (
-                await session.execute(
-                    CREATE_CANDIDATE,
-                    {
-                        "kind": document.kind,
-                        "authority": document.authority,
-                        "fingerprint": fingerprint,
-                        "principal_id": command.principal_id,
-                    },
+                (
+                    await session.execute(
+                        CREATE_CANDIDATE,
+                        {
+                            "kind": document.kind,
+                            "authority": document.authority,
+                            "fingerprint": fingerprint,
+                            "principal_id": command.principal_id,
+                        },
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             raw_candidate = row["candidate_ref"]
             candidate_ref = UUID(str(raw_candidate)) if raw_candidate else None
             expires_at = _expiry(row["candidate_expires_at"])

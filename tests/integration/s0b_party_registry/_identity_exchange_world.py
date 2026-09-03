@@ -49,7 +49,9 @@ async def published_source(
             world.organization_id,
             world.operator_principal_id,
             party_kind=party_kind,
-            display_name=("Acme Dominicana SRL" if party_kind is PartyKind.ORGANIZATION else "María Gómez"),
+            display_name=(
+                "Acme Dominicana SRL" if party_kind is PartyKind.ORGANIZATION else "María Gómez"
+            ),
             phone="809-555-1212",
             cedula=value if kind == "cedula" else None,
             rnc=value if kind == "rnc" else None,

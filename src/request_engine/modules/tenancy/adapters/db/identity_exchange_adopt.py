@@ -16,8 +16,12 @@ from request_engine.modules.tenancy.adapters.db.identity_exchange_conflicts impo
     existing_adopted_party,
     is_identity_already_adopted_violation,
 )
-from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import raise_document_conflict
-from request_engine.modules.tenancy.application.identity_exchange import AdoptPortableIdentityCommand
+from request_engine.modules.tenancy.adapters.db.party_registry_conflicts import (
+    raise_document_conflict,
+)
+from request_engine.modules.tenancy.application.identity_exchange import (
+    AdoptPortableIdentityCommand,
+)
 from request_engine.modules.tenancy.application.identity_exchange_errors import (
     IdentityExchangeAlreadyAdopted,
     IdentityExchangeUnavailable,

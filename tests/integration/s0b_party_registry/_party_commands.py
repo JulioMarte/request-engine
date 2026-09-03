@@ -38,9 +38,7 @@ def register_command(
 ) -> RegisterPartyCommand:
     channels = (("whatsapp", whatsapp), ("phone", phone), ("email", email))
     contact_points = tuple(
-        PartyContactPointInput(channel, value)
-        for channel, value in channels
-        if value is not None
+        PartyContactPointInput(channel, value) for channel, value in channels if value is not None
     )
     documents: list[PartyDocumentInput] = []
     if cedula:

@@ -18,6 +18,4 @@ def require_document_party_kind(party_kind: PartyKind | str, document_kind: str)
     expected = party_kind_for_document(document_kind)
     actual = PartyKind(party_kind)
     if actual is not expected:
-        raise ValueError(
-            f"{document_kind} identifies a {expected.value} Party, not {actual.value}"
-        )
+        raise ValueError(f"{document_kind} identifies a {expected.value} Party, not {actual.value}")

@@ -12,7 +12,9 @@ UPDATE request_engine.party_identity_documents
 SET authority = 'DO:JCE'
 WHERE kind = 'cedula' AND authority IS NULL;
 ALTER TABLE request_engine.party_identity_documents
-    DROP CONSTRAINT party_identity_documents_kind_ck;
+    DROP CONSTRAINT IF EXISTS party_identity_documents_kind_ck;
+ALTER TABLE request_engine.party_identity_documents
+    DROP CONSTRAINT IF EXISTS party_identity_documents_kind_check;
 ALTER TABLE request_engine.party_identity_documents
     ADD CONSTRAINT party_identity_documents_kind_ck
     CHECK (kind IN ('cedula', 'passport', 'rnc'));

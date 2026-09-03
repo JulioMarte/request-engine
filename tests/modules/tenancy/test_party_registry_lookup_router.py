@@ -135,7 +135,7 @@ async def test_lookup_requires_exactly_one_known_mode_and_a_value() -> None:
         transport=ASGITransport(app=_app(_actor(), reader)), base_url="http://test"
     ) as client:
         bad_mode = await client.get(
-            "/v1/parties/lookup", params={"mode": "email", "value": "someone@example.com"}
+            "/v1/parties/lookup", params={"mode": "fax", "value": "someone@example.com"}
         )
         missing_value = await client.get("/v1/parties/lookup", params={"mode": "phone"})
 

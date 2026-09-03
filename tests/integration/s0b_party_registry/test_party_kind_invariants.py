@@ -52,10 +52,9 @@ def test_party_kind_is_immutable_in_postgresql(admin_conn: PgConnection) -> None
     ).fetchone()
     assert party_id is not None
 
-    with pytest.raises(psycopg.errors.CheckViolation):
-        with admin_conn.transaction():
-            admin_conn.execute(
-                "UPDATE request_engine.parties SET party_kind = 'organization' "
-                "WHERE organization_id = %s AND id = %s",
-                (world.organization_id, party_id[0]),
-            )
+    with pytest.raises(psycopg.errors.CheckViolation), admin_conn.transaction():
+        admin_conn.execute(
+            "UPDATE request_engine.parties SET party_kind = 'organization' "
+            "WHERE organization_id = %s AND id = %s",
+            (world.organization_id, party_id[0]),
+        )

@@ -14,7 +14,10 @@ from request_engine.modules.tenancy.api.identity_exchange_models import (
     IdentityMatchBody,
     IdentityMatchView,
 )
-from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey, source_kind
+from request_engine.modules.tenancy.api.party_registry_dependencies import (
+    IdempotencyKey,
+    source_kind,
+)
 from request_engine.modules.tenancy.application.identity_exchange import (
     AdoptPortableIdentityCommand,
     AdoptPortableIdentityHandler,
@@ -100,7 +103,12 @@ def add_identity_exchange_routes(
         return IdentityAdoptionView.from_contract(result)
 
     add_capability_route(
-        router, "/matches", match_route, capability=_MATCH, methods=["POST"], response_model=IdentityMatchView
+        router,
+        "/matches",
+        match_route,
+        capability=_MATCH,
+        methods=["POST"],
+        response_model=IdentityMatchView,
     )
     add_capability_route(
         router,

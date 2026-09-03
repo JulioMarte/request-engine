@@ -38,10 +38,7 @@ def portable_insurance(
     if "insurance_member" not in consented_fields:
         return ()
     rows = cast(list[dict[str, object]], profile.get("insurance_identifiers", []))
-    distinct = {
-        (str(row["issuer"]), str(row["value"]))
-        for row in rows
-    }
+    distinct = {(str(row["issuer"]), str(row["value"])) for row in rows}
     return tuple(
         PortableInsuranceIdentifier(issuer=issuer, value=value)
         for issuer, value in sorted(distinct)
