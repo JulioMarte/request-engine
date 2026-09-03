@@ -23,6 +23,13 @@ ServiceQueue serializes `CallNext` through the stable queue row and selects the 
 
 Queue position is derived, never an authoritative mutable counter.
 
+For tenant onboarding, `POST /v1/queues` (`queue.configure`,
+`operations.manage_supply` authority) creates one ServiceQueue bound to a
+same-tenant Location with an optional Offering link. Selection stays FIFO only
+(`policy_key` is DB-constrained to `'fifo'`). Queue creation is configuration
+only: it admits nobody. `read_queue_supply` (via `contracts/onboarding.py`)
+backs the `walk_in_queue` readiness fact of `GET /v1/onboarding/readiness`.
+
 F3 keeps arrival and admission as separate facts:
 
 ```text

@@ -30,6 +30,19 @@ party mutation appends one full-identity revision to the append-only
 `party_identity_revisions` ledger in the same transaction (§9.3); rollback
 applies a prior snapshot as a new revision while verification stays monotone.
 
+## Business onboarding authority (docs/v3/44)
+
+`organization.bootstrap` allows a freshly provisioned principal to establish
+the tenant's root operational authority through
+`POST /v1/organization/bootstrap-operational-authority`: it grants the four
+`operations.manage_*` scopes as delegated Representations on an active
+`organization` Party. It is bootstrap-only (idempotent replay, no general
+Representation administration) and exposes the owner-backed
+`has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`
+(`onboarding.read` composes this fact through `contracts/onboarding_readiness.py`;
+the readiness router is Tenancy-owned HTTP composition over other modules'
+published readers).
+
 ## Staff administrative contacts (R2)
 
 Staff (operator) principals register their OWN administrative contact

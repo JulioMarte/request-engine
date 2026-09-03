@@ -65,6 +65,21 @@ Reschedule is self-overlap safe: lock the Reservation, then the union of old/new
 
 Routine schedule changes do not silently rewrite already-committed Reservations. New booking/hold acquisition revalidates schedule under Resource locks; administrative invalidation of an existing Hold/Reservation must be an explicit semantic command.
 
+## Onboarding supply surface (docs/v3/44)
+
+`POST /v1/booking/resources` (`booking.manage_supply`) creates one Resource
+with a required Location, optional capability assignments and optional initial
+weekly availability (`weekday 0..6` + local wall-clock window, optional
+validity dates). With availability it opens one contextual
+`resource_location_assignments` row plus `resource_location_availability`
+windows; without it, supply is configured later through the operational
+resource-assignment surfaces. Capacity models remain `exclusive|units`; the
+command never consumes capacity. Booking also resolves the effective
+OfferingVersion booking policy (bootstrap policy or latest append-only ledger
+row) when planning slots and freezes it into each new Reservation's
+`booking_policy_snapshot`. `read_booking_supply` (via `contracts/onboarding.py`)
+backs the `no_resource_supply` readiness fact.
+
 ## Reservation lifecycle and attendance
 
 Reservation commitment and attendance execution are deliberately orthogonal:
