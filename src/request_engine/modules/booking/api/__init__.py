@@ -22,6 +22,9 @@ from request_engine.modules.booking.adapters.db.contextual_terms_supersession_co
     PostgresContextualTermsSupersessionCommands,
 )
 from request_engine.modules.booking.adapters.db.reservation_reader import PostgresReservationReader
+from request_engine.modules.booking.adapters.db.resource_creation_commands import (
+    PostgresResourceCreationCommands,
+)
 from request_engine.modules.booking.adapters.db.resource_schedule_exception_commands import (
     PostgresResourceScheduleExceptionCommands,
 )
@@ -42,6 +45,9 @@ from request_engine.modules.booking.api.operational_exception_router import (
 )
 from request_engine.modules.booking.api.operational_terms_router import (
     create_operational_terms_router,
+)
+from request_engine.modules.booking.api.resource_bootstrap_router import (
+    create_resource_bootstrap_router,
 )
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.errors import BookingError
@@ -66,8 +72,6 @@ def install_http(
     reservations = CapacitySafeReservationCommands(session_factory)
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     app.add_exception_handler(BookingError, booking_error_handler)
-    # Register the static operator route before /{reservation_id}; Starlette
-    # resolves matching routes in registration order.
     install_day_board_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     app.include_router(
         create_router(
@@ -101,6 +105,12 @@ def install_operational_http(
         app.add_exception_handler(error_type, booking_operational_error_handler)
     config = PostgresContextualConfigCommands(session_factory)
     lifecycle = PostgresContextualSupplyLifecycleCommands(session_factory)
+    app.include_router(
+        create_resource_bootstrap_router(
+            handler=PostgresResourceCreationCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
     app.include_router(
         create_operational_assignment_router(
             assign_handler=config,
