@@ -3,12 +3,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .http_isolation_probe_flows_s0b import foreign_request as _s0b_request
+from .http_isolation_probe_flows_s0c import foreign_request as _s0c_request
 from .http_isolation_probe_flows_s5 import foreign_request as _s5_request
 from .http_surface import PublicHttpOperation
 
 if TYPE_CHECKING:
     from .http_isolation_probes import ForeignObjects
     from .tenant_sandbox import TenantSandbox
+
+_S0C_OPERATIONS = frozenset(
+    {
+        "parties.add_administrative_identifier",
+        "parties.list_administrative_identifiers",
+        "parties.lookup_administrative_identifier",
+    }
+)
 
 
 def foreign_request(
@@ -104,6 +113,8 @@ def foreign_request(
             {"expected_revision": objects.reminder_revision, "reason": "cross tenant"},
             404,
         )
+    if name in _S0C_OPERATIONS:
+        return _s0c_request(operation, actor, foreign, objects)
     if name.startswith("parties.") or name.startswith("staff."):
         return _s0b_request(operation, actor, foreign, objects)
     raise AssertionError(f"missing tenant probe for {name}")

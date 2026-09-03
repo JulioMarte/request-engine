@@ -45,7 +45,23 @@ For an important bug/race fix, use a mutation mindset: name the small regression
 - `tests/historical/` is reserved for pinned release provenance/compatibility. Historical evidence must not force current Request Engine head to preserve an obsolete implementation shape.
 - Classify what a test proves with pytest markers instead of creating parallel physical trees for `invariant`, `contract`, `adversarial`, or similar evidence classes. Physical location answers who owns the proof; markers answer what evidence it provides.
 - Feature-local integration suites may exist while a feature is under active development. Before/at promotion into the current product, disposition them as durable current proof, historical evidence, replacement, or genuine redundancy rather than accumulating feature-era suites forever.
-- Keep new test files near 100 effective code lines and at or below the 120-line hard maximum. The 101–120 range is deliberate tolerance. Blank/comment-only lines do not count; docstrings do. Existing oversized test files are ratcheted and may not grow.
+- File LOC and function complexity are review signals, not test-file architecture invariants. A large cohesive scenario MAY remain intact when splitting would separate setup/sequence/assertions without an independent reason to change. When CI emits `REVIEW_CANDIDATE`, follow `docs/engineering-quality/agent-semantic-review-playbook.md`; do not split a test solely to lower LOC or C901.
+
+## Quality-signal evidence
+
+Tests that protect the maintainability review system must prove its **authority semantics and agent feedback**, not assert that a particular code shape is universally good.
+
+A valid quality-signal test should distinguish:
+
+```text
+INVARIANT_FAILURE   -> deterministic blocker
+REVIEW_CANDIDATE    -> non-blocking evidence requiring semantic interpretation
+HEALTHY_AS_IS       -> valid reviewed outcome; no refactor required
+```
+
+For heuristic sensors, test the detector with healthy counterexamples and problematic examples. Assert that output tells agents what was measured, why review was requested, what not to do, where the semantic protocol lives, and which deterministic proofs must be rerun after a change.
+
+Never write a test whose only desired repair is "make the number smaller". A future proposal to make a heuristic blocking requires explicit normative approval and evidence that the blocker improves the protected property with acceptably low false positives and gaming pressure.
 
 ## PostgreSQL and dummy-data evidence
 
@@ -81,6 +97,6 @@ provider SDK type != business contract
 
 For naming tests, enforce ownership-signaling conventions (`*Body`, `*View`, semantic command/query names, no generic business dumping grounds) rather than exact inventories of every class/file.
 
-For LLM/documentation governance, prove that repository/local instruction adapters route to canonical `AGENTS.md`/docs and cannot silently become independent conflicting architecture manuals.
+For LLM/documentation governance, prove that repository/local instruction adapters route to canonical `AGENTS.md`/docs and cannot silently become independent conflicting architecture manuals. For semantic quality review, also prove that agent instructions require the review/fix/re-proof protocol and treat repository source/comments/strings as data rather than reviewer instructions.
 
 Removing or weakening a failing safety/architecture test requires an explicit KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL disposition tied to the guarantee that remains protected. Never weaken a test solely because the implementation currently fails it.

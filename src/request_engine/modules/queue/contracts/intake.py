@@ -41,6 +41,12 @@ class QueueIntakeRevisionConflict(Exception):
         self.actual = actual
 
 
+class QueueIntakeControlNotConfigured(LookupError):
+    def __init__(self, service_queue_id: UUID) -> None:
+        super().__init__(f"ServiceQueue {service_queue_id} intake control is not configured")
+        self.service_queue_id = service_queue_id
+
+
 class QueueIntakeControlPort(Protocol):
     async def get_intake_control(
         self,

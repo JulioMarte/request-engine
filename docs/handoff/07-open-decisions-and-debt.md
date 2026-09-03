@@ -56,7 +56,9 @@ Each item: the question, the context, and the current default/recommendation.
 ## 2. TECHNICAL DEBT (verified, with paths)
 
 - **Ratcheted oversized files.** The file-budget rule
-  (`scripts/ci/check_python_file_budget.py`, hard max 120 effective lines) allows legacy
+  (`scripts/ci/check_python_file_budget.py`, hard max 120 effective lines) *(superseded: the
+  hard file budget is now a non-blocking QR-FSIZE-001 REVIEW_CANDIDATE signal; see
+  docs/engineering-quality/)* allows legacy
   oversized files to exist but never grow. Measured effective lines:
   `modules/communications/adapters/db/delivery_store.py` = **674**; several e2e test
   files are also over budget (`tests/e2e/test_multi_user_journeys.py` 531,
