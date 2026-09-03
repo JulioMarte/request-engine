@@ -118,13 +118,17 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
 
-# CallNext is an application-command concurrency contract, not only a historical
-# V3 vertical. Keep its real adapter race on current HEAD so Queue changes cannot
-# retain green DB constraints while regressing command-level serialization.
+# Current Queue selection/read truth must stay coherent end-to-end: CallNext
+# serialization, staff recall gates, customer position and Day Board projection
+# all describe the same eligible waiting population on the accepted schema head.
 uv run pytest \
   tests/integration/v3_first_vertical/test_business_and_queue.py::test_concurrent_call_next_never_returns_same_entry \
+  tests/integration/v3_first_vertical/test_staff_recall_projection.py \
+  tests/integration/v3_first_vertical/test_customer_queue_position_triage.py \
+  tests/integration/v3_first_vertical/test_day_board_recall_projection.py \
+  tests/integration/v3_first_vertical/test_day_board_queue_ambiguity.py \
   -q -m postgres --tb=short --durations=20 \
-  --junitxml="$ARTIFACT_DIR/queue-call-next-concurrency.xml"
+  --junitxml="$ARTIFACT_DIR/queue-current-read-truth.xml"
 
 # S0b party registry proofs are current product truth. Keep the cédula race,
 # confirm monotonicity, verification guard and shared-phone multi-match

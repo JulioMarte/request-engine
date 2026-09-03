@@ -10,21 +10,21 @@ from request_engine.modules.queue.adapters.db.triage_entry import (
     lock_waiting_entry,
     queue_id_for_entry,
 )
-from request_engine.modules.queue.adapters.db.triage_idempotency import (
-    acquire,
-    complete,
-    fingerprint,
-)
 from request_engine.modules.queue.application.commands.triage import OperatorSelectCommand
 from request_engine.modules.queue.contracts.triage import QueueTriageResult
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    command_fingerprint,
+    complete_idempotency,
+)
 
 
 async def operator_select(
     session_factory: SessionFactory,
     command: OperatorSelectCommand,
 ) -> QueueTriageResult:
-    command_fingerprint = fingerprint(
+    fingerprint = command_fingerprint(
         "queue.operator_select",
         {
             "queue_entry_id": command.queue_entry_id,
@@ -33,13 +33,13 @@ async def operator_select(
         },
     )
     async with tenant_transaction(session_factory, command.organization_id) as session:
-        idem_id, replay = await acquire(
+        idem_id, replay = await acquire_idempotency(
             session,
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             capability="queue.operator_select",
             idempotency_key=command.idempotency_key,
-            command_fingerprint=command_fingerprint,
+            fingerprint=fingerprint,
         )
         if replay is not None:
             return result_from_json(cast(dict[str, object], replay["result"]))
@@ -109,5 +109,5 @@ async def operator_select(
             details={"queue_id": str(queue_id), "reason": command.reason.value},
             idempotency_id=idem_id,
         )
-        await complete(session, idem_id, {"result": result_to_json(result)})
+        await complete_idempotency(session, idem_id, {"result": result_to_json(result)})
         return result

@@ -31,20 +31,53 @@ class PostgresLiveQueueReader:
                     await session.execute(
                         text(
                             """
-                            SELECT queue_entry_id, queue_id, subject_party_id,
-                                   subject_display_name, reservation_id, status,
-                                   scheduled_at, arrived_at, admitted_at, called_at,
-                                   expected_workload_key, service_session_id,
-                                   service_status, actual_resource_id,
-                                   actual_location_id, actual_workload_key,
-                                   service_started_at, service_completed_at,
-                                   queue_revision, service_revision
-                              FROM request_read.live_service_staff_v1
-                             WHERE organization_id = :organization_id
-                               AND queue_id = :queue_id
-                               AND queue_entry_id IS NOT NULL
-                               AND status IN ('waiting','called','serving')
-                             ORDER BY admitted_at, queue_entry_id
+                            SELECT v.queue_entry_id, v.queue_id, v.subject_party_id,
+                                   v.subject_display_name, v.reservation_id, v.status,
+                                   v.scheduled_at, v.arrived_at, v.admitted_at, v.called_at,
+                                   v.expected_workload_key, v.service_session_id,
+                                   v.service_status, v.actual_resource_id,
+                                   v.actual_location_id, v.actual_workload_key,
+                                   v.service_started_at, v.service_completed_at,
+                                   (
+                                       v.status = 'waiting'
+                                       AND h.id IS NULL
+                                       AND s.id IS NULL
+                                   ) AS recall_eligible,
+                                   h.id AS recall_hold_id,
+                                   h.condition_kind AS recall_hold_kind,
+                                   h.until_at AS recall_hold_until_at,
+                                   h.event_key AS recall_hold_event_key,
+                                   h.reason AS recall_hold_reason,
+                                   s.reason AS active_skip_reason,
+                                   v.queue_revision, v.service_revision
+                              FROM request_read.live_service_staff_v1 v
+                              LEFT JOIN LATERAL (
+                                  SELECT id, condition_kind, until_at, event_key, reason
+                                    FROM request_engine.queue_entry_recall_holds
+                                   WHERE organization_id = v.organization_id
+                                     AND queue_entry_id = v.queue_entry_id
+                                     AND released_at IS NULL
+                                     AND (
+                                         condition_kind <> 'until_time'
+                                         OR until_at > clock_timestamp()
+                                     )
+                                   ORDER BY created_at DESC, id DESC
+                                   LIMIT 1
+                              ) h ON TRUE
+                              LEFT JOIN LATERAL (
+                                  SELECT id, reason
+                                    FROM request_engine.queue_entry_skips
+                                   WHERE organization_id = v.organization_id
+                                     AND queue_entry_id = v.queue_entry_id
+                                     AND consumed_at IS NULL
+                                   ORDER BY created_at DESC, id DESC
+                                   LIMIT 1
+                              ) s ON TRUE
+                             WHERE v.organization_id = :organization_id
+                               AND v.queue_id = :queue_id
+                               AND v.queue_entry_id IS NOT NULL
+                               AND v.status IN ('waiting','called','serving')
+                             ORDER BY v.admitted_at, v.queue_entry_id
                             """
                         ),
                         {"organization_id": organization_id, "queue_id": queue_id},
