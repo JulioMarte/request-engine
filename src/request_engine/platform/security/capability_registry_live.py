@@ -1,3 +1,6 @@
+from request_engine.platform.security.capability_registry_booking_day_board import (
+    BOOKING_DAY_BOARD_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_booking_operations import (
     BOOKING_OPERATIONAL_CAPABILITIES,
 )
@@ -17,6 +20,9 @@ from request_engine.platform.security.capability_registry_party_registry import 
     PARTY_REGISTRY_CAPABILITIES,
 )
 from request_engine.platform.security.capability_registry_queue_live import LIVE_QUEUE_CAPABILITIES
+from request_engine.platform.security.capability_registry_queue_triage import (
+    QUEUE_TRIAGE_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_staff_contacts import (
     STAFF_CONTACT_CAPABILITIES,
 )
@@ -24,9 +30,11 @@ from request_engine.platform.security.capability_types import CapabilityDefiniti
 
 LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     LIVE_QUEUE_CAPABILITIES
+    + QUEUE_TRIAGE_CAPABILITIES
     + LIVE_DELIVERY_CAPABILITIES
     + LIVE_CAPACITY_CAPABILITIES
     + BOOKING_OPERATIONAL_CAPABILITIES
+    + BOOKING_DAY_BOARD_CAPABILITIES
     + OPERATIONAL_RECOVERY_CAPABILITIES
     + OPERATIONAL_COPILOT_CAPABILITIES
     + PARTY_REGISTRY_CAPABILITIES

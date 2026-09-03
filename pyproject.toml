@@ -39,6 +39,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM"]
 
+[tool.ruff.lint.mccabe]
+# Calibration trigger for the non-blocking C901 quality sensor. C901 is intentionally
+# not in the global blocking select list.
+max-complexity = 10
+
 [tool.ruff.lint.per-file-ignores]
 "tests/db/test_v3_candidate.py" = ["E501"]
 "tests/integration/f1_operational_profile/test_schema.py" = ["E501"]

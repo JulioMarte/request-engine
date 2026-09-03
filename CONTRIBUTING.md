@@ -85,6 +85,52 @@ Before declaring the pull request merge-ready:
 
 After merge, delete the merged work branch. The next work branch starts from the **new** `development` HEAD and replaces the lane cursor with its own name.
 
+## Local commits and publication
+
+Request Engine intentionally treats **commit** and **push** as different workflow boundaries.
+
+Local commits are cheap checkpoints and may be incomplete or temporarily red. There is no mandatory pre-commit architecture/full-quality gate.
+
+Local pushes use the repository-managed publication certificate:
+
+```bash
+uv run python scripts/dev/install_git_hooks.py
+```
+
+The installer is idempotent and installs an executable `pre-push` hook below the Git common directory. Verify it with:
+
+```bash
+uv run python scripts/dev/install_git_hooks.py --check
+```
+
+On `git push`, the hook certifies the exact commit SHA(s) being published in a detached temporary worktree. Uncommitted files in the developer's current working tree are deliberately excluded, so the test target is the actual Git object that will be sent.
+
+The fast local publication profile reuses canonical `python-quality` step definitions and currently covers maintainability/mega-file sensing, environment/lock consistency, Ruff, Pyright, secret/SAST checks, architecture tests, unit tests, module tests, and quality-policy separation.
+
+It deliberately does **not** run the full PostgreSQL, concurrency, observability, historical compatibility, dependency-audit, or release-proof graph on every local push. Those remain GitHub CI responsibilities while local ergonomics are calibrated.
+
+A successful local certificate is bound to the exact commit SHA + locally known development base SHA + toolchain fingerprint. Retrying the same combination uses a cached PASS; changing any of those inputs triggers a new run.
+
+Useful manual form:
+
+```bash
+uv run python scripts/dev/certify_push.py certify \
+  --sha HEAD \
+  --base-ref refs/remotes/origin/development
+```
+
+A failed publication check does not reset, stash, amend, or delete local work. Fix normally, commit, and retry the push.
+
+Do not use `git push --no-verify` as a normal workflow. It bypasses the local certificate and therefore the pushed SHA must not be described as `LOCAL_PUSH_CERTIFIED`. GitHub exact-head CI is still authoritative even when the local hook passes or is bypassed.
+
+See `docs/engineering-quality/local-publish-certification.md` for exact-SHA semantics, cache/evidence behavior, agent rules, and calibration goals.
+
+### Intermediate commits and integration history
+
+A pushed branch tip may be certified even when earlier local checkpoint commits were intentionally red. Certification applies to the published tip, not every ancestor.
+
+Before integration, keep the durable `development` history coherent. If preserving intermediate commits would intentionally place known-broken checkpoints into integration history, use an appropriate squash/fixup strategy before merge. The final integration tree still requires exact-head GitHub CI.
+
 ## Parallel and dependent work
 
 Do not treat sibling branches created from the same older `development` snapshot as independently merge-ready.
@@ -115,6 +161,8 @@ They MUST:
 4. set `.github/development-integration-lane` to their own branch name;
 5. target `development`;
 6. finish, validate, merge, and delete that branch before starting the next ordinary integration feature.
+
+Local coding agents must also keep the managed pre-push certificate installed/current and MUST NOT use `--no-verify` to publish around a failure. Agents working directly through GitHub have no local certificate; they use the normal full PR CI feedback loop instead.
 
 They MUST NOT create multiple sibling merge-ready PRs merely to continue working ahead, retarget a feature branch to `main` to avoid conflicts, or weaken the branch-workflow fitness test when it reports stale/parallel topology.
 
