@@ -1,7 +1,7 @@
 """Append-only OfferingVersion booking-policy override ledger.
 
 Revision ID: 0033_offering_booking_policy
-Revises: 0031_queue_release_recall_hold
+Revises: 0032_f7_day_board_recall_gate
 Create Date: 2026-09-03
 """
 
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0033_offering_booking_policy"
-down_revision: str | Sequence[str] | None = "0031_queue_release_recall_hold"
+down_revision: str | Sequence[str] | None = "0032_f7_day_board_recall_gate"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
