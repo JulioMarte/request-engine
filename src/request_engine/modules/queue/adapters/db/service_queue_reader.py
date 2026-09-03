@@ -104,11 +104,29 @@ class PostgresServiceQueueReader:
                             text(
                                 """
                                 SELECT count(*)
-                                FROM request_engine.queue_entries
-                                WHERE organization_id = :organization_id
-                                  AND service_queue_id = :queue_id
-                                  AND status = 'waiting'
-                                  AND (admitted_at, id) < (:admitted_at, :entry_id)
+                                  FROM request_engine.queue_entries q
+                                 WHERE q.organization_id = :organization_id
+                                   AND q.service_queue_id = :queue_id
+                                   AND q.status = 'waiting'
+                                   AND (q.admitted_at, q.id) < (:admitted_at, :entry_id)
+                                   AND NOT EXISTS (
+                                       SELECT 1
+                                         FROM request_engine.queue_entry_recall_holds h
+                                        WHERE h.organization_id = q.organization_id
+                                          AND h.queue_entry_id = q.id
+                                          AND h.released_at IS NULL
+                                          AND (
+                                              h.condition_kind <> 'until_time'
+                                              OR h.until_at > clock_timestamp()
+                                          )
+                                   )
+                                   AND NOT EXISTS (
+                                       SELECT 1
+                                         FROM request_engine.queue_entry_skips s
+                                        WHERE s.organization_id = q.organization_id
+                                          AND s.queue_entry_id = q.id
+                                          AND s.consumed_at IS NULL
+                                   )
                                 """
                             ),
                             {
