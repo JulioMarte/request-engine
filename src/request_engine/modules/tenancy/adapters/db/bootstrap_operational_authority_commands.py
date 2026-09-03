@@ -1,4 +1,5 @@
 from typing import cast
+from uuid import UUID
 
 from sqlalchemy import text
 
@@ -46,7 +47,9 @@ class PostgresBootstrapOperationalAuthorityCommands:
             _CAPABILITY,
             {"authority_party_id": command.authority_party_id},
         )
-        async with tenant_transaction(self._session_factory, command.organization_id) as session:
+        async with tenant_transaction(
+            self._session_factory, command.organization_id
+        ) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
                 organization_id=command.organization_id,
@@ -103,8 +106,15 @@ class PostgresBootstrapOperationalAuthorityCommands:
                 .mappings()
                 .first()
             )
-            if party is None or party["active"] is not True or party["party_kind"] != "organization":
-                raise ValueError("authority_party_id must be an active organization Party")
+            invalid_party = (
+                party is None
+                or party["active"] is not True
+                or party["party_kind"] != "organization"
+            )
+            if invalid_party:
+                raise ValueError(
+                    "authority_party_id must be an active organization Party"
+                )
 
             existing_rows = (
                 (
@@ -119,7 +129,7 @@ class PostgresBootstrapOperationalAuthorityCommands:
                               AND status = 'active'
                               AND valid_from <= clock_timestamp()
                               AND (valid_until IS NULL OR valid_until > clock_timestamp())
-                              AND scope_key = ANY(:scope_keys)
+                              AND scope_key = ANY(CAST(:scope_keys AS text[]))
                             """
                         ),
                         {
@@ -133,10 +143,19 @@ class PostgresBootstrapOperationalAuthorityCommands:
                 .mappings()
                 .all()
             )
-            existing = {cast(str, row["scope_key"]): cast(str, row["authority_kind"]) for row in existing_rows}
-            incompatible = [scope for scope, kind in existing.items() if kind != AuthorityKind.DELEGATED.value]
+            existing = {
+                cast(str, row["scope_key"]): cast(str, row["authority_kind"])
+                for row in existing_rows
+            }
+            incompatible = [
+                scope
+                for scope, kind in existing.items()
+                if kind != AuthorityKind.DELEGATED.value
+            ]
             if incompatible:
-                raise PermissionError("incompatible active operational authority already exists")
+                raise PermissionError(
+                    "incompatible active operational authority already exists"
+                )
 
             for scope_key in _SCOPE_KEYS:
                 if scope_key in existing:
@@ -206,8 +225,6 @@ def _state_to_json(state: BootstrapOperationalAuthorityState) -> dict[str, objec
 
 
 def _state_from_json(value: dict[str, object]) -> BootstrapOperationalAuthorityState:
-    from uuid import UUID
-
     return BootstrapOperationalAuthorityState(
         authority_party_id=UUID(cast(str, value["authority_party_id"])),
         principal_id=UUID(cast(str, value["principal_id"])),
