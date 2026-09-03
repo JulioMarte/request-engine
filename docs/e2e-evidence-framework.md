@@ -15,6 +15,7 @@ The framework lives in `tests/e2e/` and runs inside the existing PostgreSQL V3 C
 5. **Replay is normal behavior.** Same-key replay, fingerprint conflict, lease reclaim, callback replay, and crash recovery are first-class distributed-system cases.
 6. **Ambiguous external I/O reconciles before resend.** Unknown provider outcomes never justify an immediate blind resend.
 7. **Composition is the authority.** The E2E registry represents what the current production app actually composes, not historical Markdown or planned routes.
+8. **Caller journeys are product evidence.** A database proof or direct adapter call cannot substitute for a realistic public-API journey when a human UI, bot, agent, or automation is expected to operate the capability.
 
 ## Executable registry
 
@@ -50,6 +51,22 @@ A new public operation normally requires, in the same feature PR:
 11. exact durable rows/outbox evidence rather than response-only assertions.
 
 Internal commands are not made public just to obtain E2E coverage. For example, the current public Request composition exposes submit/read/cancel while result/complete/fail remain trusted processing surfaces and belong in integration evidence.
+
+## Caller-realistic journeys
+
+When a capability is consumed through HTTP by product software, acceptance must include journeys that exercise the public API in the order and failure modes a real caller would experience. Seed SQL may establish tenant/configuration prerequisites and administrative inspection may verify durable aftermath; business actions in the journey must use the composed API unless the test is specifically proving that no public operation exists.
+
+Choose caller perspectives from the actual product surface rather than creating personas mechanically. Relevant perspectives include:
+
+- **human/operator UI:** load a read model, act on the revision shown, refresh after mutation, and recover from stale state;
+- **customer/self-service UI:** discover, submit, retry after an uncertain response, and observe only subject-safe state;
+- **bot/agent/automation:** use typed public operations, replay the same intent safely, reject conflicting retries, and operate with only its granted capabilities;
+- **two concurrent operators or clients:** contend through HTTP where the same operational fact may be changed concurrently;
+- **reconnect/partial-connectivity caller:** repeat an operation after response loss or reload authoritative reads before continuing.
+
+A feature does not need every perspective. It needs the perspectives that can materially falsify its real usage contract. At minimum, an externally operated semantic change requires one realistic end-to-end API journey plus the negative/retry/concurrency cases implied by its risks. A collection of isolated endpoint probes is not equivalent to a user journey.
+
+A journey should assert both what the caller sees and what the system made durable. For rejected/stale/unauthorized attempts, status codes alone are insufficient: prove relevant durable state did not change. For successful multi-step operations, verify that subsequent API reads expose a coherent result rather than inspecting only the mutation response.
 
 ## Durable non-mutation snapshot
 
@@ -128,7 +145,8 @@ For holds, offers, reminders, and leases test immediately before, exactly at, an
 - [ ] Authentication/capability/discovery behavior is classified.
 - [ ] Tenant/Party boundary is tested with a real foreign object.
 - [ ] Rejected operations prove durable non-mutation.
-- [ ] Success journey asserts durable business state.
+- [ ] At least one caller-realistic API journey proves the externally operated semantic change.
+- [ ] Success journey asserts durable business state and coherent follow-up reads.
 - [ ] Mutating operations prove idempotent replay and conflict semantics.
 - [ ] Revisioned aggregates prove stale-revision behavior.
 - [ ] Relevant contention runs concurrently.
@@ -141,7 +159,7 @@ For holds, offers, reminders, and leases test immediately before, exactly at, an
 
 ## CI tiers
 
-**PR gate:** deterministic security, isolation, state-machine, replay, concurrency, and crash tests.
+**PR gate:** deterministic security, isolation, state-machine, replay, concurrency, crash, and caller-journey tests.
 
 **Manual/nightly stress:** hundreds or thousands of contention iterations, fairness distributions, long-running lease recovery, and load envelopes.
 
@@ -151,4 +169,4 @@ Do not put expensive probabilistic loops into every PR. CI should reject determi
 
 ## Completeness rule
 
-A suite is complete only relative to the production-composed capabilities at that commit. The architecture must be designed to become incomplete **loudly** when production grows. OpenAPI equality, explicit operation metadata, durable snapshots, and worker/callback checklists exist specifically so adding a capability creates an immediate testing obligation rather than silently reducing coverage.
+A suite is complete only relative to the production-composed capabilities at that commit. The architecture must be designed to become incomplete **loudly** when production grows. OpenAPI equality, explicit operation metadata, durable snapshots, worker/callback checklists, and caller-realistic journeys exist specifically so adding a capability creates an immediate testing obligation rather than silently reducing coverage.
