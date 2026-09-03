@@ -38,7 +38,11 @@ class PostgresLiveQueueReader:
                                    v.service_status, v.actual_resource_id,
                                    v.actual_location_id, v.actual_workload_key,
                                    v.service_started_at, v.service_completed_at,
-                                   (h.id IS NULL AND s.id IS NULL) AS recall_eligible,
+                                   (
+                                       v.status = 'waiting'
+                                       AND h.id IS NULL
+                                       AND s.id IS NULL
+                                   ) AS recall_eligible,
                                    h.id AS recall_hold_id,
                                    h.condition_kind AS recall_hold_kind,
                                    h.until_at AS recall_hold_until_at,
