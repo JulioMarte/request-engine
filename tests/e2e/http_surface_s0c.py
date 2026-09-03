@@ -1,4 +1,9 @@
-from .http_surface import PROBE_UUID, HttpProbe, PublicHttpOperation, TenantIsolationMode
+from .http_surface import (
+    PROBE_UUID,
+    HttpProbe,
+    PublicHttpOperation,
+    TenantIsolationMode,
+)
 
 S0C_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
@@ -11,7 +16,11 @@ S0C_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.NOT_FOUND,
         HttpProbe(
             f"/v1/parties/{PROBE_UUID}/administrative-identifiers",
-            body={"kind": "insurance_member", "issuer": "ARS Probe", "value": "MEMBER-001"},
+            body={
+                "kind": "insurance_member",
+                "issuer": "ARS Primera",
+                "value": "POLIZA-123",
+            },
         ),
     ),
     PublicHttpOperation(
@@ -34,7 +43,11 @@ S0C_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         TenantIsolationMode.FILTERED,
         HttpProbe(
             "/v1/parties/lookup/administrative-identifier",
-            (("kind", "insurance_member"), ("issuer", "ARS Probe"), ("value", "MEMBER-001")),
+            (
+                ("kind", "insurance_member"),
+                ("issuer", "ARS Primera"),
+                ("value", "POLIZA-123"),
+            ),
         ),
     ),
 )

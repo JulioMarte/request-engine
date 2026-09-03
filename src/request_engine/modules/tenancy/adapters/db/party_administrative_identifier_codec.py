@@ -12,9 +12,7 @@ from request_engine.modules.tenancy.contracts.party_administrative_identifiers i
 )
 
 
-def identifier_from_mapping(
-    row: RowMapping | Mapping[str, object],
-) -> PartyAdministrativeIdentifier:
+def identifier_from_mapping(row: RowMapping) -> PartyAdministrativeIdentifier:
     return PartyAdministrativeIdentifier(
         identifier_id=cast(UUID, row["id"]),
         party_id=cast(UUID, row["party_id"]),
