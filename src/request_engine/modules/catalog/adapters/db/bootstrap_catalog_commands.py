@@ -1,3 +1,4 @@
+import json
 from typing import cast
 from uuid import UUID
 
@@ -98,21 +99,32 @@ class PostgresCatalogBootstrapCommands:
                     aggregate_kind="ResourceCapability",
                     aggregate_id=state.capability_id,
                     idempotency_id=idem,
-                    details={"authority": authority.audit_details(), "capability_key": state.capability_key},
+                    details={
+                        "authority": authority.audit_details(),
+                        "capability_key": state.capability_key,
+                    },
                 )
-                payload = {
-                    "capability_id": str(state.capability_id),
-                    "capability_key": state.capability_key,
-                    "display_name": state.display_name,
-                }
-                await complete_idempotency(session, idem, {"resource_capability": payload})
+                await complete_idempotency(
+                    session,
+                    idem,
+                    {
+                        "resource_capability": {
+                            "capability_id": str(state.capability_id),
+                            "capability_key": state.capability_key,
+                            "display_name": state.display_name,
+                        }
+                    },
+                )
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
-                raise CatalogConfigurationConflict("Resource capability key already exists") from None
+                raise CatalogConfigurationConflict(
+                    "Resource capability key already exists"
+                ) from None
             raise
 
     async def create_offering(self, command: CreateOfferingCommand) -> OfferingBootstrapState:
+        booking_policy = _booking_policy(command)
         fingerprint = command_fingerprint(
             "catalog.create_offering",
             {
@@ -123,7 +135,7 @@ class PostgresCatalogBootstrapCommands:
                 "duration_minutes": command.duration_minutes,
                 "bookable": command.bookable,
                 "requestable": command.requestable,
-                "slot_step_minutes": command.slot_step_minutes,
+                "booking_policy": booking_policy,
                 "requirements": [
                     {"capability_id": item.capability_id, "quantity": item.quantity}
                     for item in command.requirements
@@ -149,31 +161,7 @@ class PostgresCatalogBootstrapCommands:
                     authority_party_id=command.authority_party_id,
                     scope_key=MANAGE_COMMERCIAL_TERMS_SCOPE,
                 )
-                capability_ids = [item.capability_id for item in command.requirements]
-                if capability_ids:
-                    count = cast(
-                        int,
-                        (
-                            await session.execute(
-                                text(
-                                    """
-                                    SELECT count(*)
-                                    FROM request_engine.resource_capabilities
-                                    WHERE organization_id = :organization_id
-                                      AND id = ANY(:capability_ids)
-                                    """
-                                ),
-                                {
-                                    "organization_id": command.organization_id,
-                                    "capability_ids": capability_ids,
-                                },
-                            )
-                        ).scalar_one(),
-                    )
-                    if count != len(capability_ids):
-                        raise CatalogConfigurationConflict(
-                            "Offering requirements contain an unknown tenant capability"
-                        )
+                await _validate_capabilities(session, command)
                 offering_id = cast(
                     UUID,
                     (
@@ -207,8 +195,7 @@ class PostgresCatalogBootstrapCommands:
                                     bookable, requestable, booking_policy, public_data
                                 ) VALUES (
                                     :organization_id, :offering_id, 1, :duration_minutes,
-                                    :bookable, :requestable,
-                                    jsonb_build_object('slot_step_minutes', :slot_step_minutes),
+                                    :bookable, :requestable, CAST(:booking_policy AS jsonb),
                                     '{}'::jsonb
                                 ) RETURNING id
                                 """
@@ -219,46 +206,22 @@ class PostgresCatalogBootstrapCommands:
                                 "duration_minutes": command.duration_minutes,
                                 "bookable": command.bookable,
                                 "requestable": command.requestable,
-                                "slot_step_minutes": command.slot_step_minutes,
+                                "booking_policy": json.dumps(
+                                    booking_policy, separators=(",", ":")
+                                ),
                             },
                         )
                     ).scalar_one(),
                 )
-                requirement_ids: list[UUID] = []
-                for ordinal, item in enumerate(command.requirements, start=1):
-                    requirement_ids.append(
-                        cast(
-                            UUID,
-                            (
-                                await session.execute(
-                                    text(
-                                        """
-                                        INSERT INTO request_engine.offering_resource_requirements (
-                                            organization_id, offering_version_id,
-                                            capability_id, ordinal, quantity
-                                        ) VALUES (
-                                            :organization_id, :version_id,
-                                            :capability_id, :ordinal, :quantity
-                                        ) RETURNING id
-                                        """
-                                    ),
-                                    {
-                                        "organization_id": command.organization_id,
-                                        "version_id": version_id,
-                                        "capability_id": item.capability_id,
-                                        "ordinal": ordinal,
-                                        "quantity": item.quantity,
-                                    },
-                                )
-                            ).scalar_one(),
-                        )
-                    )
+                requirement_ids = await _insert_requirements(
+                    session, command, version_id
+                )
                 state = OfferingBootstrapState(
                     offering_id=offering_id,
                     offering_version_id=version_id,
                     offering_key=command.offering_key.strip(),
                     version=1,
-                    requirement_ids=tuple(requirement_ids),
+                    requirement_ids=requirement_ids,
                 )
                 await append_audit(
                     session,
@@ -272,14 +235,116 @@ class PostgresCatalogBootstrapCommands:
                         "authority": authority.audit_details(),
                         "offering_version_id": str(version_id),
                         "requirement_count": len(requirement_ids),
+                        "reservation_communications_enabled": (
+                            command.reservation_policy.confirmation
+                            or bool(command.reservation_policy.reminders_before_minutes)
+                            or command.reservation_policy.attendance_confirmation_required
+                        ),
                     },
                 )
-                await complete_idempotency(session, idem, {"offering": _offering_json(state)})
+                await complete_idempotency(
+                    session, idem, {"offering": _offering_json(state)}
+                )
                 return state
         except IntegrityError as exc:
             if getattr(exc.orig, "sqlstate", None) == "23505":
-                raise CatalogConfigurationConflict("Offering conflicts with tenant catalog") from None
+                raise CatalogConfigurationConflict(
+                    "Offering conflicts with tenant catalog"
+                ) from None
             raise
+
+
+async def _validate_capabilities(session: object, command: CreateOfferingCommand) -> None:
+    capability_ids = [item.capability_id for item in command.requirements]
+    if not capability_ids:
+        return
+    result = await session.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            SELECT count(*)
+            FROM request_engine.resource_capabilities
+            WHERE organization_id = :organization_id
+              AND id = ANY(CAST(:capability_ids AS uuid[]))
+            """
+        ),
+        {
+            "organization_id": command.organization_id,
+            "capability_ids": [str(value) for value in capability_ids],
+        },
+    )
+    if cast(int, result.scalar_one()) != len(capability_ids):
+        raise CatalogConfigurationConflict(
+            "Offering requirements contain an unknown tenant capability"
+        )
+
+
+async def _insert_requirements(
+    session: object,
+    command: CreateOfferingCommand,
+    version_id: UUID,
+) -> tuple[UUID, ...]:
+    result: list[UUID] = []
+    for ordinal, item in enumerate(command.requirements, start=1):
+        requirement_id = cast(
+            UUID,
+            (
+                await session.execute(  # type: ignore[attr-defined]
+                    text(
+                        """
+                        INSERT INTO request_engine.offering_resource_requirements (
+                            organization_id, offering_version_id,
+                            capability_id, ordinal, quantity
+                        ) VALUES (
+                            :organization_id, :version_id,
+                            :capability_id, :ordinal, :quantity
+                        ) RETURNING id
+                        """
+                    ),
+                    {
+                        "organization_id": command.organization_id,
+                        "version_id": version_id,
+                        "capability_id": item.capability_id,
+                        "ordinal": ordinal,
+                        "quantity": item.quantity,
+                    },
+                )
+            ).scalar_one(),
+        )
+        result.append(requirement_id)
+    return tuple(result)
+
+
+def _booking_policy(command: CreateOfferingCommand) -> dict[str, object]:
+    policy = command.reservation_policy
+    channels = policy.channel_policy
+    channel_policy: dict[str, object] = {}
+    if channels is not None:
+        channel_policy = {
+            "channels": list(channels.channels),
+            "reconcile_after_seconds": channels.reconcile_after_seconds,
+            "retry_after_seconds": channels.retry_after_seconds,
+        }
+        if channels.provider_key is not None:
+            channel_policy["provider_key"] = channels.provider_key.strip()
+    return {
+        "slot_step_minutes": command.slot_step_minutes,
+        "attendance": {
+            "confirmation_required": policy.attendance_confirmation_required,
+            "attendance_request_before_minutes": policy.attendance_request_before_minutes,
+            "decline_action": policy.decline_action,
+            "no_response_action": "keep",
+            "no_show_after_minutes": policy.no_show_after_minutes,
+        },
+        "communications": {
+            "confirmation": policy.confirmation,
+            "reminders_before_minutes": list(policy.reminders_before_minutes),
+            "channel_policy": channel_policy,
+        },
+        "slot_recovery": {
+            "enabled": policy.slot_recovery_enabled,
+            "minimum_lead_minutes": policy.slot_recovery_minimum_lead_minutes,
+        },
+    }
 
 
 def _offering_json(state: OfferingBootstrapState) -> dict[str, object]:
@@ -298,5 +363,7 @@ def _offering_state(value: dict[str, object]) -> OfferingBootstrapState:
         offering_version_id=UUID(cast(str, value["offering_version_id"])),
         offering_key=cast(str, value["offering_key"]),
         version=cast(int, value["version"]),
-        requirement_ids=tuple(UUID(item) for item in cast(list[str], value["requirement_ids"])),
+        requirement_ids=tuple(
+            UUID(item) for item in cast(list[str], value["requirement_ids"])
+        ),
     )
