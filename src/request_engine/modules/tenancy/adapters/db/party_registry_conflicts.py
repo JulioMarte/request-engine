@@ -1,11 +1,4 @@
-"""IntegrityError narrowing and typed-conflict resolution for party registry writes.
-
-Only the intended unique violations are mapped to typed conflicts; every other
-integrity failure re-raises so the entrypoint's integrity handler reports it
-honestly. The document-conflict resolution runs after the failed transaction
-has rolled back: a 23505 on the active-value backstop implies the conflicting
-row is already committed, so a fresh tenant transaction can observe it.
-"""
+"""IntegrityError narrowing and typed-conflict resolution for party registry writes."""
 
 from collections.abc import Sequence
 from typing import Never, cast
@@ -31,8 +24,6 @@ _CONTACT_POINT_UNIQUE = "party_contact_points_organization_id_party_id_channel_n
 
 
 def _reports_constraint(exc: IntegrityError, constraint: str) -> bool:
-    """Match the violated constraint on psycopg-style diag or asyncpg message text."""
-
     diagnostic = getattr(exc.orig, "diag", None)
     reported = getattr(diagnostic, "constraint_name", None)
     if reported is not None:
@@ -41,9 +32,9 @@ def _reports_constraint(exc: IntegrityError, constraint: str) -> bool:
 
 
 def _unique_violation(exc: IntegrityError, constraint: str) -> bool:
-    if getattr(exc.orig, "sqlstate", None) != _UNIQUE_SQLSTATE:
-        return False
-    return _reports_constraint(exc, constraint)
+    return getattr(exc.orig, "sqlstate", None) == _UNIQUE_SQLSTATE and _reports_constraint(
+        exc, constraint
+    )
 
 
 def is_document_value_violation(exc: IntegrityError) -> bool:
@@ -66,6 +57,7 @@ _CONFLICTING_DOCUMENT_SQL = text(
       ON p.organization_id = d.organization_id AND p.id = d.party_id
     WHERE d.organization_id = :organization_id
       AND d.kind = :kind
+      AND d.authority IS NOT DISTINCT FROM :authority
       AND d.normalized_value = :value
       AND d.active
     LIMIT 1
@@ -79,8 +71,6 @@ async def raise_document_conflict(
     documents: Sequence[PartyDocumentInput],
     exc: IntegrityError,
 ) -> Never:
-    """Map only the document active-value backstop to the enriched typed conflict."""
-
     if not (is_document_value_violation(exc) or is_document_kind_violation(exc)):
         raise exc
     async with tenant_transaction(session_factory, organization_id) as session:
@@ -92,6 +82,7 @@ async def raise_document_conflict(
                         {
                             "organization_id": organization_id,
                             "kind": document.kind,
+                            "authority": document.authority,
                             "value": document.value,
                         },
                     )
@@ -115,11 +106,9 @@ async def raise_added_document_conflict(
     document: PartyDocumentInput,
     exc: IntegrityError,
 ) -> Never:
-    """Typed conflict for `parties.add_document` on either document backstop."""
-
     if is_document_kind_violation(exc):
         raise PartyDocumentConflict(
-            "party already holds an active document of this kind",
+            "party already holds an active document for this kind and authority",
             existing_party_id=party_id,
         ) from None
     await raise_document_conflict(session_factory, organization_id, (document,), exc)
@@ -129,12 +118,6 @@ def raise_contact_point_conflict(
     command: AddPartyContactPointCommand,
     exc: IntegrityError,
 ) -> Never:
-    """Map only the contact-point uniqueness constraint to the typed conflict."""
-
     if not is_contact_point_violation(exc):
         raise exc
-    raise PartyContactPointExists(
-        command.party_id,
-        command.channel,
-        command.value,
-    ) from None
+    raise PartyContactPointExists(command.party_id, command.channel, command.value) from None

@@ -14,12 +14,11 @@ _INSERT_PARTY_SQL = text(
     INSERT INTO request_engine.parties
         (organization_id, party_kind, display_name, created_by_principal_id, source_kind,
          platform, relay_principal_id)
-    VALUES (:organization_id, 'person', :display_name, :principal_id, :source_kind,
+    VALUES (:organization_id, :party_kind, :display_name, :principal_id, :source_kind,
             :platform, :relay_principal_id)
     RETURNING id
     """
 )
-
 _INSERT_CONTACT_POINT_SQL = text(
     """
     INSERT INTO request_engine.party_contact_points
@@ -30,40 +29,29 @@ _INSERT_CONTACT_POINT_SQL = text(
     RETURNING id
     """
 )
-
 _INSERT_DOCUMENT_SQL = text(
     """
     INSERT INTO request_engine.party_identity_documents
-        (organization_id, party_id, kind, normalized_value, created_by_principal_id,
+        (organization_id, party_id, kind, authority, normalized_value, created_by_principal_id,
          source_kind, platform, relay_principal_id)
-    VALUES (:organization_id, :party_id, :kind, :normalized_value, :principal_id,
+    VALUES (:organization_id, :party_id, :kind, :authority, :normalized_value, :principal_id,
             :source_kind, :platform, :relay_principal_id)
     RETURNING id
     """
 )
-
 _LOCK_PARTY_SQL = text(
-    """
-    SELECT active FROM request_engine.parties
-    WHERE organization_id = :organization_id AND id = :party_id
-    FOR UPDATE
-    """
+    "SELECT active, party_kind FROM request_engine.parties "
+    "WHERE organization_id = :organization_id AND id = :party_id FOR UPDATE"
 )
-
 _LOCK_CONTACT_POINT_SQL = text(
-    """
-    SELECT verified FROM request_engine.party_contact_points
-    WHERE organization_id = :organization_id AND id = :contact_point_id AND party_id = :party_id
-    FOR UPDATE
-    """
+    "SELECT verified FROM request_engine.party_contact_points "
+    "WHERE organization_id = :organization_id AND id = :contact_point_id AND party_id = :party_id "
+    "FOR UPDATE"
 )
-
 _CONFIRM_CONTACT_POINT_SQL = text(
-    """
-    UPDATE request_engine.party_contact_points
-    SET verified = true, updated_at = clock_timestamp()
-    WHERE organization_id = :organization_id AND id = :contact_point_id AND verified = false
-    """
+    "UPDATE request_engine.party_contact_points "
+    "SET verified = true, updated_at = clock_timestamp() "
+    "WHERE organization_id = :organization_id AND id = :contact_point_id AND verified = false"
 )
 
 
@@ -71,6 +59,7 @@ async def insert_party(
     session: AsyncSession,
     *,
     organization_id: UUID,
+    party_kind: str,
     display_name: str,
     principal_id: UUID,
     attribution: dict[str, object],
@@ -79,6 +68,7 @@ async def insert_party(
         _INSERT_PARTY_SQL,
         {
             "organization_id": organization_id,
+            "party_kind": party_kind,
             "display_name": display_name,
             "principal_id": principal_id,
             **attribution,
@@ -103,9 +93,7 @@ async def insert_documents(
     return [(await session.execute(_INSERT_DOCUMENT_SQL, row)).mappings().one() for row in rows]
 
 
-async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> None:
-    """Row-lock the party; inactive parties are not addressable."""
-
+async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUID) -> str:
     result = await session.execute(
         _LOCK_PARTY_SQL,
         {"organization_id": organization_id, "party_id": party_id},
@@ -113,6 +101,7 @@ async def lock_party(session: AsyncSession, organization_id: UUID, party_id: UUI
     row = result.mappings().first()
     if row is None or not cast(bool, row["active"]):
         raise PartyNotFound(party_id)
+    return cast(str, row["party_kind"])
 
 
 async def lock_contact_point(
@@ -135,8 +124,6 @@ async def lock_contact_point(
 async def confirm_contact_point(
     session: AsyncSession, organization_id: UUID, contact_point_id: UUID
 ) -> None:
-    """Monotone verification flip; no-op when already verified."""
-
     await session.execute(
         _CONFIRM_CONTACT_POINT_SQL,
         {"organization_id": organization_id, "contact_point_id": contact_point_id},

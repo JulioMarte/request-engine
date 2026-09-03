@@ -24,6 +24,7 @@ class PartyContactPointInput:
 class PartyDocumentInput:
     kind: str
     value: str
+    authority: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,7 @@ class PartyIdentityDocument:
     document_id: UUID
     kind: str
     normalized_value: str
+    authority: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,11 +59,7 @@ class RegisteredParty:
 
 @dataclass(frozen=True, slots=True)
 class PartyRevision:
-    """One append-only identity revision of a Party (docs/v3/38 §9.3).
-
-    `snapshot` is the immutable JSON-able full identity state recorded with
-    the revision; it stays a plain mapping on purpose (no over-modelling).
-    """
+    """One append-only identity revision of a Party (docs/v3/38 §9.3)."""
 
     revision: int
     change_kind: str

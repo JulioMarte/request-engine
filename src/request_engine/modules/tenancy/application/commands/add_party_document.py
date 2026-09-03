@@ -8,7 +8,10 @@ from request_engine.modules.tenancy.contracts.party_registry import (
     PartyIdentityDocument,
     PartySourceKind,
 )
-from request_engine.modules.tenancy.domain.party_identity import normalize_identity_document
+from request_engine.modules.tenancy.domain.party_identity import (
+    normalize_identity_document,
+    normalize_identity_document_authority,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +23,7 @@ class AddPartyDocumentCommand:
     value: str
     source_kind: PartySourceKind
     idempotency_key: str
+    authority: str | None = None
     platform: str | None = None
     technical_principal_id: UUID | None = None
 
@@ -34,18 +38,13 @@ async def add_party_document(
     handler: AddPartyDocumentHandler,
     command: AddPartyDocumentCommand,
 ) -> PartyIdentityDocument:
-    """Validate and normalize the command, then delegate to the handler.
-
-    The command `value` is replaced by its normalized form; handlers treat it
-    as the already-normalized `normalized_value` and must not normalize again.
-    Normalization matches `parties.register`, so the same unique active-value
-    backstop applies. Handlers return the added document fact.
-    """
+    """Validate and normalize document value and issuer before persistence."""
 
     if not command.idempotency_key:
         raise ValueError("idempotency_key is required")
     try:
+        authority = normalize_identity_document_authority(command.kind, command.authority)
         normalized = normalize_identity_document(command.kind, command.value)
     except ValueError as error:
         raise ValueError(f"document {command.value!r}: {error}") from None
-    return await handler.add_party_document(replace(command, value=normalized))
+    return await handler.add_party_document(replace(command, value=normalized, authority=authority))

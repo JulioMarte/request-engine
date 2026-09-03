@@ -4,6 +4,7 @@ from request_engine.modules.tenancy.domain.party_identity import (
     PartyIdentityValidationError,
     name_search_key,
     normalize_identity_document,
+    normalize_identity_document_authority,
     normalize_party_contact_value,
 )
 from request_engine.platform.public_contacts import PublicContactValidationError
@@ -19,11 +20,7 @@ from request_engine.platform.public_contacts import PublicContactValidationError
         ("(849) 555-9876", "+18495559876"),
         ("+18095551234", "+18095551234"),
         ("+1 809 555 1234", "+18095551234"),
-        # A "+"-prefixed invalid NANP local number converges with the bare
-        # local format instead of being stored as a divergent E.164 identity.
         ("+8095551234", "+18095551234"),
-        # A leading double-zero international prefix is stripped before the
-        # digit logic, so it converges with the same identity.
         ("00 1 809 555 1234", "+18095551234"),
     ],
 )
@@ -39,8 +36,6 @@ def test_phone_channels_reject_invalid_values(raw: str) -> None:
 
 
 def test_phone_channels_enforce_ten_digit_floor() -> None:
-    """A 9-digit +E.164 value is below the contract floor and rejected."""
-
     with pytest.raises(PublicContactValidationError):
         normalize_party_contact_value("whatsapp", "+596123456")
 
@@ -65,6 +60,23 @@ def test_cedula_normalizes_separators() -> None:
 def test_cedula_rejects_invalid_values(raw: str) -> None:
     with pytest.raises(PartyIdentityValidationError):
         normalize_identity_document("cedula", raw)
+
+
+def test_rnc_normalizes_separators_and_defaults_to_dgii() -> None:
+    assert normalize_identity_document("rnc", "1-01-85004-3") == "101850043"
+    assert normalize_identity_document_authority("rnc", None) == "DO:DGII"
+    assert normalize_identity_document_authority("rnc", "do:dgii") == "DO:DGII"
+
+
+@pytest.mark.parametrize("raw", ["10185004", "1018500430", "10A850043"])
+def test_rnc_rejects_non_nine_digit_values(raw: str) -> None:
+    with pytest.raises(PartyIdentityValidationError):
+        normalize_identity_document("rnc", raw)
+
+
+def test_rnc_rejects_wrong_authority() -> None:
+    with pytest.raises(PartyIdentityValidationError):
+        normalize_identity_document_authority("rnc", "DO:JCE")
 
 
 def test_passport_normalizes_to_uppercase() -> None:

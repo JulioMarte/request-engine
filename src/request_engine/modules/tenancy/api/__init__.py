@@ -12,6 +12,9 @@ from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
 )
+from request_engine.modules.tenancy.api.identity_exchange_http import (
+    install_identity_exchange_http,
+)
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
 from request_engine.modules.tenancy.api.staff_contact_errors import (
@@ -46,13 +49,20 @@ def install_http(
     *,
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
+    identity_exchange_fingerprint_key: bytes | None = None,
 ) -> None:
-    """Connect tenancy Party and staff administration HTTP surfaces."""
+    """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
     install_party_registry_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
+    )
+    install_identity_exchange_http(
+        app,
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
+        fingerprint_key=identity_exchange_fingerprint_key,
     )
     add_staff_contact_error_handlers(app)
 

@@ -13,9 +13,7 @@ from request_engine.modules.tenancy.contracts.party_registry import (
 )
 
 
-def contact_point_views_from_rows(
-    rows: list[RowMapping],
-) -> tuple[PartyContactPoint, ...]:
+def contact_point_views_from_rows(rows: list[RowMapping]) -> tuple[PartyContactPoint, ...]:
     views: list[PartyContactPoint] = []
     for row in rows:
         raw_kind = cast(str | None, row["source_kind"])
@@ -38,6 +36,7 @@ def document_views_from_rows(rows: list[RowMapping]) -> tuple[PartyIdentityDocum
             party_id=cast(UUID, row["party_id"]),
             document_id=cast(UUID, row["id"]),
             kind=cast(str, row["kind"]),
+            authority=cast(str | None, row["authority"]),
             normalized_value=cast(str, row["normalized_value"]),
         )
         for row in rows
@@ -83,6 +82,7 @@ def party_to_json(view: RegisteredParty) -> dict[str, object]:
                 "party_id": str(item.party_id),
                 "document_id": str(item.document_id),
                 "kind": item.kind,
+                "authority": item.authority,
                 "normalized_value": item.normalized_value,
             }
             for item in view.documents
@@ -117,6 +117,7 @@ def party_from_json(data: dict[str, object]) -> RegisteredParty:
                 party_id=UUID(cast(str, item["party_id"])),
                 document_id=UUID(cast(str, item["document_id"])),
                 kind=cast(str, item["kind"]),
+                authority=cast(str | None, item.get("authority")),
                 normalized_value=cast(str, item["normalized_value"]),
             )
             for item in cast(list[dict[str, object]], data["documents"])

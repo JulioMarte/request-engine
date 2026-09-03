@@ -50,6 +50,8 @@ max-complexity = 10
 "tests/integration/f1_operational_profile/test_contextual_booking.py" = ["E501"]
 "migrations/versions/0002_operational_profile_contextual_supply.py" = ["E501"]
 "migrations/versions/0005_live_service_operations.py" = ["E501"]
+"migrations/s0d_steps/step_0030_tables.py" = ["E501"]
+"migrations/s0d_steps/step_0030_hardening.py" = ["E501"]
 "src/request_engine/modules/booking/adapters/db/contextual_reservation_commands.py" = ["E501"]
 
 [tool.pyright]

@@ -1,4 +1,4 @@
-"""`parties.lookup` HTTP route: phone / document / display-name prefix lookup."""
+"""`parties.lookup` HTTP route for contact, strong-ID and display-name lookup."""
 
 from collections.abc import Awaitable, Callable
 from typing import Annotated
@@ -32,6 +32,7 @@ def add_party_lookup_routes(
         mode: PartyLookupMode,
         value: str = Query(min_length=1, max_length=128),
         document_kind: str = PartyDocumentKind.CEDULA.value,
+        document_authority: str | None = None,
     ) -> tuple[RegisteredPartyView, ...]:
         require_capability(actor, "parties.lookup")
         try:
@@ -42,6 +43,7 @@ def add_party_lookup_routes(
                     mode=mode,
                     value=value,
                     document_kind=document_kind,
+                    document_authority=document_authority,
                 ),
             )
         except ValueError as error:
@@ -57,7 +59,8 @@ def add_party_lookup_routes(
         response_model=tuple[RegisteredPartyView, ...],
         response_model_exclude_none=True,
         description=(
-            "Lookup returns at most 50 parties (no has_more field; narrow the term"
-            " instead). `document_kind` defaults to 'cedula'."
+            "Phone and email are weak locators and may return multiple Parties. "
+            "Cédula authority defaults to DO:JCE; RNC defaults to DO:DGII; "
+            "passport lookup requires an assigned ISO issuing-country authority."
         ),
     )

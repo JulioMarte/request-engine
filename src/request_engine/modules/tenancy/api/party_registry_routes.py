@@ -1,10 +1,4 @@
-"""Public tenancy party registry HTTP surface composition (`parties.*`).
-
-Transport route handlers map request values verbatim into application
-commands/queries: normalization happens only in the application layer, and
-attribution (`source_kind`/`platform`) is derived only from the resolved
-effective actor (see `party_registry_dependencies`).
-"""
+"""Public tenancy party registry HTTP surface composition (`parties.*`)."""
 
 from typing import Annotated
 
@@ -18,7 +12,9 @@ from request_engine.modules.tenancy.api.party_registry_dependencies import (
     IdempotencyKey,
     source_kind,
 )
-from request_engine.modules.tenancy.api.party_registry_errors import PartyRegistryInputInvalid
+from request_engine.modules.tenancy.api.party_registry_errors import (
+    PartyRegistryInputInvalid,
+)
 from request_engine.modules.tenancy.api.party_registry_models import (
     RegisteredPartyView,
     RegisterPartyBody,
@@ -68,6 +64,7 @@ def add_party_registry_routes(
                 RegisterPartyCommand(
                     organization_id=actor.organization_id,
                     principal_id=actor.principal_id,
+                    party_kind=body.party_kind,
                     display_name=body.display_name,
                     source_kind=source_kind(actor),
                     idempotency_key=idempotency_key,
@@ -76,7 +73,8 @@ def add_party_registry_routes(
                         for item in body.contact_points
                     ),
                     documents=tuple(
-                        PartyDocumentInput(item.kind, item.value) for item in body.documents
+                        PartyDocumentInput(item.kind, item.value, item.authority)
+                        for item in body.documents
                     ),
                     platform=actor.platform,
                     technical_principal_id=actor.technical_principal_id,

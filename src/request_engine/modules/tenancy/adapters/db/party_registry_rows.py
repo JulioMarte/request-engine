@@ -1,12 +1,4 @@
-"""Command-row builders and attribution values for party registry writes.
-
-Every attribution-bearing mutation records the §9.1 durable facts:
-`source_kind` (whose authority) and `platform` (which surface). On the three
-fact tables `relay_principal_id` preserves the technical caller only in the
-admitted acting-operator relay; the revision ledger instead stores the
-attributed operator (§9.3). Contact points are created verified: provenance,
-not ceremony (§9.2).
-"""
+"""Command-row builders and attribution values for party registry writes."""
 
 from typing import Protocol
 from uuid import UUID
@@ -17,9 +9,7 @@ from request_engine.modules.tenancy.application.commands.add_party_contact_point
 from request_engine.modules.tenancy.application.commands.add_party_document import (
     AddPartyDocumentCommand,
 )
-from request_engine.modules.tenancy.application.commands.register_party import (
-    RegisterPartyCommand,
-)
+from request_engine.modules.tenancy.application.commands.register_party import RegisterPartyCommand
 from request_engine.modules.tenancy.contracts.party_registry import PartySourceKind
 
 
@@ -41,8 +31,6 @@ class AttributedCommand(Protocol):
 
 
 def relayed_operator(command: AttributedCommand) -> bool:
-    """True in the admitted acting-operator relay (§9.1)."""
-
     return (
         command.source_kind is PartySourceKind.OPERATOR
         and command.technical_principal_id is not None
@@ -51,8 +39,6 @@ def relayed_operator(command: AttributedCommand) -> bool:
 
 
 def attribution_values(command: AttributedCommand) -> dict[str, object]:
-    """Durable attribution facts for one fact-table write."""
-
     return {
         "source_kind": command.source_kind.value if command.source_kind else None,
         "platform": command.platform,
@@ -63,8 +49,6 @@ def attribution_values(command: AttributedCommand) -> dict[str, object]:
 
 
 def ledger_attribution(command: AttributedCommand) -> dict[str, object]:
-    """Revision-ledger attribution: technical caller + attributed operator."""
-
     relayed = relayed_operator(command)
     return {
         "actor_principal_id": (command.technical_principal_id if relayed else command.principal_id),
@@ -73,8 +57,6 @@ def ledger_attribution(command: AttributedCommand) -> dict[str, object]:
 
 
 def audit_attribution(command: AttributedCommand) -> dict[str, object]:
-    """Audit-record attribution facts (§9.1: both identities stay in the audit)."""
-
     return {
         "source_kind": command.source_kind.value if command.source_kind else None,
         "platform": command.platform,
@@ -84,10 +66,7 @@ def audit_attribution(command: AttributedCommand) -> dict[str, object]:
     }
 
 
-def contact_point_rows(
-    command: RegisterPartyCommand,
-    party_id: UUID,
-) -> list[dict[str, object]]:
+def contact_point_rows(command: RegisterPartyCommand, party_id: UUID) -> list[dict[str, object]]:
     return [
         {
             "organization_id": command.organization_id,
@@ -102,9 +81,7 @@ def contact_point_rows(
     ]
 
 
-def single_contact_point_row(
-    command: AddPartyContactPointCommand,
-) -> list[dict[str, object]]:
+def single_contact_point_row(command: AddPartyContactPointCommand) -> list[dict[str, object]]:
     return [
         {
             "organization_id": command.organization_id,
@@ -124,6 +101,7 @@ def single_document_row(command: AddPartyDocumentCommand) -> list[dict[str, obje
             "organization_id": command.organization_id,
             "party_id": command.party_id,
             "kind": command.kind,
+            "authority": command.authority,
             "normalized_value": command.value,
             "principal_id": command.principal_id,
             **attribution_values(command),
@@ -137,6 +115,7 @@ def document_rows(command: RegisterPartyCommand, party_id: UUID) -> list[dict[st
             "organization_id": command.organization_id,
             "party_id": party_id,
             "kind": document.kind,
+            "authority": document.authority,
             "normalized_value": document.value,
             "principal_id": command.principal_id,
             **attribution_values(command),

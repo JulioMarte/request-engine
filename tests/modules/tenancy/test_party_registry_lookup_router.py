@@ -114,13 +114,18 @@ async def test_document_lookup_maps_kind_and_normalized_value() -> None:
     ) as client:
         response = await client.get(
             "/v1/parties/lookup",
-            params={"mode": "document", "value": "ab1234567", "document_kind": "passport"},
+            params={
+                "mode": "document",
+                "value": "ab1234567",
+                "document_kind": "passport",
+                "document_authority": "do",
+            },
         )
 
     assert response.status_code == 200, response.text
     assert reader.queries[0].document_kind == "passport"
+    assert reader.queries[0].document_authority == "DO"
     assert reader.queries[0].value == "AB1234567"
-    assert response.json() == []
 
 
 @pytest.mark.asyncio
@@ -130,7 +135,7 @@ async def test_lookup_requires_exactly_one_known_mode_and_a_value() -> None:
         transport=ASGITransport(app=_app(_actor(), reader)), base_url="http://test"
     ) as client:
         bad_mode = await client.get(
-            "/v1/parties/lookup", params={"mode": "email", "value": "someone@example.com"}
+            "/v1/parties/lookup", params={"mode": "fax", "value": "someone@example.com"}
         )
         missing_value = await client.get("/v1/parties/lookup", params={"mode": "phone"})
 

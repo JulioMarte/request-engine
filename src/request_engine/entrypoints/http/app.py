@@ -29,6 +29,7 @@ from request_engine.platform.security.http import (
 )
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
+_IDENTITY_EXCHANGE_KEY_ENV = "REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY"
 _CORRELATION_HEADER = "X-Correlation-ID"
 
 
@@ -51,6 +52,7 @@ def create_app(
     actor_resolver: ActorResolver,
     slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
     appointment_option_signing_key: bytes | None = None,
+    identity_exchange_fingerprint_key: bytes | None = None,
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
@@ -66,6 +68,11 @@ def create_app(
                 "is supplied explicitly"
             )
         signing_key = configured_key.encode("utf-8")
+    identity_key = identity_exchange_fingerprint_key
+    if identity_key is None:
+        configured_identity_key = os.environ.get(_IDENTITY_EXCHANGE_KEY_ENV)
+        if configured_identity_key is not None:
+            identity_key = configured_identity_key.encode("utf-8")
 
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
     operator_actors = operator_actor_resolver or DeploymentOperatorActorResolver(
@@ -96,5 +103,6 @@ def create_app(
         actor_resolver=execution_actor_resolver,
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
+        identity_exchange_fingerprint_key=identity_key,
     )
     return app

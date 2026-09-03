@@ -110,7 +110,7 @@ async def test_register_maps_body_to_command_and_derives_attribution_server_side
     assert command.principal_id == actor.principal_id
     assert command.platform is None
     assert command.contact_points == (PartyContactPointInput("phone", "+18095551234"),)
-    assert command.documents == (PartyDocumentInput("cedula", "40212345678"),)
+    assert command.documents == (PartyDocumentInput("cedula", "40212345678", "DO:JCE"),)
 
 
 @pytest.mark.asyncio

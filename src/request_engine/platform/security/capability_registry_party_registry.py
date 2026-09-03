@@ -51,6 +51,21 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.PUBLIC,
         "Restore a person Party's identity from a prior recorded revision.",
     ),
+    command_capability(
+        "identity_exchange.publish",
+        CapabilityExposure.OPERATOR,
+        "Publish a consented portable identity snapshot for an operator-witnessed Party.",
+    ),
+    command_capability(
+        "identity_exchange.match",
+        CapabilityExposure.OPERATOR,
+        "Resolve an operator-witnessed cédula to an opaque portable identity candidate.",
+    ),
+    command_capability(
+        "identity_exchange.adopt",
+        CapabilityExposure.OPERATOR,
+        "Adopt a consented portable identity into a new tenant-owned Party.",
+    ),
     query_capability(
         "parties.lookup",
         CapabilityExposure.PUBLIC,

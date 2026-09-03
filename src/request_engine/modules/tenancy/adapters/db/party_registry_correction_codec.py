@@ -1,10 +1,4 @@
-"""Replay-view decoding and affected-view assembly for party corrections.
-
-A correction's idempotency replay payload stores the authoritative party
-snapshot (`party`) and, for contact-point deactivation, the affected contact
-point (`contact_point`) as it exists after the command. Replays return these
-serialized views; nothing is recomputed from live rows.
-"""
+"""Replay-view decoding and affected-view assembly for party corrections."""
 
 from typing import cast
 from uuid import UUID
@@ -12,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.engine import RowMapping
 
 from request_engine.modules.tenancy.adapters.db.party_registry_codec import party_from_json
-from request_engine.modules.tenancy.adapters.db.party_registry_views import document_by_kind_value
+from request_engine.modules.tenancy.adapters.db.party_registry_views import document_by_identity
 from request_engine.modules.tenancy.application.errors import (
     PartyContactPointNotFound,
     PartyNotFound,
@@ -30,9 +24,13 @@ def replay_party(data: dict[str, object]) -> RegisteredParty:
 
 
 def replay_document(
-    data: dict[str, object], kind: str, normalized_value: str, party_id: UUID
+    data: dict[str, object],
+    kind: str,
+    authority: str,
+    normalized_value: str,
+    party_id: UUID,
 ) -> PartyIdentityDocument:
-    document = document_by_kind_value(replay_party(data), kind, normalized_value)
+    document = document_by_identity(replay_party(data), kind, authority, normalized_value)
     if document is None:
         raise PartyNotFound(party_id)
     return document
