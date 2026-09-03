@@ -5,6 +5,7 @@ import pytest
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 
+from .evidence import durable_snapshot
 from .front_desk_recall_support import book_and_check_in, day_params, front_desk_actor
 from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
@@ -85,6 +86,7 @@ async def test_bot_retry_stale_ui_and_capability_rejection_are_fail_closed(
         }
         held = await client.post(url, json=body, headers=auth(sandbox, idempotency_key=key))
         assert held.status_code == 200
+        before_rejections = durable_snapshot(e2e_admin_conn)
         stale = await client.post(
             f"{url}/release",
             json={"hold_id": held.json()["hold"]["id"], "expected_revision": entry["revision"]},
@@ -112,6 +114,7 @@ async def test_bot_retry_stale_ui_and_capability_rejection_are_fail_closed(
         assert stale.status_code == 409
         assert denied.status_code == 403
         assert conflict.status_code == 409
+        assert durable_snapshot(e2e_admin_conn) == before_rejections
         visible = await client.get(
             f"/v1/queues/{sandbox.queue_id}/staff",
             headers={"Authorization": f"Bearer {read_only_token}"},
