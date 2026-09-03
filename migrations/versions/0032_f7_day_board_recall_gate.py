@@ -84,7 +84,7 @@ LEFT JOIN LATERAL (
      LIMIT 1
 ) h ON true
 LEFT JOIN LATERAL (
-    SELECT skip.reason
+    SELECT skip.id, skip.reason
       FROM request_engine.queue_entry_skips skip
      WHERE skip.organization_id = r.organization_id AND skip.queue_entry_id = qe.id
        AND skip.consumed_at IS NULL
