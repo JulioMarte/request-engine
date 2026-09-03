@@ -6,6 +6,7 @@ from request_engine.modules.queue.api.waitlist_error_mapping import waitlist_err
 from request_engine.modules.queue.application.errors import (
     ActiveQueueEntryNotFound,
     AlreadyInQueue,
+    QueueConfigurationConflict,
     QueueEntryNotCancellable,
     QueueEntryNotFound,
     QueueEntryRevisionConflict,
@@ -35,6 +36,12 @@ def _queue_error(exc: QueueError) -> tuple[int, ErrorBody]:
     mapped_live = live_queue_error(exc)
     if mapped_live is not None:
         return mapped_live
+    if isinstance(exc, QueueConfigurationConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="queue_configuration_conflict",
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+        )
     if isinstance(exc, TenantReferenceNotUsable):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="tenant_reference_not_usable",
