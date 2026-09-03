@@ -4,6 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from request_engine.modules.catalog.application.commands import (
+    set_offering_version_booking_policy as policy_commands,
+)
 from request_engine.modules.catalog.application.commands.bootstrap_catalog import (
     CatalogBootstrapHandler,
     ChannelPolicyInput,
@@ -77,9 +80,85 @@ class OfferingBody(BaseModel):
     reservation_policy: ReservationPolicyBody = ReservationPolicyBody()
 
 
+class BookingAttendancePolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation_required: bool = False
+    attendance_request_before_minutes: int | None = Field(default=None, gt=0)
+    decline_action: Literal["keep", "cancel"] = "keep"
+    no_response_action: Literal["keep"] = "keep"
+    no_show_after_minutes: int | None = Field(default=None, gt=0)
+
+
+class BookingCommunicationsPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: bool = False
+    reminders_before_minutes: tuple[int, ...] = ()
+    channel_policy: ChannelPolicyBody | None = None
+
+
+class BookingSlotRecoveryPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    minimum_lead_minutes: int = Field(default=30, gt=0)
+
+
+class BookingPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slot_step_minutes: int = Field(default=30, gt=0, le=1440)
+    attendance: BookingAttendancePolicyBody = BookingAttendancePolicyBody()
+    communications: BookingCommunicationsPolicyBody = BookingCommunicationsPolicyBody()
+    slot_recovery: BookingSlotRecoveryPolicyBody = BookingSlotRecoveryPolicyBody()
+
+
+class SetBookingPolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authority_party_id: UUID
+    expected_revision: int = Field(ge=0)
+    booking_policy: BookingPolicyBody
+
+
+def _policy_input(policy: BookingPolicyBody) -> policy_commands.BookingPolicyInput:
+    channels = policy.communications.channel_policy
+    channel_policy = (
+        ChannelPolicyInput(
+            channels=channels.channels,
+            provider_key=channels.provider_key,
+            reconcile_after_seconds=channels.reconcile_after_seconds,
+            retry_after_seconds=channels.retry_after_seconds,
+        )
+        if channels is not None
+        else None
+    )
+    return policy_commands.BookingPolicyInput(
+        slot_step_minutes=policy.slot_step_minutes,
+        attendance=policy_commands.BookingAttendancePolicyInput(
+            confirmation_required=policy.attendance.confirmation_required,
+            attendance_request_before_minutes=(policy.attendance.attendance_request_before_minutes),
+            decline_action=policy.attendance.decline_action,
+            no_response_action=policy.attendance.no_response_action,
+            no_show_after_minutes=policy.attendance.no_show_after_minutes,
+        ),
+        communications=policy_commands.BookingCommunicationsPolicyInput(
+            confirmation=policy.communications.confirmation,
+            reminders_before_minutes=policy.communications.reminders_before_minutes,
+            channel_policy=channel_policy,
+        ),
+        slot_recovery=policy_commands.BookingSlotRecoveryPolicyInput(
+            enabled=policy.slot_recovery.enabled,
+            minimum_lead_minutes=policy.slot_recovery.minimum_lead_minutes,
+        ),
+    )
+
+
 def create_bootstrap_router(
     *,
     handler: CatalogBootstrapHandler,
+    policy_handler: policy_commands.SetOfferingVersionBookingPolicyHandler,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/catalog", tags=["catalog"])
@@ -154,6 +233,26 @@ def create_bootstrap_router(
             ),
         )
 
+    async def booking_policy(
+        offering_version_id: UUID,
+        body: SetBookingPolicyBody,
+        idempotency_key: IdempotencyKey,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> object:
+        require_capability(current, "catalog.manage")
+        return await policy_commands.set_offering_version_booking_policy(
+            policy_handler,
+            policy_commands.SetOfferingVersionBookingPolicyCommand(
+                organization_id=current.organization_id,
+                principal_id=current.principal_id,
+                authority_party_id=body.authority_party_id,
+                offering_version_id=offering_version_id,
+                expected_revision=body.expected_revision,
+                policy=_policy_input(body.booking_policy),
+                idempotency_key=idempotency_key,
+            ),
+        )
+
     add_capability_route(
         router,
         "/resource-capabilities",
@@ -171,5 +270,13 @@ def create_bootstrap_router(
         methods=["POST"],
         operation_id="catalog_manage_offerings",
         status_code=status.HTTP_201_CREATED,
+    )
+    add_capability_route(
+        router,
+        "/offerings/{offering_version_id}/booking-policy",
+        booking_policy,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_manage_offering_version_booking_policy",
     )
     return router

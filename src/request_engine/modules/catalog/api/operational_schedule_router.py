@@ -9,6 +9,12 @@ from pydantic import BaseModel
 from request_engine.modules.catalog.application.commands import (
     configure_offering_version_booking_terms as base_terms_command,
 )
+from request_engine.modules.catalog.application.commands.declare_organization_holidays import (
+    DeclareOrganizationHolidaysCommand,
+    DeclareOrganizationHolidaysHandler,
+    OrganizationHolidayInput,
+    declare_organization_holidays,
+)
 from request_engine.modules.catalog.application.commands.set_location_hours_exception import (
     SetLocationHoursExceptionCommand,
     SetLocationHoursExceptionHandler,
@@ -60,11 +66,22 @@ class BaseTermsBody(BaseModel):
     currency: str
 
 
+class OrganizationHolidayBody(BaseModel):
+    date: date
+    reason: str | None = None
+
+
+class OrganizationHolidaysBody(BaseModel):
+    authority_party_id: UUID
+    holidays: tuple[OrganizationHolidayBody, ...]
+
+
 def create_operational_schedule_router(
     *,
     hours_handler: SetLocationOperationalHoursHandler,
     exception_handler: SetLocationHoursExceptionHandler,
     terms_handler: base_terms_command.ConfigureOfferingVersionBookingTermsHandler,
+    holidays_handler: DeclareOrganizationHolidaysHandler,
     actor_resolver: ActorResolver,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1/operations", tags=["operations"])
@@ -129,9 +146,29 @@ def create_operational_schedule_router(
             command,
         )
 
+    async def holidays(
+        body: OrganizationHolidaysBody,
+        key: IdempotencyKey,
+        current: Annotated[ActorContext, Depends(actor)],
+    ) -> object:
+        return await declare_organization_holidays(
+            holidays_handler,
+            DeclareOrganizationHolidaysCommand(
+                organization_id=current.organization_id,
+                principal_id=current.principal_id,
+                authority_party_id=body.authority_party_id,
+                holidays=tuple(
+                    OrganizationHolidayInput(date=item.date, reason=item.reason)
+                    for item in body.holidays
+                ),
+                idempotency_key=key,
+            ),
+        )
+
     router.add_api_route("/locations/{location_id}/hours", hours, methods=["PUT"])
     router.add_api_route("/locations/{location_id}/hours-exceptions", exception, methods=["PUT"])
     router.add_api_route(
         "/offering-versions/{offering_version_id}/booking-terms", base_terms, methods=["PUT"]
     )
+    router.add_api_route("/organization/holidays", holidays, methods=["PUT"])
     return router

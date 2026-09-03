@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
-HttpMethod = Literal["GET", "POST"]
+HttpMethod = Literal["GET", "POST", "PUT"]
 PROBE_UUID = "00000000-0000-4000-8000-000000000001"
 PROBE_UUID_2 = "00000000-0000-4000-8000-000000000002"
 

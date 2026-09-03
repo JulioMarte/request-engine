@@ -56,6 +56,28 @@ ONBOARDING_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
         ),
     ),
     PublicHttpOperation(
+        "catalog.manage.offering_booking_policy",
+        "PUT",
+        "/v1/catalog/offerings/{offering_version_id}/booking-policy",
+        "catalog.manage",
+        True,
+        True,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(
+            f"/v1/catalog/offerings/{PROBE_UUID}/booking-policy",
+            body={
+                "authority_party_id": PROBE_UUID,
+                "expected_revision": 0,
+                "booking_policy": {
+                    "slot_step_minutes": 30,
+                    "attendance": {"confirmation_required": False},
+                    "communications": {"confirmation": False},
+                    "slot_recovery": {"enabled": False},
+                },
+            },
+        ),
+    ),
+    PublicHttpOperation(
         "booking.manage_supply",
         "POST",
         "/v1/booking/resources",

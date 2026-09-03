@@ -9,6 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.booking.adapters.db.effective_booking_policy import (
+    EFFECTIVE_BOOKING_POLICY_SELECT,
+)
 from request_engine.modules.booking.adapters.db.reservation_reader import reservation_from_row
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
@@ -455,11 +458,12 @@ async def load_bookable_offering(
         (
             await session.execute(
                 text(
-                    """
-                    SELECT duration_minutes, bookable, booking_policy
-                    FROM request_engine.offering_versions
-                    WHERE organization_id = :organization_id
-                      AND id = :offering_version_id
+                    f"""
+                    SELECT ov.duration_minutes, ov.bookable,
+                           {EFFECTIVE_BOOKING_POLICY_SELECT}
+                    FROM request_engine.offering_versions ov
+                    WHERE ov.organization_id = :organization_id
+                      AND ov.id = :offering_version_id
                     """
                 ),
                 {

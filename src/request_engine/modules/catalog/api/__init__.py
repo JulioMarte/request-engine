@@ -12,11 +12,17 @@ from request_engine.modules.catalog.adapters.db.location_creation_commands impor
 from request_engine.modules.catalog.adapters.db.offering_catalog_reader import (
     PostgresOfferingCatalogReader,
 )
+from request_engine.modules.catalog.adapters.db.offering_policy_commands import (
+    PostgresOfferingBookingPolicyCommands,
+)
 from request_engine.modules.catalog.adapters.db.operational_config_commands import (
     PostgresOperationalConfigCommands,
 )
 from request_engine.modules.catalog.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
+)
+from request_engine.modules.catalog.adapters.db.organization_holiday_commands import (
+    PostgresOrganizationHolidayCommands,
 )
 from request_engine.modules.catalog.api.bootstrap_router import create_bootstrap_router
 from request_engine.modules.catalog.api.operational_errors import (
@@ -32,6 +38,7 @@ from request_engine.modules.catalog.api.router import create_router
 from request_engine.modules.catalog.application.errors import (
     CatalogConfigurationConflict,
     LocationOperationalRevisionConflict,
+    OfferingBookingPolicyRevisionConflict,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
@@ -45,6 +52,18 @@ def install_http(
 ) -> None:
     """Connect the public Catalog read surface to the public HTTP process."""
 
+    app.add_exception_handler(
+        LocationOperationalRevisionConflict,
+        catalog_operational_error_handler,
+    )
+    app.add_exception_handler(
+        OfferingBookingPolicyRevisionConflict,
+        catalog_operational_error_handler,
+    )
+    app.add_exception_handler(
+        CatalogConfigurationConflict,
+        catalog_operational_error_handler,
+    )
     app.include_router(
         create_router(
             business_reader=PostgresBusinessInfoReader(session_factory),
@@ -55,6 +74,7 @@ def install_http(
     app.include_router(
         create_bootstrap_router(
             handler=PostgresCatalogBootstrapCommands(session_factory),
+            policy_handler=PostgresOfferingBookingPolicyCommands(session_factory),
             actor_resolver=actor_resolver,
         )
     )
@@ -73,10 +93,15 @@ def install_operational_http(
         catalog_operational_error_handler,
     )
     app.add_exception_handler(
+        OfferingBookingPolicyRevisionConflict,
+        catalog_operational_error_handler,
+    )
+    app.add_exception_handler(
         CatalogConfigurationConflict,
         catalog_operational_error_handler,
     )
     profile = PostgresOperationalProfileCommands(session_factory)
+    holidays = PostgresOrganizationHolidayCommands(session_factory)
     app.include_router(
         create_operational_profile_router(
             create_handler=PostgresLocationCreationCommands(session_factory),
@@ -90,6 +115,7 @@ def install_operational_http(
             hours_handler=PostgresOperationalConfigCommands(session_factory),
             exception_handler=profile,
             terms_handler=profile,
+            holidays_handler=holidays,
             actor_resolver=actor_resolver,
         )
     )

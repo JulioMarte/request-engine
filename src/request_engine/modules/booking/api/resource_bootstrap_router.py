@@ -4,10 +4,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from request_engine.modules.booking.api.operational_assignment_models import (
+    AvailabilityWindowBody,
+)
 from request_engine.modules.booking.application.commands.create_resource import (
     CreateResourceCommand,
     CreateResourceHandler,
     create_resource,
+)
+from request_engine.modules.booking.application.commands.set_resource_location_availability import (
+    ResourceLocationAvailabilityWindow,
 )
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
@@ -29,6 +35,7 @@ class CreateResourceBody(BaseModel):
     capacity_model: Literal["exclusive", "units"] = "exclusive"
     capacity_units: int = Field(default=1, ge=1)
     capability_ids: tuple[UUID, ...] = ()
+    weekly_availability: tuple[AvailabilityWindowBody, ...] = ()
 
 
 def create_resource_bootstrap_router(
@@ -59,6 +66,16 @@ def create_resource_bootstrap_router(
                 capacity_model=body.capacity_model,
                 capacity_units=body.capacity_units,
                 capability_ids=body.capability_ids,
+                weekly_availability=tuple(
+                    ResourceLocationAvailabilityWindow(
+                        weekday=item.weekday,
+                        local_start=item.local_start,
+                        local_end=item.local_end,
+                        valid_from=item.valid_from,
+                        valid_until=item.valid_until,
+                    )
+                    for item in body.weekly_availability
+                ),
                 idempotency_key=idempotency_key,
             ),
         )

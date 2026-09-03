@@ -23,6 +23,9 @@ from request_engine.modules.booking.adapters.db.contextual_supply import (
     load_contextualization,
     load_location_observations,
 )
+from request_engine.modules.booking.adapters.db.effective_booking_policy import (
+    EFFECTIVE_BOOKING_POLICY_SELECT,
+)
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
     load_resource_exceptions,
@@ -102,8 +105,9 @@ class PostgresAppointmentAvailabilityReader:
                 (
                     await session.execute(
                         text(
-                            """
-                            SELECT ov.duration_minutes, ov.bookable, ov.booking_policy
+                            f"""
+                            SELECT ov.duration_minutes, ov.bookable,
+                                   {EFFECTIVE_BOOKING_POLICY_SELECT}
                             FROM request_engine.offering_versions ov
                             JOIN request_engine.offerings o
                               ON o.organization_id = ov.organization_id

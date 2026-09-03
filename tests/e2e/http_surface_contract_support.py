@@ -31,6 +31,7 @@ _OPERATION_ID_OVERRIDES = {
     "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
+    "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
 }
 
 
