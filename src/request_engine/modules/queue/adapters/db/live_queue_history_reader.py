@@ -37,7 +37,15 @@ async def read_staff_queue_history(
                                expected_workload_key, service_session_id,
                                service_status, actual_resource_id, actual_location_id,
                                actual_workload_key, service_started_at,
-                               service_completed_at, queue_revision, service_revision
+                               service_completed_at,
+                               FALSE AS recall_eligible,
+                               NULL::uuid AS recall_hold_id,
+                               NULL::text AS recall_hold_kind,
+                               NULL::timestamptz AS recall_hold_until_at,
+                               NULL::text AS recall_hold_event_key,
+                               NULL::text AS recall_hold_reason,
+                               NULL::text AS active_skip_reason,
+                               queue_revision, service_revision
                           FROM request_read.live_service_staff_v1
                          WHERE organization_id=:organization_id
                            AND queue_id=:queue_id
