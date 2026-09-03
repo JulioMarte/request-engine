@@ -16,6 +16,8 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 - An uncertain external side effect reconciles before resend.
 - Planned or internal-only capabilities are not invented as public HTTP routes.
 - Rejected state-changing journeys prove important absence of partial effects, preferably with an authoritative durable-state fingerprint when the scope is broad.
+- A DB/integration proof does not replace the API journey for a capability operated by a human UI, customer UI, bot, agent, or automation.
+- Caller journeys use public APIs for business actions; admin SQL is limited to fixture/configuration setup and durable inspection unless the test is proving that an API surface is missing.
 
 ## Framework primitives
 
@@ -36,6 +38,8 @@ The extension contract and definition-of-done checklist live in [`docs/e2e-evide
 - `test_contextual_booking_journey.py` proves the F1 public contextual happy chain `business -> catalog -> find_slots -> aptopt_v2 -> book` plus exact assignment/commercial provenance.
 - `test_contextual_booking_failures.py` proves stale-option HTTP 409 behavior and fail-closed contextual reschedule with full durable-state non-mutation evidence.
 - `test_contextual_location_separation.py` proves the same Resource may have two Location contexts with distinct schedule/price/duration without cross-context leakage.
+- `test_front_desk_recall_user_journey.py` proves a human front-desk hold/read/release flow plus bot retry, stale-UI, capability-denial and durable non-mutation behavior through the composed API.
+- `test_day_board_multi_queue_user_journey.py` proves legitimate API admissions can correlate one Reservation to multiple active QueueEntries and that Day Board exposes the ambiguity instead of choosing one silently.
 - communication/worker E2E files prove provider ambiguity, poison work, reclaim/fencing, crash windows, ordering and multi-worker contention.
 - `test_worker_scheduling_semantics.py` and `test_outbox_semantics.py` prove `SKIP LOCKED`, lease reclaim, token fencing, retry exhaustion, runtime privilege and durable outbox semantics.
 - `test_delivery_persistence_semantics.py` proves durable dedupe/correlation constraints.
@@ -50,6 +54,8 @@ Historical V3 reproducibility may separately execute the released V3 source agai
 
 A feature PR that adds a public or operational endpoint must update the corresponding operation registry in the same PR. If a composed OpenAPI surface changes without classification, CI fails. `DurableSnapshot` fingerprints authoritative tables automatically, so rejected operations should preserve durable content as well as cardinality. A new external side effect must add crash-window evidence. A new worker must prove claim disjointness, stale-token fencing, retry/dead-letter behavior, and reclaim after lease expiry.
 
-Public or operational features that change the meaning of an existing route still need a production-like journey even when no new endpoint is added. Use narrow integration tests for deterministic races/invariants and E2E for the composed externally observable chain; neither layer substitutes for the other.
+Public or operational features that change the meaning of an existing route still need a production-like journey even when no new endpoint is added. Choose the caller perspective that can falsify the real usage contract: human/operator UI, customer/self-service UI, bot/agent/automation, concurrent operators, or reconnect/retry behavior. A pile of isolated endpoint probes does not count as a user journey.
+
+Use narrow integration tests for deterministic races/invariants and E2E for the composed externally observable chain; neither layer substitutes for the other.
 
 Do not weaken these guards to make a new feature pass; extend the evidence framework.
