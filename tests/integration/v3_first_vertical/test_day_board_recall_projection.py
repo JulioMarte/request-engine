@@ -90,6 +90,7 @@ async def test_day_board_projects_active_queue_recall_gate(
     assert len(rows) == 1
     item = rows[0]
     assert item.reservation_id == reservation_id
+    assert item.active_queue_entry_count == 1
     assert item.queue_entry_id == queue_entry_id
     assert item.queue_entry_status == "waiting"
     assert item.recall_eligible is False
