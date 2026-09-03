@@ -1,5 +1,8 @@
 from fastapi import APIRouter, FastAPI, Request
 
+from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
+    PostgresBootstrapOperationalAuthorityCommands,
+)
 from request_engine.modules.tenancy.adapters.db.operational_profile_commands import (
     PostgresOperationalProfileCommands,
 )
@@ -11,6 +14,9 @@ from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
 )
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
+)
+from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
+    create_bootstrap_authority_router,
 )
 from request_engine.modules.tenancy.api.identity_exchange_http import (
     install_identity_exchange_http,
@@ -63,6 +69,12 @@ def install_http(
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         fingerprint_key=identity_exchange_fingerprint_key,
+    )
+    app.include_router(
+        create_bootstrap_authority_router(
+            handler=PostgresBootstrapOperationalAuthorityCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
     )
     add_staff_contact_error_handlers(app)
 
