@@ -1,9 +1,11 @@
 from request_engine.modules.queue.adapters.db.triage_operator_select import operator_select
 from request_engine.modules.queue.adapters.db.triage_recall_hold import recall_hold
+from request_engine.modules.queue.adapters.db.triage_release import release_recall_hold
 from request_engine.modules.queue.adapters.db.triage_skip import skip
 from request_engine.modules.queue.application.commands.triage import (
     OperatorSelectCommand,
     RecallHoldCommand,
+    ReleaseRecallHoldCommand,
     SkipCommand,
 )
 from request_engine.modules.queue.contracts.triage import QueueTriageResult
@@ -28,3 +30,9 @@ class PostgresQueueTriageCommands:
 
     async def skip(self, command: SkipCommand) -> QueueTriageResult:
         return await skip(self._session_factory, command)
+
+    async def release_recall_hold(
+        self,
+        command: ReleaseRecallHoldCommand,
+    ) -> QueueTriageResult:
+        return await release_recall_hold(self._session_factory, command)

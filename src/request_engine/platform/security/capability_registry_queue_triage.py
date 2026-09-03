@@ -24,4 +24,10 @@ QUEUE_TRIAGE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Defer the current eligible FIFO head for exactly one later selection.",
         revision=RevisionPolicy.REQUIRED,
     ),
+    command_capability(
+        "queue.release_recall_hold",
+        CapabilityExposure.OPERATOR,
+        "Release one active recall hold and return the entry to its original FIFO position.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
 )

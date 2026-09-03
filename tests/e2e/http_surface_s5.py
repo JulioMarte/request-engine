@@ -44,4 +44,17 @@ S5_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             body={"reason": "no_response", "expected_revision": 1},
         ),
     ),
+    PublicHttpOperation(
+        "queue.release_recall_hold",
+        "POST",
+        "/v1/queue-entries/{queue_entry_id}/recall-hold/release",
+        "queue.release_recall_hold",
+        True,
+        True,
+        TenantIsolationMode.NOT_FOUND,
+        HttpProbe(
+            f"/v1/queue-entries/{PROBE_UUID}/recall-hold/release",
+            body={"hold_id": str(PROBE_UUID), "expected_revision": 1},
+        ),
+    ),
 )

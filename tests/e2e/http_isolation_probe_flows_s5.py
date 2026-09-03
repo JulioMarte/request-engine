@@ -41,4 +41,14 @@ def foreign_request(
             {"reason": "no_response", "expected_revision": objects.queue_entry_revision},
             404,
         )
+    if operation.name == "queue.release_recall_hold":
+        return (
+            f"/v1/queue-entries/{objects.queue_entry_id}/recall-hold/release",
+            {},
+            {
+                "hold_id": str(objects.queue_entry_id),
+                "expected_revision": objects.queue_entry_revision,
+            },
+            404,
+        )
     raise AssertionError(f"unsupported S5 isolation probe for {operation.name}")
