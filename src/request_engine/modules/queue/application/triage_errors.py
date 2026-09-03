@@ -36,3 +36,15 @@ class QueueEntryAlreadySkipped(QueueError):
 
 class InvalidRecallHold(QueueError):
     pass
+
+
+class QueueHoldNotActive(QueueError):
+    def __init__(self, entry_id: UUID) -> None:
+        super().__init__(f"QueueEntry {entry_id} has no active recall hold to release")
+        self.entry_id = entry_id
+
+
+class RecallHoldConflict(QueueError):
+    def __init__(self, entry_id: UUID) -> None:
+        super().__init__(f"QueueEntry {entry_id} active hold does not match the requested hold")
+        self.entry_id = entry_id

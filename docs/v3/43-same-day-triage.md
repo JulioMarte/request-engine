@@ -1,16 +1,17 @@
 # F7e Same-Day Triage — Queue Selection Contract
 
-Status: **S5a selection truth implemented on the front-door completion branch; S5 remains incomplete until S5b projection truth lands.**
+Status: **S5a selection truth implemented and integrated; `queue.release_recall_hold` implemented; S5 remains incomplete until the remaining S5b read surfaces (staff queue read, Day Board hold visibility) land.**
 
 This document narrows `docs/v3/36-front-desk-operations-contract.md` §7 and the implementation handoff in `docs/handoff/03-same-day-triage.md` into the executable Queue contract.
 
 ## 1. Scope
 
-S5 adds three operator-only commands to Queue:
+S5 adds four operator-only commands to Queue:
 
 - `queue.operator_select`: call one specific waiting entry now for a closed reason;
 - `queue.recall_hold`: make one waiting entry temporarily ineligible behind a closed condition;
-- `queue.skip`: defer the current eligible FIFO head for one subsequent automatic selection.
+- `queue.skip`: defer the current eligible FIFO head for one subsequent automatic selection;
+- `queue.release_recall_hold`: release one active hold and return the entry to its original derived FIFO position without calling it.
 
 This slice does not add scoring, mutable positions, tenant policy DSLs, generic priority values, or a new terminal QueueEntry state.
 
@@ -30,7 +31,9 @@ The closed condition kinds are:
 
 Only one active hold may exist per queue entry. Hold identity, condition, creator, reason, and creation time are immutable. Release is a one-way transition.
 
-`until_event` and `until_customer_initiates` deliberately have no public release command. Their authoritative condition producers belong to later inbound composition (S4). Until that wiring exists, those holds remain active unless an operator explicitly uses `operator_select`, which records `release_kind=operator_select`. This is an implementation limitation, not an implied event engine.
+`queue.release_recall_hold` is the operator release path for all hold kinds. It requires the active `hold_id` plus the entry's current revision, releases the hold with `release_kind=operator_release`, and bumps the entry revision. The entry stays `waiting` and re-enters automatic selection at its original `(admitted_at, id)` position; `admitted_at` is never rewritten and no call event is emitted. Releasing a hold whose entry is no longer `waiting` fails closed with `queue_entry_not_waiting`; releasing when no hold is active fails with `queue_hold_not_active` (an expired `until_time` hold is expiry-stamped by the next successful queue command, and a failed command rolls back atomically without stamping); releasing a stale `hold_id` fails with `recall_hold_conflict`.
+
+S4 condition producers for `until_event`/`until_customer_initiates` remain future work: today the condition-aware exits are the operator paths (`operator_select` to call the entry, `release_recall_hold` to return it to the plain FIFO). This is an implementation limitation, not an implied event engine.
 
 ## 4. Skip semantics
 
@@ -65,7 +68,7 @@ Every S5 mutation follows the existing Queue lock order:
 
 This ordering is shared with `queue.call_next`. It is required to avoid double selection, lost holds, and inverted-lock deadlocks.
 
-All three capabilities are operator exposure and require idempotency plus `expected_revision`. Facts are tenant-scoped, FORCE-RLS protected, and append-preserving at PostgreSQL level.
+All four capabilities are operator exposure and require idempotency plus `expected_revision`. Facts are tenant-scoped, FORCE-RLS protected, and append-preserving at PostgreSQL level.
 
 ## 7. Evidence required for S5a
 
@@ -77,8 +80,10 @@ S5a is acceptable only when PostgreSQL 18 evidence proves:
 - elapsed `until_time` is released before selection;
 - operator select emits exactly one call event and is replay-idempotent;
 - concurrent `call_next` versus hold, skip, and operator-select produces only valid serializable outcomes on the real ServiceQueue lock path;
+- concurrent release versus release, release versus `call_next`, and release versus operator-select produce only valid serializable outcomes; releasing an entry that left `waiting` fails closed;
+- released entries rejoin automatic selection at their original `(admitted_at, id)` position without emitting a call event;
 - public HTTP metadata and tenant-isolation classification cover every new route.
 
 ## 8. What S5a does not complete
 
-S5a only establishes **selection truth**. S5 is not complete until S5b updates the staff queue read, Day Board and F4/live-capacity projection so active holds and skips are visible and held entries are not projected as imminent. Until S5b is green, the product has correct mutation/selection semantics but an incomplete receptionist read surface.
+S5a establishes selection truth; the F4/live-capacity projection now degrades honestly (`PARTIAL` with an `active_recall_hold`/`active_skip` reason, no fabricated timeline or intake headroom) while triage gates are active, and `queue.release_recall_hold` closes the operator release path. S5 is not complete until the remaining S5b read surfaces land: the staff queue read and Day Board must surface hold/skip state, and the customer-facing `entries_ahead` count must stop counting held/skipped entries as imminent.

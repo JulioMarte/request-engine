@@ -44,9 +44,21 @@ class SkipCommand:
     idempotency_key: str
 
 
+@dataclass(frozen=True, slots=True)
+class ReleaseRecallHoldCommand:
+    organization_id: UUID
+    principal_id: UUID
+    queue_entry_id: UUID
+    hold_id: UUID
+    expected_revision: int
+    idempotency_key: str
+
+
 class QueueTriageExecutor(Protocol):
     async def operator_select(self, command: OperatorSelectCommand) -> QueueTriageResult: ...
 
     async def recall_hold(self, command: RecallHoldCommand) -> QueueTriageResult: ...
 
     async def skip(self, command: SkipCommand) -> QueueTriageResult: ...
+
+    async def release_recall_hold(self, command: ReleaseRecallHoldCommand) -> QueueTriageResult: ...

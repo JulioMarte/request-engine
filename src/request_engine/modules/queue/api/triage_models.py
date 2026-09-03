@@ -32,6 +32,12 @@ class SkipBody(BaseModel):
     expected_revision: int = Field(gt=0)
 
 
+class ReleaseRecallHoldBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    hold_id: UUID
+    expected_revision: int = Field(gt=0)
+
+
 class RecallHoldView(BaseModel):
     id: UUID
     queue_entry_id: UUID

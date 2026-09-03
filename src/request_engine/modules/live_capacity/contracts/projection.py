@@ -23,6 +23,8 @@ class ProjectionReason(StrEnum):
     OPEN_INTERRUPTION = "open_interruption"
     OPEN_RESOURCE_ACTIVITY = "open_resource_activity"
     NO_REMAINING_AVAILABILITY = "no_remaining_availability"
+    ACTIVE_RECALL_HOLD = "active_recall_hold"
+    ACTIVE_SKIP = "active_skip"
 
 
 @dataclass(frozen=True, slots=True)
