@@ -36,6 +36,7 @@ class ReservationDayBoardEntryView(BaseModel):
     effective_arrival_estimate_at: datetime | None
     estimated_arrival_at: datetime | None
     arrival_estimate_source_kind: str | None
+    active_queue_entry_count: int
     queue_entry_id: UUID | None
     queue_entry_status: str | None
     recall_eligible: bool | None
