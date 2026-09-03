@@ -10,7 +10,13 @@ from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
 
-def _second_queue(conn: PgConnection, *, organization_id: UUID, location_id: UUID, offering_id: UUID) -> UUID:
+def _second_queue(
+    conn: PgConnection,
+    *,
+    organization_id: UUID,
+    location_id: UUID,
+    offering_id: UUID,
+) -> UUID:
     row = conn.execute(
         """
         INSERT INTO request_engine.service_queues (
