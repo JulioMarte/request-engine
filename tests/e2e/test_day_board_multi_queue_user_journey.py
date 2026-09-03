@@ -5,7 +5,13 @@ import pytest
 
 from request_engine.platform.db.session import SessionFactory
 
-from .front_desk_recall_support import book_and_check_in, day_params, front_desk_actor
+from .front_desk_recall_support import (
+    CheckedInEntryPayload,
+    DayBoardPayload,
+    book_and_check_in,
+    day_params,
+    front_desk_actor,
+)
 from .operational_support import PgConnection
 from .tenant_sandbox import auth, client_with_actors, seed_tenant_sandbox
 
@@ -56,7 +62,8 @@ async def test_day_board_exposes_multi_queue_ambiguity_created_through_api(
             headers=auth(sandbox, idempotency_key=f"stage-two-{uuid4().hex}"),
         )
         assert second.status_code == 201, second.text
-        assert second.json()["id"] != first_entry["id"]
+        second_entry = cast(CheckedInEntryPayload, second.json())
+        assert second_entry["id"] != first_entry["id"]
 
         board = await client.get(
             "/v1/appointments/day-board",
@@ -64,7 +71,8 @@ async def test_day_board_exposes_multi_queue_ambiguity_created_through_api(
             headers=auth(sandbox),
         )
         assert board.status_code == 200
-        item = board.json()[0]
+        items = cast(list[DayBoardPayload], board.json())
+        item = items[0]
         assert item["reservation_id"] == reservation["id"]
         assert item["active_queue_entry_count"] == 2
         assert item["queue_entry_id"] is None
