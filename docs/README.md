@@ -234,6 +234,19 @@ Canonical testing/governance documents:
 - `testing/current-proof-map.toml`
 - `testing/test-architecture-migration.md`
 
+Engineering-quality and semantic-review governance (operational, **in calibration**):
+
+- `engineering-quality/README.md` — entry point: hybrid quality model, signal semantics, evidence provenance.
+- `engineering-quality/engineering-quality-architecture-constitution.md` — `PROPOSED`; normative only once promoted through an explicit repository-governance decision.
+- `engineering-quality/executable-fitness-function-specification.md` — the executable ARCH-*/FF-* guardrail specification.
+- `engineering-quality/semantic-review-protocol.md` and `engineering-quality/agent-semantic-review-playbook.md` — the reviewer contract for non-blocking `REVIEW_CANDIDATE` evidence.
+- `engineering-quality/local-publish-certification.md` — the managed pre-push publication gate.
+- `engineering-quality/guardrail-decision-record.md` — accepted/retired gate decisions (e.g. the retired QR-MEGA-001 hard cap).
+- `engineering-quality/implementation-roadmap-and-definition-of-done.md` — per-mechanism implementation/calibration status.
+- `engineering-quality/calibration/README.md` — human/model calibration protocol and data.
+
+Status: the CI gates and signals of this package are live and blocking where stated, while the constitution itself remains `PROPOSED`; index it as current operational material, not as ratified baseline doctrine, until that promotion decision is recorded.
+
 A green general CI run is not, by itself, proof that a feature Definition of Done is complete. Exact-head merge readiness must include feature-specific evidence required by the current guarantee inventory and owning contract.
 
 For F6, closure evidence must prove that external callers can use supported public lookup/read and guarded mutation tools without direct DB/internal access, that ambiguous authoritative lookup fails closed, and that F6 execution preserves the underlying owner capability/concurrency/idempotency/authority gates.
