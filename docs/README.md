@@ -369,3 +369,7 @@ The domain/transaction contracts have precedence over implementation convenience
 2. `handoff/01-product-roadmap-state.md` — what the product is, what is shipped, the reordered round-3 roadmap, and what does not exist yet (pre-first-deployment).
 
 Further numbered handoff documents (`handoff/02`–`handoff/07`) cover the remaining roadmap slices and follow the same evidence rules.
+
+## 17. API design standards
+
+1. `15-api-design-and-usability-standards.md` — API design/usability standards for current product surfaces, compiled from Zalando/Azure/Google AIP/Stripe/OWASP guidance and audited against the current surface (includes the ranked drift backlog). Subordinate to `v3/11-product-api-contract.md`, `v3/06-capability-registry.md`, `v3/08-error-recovery-contract.md`, `v3/07-optimistic-concurrency.md` and `13-connection-surfaces.md`, which remain the normative owners of their rules.
