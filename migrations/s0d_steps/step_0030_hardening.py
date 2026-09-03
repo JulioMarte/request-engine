@@ -324,6 +324,14 @@ REVOKE ALL ON FUNCTION request_engine.bind_consumed_identity_candidate_v1(uuid,u
     FROM PUBLIC, request_engine_worker;
 REVOKE ALL ON FUNCTION request_engine.identity_exchange_existing_party_v1(uuid,uuid)
     FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.identity_exchange_country_code_v1(text)
+    FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.identity_exchange_subject_kind_v1(text)
+    FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.identity_exchange_identifier_valid_v1(text, text)
+    FROM PUBLIC, request_engine_worker;
+REVOKE ALL ON FUNCTION request_engine.guard_party_kind_immutable()
+    FROM PUBLIC, request_engine_app, request_engine_worker;
 GRANT EXECUTE ON FUNCTION request_engine.publish_portable_party_v1(uuid,text,text,text,text[],uuid)
     TO request_engine_app;
 GRANT EXECUTE ON FUNCTION request_engine.create_identity_exchange_candidate_v1(text,text,text,uuid)
