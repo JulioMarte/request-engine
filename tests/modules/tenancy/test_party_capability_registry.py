@@ -13,11 +13,13 @@ from request_engine.platform.security.capability_types import (
 
 BOT_CAPABILITY_SUBSET = ("parties.register", "parties.add_contact_point", "parties.lookup")
 OPERATOR_CORRECTIONS = (
+    "parties.add_administrative_identifier",
     "parties.rename",
     "parties.add_document",
     "parties.deactivate_contact_point",
     "parties.deactivate",
 )
+OPERATOR_QUERIES = ("parties.lookup_administrative_identifier", "parties.read_revisions")
 
 
 @pytest.mark.parametrize(
@@ -38,16 +40,9 @@ def test_party_commands_are_public_idempotent_commands_without_revision(key: str
     assert definition.revision is RevisionPolicy.NONE
 
 
-def test_party_lookup_is_a_public_query() -> None:
-    definition = capability_definition("parties.lookup")
-    assert definition is not None
-    assert definition.kind is CapabilityKind.QUERY
-    assert definition.exposure is CapabilityExposure.PUBLIC
-    assert definition.idempotency is IdempotencyPolicy.NONE
-
-
-def test_read_revisions_is_a_public_query() -> None:
-    definition = capability_definition("parties.read_revisions")
+@pytest.mark.parametrize("key", ("parties.lookup", *OPERATOR_QUERIES))
+def test_party_queries_are_public_and_non_idempotent(key: str) -> None:
+    definition = capability_definition(key)
     assert definition is not None
     assert definition.kind is CapabilityKind.QUERY
     assert definition.exposure is CapabilityExposure.PUBLIC
@@ -62,18 +57,19 @@ def test_rollback_identity_is_a_public_idempotent_command() -> None:
     assert definition.idempotency is IdempotencyPolicy.REQUIRED
 
 
-def test_bot_grant_subset_does_not_satisfy_operator_only_commands() -> None:
-    """Confirm, corrections and history/rollback are grant-based: creation/lookup
-    grants never satisfy them."""
+def test_bot_grant_subset_does_not_satisfy_operator_only_capabilities() -> None:
+    """Creation/lookup grants never satisfy operator-only mutation or read grants."""
 
     for granted in BOT_CAPABILITY_SUBSET:
         assert not grant_satisfies(granted, "parties.confirm_contact_point")
         for correction in OPERATOR_CORRECTIONS:
             assert not grant_satisfies(granted, correction)
-        assert not grant_satisfies(granted, "parties.read_revisions")
+        for query in OPERATOR_QUERIES:
+            assert not grant_satisfies(granted, query)
         assert not grant_satisfies(granted, "parties.rollback_identity")
     assert grant_satisfies("parties.confirm_contact_point", "parties.confirm_contact_point")
     for correction in OPERATOR_CORRECTIONS:
         assert grant_satisfies(correction, correction)
-    assert grant_satisfies("parties.read_revisions", "parties.read_revisions")
+    for query in OPERATOR_QUERIES:
+        assert grant_satisfies(query, query)
     assert grant_satisfies("parties.rollback_identity", "parties.rollback_identity")
