@@ -18,6 +18,9 @@ from request_engine.modules.queue.adapters.db.service_queue_catalog_reader impor
 from request_engine.modules.queue.adapters.db.service_queue_commands import (
     PostgresServiceQueueCommands,
 )
+from request_engine.modules.queue.adapters.db.service_queue_creation_commands import (
+    PostgresServiceQueueCreationCommands,
+)
 from request_engine.modules.queue.adapters.db.service_queue_reader import (
     PostgresServiceQueueReader,
 )
@@ -29,6 +32,9 @@ from request_engine.modules.queue.api.errors import queue_error_handler
 from request_engine.modules.queue.api.intake_errors import queue_intake_stopped_handler
 from request_engine.modules.queue.api.live_router import create_live_router
 from request_engine.modules.queue.api.router import create_router
+from request_engine.modules.queue.api.service_queue_bootstrap_router import (
+    create_service_queue_bootstrap_router,
+)
 from request_engine.modules.queue.api.triage_router import create_triage_router
 from request_engine.modules.queue.application.errors import QueueError
 from request_engine.modules.queue.application.slot_offer_notifications import (
@@ -69,6 +75,12 @@ def install_http(
     )
     app.add_exception_handler(QueueError, queue_error_handler)
     app.add_exception_handler(QueueIntakeStopped, queue_intake_stopped_handler)
+    app.include_router(
+        create_service_queue_bootstrap_router(
+            handler=PostgresServiceQueueCreationCommands(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
     app.include_router(
         create_router(
             join_executor=commands,
