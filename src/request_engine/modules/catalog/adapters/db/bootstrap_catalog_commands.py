@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.catalog.application.commands.bootstrap_catalog import (
     CreateOfferingCommand,
@@ -213,9 +214,7 @@ class PostgresCatalogBootstrapCommands:
                         )
                     ).scalar_one(),
                 )
-                requirement_ids = await _insert_requirements(
-                    session, command, version_id
-                )
+                requirement_ids = await _insert_requirements(session, command, version_id)
                 state = OfferingBootstrapState(
                     offering_id=offering_id,
                     offering_version_id=version_id,
@@ -254,11 +253,13 @@ class PostgresCatalogBootstrapCommands:
             raise
 
 
-async def _validate_capabilities(session: object, command: CreateOfferingCommand) -> None:
+async def _validate_capabilities(
+    session: AsyncSession, command: CreateOfferingCommand
+) -> None:
     capability_ids = [item.capability_id for item in command.requirements]
     if not capability_ids:
         return
-    result = await session.execute(  # type: ignore[attr-defined]
+    result = await session.execute(
         text(
             """
             SELECT count(*)
@@ -279,7 +280,7 @@ async def _validate_capabilities(session: object, command: CreateOfferingCommand
 
 
 async def _insert_requirements(
-    session: object,
+    session: AsyncSession,
     command: CreateOfferingCommand,
     version_id: UUID,
 ) -> tuple[UUID, ...]:
@@ -288,7 +289,7 @@ async def _insert_requirements(
         requirement_id = cast(
             UUID,
             (
-                await session.execute(  # type: ignore[attr-defined]
+                await session.execute(
                     text(
                         """
                         INSERT INTO request_engine.offering_resource_requirements (
