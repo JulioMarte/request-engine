@@ -75,6 +75,42 @@ class PostgresQueueProjectionSource:
                 )
             ).scalars()
             completed = frozenset(cast(UUID, value) for value in completed_rows)
+        has_active_recall_hold = await session.scalar(
+            text(
+                """
+                    SELECT EXISTS (
+                        SELECT 1
+                          FROM request_engine.queue_entry_recall_holds h
+                          JOIN request_engine.queue_entries e
+                            ON e.organization_id = h.organization_id
+                           AND e.id = h.queue_entry_id
+                         WHERE h.organization_id = :organization_id
+                           AND e.service_queue_id = :queue_id
+                           AND e.status = 'waiting'
+                           AND h.released_at IS NULL
+                    )
+                    """
+            ),
+            {"organization_id": organization_id, "queue_id": queue_id},
+        )
+        has_active_skip = await session.scalar(
+            text(
+                """
+                    SELECT EXISTS (
+                        SELECT 1
+                          FROM request_engine.queue_entry_skips s
+                          JOIN request_engine.queue_entries e
+                            ON e.organization_id = s.organization_id
+                           AND e.id = s.queue_entry_id
+                         WHERE s.organization_id = :organization_id
+                           AND e.service_queue_id = :queue_id
+                           AND e.status = 'waiting'
+                           AND s.consumed_at IS NULL
+                    )
+                    """
+            ),
+            {"organization_id": organization_id, "queue_id": queue_id},
+        )
         return QueueProjectionSnapshot(
             queue_id=queue_id,
             observed_at=observed_at,
@@ -94,6 +130,8 @@ class PostgresQueueProjectionSource:
                 for row in rows
             ),
             completed_reservation_ids=completed,
+            has_active_recall_hold=bool(has_active_recall_hold),
+            has_active_skip=bool(has_active_skip),
         )
 
     async def read_customer_projection_target(

@@ -7,7 +7,7 @@ from .triage_scenario import PgConnection
 
 
 async def _wait_for_queue_waiters(conn: PgConnection, minimum: int) -> None:
-    for _ in range(200):
+    for _ in range(1000):
         row = conn.execute(
             """
             SELECT count(*)

@@ -27,7 +27,12 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
-    if name in {"queue.operator_select", "queue.recall_hold", "queue.skip"}:
+    if name in {
+        "queue.operator_select",
+        "queue.recall_hold",
+        "queue.skip",
+        "queue.release_recall_hold",
+    }:
         return _s5_request(operation, actor, foreign, objects)
     if name == "queue.list":
         return "/v1/queues", {}, None, 200

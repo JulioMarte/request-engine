@@ -29,6 +29,8 @@ def project_live_capacity(
     scheduled_work_items: tuple[ProjectionWorkItem, ...] = (),
     has_open_interruption: bool = False,
     has_open_resource_activity: bool = False,
+    has_active_recall_hold: bool = False,
+    has_active_skip: bool = False,
 ) -> LiveCapacityProjection:
     usable = usable_intervals(observed_at, intervals)
     operational_seconds = sum(
@@ -42,11 +44,16 @@ def project_live_capacity(
         blockers.append(ProjectionReason.OPEN_INTERRUPTION)
     if has_open_resource_activity:
         blockers.append(ProjectionReason.OPEN_RESOURCE_ACTIVITY)
+    triage_reasons: list[ProjectionReason] = []
+    if has_active_recall_hold:
+        triage_reasons.append(ProjectionReason.ACTIVE_RECALL_HOLD)
+    if has_active_skip:
+        triage_reasons.append(ProjectionReason.ACTIVE_SKIP)
     if blockers:
         return LiveCapacityProjection(
             observed_at=observed_at,
             state=ProjectionState.INDETERMINATE,
-            reasons=tuple(blockers),
+            reasons=tuple([*blockers, *triage_reasons]),
             remaining_operational_seconds=operational_seconds,
             projected_remaining_workload_seconds=None,
             projected_end_at=None,
@@ -80,9 +87,22 @@ def project_live_capacity(
         reasons.append(ProjectionReason.UNKNOWN_WORKLOAD_DURATION)
     if not usable:
         reasons.append(ProjectionReason.NO_REMAINING_AVAILABILITY)
+    reasons.extend(triage_reasons)
     state = ProjectionState.PARTIAL if unknown else ProjectionState.KNOWN
+    triage_blocked = bool(triage_reasons)
+    if triage_blocked:
+        # An operator-suspended entry must never own a projected timeline slot.
+        # Keep workload totals and durations; refuse the schedule and the intake
+        # headroom instead of guessing (36 §7, 43 §8).
+        projected = [
+            ProjectedWorkItem(item.key, None, None, item.remaining_seconds, item.source)
+            for item in projected
+        ]
+        state = ProjectionState.PARTIAL
     known_total = None if unknown else total
-    end_at = projected[-1].estimated_end if projected and not unknown else None
+    end_at = (
+        projected[-1].estimated_end if projected and not unknown and not triage_blocked else None
+    )
     live_headroom = None if known_total is None else operational_seconds - known_total
     delta = (
         None
@@ -100,6 +120,6 @@ def project_live_capacity(
         items=tuple(projected),
         scheduled_committed_workload_seconds=scheduled_committed,
         scheduled_headroom_seconds=scheduled_headroom,
-        live_intake_headroom_seconds=live_headroom,
+        live_intake_headroom_seconds=None if triage_blocked else live_headroom,
         live_vs_scheduled_headroom_delta_seconds=delta,
     )

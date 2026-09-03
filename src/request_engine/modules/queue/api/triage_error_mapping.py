@@ -7,6 +7,8 @@ from request_engine.modules.queue.application.triage_errors import (
     QueueEntryAlreadySkipped,
     QueueEntryNotCurrentHead,
     QueueEntryNotWaiting,
+    QueueHoldNotActive,
+    RecallHoldConflict,
     TriageQueueEntryNotFound,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
@@ -44,6 +46,20 @@ def triage_error(exc: QueueError) -> tuple[int, ErrorBody] | None:
     if isinstance(exc, QueueEntryAlreadySkipped):
         return status.HTTP_409_CONFLICT, ErrorBody(
             code="queue_entry_already_skipped",
+            message=str(exc),
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={"queue_entry_id": str(exc.entry_id)},
+        )
+    if isinstance(exc, QueueHoldNotActive):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="queue_hold_not_active",
+            message=str(exc),
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={"queue_entry_id": str(exc.entry_id)},
+        )
+    if isinstance(exc, RecallHoldConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="recall_hold_conflict",
             message=str(exc),
             resolution=ErrorResolution.REFRESH_AND_RETRY,
             details={"queue_entry_id": str(exc.entry_id)},
