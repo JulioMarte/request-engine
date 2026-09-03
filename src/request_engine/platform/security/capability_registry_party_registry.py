@@ -9,7 +9,10 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
         "organization.bootstrap",
         CapabilityExposure.OPERATOR,
-        "Establish the initial principal's delegated operational authority over the tenant business Party.",
+        (
+            "Establish the initial principal's delegated operational authority "
+            "over the tenant business Party."
+        ),
     ),
     command_capability(
         "parties.register",
