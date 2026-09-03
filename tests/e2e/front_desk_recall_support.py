@@ -37,6 +37,20 @@ class TriageResultPayload(TypedDict):
     hold: RecallHoldPayload | None
 
 
+class StaffRecallPayload(TypedDict):
+    recall_eligible: bool
+    recall_hold_id: str | None
+
+
+class DayBoardPayload(TypedDict):
+    reservation_id: str
+    active_queue_entry_count: int
+    queue_entry_id: str | None
+    queue_entry_status: str | None
+    recall_eligible: bool | None
+    recall_hold_id: str | None
+
+
 def front_desk_actor(sandbox: TenantSandbox) -> ActorContext:
     return ActorContext(
         sandbox.organization_id,
