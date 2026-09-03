@@ -1,12 +1,18 @@
 from datetime import UTC, datetime
-from typing import cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
 from request_engine.modules.booking.adapters.db.day_board_reader import (
     PostgresReservationDayBoardReader,
 )
+from request_engine.modules.booking.adapters.db.reservation_commands import (
+    PostgresReservationCommands,
+)
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentCommand,
+)
+from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.queue.adapters.db.triage_commands import PostgresQueueTriageCommands
 from request_engine.modules.queue.application.commands.triage import RecallHoldCommand
 from request_engine.modules.queue.contracts.triage import RecallHoldKind
@@ -24,26 +30,24 @@ async def test_day_board_projects_active_queue_recall_gate(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_booking_boundary_fixture(admin_conn)
-    reservation_row = admin_conn.execute(
-        """
-        INSERT INTO request_engine.reservations (
-            organization_id, offering_version_id, subject_party_id,
-            location_id, during, booking_policy_snapshot
-        ) VALUES (
-            %s, %s, %s, %s,
-            tstzrange('2026-09-03 14:00:00+00', '2026-09-03 14:30:00+00', '[)'),
-            '{}'::jsonb
-        ) RETURNING id
-        """,
-        (
-            fixture.organization_id,
-            fixture.offering_version_id,
-            fixture.subject_party_id,
-            fixture.location_id,
-        ),
-    ).fetchone()
-    assert reservation_row is not None
-    reservation_id = cast(UUID, reservation_row[0])
+    reservation = await PostgresReservationCommands(app_session_factory).book_appointment(
+        BookAppointmentCommand(
+            organization_id=fixture.organization_id,
+            principal_id=fixture.principal_id,
+            offering_version_id=fixture.offering_version_id,
+            subject_party_id=fixture.subject_party_id,
+            start_at=datetime(2026, 9, 7, 14, 0, tzinfo=UTC),
+            location_id=fixture.location_id,
+            resources=(
+                ResourceChoice(
+                    requirement_id=fixture.requirement_id,
+                    resource_id=fixture.resource_id,
+                ),
+            ),
+            idempotency_key=f"day-board-book-{uuid4().hex}",
+            allow_subject_override=True,
+        )
+    )
 
     queue_id = create_queue(admin_conn, fixture.organization_id)
     entry_row = admin_conn.execute(
@@ -53,18 +57,18 @@ async def test_day_board_projects_active_queue_recall_gate(
             reservation_id, arrived_at, admitted_at
         ) VALUES (
             %s, %s, %s, %s,
-            '2026-09-03 13:55:00+00', '2026-09-03 13:55:00+00'
+            '2026-09-07 13:55:00+00', '2026-09-07 13:55:00+00'
         ) RETURNING id
         """,
         (
             fixture.organization_id,
             queue_id,
             fixture.subject_party_id,
-            reservation_id,
+            reservation.id,
         ),
     ).fetchone()
     assert entry_row is not None
-    queue_entry_id = cast(UUID, entry_row[0])
+    queue_entry_id = entry_row[0]
 
     held = await PostgresQueueTriageCommands(app_session_factory).recall_hold(
         RecallHoldCommand(
@@ -82,14 +86,14 @@ async def test_day_board_projects_active_queue_recall_gate(
 
     rows = await PostgresReservationDayBoardReader(app_session_factory).read_window(
         fixture.organization_id,
-        window_start=datetime(2026, 9, 3, 0, 0, tzinfo=UTC),
-        window_end=datetime(2026, 9, 4, 0, 0, tzinfo=UTC),
+        window_start=datetime(2026, 9, 7, 0, 0, tzinfo=UTC),
+        window_end=datetime(2026, 9, 8, 0, 0, tzinfo=UTC),
         location_id=fixture.location_id,
     )
 
     assert len(rows) == 1
     item = rows[0]
-    assert item.reservation_id == reservation_id
+    assert item.reservation_id == reservation.id
     assert item.active_queue_entry_count == 1
     assert item.queue_entry_id == queue_entry_id
     assert item.queue_entry_status == "waiting"
