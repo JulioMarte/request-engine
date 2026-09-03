@@ -37,7 +37,11 @@ class PostgresReservationDayBoardReader:
                                attendance_responded_at, attendance_outcome,
                                attendance_outcome_at, checked_in_at, no_show_at,
                                reported_arrival_estimate_at, effective_arrival_estimate_at,
-                               estimated_arrival_at, arrival_estimate_source_kind
+                               estimated_arrival_at, arrival_estimate_source_kind,
+                               active_queue_entry_count, queue_entry_id,
+                               queue_entry_status, recall_eligible,
+                               recall_hold_id, recall_hold_kind, recall_hold_until_at,
+                               recall_hold_event_key, recall_hold_reason, active_skip_reason
                           FROM request_read.reservation_day_v1
                          WHERE organization_id = :organization_id
                            AND during && tstzrange(:window_start, :window_end, '[)')
@@ -83,4 +87,14 @@ def _entry_from_row(row: RowMapping) -> ReservationDayBoardEntry:
         effective_arrival_estimate_at=cast(datetime | None, row["effective_arrival_estimate_at"]),
         estimated_arrival_at=cast(datetime | None, row["estimated_arrival_at"]),
         arrival_estimate_source_kind=cast(str | None, row["arrival_estimate_source_kind"]),
+        active_queue_entry_count=cast(int, row["active_queue_entry_count"]),
+        queue_entry_id=cast(UUID | None, row["queue_entry_id"]),
+        queue_entry_status=cast(str | None, row["queue_entry_status"]),
+        recall_eligible=cast(bool | None, row["recall_eligible"]),
+        recall_hold_id=cast(UUID | None, row["recall_hold_id"]),
+        recall_hold_kind=cast(str | None, row["recall_hold_kind"]),
+        recall_hold_until_at=cast(datetime | None, row["recall_hold_until_at"]),
+        recall_hold_event_key=cast(str | None, row["recall_hold_event_key"]),
+        recall_hold_reason=cast(str | None, row["recall_hold_reason"]),
+        active_skip_reason=cast(str | None, row["active_skip_reason"]),
     )

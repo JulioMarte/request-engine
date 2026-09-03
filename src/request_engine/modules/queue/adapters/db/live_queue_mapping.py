@@ -27,6 +27,13 @@ def staff_entry_from_row(item: RowMapping) -> StaffQueueEntry:
         actual_workload_key=cast(str | None, item["actual_workload_key"]),
         service_started_at=cast(datetime | None, item["service_started_at"]),
         service_completed_at=cast(datetime | None, item["service_completed_at"]),
+        recall_eligible=cast(bool, item["recall_eligible"]),
+        recall_hold_id=cast(UUID | None, item["recall_hold_id"]),
+        recall_hold_kind=cast(str | None, item["recall_hold_kind"]),
+        recall_hold_until_at=cast(datetime | None, item["recall_hold_until_at"]),
+        recall_hold_event_key=cast(str | None, item["recall_hold_event_key"]),
+        recall_hold_reason=cast(str | None, item["recall_hold_reason"]),
+        active_skip_reason=cast(str | None, item["active_skip_reason"]),
         queue_revision=cast(int, item["queue_revision"]),
         service_revision=cast(int | None, item["service_revision"]),
     )

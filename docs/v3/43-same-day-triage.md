@@ -1,6 +1,6 @@
 # F7e Same-Day Triage — Queue Selection Contract
 
-Status: **S5a selection truth implemented and integrated; `queue.release_recall_hold` implemented; S5 remains incomplete until the remaining S5b read surfaces (staff queue read, Day Board hold visibility) land.**
+Status: **S5 selection truth and S5b recall-state read surfaces implemented; exact-head PostgreSQL acceptance remains the merge gate for this branch.**
 
 This document narrows `docs/v3/36-front-desk-operations-contract.md` §7 and the implementation handoff in `docs/handoff/03-same-day-triage.md` into the executable Queue contract.
 
@@ -70,9 +70,9 @@ This ordering is shared with `queue.call_next`. It is required to avoid double s
 
 All four capabilities are operator exposure and require idempotency plus `expected_revision`. Facts are tenant-scoped, FORCE-RLS protected, and append-preserving at PostgreSQL level.
 
-## 7. Evidence required for S5a
+## 7. Evidence required for S5
 
-S5a is acceptable only when PostgreSQL 18 evidence proves:
+S5 is acceptable only when PostgreSQL 18 evidence proves:
 
 - no-fact selection preserves FIFO;
 - skip defers exactly one automatic selection without changing `admitted_at`;
@@ -82,8 +82,31 @@ S5a is acceptable only when PostgreSQL 18 evidence proves:
 - concurrent `call_next` versus hold, skip, and operator-select produces only valid serializable outcomes on the real ServiceQueue lock path;
 - concurrent release versus release, release versus `call_next`, and release versus operator-select produce only valid serializable outcomes; releasing an entry that left `waiting` fails closed;
 - released entries rejoin automatic selection at their original `(admitted_at, id)` position without emitting a call event;
+- staff live Queue reads expose whether a waiting entry is currently recall-eligible and the active hold/skip fact that prevents normal recall;
+- Booking Day Board projects a unique active Queue recall gate without acquiring Queue mutation authority, and exposes cardinality instead of arbitrarily choosing when multiple active QueueEntries correlate to one Reservation;
+- customer `entries_ahead` counts only waiting entries that are eligible for the next normal recall snapshot;
 - public HTTP metadata and tenant-isolation classification cover every new route.
 
-## 8. What S5a does not complete
+## 8. Read-surface semantics
 
-S5a establishes selection truth; the F4/live-capacity projection now degrades honestly (`PARTIAL` with an `active_recall_hold`/`active_skip` reason, no fabricated timeline or intake headroom) while triage gates are active, and `queue.release_recall_hold` closes the operator release path. S5 is not complete until the remaining S5b read surfaces land: the staff queue read and Day Board must surface hold/skip state, and the customer-facing `entries_ahead` count must stop counting held/skipped entries as imminent.
+S5b does not create a second mutable readiness model. The authoritative mutation facts remain Queue recall holds and skips.
+
+`queue.staff_read` projects those facts as:
+
+```text
+recall_eligible
+recall_hold_id?
+recall_hold_kind?
+recall_hold_until_at?
+recall_hold_event_key?
+recall_hold_reason?
+active_skip_reason?
+```
+
+`recall_eligible=true` means exactly that the QueueEntry is `waiting` and has no effective active recall hold or unconsumed skip at the read snapshot. `called`, `serving`, and terminal entries are not recall-eligible even when no gate exists.
+
+The Booking-owned Day Board remains a read-only composition. It projects Queue correlation and recall-gate facts through `request_read.reservation_day_v1`; Booking does not write, release, or reinterpret Queue facts. `active_queue_entry_count=0` means no active QueueEntry is correlated. With exactly one active QueueEntry, the Day Board may expose its identity, status and recall gate. With more than one active QueueEntry, the count remains visible but `queue_entry_id`, `queue_entry_status`, `recall_eligible` and gate details are null: the read surface must not silently choose a "latest" QueueEntry and fabricate a single-stage truth. Multiple active QueueEntries are therefore explicit evidence requiring a future lineage/handoff contract, not an implicit workflow interpretation.
+
+Customer `entries_ahead` is likewise a snapshot of immediate normal recall order. Held or skipped waiting entries are not counted as imminent while their gate is effective. This does not promise a stable future position: a one-shot skip may be consumed and a hold may be released after the read.
+
+These fields must not be reinterpreted as clinical triage severity, insurance authorization, a generic workflow stage, or an external authority's decision. External prerequisites may cause Queue to be held, but their domain truth remains outside Queue.
