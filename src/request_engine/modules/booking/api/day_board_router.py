@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from request_engine.modules.booking.application.queries.get_day_board import (
     ReservationDayBoardReader,
+    validate_day_board_limit,
     validate_day_board_window,
 )
 from request_engine.modules.booking.contracts.day_board import ReservationDayBoardEntry
@@ -29,6 +30,10 @@ class ReservationDayBoardEntryView(BaseModel):
     attendance_responded_at: datetime | None
     attendance_outcome: str
     attendance_outcome_at: datetime | None
+    checked_in_at: datetime | None
+    no_show_at: datetime | None
+    reported_arrival_estimate_at: datetime | None
+    effective_arrival_estimate_at: datetime | None
     estimated_arrival_at: datetime | None
     arrival_estimate_source_kind: str | None
 
@@ -50,10 +55,13 @@ def create_day_board_router(
         window_start: Annotated[datetime, Query()],
         window_end: Annotated[datetime, Query()],
         current: Annotated[ActorContext, Depends(actor)],
+        location_id: Annotated[UUID | None, Query()] = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 500,
     ) -> tuple[ReservationDayBoardEntryView, ...]:
         require_capability(current, "appointments.day_board")
         try:
             validate_day_board_window(window_start, window_end)
+            validate_day_board_limit(limit)
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -63,6 +71,8 @@ def create_day_board_router(
             current.organization_id,
             window_start=window_start,
             window_end=window_end,
+            location_id=location_id,
+            limit=limit,
         )
         return tuple(ReservationDayBoardEntryView.from_contract(item) for item in rows)
 

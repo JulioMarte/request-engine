@@ -13,16 +13,20 @@ source of truth.
 
 ## Public surface
 
-`GET /v1/appointments/day-board?window_start=<offset timestamp>&window_end=<offset timestamp>`
+`GET /v1/appointments/day-board?window_start=<offset timestamp>&window_end=<offset timestamp>&location_id=<uuid>&limit=<1..500>`
 uses capability `appointments.day_board` with operator exposure. Both timestamps MUST carry
 a timezone offset, the interval is half-open, and the requested window MUST be positive and
-no longer than 36 hours. A caller wanting a Dominican clinic day sends the local
+no longer than 36 hours. `location_id` is an optional exact-match filter and `limit` bounds
+the row count (server default 500). A caller wanting a Dominican clinic day sends the local
 `America/Santo_Domingo` day boundaries; Request Engine does not guess a clinic timezone.
 
 Rows are ordered by reservation start then reservation UUID and include: reservation and
 subject identifiers, subject display name, offering-version and location references,
 reservation interval/status/revision, latest attendance response, authoritative attendance
-outcome, and the active arrival estimate with its server-derived source kind.
+outcome, the raw attendance timestamps (`checked_in_at`, `no_show_at`), the reported arrival
+estimate, and the `effective_arrival_estimate_at` composition (the reported ETA shown only
+while the reservation is `confirmed` and attendance is still `pending`), plus the
+server-derived source kind.
 
 Cancelled reservations remain visible with `status=cancelled`. Hiding them would erase
 operational history from the board. Missing attendance or ETA facts remain `pending`/null;

@@ -18,5 +18,9 @@ class ReservationDayBoardEntry:
     attendance_responded_at: datetime | None
     attendance_outcome: str
     attendance_outcome_at: datetime | None
+    checked_in_at: datetime | None
+    no_show_at: datetime | None
+    reported_arrival_estimate_at: datetime | None
+    effective_arrival_estimate_at: datetime | None
     estimated_arrival_at: datetime | None
     arrival_estimate_source_kind: str | None

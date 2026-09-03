@@ -38,6 +38,15 @@ SELECT
         WHEN ra.status = 'no_show' THEN ra.no_show_at
         ELSE NULL
     END AS attendance_outcome_at,
+    ra.checked_in_at,
+    ra.no_show_at,
+    ae.estimated_arrival_at AS reported_arrival_estimate_at,
+    CASE
+        WHEN r.status = 'confirmed'
+         AND COALESCE(ra.status, 'pending') = 'pending'
+        THEN ae.estimated_arrival_at
+        ELSE NULL
+    END AS effective_arrival_estimate_at,
     ae.estimated_arrival_at,
     ae.source_kind AS arrival_estimate_source_kind
 FROM request_engine.reservations r
