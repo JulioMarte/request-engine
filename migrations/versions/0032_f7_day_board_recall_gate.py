@@ -39,9 +39,11 @@ SELECT
         THEN ae.estimated_arrival_at ELSE NULL
     END AS effective_arrival_estimate_at,
     ae.estimated_arrival_at, ae.source_kind AS arrival_estimate_source_kind,
-    qe.id AS queue_entry_id, qe.status AS queue_entry_status,
+    COALESCE(qe.active_queue_entry_count, 0) AS active_queue_entry_count,
+    CASE WHEN qe.active_queue_entry_count = 1 THEN qe.id ELSE NULL END AS queue_entry_id,
+    CASE WHEN qe.active_queue_entry_count = 1 THEN qe.status ELSE NULL END AS queue_entry_status,
     CASE
-        WHEN qe.id IS NULL THEN NULL
+        WHEN COALESCE(qe.active_queue_entry_count, 0) <> 1 THEN NULL
         ELSE qe.status = 'waiting' AND h.id IS NULL AND s.id IS NULL
     END AS recall_eligible,
     h.id AS recall_hold_id, h.condition_kind AS recall_hold_kind,
@@ -67,17 +69,22 @@ LEFT JOIN LATERAL (
      LIMIT 1
 ) ae ON true
 LEFT JOIN LATERAL (
-    SELECT q.id, q.status
-      FROM request_engine.queue_entries q
-     WHERE q.organization_id = r.organization_id AND q.reservation_id = r.id
-       AND q.status IN ('waiting','called','serving')
-     ORDER BY q.admitted_at DESC, q.id DESC
+    SELECT active.id, active.status, active.active_queue_entry_count
+      FROM (
+        SELECT q.id, q.status, q.admitted_at,
+               count(*) OVER ()::integer AS active_queue_entry_count
+          FROM request_engine.queue_entries q
+         WHERE q.organization_id = r.organization_id AND q.reservation_id = r.id
+           AND q.status IN ('waiting','called','serving')
+      ) active
+     ORDER BY active.admitted_at DESC, active.id DESC
      LIMIT 1
 ) qe ON true
 LEFT JOIN LATERAL (
     SELECT hold.id, hold.condition_kind, hold.until_at, hold.event_key, hold.reason
       FROM request_engine.queue_entry_recall_holds hold
-     WHERE hold.organization_id = r.organization_id AND hold.queue_entry_id = qe.id
+     WHERE qe.active_queue_entry_count = 1
+       AND hold.organization_id = r.organization_id AND hold.queue_entry_id = qe.id
        AND hold.released_at IS NULL
        AND (hold.condition_kind <> 'until_time' OR hold.until_at > clock_timestamp())
      ORDER BY hold.created_at DESC, hold.id DESC
@@ -86,7 +93,8 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT skip.id, skip.reason
       FROM request_engine.queue_entry_skips skip
-     WHERE skip.organization_id = r.organization_id AND skip.queue_entry_id = qe.id
+     WHERE qe.active_queue_entry_count = 1
+       AND skip.organization_id = r.organization_id AND skip.queue_entry_id = qe.id
        AND skip.consumed_at IS NULL
      ORDER BY skip.created_at DESC, skip.id DESC
      LIMIT 1
