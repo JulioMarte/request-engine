@@ -12,11 +12,6 @@ from request_engine.modules.queue.adapters.db.triage_entry import (
 from request_engine.modules.queue.adapters.db.triage_gate import active_gate
 from request_engine.modules.queue.adapters.db.triage_hold_store import insert_recall_hold
 from request_engine.modules.queue.adapters.db.triage_hold_validation import validate_recall_hold
-from request_engine.modules.queue.adapters.db.triage_idempotency import (
-    acquire,
-    complete,
-    fingerprint,
-)
 from request_engine.modules.queue.application.commands.triage import RecallHoldCommand
 from request_engine.modules.queue.application.triage_errors import (
     QueueEntryAlreadyHeld,
@@ -24,6 +19,11 @@ from request_engine.modules.queue.application.triage_errors import (
 )
 from request_engine.modules.queue.contracts.triage import QueueTriageResult
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    command_fingerprint,
+    complete_idempotency,
+)
 
 
 async def recall_hold(
@@ -31,7 +31,7 @@ async def recall_hold(
     command: RecallHoldCommand,
 ) -> QueueTriageResult:
     validate_recall_hold(command)
-    command_fingerprint = fingerprint(
+    fingerprint = command_fingerprint(
         "queue.recall_hold",
         {
             "queue_entry_id": command.queue_entry_id,
@@ -43,13 +43,13 @@ async def recall_hold(
         },
     )
     async with tenant_transaction(session_factory, command.organization_id) as session:
-        idem_id, replay = await acquire(
+        idem_id, replay = await acquire_idempotency(
             session,
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             capability="queue.recall_hold",
             idempotency_key=command.idempotency_key,
-            command_fingerprint=command_fingerprint,
+            fingerprint=fingerprint,
         )
         if replay is not None:
             return result_from_json(cast(dict[str, object], replay["result"]))
@@ -95,5 +95,5 @@ async def recall_hold(
             },
             idempotency_id=idem_id,
         )
-        await complete(session, idem_id, {"result": result_to_json(result)})
+        await complete_idempotency(session, idem_id, {"result": result_to_json(result)})
         return result
