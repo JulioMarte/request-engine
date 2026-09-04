@@ -264,3 +264,22 @@ Release/concurrency fixtures that exercise these temporal paths must use determi
 This capability is acceptable for integration when the exact pull-request head passes the repository's required quality/architecture, PostgreSQL 18 V2 history, V3 repeated bootstrap, V3 candidate/vertical, concurrency, mutation, order-independence and evidence checks and the PR remains up to date/mergeable with `development`.
 
 That integration decision is narrower than the global V3 freeze/release decision. Any unrelated Phase 6 gates that remain incomplete continue to block global V3 release even after this capability is merged.
+
+## Business onboarding integration (post-baseline)
+
+The business onboarding capability (doc 44) integrates with this design without
+changing shared-capacity authority semantics:
+
+- `load_bookable_offering()` (used by the reservation commands) now resolves the
+  effective `booking_policy` through the append-only
+  `request_engine.offering_version_booking_policies` ledger (last revision wins,
+  bootstrap column as the initial value) instead of reading the
+  `offering_versions.booking_policy` column directly. The ledger override
+  changes lifecycle/policy parameters only (attendance, communications,
+  slot recovery, slot grid); it does not touch capacity authority, hold
+  semantics, or the hidden shared-capacity mutex.
+- Booking bootstrap creation routes (`POST /v1/booking/resources` and the
+  catalog onboarding routes) moved from the operations app composition to the
+  public capability-guarded app composition. They are new owner commands with
+  their own registered capabilities; they do not bypass
+  `require_operational_authority` on the persistence commands.
