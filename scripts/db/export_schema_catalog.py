@@ -106,6 +106,22 @@ QUERIES = {
         WHERE n.nspname = ANY(%s) AND c.relkind IN ('r','p','v','m')
         ORDER BY 1,2,3,4,5
     """,
+    "column_grants": """
+        SELECT CASE
+                   WHEN acl.grantee=0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(acl.grantee)
+               END AS grantee,
+               n.nspname AS schema_name, c.relname AS relation_name,
+               a.attname AS column_name, acl.privilege_type, acl.is_grantable,
+               pg_get_userbyid(acl.grantor) AS grantor
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid=a.attrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
+        WHERE n.nspname = ANY(%s) AND c.relkind IN ('r','p','v','m')
+          AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY 1,2,3,4,5,6
+    """,
     "routine_grants": """
         SELECT CASE
                    WHEN acl.grantee=0 THEN 'PUBLIC'
@@ -149,7 +165,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    payload: dict[str, object] = {"schema_version": 3, "schemas": list(SCHEMAS)}
+    payload: dict[str, object] = {"schema_version": 4, "schemas": list(SCHEMAS)}
     with psycopg.connect("", row_factory=dict_row) as conn:
         for name, query in QUERIES.items():
             if name in _SCHEMALESS_QUERIES:
