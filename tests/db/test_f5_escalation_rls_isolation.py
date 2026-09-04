@@ -75,7 +75,7 @@ def test_f5_escalation_facts_are_immutable_and_tenant_isolated(
         _tenant_context(app_conn, first.organization_id)
         _denied(
             app_conn,
-            "23514",
+            "42501",
             f"UPDATE {_ESCALATION_TABLE} SET operator_escalation_required=false WHERE id=%s",
             (escalation,),
         )
@@ -110,11 +110,12 @@ def test_f5_escalation_facts_are_immutable_and_tenant_isolated(
                 (_ESCALATION_TABLE, privilege),
             ).fetchone()
             assert granted is not None and cast(bool, granted[0])
-        revoked = app_conn.execute(
-            "SELECT has_table_privilege('request_engine_app',%s,%s)",
-            (_ESCALATION_TABLE, "DELETE"),
-        ).fetchone()
-        assert revoked is not None and not cast(bool, revoked[0])
+        for privilege in ("UPDATE", "DELETE"):
+            revoked = app_conn.execute(
+                "SELECT has_table_privilege('request_engine_app',%s,%s)",
+                (_ESCALATION_TABLE, privilege),
+            ).fetchone()
+            assert revoked is not None and not cast(bool, revoked[0])
         app_conn.execute("RESET ROLE")
         app_conn.execute("SET ROLE request_engine_worker")
         _denied(app_conn, "42501", f"SELECT id FROM {_ESCALATION_TABLE}")
