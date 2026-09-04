@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from psycopg import Connection
@@ -53,7 +53,10 @@ def test_security_definers_use_closed_trusted_search_paths(
     ).fetchall()
 
     violations: list[str] = []
-    for schema, name, configuration in rows:
+    for schema_value, name_value, configuration_value in rows:
+        schema = str(schema_value)
+        name = str(name_value)
+        configuration = cast(list[str] | None, configuration_value)
         settings = configuration or []
         paths = [item for item in settings if item.startswith("search_path=")]
         if len(paths) != 1:
