@@ -162,3 +162,9 @@ uv run pytest \
   tests/integration/v3_booking_commitments \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/booking-capacity-regression.xml"
+
+# A proof-map entry counts only when its test actually ran in this gate. This
+# prevents dormant legacy files from silently satisfying current guarantees.
+uv run python scripts/ci/validate_current_proof_execution.py \
+  --junit-dir "$ARTIFACT_DIR" \
+  --output "$ARTIFACT_DIR/proof-execution.json"
