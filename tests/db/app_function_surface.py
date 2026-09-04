@@ -1,7 +1,7 @@
-# Frozen reviewed executable surface of the request_engine_app runtime role,
-# in the ``schema.function(identity_arguments)`` form. Every entry is
-# introduced by an accepted, reviewed migration grant; this inventory must
-# change only together with a new reviewed grant and its own evidence.
+# Reviewed executable authority surface of the request_engine_app runtime role,
+# in the ``schema.function(identity_arguments)`` form. Every entry is introduced
+# by an accepted, reviewed migration grant; this inventory changes only together
+# with a reviewed grant and evidence for the authority being added or removed.
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
