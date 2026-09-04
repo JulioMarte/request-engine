@@ -38,6 +38,7 @@ uv run python scripts/db/export_schema_catalog.py \
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
   tests/integration/f1_operational_profile/test_runtime_privileges.py \
+  tests/db/test_runtime_immutable_table_privileges.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/schema.xml"
 
