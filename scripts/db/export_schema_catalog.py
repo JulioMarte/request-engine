@@ -23,7 +23,8 @@ QUERIES = {
     """,
     "columns": """
         SELECT n.nspname AS schema_name, c.relname AS relation_name, a.attnum AS ordinal,
-               a.attname AS column_name, pg_catalog.format_type(a.atttypid,a.atttypmod) AS data_type,
+               a.attname AS column_name,
+               pg_catalog.format_type(a.atttypid,a.atttypmod) AS data_type,
                a.attnotnull AS not_null, pg_get_expr(d.adbin,d.adrelid) AS default_expression,
                a.attidentity::text AS identity_kind, a.attgenerated::text AS generated_kind
         FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
@@ -60,7 +61,9 @@ QUERIES = {
     "triggers": """
         SELECT n.nspname AS schema_name, c.relname AS relation_name, t.tgname AS trigger_name,
                t.tgenabled::text AS enabled, pg_get_triggerdef(t.oid,true) AS definition
-        FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid=t.tgrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname = ANY(%s) AND NOT t.tgisinternal ORDER BY 1,2,3
     """,
     "policies": """
@@ -82,16 +85,22 @@ QUERIES = {
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export the effective Request Engine PostgreSQL catalog")
+    parser = argparse.ArgumentParser(
+        description="Export the effective Request Engine PostgreSQL catalog"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     payload: dict[str, object] = {"schema_version": 1, "schemas": list(SCHEMAS)}
     with psycopg.connect("", row_factory=dict_row) as conn:
         for name, query in QUERIES.items():
             payload[name] = conn.execute(query, (list(SCHEMAS),)).fetchall()
-    payload["counts"] = {name: len(rows) for name, rows in payload.items() if isinstance(rows, list)}
+    payload["counts"] = {
+        name: len(rows) for name, rows in payload.items() if isinstance(rows, list)
+    }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
