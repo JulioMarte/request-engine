@@ -86,7 +86,7 @@ QUERIES = {
         SELECT rolname AS role_name, rolsuper AS superuser, rolinherit AS inherit,
                rolcreaterole AS create_role, rolcreatedb AS create_db, rolcanlogin AS can_login,
                rolbypassrls AS bypass_rls
-        FROM pg_roles WHERE rolname LIKE 'request_engine_%' AND %s IS NOT NULL ORDER BY 1
+        FROM pg_roles WHERE rolname LIKE 'request_engine_%%' AND %s IS NOT NULL ORDER BY 1
     """,
     "role_memberships": """
         SELECT parent.rolname AS parent_role, member.rolname AS member_role
