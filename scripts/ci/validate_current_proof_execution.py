@@ -21,7 +21,8 @@ def _test_path(classname: str) -> str | None:
     parts = classname.split(".")
     for end in range(len(parts), 0, -1):
         candidate = Path(*parts[:end]).with_suffix(".py")
-        if candidate.parts and candidate.parts[0] == "tests" and (ROOT / candidate).is_file():
+        exists = candidate.parts and candidate.parts[0] == "tests" and (ROOT / candidate).is_file()
+        if exists:
             return candidate.as_posix()
     return None
 
@@ -74,11 +75,13 @@ def main() -> None:
         "executed_mapped_proofs": dict(sorted(executed_proofs.items())),
         "gaps": gaps,
     }
-    args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    args.output.write_text(serialized, encoding="utf-8")
     if gaps:
-        details = ", ".join(
+        gap_descriptions = [
             f"{gap['guarantee']}={gap['missing_evidence']}" for gap in gaps
-        )
+        ]
+        details = ", ".join(gap_descriptions)
         raise SystemExit(f"current-product proof execution gaps: {details}")
 
 
