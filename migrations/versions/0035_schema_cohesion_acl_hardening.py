@@ -1,4 +1,4 @@
-"""Tighten runtime ACLs around append-only and immutable facts.
+"""Tighten runtime ACLs and remove an exact duplicate access path.
 
 Revision ID: 0035_schema_cohesion_acl_hardening
 Revises: 0034_org_channel_policies
@@ -37,8 +37,9 @@ def upgrade() -> None:
     for table in _IMMUTABLE_APP_TABLES:
         statement = f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app"
         op.execute(statement)
+    op.execute("DROP INDEX request_engine.service_sessions_queue_idx")
     op.execute("RESET ROLE")
 
 
 def downgrade() -> None:
-    raise RuntimeError("least-privilege schema cohesion hardening is not reversible")
+    raise RuntimeError("schema cohesion hardening is not reversible")
