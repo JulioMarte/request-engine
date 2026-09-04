@@ -62,8 +62,7 @@ def upgrade() -> None:
     for name, arguments in _SECURITY_DEFINERS:
         function_ref = f"{name}({arguments})"
         statement = (
-            f"ALTER FUNCTION {function_ref} SET search_path = "
-            "pg_catalog, request_engine, pg_temp"
+            f"ALTER FUNCTION {function_ref} SET search_path = pg_catalog, request_engine, pg_temp"
         )
         op.execute(statement)
     op.execute("RESET ROLE")
