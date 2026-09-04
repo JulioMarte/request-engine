@@ -89,7 +89,7 @@ def test_worker_has_no_direct_f1_authoritative_relation_privileges(
 
 
 @pytest.mark.postgres
-def test_f1_revisioned_aggregates_do_not_extend_frozen_v3_revision_guard(
+def test_f1_revisioned_aggregates_use_their_contextual_revision_guard(
     admin_conn: PgConnection,
 ) -> None:
     rows = admin_conn.execute(
