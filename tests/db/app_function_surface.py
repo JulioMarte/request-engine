@@ -56,8 +56,5 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_engine.resolve_current_party_authority(p_organization_id uuid, "
         "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
     ),
-    (
-        "request_read.recovery_source_revision(p_organization_id uuid, "
-        "p_service_queue_id uuid)"
-    ),
+    ("request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)"),
 }
