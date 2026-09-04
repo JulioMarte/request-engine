@@ -105,6 +105,15 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f4-live-capacity-db.xml"
 
+# The deterministic F4 workload/deduplication rules are current contracts even
+# though they do not require PostgreSQL themselves. Their JUnit evidence belongs
+# in the same current guarantee packet as the DB-backed F4 proofs.
+uv run pytest \
+  tests/modules/live_capacity/test_planned_duration_fallback.py \
+  tests/modules/live_capacity/test_deduplication.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/live-capacity-contract.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.
@@ -128,6 +137,15 @@ uv run pytest \
   tests/db/test_v3_app_function_privilege_inventory.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
+
+# HTTP idempotency is a current externally-retryable command guarantee. These
+# proofs carry the invariant evidence that the broader E2E idempotency coverage
+# alone does not label explicitly.
+uv run pytest \
+  tests/integration/v3_first_vertical/test_http_idempotency_failure.py \
+  tests/integration/v3_first_vertical/test_http_request_idempotency_failure.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/idempotency.xml"
 
 # Worker crash/retry, lease fencing, notification escalation and provider-outcome
 # interpretation are current product guarantees. Their paths are historical V3
