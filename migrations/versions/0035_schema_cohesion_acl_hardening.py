@@ -92,8 +92,7 @@ def upgrade() -> None:
     for name, arguments in _SECURITY_DEFINERS:
         function_ref = _function_ref(name, arguments)
         op.execute(
-            f"ALTER FUNCTION {function_ref} "
-            "SET search_path = pg_catalog, request_engine, pg_temp"
+            f"ALTER FUNCTION {function_ref} SET search_path = pg_catalog, request_engine, pg_temp"
         )
 
     op.execute(
@@ -102,8 +101,7 @@ def upgrade() -> None:
     )
     op.execute("GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery_definer")
     op.execute(
-        "REVOKE ALL ON ALL TABLES IN SCHEMA request_engine "
-        "FROM request_engine_discovery_definer"
+        "REVOKE ALL ON ALL TABLES IN SCHEMA request_engine FROM request_engine_discovery_definer"
     )
     op.execute(
         "GRANT SELECT ON request_engine.organizations, request_engine.locations, "
