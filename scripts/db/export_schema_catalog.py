@@ -91,7 +91,10 @@ QUERIES = {
         FROM pg_policies WHERE schemaname = ANY(%s) ORDER BY 1,2,3
     """,
     "table_grants": """
-        SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+        SELECT CASE
+                   WHEN acl.grantee=0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(acl.grantee)
+               END AS grantee,
                n.nspname AS schema_name, c.relname AS relation_name,
                acl.privilege_type, acl.is_grantable,
                pg_get_userbyid(acl.grantor) AS grantor
@@ -104,7 +107,10 @@ QUERIES = {
         ORDER BY 1,2,3,4,5
     """,
     "routine_grants": """
-        SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+        SELECT CASE
+                   WHEN acl.grantee=0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(acl.grantee)
+               END AS grantee,
                n.nspname AS schema_name, p.proname AS routine_name,
                pg_get_function_identity_arguments(p.oid) AS identity_arguments,
                acl.privilege_type, acl.is_grantable,
