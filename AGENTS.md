@@ -77,6 +77,7 @@ Before editing, identify the primary owner and read only the canonical material 
 14. `migrations/README.md` — immutable V3 baseline and append-only post-release migration policy when touching schema.
 15. `docs/12-v3-transition-plan.md` and `docs/v3/sql-disposition.md` — historical migration/disposition context when touching transitional V2 concepts.
 16. `docs/adr/README.md` — accepted architectural decisions and rationale.
+17. `docs/15-api-design-and-usability-standards.md` — API design/usability standards; consult when designing or changing module `api` surfaces, HTTP DTOs, error mappings, pagination or public capability endpoints.
 
 When deterministic quality tooling emits `REVIEW_CANDIDATE`, additionally read `docs/engineering-quality/agent-semantic-review-playbook.md` and `docs/engineering-quality/semantic-review-protocol.md` before changing code.
 
