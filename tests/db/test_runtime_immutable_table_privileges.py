@@ -4,6 +4,12 @@ import pytest
 from psycopg import Connection
 
 PgConnection = Connection[Any]
+_TRUSTED_SCHEMAS = {
+    "request_admin",
+    "request_cmd",
+    "request_engine",
+    "request_read",
+}
 
 
 @pytest.mark.postgres
@@ -28,3 +34,34 @@ def test_app_has_no_update_privilege_on_immutable_tables(
     ).fetchall()
 
     assert rows == []
+
+
+@pytest.mark.postgres
+def test_security_definers_use_closed_trusted_search_paths(
+    admin_conn: PgConnection,
+) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT n.nspname, p.proname, p.proconfig
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = ANY(%s)
+          AND p.prosecdef
+        ORDER BY n.nspname, p.proname, p.oid
+        """,
+        (sorted(_TRUSTED_SCHEMAS),),
+    ).fetchall()
+
+    violations: list[str] = []
+    for schema, name, configuration in rows:
+        settings = configuration or []
+        paths = [item for item in settings if item.startswith("search_path=")]
+        if len(paths) != 1:
+            violations.append(f"{schema}.{name}: search_path settings={paths!r}")
+            continue
+        schemas = [item.strip() for item in paths[0].split("=", 1)[1].split(",")]
+        trusted_middle = set(schemas[1:-1]).issubset(_TRUSTED_SCHEMAS)
+        if schemas[0] != "pg_catalog" or schemas[-1] != "pg_temp" or not trusted_middle:
+            violations.append(f"{schema}.{name}: search_path={schemas!r}")
+
+    assert violations == []
