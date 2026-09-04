@@ -125,7 +125,7 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     assert [operation.name for operation in discovery] == ["capabilities.list"]
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
-        if operation.method == "POST":
+        if operation.method in {"POST", "PUT"}:
             assert operation.mutates
             assert operation.idempotency_required
         else:

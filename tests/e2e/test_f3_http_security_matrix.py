@@ -13,6 +13,9 @@ from . import operational_support as support
 from .evidence import durable_snapshot
 from .http_surface import PublicHttpOperation
 from .http_surface_f3 import F3_HTTP_OPERATIONS
+from .http_surface_onboarding import ONBOARDING_HTTP_OPERATIONS
+
+_SECURITY_MATRIX_OPERATIONS = F3_HTTP_OPERATIONS + ONBOARDING_HTTP_OPERATIONS
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 _SIGNING_KEY = b"request-engine-f3-security-signing-key"
@@ -45,7 +48,7 @@ def _id(operation: PublicHttpOperation) -> str:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", F3_HTTP_OPERATIONS, ids=_id)
+@pytest.mark.parametrize("operation", _SECURITY_MATRIX_OPERATIONS, ids=_id)
 async def test_every_f3_operation_rejects_unauthenticated_without_mutation(
     operation: PublicHttpOperation,
     e2e_admin_conn: support.PgConnection,
@@ -65,7 +68,7 @@ async def test_every_f3_operation_rejects_unauthenticated_without_mutation(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", F3_HTTP_OPERATIONS, ids=_id)
+@pytest.mark.parametrize("operation", _SECURITY_MATRIX_OPERATIONS, ids=_id)
 async def test_every_f3_operation_rejects_missing_capability_without_mutation(
     operation: PublicHttpOperation,
     e2e_admin_conn: support.PgConnection,

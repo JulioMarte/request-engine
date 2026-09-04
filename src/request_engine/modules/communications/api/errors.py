@@ -3,13 +3,17 @@ from fastapi.responses import JSONResponse
 
 from request_engine.modules.communications.application.errors import (
     DeliveryConfigurationError,
+    OrganizationChannelPolicyRevisionConflict,
     RecipientNotFound,
     ReminderPlanNotActive,
     ReminderPlanNotFound,
     ReminderPlanRevisionConflict,
     ReminderSubjectAuthorityRequired,
 )
-from request_engine.modules.communications.domain.errors import CommunicationsError
+from request_engine.modules.communications.domain.errors import (
+    ChannelPurposeDisabled,
+    CommunicationsError,
+)
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
 
@@ -69,6 +73,25 @@ def resolve_communications_error(exc: CommunicationsError) -> tuple[int, ErrorBo
             details={
                 "reminder_plan_id": str(exc.reminder_plan_id),
                 "status": exc.status,
+            },
+        )
+    if isinstance(exc, ChannelPurposeDisabled):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="channel_purpose_disabled",
+            message="new communication intents for this purpose are disabled",
+            resolution=ErrorResolution.FIX_REQUEST,
+            details={"purpose": exc.purpose},
+        )
+    if isinstance(exc, OrganizationChannelPolicyRevisionConflict):
+        return status.HTTP_409_CONFLICT, ErrorBody(
+            code="revision_conflict",
+            message="the organization channel policy changed since it was read",
+            resolution=ErrorResolution.REFRESH_AND_RETRY,
+            details={
+                "aggregate_kind": "OrganizationChannelPolicy",
+                "purpose": exc.purpose,
+                "expected_revision": exc.expected,
+                "current_revision": exc.actual,
             },
         )
     if isinstance(exc, DeliveryConfigurationError):

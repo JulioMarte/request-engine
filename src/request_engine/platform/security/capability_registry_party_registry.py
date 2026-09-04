@@ -7,6 +7,14 @@ from request_engine.platform.security.capability_types import (
 
 PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
+        "organization.bootstrap",
+        CapabilityExposure.OPERATOR,
+        (
+            "Establish the initial principal's delegated operational authority "
+            "over the tenant business Party."
+        ),
+    ),
+    command_capability(
         "parties.register",
         CapabilityExposure.PUBLIC,
         "Register a person with contact points and identity documents.",

@@ -5,6 +5,10 @@ class QueueError(Exception):
     """Base class for semantic service-queue and waitlist errors."""
 
 
+class QueueConfigurationConflict(QueueError):
+    """Requested queue configuration conflicts with tenant-owned setup truth."""
+
+
 class TenantReferenceNotUsable(QueueError):
     def __init__(self, reference_kind: str, reference_id: UUID) -> None:
         super().__init__(f"{reference_kind} reference is not usable for this tenant")
@@ -107,7 +111,7 @@ class WaitlistEntryRevisionConflict(QueueError):
 
 class WaitlistEntryNotCancellable(QueueError):
     def __init__(self, entry_id: UUID, status: str) -> None:
-        super().__init__(f"WaitlistEntry {entry_id} cannot be cancelled from status {status}")
+        super().__init__(f"WaitlistEntry {entry_id} is not cancellable from status {status}")
         self.entry_id = entry_id
         self.status = status
 
@@ -130,7 +134,6 @@ class SlotOpportunityNotOpen(QueueError):
     def __init__(self, opportunity_id: UUID, status: str) -> None:
         super().__init__(f"SlotOpportunity {opportunity_id} is not open: {status}")
         self.opportunity_id = opportunity_id
-        self.status = status
 
 
 class SlotOfferNotFound(QueueError):

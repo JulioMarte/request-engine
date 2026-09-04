@@ -31,6 +31,11 @@ class OperationalHttpOperation:
 _BASE_ROUTES = (
     ("organization.profile", "PATCH", "/v1/operations/organization/profile"),
     ("organization.contacts", "PUT", "/v1/operations/organization/contacts"),
+    (
+        "organization.holidays",
+        "PUT",
+        "/v1/operations/organization/holidays",
+    ),
     ("locations.create", "POST", "/v1/operations/locations"),
     ("locations.update", "PATCH", "/v1/operations/locations/{location_id}"),
     ("locations.contacts", "PUT", "/v1/operations/locations/{location_id}/contacts"),

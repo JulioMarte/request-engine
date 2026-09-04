@@ -20,6 +20,9 @@ from request_engine.modules.communications.adapters.db.escalation_triggers impor
     close_task_failed_and_escalate,
     resolve_route_or_escalate_unreachable,
 )
+from request_engine.modules.communications.adapters.db.organization_channel_policy_reader import (
+    resolve_task_delivery_policy,
+)
 from request_engine.modules.communications.adapters.db.reconcile_scheduling import (
     RECONCILE_ACTION_TYPE as RECONCILE_ACTION_TYPE,
 )
@@ -195,7 +198,7 @@ async def prepare_dispatch(
                 communication_task_id, cast(UUID, latest["id"]), "retry_already_scheduled"
             )
 
-    policy = parse_delivery_policy(cast(dict[str, object], task["channel_policy"]))
+    policy = await resolve_task_delivery_policy(session, organization_id=organization_id, task=task)
     resolved = await resolve_route_or_escalate_unreachable(
         session,
         organization_id=organization_id,

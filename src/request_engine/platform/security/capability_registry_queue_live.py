@@ -48,6 +48,11 @@ LIVE_QUEUE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Check in a reservation-backed subject or admit a walk-in to a live queue.",
     ),
     command_capability(
+        "queue.configure",
+        CapabilityExposure.OPERATOR,
+        "Create a service queue as part of tenant onboarding.",
+    ),
+    command_capability(
         "queue.manage_intake",
         CapabilityExposure.OPERATOR,
         "Stop or reopen queue intake using optimistic concurrency.",

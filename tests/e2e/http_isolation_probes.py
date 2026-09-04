@@ -5,6 +5,7 @@ from request_engine.platform.security.context import ActorContext
 
 from .http_isolation_grants import ISOLATION_ACTOR_GRANTS
 from .http_isolation_probe_flows import foreign_request as _flow_request
+from .http_isolation_probe_flows_onboarding import foreign_request as _onboarding_request
 from .http_surface import PublicHttpOperation
 from .tenant_sandbox import TenantSandbox, actor_for
 
@@ -29,6 +30,20 @@ def isolation_actor(sandbox: TenantSandbox, *, allow_overrides: bool = True) -> 
     return replace(base, capabilities=base.capabilities | ISOLATION_ACTOR_GRANTS)
 
 
+_ONBOARDING_OPERATIONS = frozenset(
+    {
+        "organization.bootstrap",
+        "catalog.manage.resource_capability",
+        "catalog.manage.offering",
+        "catalog.manage.offering_booking_policy",
+        "booking.manage_supply",
+        "queue.configure",
+        "communications.configure_channel_policy",
+        "onboarding.readiness",
+    }
+)
+
+
 def foreign_request(
     operation: PublicHttpOperation,
     actor: TenantSandbox,
@@ -36,6 +51,8 @@ def foreign_request(
     objects: ForeignObjects,
 ) -> tuple[str, dict[str, str], dict[str, object] | None, int]:
     name = operation.name
+    if name in _ONBOARDING_OPERATIONS:
+        return _onboarding_request(operation, actor, foreign, objects)
     if name == "capabilities.list":
         return "/v1/capabilities", {}, None, 200
     if name == "business.read":

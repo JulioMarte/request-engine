@@ -81,6 +81,11 @@ WAITLIST_REMINDER_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         legacy_aliases=frozenset({"communications.cancel_reminder_plan"}),
     ),
     command_capability(
+        "communications.configure",
+        CapabilityExposure.OPERATOR,
+        "Configure the organization channel policy for one communication purpose.",
+    ),
+    command_capability(
         "reminders.subject_override",
         CapabilityExposure.OPERATOR,
         "Permission to operate on ReminderPlans without delegated Party authority.",

@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from request_engine.modules.catalog.application.errors import (
     CatalogConfigurationConflict,
     LocationOperationalRevisionConflict,
+    OfferingBookingPolicyRevisionConflict,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 
@@ -27,6 +28,19 @@ async def catalog_operational_error_handler(
                 resolution=ErrorResolution.REFRESH_AND_RETRY,
                 details={
                     "location_id": str(exc.location_id),
+                    "expected_revision": exc.expected,
+                    "current_revision": exc.actual,
+                },
+            )
+        )
+    if isinstance(exc, OfferingBookingPolicyRevisionConflict):
+        return _response(
+            ErrorBody(
+                code="offering_booking_policy_revision_conflict",
+                message="the OfferingVersion booking policy changed",
+                resolution=ErrorResolution.REFRESH_AND_RETRY,
+                details={
+                    "offering_version_id": str(exc.offering_version_id),
                     "expected_revision": exc.expected,
                     "current_revision": exc.actual,
                 },

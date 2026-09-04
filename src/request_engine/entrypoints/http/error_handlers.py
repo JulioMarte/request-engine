@@ -14,10 +14,14 @@ from request_engine.entrypoints.http.errors import (
     render_error_response,
     request_validation_error_handler,
 )
+from request_engine.entrypoints.http.operational_errors import (
+    operational_authority_required_handler,
+)
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
 from request_engine.platform.idempotency.errors import IdempotencyConflict
 from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
+from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
 
 
 async def operator_resolution_unavailable_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -35,6 +39,7 @@ async def operator_resolution_unavailable_handler(_: Request, exc: Exception) ->
 def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
+    app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
     app.add_exception_handler(
         OperatorResolutionUnavailable, operator_resolution_unavailable_handler
     )
