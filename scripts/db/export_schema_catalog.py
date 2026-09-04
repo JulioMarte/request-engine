@@ -8,6 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
+_SCHEMALESS_QUERIES = {"roles", "role_memberships"}
 QUERIES = {
     "schemas": """
         SELECT n.nspname AS schema_name, pg_get_userbyid(n.nspowner) AS owner
@@ -50,6 +51,23 @@ QUERIES = {
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname = ANY(%s) ORDER BY 1,2,3
     """,
+    "view_dependencies": """
+        SELECT vn.nspname AS view_schema, view_class.relname AS view_name,
+               sn.nspname AS source_schema, source_class.relname AS source_relation
+        FROM pg_rewrite rewrite
+        JOIN pg_class view_class ON view_class.oid=rewrite.ev_class
+        JOIN pg_namespace vn ON vn.oid=view_class.relnamespace
+        JOIN pg_depend dependency
+          ON dependency.classid='pg_rewrite'::regclass
+         AND dependency.objid=rewrite.oid
+         AND dependency.refclassid='pg_class'::regclass
+        JOIN pg_class source_class ON source_class.oid=dependency.refobjid
+        JOIN pg_namespace sn ON sn.oid=source_class.relnamespace
+        WHERE vn.nspname = ANY(%s)
+          AND view_class.relkind IN ('v','m')
+          AND source_class.oid <> view_class.oid
+        GROUP BY 1,2,3,4 ORDER BY 1,2,3,4
+    """,
     "routines": """
         SELECT n.nspname AS schema_name, p.proname AS routine_name,
                pg_get_function_identity_arguments(p.oid) AS identity_arguments,
@@ -73,28 +91,48 @@ QUERIES = {
         FROM pg_policies WHERE schemaname = ANY(%s) ORDER BY 1,2,3
     """,
     "table_grants": """
-        SELECT grantee, table_schema AS schema_name, table_name AS relation_name, privilege_type
-        FROM information_schema.role_table_grants WHERE table_schema = ANY(%s)
-        ORDER BY 1,2,3,4
+        SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+               n.nspname AS schema_name, c.relname AS relation_name,
+               acl.privilege_type, acl.is_grantable,
+               pg_get_userbyid(acl.grantor) AS grantor
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(
+            COALESCE(c.relacl, acldefault('r', c.relowner))
+        ) AS acl
+        WHERE n.nspname = ANY(%s) AND c.relkind IN ('r','p','v','m')
+        ORDER BY 1,2,3,4,5
     """,
     "routine_grants": """
-        SELECT grantee, routine_schema AS schema_name, routine_name, privilege_type
-        FROM information_schema.role_routine_grants WHERE routine_schema = ANY(%s)
-        ORDER BY 1,2,3,4
+        SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END AS grantee,
+               n.nspname AS schema_name, p.proname AS routine_name,
+               pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+               acl.privilege_type, acl.is_grantable,
+               pg_get_userbyid(acl.grantor) AS grantor
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid=p.pronamespace
+        CROSS JOIN LATERAL aclexplode(
+            COALESCE(p.proacl, acldefault('f', p.proowner))
+        ) AS acl
+        WHERE n.nspname = ANY(%s) AND p.prokind IN ('f','p')
+        ORDER BY 1,2,3,4,5,6
     """,
     "roles": """
         SELECT rolname AS role_name, rolsuper AS superuser, rolinherit AS inherit,
                rolcreaterole AS create_role, rolcreatedb AS create_db, rolcanlogin AS can_login,
                rolbypassrls AS bypass_rls
-        FROM pg_roles WHERE rolname LIKE 'request_engine_%%' AND %s IS NOT NULL ORDER BY 1
+        FROM pg_roles WHERE rolname LIKE 'request_engine_%' ORDER BY 1
     """,
     "role_memberships": """
-        SELECT parent.rolname AS parent_role, member.rolname AS member_role
+        SELECT parent.rolname AS parent_role, member.rolname AS member_role,
+               membership.inherit_option, membership.set_option,
+               membership.admin_option
         FROM pg_auth_members membership
         JOIN pg_roles parent ON parent.oid=membership.roleid
         JOIN pg_roles member ON member.oid=membership.member
-        WHERE (parent.rolname LIKE 'request_engine_%%' OR member.rolname LIKE 'request_engine_%%')
-          AND %s IS NOT NULL ORDER BY 1,2
+        WHERE parent.rolname LIKE 'request_engine_%'
+           OR member.rolname LIKE 'request_engine_%'
+        ORDER BY 1,2
     """,
 }
 
@@ -105,10 +143,13 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    payload: dict[str, object] = {"schema_version": 2, "schemas": list(SCHEMAS)}
+    payload: dict[str, object] = {"schema_version": 3, "schemas": list(SCHEMAS)}
     with psycopg.connect("", row_factory=dict_row) as conn:
         for name, query in QUERIES.items():
-            payload[name] = conn.execute(query, (list(SCHEMAS),)).fetchall()
+            if name in _SCHEMALESS_QUERIES:
+                payload[name] = conn.execute(query).fetchall()
+            else:
+                payload[name] = conn.execute(query, (list(SCHEMAS),)).fetchall()
     payload["counts"] = {
         name: len(rows) for name, rows in payload.items() if isinstance(rows, list)
     }
