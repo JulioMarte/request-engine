@@ -78,9 +78,7 @@ def main() -> None:
     serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     args.output.write_text(serialized, encoding="utf-8")
     if gaps:
-        gap_descriptions = [
-            f"{gap['guarantee']}={gap['missing_evidence']}" for gap in gaps
-        ]
+        gap_descriptions = [f"{gap['guarantee']}={gap['missing_evidence']}" for gap in gaps]
         details = ", ".join(gap_descriptions)
         raise SystemExit(f"current-product proof execution gaps: {details}")
 
