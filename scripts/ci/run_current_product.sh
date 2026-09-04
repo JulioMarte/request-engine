@@ -129,12 +129,19 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
 
-# Worker crash/retry and lease-fencing behavior is current product truth. These
-# proofs were authored during V3, but their invariants are runtime guarantees and
-# therefore execute here until their paths are migrated to neutral naming.
+# Worker crash/retry, lease fencing, notification escalation and provider-outcome
+# interpretation are current product guarantees. Their paths are historical V3
+# names only; execution here is based on the invariants they prove.
 uv run pytest \
   tests/integration/v3_worker_runtime/test_process_crash_recovery.py \
   tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py \
+  tests/integration/v3_worker_runtime/test_escalation_step_race.py \
+  tests/integration/v3_worker_runtime/test_escalation_schema.py \
+  tests/integration/v3_worker_runtime/test_escalation_replay_and_window.py \
+  tests/integration/v3_worker_runtime/test_escalation_step.py \
+  tests/integration/v3_worker_runtime/test_escalation_terminals.py \
+  tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.py \
+  tests/integration/v3_worker_runtime/test_delivery_outcome_events.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/worker-runtime.xml"
 
