@@ -1,6 +1,6 @@
 """Tighten runtime ACLs and remove schema-cohesion defects.
 
-Revision ID: 0035_schema_cohesion_acl_hardening
+Revision ID: 0035_schema_cohesion_hardening
 Revises: 0034_org_channel_policies
 Create Date: 2026-09-04
 """
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0035_schema_cohesion_acl_hardening"
+revision: str = "0035_schema_cohesion_hardening"
 down_revision: str | Sequence[str] | None = "0034_org_channel_policies"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
