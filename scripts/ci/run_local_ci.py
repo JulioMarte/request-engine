@@ -21,7 +21,7 @@ POSTGRES_IMAGE = "postgres:18"
 CACHE_VOLUME = "request-engine-local-ci-uv-cache"
 RUNNER_DOCKERFILE = "scripts/ci/Dockerfile.local-ci"
 WORKFLOW_PATH = ".github/workflows/ci.yml"
-WORKFLOW_BLOB_SHA = "40b9ff5c06385691785ed04edc2216cb973abef3"
+WORKFLOW_BLOB_SHA = "796b15f179166a2743af5e8c384547c534945bf3"
 SYNC_ENV = "REQUEST_ENGINE_LOCAL_CI_SYNCED_SHA"
 MAX_FAILURE_LINES = 120
 
@@ -42,11 +42,34 @@ class Job:
 JOBS = (
     Job(
         "python-quality",
+        "export QUALITY_BASE_REF=origin/development && "
+        "export QUALITY_SOURCE_HEAD_SHA=$(git rev-parse HEAD) && "
+        "export QUALITY_TEST_MODE=BRANCH_HEAD && "
+        "export QUALITY_POLICY_BASE_REF=origin/development && "
+        "uv run python scripts/ci/build_engineering_quality_baseline.py "
+        "--output .ci/engineering-quality-baseline.json && "
+        "uv run python scripts/ci/build_architecture_diff.py "
+        '--base-ref "$QUALITY_BASE_REF" --output .ci/architecture-diff.json && '
         "python scripts/ci/ci_jobs.py python-quality "
-        "--summary-output /ci-artifacts/python-quality.json "
-        "--log-dir /ci-artifacts/python-quality-logs && "
+        "--summary-output .ci/python-quality.json "
+        "--log-dir .ci/logs && "
+        "python scripts/ci/check_quality_policy_separation.py "
+        '--base-ref "$QUALITY_POLICY_BASE_REF" && '
+        "python scripts/ci/finalize_quality_evidence.py "
+        "--scan .ci/python-quality-signals.json "
+        "--baseline .ci/engineering-quality-baseline.json "
+        "--architecture-diff .ci/architecture-diff.json "
+        "--summary .ci/python-quality.json "
+        "--output-dir .ci/quality-evidence && "
+        "uv run --with jsonschema==4.25.1 python scripts/ci/validate_quality_evidence.py "
+        "--schema docs/engineering-quality/schemas/quality-evidence-v2.schema.json "
+        "--packet-dir .ci/quality-evidence && "
+        "python scripts/ci/summarize_quality_calibration.py "
+        "--input docs/engineering-quality/calibration/pilot-observations.v1.json "
+        "--output .ci/calibration/human-model-summary.json && "
         "python scripts/ci/audit_test_architecture.py "
-        "--output /ci-artifacts/test-architecture.json",
+        "--output .ci/test-architecture.json && "
+        "cp -a .ci /ci-artifacts/python-quality-evidence",
         env={"FILE_BUDGET_BASE_REF": "origin/development"},
     ),
     Job(

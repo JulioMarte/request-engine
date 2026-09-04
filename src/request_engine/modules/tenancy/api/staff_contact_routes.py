@@ -107,6 +107,7 @@ def add_staff_contact_routes(
         register_route,
         capability="staff.manage_own_admin_contact",
         methods=["POST"],
+        operation_id="staff_manage_own_admin_contact_register",
         response_model=StaffContactView,
         status_code=status.HTTP_201_CREATED,
     )
@@ -116,6 +117,7 @@ def add_staff_contact_routes(
         request_verification_route,
         capability="staff.manage_own_admin_contact",
         methods=["POST"],
+        operation_id="staff_manage_own_admin_contact_request_verification",
         response_model=StaffContactVerificationIssuedView,
     )
     add_capability_route(

@@ -36,6 +36,16 @@ class ReservationDayBoardEntryView(BaseModel):
     effective_arrival_estimate_at: datetime | None
     estimated_arrival_at: datetime | None
     arrival_estimate_source_kind: str | None
+    active_queue_entry_count: int
+    queue_entry_id: UUID | None
+    queue_entry_status: str | None
+    recall_eligible: bool | None
+    recall_hold_id: UUID | None
+    recall_hold_kind: str | None
+    recall_hold_until_at: datetime | None
+    recall_hold_event_key: str | None
+    recall_hold_reason: str | None
+    active_skip_reason: str | None
 
     @classmethod
     def from_contract(cls, item: ReservationDayBoardEntry) -> "ReservationDayBoardEntryView":

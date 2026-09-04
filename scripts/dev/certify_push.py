@@ -22,6 +22,36 @@ DEFAULT_BASE_BRANCH = "development"
 CACHE_SCHEMA_VERSION = "local-push-cert-cache/v1"
 RUN_RETENTION_COUNT = 20
 
+GIT_INVOCATION_CONTEXT_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_NAMESPACE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_QUARANTINE_PATH",
+    "GIT_PREFIX",
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+)
+
+
+def sanitize_git_invocation_environment() -> None:
+    """Drop git hook/invocation context leaked into the certifier environment.
+
+    git exports GIT_DIR/GIT_INDEX_FILE (and friends) when it runs the pre-push
+    hook. If those leak into the certification subprocesses, scratch git
+    repositories created by tests and scripts silently operate on the main
+    repository instead, corrupting both test outcomes and repository state.
+    """
+
+    for variable in GIT_INVOCATION_CONTEXT_VARS:
+        os.environ.pop(variable, None)
+
 
 @dataclass(frozen=True)
 class PushUpdate:
@@ -556,6 +586,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    sanitize_git_invocation_environment()
     args = parse_args()
     if args.command == "pre-push":
         return _pre_push(args)

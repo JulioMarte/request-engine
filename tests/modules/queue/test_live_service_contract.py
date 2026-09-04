@@ -35,6 +35,13 @@ def test_staff_projection_keeps_expected_and_actual_workload_distinct() -> None:
         actual_workload_key="consult-complex",
         service_started_at=now,
         service_completed_at=None,
+        recall_eligible=True,
+        recall_hold_id=None,
+        recall_hold_kind=None,
+        recall_hold_until_at=None,
+        recall_hold_event_key=None,
+        recall_hold_reason=None,
+        active_skip_reason=None,
         queue_revision=3,
         service_revision=1,
     )
@@ -42,6 +49,26 @@ def test_staff_projection_keeps_expected_and_actual_workload_distinct() -> None:
     assert view.expected_workload_key == "consult-short"
     assert view.actual_workload_key == "consult-complex"
     assert view.expected_workload_key != view.actual_workload_key
+
+
+@pytest.mark.contract
+def test_staff_projection_exposes_recall_gate_without_clinical_state() -> None:
+    fields = set(StaffQueueEntryView.model_fields)
+    assert {
+        "recall_eligible",
+        "recall_hold_id",
+        "recall_hold_kind",
+        "recall_hold_until_at",
+        "recall_hold_event_key",
+        "recall_hold_reason",
+        "active_skip_reason",
+    } <= fields
+    assert {
+        "clinical_priority",
+        "insurance_status",
+        "readiness_state",
+        "triage_level",
+    }.isdisjoint(fields)
 
 
 @pytest.mark.contract
@@ -55,6 +82,9 @@ def test_customer_queue_projection_excludes_staff_execution_fields() -> None:
         "actual_location_id",
         "service_started_at",
         "service_completed_at",
+        "recall_eligible",
+        "recall_hold_reason",
+        "active_skip_reason",
     }
     fields = set(QueueStatusView.model_fields)
     assert forbidden.isdisjoint(fields)

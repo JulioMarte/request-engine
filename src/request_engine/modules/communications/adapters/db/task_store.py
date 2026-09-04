@@ -8,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.communications.adapters.db.organization_channel_policy_reader import (
+    ensure_purpose_enabled,
+)
 from request_engine.modules.communications.application.errors import (
     CommunicationDedupeConflict,
     ContactPointNotUsable,
@@ -16,6 +19,9 @@ from request_engine.modules.communications.application.errors import (
 from request_engine.modules.communications.contracts.tasks import (
     CommunicationTask,
     CommunicationTaskStatus,
+)
+from request_engine.modules.communications.domain.delivery_policy import (
+    ORGANIZATION_CHANNEL_PURPOSES,
 )
 
 
@@ -96,6 +102,12 @@ async def insert_or_reuse_communication_task(
     session: AsyncSession,
     intent: CommunicationTaskIntent,
 ) -> tuple[CommunicationTask, bool]:
+    if intent.purpose in ORGANIZATION_CHANNEL_PURPOSES:
+        await ensure_purpose_enabled(
+            session,
+            organization_id=intent.organization_id,
+            purpose=intent.purpose,
+        )
     row = (
         (
             await session.execute(

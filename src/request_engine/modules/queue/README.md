@@ -23,6 +23,13 @@ ServiceQueue serializes `CallNext` through the stable queue row and selects the 
 
 Queue position is derived, never an authoritative mutable counter.
 
+For tenant onboarding, `POST /v1/queues` (`queue.configure`,
+`operations.manage_supply` authority) creates one ServiceQueue bound to a
+same-tenant Location with an optional Offering link. Selection stays FIFO only
+(`policy_key` is DB-constrained to `'fifo'`). Queue creation is configuration
+only: it admits nobody. `read_queue_supply` (via `contracts/onboarding.py`)
+backs the `walk_in_queue` readiness fact of `GET /v1/onboarding/readiness`.
+
 F3 keeps arrival and admission as separate facts:
 
 ```text
@@ -158,7 +165,11 @@ serving
 
 Terminal states do not accumulate in the live response.
 
-`queue.staff_history_read` is a distinct operator capability and endpoint for terminal queue history. It requires a bounded time window, enforces a server-bounded page size and advances with a stable cursor. This keeps operational history bounded without turning F3 into an analytics subsystem.
+The live staff projection also exposes Queue's canonical recall gate. `recall_eligible=false` means the entry is presently excluded from normal recall selection by an active Queue-owned hold or skip. When a hold is active, the projection may expose its condition, release target and operator reason; an unconsumed skip exposes its reason. These are projections of existing triage facts, not a second mutable readiness state.
+
+Do not reinterpret recall eligibility as clinical readiness, medical triage severity, insurance authorization or a generic workflow stage. Those meanings belong to their owning authority or vertical. If a future workflow needs an external prerequisite, model the prerequisite at the correct boundary and map only the resulting operational gate into Queue; do not add healthcare-specific fields to QueueEntry.
+
+`queue.staff_history_read` is a distinct operator capability and endpoint for terminal queue history. It requires a bounded time window, enforces a server-bounded page size and advances with a stable cursor. Terminal entries report `recall_eligible=false` and no active hold/skip because recall eligibility is no longer meaningful after terminalization. This keeps operational history bounded without turning F3 into an analytics subsystem.
 
 Delivery's `service_session.read` and `resource_activity.read` reconstruct factual execution/occupation after refresh or reconnect; they are not customer Queue DTOs and do not provide F4 predictions.
 

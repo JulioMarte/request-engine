@@ -13,11 +13,6 @@ from request_engine.modules.queue.adapters.db.triage_entry import (
     lock_waiting_entry,
     queue_id_for_entry,
 )
-from request_engine.modules.queue.adapters.db.triage_idempotency import (
-    acquire,
-    complete,
-    fingerprint,
-)
 from request_engine.modules.queue.application.commands.triage import ReleaseRecallHoldCommand
 from request_engine.modules.queue.application.triage_errors import (
     QueueHoldNotActive,
@@ -25,13 +20,18 @@ from request_engine.modules.queue.application.triage_errors import (
 )
 from request_engine.modules.queue.contracts.triage import QueueTriageResult
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
+from request_engine.platform.idempotency.postgres import (
+    acquire_idempotency,
+    command_fingerprint,
+    complete_idempotency,
+)
 
 
 async def release_recall_hold(
     session_factory: SessionFactory,
     command: ReleaseRecallHoldCommand,
 ) -> QueueTriageResult:
-    command_fingerprint = fingerprint(
+    fingerprint = command_fingerprint(
         "queue.release_recall_hold",
         {
             "queue_entry_id": command.queue_entry_id,
@@ -40,13 +40,13 @@ async def release_recall_hold(
         },
     )
     async with tenant_transaction(session_factory, command.organization_id) as session:
-        idem_id, replay = await acquire(
+        idem_id, replay = await acquire_idempotency(
             session,
             organization_id=command.organization_id,
             principal_id=command.principal_id,
             capability="queue.release_recall_hold",
             idempotency_key=command.idempotency_key,
-            command_fingerprint=command_fingerprint,
+            fingerprint=fingerprint,
         )
         if replay is not None:
             return result_from_json(cast(dict[str, object], replay["result"]))
@@ -91,7 +91,7 @@ async def release_recall_hold(
             details={"queue_id": str(queue_id), "hold_id": str(command.hold_id)},
             idempotency_id=idem_id,
         )
-        await complete(session, idem_id, {"result": result_to_json(result)})
+        await complete_idempotency(session, idem_id, {"result": result_to_json(result)})
         return result
 
 

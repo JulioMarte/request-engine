@@ -41,4 +41,25 @@ GetOfferingDetails
 GetLocations
 ```
 
+## Onboarding and bootstrap surfaces (docs/v3/44)
+
+Catalog exposes its owner commands for empty-tenant onboarding without a new
+authority owner:
+
+- `POST /v1/catalog/resource-capabilities` and `POST /v1/catalog/offerings`
+  (`catalog.manage`) create the capability vocabulary and one Offering plus
+  its initial immutable OfferingVersion and requirements in one transaction;
+- `PUT /v1/catalog/offerings/{id}/booking-policy` (`catalog.manage`) appends
+  an override revision to the append-only
+  `offering_version_booking_policies` ledger (migration 0033). The effective
+  policy is the highest-revision row or the bootstrap
+  `offering_versions.booking_policy`; UPDATE/DELETE are rejected by trigger;
+  existing Reservations keep their frozen snapshot;
+- the operational location/hours/exception surfaces plus
+  `PUT /v1/operations/organization/holidays`, which materializes each declared
+  date as one full-day `unavailable` hours exception per active Location in
+  its timezone;
+- `read_catalog_supply` (via `contracts/onboarding.py`) backs the
+  `locations`/`no_bookable_offering` facts of `GET /v1/onboarding/readiness`.
+
 Catalog provides structured operational truth for agents/applications; it is not a universal CMS or RAG system.

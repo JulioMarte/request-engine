@@ -38,6 +38,13 @@ class StaffQueueEntry:
     actual_workload_key: str | None
     service_started_at: datetime | None
     service_completed_at: datetime | None
+    recall_eligible: bool
+    recall_hold_id: UUID | None
+    recall_hold_kind: str | None
+    recall_hold_until_at: datetime | None
+    recall_hold_event_key: str | None
+    recall_hold_reason: str | None
+    active_skip_reason: str | None
     queue_revision: int
     service_revision: int | None
 

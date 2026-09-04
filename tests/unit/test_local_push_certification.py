@@ -186,3 +186,27 @@ def test_hook_installer_copies_stable_hook_and_certifier_idempotently(tmp_path: 
 
     certifier_source.write_text("print('new certifier')\n", encoding="utf-8")
     assert check(tmp_path) == 1
+
+
+def test_sanitizer_removes_git_invocation_context_leak() -> None:
+    certifier = _load(CERTIFIER, "certify_push_sanitizer_test")
+    leak = {
+        "GIT_DIR": str(ROOT / ".git"),
+        "GIT_INDEX_FILE": str(ROOT / ".git" / "index"),
+        "GIT_WORK_TREE": str(ROOT),
+        "GIT_PREFIX": "scripts/",
+        "REQUEST_ENGINE_SANITIZER_CANARY": "survives",
+    }
+    assert set(leak) - {"REQUEST_ENGINE_SANITIZER_CANARY"} <= set(
+        certifier.GIT_INVOCATION_CONTEXT_VARS
+    )
+    try:
+        certifier.os.environ.update(leak)
+        certifier.sanitize_git_invocation_environment()
+        for name in certifier.GIT_INVOCATION_CONTEXT_VARS:
+            assert name not in certifier.os.environ, name
+        assert certifier.os.environ.get("REQUEST_ENGINE_SANITIZER_CANARY") == "survives"
+    finally:
+        for name in certifier.GIT_INVOCATION_CONTEXT_VARS:
+            certifier.os.environ.pop(name, None)
+        certifier.os.environ.pop("REQUEST_ENGINE_SANITIZER_CANARY", None)

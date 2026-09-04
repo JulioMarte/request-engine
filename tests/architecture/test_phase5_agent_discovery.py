@@ -60,29 +60,29 @@ def test_discovered_runtime_operations_have_one_stable_openapi_operation() -> No
         appointment_option_signing_key=b"phase-5-agent-discovery-test-key",
     )
     schema = app.openapi()
-    operations = {
-        operation["operationId"]: operation
+    all_operations = [
+        operation
         for path_item in schema["paths"].values()
         for method, operation in path_item.items()
         if method in {"get", "post", "put", "patch", "delete"}
-    }
+    ]
+    operation_ids = [operation["operationId"] for operation in all_operations]
+    assert len(operation_ids) == len(set(operation_ids))
 
     discovered = asyncio.run(discover_capabilities(actor, BaselineTenantCapabilityPolicy()))
-    expected = {
-        item.definition.key: item.definition.key.replace(".", "_")
-        for item in discovered
-        if item.definition.runtime_available
-    }
+    expected = {item.definition.key for item in discovered if item.definition.runtime_available}
 
-    for key, operation_id in expected.items():
-        assert operation_id in operations, key
-        assert operations[operation_id]["x-request-engine-capability"] == key
+    operations_by_capability: dict[str, list[str]] = {}
+    for operation in all_operations:
+        capability = operation.get("x-request-engine-capability")
+        if isinstance(capability, str):
+            operations_by_capability.setdefault(capability, []).append(operation["operationId"])
 
-    published_capabilities = {
-        operation["x-request-engine-capability"]
-        for operation in operations.values()
-        if "x-request-engine-capability" in operation
-    }
+    for key in expected:
+        operation_ids = operations_by_capability.get(key, [])
+        assert len(operation_ids) >= 1, key
+
+    published_capabilities = {capability for capability in operations_by_capability}
     assert "requests.complete" not in published_capabilities
     assert "requests.record_result" not in published_capabilities
     assert "requests.fail" not in published_capabilities

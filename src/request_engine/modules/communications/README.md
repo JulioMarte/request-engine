@@ -67,6 +67,30 @@ The initial `channel_policy` surface is intentionally small:
 
 `channels` is ordered. `sms` and `voice` resolve against a `phone` ContactPoint; `email` and `whatsapp` resolve against matching endpoint types. An explicit ContactPoint must still match the policy and remain active. Automatic endpoint selection only uses active, verified ContactPoints.
 
+## Organization channel policies (docs/v3/44 §6.5)
+
+Operators can configure one organization-level channel policy per supported
+purpose (`PUT /v1/communications/channel-policies/{purpose}`, capability
+`communications.configure` + `operations.manage_profile` authority, optimistic
+revision). The purpose vocabulary is closed: `appointment_confirmation`,
+`appointment_reminder`, `attendance_confirmation_request`,
+`slot_offer_available`, `operational_recovery_impact`,
+`operational_recovery_rescheduled`. Resolution precedence for a task:
+
+```text
+task-level channel_policy > enabled organization policy > hardcoded default
+```
+
+A task defers to the organization policy only when its frozen
+`channel_policy` is exactly the patient-transactional default sentinel (the
+shape frozen by slot-offer and operational-recovery intents). A missing row is
+"not configured" (default applies); a row with `enabled = false` rejects the
+creation of NEW intents for that purpose with the typed
+`ChannelPurposeDisabled` error while in-flight tasks — which froze their own
+snapshot — keep delivering. `count_disabled_purposes` (via
+`contracts/onboarding.py`) backs the `channel_purpose_disabled` readiness
+blocker of `GET /v1/onboarding/readiness`.
+
 ## Delivery escalation (F7b, docs/v3/36 section 4)
 
 A terminally failed channel attempt no longer ends the notification: the
