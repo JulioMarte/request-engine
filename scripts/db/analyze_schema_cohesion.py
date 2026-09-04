@@ -24,11 +24,7 @@ def _production_references(name: str) -> list[str]:
 
 
 def _view_rows(catalog: dict[str, object]) -> list[dict[str, Any]]:
-    return [
-        row
-        for row in _dict_rows(catalog, "relations")
-        if row["relation_kind"] in ("v", "m")
-    ]
+    return [row for row in _dict_rows(catalog, "relations") if row["relation_kind"] in ("v", "m")]
 
 
 def _view_dependents(catalog: dict[str, object]) -> dict[tuple[str, str], list[str]]:
@@ -45,9 +41,7 @@ def _version(row: dict[str, object]) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Derive review candidates from a schema catalog"
-    )
+    parser = argparse.ArgumentParser(description="Derive review candidates from a schema catalog")
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
