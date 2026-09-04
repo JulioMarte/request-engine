@@ -33,6 +33,9 @@ fi
 # it. The catalog artifact is the primary evidence for pre-rebaseline cohesion.
 uv run python scripts/db/export_schema_catalog.py \
   --output "$ARTIFACT_DIR/schema-catalog.json"
+uv run python scripts/db/analyze_schema_cohesion.py \
+  --catalog "$ARTIFACT_DIR/schema-catalog.json" \
+  --output "$ARTIFACT_DIR/schema-cohesion-analysis.json"
 
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
