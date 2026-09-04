@@ -43,6 +43,11 @@ _DISCOVERY_DEFINER_RELATION_PRIVILEGES = {
     ("resources", "SELECT"),
     ("service_classifications", "SELECT"),
 }
+_DISCOVERY_DEFINER_COLUMN_PRIVILEGES = {
+    ("discovery_publications", "id", "UPDATE"),
+    ("offering_service_classifications", "id", "UPDATE"),
+    ("offerings", "id", "UPDATE"),
+}
 _DISCOVERY_DEFINER_FUNCTIONS = {
     "current_organization_id()",
     "guard_discovery_handoff_latest_version()",
@@ -178,6 +183,33 @@ def test_discovery_definer_has_exact_relation_privileges(admin_conn: PgConnectio
 
     actual = {(cast(str, relation), cast(str, privilege)) for relation, privilege in rows}
     assert actual == _DISCOVERY_DEFINER_RELATION_PRIVILEGES
+
+
+@pytest.mark.postgres
+def test_discovery_definer_has_exact_column_lock_privileges(admin_conn: PgConnection) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT c.relname, a.attname, acl.privilege_type
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
+        WHERE n.nspname = 'request_engine'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND acl.grantee = (
+              SELECT oid FROM pg_roles
+              WHERE rolname = 'request_engine_discovery_definer'
+          )
+        ORDER BY c.relname, a.attname, acl.privilege_type
+        """
+    ).fetchall()
+
+    actual = {
+        (cast(str, relation), cast(str, column), cast(str, privilege))
+        for relation, column, privilege in rows
+    }
+    assert actual == _DISCOVERY_DEFINER_COLUMN_PRIVILEGES
 
 
 @pytest.mark.postgres
