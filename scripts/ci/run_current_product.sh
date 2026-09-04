@@ -129,6 +129,15 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
 
+# Worker crash/retry and lease-fencing behavior is current product truth. These
+# proofs were authored during V3, but their invariants are runtime guarantees and
+# therefore execute here until their paths are migrated to neutral naming.
+uv run pytest \
+  tests/integration/v3_worker_runtime/test_process_crash_recovery.py \
+  tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/worker-runtime.xml"
+
 # Current Queue selection/read truth must stay coherent end-to-end: CallNext
 # serialization, staff recall gates, customer position and Day Board projection
 # all describe the same eligible waiting population on the accepted schema head.
