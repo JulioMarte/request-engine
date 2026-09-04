@@ -9,6 +9,7 @@ from app_function_surface import REVIEWED_APP_EXECUTE_ALLOWLIST
 from psycopg import Connection, sql
 
 PgConnection = Connection[Any]
+_RUNTIME_SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
 
 
 def _login_conninfo(pg_conninfo: str, role_name: str, password: str) -> str:
@@ -50,16 +51,20 @@ def _executable_application_functions(conn: PgConnection) -> set[str]:
     rows = conn.execute(
         """
         SELECT pg_get_function_identity_arguments(p.oid), n.nspname, p.proname
-        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname IN ('request_engine', 'request_cmd', 'request_admin')
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = ANY(%s)
           AND has_schema_privilege(current_user, n.oid, 'USAGE')
           AND has_function_privilege(current_user, p.oid, 'EXECUTE')
-        """
+        """,
+        (list(_RUNTIME_SCHEMAS),),
     ).fetchall()
-    return {f"{s}.{n}({a})" for a, s, n in rows}
+    return {f"{schema}.{name}({arguments})" for arguments, schema, name in rows}
 
 
 @pytest.mark.postgres
+@pytest.mark.security
+@pytest.mark.invariant
 def test_real_app_login_has_exact_reviewed_function_surface(
     admin_conn: PgConnection,
     pg_conninfo: str,
@@ -72,11 +77,12 @@ def test_real_app_login_has_exact_reviewed_function_surface(
                    pg_has_role(current_user, 'request_engine_worker', 'MEMBER'),
                    pg_has_role(current_user, 'request_engine_admin', 'MEMBER'),
                    has_schema_privilege(current_user, 'request_engine', 'USAGE'),
+                   has_schema_privilege(current_user, 'request_read', 'USAGE'),
                    has_schema_privilege(current_user, 'request_cmd', 'USAGE'),
                    has_schema_privilege(current_user, 'request_admin', 'USAGE')
             """
         ).fetchone()
-        assert identity == (True, True, False, False, True, True, False)
+        assert identity == (True, True, False, False, True, True, True, False)
 
         executable = _executable_application_functions(app)
         assert executable == REVIEWED_APP_EXECUTE_ALLOWLIST
