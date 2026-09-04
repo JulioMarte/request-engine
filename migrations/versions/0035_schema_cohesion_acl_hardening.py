@@ -61,6 +61,12 @@ _DISCOVERY_DEFINERS = (
     ),
 )
 
+_DISCOVERY_LOCK_RELATIONS = (
+    "offerings",
+    "offering_service_classifications",
+    "discovery_publications",
+)
+
 
 def _function_ref(name: str, arguments: str) -> str:
     return f"{name}({arguments})"
@@ -110,6 +116,10 @@ def upgrade() -> None:
         "request_engine.offering_service_classifications, request_engine.discovery_publications "
         "TO request_engine_discovery_definer"
     )
+    for table in _DISCOVERY_LOCK_RELATIONS:
+        op.execute(
+            f"GRANT UPDATE (id) ON request_engine.{table} TO request_engine_discovery_definer"
+        )
     op.execute(
         "GRANT SELECT, INSERT, UPDATE ON request_engine.discovery_booking_handoffs "
         "TO request_engine_discovery_definer"
