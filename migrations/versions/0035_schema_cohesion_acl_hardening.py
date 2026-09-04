@@ -35,9 +35,8 @@ _IMMUTABLE_APP_TABLES = (
 def upgrade() -> None:
     op.execute("SET ROLE request_engine_schema_owner")
     for table in _IMMUTABLE_APP_TABLES:
-        op.execute(
-            f"REVOKE UPDATE ON TABLE request_engine.{table} FROM request_engine_app"
-        )
+        statement = f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app"
+        op.execute(statement)
     op.execute("RESET ROLE")
 
 
