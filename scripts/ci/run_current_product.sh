@@ -39,6 +39,7 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
   tests/integration/f1_operational_profile/test_runtime_privileges.py \
   tests/db/test_runtime_immutable_table_privileges.py \
+  tests/db/test_schema_index_cohesion.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/schema.xml"
 
