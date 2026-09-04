@@ -1,6 +1,6 @@
 # Request Engine — System Optimization Mode
 
-Status: **normative for `cohesion/system-optimization` and for any later integration work explicitly continuing this pre-production optimization phase.**
+Status: **normative for `cohesion/system-optimization` and for later integration work explicitly continuing this pre-production optimization phase.**
 
 This policy narrows and operationalizes `pre-production-evolution-policy.md` for the current cohesion/rebaseline work. It does not weaken Request Engine correctness guarantees.
 
@@ -88,7 +88,7 @@ REMOVE      redundant or protects a deliberately retired promise
 HISTORICAL  release provenance only; not a current-product gate
 ```
 
-Deleting a test because it fails is prohibited. Removing obsolete evidence is valid only when the protected guarantee is either intentionally retired or mapped to surviving equal-or-stronger evidence.
+Deleting a test because it fails is prohibited. Removing obsolete evidence is valid only when the protected guarantee is intentionally retired or mapped to surviving equal-or-stronger evidence.
 
 Feature/release prefixes in test paths (`v3_`, `f1_`, `f2_`, etc.) are not normative. The long-term target is organization by current capability/guarantee where that improves navigation.
 
@@ -105,31 +105,62 @@ No agent may make metrics green by:
 - duplicating logic to avoid an explicit dependency;
 - proliferating interfaces/factories without a real substitution or ownership boundary.
 
-A large cohesive file may be healthier than a fragmented package. A high-fan-out module may be correct when it explicitly owns orchestration. The question is always whether ownership and reasoning locality improve.
+A large cohesive file may be healthier than a fragmented package. A high-fan-out module may be correct when it explicitly owns orchestration. The question is whether ownership and reasoning locality improve.
 
-## 7. Documentation precedence during optimization
+## 7. Authority during optimization
 
-For current optimization/rebaseline decisions:
+Two different questions have different owners and must not be conflated.
+
+### 7.1 What must remain semantically true?
+
+For product behavior, authority, transactions, privacy, capacity and other business guarantees:
 
 ```text
-current accepted capability/domain contract
-  > current-guarantees.toml for protected semantics
-  > system-optimization-mode.md for evolution freedom
-  > current ownership/connection-surface documents
-  > historical V3/F1-F7 plans and release evidence
+current-guarantees.toml
++ owning current capability/domain contract
++ accepted ADR where it defines durable rationale
 ```
 
-Historical documents may remain historically accurate. Current maps, AGENTS files, CI contracts and migration READMEs must describe the present system and must not issue instructions that assume V3 is still an active candidate freeze.
+These sources define the behavior/invariants that a redesign must preserve or explicitly supersede with equal-or-stronger proof.
 
-## 8. Exit condition
+### 7.2 What repository/schema/module shape may change?
 
-This mode ends when the repository has completed the cohesion/schema/tooling audit and the owner explicitly chooses a new production freeze.
+For whether an existing pre-production shape may be reorganized, consolidated or rebaselined:
+
+```text
+system-optimization-mode.md
++ repository-governance-contract.md
++ pre-production-evolution-policy.md
+```
+
+These sources govern evolution authority. An older/current capability contract may describe the structure that implemented its semantics at a checkpoint; that structural description does **not** become an eternal freeze merely because the semantic contract remains valid.
+
+When changing a structure described by an otherwise-current capability contract:
+
+1. identify which statements are semantic guarantees versus implementation/architecture shape;
+2. preserve or explicitly disposition the semantic statements;
+3. update the current capability/ownership/architecture docs so they no longer describe the superseded shape as current;
+4. adapt/replace executable proof in the same coherent change.
+
+No document gets to weaken a HARD guarantee by calling a change “optimization”. No historical structural statement gets to block an otherwise valid controlled redesign solely because it was once release-proven.
+
+## 8. Documentation rule
+
+Historical documents may remain historically accurate. Current maps, READMEs, AGENTS files, CI contracts and migration READMEs must describe the present system and must not issue instructions that assume V3 is still an active candidate freeze.
+
+Current indexes should route readers to authority instead of duplicating chronological feature status. If two current normative documents disagree, treat the contradiction as a repository defect and reconcile the semantic owner/evolution authority explicitly.
+
+## 9. Exit condition
+
+This mode ends only when the repository has completed the cohesion/schema/tooling audit and the owner explicitly chooses a new production freeze.
 
 Before that freeze, Request Engine must have:
 
 - one current architecture and ownership map;
 - one coherent current schema baseline/migration policy;
 - current CI derived from current guarantees rather than release archaeology;
-- no known contradictory agent instructions;
+- no known contradictory current agent/instruction/document authority;
 - no mandatory V2/V3 release machinery without a real compatibility/provenance requirement;
 - an explicit production evolution, API compatibility and data-migration policy.
+
+The future freeze must name what is actually frozen (schema/API/data compatibility/release support) and must not silently convert heuristic maintainability signals or incidental repository shape into permanent architecture law.
