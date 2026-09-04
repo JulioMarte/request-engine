@@ -64,12 +64,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step(
             "secret-scan",
             "High-confidence secret scan",
-            "uv run python scripts/release/scan_v3_secrets.py",
+            "uv run python scripts/security/scan_secrets.py",
         ),
         Step(
             "python-sast",
             "Python security static analysis",
-            "uv run python scripts/release/scan_v3_python_security.py",
+            "uv run python scripts/security/scan_python_security.py",
         ),
         Step(
             "dependency-audit",
