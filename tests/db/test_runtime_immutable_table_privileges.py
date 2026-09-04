@@ -10,7 +10,10 @@ _TRUSTED_SCHEMAS = {
     "request_engine",
     "request_read",
 }
-_TRUSTED_DEFINER_OWNERS = {"request_engine_schema_owner", "request_engine_admin"}
+_TRUSTED_DEFINER_OWNERS = {
+    "request_engine_discovery_definer",
+    "request_engine_schema_owner",
+}
 
 
 @pytest.mark.postgres
