@@ -64,7 +64,14 @@ def test_security_definers_are_closed_across_all_runtime_schemas(
     ).fetchall()
 
     violations: list[str] = []
-    for schema_value, name_value, arguments_value, owner_value, config_value, public_value in rows:
+    for (
+        schema_value,
+        name_value,
+        arguments_value,
+        owner_value,
+        config_value,
+        public_value,
+    ) in rows:
         schema = str(schema_value)
         name = str(name_value)
         arguments = str(arguments_value)
