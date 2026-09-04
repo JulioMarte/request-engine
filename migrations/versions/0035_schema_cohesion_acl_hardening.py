@@ -61,10 +61,11 @@ def upgrade() -> None:
     op.execute("DROP INDEX request_engine.service_sessions_queue_idx")
     for name, arguments in _SECURITY_DEFINERS:
         function_ref = f"{name}({arguments})"
-        op.execute(
-            f"ALTER FUNCTION {function_ref} "
-            "SET search_path = pg_catalog, request_engine, pg_temp"
+        statement = (
+            f"ALTER FUNCTION {function_ref} SET search_path = "
+            "pg_catalog, request_engine, pg_temp"
         )
+        op.execute(statement)
     op.execute("RESET ROLE")
 
 
