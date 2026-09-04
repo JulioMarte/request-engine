@@ -23,14 +23,29 @@ def _production_references(name: str) -> list[str]:
     return references
 
 
+def _view_rows(catalog: dict[str, object]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in _dict_rows(catalog, "relations")
+        if row["relation_kind"] in ("v", "m")
+    ]
+
+
+def _version(row: dict[str, object]) -> int:
+    return cast(int, row["version"])
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Derive review candidates from a schema catalog")
+    parser = argparse.ArgumentParser(
+        description="Derive review candidates from a schema catalog"
+    )
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    catalog = cast(dict[str, object], json.loads(args.catalog.read_text(encoding="utf-8")))
-    views = [row for row in _dict_rows(catalog, "relations") if row["relation_kind"] in ("v", "m")]
+    raw_catalog = json.loads(args.catalog.read_text(encoding="utf-8"))
+    catalog = cast(dict[str, object], raw_catalog)
+    views = _view_rows(catalog)
 
     families: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
     duplicate_definitions: dict[str, list[str]] = defaultdict(list)
@@ -57,7 +72,11 @@ def main() -> None:
         )
 
     version_families = [
-        {"schema": schema, "family": family, "members": sorted(members, key=lambda row: row["version"])}
+        {
+            "schema": schema,
+            "family": family,
+            "members": sorted(members, key=_version),
+        }
         for (schema, family), members in sorted(families.items())
         if len(members) > 1
     ]
@@ -65,7 +84,9 @@ def main() -> None:
         sorted(names) for names in duplicate_definitions.values() if len(names) > 1
     ]
     zero_reference_views = sorted(
-        row["view"] for row in view_usage if row["production_reference_count"] == 0
+        cast(str, row["view"])
+        for row in view_usage
+        if cast(int, row["production_reference_count"]) == 0
     )
 
     result = {
@@ -77,11 +98,13 @@ def main() -> None:
         "view_usage": sorted(view_usage, key=lambda row: cast(str, row["view"])),
         "note": (
             "Zero production references and simultaneous versions are review candidates, "
-            "not automatic deletion decisions; grants, SQL callers and external contracts still apply."
+            "not automatic deletion decisions; grants, SQL callers and external contracts "
+            "still apply."
         ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    serialized = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    args.output.write_text(serialized, encoding="utf-8")
 
 
 if __name__ == "__main__":
