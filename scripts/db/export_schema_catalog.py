@@ -17,7 +17,8 @@ QUERIES = {
         SELECT n.nspname AS schema_name, c.relname AS relation_name,
                c.relkind::text AS relation_kind, pg_get_userbyid(c.relowner) AS owner,
                c.relrowsecurity AS row_security, c.relforcerowsecurity AS force_row_security,
-               c.relispartition AS is_partition
+               c.relispartition AS is_partition,
+               CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid,true) END AS definition
         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = ANY(%s) AND c.relkind IN ('r','p','v','m') ORDER BY 1,2
     """,
@@ -54,7 +55,7 @@ QUERIES = {
                pg_get_function_identity_arguments(p.oid) AS identity_arguments,
                p.prokind::text AS routine_kind, pg_get_userbyid(p.proowner) AS owner,
                p.prosecdef AS security_definer, p.provolatile::text AS volatility,
-               p.proconfig AS configuration
+               p.proconfig AS configuration, pg_get_functiondef(p.oid) AS definition
         FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
         WHERE n.nspname = ANY(%s) AND p.prokind IN ('f','p') ORDER BY 1,2,3
     """,
@@ -81,6 +82,20 @@ QUERIES = {
         FROM information_schema.role_routine_grants WHERE routine_schema = ANY(%s)
         ORDER BY 1,2,3,4
     """,
+    "roles": """
+        SELECT rolname AS role_name, rolsuper AS superuser, rolinherit AS inherit,
+               rolcreaterole AS create_role, rolcreatedb AS create_db, rolcanlogin AS can_login,
+               rolbypassrls AS bypass_rls
+        FROM pg_roles WHERE rolname LIKE 'request_engine_%' AND %s IS NOT NULL ORDER BY 1
+    """,
+    "role_memberships": """
+        SELECT parent.rolname AS parent_role, member.rolname AS member_role
+        FROM pg_auth_members membership
+        JOIN pg_roles parent ON parent.oid=membership.roleid
+        JOIN pg_roles member ON member.oid=membership.member
+        WHERE (parent.rolname LIKE 'request_engine_%%' OR member.rolname LIKE 'request_engine_%%')
+          AND %s IS NOT NULL ORDER BY 1,2
+    """,
 }
 
 
@@ -90,7 +105,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    payload: dict[str, object] = {"schema_version": 1, "schemas": list(SCHEMAS)}
+    payload: dict[str, object] = {"schema_version": 2, "schemas": list(SCHEMAS)}
     with psycopg.connect("", row_factory=dict_row) as conn:
         for name, query in QUERIES.items():
             payload[name] = conn.execute(query, (list(SCHEMAS),)).fetchall()
