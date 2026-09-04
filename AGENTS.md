@@ -48,14 +48,15 @@ The only normal PR targeting `main` is `development -> main` release promotion.
 
 ## Local publish certification — mandatory for local agents
 
-Local commits may be incomplete/red. Do not install a mandatory pre-commit quality gate.
+Local commits are checkpoints and MAY be incomplete or red. Do not install a mandatory pre-commit quality gate.
 
 Before local `git push`, use the managed pre-push certification described in `docs/engineering-quality/local-publish-certification.md`.
 
 - install/refresh with `uv run python scripts/dev/install_git_hooks.py`;
+- the certificate applies to the exact commit SHA, base SHA and toolchain it records;
 - never use `git push --no-verify` to bypass publication certification;
-- certification applies only to the exact clean commit/base/toolchain recorded;
 - local certification is publication permission, not merge evidence;
+- local certification MUST NOT cause remote CI lanes to be skipped;
 - GitHub exact-head CI remains authoritative.
 
 Agents working directly through GitHub do not have a local certificate and must rely on full PR CI/evidence.
@@ -165,9 +166,13 @@ new outbound module edge   -> QR-COUPLING-001 REVIEW_CANDIDATE
 
 These signals are non-blocking. There is no hard 120-line architecture ceiling.
 
-Do not split/extract solely to lower a metric. Review responsibility, real reasoning complexity, side effects, locality, ownership, abstraction value and testability. `HEALTHY_AS_IS` is a valid result.
+Every `REVIEW_CANDIDATE` must be reviewed through `docs/engineering-quality/agent-semantic-review-playbook.md` and `docs/engineering-quality/semantic-review-protocol.md`. `HEALTHY_AS_IS` is a valid semantic disposition.
+
+Do not split/extract solely to lower a metric. Review responsibility, real reasoning complexity, side effects, locality, ownership, abstraction value and testability.
 
 Do not game sensors with forwarding wrappers, one-function modules, service locators, runtime imports, re-export facades, duplicate logic or generic utility buckets.
+
+A deterministic `INVARIANT_FAILURE` cannot be waived by semantic review. If code changes after a review candidate, rerun deterministic architecture, lint/type and relevant behavior proofs.
 
 ## Test evidence discipline
 
