@@ -32,18 +32,12 @@ _IMMUTABLE_APP_TABLES = (
 )
 
 _SECURITY_DEFINERS = (
-    (
-        "request_engine.bind_consumed_identity_candidate_v1",
-        "uuid, uuid, text[], uuid",
-    ),
+    ("request_engine.bind_consumed_identity_candidate_v1", "uuid, uuid, text[], uuid"),
     (
         "request_engine.consume_identity_exchange_candidate_v1",
         "uuid, text, text, text, uuid",
     ),
-    (
-        "request_engine.create_identity_exchange_candidate_v1",
-        "text, text, text, uuid",
-    ),
+    ("request_engine.create_identity_exchange_candidate_v1", "text, text, text, uuid"),
     ("request_engine.identity_exchange_existing_party_v1", "uuid, uuid"),
     (
         "request_engine.publish_portable_party_v1",
@@ -52,20 +46,100 @@ _SECURITY_DEFINERS = (
     ("request_read.recovery_source_revision", "uuid, uuid"),
 )
 
+_DISCOVERY_DEFINERS = (
+    ("request_engine.guard_discovery_handoff_latest_version", ""),
+    ("request_engine.guard_discovery_handoff_reservation", ""),
+    ("request_engine.has_active_discovery_mapping", "uuid"),
+    (
+        "request_engine.issue_discovery_booking_handoff",
+        "text, uuid, bigint, uuid, bigint, uuid, uuid, jsonb, timestamptz",
+    ),
+    ("request_engine.read_discovery_booking_handoff", "text"),
+    (
+        "request_engine.search_discovery_candidates_v2",
+        "text, double precision, double precision, integer, timestamptz, timestamptz, integer",
+    ),
+)
+
+
+def _function_ref(name: str, arguments: str) -> str:
+    return f"{name}({arguments})"
+
 
 def upgrade() -> None:
+    op.execute(
+        """
+        DO $role$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_roles
+                WHERE rolname = 'request_engine_discovery_definer'
+            ) THEN
+                CREATE ROLE request_engine_discovery_definer
+                    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+            END IF;
+        END
+        $role$;
+        ALTER ROLE request_engine_discovery_definer
+            WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+        """
+    )
+
     op.execute("SET ROLE request_engine_schema_owner")
     for table in _IMMUTABLE_APP_TABLES:
-        statement = f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app"
-        op.execute(statement)
+        op.execute(f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app")
     op.execute("DROP INDEX request_engine.service_sessions_queue_idx")
     for name, arguments in _SECURITY_DEFINERS:
-        function_ref = f"{name}({arguments})"
-        statement = (
-            f"ALTER FUNCTION {function_ref} SET search_path = pg_catalog, request_engine, pg_temp"
+        function_ref = _function_ref(name, arguments)
+        op.execute(
+            f"ALTER FUNCTION {function_ref} "
+            "SET search_path = pg_catalog, request_engine, pg_temp"
         )
-        op.execute(statement)
+
+    op.execute(
+        "REVOKE ALL ON SCHEMA request_engine, request_read, request_cmd, request_admin "
+        "FROM request_engine_discovery_definer"
+    )
+    op.execute("GRANT USAGE ON SCHEMA request_engine TO request_engine_discovery_definer")
+    op.execute(
+        "REVOKE ALL ON ALL TABLES IN SCHEMA request_engine "
+        "FROM request_engine_discovery_definer"
+    )
+    op.execute(
+        "GRANT SELECT ON request_engine.organizations, request_engine.locations, "
+        "request_engine.offerings, request_engine.offering_versions, request_engine.resources, "
+        "request_engine.resource_public_profiles, request_engine.service_classifications, "
+        "request_engine.offering_service_classifications, request_engine.discovery_publications "
+        "TO request_engine_discovery_definer"
+    )
+    op.execute(
+        "GRANT SELECT, INSERT, UPDATE ON request_engine.discovery_booking_handoffs "
+        "TO request_engine_discovery_definer"
+    )
     op.execute("RESET ROLE")
+
+    for name, arguments in _DISCOVERY_DEFINERS:
+        function_ref = _function_ref(name, arguments)
+        op.execute(f"ALTER FUNCTION {function_ref} OWNER TO request_engine_discovery_definer")
+        op.execute(f"REVOKE ALL ON FUNCTION {function_ref} FROM PUBLIC")
+
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION request_engine.guard_discovery_handoff_latest_version(), "
+        "request_engine.guard_discovery_handoff_reservation(), "
+        "request_engine.has_active_discovery_mapping(uuid) "
+        "TO request_engine_schema_owner, request_engine_admin"
+    )
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION request_engine.issue_discovery_booking_handoff("
+        "text, uuid, bigint, uuid, bigint, uuid, uuid, jsonb, timestamptz), "
+        "request_engine.search_discovery_candidates_v2("
+        "text, double precision, double precision, integer, timestamptz, timestamptz, integer) "
+        "TO request_engine_discovery, request_engine_admin"
+    )
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION request_engine.read_discovery_booking_handoff(text) "
+        "TO request_engine_app, request_engine_admin"
+    )
 
 
 def downgrade() -> None:
