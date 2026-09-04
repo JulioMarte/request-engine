@@ -116,6 +116,10 @@ def upgrade() -> None:
         "GRANT SELECT, INSERT, UPDATE ON request_engine.discovery_booking_handoffs "
         "TO request_engine_discovery_definer"
     )
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION request_engine.current_organization_id() "
+        "TO request_engine_discovery_definer"
+    )
     op.execute("RESET ROLE")
 
     for name, arguments in _DISCOVERY_DEFINERS:
