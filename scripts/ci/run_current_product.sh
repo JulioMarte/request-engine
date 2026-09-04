@@ -29,6 +29,11 @@ if [[ "$actual_head" != "$expected_head" ]]; then
   exit 1
 fi
 
+# Audit the effective PostgreSQL model, not the migration history that produced
+# it. The catalog artifact is the primary evidence for pre-rebaseline cohesion.
+uv run python scripts/db/export_schema_catalog.py \
+  --output "$ARTIFACT_DIR/schema-catalog.json"
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
