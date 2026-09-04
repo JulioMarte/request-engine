@@ -43,6 +43,21 @@ _DISCOVERY_DEFINER_RELATION_PRIVILEGES = {
     ("resources", "SELECT"),
     ("service_classifications", "SELECT"),
 }
+_DISCOVERY_DEFINER_FUNCTIONS = {
+    "current_organization_id()",
+    "guard_discovery_handoff_latest_version()",
+    "guard_discovery_handoff_reservation()",
+    "has_active_discovery_mapping(uuid)",
+    (
+        "issue_discovery_booking_handoff(text, uuid, bigint, uuid, bigint, uuid, uuid, jsonb, "
+        "timestamp with time zone)"
+    ),
+    "read_discovery_booking_handoff(text)",
+    (
+        "search_discovery_candidates_v2(text, double precision, double precision, integer, "
+        "timestamp with time zone, timestamp with time zone, integer)"
+    ),
+}
 
 
 @pytest.mark.postgres
@@ -163,6 +178,29 @@ def test_discovery_definer_has_exact_relation_privileges(admin_conn: PgConnectio
 
     actual = {(cast(str, relation), cast(str, privilege)) for relation, privilege in rows}
     assert actual == _DISCOVERY_DEFINER_RELATION_PRIVILEGES
+
+
+@pytest.mark.postgres
+def test_discovery_definer_has_exact_function_authority(admin_conn: PgConnection) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT p.proname, oidvectortypes(p.proargtypes)
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = ANY(%s)
+          AND has_schema_privilege(
+              'request_engine_discovery_definer', n.oid, 'USAGE'
+          )
+          AND has_function_privilege(
+              'request_engine_discovery_definer', p.oid, 'EXECUTE'
+          )
+        ORDER BY p.proname, oidvectortypes(p.proargtypes)
+        """,
+        (list(_RUNTIME_SCHEMAS),),
+    ).fetchall()
+
+    actual = {f"{cast(str, name)}({cast(str, arguments)})" for name, arguments in rows}
+    assert actual == _DISCOVERY_DEFINER_FUNCTIONS
 
 
 @pytest.mark.postgres
