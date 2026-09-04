@@ -170,6 +170,26 @@ guards, the single-delivery-executor decision, and the FU-2..FU-7 dispositions r
 in `v3/37-f7-implementation-plan.md`. Voice confirmation is admitted only as incubating
 structure (contract §12), normative once implemented with evidence.
 
+## 8.3 Active F7e contract — same-day triage
+
+Primary documents:
+
+1. `v3/43-same-day-triage.md` — **normative F7e/S5 same-day Queue selection contract**
+   (operator-select with closed reasons, recall holds behind closed conditions, skip as an
+   ordered fact, hold release), narrowing F7 §A7 while preserving the derived
+   `(admitted_at, id)` FIFO truth.
+
+## 8.4 Business onboarding — bootstrap API contract
+
+Primary documents:
+
+1. `v3/44-business-onboarding-bootstrap-contract.md` — **normative business-onboarding
+   API contract** (capability-guarded public/operator bootstrap endpoints — operational
+   authority, Locations/hours/holidays, catalog capabilities and offerings, booking
+   policies, Resource supply, queues, channel policies, readiness — that take a
+   provisioned tenant from zero to operational without SQL fixtures; acceptance proof
+   `tests/e2e/test_onboarding_journey.py`).
+
 ## 9. Active F6 contract — external-agent tooling
 
 Primary contract:

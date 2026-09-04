@@ -25,7 +25,7 @@ These standards exist so that every consumer-facing surface (public app, operati
 | Unauthenticated | 401 | With `WWW-Authenticate`. |
 | Authenticated but not allowed | 403 | Must name the missing capability/scope in `details` (§8). |
 | Semantic conflict with current state | 409 | Slot gone, lifecycle conflict, idempotency fingerprint conflict. |
-| Stale revision | 409 (`revision_conflict`) | Current owner contract is 409, not 412; keep the mapping uniform across modules and change it only in the owner contract. |
+| Stale revision | 409 (`revision_conflict`) | Current owner contract is 409, not 412; keep the mapping uniform across modules and change it only in the owner contract. Newer surfaces ship per-aggregate conflict codes instead — see backlog D10. |
 | Payload contract violation | 422 | Only where the owner contract already uses it; prefer 400 for new surface. |
 | Not found (absent or cross-tenant) | 404 | Default across tenant boundaries — existence is not disclosed (RLS-safe). |
 | Rate limited / overloaded | 429 / 503 | With `Retry-After`. |
@@ -62,12 +62,12 @@ Standards layered on top of the owner contract:
 
 - Every mutating command requires `Idempotency-Key` (owned by `v3/01-capability-contracts.md`). The key is scoped per tenant; a replay returns the original response verbatim, even if the resource has since changed.
 - Reusing a key with a different request fingerprint must fail with 409 `idempotency_conflict` — never a raw database error, never a silent re-execution. Validation failures that occur before execution do not consume the key.
-- Mutations of revisioned aggregates take `expected_revision`; stale revision maps to the owner contract's `revision_conflict` 409 with `aggregate_kind`, `expected_revision`, `current_revision` in `details`.
+- Mutations of revisioned aggregates take `expected_revision`; stale revision maps to the owner contract's `revision_conflict` 409 with `aggregate_kind`, `expected_revision`, `current_revision` in `details`. Some newer onboarding surfaces use per-aggregate codes with narrower details instead (backlog D10).
 - Read-only operations never require an idempotency key unless they durably persist an interpretation (and then the OpenAPI metadata must say so explicitly).
 
 ## 7. Time, timezone and units
 
-- All timestamps are RFC 3339 in UTC. Local wall-clock time is only accepted when paired with an explicit IANA timezone field (the reminder-plan pattern is the reference). A naive datetime in a scheduling API is a DST correctness bug, not a style issue — window/range parameters must reject tz-naive values.
+- All timestamps are RFC 3339 in UTC. Local wall-clock time is only accepted when it is bound to an explicit timezone at the owning resource: the reminder-plan pattern pairs windows with an explicit IANA timezone field, and Location-declared availability windows inherit the Location's declared IANA timezone (doc `v3/44` §6.3). A wall-clock value with no such binding is a DST correctness bug, not a style issue — window/range parameters must reject tz-naive values (backlog D11).
 - Range filters are half-open `[start, end)` and documented as such.
 - Durations carry the unit in the field name (`duration_minutes`); money is amount + currency, never a bare number.
 
@@ -102,15 +102,19 @@ Standards layered on top of the owner contract:
 
 These are audit findings against the current surface (they document reality, not approval). Fixing one is ordinary product work: follow the connection-surface gate and update the frozen surface inventory in the same change.
 
+The business-onboarding surface (`v3/44-business-onboarding-bootstrap-contract.md`) is the first canonical consumer of §6 and §8: its creation commands require `Idempotency-Key`, register through `add_capability_route`, and return 201 on the public app. Tensions between these standards and newer owner documents are registered below until reconciled; doc 15 does not silently reinterpret an owner contract.
+
 - **D1 (addressing)** QueueEntry has two path roots (nested under queue vs bare `/v1/queue-entries`); service-session start lives under `/queue-entries/{id}/service/start` while its own aggregate lives under `/v1/service-sessions`. Pick one addressing scheme per aggregate.
 - **D2 (envelopes)** Most list endpoints return bare arrays; only `staff/history` paginates with a cursor. Standardize the envelope and paginate the unbounded lists (`GET /v1/queues`, live workloads, resource activities, party lookups/revisions).
 - **D3 (error-code outliers)** `operational_recovery` uses SCREAMING_SNAKE codes; identity-exchange returns 403 with `resolution: fix_request`; discovery returns 422 with `resolution: refresh_and_retry`; live_capacity maps invalid configuration to 409 instead of 400/422; a second idempotency-conflict code exists. Bring every mapping under §4.
 - **D4 (discovery gaps)** Discovery-app routes bypass the capability registry (no `x-request-engine-*` metadata); waitlist slot-offer routes are conditionally mounted while their capability always advertises.
-- **D5 (auth metadata)** No security schemes or 401/403 declarations in OpenAPI on any app; the operations app registers no `CapabilityRequired` handler (a capability failure there would surface as an unhandled 500).
-- **D6 (operator API schema)** All `/v1/operations/*` handlers return untyped responses; no summaries/descriptions anywhere except one route.
+- **D5 (auth metadata, split)** The public app now registers `CapabilityRequired` and `OperationalAuthorityRequired` handlers globally (`add_global_error_handlers` in `entrypoints/http/error_handlers.py`), so capability failures no longer surface as unhandled 500s there. Still open: the operations app registers no `CapabilityRequired` handler (a capability failure there would surface as an unhandled 500), and no app declares security schemes or 401/403 responses in its OpenAPI document.
+- **D6 (operator/onboarding API schema)** All `/v1/operations/*` handlers still return untyped responses, and the onboarding bootstrap routers do too (`-> object` in catalog bootstrap/booking-policy/schedule, booking resource bootstrap, queue bootstrap, tenancy bootstrap-authority, communications channel-policy). The only typed exception is `GET /v1/onboarding/readiness` (`OnboardingReadinessView`). Summaries/descriptions remain effectively absent; every `-> object` handler is a schema-less response that cannot generate clients.
 - **D7 (operational hygiene)** No health/readiness/version endpoints on any process; `entrypoints/http/README.md` route list is stale versus the real surface.
 - **D8 (read model)** No list-my-* endpoints (a party's appointments, waitlist entries, reminder plans); consumers must persist every id they ever see. Also `GET /v1/appointments/slots` accepts tz-naive datetimes unlike every other window parameter.
-- **D9 (status discipline)** Operations app and copilot tool creations return 200 instead of 201; update verbs are mixed (PATCH vs PUT vs POST `/update`).
+- **D9 (status discipline)** Public-app onboarding creations now return 201 (resources, offerings, queues, resource capabilities). Remaining outliers: `POST /v1/organization/bootstrap-operational-authority` and the `operational_recovery` workflow creation routes (workflow, reschedule, workflow-communication) return 200 while sibling creations on their own surfaces return 201; update verbs are mixed (PATCH vs PUT vs POST `/update`).
+- **D10 (revision-conflict code split)** Stale-revision responses are no longer uniform under the generic `revision_conflict`: newer surfaces emit per-aggregate codes — `offering_booking_policy_revision_conflict` and `location_operational_revision_conflict` (catalog), `resource_availability_revision_conflict` and `resource_location_assignment_revision_conflict` (booking) — with `{id, expected_revision, current_revision}` details and no `aggregate_kind`, while the generic `revision_conflict` remains in communications and booking task errors. Doc `v3/44` §6.2/§6.5 still describe the onboarding conflicts as `revision_conflict`, which does not match the implemented per-aggregate codes; doc 44 must be reconciled (not in this change) and the owner contract must decide one vocabulary: either one generic code with `aggregate_kind`, or a closed per-aggregate family — not both.
+- **D11 (timezone binding decision)** `weekly_availability` windows in the onboarding surface are local wall-clock (`local_start`/`local_end`) and inherit the timezone declared on the owning Location instead of carrying a per-request IANA field (doc `v3/44` §6.3). §7 has been worded to accept explicit timezone binding at the owning resource; whether scheduling inputs must additionally carry a per-window IANA field (as reminder plans do) remains an open product decision to settle in the owner contract.
 
 ## 13. Anti-patterns (never do these)
 
