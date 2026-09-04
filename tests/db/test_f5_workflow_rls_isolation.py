@@ -76,6 +76,10 @@ def _all_have_privilege(conn: PgConnection, role: str, privilege: str) -> bool:
     return all(_has_privilege(conn, role, table, privilege) for table in WORKFLOW_TABLES)
 
 
+def _none_have_privilege(conn: PgConnection, role: str, privilege: str) -> bool:
+    return all(not _has_privilege(conn, role, table, privilege) for table in WORKFLOW_TABLES)
+
+
 def _seed_tenant_workflow(
     conn: PgConnection, setup: LiveOpsFixture, principal_id: UUID
 ) -> tuple[UUID, UUID, UUID]:
@@ -143,9 +147,9 @@ def test_f5_workflow_tables_force_rls_and_runtime_least_privilege(
             "UPDATE",
         )
         for privilege in ("DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"):
-            assert not _all_have_privilege(app_conn, "request_engine_app", privilege)
+            assert _none_have_privilege(app_conn, "request_engine_app", privilege)
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"):
-            assert not _all_have_privilege(app_conn, "request_engine_worker", privilege)
+            assert _none_have_privilege(app_conn, "request_engine_worker", privilege)
 
         _denied(app_conn, "42501", "DELETE FROM request_engine.operational_recovery_incidents")
         _denied(app_conn, "42501", "TRUNCATE request_engine.operational_recovery_actions")
