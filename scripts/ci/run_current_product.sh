@@ -29,6 +29,12 @@ if [[ "$actual_head" != "$expected_head" ]]; then
   exit 1
 fi
 
+# Audit evidence is captured from the effective PostgreSQL catalog after the
+# accepted migration head has been applied. This is intentionally independent
+# of migration history so schema-cohesion review reasons about deployed truth.
+uv run python scripts/db/export_schema_catalog.py \
+  --output "$ARTIFACT_DIR/schema-catalog.json"
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
