@@ -8,22 +8,45 @@ PgConnection = Connection[Any]
 pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.adversarial]
 
 _RUNTIME_SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
-_CORE_ROLES = {
+_DATABASE_ROLES = {
     "request_engine_admin": (False, False, True, False, False),
     "request_engine_app": (False, False, False, False, False),
+    "request_engine_discovery": (False, False, False, False, False),
+    "request_engine_discovery_definer": (False, False, True, False, False),
     "request_engine_schema_owner": (False, False, False, False, False),
     "request_engine_worker": (False, False, False, False, False),
 }
 _EXPECTED_SCHEMA_USAGE = {
     "request_engine_app": {"request_engine", "request_read", "request_cmd"},
+    "request_engine_discovery": {"request_engine"},
     "request_engine_worker": {"request_engine", "request_cmd"},
     "request_engine_admin": set(_RUNTIME_SCHEMAS),
+    "request_engine_discovery_definer": {"request_engine"},
 }
-_RUNTIME_GROUP_ROLES = set(_EXPECTED_SCHEMA_USAGE)
+_RUNTIME_GROUP_ROLES = {
+    "request_engine_admin",
+    "request_engine_app",
+    "request_engine_discovery",
+    "request_engine_worker",
+}
+_DISCOVERY_DEFINER_RELATION_PRIVILEGES = {
+    ("discovery_booking_handoffs", "INSERT"),
+    ("discovery_booking_handoffs", "SELECT"),
+    ("discovery_booking_handoffs", "UPDATE"),
+    ("discovery_publications", "SELECT"),
+    ("locations", "SELECT"),
+    ("offering_service_classifications", "SELECT"),
+    ("offering_versions", "SELECT"),
+    ("offerings", "SELECT"),
+    ("organizations", "SELECT"),
+    ("resource_public_profiles", "SELECT"),
+    ("resources", "SELECT"),
+    ("service_classifications", "SELECT"),
+}
 
 
 @pytest.mark.postgres
-def test_core_database_roles_are_nonlogin_and_nonadministrative(
+def test_database_roles_are_nonlogin_and_have_reviewed_elevation(
     admin_conn: PgConnection,
 ) -> None:
     rows = admin_conn.execute(
@@ -33,7 +56,7 @@ def test_core_database_roles_are_nonlogin_and_nonadministrative(
         WHERE rolname = ANY(%s)
         ORDER BY rolname
         """,
-        (sorted(_CORE_ROLES),),
+        (sorted(_DATABASE_ROLES),),
     ).fetchall()
 
     actual = {
@@ -46,11 +69,11 @@ def test_core_database_roles_are_nonlogin_and_nonadministrative(
         )
         for name, can_login, superuser, bypass_rls, create_db, create_role in rows
     }
-    assert actual == _CORE_ROLES
+    assert actual == _DATABASE_ROLES
 
 
 @pytest.mark.postgres
-def test_runtime_roles_have_only_intended_schema_usage_and_never_create(
+def test_runtime_and_definer_roles_have_only_intended_schema_usage(
     admin_conn: PgConnection,
 ) -> None:
     for role, expected_usage in _EXPECTED_SCHEMA_USAGE.items():
@@ -71,18 +94,17 @@ def test_runtime_roles_have_only_intended_schema_usage_and_never_create(
 
 
 @pytest.mark.postgres
-def test_core_roles_do_not_inherit_one_another(admin_conn: PgConnection) -> None:
+def test_request_engine_roles_do_not_inherit_one_another(admin_conn: PgConnection) -> None:
     rows = admin_conn.execute(
         """
         SELECT parent.rolname, member.rolname
         FROM pg_auth_members membership
         JOIN pg_roles parent ON parent.oid = membership.roleid
         JOIN pg_roles member ON member.oid = membership.member
-        WHERE parent.rolname = ANY(%s)
-          AND member.rolname = ANY(%s)
+        WHERE parent.rolname LIKE 'request_engine\\_%' ESCAPE '\\'
+          AND member.rolname LIKE 'request_engine\\_%' ESCAPE '\\'
         ORDER BY parent.rolname, member.rolname
-        """,
-        (sorted(_CORE_ROLES), sorted(_CORE_ROLES)),
+        """
     ).fetchall()
 
     assert rows == []
@@ -117,6 +139,30 @@ def test_runtime_group_roles_own_no_application_schema_objects(
 
     assert relation_rows == []
     assert routine_rows == []
+
+
+@pytest.mark.postgres
+def test_discovery_definer_has_exact_relation_privileges(admin_conn: PgConnection) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT c.relname, acl.privilege_type
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(
+            COALESCE(c.relacl, acldefault('r', c.relowner))
+        ) AS acl
+        WHERE n.nspname = 'request_engine'
+          AND c.relkind IN ('r','p','v','m')
+          AND acl.grantee = (
+              SELECT oid FROM pg_roles
+              WHERE rolname = 'request_engine_discovery_definer'
+          )
+        ORDER BY c.relname, acl.privilege_type
+        """
+    ).fetchall()
+
+    actual = {(cast(str, relation), cast(str, privilege)) for relation, privilege in rows}
+    assert actual == _DISCOVERY_DEFINER_RELATION_PRIVILEGES
 
 
 @pytest.mark.postgres
