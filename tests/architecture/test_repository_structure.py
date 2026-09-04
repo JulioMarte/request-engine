@@ -64,7 +64,11 @@ def test_every_business_module_has_local_ownership_documentation() -> None:
 
 
 def test_current_architecture_entry_points_exist() -> None:
-    missing = {path for path in CURRENT_ARCHITECTURE_ENTRY_POINTS if not (REPO_ROOT / path).is_file()}
+    missing = {
+        path
+        for path in CURRENT_ARCHITECTURE_ENTRY_POINTS
+        if not (REPO_ROOT / path).is_file()
+    }
     assert missing == set()
 
 
