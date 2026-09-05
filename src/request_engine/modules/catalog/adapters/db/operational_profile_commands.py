@@ -551,7 +551,7 @@ class PostgresOperationalProfileCommands:
                             WHERE ov.organization_id = :organization_id
                               AND ov.id = :offering_version_id
                               AND o.active
-                            FOR UPDATE OF ov
+                            FOR UPDATE OF o
                             """
                         ),
                         {
