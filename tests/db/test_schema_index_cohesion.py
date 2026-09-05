@@ -60,7 +60,7 @@ def test_reservations_have_tenant_scoped_temporal_gist_index(
 
 
 @pytest.mark.postgres
-def test_reservation_overlap_predicate_can_use_temporal_gist_access_path(
+def test_reservation_day_board_predicate_can_use_temporal_gist_access_path(
     admin_conn: PgConnection,
 ) -> None:
     admin_conn.execute("SET enable_seqscan = off")
@@ -70,11 +70,14 @@ def test_reservation_overlap_predicate_can_use_temporal_gist_access_path(
             EXPLAIN (COSTS OFF)
             SELECT id
             FROM request_engine.reservations
-            WHERE during && tstzrange(
-                '2030-01-01T00:00:00Z'::timestamptz,
-                '2030-01-02T00:00:00Z'::timestamptz,
-                '[)'
-            )
+            WHERE organization_id = '00000000-0000-0000-0000-000000000001'::uuid
+              AND during && tstzrange(
+                  '2030-01-01T00:00:00Z'::timestamptz,
+                  '2030-01-02T00:00:00Z'::timestamptz,
+                  '[)'
+              )
+            ORDER BY lower(during), id
+            LIMIT 500
             """
         ).fetchall()
     finally:
