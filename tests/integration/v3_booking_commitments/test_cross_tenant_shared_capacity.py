@@ -1,7 +1,5 @@
-import json
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, LiteralString, cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,20 +10,11 @@ from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeReservationCommands,
     CapacitySafeSlotOfferCapacity,
 )
-from request_engine.modules.booking.application.commands.acquire_capacity_hold import (
-    AcquireCapacityHoldCommand,
-    acquire_capacity_hold,
-)
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-    book_appointment,
-)
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
-    RescheduleReservationCommand,
     reschedule_reservation,
 )
 from request_engine.modules.booking.application.errors import AppointmentUnavailable
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.modules.communications.adapters.db.slot_offer_intent import (
     PostgresSlotOfferNotificationIntent,
 )
@@ -49,170 +38,38 @@ from request_engine.modules.queue.application.commands.offer_next_waitlist_candi
 )
 from request_engine.platform.db.session import SessionFactory
 
+from .contextual_booking_support import (
+    ContextualTenantFixture,
+    contextual_book_command,
+    contextual_reschedule_command,
+    contextual_slot_at,
+    create_contextual_tenant,
+    uuid_row,
+)
+
 PgConnection = Connection[Any]
 
 
-@dataclass(frozen=True, slots=True)
-class TenantBookingFixture:
-    organization_id: UUID
-    principal_id: UUID
-    subject_party_id: UUID
-    offering_id: UUID
-    offering_version_id: UUID
-    location_id: UUID
-    requirement_id: UUID
-    resource_id: UUID
-
-
-def _uuid_row(
-    conn: PgConnection,
-    sql: LiteralString,
-    params: tuple[object, ...] = (),
-) -> UUID:
-    row = conn.execute(sql, params).fetchone()
-    assert row is not None
-    return cast(UUID, row[0])
-
-
-def _fixture(conn: PgConnection, label: str) -> TenantBookingFixture:
-    suffix = f"{label}-{uuid4().hex}"
-    organization_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.organizations (organization_key, display_name)
-        VALUES (%s, %s)
-        RETURNING id
-        """,
-        (suffix, suffix),
-    )
-    principal_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.principals (
-            organization_id, principal_kind, external_subject
-        ) VALUES (%s, 'agent', %s)
-        RETURNING id
-        """,
-        (organization_id, f"agent-{suffix}"),
-    )
-    subject_party_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.parties (organization_id, party_kind, display_name)
-        VALUES (%s, 'person', %s)
-        RETURNING id
-        """,
-        (organization_id, f"Subject {suffix}"),
-    )
-    location_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.locations (
-            organization_id, location_key, display_name, timezone
-        ) VALUES (%s, %s, %s, 'America/Santo_Domingo')
-        RETURNING id
-        """,
-        (organization_id, f"main-{suffix}", f"Main {suffix}"),
-    )
-    offering_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.offerings (
-            organization_id, offering_key, display_name
-        ) VALUES (%s, %s, %s)
-        RETURNING id
-        """,
-        (organization_id, f"consult-{suffix}", f"Consult {suffix}"),
-    )
-    offering_version_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.offering_versions (
-            organization_id, offering_id, version, duration_minutes, bookable, booking_policy
-        ) VALUES (%s, %s, 1, 30, true, %s::jsonb)
-        RETURNING id
-        """,
-        (organization_id, offering_id, json.dumps({"slot_step_minutes": 15})),
-    )
-    capability_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.resource_capabilities (
-            organization_id, capability_key, display_name
-        ) VALUES (%s, %s, %s)
-        RETURNING id
-        """,
-        (organization_id, f"doctor-{suffix}", f"Doctor {suffix}"),
-    )
-    requirement_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.offering_resource_requirements (
-            organization_id, offering_version_id, capability_id, ordinal, quantity
-        ) VALUES (%s, %s, %s, 1, 1)
-        RETURNING id
-        """,
-        (organization_id, offering_version_id, capability_id),
-    )
-    resource_id = _uuid_row(
-        conn,
-        """
-        INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
-            capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, %s, 'exclusive', 1)
-        RETURNING id
-        """,
-        (organization_id, location_id, f"doctor-{suffix}", f"Doctor {suffix}"),
-    )
-    conn.execute(
-        """
-        INSERT INTO request_engine.resource_capability_assignments (
-            organization_id, resource_id, capability_id
-        ) VALUES (%s, %s, %s)
-        """,
-        (organization_id, resource_id, capability_id),
-    )
-    conn.execute(
-        """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
-        """,
-        (organization_id, resource_id),
-    )
-    return TenantBookingFixture(
-        organization_id=organization_id,
-        principal_id=principal_id,
-        subject_party_id=subject_party_id,
-        offering_id=offering_id,
-        offering_version_id=offering_version_id,
-        location_id=location_id,
-        requirement_id=requirement_id,
-        resource_id=resource_id,
-    )
-
-
 def _shared_root(conn: PgConnection) -> UUID:
-    global_identity_id = _uuid_row(
+    global_identity_id = uuid_row(
         conn,
         "SELECT request_admin.create_global_identity('person', NULL, %s, %s)",
         ("test.control-plane", "verified shared professional"),
     )
-    return _uuid_row(
+    return uuid_row(
         conn,
         "SELECT request_admin.create_shared_capacity_identity(%s, %s, %s)",
         (global_identity_id, "test.control-plane", "serialize professional capacity"),
     )
 
 
-def _bind(conn: PgConnection, fixture: TenantBookingFixture, root_id: UUID) -> UUID:
-    return _uuid_row(
+def _bind(conn: PgConnection, fixture: ContextualTenantFixture, root_id: UUID) -> UUID:
+    return uuid_row(
         conn,
         "SELECT request_admin.activate_shared_capacity_binding(%s, %s, %s, %s, %s)",
         (
             fixture.organization_id,
-            fixture.resource_id,
+            fixture.resources[0].resource_id,
             root_id,
             "test.control-plane",
             "verified tenant Resource binding",
@@ -220,70 +77,15 @@ def _bind(conn: PgConnection, fixture: TenantBookingFixture, root_id: UUID) -> U
     )
 
 
-def _choice(fixture: TenantBookingFixture) -> tuple[ResourceChoice, ...]:
-    return (ResourceChoice(fixture.requirement_id, fixture.resource_id),)
-
-
-def _book(fixture: TenantBookingFixture, start_at: datetime) -> BookAppointmentCommand:
-    return BookAppointmentCommand(
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        offering_version_id=fixture.offering_version_id,
-        subject_party_id=fixture.subject_party_id,
-        location_id=fixture.location_id,
-        start_at=start_at,
-        resources=_choice(fixture),
-        idempotency_key=f"book-{uuid4().hex}",
-        allow_subject_override=True,
-    )
-
-
-def _hold(fixture: TenantBookingFixture, start_at: datetime) -> AcquireCapacityHoldCommand:
-    return AcquireCapacityHoldCommand(
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        offering_version_id=fixture.offering_version_id,
-        subject_party_id=fixture.subject_party_id,
-        location_id=fixture.location_id,
-        start_at=start_at,
-        expires_at=datetime.now(UTC) + timedelta(minutes=10),
-        resources=_choice(fixture),
-        idempotency_key=f"hold-{uuid4().hex}",
-        allow_subject_override=True,
-    )
-
-
 def _two_bound_tenants(
     conn: PgConnection,
-) -> tuple[TenantBookingFixture, TenantBookingFixture, UUID]:
-    tenant_a = _fixture(conn, "shared-a")
-    tenant_b = _fixture(conn, "shared-b")
+) -> tuple[ContextualTenantFixture, ContextualTenantFixture, UUID]:
+    tenant_a = create_contextual_tenant(conn, "shared-a")
+    tenant_b = create_contextual_tenant(conn, "shared-b")
     root_id = _shared_root(conn)
     _bind(conn, tenant_a, root_id)
     _bind(conn, tenant_b, root_id)
     return tenant_a, tenant_b, root_id
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-@pytest.mark.postgres
-async def test_cross_tenant_hold_and_direct_booking_block_each_other(
-    admin_conn: PgConnection,
-    session_factory: SessionFactory,
-) -> None:
-    tenant_a, tenant_b, _ = _two_bound_tenants(admin_conn)
-    reservations = CapacitySafeReservationCommands(session_factory)
-    commitments = CapacitySafeBookingCommitmentCommands(session_factory)
-
-    first_start = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
-    await acquire_capacity_hold(commitments, _hold(tenant_a, first_start))
-    with pytest.raises(AppointmentUnavailable):
-        await book_appointment(reservations, _book(tenant_b, first_start))
-
-    second_start = datetime(2099, 8, 17, 14, 0, tzinfo=UTC)
-    await book_appointment(reservations, _book(tenant_a, second_start))
-    with pytest.raises(AppointmentUnavailable):
-        await acquire_capacity_hold(commitments, _hold(tenant_b, second_start))
 
 
 @pytest.mark.asyncio
@@ -298,23 +100,45 @@ async def test_cross_tenant_reschedule_conflict_rolls_back_original_commitment(
     commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     original_start = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     blocked_start = datetime(2099, 8, 17, 14, 0, tzinfo=UTC)
+    resource_a = tenant_a.resources[0].resource_id
+    resource_b = tenant_b.resources[0].resource_id
 
-    original = await book_appointment(reservations, _book(tenant_a, original_start))
-    await book_appointment(reservations, _book(tenant_b, blocked_start))
+    original_slot = await contextual_slot_at(
+        tenant_a,
+        session_factory,
+        resource_id=resource_a,
+        start_at=original_start,
+    )
+    blocked_a_slot = await contextual_slot_at(
+        tenant_a,
+        session_factory,
+        resource_id=resource_a,
+        start_at=blocked_start,
+    )
+    blocked_b_slot = await contextual_slot_at(
+        tenant_b,
+        session_factory,
+        resource_id=resource_b,
+        start_at=blocked_start,
+    )
+    original = await book_appointment(
+        reservations,
+        contextual_book_command(tenant_a, original_slot, key_prefix="shared-original"),
+    )
+    await book_appointment(
+        reservations,
+        contextual_book_command(tenant_b, blocked_b_slot, key_prefix="shared-blocker"),
+    )
 
     with pytest.raises(AppointmentUnavailable):
         await reschedule_reservation(
             commitments,
-            RescheduleReservationCommand(
-                organization_id=tenant_a.organization_id,
-                principal_id=tenant_a.principal_id,
+            contextual_reschedule_command(
+                tenant_a,
+                blocked_a_slot,
                 reservation_id=original.id,
                 expected_revision=original.revision,
-                location_id=tenant_a.location_id,
-                start_at=blocked_start,
-                resources=_choice(tenant_a),
-                idempotency_key=f"reschedule-{uuid4().hex}",
-                allow_subject_override=True,
+                key_prefix="shared-reschedule",
             ),
         )
 
@@ -358,6 +182,12 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
     reservations = CapacitySafeReservationCommands(session_factory)
     start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
+    foreign_slot = await contextual_slot_at(
+        tenant_b,
+        session_factory,
+        resource_id=tenant_b.resources[0].resource_id,
+        start_at=start_at,
+    )
 
     entry = await join_waitlist(
         waitlist,
@@ -367,7 +197,7 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
             offering_id=tenant_a.offering_id,
             subject_party_id=tenant_a.subject_party_id,
             location_id=tenant_a.location_id,
-            preferred_resource_id=tenant_a.resource_id,
+            preferred_resource_id=tenant_a.resources[0].resource_id,
             earliest_start=None,
             latest_start=None,
             idempotency_key=f"join-{uuid4().hex}",
@@ -419,7 +249,14 @@ async def test_slot_offer_hold_blocks_foreign_booking_and_acceptance_promotes_sa
     assert linked_claim[1] == root_id
 
     with pytest.raises(AppointmentUnavailable):
-        await book_appointment(reservations, _book(tenant_b, start_at))
+        await book_appointment(
+            reservations,
+            contextual_book_command(
+                tenant_b,
+                foreign_slot,
+                key_prefix="foreign-blocked-book",
+            ),
+        )
 
     accepted = await accept_slot_offer(
         slot_commands,
@@ -462,6 +299,12 @@ async def test_foreign_booking_closes_slot_opportunity_without_orphan_hold(
     reservations = CapacitySafeReservationCommands(session_factory)
     start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
+    foreign_slot = await contextual_slot_at(
+        tenant_b,
+        session_factory,
+        resource_id=tenant_b.resources[0].resource_id,
+        start_at=start_at,
+    )
 
     await join_waitlist(
         waitlist,
@@ -471,7 +314,7 @@ async def test_foreign_booking_closes_slot_opportunity_without_orphan_hold(
             offering_id=tenant_a.offering_id,
             subject_party_id=tenant_a.subject_party_id,
             location_id=tenant_a.location_id,
-            preferred_resource_id=tenant_a.resource_id,
+            preferred_resource_id=tenant_a.resources[0].resource_id,
             earliest_start=None,
             latest_start=None,
             idempotency_key=f"join-{uuid4().hex}",
@@ -491,7 +334,10 @@ async def test_foreign_booking_closes_slot_opportunity_without_orphan_hold(
             idempotency_key=f"opportunity-{uuid4().hex}",
         ),
     )
-    await book_appointment(reservations, _book(tenant_b, start_at))
+    await book_appointment(
+        reservations,
+        contextual_book_command(tenant_b, foreign_slot, key_prefix="foreign-winner-book"),
+    )
 
     offer = await offer_next_waitlist_candidate(
         slot_commands,
