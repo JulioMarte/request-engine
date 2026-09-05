@@ -9,6 +9,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from request_engine.modules.booking.adapters.db.contextual_recovery_shared import (
+    RequirementLike,
     build_authoritative_profiles,
     configuration_fingerprint,
     effective_context_observations,
@@ -261,24 +262,21 @@ class PostgresBookingCommitmentCommands:
                 resolved=resolved,
             )
 
-            profiles = cast(
-                dict[UUID, object],
-                build_authoritative_profiles(
-                    ordered_requirement_ids=ordered_requirement_ids,
-                    choices=choices,
-                    selected_assignments=selected,
-                    resources=resources,
-                    location=location,
-                    assignment_schedules=schedules,
-                    assignment_exceptions=assignment_exceptions,
-                    broad_exceptions=broad_exceptions,
-                    live_claims=live_claims,
-                ),
+            profiles = build_authoritative_profiles(
+                ordered_requirement_ids=ordered_requirement_ids,
+                choices=choices,
+                selected_assignments=selected,
+                resources=resources,
+                location=location,
+                assignment_schedules=schedules,
+                assignment_exceptions=assignment_exceptions,
+                broad_exceptions=broad_exceptions,
+                live_claims=live_claims,
             )
             revalidate_exact_slot(
                 requirements=requirements,
                 choices=choices,
-                profiles=cast(dict[UUID, object], profiles),
+                profiles=profiles,
                 start_at=start_at,
                 end_at=end_at,
                 duration_minutes=resolved.planned_duration_minutes,
@@ -494,7 +492,7 @@ async def _replace_reservation(
     session: AsyncSession,
     *,
     command: RescheduleReservationCommand,
-    requirements: Mapping[UUID, object],
+    requirements: Mapping[UUID, RequirementLike],
     choices: Mapping[UUID, ResourceChoice],
     selected: Mapping[UUID, AssignmentObservation],
     old_claims: tuple[RowMapping, ...],
@@ -546,7 +544,7 @@ async def _replace_reservation(
     )
     replacement_ids: dict[UUID, UUID] = {}
     for requirement_id, requirement in sorted(
-        requirements.items(), key=lambda item: cast(object, item[1]).ordinal
+        requirements.items(), key=lambda item: item[1].ordinal
     ):
         choice = choices[requirement_id]
         assignment = selected[requirement_id]
@@ -575,7 +573,7 @@ async def _replace_reservation(
                         "assignment_id": assignment.id,
                         "start_at": start_at,
                         "end_at": end_at,
-                        "quantity": cast(object, requirement).quantity,
+                        "quantity": requirement.quantity,
                     },
                 )
             ).scalar_one(),
