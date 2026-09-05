@@ -77,22 +77,11 @@ async def load_contextual_recovery_snapshot(
         end_at=end_at,
     )
     assignment_ids = tuple(sorted({a.id for a in selected.values() if a is not None}, key=str))
-    legacy_ids = tuple(
-        sorted(
-            {
-                choices[rid].resource_id
-                for rid, assignment in selected.items()
-                if assignment is None
-            },
-            key=str,
-        )
-    )
     availability = await load_contextual_recovery_availability(
         session,
         request=request,
         resource_ids=resource_ids,
         assignment_ids=assignment_ids,
-        legacy_ids=legacy_ids,
         start_at=start_at,
         end_at=end_at,
     )
