@@ -19,6 +19,14 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     "request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid)",
     "request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[])",
     (
+        "request_cmd.mark_queue_entry_service_completed(p_organization_id uuid, "
+        "p_queue_entry_id uuid, p_completed_at timestamp with time zone)"
+    ),
+    (
+        "request_cmd.mark_queue_entry_service_started(p_organization_id uuid, "
+        "p_queue_entry_id uuid, p_started_at timestamp with time zone)"
+    ),
+    (
         "request_cmd.schedule_recovery_reassessment(p_organization_id uuid, "
         "p_service_queue_id uuid, p_revision bigint)"
     ),
