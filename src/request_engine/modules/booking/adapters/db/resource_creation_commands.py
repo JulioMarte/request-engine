@@ -122,10 +122,10 @@ class PostgresResourceCreationCommands:
                             text(
                                 """
                                 INSERT INTO request_engine.resources (
-                                    organization_id, location_id, resource_key, display_name,
+                                    organization_id, resource_key, display_name,
                                     capacity_model, capacity_units
                                 ) VALUES (
-                                    :organization_id, :location_id, :resource_key, :display_name,
+                                    :organization_id, :resource_key, :display_name,
                                     :capacity_model, :capacity_units
                                 )
                                 RETURNING id, resource_key, display_name, capacity_model,
@@ -134,7 +134,6 @@ class PostgresResourceCreationCommands:
                             ),
                             {
                                 "organization_id": command.organization_id,
-                                "location_id": command.location_id,
                                 "resource_key": command.resource_key.strip(),
                                 "display_name": command.display_name.strip(),
                                 "capacity_model": command.capacity_model,
@@ -219,9 +218,6 @@ class PostgresResourceCreationCommands:
                             "valid_until": window.valid_until,
                         },
                     )
-                # The assignment insert bumps the Resource availability revision;
-                # bootstrap reports the final revision even when no schedule
-                # windows were supplied.
                 final_revision = cast(
                     int,
                     (
