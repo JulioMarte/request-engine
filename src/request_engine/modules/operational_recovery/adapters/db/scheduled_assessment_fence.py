@@ -15,8 +15,7 @@ async def read_recovery_source_revision(
     return (
         await session.execute(
             text(
-                "SELECT request_read.recovery_source_revision("
-                ":organization_id, :service_queue_id)"
+                "SELECT request_read.recovery_source_revision(:organization_id, :service_queue_id)"
             ),
             {"organization_id": organization_id, "service_queue_id": service_queue_id},
         )
