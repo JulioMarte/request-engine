@@ -38,7 +38,6 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
     load_resource_exceptions,
-    load_resource_schedules,
 )
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
 from request_engine.modules.booking.application.authority import BOOK_APPOINTMENT_SCOPE
@@ -99,19 +98,19 @@ class _ExpectedContext:
 
 
 class PostgresContextualReservationCommands:
-    """F1 contextual booking with an untouched released-V3 compatibility path."""
+    """Authoritative booking over assignment-backed contextual supply."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
-        self._legacy = PostgresReservationCommands(session_factory)
+        self._reservation_lifecycle = PostgresReservationCommands(session_factory)
 
     async def book_appointment(self, command: BookAppointmentCommand) -> Reservation:
         if not command.is_contextual:
-            return await self._legacy.book_appointment(command)
+            raise InvalidResourceSelection("booking requires a contextual appointment option")
         return await self._book_contextual(command)
 
     async def cancel_reservation(self, command: CancelReservationCommand) -> Reservation:
-        return await self._legacy.cancel_reservation(command)
+        return await self._reservation_lifecycle.cancel_reservation(command)
 
     async def _book_contextual(self, command: BookAppointmentCommand) -> Reservation:
         expected = _expected_context(command)
@@ -201,7 +200,7 @@ class PostgresContextualReservationCommands:
             )
             _require_expected_resource_revisions(choices, current_availability_revisions)
 
-            contextualized, assignments_by_resource = await load_contextualization(
+            _, assignments_by_resource = await load_contextualization(
                 session,
                 command.organization_id,
                 tuple(sorted(resources, key=str)),
@@ -211,32 +210,13 @@ class PostgresContextualReservationCommands:
             selected_assignments = _resolve_selected_assignments(
                 choices=choices,
                 requirements=requirements,
-                resources=resources,
-                contextualized=contextualized,
                 assignments_by_resource=assignments_by_resource,
                 location_id=location_id,
                 start_at=start_at,
                 end_at=end_at,
             )
             assignment_ids = tuple(
-                sorted(
-                    {
-                        assignment.id
-                        for assignment in selected_assignments.values()
-                        if assignment is not None
-                    },
-                    key=str,
-                )
-            )
-            legacy_resource_ids = tuple(
-                sorted(
-                    {
-                        choices[requirement_id].resource_id
-                        for requirement_id, assignment in selected_assignments.items()
-                        if assignment is None
-                    },
-                    key=str,
-                )
+                sorted({assignment.id for assignment in selected_assignments.values()}, key=str)
             )
 
             assignment_schedules = await load_assignment_schedules(
@@ -257,11 +237,6 @@ class PostgresContextualReservationCommands:
                 tuple(sorted(resources, key=str)),
                 start_at,
                 end_at,
-            )
-            legacy_schedules = await load_resource_schedules(
-                session,
-                command.organization_id,
-                legacy_resource_ids,
             )
             live_claims = await load_live_capacity_claims(
                 session,
@@ -331,7 +306,6 @@ class PostgresContextualReservationCommands:
                 assignment_schedules=assignment_schedules,
                 assignment_exceptions=assignment_exceptions,
                 broad_exceptions=broad_exceptions,
-                legacy_schedules=legacy_schedules,
                 live_claims=live_claims,
             )
             revalidate_exact_slot(
@@ -596,8 +570,8 @@ async def _lock_selected_assignments(
             key=str,
         )
     )
-    if not assignment_ids:
-        return
+    if len(assignment_ids) != len(choices):
+        raise InvalidResourceSelection("every ResourceChoice requires a Location assignment")
     rows = (
         await session.execute(
             text(
@@ -666,31 +640,18 @@ def _resolve_selected_assignments(
     *,
     choices: Mapping[UUID, ResourceChoice],
     requirements: Mapping[UUID, _RequirementLike],
-    resources: Mapping[UUID, LockedResource],
-    contextualized: set[UUID],
     assignments_by_resource: Mapping[UUID, tuple[AssignmentObservation, ...]],
     location_id: UUID,
     start_at: datetime,
     end_at: datetime,
-) -> dict[UUID, AssignmentObservation | None]:
-    resolved: dict[UUID, AssignmentObservation | None] = {}
+) -> dict[UUID, AssignmentObservation]:
+    resolved: dict[UUID, AssignmentObservation] = {}
     for requirement in sorted(requirements.values(), key=lambda row: row.ordinal):
         choice = choices[requirement.id]
         assignment_id = choice.resource_location_assignment_id
         assignment_revision = choice.assignment_revision
-        if assignment_id is None:
-            if assignment_revision is not None:
-                raise InvalidResourceSelection("assignment id/revision must be present together")
-            if choice.resource_id in contextualized:
-                raise AppointmentOptionStale("Resource became contextualized")
-            legacy_location = resources[choice.resource_id].location_id
-            if legacy_location is not None and legacy_location != location_id:
-                raise AppointmentOptionStale("legacy Resource Location changed")
-            resolved[requirement.id] = None
-            continue
-
-        if assignment_revision is None:
-            raise InvalidResourceSelection("assignment id/revision must be present together")
+        if assignment_id is None or assignment_revision is None:
+            raise InvalidResourceSelection("assignment id and revision are required")
         assignment = next(
             (
                 row
@@ -712,67 +673,50 @@ def _resolve_selected_assignments(
 
 def _effective_context_observations(
     ordered_requirement_ids: tuple[UUID, ...],
-    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    selected_assignments: Mapping[UUID, AssignmentObservation],
     context_terms: Mapping[UUID, tuple[ContextTermObservation, ...]],
     start_at: datetime,
 ) -> tuple[ContextBookingTerms | None, ...]:
-    observations: list[ContextBookingTerms | None] = []
-    for requirement_id in ordered_requirement_ids:
-        assignment = selected_assignments[requirement_id]
-        if assignment is None:
-            observations.append(None)
-        else:
-            observations.append(
-                effective_context_terms(context_terms.get(assignment.id, ()), start_at)
-            )
-    return tuple(observations)
+    return tuple(
+        effective_context_terms(context_terms.get(selected_assignments[rid].id, ()), start_at)
+        for rid in ordered_requirement_ids
+    )
 
 
 def _build_authoritative_profiles(
     *,
     ordered_requirement_ids: tuple[UUID, ...],
     choices: Mapping[UUID, ResourceChoice],
-    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    selected_assignments: Mapping[UUID, AssignmentObservation],
     resources: Mapping[UUID, LockedResource],
     location: LocationObservation,
     assignment_schedules: Mapping[UUID, tuple[RecurringAvailability, ...]],
     assignment_exceptions: Mapping[UUID, tuple[AvailabilityException, ...]],
     broad_exceptions: Mapping[UUID, tuple[AvailabilityException, ...]],
-    legacy_schedules: Mapping[UUID, tuple[RecurringAvailability, ...]],
     live_claims: Mapping[UUID, tuple[LiveCapacityClaim, ...]],
 ) -> dict[UUID, ResourceAvailability]:
     profiles: dict[UUID, ResourceAvailability] = {}
-    assignment_by_resource: dict[UUID, UUID | None] = {}
+    assignment_by_resource: dict[UUID, UUID] = {}
     for requirement_id in ordered_requirement_ids:
         choice = choices[requirement_id]
         assignment = selected_assignments[requirement_id]
-        assignment_id = assignment.id if assignment is not None else None
         previous = assignment_by_resource.get(choice.resource_id)
-        if choice.resource_id in assignment_by_resource and previous != assignment_id:
+        if previous is not None and previous != assignment.id:
             raise InvalidResourceSelection(
                 "one Resource cannot use multiple Location assignments in one appointment"
             )
-        assignment_by_resource[choice.resource_id] = assignment_id
+        assignment_by_resource[choice.resource_id] = assignment.id
         if choice.resource_id in profiles:
             continue
 
         resource = resources[choice.resource_id]
-        if assignment is None:
-            timezone = resource.default_timezone
-            schedules = legacy_schedules.get(choice.resource_id, ())
-            exceptions = broad_exceptions.get(choice.resource_id, ())
-        else:
-            timezone = location.timezone
-            schedules = assignment_schedules.get(assignment.id, ())
-            exceptions = broad_exceptions.get(choice.resource_id, ()) + assignment_exceptions.get(
-                assignment.id, ()
-            )
         profiles[choice.resource_id] = ResourceAvailability(
             capacity_model=resource.capacity_model,
             capacity_units=resource.capacity_units,
-            default_timezone=timezone,
-            schedules=schedules,
-            exceptions=exceptions,
+            default_timezone=location.timezone,
+            schedules=assignment_schedules.get(assignment.id, ()),
+            exceptions=broad_exceptions.get(choice.resource_id, ())
+            + assignment_exceptions.get(assignment.id, ()),
             live_claims=live_claims.get(choice.resource_id, ()),
         )
     return profiles
@@ -786,7 +730,7 @@ def _configuration_fingerprint(
     choices: Mapping[UUID, ResourceChoice],
     resources: Mapping[UUID, LockedResource],
     current_availability_revisions: Mapping[UUID, int],
-    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    selected_assignments: Mapping[UUID, AssignmentObservation],
     base_terms: BaseBookingTerms,
     context_observations: tuple[ContextBookingTerms | None, ...],
     resolved: ResolvedBookingTerms,
@@ -799,14 +743,11 @@ def _configuration_fingerprint(
             {
                 "requirement_id": str(requirement_id),
                 "resource_id": str(choices[requirement_id].resource_id),
-                "legacy_location_id": _legacy_location_value(
-                    resources[choices[requirement_id].resource_id]
-                ),
                 "availability_revision": current_availability_revisions[
                     choices[requirement_id].resource_id
                 ],
-                "assignment_id": _assignment_id(selected_assignments[requirement_id]),
-                "assignment_revision": _assignment_revision(selected_assignments[requirement_id]),
+                "assignment_id": str(selected_assignments[requirement_id].id),
+                "assignment_revision": selected_assignments[requirement_id].revision,
             }
             for requirement_id in ordered_requirement_ids
         ],
@@ -823,18 +764,6 @@ def _configuration_fingerprint(
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
-def _assignment_id(assignment: AssignmentObservation | None) -> str | None:
-    return str(assignment.id) if assignment is not None else None
-
-
-def _assignment_revision(assignment: AssignmentObservation | None) -> int | None:
-    return assignment.revision if assignment is not None else None
-
-
-def _legacy_location_value(resource: LockedResource) -> str | None:
-    return str(resource.location_id) if resource.location_id is not None else None
 
 
 async def _insert_contextual_reservation(
@@ -894,7 +823,7 @@ async def _insert_contextual_claims(
     reservation_id: UUID,
     requirements: Mapping[UUID, _RequirementLike],
     choices: Mapping[UUID, ResourceChoice],
-    selected_assignments: Mapping[UUID, AssignmentObservation | None],
+    selected_assignments: Mapping[UUID, AssignmentObservation],
     start_at: datetime,
     end_at: datetime,
 ) -> None:
@@ -943,9 +872,7 @@ async def _insert_contextual_claims(
                 "resource_id": choice.resource_id,
                 "requirement_id": requirement.id,
                 "reservation_id": reservation_id,
-                "resource_location_assignment_id": (
-                    assignment.id if assignment is not None else None
-                ),
+                "resource_location_assignment_id": assignment.id,
                 "start_at": start_at,
                 "end_at": end_at,
                 "quantity": quantity,
