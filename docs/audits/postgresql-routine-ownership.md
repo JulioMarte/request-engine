@@ -4,7 +4,7 @@ Status: pre-rebaseline effective-model audit
 
 Source: effective catalog version 5 from green head `4a4a3e20ad79cecf59132f55b8fd671023b06427`, adjusted for `0044_remove_redundant_slot_guard`, which removes only `request_engine.guard_slot_offer_subject_match()`.
 
-Every surviving routine is accounted for exactly once: **146/146 classified, 0 unclassified**. `Capability owner` describes semantic responsibility. Entries under `composition:*` are intentionally cross-capability PostgreSQL boundaries and are not assigned falsely to one module.
+Every surviving routine is accounted for exactly once: **146/146 classified, 0 unclassified**. `Capability owner` describes semantic responsibility. Entries under explicit composition sections are intentionally cross-capability PostgreSQL boundaries and are not assigned falsely to one module.
 
 Unless stated otherwise, classification is `KEEP`.
 
@@ -59,12 +59,10 @@ Unless stated otherwise, classification is `KEEP`.
 - `request_engine.guard_service_session_interruption_transition()`
 - `request_engine.guard_service_session_transition()`
 
-## Discovery — 13
+## Discovery — 11
 
 - `request_admin.create_service_classification()`
 - `request_admin.retire_service_classification()`
-- `request_engine.guard_discovery_handoff_latest_version()`
-- `request_engine.guard_discovery_handoff_reservation()`
 - `request_engine.guard_f2_mapping_lifecycle()`
 - `request_engine.guard_f2_publication_broad_specific_overlap()`
 - `request_engine.guard_f2_publication_lifecycle()`
@@ -175,6 +173,13 @@ Released-slot recovery composes Queue interest/opportunity facts with Booking Ho
 
 `request_engine.guard_slot_offer_subject_match()` is intentionally absent: `0044` removes it because `guard_slot_offer_live_hold()` already enforces the same subject invariant plus the complete live-hold/source consistency contract.
 
+## Discovery ↔ Booking handoff composition — 2
+
+These guards are installed on Booking-owned `reservations` and fence the exact Discovery handoff/publication/mapping observation inside the authoritative Reservation transaction. Discovery owns handoff semantics; Booking owns commitment. The PostgreSQL function is therefore an explicit transaction boundary, not a Discovery-local persistence path.
+
+- `request_engine.guard_discovery_handoff_latest_version()`
+- `request_engine.guard_discovery_handoff_reservation()`
+
 ## Live Capacity ↔ Operational Recovery composition — 15
 
 These routines maintain/read the synchronous recovery freshness fence and schedule/coalesce reassessment. Their cross-owner source reads are intentional because the fence exists specifically to version the F4/F5 composition scope.
@@ -217,14 +222,15 @@ These are the explicit atomic lifecycle boundary introduced/hardened by `0043`; 
 | Booking | 29 |
 | Tenancy | 17 |
 | Live Capacity + Operational Recovery | 15 |
-| Discovery | 13 |
 | Queue | 12 |
+| Discovery | 11 |
 | Booking + Queue | 6 |
 | Delivery | 5 |
 | Operational Recovery | 4 |
 | Queue + Delivery | 3 |
 | Catalog | 3 |
 | Communications | 2 |
+| Discovery + Booking | 2 |
 | Live Capacity | 2 |
 | Requests | 1 |
 | Tenancy + Booking authority ledger | 1 |
@@ -232,4 +238,4 @@ These are the explicit atomic lifecycle boundary introduced/hardened by `0043`; 
 
 ## Rebaseline implication
 
-Routine ownership is no longer unclassified for the post-`0044` effective topology. Final exact-head catalog validation must still prove that the removed SlotOffer routine is absent and that no later migration added an unclassified routine. Trigger ownership must be audited separately because one routine may be installed on several owner tables and that installation topology, not only function semantics, determines whether a cross-module persistence path is justified.
+Routine ownership is no longer unclassified for the post-`0044` effective topology. Final exact-head catalog validation must still prove that the removed SlotOffer routine is absent and that no later migration added an unclassified routine. Trigger ownership is audited separately in `postgresql-trigger-topology.md`; its installation topology is the final authority for whether a cross-capability routine is local or an explicit composition boundary.
