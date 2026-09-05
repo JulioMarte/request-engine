@@ -297,6 +297,9 @@ class PostgresBookingCommitmentCommands:
             if authoritative_fingerprint != command.expected_configuration_fingerprint:
                 raise AppointmentOptionStale("contextual configuration fingerprint changed")
 
+            old_location_id = cast(UUID | None, reservation_row["location_id"])
+            old_start_at = cast(datetime, reservation_row["start_at"])
+            old_end_at = cast(datetime, reservation_row["end_at"])
             await _replace_reservation(
                 session,
                 command=command,
@@ -319,9 +322,12 @@ class PostgresBookingCommitmentCommands:
                     "subject_party_id": str(subject_party_id),
                     "subject_authority": authority.audit_details(),
                     "expected_revision": command.expected_revision,
-                    "location_id": str(command.location_id),
-                    "start_at": start_at.isoformat(),
-                    "end_at": end_at.isoformat(),
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "new_location_id": str(command.location_id),
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
+                    "new_start_at": start_at.isoformat(),
+                    "new_end_at": end_at.isoformat(),
                     "configuration_fingerprint": authoritative_fingerprint,
                     "contextual": True,
                 },
@@ -334,6 +340,9 @@ class PostgresBookingCommitmentCommands:
                 aggregate_id=command.reservation_id,
                 payload={
                     "reservation_id": str(command.reservation_id),
+                    "old_location_id": str(old_location_id) if old_location_id else None,
+                    "old_start_at": old_start_at.isoformat(),
+                    "old_end_at": old_end_at.isoformat(),
                     "location_id": str(command.location_id),
                     "start_at": start_at.isoformat(),
                     "end_at": end_at.isoformat(),
