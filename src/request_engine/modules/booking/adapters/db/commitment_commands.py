@@ -1,4 +1,3 @@
-import json
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -27,7 +26,6 @@ from request_engine.modules.booking.adapters.db.contextual_supply import (
     load_location_observations,
 )
 from request_engine.modules.booking.adapters.db.reservation_commands import (
-    LockedResource,
     ensure_reservation_revision,
     load_bookable_offering,
     load_requirements,
