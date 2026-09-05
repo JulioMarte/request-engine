@@ -24,7 +24,7 @@ evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-ATOMICITY-001"
-path = "tests/integration/v3_booking_commitments/test_g18_adversarial_races.py"
+path = "tests/integration/v3_booking_commitments/test_reservation_races.py"
 evidence = ["invariant", "adversarial", "concurrency"]
 
 [[proofs]]
