@@ -33,9 +33,7 @@ def upgrade() -> None:
     for table, columns in _COLUMN_UPDATE_AUTHORITY.items():
         op.execute(f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app")
         column_list = ", ".join(columns)
-        op.execute(
-            f"GRANT UPDATE ({column_list}) ON request_engine.{table} TO request_engine_app"
-        )
+        op.execute(f"GRANT UPDATE ({column_list}) ON request_engine.{table} TO request_engine_app")
     op.execute("RESET ROLE")
 
 
