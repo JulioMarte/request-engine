@@ -1,24 +1,25 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeReservationCommands,
+)
 from request_engine.modules.booking.adapters.db.day_board_reader import (
     PostgresReservationDayBoardReader,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
-)
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-)
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.queue.adapters.db.triage_commands import PostgresQueueTriageCommands
 from request_engine.modules.queue.application.commands.triage import RecallHoldCommand
 from request_engine.modules.queue.contracts.triage import RecallHoldKind
 from request_engine.platform.db.session import SessionFactory
 
-from .booking_boundary_fixture import create_booking_boundary_fixture
+from .booking_boundary_fixture import (
+    contextual_booking_command,
+    create_booking_boundary_fixture,
+)
 from .triage_scenario import PgConnection, create_queue
 
 
@@ -30,23 +31,15 @@ async def test_day_board_projects_active_queue_recall_gate(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_booking_boundary_fixture(admin_conn)
-    reservation = await PostgresReservationCommands(app_session_factory).book_appointment(
-        BookAppointmentCommand(
-            organization_id=fixture.organization_id,
-            principal_id=fixture.principal_id,
-            offering_version_id=fixture.offering_version_id,
-            subject_party_id=fixture.subject_party_id,
-            start_at=datetime(2026, 9, 7, 14, 0, tzinfo=UTC),
-            location_id=fixture.location_id,
-            resources=(
-                ResourceChoice(
-                    requirement_id=fixture.requirement_id,
-                    resource_id=fixture.resource_id,
-                ),
-            ),
-            idempotency_key=f"day-board-book-{uuid4().hex}",
-            allow_subject_override=True,
-        )
+    start_at = datetime(2026, 9, 7, 14, 0, tzinfo=UTC)
+    reservation = await book_appointment(
+        CapacitySafeReservationCommands(app_session_factory),
+        await contextual_booking_command(
+            fixture,
+            app_session_factory,
+            start_at=start_at,
+            key_prefix="day-board-book",
+        ),
     )
 
     queue_id = create_queue(admin_conn, fixture.organization_id)
@@ -68,7 +61,7 @@ async def test_day_board_projects_active_queue_recall_gate(
         ),
     ).fetchone()
     assert entry_row is not None
-    queue_entry_id = entry_row[0]
+    queue_entry_id = cast(UUID, entry_row[0])
 
     held = await PostgresQueueTriageCommands(app_session_factory).recall_hold(
         RecallHoldCommand(
