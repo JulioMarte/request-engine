@@ -95,6 +95,42 @@ def upgrade() -> None:
     for table in _IMMUTABLE_APP_TABLES:
         op.execute(f"REVOKE UPDATE ON request_engine.{table} FROM request_engine_app")
     op.execute("DROP INDEX request_engine.service_sessions_queue_idx")
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION request_engine.lock_offering_version_booking_terms_root()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $function$
+        DECLARE
+            v_org uuid;
+            v_offering_version uuid;
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                v_org := OLD.organization_id;
+                v_offering_version := OLD.offering_version_id;
+            ELSE
+                v_org := NEW.organization_id;
+                v_offering_version := NEW.offering_version_id;
+            END IF;
+
+            PERFORM 1
+              FROM request_engine.offering_versions ov
+              JOIN request_engine.offerings o
+                ON o.organization_id = ov.organization_id
+               AND o.id = ov.offering_id
+             WHERE ov.organization_id = v_org
+               AND ov.id = v_offering_version
+             FOR UPDATE OF o;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'OfferingVersion % not found while changing base booking terms',
+                    v_offering_version USING ERRCODE = '23503';
+            END IF;
+
+            RETURN COALESCE(NEW, OLD);
+        END
+        $function$;
+        """
+    )
     for name, arguments in _SECURITY_DEFINERS:
         function_ref = _function_ref(name, arguments)
         op.execute(
