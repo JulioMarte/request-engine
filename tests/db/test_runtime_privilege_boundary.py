@@ -131,6 +131,46 @@ def test_schema_owner_default_relation_acl_grants_no_app_authority(
     assert rows == []
 
 
+@pytest.mark.postgres
+def test_recovery_freshness_ledger_is_definer_mediated_for_app(
+    admin_conn: PgConnection,
+) -> None:
+    relation_privileges = admin_conn.execute(
+        """
+        SELECT privilege
+        FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS privilege
+        WHERE has_table_privilege(
+            'request_engine_app',
+            'request_engine.recovery_source_revisions',
+            privilege
+        )
+        ORDER BY privilege
+        """
+    ).fetchall()
+    assert relation_privileges == []
+
+    function_privileges = admin_conn.execute(
+        """
+        SELECT has_function_privilege(
+                   'request_engine_app',
+                   'request_read.recovery_source_revision(uuid, uuid)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_app',
+                   'request_cmd.lock_recovery_source_revision(uuid, uuid)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_app',
+                   'request_engine.bump_recovery_source_revision(uuid, uuid)',
+                   'EXECUTE'
+               )
+        """
+    ).fetchone()
+    assert function_privileges == (True, True, False)
+
+
 @pytest.mark.parametrize("group_role", _RUNTIME_GROUP_ROLES)
 def test_real_runtime_logins_cannot_escalate_or_create_application_objects(
     admin_conn: PgConnection,
