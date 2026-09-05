@@ -2,16 +2,24 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 from psycopg import Connection
 
+from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
+    PostgresAppointmentAvailabilityReader,
+)
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
 )
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.booking.application.queries.find_appointment_slots import (
+    FindAppointmentSlotsQuery,
+    find_appointment_slots,
+)
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
 
@@ -206,11 +214,12 @@ def create_fixture(conn: PgConnection) -> BookingRevalidationFixture:
     )
 
 
-def book_command(
+def legacy_book_command(
     fixture: BookingRevalidationFixture,
     *,
     start_at: datetime,
 ) -> BookAppointmentCommand:
+    """Temporary migration helper for tests not yet converted to option-backed booking."""
     return BookAppointmentCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
@@ -229,4 +238,49 @@ def book_command(
         ),
         idempotency_key=f"i27-book-{uuid4().hex}",
         allow_subject_override=True,
+    )
+
+
+async def contextual_book_command(
+    fixture: BookingRevalidationFixture,
+    session_factory: SessionFactory,
+    *,
+    start_at: datetime,
+) -> BookAppointmentCommand:
+    slots = await find_appointment_slots(
+        PostgresAppointmentAvailabilityReader(session_factory),
+        FindAppointmentSlotsQuery(
+            organization_id=fixture.organization_id,
+            offering_version_id=fixture.offering_version_id,
+            location_id=fixture.location_id,
+            resource_id=fixture.resource_id,
+            window_start=start_at,
+            window_end=start_at + timedelta(hours=1),
+            limit=20,
+        ),
+    )
+    slot = next((candidate for candidate in slots if candidate.start_at == start_at), None)
+    if slot is None:
+        raise AssertionError("fixture did not produce the requested contextual appointment option")
+    typed = cast(AppointmentSlot, slot)
+    assert typed.planned_duration_minutes is not None
+    assert typed.amount is not None
+    assert typed.currency is not None
+    assert typed.location_operational_revision is not None
+    assert typed.configuration_fingerprint is not None
+    return BookAppointmentCommand(
+        organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
+        offering_version_id=fixture.offering_version_id,
+        subject_party_id=fixture.subject_party_id,
+        location_id=fixture.location_id,
+        start_at=typed.start_at,
+        resources=typed.resources,
+        idempotency_key=f"i27-book-{uuid4().hex}",
+        allow_subject_override=True,
+        expected_planned_duration_minutes=typed.planned_duration_minutes,
+        expected_amount=typed.amount,
+        expected_currency=typed.currency,
+        expected_location_operational_revision=typed.location_operational_revision,
+        expected_configuration_fingerprint=typed.configuration_fingerprint,
     )
