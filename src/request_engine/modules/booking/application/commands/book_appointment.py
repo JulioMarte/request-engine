@@ -21,18 +21,14 @@ class BookAppointmentCommand:
     start_at: datetime
     resources: tuple[ResourceChoice, ...]
     idempotency_key: str
-    location_id: UUID | None = None
+    location_id: UUID
+    expected_planned_duration_minutes: int
+    expected_amount: Decimal
+    expected_currency: str
+    expected_location_operational_revision: int
+    expected_configuration_fingerprint: str
     origin_request_id: UUID | None = None
     allow_subject_override: bool = False
-    expected_planned_duration_minutes: int | None = None
-    expected_amount: Decimal | None = None
-    expected_currency: str | None = None
-    expected_location_operational_revision: int | None = None
-    expected_configuration_fingerprint: str | None = None
-
-    @property
-    def is_contextual(self) -> bool:
-        return self.expected_configuration_fingerprint is not None
 
 
 class BookAppointmentHandler(Protocol):
@@ -47,26 +43,17 @@ async def book_appointment(
         raise ValueError("idempotency_key is required")
     if not command.resources:
         raise ValueError("at least one ResourceChoice is required")
-    if command.is_contextual:
-        if command.location_id is None:
-            raise ValueError("contextual booking requires location_id")
-        if (
-            command.expected_planned_duration_minutes is None
-            or command.expected_planned_duration_minutes <= 0
-        ):
-            raise ValueError("contextual booking requires expected planned duration")
-        if command.expected_amount is None or command.expected_amount < 0:
-            raise ValueError("contextual booking requires expected amount")
-        if command.expected_currency is None:
-            raise ValueError("contextual booking requires expected currency")
-        if (
-            command.expected_location_operational_revision is None
-            or command.expected_location_operational_revision <= 0
-        ):
-            raise ValueError("contextual booking requires expected Location revision")
+    if command.expected_planned_duration_minutes <= 0:
+        raise ValueError("expected planned duration must be positive")
+    if command.expected_amount < 0:
+        raise ValueError("expected amount cannot be negative")
+    if not command.expected_currency:
+        raise ValueError("expected currency is required")
+    if command.expected_location_operational_revision <= 0:
+        raise ValueError("expected Location revision must be positive")
+    if not command.expected_configuration_fingerprint:
+        raise ValueError("expected configuration fingerprint is required")
     try:
         return await handler.book_appointment(command)
     except (OfferingVersionNotFound, OfferingVersionNotBookable) as exc:
-        if not command.is_contextual:
-            raise
         raise AppointmentOptionStale("OfferingVersion availability changed") from exc
