@@ -18,8 +18,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.execute("SET ROLE request_engine_schema_owner")
     op.execute(
-        "REVOKE INSERT, UPDATE ON request_engine.service_classifications "
-        "FROM request_engine_app"
+        "REVOKE INSERT, UPDATE ON request_engine.service_classifications FROM request_engine_app"
     )
     op.execute("RESET ROLE")
 
