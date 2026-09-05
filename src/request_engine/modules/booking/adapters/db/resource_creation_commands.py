@@ -129,7 +129,7 @@ class PostgresResourceCreationCommands:
                                     :capacity_model, :capacity_units
                                 )
                                 RETURNING id, resource_key, display_name, capacity_model,
-                                          capacity_units, availability_revision
+                                          capacity_units
                                 """
                             ),
                             {
@@ -161,108 +161,97 @@ class PostgresResourceCreationCommands:
                             "capability_id": capability_id,
                         },
                     )
+
+                assignment_id = cast(
+                    UUID,
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                INSERT INTO request_engine.resource_location_assignments (
+                                    organization_id, resource_id, location_id,
+                                    effective_during
+                                ) VALUES (
+                                    :organization_id, :resource_id, :location_id,
+                                    tstzrange(clock_timestamp(), NULL, '[)')
+                                )
+                                RETURNING id
+                                """
+                            ),
+                            {
+                                "organization_id": command.organization_id,
+                                "resource_id": resource_id,
+                                "location_id": command.location_id,
+                            },
+                        )
+                    ).scalar_one(),
+                )
+                for window in windows:
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO request_engine.resource_location_availability (
+                                organization_id,
+                                resource_location_assignment_id,
+                                weekday,
+                                local_start,
+                                local_end,
+                                valid_from,
+                                valid_until
+                            ) VALUES (
+                                :organization_id,
+                                :assignment_id,
+                                :weekday,
+                                :local_start,
+                                :local_end,
+                                :valid_from,
+                                :valid_until
+                            )
+                            """
+                        ),
+                        {
+                            "organization_id": command.organization_id,
+                            "assignment_id": assignment_id,
+                            "weekday": window.weekday,
+                            "local_start": window.local_start,
+                            "local_end": window.local_end,
+                            "valid_from": window.valid_from,
+                            "valid_until": window.valid_until,
+                        },
+                    )
+                # The assignment insert bumps the Resource availability revision;
+                # bootstrap reports the final revision even when no schedule
+                # windows were supplied.
+                final_revision = cast(
+                    int,
+                    (
+                        await session.execute(
+                            text(
+                                """
+                                SELECT availability_revision
+                                FROM request_engine.resources
+                                WHERE organization_id = :organization_id
+                                  AND id = :resource_id
+                                """
+                            ),
+                            {
+                                "organization_id": command.organization_id,
+                                "resource_id": resource_id,
+                            },
+                        )
+                    ).scalar_one(),
+                )
                 state = ResourceBootstrapState(
                     resource_id=resource_id,
                     resource_key=cast(str, row["resource_key"]),
                     display_name=cast(str, row["display_name"]),
                     capacity_model=cast(CapacityModel, row["capacity_model"]),
                     capacity_units=cast(int, row["capacity_units"]),
-                    availability_revision=cast(int, row["availability_revision"]),
+                    availability_revision=final_revision,
                     capability_ids=command.capability_ids,
+                    weekly_availability=windows,
+                    resource_location_assignment_id=assignment_id,
                 )
-                assignment_id: UUID | None = None
-                if windows:
-                    assignment_row = (
-                        (
-                            await session.execute(
-                                text(
-                                    """
-                                    INSERT INTO request_engine.resource_location_assignments (
-                                        organization_id, resource_id, location_id,
-                                        effective_during
-                                    ) VALUES (
-                                        :organization_id, :resource_id, :location_id,
-                                        tstzrange(clock_timestamp(), NULL, '[)')
-                                    )
-                                    RETURNING id
-                                    """
-                                ),
-                                {
-                                    "organization_id": command.organization_id,
-                                    "resource_id": resource_id,
-                                    "location_id": command.location_id,
-                                },
-                            )
-                        )
-                        .mappings()
-                        .one()
-                    )
-                    assignment_id = cast(UUID, assignment_row["id"])
-                    for window in windows:
-                        await session.execute(
-                            text(
-                                """
-                                INSERT INTO request_engine.resource_location_availability (
-                                    organization_id,
-                                    resource_location_assignment_id,
-                                    weekday,
-                                    local_start,
-                                    local_end,
-                                    valid_from,
-                                    valid_until
-                                ) VALUES (
-                                    :organization_id,
-                                    :assignment_id,
-                                    :weekday,
-                                    :local_start,
-                                    :local_end,
-                                    :valid_from,
-                                    :valid_until
-                                )
-                                """
-                            ),
-                            {
-                                "organization_id": command.organization_id,
-                                "assignment_id": assignment_id,
-                                "weekday": window.weekday,
-                                "local_start": window.local_start,
-                                "local_end": window.local_end,
-                                "valid_from": window.valid_from,
-                                "valid_until": window.valid_until,
-                            },
-                        )
-                    # The assignment insert bumps the Resource availability
-                    # revision; the bootstrap response must report the final one.
-                    final_revision = cast(
-                        int,
-                        (
-                            await session.execute(
-                                text(
-                                    """
-                                    SELECT availability_revision
-                                    FROM request_engine.resources
-                                    WHERE organization_id = :organization_id
-                                      AND id = :resource_id
-                                    """
-                                ),
-                                {
-                                    "organization_id": command.organization_id,
-                                    "resource_id": resource_id,
-                                },
-                            )
-                        ).scalar_one(),
-                    )
-                    state = ResourceBootstrapState(
-                        resource_id=state.resource_id,
-                        resource_key=state.resource_key,
-                        display_name=state.display_name,
-                        capacity_model=state.capacity_model,
-                        capacity_units=state.capacity_units,
-                        availability_revision=final_revision,
-                        capability_ids=state.capability_ids,
-                        weekly_availability=windows,
-                        resource_location_assignment_id=assignment_id,
-                    )
                 await append_audit(
                     session,
                     organization_id=command.organization_id,
@@ -276,9 +265,7 @@ class PostgresResourceCreationCommands:
                         "location_id": str(command.location_id),
                         "capability_count": len(command.capability_ids),
                         "weekly_availability_window_count": len(windows),
-                        "resource_location_assignment_id": (
-                            str(assignment_id) if assignment_id is not None else None
-                        ),
+                        "resource_location_assignment_id": str(assignment_id),
                     },
                 )
                 await complete_idempotency(session, idem, {"resource": _state_to_json(state)})
