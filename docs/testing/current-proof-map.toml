@@ -3,30 +3,13 @@ status = "migration-current-proof-map"
 normative = false
 guarantees = "docs/testing/current-guarantees.toml"
 
-# This map is review/migration evidence, not a permanent exact-file constitution.
-# Entries name representative surviving proofs and the evidence class they provide.
-# The normative contract remains current-guarantees.toml. A future rename may update
-# this map without changing the guarantee; removing the final proof for a required
-# evidence class must not.
+# Representative current proofs only. This map is migration/review evidence,
+# not an exact-file constitution. current-guarantees.toml remains normative,
+# and current-product CI verifies that mapped INV-* proofs actually execute.
 
 [[proofs]]
 guarantee = "INV-TENANT-001"
 path = "tests/db/test_v3_tenant_isolation_adversarial.py"
-evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-TENANT-001"
-path = "tests/integration/f1_operational_profile/test_foreign_tenant_opacity.py"
-evidence = ["invariant", "security"]
-
-[[proofs]]
-guarantee = "INV-TENANT-001"
-path = "tests/e2e/test_f3_workload_tenant_opacity.py"
-evidence = ["adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-AUTHORITY-001"
-path = "tests/db/test_v3_party_authority_state_adversarial.py"
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
@@ -35,19 +18,14 @@ path = "tests/integration/f1_operational_profile/test_contextual_dst_and_authori
 evidence = ["invariant", "security", "temporal"]
 
 [[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/e2e/test_discovery_operational_authority_opacity.py"
+evidence = ["contract", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-ATOMICITY-001"
 path = "tests/integration/v3_booking_commitments/test_g18_adversarial_races.py"
 evidence = ["invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-ATOMICITY-001"
-path = "tests/integration/f1_operational_profile/test_contextual_booking_races.py"
-evidence = ["invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-ATOMICITY-001"
-path = "tests/e2e/test_contextual_booking_failures.py"
-evidence = ["contract", "adversarial"]
 
 [[proofs]]
 guarantee = "INV-CAPACITY-001"
@@ -55,39 +33,14 @@ path = "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"
 evidence = ["invariant", "adversarial", "concurrency", "capacity"]
 
 [[proofs]]
-guarantee = "INV-CAPACITY-001"
-path = "tests/integration/f1_operational_profile/test_contextual_shared_capacity.py"
-evidence = ["invariant", "capacity"]
-
-[[proofs]]
 guarantee = "INV-IDEMPOTENCY-001"
 path = "tests/integration/v3_first_vertical/test_http_idempotency_failure.py"
-evidence = ["invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-IDEMPOTENCY-001"
-path = "tests/integration/v3_first_vertical/test_http_request_idempotency_failure.py"
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
 guarantee = "INV-PROVENANCE-001"
 path = "tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py"
 evidence = ["invariant", "adversarial", "provenance", "temporal"]
-
-[[proofs]]
-guarantee = "INV-PROVENANCE-001"
-path = "tests/integration/v3_reservation_lifecycle/test_reschedule_outbox_release_provenance.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-PROVENANCE-001"
-path = "tests/e2e/test_contextual_booking_journey.py"
-evidence = ["contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/integration/v3_worker_runtime/test_process_crash_recovery.py"
-evidence = ["invariant", "adversarial", "provenance"]
 
 [[proofs]]
 guarantee = "INV-WORKER-001"
@@ -100,34 +53,14 @@ path = "tests/e2e/test_outbox_semantics.py"
 evidence = ["invariant", "adversarial", "provenance"]
 
 [[proofs]]
-guarantee = "INV-OUTBOX-001"
-path = "tests/integration/v3_reservation_lifecycle/test_reservation_lifecycle_outbox_composition.py"
-evidence = ["invariant", "provenance"]
-
-[[proofs]]
 guarantee = "INV-PRIVILEGE-001"
-path = "tests/db/test_v3_runtime_privilege_closure.py"
+path = "tests/db/test_runtime_privilege_boundary.py"
 evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-PRIVILEGE-001"
-path = "tests/integration/f1_operational_profile/test_runtime_privileges.py"
-evidence = ["invariant", "security"]
 
 [[proofs]]
 guarantee = "INV-TEMPORAL-001"
 path = "tests/integration/f1_operational_profile/test_contextual_dst_and_authority.py"
 evidence = ["invariant", "adversarial", "temporal", "capacity"]
-
-[[proofs]]
-guarantee = "INV-TEMPORAL-001"
-path = "tests/integration/f1_operational_profile/test_contextual_temporal_provenance.py"
-evidence = ["invariant", "temporal", "provenance"]
-
-[[proofs]]
-guarantee = "INV-TEMPORAL-001"
-path = "tests/e2e/test_contextual_location_separation.py"
-evidence = ["contract", "temporal"]
 
 [[proofs]]
 guarantee = "INV-DISCOVERY-PUBLICATION-001"
@@ -136,33 +69,8 @@ evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-DISCOVERY-PUBLICATION-001"
-path = "tests/modules/discovery/test_public_projection.py"
-evidence = ["contract", "security"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-PUBLICATION-001"
-path = "tests/db/test_f2_discovery_radius_boundary.py"
-evidence = ["invariant", "adversarial", "temporal"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-PUBLICATION-001"
 path = "tests/e2e/test_discovery_booking_journey.py"
 evidence = ["contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-PUBLICATION-001"
-path = "tests/e2e/test_discovery_public_profile_operation.py"
-evidence = ["contract", "security", "provenance"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-PUBLICATION-001"
-path = "tests/e2e/test_discovery_publication_validation.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-PUBLICATION-001"
-path = "tests/modules/discovery/test_published_slot_batch_reader.py"
-evidence = ["contract", "adversarial"]
 
 [[proofs]]
 guarantee = "INV-DISCOVERY-HANDOFF-001"
@@ -171,18 +79,8 @@ evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-DISCOVERY-HANDOFF-001"
-path = "tests/e2e/test_discovery_handoff_context_stale.py"
-evidence = ["contract", "adversarial", "temporal", "provenance"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-HANDOFF-001"
 path = "tests/e2e/test_discovery_handoff_consumption.py"
 evidence = ["contract", "adversarial", "capacity"]
-
-[[proofs]]
-guarantee = "INV-DISCOVERY-HANDOFF-001"
-path = "tests/e2e/test_discovery_shared_capacity_race.py"
-evidence = ["contract", "adversarial", "concurrency", "capacity", "security"]
 
 [[proofs]]
 guarantee = "INV-DISCOVERY-CONCURRENCY-001"
@@ -190,43 +88,78 @@ path = "tests/db/test_f2_discovery_publication_race.py"
 evidence = ["invariant", "adversarial", "concurrency"]
 
 [[proofs]]
-guarantee = "INV-DISCOVERY-CONCURRENCY-001"
-path = "tests/e2e/test_discovery_mapping_race.py"
-evidence = ["invariant", "adversarial", "concurrency"]
+guarantee = "INV-LIVE-OPS-SEPARATION-001"
+path = "tests/e2e/test_f3_check_in_separation.py"
+evidence = ["invariant", "contract", "adversarial", "provenance"]
 
 [[proofs]]
-guarantee = "INV-DISCOVERY-CONCURRENCY-001"
-path = "tests/modules/booking/test_discovery_slot_batch.py"
-evidence = ["contract", "adversarial", "concurrency"]
+guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
+path = "tests/db/test_f3_live_resource_race.py"
+evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
 
 [[proofs]]
-guarantee = "INV-AUTHORITY-001"
-path = "tests/e2e/test_discovery_operational_authority_opacity.py"
-evidence = ["contract", "adversarial", "security"]
+guarantee = "INV-LIVE-OPS-TEMPORAL-001"
+path = "tests/db/test_f3_live_ops_invariants.py"
+evidence = ["invariant", "adversarial", "temporal"]
 
 [[proofs]]
-guarantee = "INV-IDEMPOTENCY-001"
-path = "tests/e2e/test_discovery_operational_idempotency.py"
-evidence = ["contract", "adversarial"]
+guarantee = "INV-LIVE-OPS-PRIVACY-001"
+path = "tests/e2e/test_live_queue_privacy.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
 
 [[proofs]]
-guarantee = "INV-PRIVILEGE-001"
-path = "tests/db/test_f2_discovery_privileges.py"
-evidence = ["invariant", "adversarial", "security"]
+guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
+path = "tests/db/test_f3_live_ops_invariants.py"
+evidence = ["invariant", "adversarial", "provenance"]
 
 [[proofs]]
-guarantee = "INV-PRIVILEGE-001"
-path = "tests/db/test_f2_taxonomy_lifecycle.py"
-evidence = ["invariant", "adversarial", "security", "provenance"]
+guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
+path = "tests/e2e/test_f3_workload_management.py"
+evidence = ["contract", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-OPS-RESOURCE-001"
+path = "tests/db/test_f3_live_resource_race.py"
+evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-SEPARATION-001"
+path = "tests/e2e/test_f4_live_capacity_journey.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PROJECTION-001"
+path = "tests/e2e/test_f4_live_capacity_journey.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-WORKLOAD-001"
+path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
+evidence = ["invariant", "contract", "adversarial", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-TEMPORAL-001"
+path = "tests/db/test_f4_customer_projection_snapshot.py"
+evidence = ["invariant", "contract", "adversarial", "temporal"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-DEDUP-001"
+path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
+evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
+
+[[proofs]]
+guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
+path = "tests/db/test_f4_customer_projection_authority.py"
+evidence = ["invariant", "contract", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-COPILOT-ADMISSION-001"
+path = "tests/e2e/test_f6_mutation_concurrency_matrix.py"
+evidence = ["contract", "invariant", "adversarial", "concurrency"]
 
 [[proofs]]
 guarantee = "FIT-ARCH-001"
 path = "tests/architecture/test_dependency_policy.py"
-evidence = ["fitness"]
-
-[[proofs]]
-guarantee = "FIT-ARCH-001"
-path = "tests/architecture/test_connection_surfaces.py"
 evidence = ["fitness"]
 
 [[proofs]]
@@ -241,378 +174,8 @@ evidence = ["fitness"]
 
 [[proofs]]
 guarantee = "INV-FAILURE-001"
-path = "tests/architecture/test_http_error_recovery_contract.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-FAILURE-001"
-path = "tests/integration/v3_first_vertical/test_http_input_adversarial.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-FAILURE-001"
-path = "tests/e2e/test_contextual_booking_failures.py"
-evidence = ["contract", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-FAILURE-001"
 path = "tests/e2e/test_discovery_publication_validation.py"
 evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-FAILURE-001"
-path = "tests/e2e/test_f3_start_service_rejection.py"
-evidence = ["contract", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-SEPARATION-001"
-path = "tests/db/test_f3_live_ops_invariants.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-SEPARATION-001"
-path = "tests/modules/queue/test_live_service_contract.py"
-evidence = ["contract"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-SEPARATION-001"
-path = "tests/e2e/test_f3_check_in_separation.py"
-evidence = ["invariant", "contract", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-SEPARATION-001"
-path = "tests/e2e/test_f3_acceptance_journey.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/db/test_f3_live_ops_invariants.py"
-evidence = ["invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/db/test_f3_live_resource_race.py"
-evidence = ["concurrency", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/db/test_f3_start_no_show_race.py"
-evidence = ["invariant", "adversarial", "concurrency", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/e2e/test_f3_service_lifecycle.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/e2e/test_f3_acceptance_journey.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-LIFECYCLE-001"
-path = "tests/e2e/test_f3_no_show.py"
-evidence = ["invariant", "contract", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-TEMPORAL-001"
-path = "tests/db/test_f3_live_ops_invariants.py"
-evidence = ["invariant", "adversarial", "temporal"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-TEMPORAL-001"
-path = "tests/db/test_f3_interruption_temporal.py"
-evidence = ["invariant", "adversarial", "temporal", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-TEMPORAL-001"
-path = "tests/e2e/test_f3_acceptance_journey.py"
-evidence = ["invariant", "contract", "temporal", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-PRIVACY-001"
-path = "tests/e2e/test_live_queue_privacy.py"
-evidence = ["invariant", "contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-PRIVACY-001"
-path = "tests/e2e/test_f3_staff_queue_history.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/db/test_f3_live_ops_invariants.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/modules/queue/test_live_service_contract.py"
-evidence = ["contract"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/db/test_f3_workload_lifecycle.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/e2e/test_f3_workload_management.py"
-evidence = ["contract", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/e2e/test_f3_workload_tenant_opacity.py"
-evidence = ["adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-CLASSIFICATION-001"
-path = "tests/e2e/test_f3_acceptance_journey.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-RESOURCE-001"
-path = "tests/db/test_f3_live_resource_race.py"
-evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-OPS-RESOURCE-001"
-path = "tests/db/test_f3_resource_activity_race.py"
-evidence = ["invariant", "adversarial", "concurrency", "capacity", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-SEPARATION-001"
-path = "tests/modules/live_capacity/test_capacity_separation.py"
-evidence = ["invariant", "contract", "adversarial", "capacity"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-SEPARATION-001"
-path = "tests/e2e/test_f4_live_capacity_journey.py"
-evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-PROJECTION-001"
-path = "tests/e2e/test_f4_live_capacity_journey.py"
-evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-PROJECTION-001"
-path = "tests/db/test_f4_projection_scope_validation.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-WORKLOAD-001"
-path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
-evidence = ["invariant", "contract", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-WORKLOAD-001"
-path = "tests/db/test_f4_historical_duration_source.py"
-evidence = ["invariant", "adversarial", "temporal", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-TEMPORAL-001"
-path = "tests/db/test_f4_customer_projection_snapshot.py"
-evidence = ["invariant", "contract", "adversarial", "temporal"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-TEMPORAL-001"
-path = "tests/modules/live_capacity/test_projection.py"
-evidence = ["invariant", "contract", "adversarial", "temporal", "capacity"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-DEDUP-001"
-path = "tests/modules/live_capacity/test_planned_duration_fallback.py"
-evidence = ["invariant", "contract", "adversarial", "capacity", "provenance"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-DEDUP-001"
-path = "tests/modules/live_capacity/test_deduplication.py"
-evidence = ["invariant", "contract", "adversarial", "capacity"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
-path = "tests/db/test_f4_customer_projection_authority.py"
-evidence = ["invariant", "contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-LIVE-CAPACITY-PRIVACY-001"
-path = "tests/db/test_f4_rls_isolation.py"
-evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_f5_reassessment_change_storm.py"
-evidence = ["invariant", "contract", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_f5_recovery_sweep.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_f5_recovery_sweep_discovery.py"
-evidence = ["invariant", "adversarial", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/e2e/test_f5_recovery_escalation_ledger.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_f5_reassessment_coalescing.py"
-evidence = ["invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/e2e/test_f5_recovery_autonomous_impact.py"
-evidence = ["invariant", "contract", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_v3_app_function_privilege_inventory.py"
-evidence = ["invariant", "security", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_v3_runtime_privilege_closure.py"
-evidence = ["invariant", "security", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/db/test_v3_release_catalog.py"
-evidence = ["invariant", "security"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/e2e/test_f5_recovery_cross_organization_replacement.py"
-evidence = ["contract", "invariant", "security", "provenance"]
-
-[[proofs]]
-guarantee = "INV-WORKER-001"
-path = "tests/e2e/test_f5_recovery_autonomous_reschedule.py"
-evidence = ["contract", "invariant", "security", "provenance"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/architecture/test_operational_copilot_module_boundary.py"
-evidence = ["fitness"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_owner_gates.py"
-evidence = ["invariant", "contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_authority.py"
-evidence = ["adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_tool_entity_ambiguity.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_tool_ambiguity.py"
-evidence = ["contract", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_recovery_tools.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_intake_tools.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_extend_day_tools.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_discovery_tools.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_fingerprints.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_concurrency.py"
-evidence = ["contract", "invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_roadmap_extend.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_roadmap_discovery.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_roadmap_inspection.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_copilot_intake_execution.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_proactive_intake.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_proactive_extend.py"
-evidence = ["contract", "invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_proactive_owner_gates.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_closed_schemas.py"
-evidence = ["contract", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_proactive_concurrency.py"
-evidence = ["contract", "invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_roadmap_scenarios.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_structured_roadmap_supply_scenarios.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_mutation_concurrency_matrix.py"
-evidence = ["contract", "invariant", "adversarial", "concurrency"]
-
-[[proofs]]
-guarantee = "INV-COPILOT-ADMISSION-001"
-path = "tests/e2e/test_f6_discovery_concurrency.py"
-evidence = ["contract", "invariant", "adversarial", "concurrency"]
 
 [[proofs]]
 guarantee = "INV-NOTIFICATION-LINEAGE-001"
@@ -625,28 +188,8 @@ path = "tests/integration/v3_worker_runtime/test_escalation_schema.py"
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
-guarantee = "INV-NOTIFICATION-LINEAGE-001"
-path = "tests/integration/v3_worker_runtime/test_escalation_replay_and_window.py"
-evidence = ["invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-NOTIFICATION-LINEAGE-001"
-path = "tests/integration/v3_worker_runtime/test_escalation_step.py"
-evidence = ["invariant", "contract"]
-
-[[proofs]]
-guarantee = "INV-NOTIFICATION-LINEAGE-001"
-path = "tests/e2e/test_communication_dispatch_escalation.py"
-evidence = ["contract", "invariant"]
-
-[[proofs]]
 guarantee = "INV-NOTIFICATION-TERMINAL-001"
 path = "tests/integration/v3_worker_runtime/test_escalation_terminals.py"
-evidence = ["invariant", "adversarial"]
-
-[[proofs]]
-guarantee = "INV-NOTIFICATION-TERMINAL-001"
-path = "tests/integration/v3_worker_runtime/test_escalation_schema.py"
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
@@ -655,21 +198,6 @@ path = "tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.
 evidence = ["invariant", "adversarial"]
 
 [[proofs]]
-guarantee = "INV-DELIVERY-OUTCOME-001"
-path = "tests/integration/v3_worker_runtime/test_delivery_outcome_events.py"
-evidence = ["invariant", "contract"]
-
-[[proofs]]
 guarantee = "INV-CONTACT-VERIFICATION-001"
 path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
 evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-CONTACT-VERIFICATION-001"
-path = "tests/integration/s0b_party_registry/test_staff_contact_guard.py"
-evidence = ["invariant", "adversarial", "security"]
-
-[[proofs]]
-guarantee = "INV-CONTACT-VERIFICATION-001"
-path = "tests/integration/s0b_party_registry/test_staff_contact_verification.py"
-evidence = ["invariant", "contract"]
