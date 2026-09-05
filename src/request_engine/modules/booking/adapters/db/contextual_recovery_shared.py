@@ -1,6 +1,6 @@
 # pyright: reportPrivateUsage=false
 
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from uuid import UUID
 
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
@@ -27,7 +27,7 @@ class RequirementLike(Protocol):
 
 
 def build_authoritative_profiles(*args: Any, **kwargs: Any) -> dict[UUID, ResourceAvailability]:
-    return cast(dict[UUID, ResourceAvailability], _build_authoritative_profiles(*args, **kwargs))
+    return _build_authoritative_profiles(*args, **kwargs)
 
 
 def configuration_fingerprint(*args: Any, **kwargs: Any) -> str:
