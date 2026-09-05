@@ -26,6 +26,8 @@ class BookingRevalidationFixture:
     requirement_id: UUID
     resource_id: UUID
     assignment_id: UUID
+    assignment_revision: int
+    availability_revision: int
 
 
 def uuid_row(
@@ -110,9 +112,8 @@ def create_fixture(conn: PgConnection) -> BookingRevalidationFixture:
     conn.execute(
         """
         INSERT INTO request_engine.offering_version_booking_terms (
-            organization_id, offering_version_id, amount, currency,
-            planned_duration_minutes
-        ) VALUES (%s, %s, 3500, 'DOP', 30)
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 3500, 'DOP')
         """,
         (organization_id, offering_version_id),
     )
@@ -177,6 +178,20 @@ def create_fixture(conn: PgConnection) -> BookingRevalidationFixture:
         """,
         (organization_id, assignment_id),
     )
+    provenance = conn.execute(
+        """
+        SELECT a.revision, r.availability_revision
+        FROM request_engine.resource_location_assignments a
+        JOIN request_engine.resources r
+          ON r.organization_id = a.organization_id
+         AND r.id = a.resource_id
+        WHERE a.organization_id = %s AND a.id = %s
+        """,
+        (organization_id, assignment_id),
+    ).fetchone()
+    assert provenance is not None
+    assignment_revision = cast(int, provenance[0])
+    availability_revision = cast(int, provenance[1])
     return BookingRevalidationFixture(
         organization_id=organization_id,
         principal_id=principal_id,
@@ -186,6 +201,8 @@ def create_fixture(conn: PgConnection) -> BookingRevalidationFixture:
         requirement_id=requirement_id,
         resource_id=resource_id,
         assignment_id=assignment_id,
+        assignment_revision=assignment_revision,
+        availability_revision=availability_revision,
     )
 
 
@@ -206,6 +223,8 @@ def book_command(
                 fixture.requirement_id,
                 fixture.resource_id,
                 resource_location_assignment_id=fixture.assignment_id,
+                assignment_revision=fixture.assignment_revision,
+                availability_revision=fixture.availability_revision,
             ),
         ),
         idempotency_key=f"i27-book-{uuid4().hex}",
