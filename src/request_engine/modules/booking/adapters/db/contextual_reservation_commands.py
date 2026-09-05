@@ -531,7 +531,7 @@ async def _lock_offering_version(
                      AND o.id = ov.offering_id
                     WHERE ov.organization_id = :organization_id
                       AND ov.id = :offering_version_id
-                    FOR UPDATE OF o, ov
+                    FOR UPDATE OF o
                     """
                 ),
                 {
