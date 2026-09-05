@@ -132,6 +132,56 @@ def test_schema_owner_default_relation_acl_grants_no_app_authority(
 
 
 @pytest.mark.postgres
+def test_global_service_classification_authority_is_admin_mediated(
+    admin_conn: PgConnection,
+) -> None:
+    relation_privileges = admin_conn.execute(
+        """
+        SELECT privilege
+        FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS privilege
+        WHERE has_table_privilege(
+            'request_engine_app',
+            'request_engine.service_classifications',
+            privilege
+        )
+        ORDER BY privilege
+        """
+    ).fetchall()
+    assert relation_privileges == []
+
+    function_privileges = admin_conn.execute(
+        """
+        SELECT has_function_privilege(
+                   'request_engine_app',
+                   'request_engine.lookup_active_service_classification(text)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_app',
+                   'request_admin.create_service_classification(text, text, text, text)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_app',
+                   'request_admin.retire_service_classification(uuid, bigint, text, text)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_admin',
+                   'request_admin.create_service_classification(text, text, text, text)',
+                   'EXECUTE'
+               ),
+               has_function_privilege(
+                   'request_engine_admin',
+                   'request_admin.retire_service_classification(uuid, bigint, text, text)',
+                   'EXECUTE'
+               )
+        """
+    ).fetchone()
+    assert function_privileges == (True, False, False, True, True)
+
+
+@pytest.mark.postgres
 def test_recovery_freshness_ledger_is_definer_mediated_for_app(
     admin_conn: PgConnection,
 ) -> None:
