@@ -133,15 +133,11 @@ def test_real_runtime_logins_cannot_escalate_or_create_application_objects(
         probe = f"runtime_boundary_{uuid4().hex[:16]}"
         with pytest.raises(InsufficientPrivilege):
             runtime.execute(
-                sql.SQL("CREATE TABLE request_engine.{} (id integer)").format(
-                    sql.Identifier(probe)
-                )
+                sql.SQL("CREATE TABLE request_engine.{} (id integer)").format(sql.Identifier(probe))
             )
         runtime.execute("RESET ROLE")
 
-        forbidden = (
-            set(_RUNTIME_GROUP_ROLES) - {group_role}
-        ) | _FORBIDDEN_ELEVATION_ROLES
+        forbidden = (set(_RUNTIME_GROUP_ROLES) - {group_role}) | _FORBIDDEN_ELEVATION_ROLES
         for forbidden_role in sorted(forbidden):
             with pytest.raises(InsufficientPrivilege):
                 runtime.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(forbidden_role)))
