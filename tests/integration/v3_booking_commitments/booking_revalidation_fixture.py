@@ -18,7 +18,7 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
@@ -262,25 +262,24 @@ async def contextual_book_command(
     slot = next((candidate for candidate in slots if candidate.start_at == start_at), None)
     if slot is None:
         raise AssertionError("fixture did not produce the requested contextual appointment option")
-    typed = cast(AppointmentSlot, slot)
-    assert typed.planned_duration_minutes is not None
-    assert typed.amount is not None
-    assert typed.currency is not None
-    assert typed.location_operational_revision is not None
-    assert typed.configuration_fingerprint is not None
+    assert slot.planned_duration_minutes is not None
+    assert slot.amount is not None
+    assert slot.currency is not None
+    assert slot.location_operational_revision is not None
+    assert slot.configuration_fingerprint is not None
     return BookAppointmentCommand(
         organization_id=fixture.organization_id,
         principal_id=fixture.principal_id,
         offering_version_id=fixture.offering_version_id,
         subject_party_id=fixture.subject_party_id,
         location_id=fixture.location_id,
-        start_at=typed.start_at,
-        resources=typed.resources,
+        start_at=slot.start_at,
+        resources=slot.resources,
         idempotency_key=f"i27-book-{uuid4().hex}",
         allow_subject_override=True,
-        expected_planned_duration_minutes=typed.planned_duration_minutes,
-        expected_amount=typed.amount,
-        expected_currency=typed.currency,
-        expected_location_operational_revision=typed.location_operational_revision,
-        expected_configuration_fingerprint=typed.configuration_fingerprint,
+        expected_planned_duration_minutes=slot.planned_duration_minutes,
+        expected_amount=slot.amount,
+        expected_currency=slot.currency,
+        expected_location_operational_revision=slot.location_operational_revision,
+        expected_configuration_fingerprint=slot.configuration_fingerprint,
     )
