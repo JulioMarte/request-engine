@@ -27,7 +27,7 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
-from request_engine.modules.booking.contracts.appointments import AppointmentSlot, ResourceChoice
+from request_engine.modules.booking.contracts.appointments import AppointmentSlot
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
@@ -222,38 +222,6 @@ def _create_fixture(conn: PgConnection) -> BookingFixture:
         assignment_id=assignment_id,
         assignment_revision=cast(int, provenance[0]),
         availability_revision=cast(int, provenance[1]),
-    )
-
-
-def _choice(fixture: BookingFixture) -> tuple[ResourceChoice, ...]:
-    return (
-        ResourceChoice(
-            fixture.requirement_id,
-            fixture.resource_id,
-            resource_location_assignment_id=fixture.assignment_id,
-            assignment_revision=fixture.assignment_revision,
-            availability_revision=fixture.availability_revision,
-        ),
-    )
-
-
-def _book_command(
-    fixture: BookingFixture,
-    *,
-    subject_party_id: UUID,
-    start_at: datetime,
-) -> BookAppointmentCommand:
-    """Temporary compatibility helper for remaining tests during currentization."""
-    return BookAppointmentCommand(
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        offering_version_id=fixture.offering_version_id,
-        subject_party_id=subject_party_id,
-        location_id=fixture.location_id,
-        start_at=start_at,
-        resources=_choice(fixture),
-        idempotency_key=f"book-{uuid4().hex}",
-        allow_subject_override=True,
     )
 
 
