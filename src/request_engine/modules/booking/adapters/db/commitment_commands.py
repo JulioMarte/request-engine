@@ -223,8 +223,7 @@ class PostgresBookingCommitmentCommands:
             location = locations.get(command.location_id)
             if (
                 location is None
-                or location.operational_revision
-                != command.expected_location_operational_revision
+                or location.operational_revision != command.expected_location_operational_revision
                 or not interval_is_scheduled_available(
                     location.profile, start_at=start_at, end_at=end_at
                 )
@@ -423,8 +422,7 @@ async def _require_preserved_commercial_commitment(
     if (
         cast(Decimal, row["amount"]) != resolved.amount
         or cast(str, row["currency"]) != resolved.currency
-        or cast(int, row["planned_duration_minutes"])
-        != resolved.planned_duration_minutes
+        or cast(int, row["planned_duration_minutes"]) != resolved.planned_duration_minutes
     ):
         raise AppointmentOptionStale(
             "reschedule target would change committed commercial semantics"
