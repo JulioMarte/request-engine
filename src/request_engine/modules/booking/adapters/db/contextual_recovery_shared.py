@@ -1,6 +1,6 @@
 # pyright: reportPrivateUsage=false
 
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
@@ -12,6 +12,7 @@ from request_engine.modules.booking.adapters.db.contextual_reservation_commands 
     _require_expected_resource_revisions,
     _resolve_selected_assignments,
 )
+from request_engine.modules.booking.domain.availability import ResourceAvailability
 
 
 class RequirementLike(Protocol):
@@ -21,9 +22,12 @@ class RequirementLike(Protocol):
     @property
     def ordinal(self) -> int: ...
 
+    @property
+    def quantity(self) -> int: ...
 
-def build_authoritative_profiles(*args: Any, **kwargs: Any) -> Any:
-    return _build_authoritative_profiles(*args, **kwargs)
+
+def build_authoritative_profiles(*args: Any, **kwargs: Any) -> dict[UUID, ResourceAvailability]:
+    return cast(dict[UUID, ResourceAvailability], _build_authoritative_profiles(*args, **kwargs))
 
 
 def configuration_fingerprint(*args: Any, **kwargs: Any) -> str:
