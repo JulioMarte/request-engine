@@ -23,11 +23,9 @@ async def load(
                         rr.ordinal,
                         rr.quantity,
                         r.id AS resource_id,
-                        r.location_id,
                         r.capacity_model,
                         r.capacity_units,
-                        r.availability_revision,
-                        COALESCE(l.timezone, 'UTC') AS default_timezone
+                        r.availability_revision
                     FROM request_engine.offering_resource_requirements rr
                     JOIN request_engine.resource_capability_assignments a
                       ON a.organization_id = rr.organization_id
@@ -35,9 +33,6 @@ async def load(
                     JOIN request_engine.resources r
                       ON r.organization_id = a.organization_id
                      AND r.id = a.resource_id
-                    LEFT JOIN request_engine.locations l
-                      ON l.organization_id = r.organization_id
-                     AND l.id = r.location_id
                     WHERE rr.organization_id = :organization_id
                       AND rr.offering_version_id = :offering_version_id
                       AND r.active

@@ -1,41 +1,24 @@
 # Request Engine — Python module architecture
 
-> **Estado:** normativo para la organización física del backend Python durante la transición V3.
+> **Estado:** normativo para la organización física actual del backend Python.
 >
-> Complementa `11-capability-first-v3.md` y `07-database-access-contract.md`. No redefine por sí solo invariantes de dominio o protocolos de locking.
+> Complementa `10-module-ownership-map.md`, `07-database-access-contract.md`, `13-connection-surfaces.md`, `14-architecture-fitness-functions.md` y `architecture/system-optimization-mode.md`. No redefine por sí solo invariantes de dominio, autoridad o locking.
 
 ## 1. Decision
 
-Request Engine remains a **modular monolith**, organized **module first, layer second**.
+Request Engine is a **modular monolith**, organized **module first, layer second**.
 
-Target transition layout:
+Current top-level shape:
 
 ```text
 src/request_engine/
-├── bootstrap/
-├── entrypoints/
-├── platform/
-│   ├── db/
-│   ├── idempotency/
-│   ├── outbox/
-│   ├── audit/
-│   ├── events/
-│   ├── scheduling/
-│   ├── observability/
-│   └── security/
-└── modules/
-    ├── tenancy/
-    ├── catalog/
-    ├── requests/
-    ├── booking/
-    ├── queue/
-    ├── communications/
-    ├── delivery/       # deferred/incubating during V3 transition
-    ├── payments/       # deferred/incubating during V3 transition
-    └── dispatch/       # deferred/incubating during V3 transition
+├── bootstrap/       # composition/settings only
+├── entrypoints/     # process/trust boundaries
+├── platform/        # technical cross-cutting mechanics
+└── modules/         # business ownership
 ```
 
-The V3 baseline business modules are:
+Current business-module inventory:
 
 ```text
 tenancy
@@ -44,29 +27,44 @@ requests
 booking
 queue
 communications
+discovery
+delivery
+live_capacity
+operational_recovery
+operational_copilot
+payments
+dispatch
 ```
 
-`delivery`, `payments`, and `dispatch` remain physically present during transition only so useful V2 design knowledge is not destroyed prematurely. Baseline modules must not acquire dependencies on those deferred modules. Their eventual archive/reactivation requires an explicit product use case and ownership decision.
+`payments` and `dispatch` remain deferred/incubating until a concrete accepted capability gives them real ownership. `delivery` is active current architecture; it owns ReservationAccess and actual execution facts such as ServiceSession/ResourceActivity according to `10-module-ownership-map.md`.
 
-This layout is not a microservice split. Modules may share one process, one PostgreSQL database, and one authoritative transaction when a command contract requires it.
+The names `operational_copilot`, V3 and F1–F7 are historical naming/provenance where applicable. They do not create a separate architectural layer or freeze the module inventory. Module ownership may evolve deliberately under `architecture/system-optimization-mode.md` while preserving HARD guarantees.
 
-## 2. Capability ownership
+This is not a microservice split. Modules may share one process, one PostgreSQL database and one authoritative transaction when a command invariant requires it.
 
-- `tenancy`: Organization, Principal, Party, Representation and tenant-scoped authority truth.
-- `catalog`: Offering, OfferingVersion, structured business/location/service information and reusable offering configuration.
-- `requests`: durable business-demand Request, participants/correlations, generic intake and extension-boundary semantics while intake remains small.
-- `booking`: Resource, availability, local capacity claims/holds, Reservation and attendance state/policies tightly coupled to reservation operations.
-- `queue`: ServiceQueue/QueueEntry plus Waitlist/WaitlistEntry/SlotOffer. Queue and waitlist are distinct domain concepts even while sharing one module.
-- `communications`: CommunicationTask, CommunicationDelivery, templates/references, endpoint/preference contracts and ReminderPlan business intent.
-- `delivery`: deferred advanced execution/ServiceSession/Fulfillment concepts; not baseline.
-- `payments`: deferred pricing/payment/reconciliation domain; not baseline.
-- `dispatch`: deferred field-service dispatch/feasibility domain; not baseline.
+## 2. Current capability ownership summary
 
-See `10-module-ownership-map.md` for the detailed map.
+Detailed ownership lives in `10-module-ownership-map.md`; this section is only a navigation summary.
 
-## 3. Four application semantics
+- `tenancy`: Organization, Principal, Party, Representation and tenant/subject authority truth.
+- `catalog`: Location/Offering/OfferingVersion and reusable service/capability vocabulary/configuration.
+- `requests`: durable new business demand requiring later processing.
+- `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and booking commitment/revalidation.
+- `queue`: ServiceQueue/QueueEntry waiting/calling/no-show plus Waitlist/SlotOpportunity/SlotOffer recovery interest.
+- `communications`: transactional communication intent, delivery facts, reminder/acknowledgement semantics.
+- `discovery`: explicitly published cross-tenant supply projection and opaque Booking handoff.
+- `delivery`: ReservationAccess and actual live service/execution truth.
+- `live_capacity`: advisory live-capacity/ETA/intake projection over published owner facts.
+- `operational_recovery`: immutable recovery proposal/execution composition over owner contracts.
+- `operational_copilot`: bounded typed external operational-tool/admission surface; owns no underlying business truth or conversational runtime.
+- `payments`: deferred/incubating.
+- `dispatch`: deferred/incubating.
 
-Application code must make the distinction from `11-capability-first-v3.md` visible:
+Do not duplicate detailed ownership rules here. When this summary and `10-module-ownership-map.md` disagree, fix the current documentation defect rather than inventing a third interpretation.
+
+## 3. Application semantics
+
+Application code makes semantic operation kind explicit:
 
 ```text
 Query
@@ -75,25 +73,14 @@ Request processing
 ScheduledAction execution
 ```
 
-Do not hide all four behind a generic service or workflow abstraction.
+Do not hide all four behind a universal `Service`, `Manager`, `Workflow` or generic command bus.
 
-Examples:
+- Query = read/derivation without mutation authority.
+- Command = explicit semantic mutation/use case.
+- Request = durable new business demand requiring later processing, not a wrapper for every mutation.
+- ScheduledAction = durable technical scheduling/execution envelope; business action remains owned by its module.
 
-```text
-catalog/application/queries/get_business_info.py
-booking/application/queries/find_appointment_slots.py
-booking/application/commands/book_appointment.py
-booking/application/commands/reschedule_reservation.py
-queue/application/commands/join_queue.py
-queue/application/commands/accept_slot_offer.py
-requests/application/commands/create_request.py
-communications/application/commands/record_attendance_response.py
-communications/application/commands/create_reminder_plan.py
-```
-
-A ScheduledAction worker is technical infrastructure; the business action it invokes remains owned by the appropriate module contract.
-
-## 4. Internal module shape
+## 4. Internal module growth shape
 
 A module grows structure only as real code requires it:
 
@@ -112,44 +99,36 @@ modules/<module>/
 └── README.md
 ```
 
-This is a growth shape, not scaffolding to generate eagerly. A young module may remain a small set of cohesive files.
+This is a growth shape, not scaffolding to generate eagerly. A young module may remain a smaller cohesive set of files.
 
-Use these meanings consistently:
+Meanings:
 
 - `domain`: framework-independent business rules/types/events/policies owned by the module;
 - `application`: use-case orchestration and required ports;
-- `adapters/db`: SQLAlchemy mappings, PostgreSQL repositories/query adapters and correctness-sensitive SQL;
+- `adapters/db`: persistence mappings, PostgreSQL queries/commands and correctness-sensitive SQL;
 - `adapters/providers`: external provider implementations/SDK boundaries;
 - `api`: module-owned transport DTOs/router composition;
-- `contracts`: intentionally supported cross-module types/query/command contracts.
+- `contracts`: intentionally published cross-module values/protocols.
 
-Avoid giant generic files such as `services.py`, `managers.py`, `helpers.py`, `utils.py`, `common.py`, or a universal `repositories.py`.
+Avoid generic business dumping grounds such as `services.py`, `managers.py`, `helpers.py`, `utils.py`, `common.py`, universal repositories or shared business-model buckets.
+
+File count and LOC are not design targets. Split only when responsibility/ownership/reason-to-change genuinely separates; preserve locality when behavior belongs together.
 
 ## 5. Command-oriented application layer
 
-Authoritative lifecycle changes are semantic commands. Critical commands follow the documented pattern:
+Authoritative lifecycle changes are semantic commands. Correctness-sensitive commands normally make the protocol visible:
 
 ```text
 READ / PLAN / LOCK / VALIDATE / WRITE / EMIT
 ```
 
-Examples:
+The implementation may be a typed function or a small handler object. Do not introduce ceremonial layers merely to reduce file size or satisfy a metric.
 
-```text
-booking/application/commands/book_appointment.py
-booking/application/commands/reschedule_reservation.py
-queue/application/commands/call_next.py
-queue/application/commands/accept_slot_offer.py
-communications/application/commands/record_delivery_result.py
-```
-
-The implementation may be a typed function or small handler object. Do not introduce ceremonial Service/Manager/Coordinator layers.
-
-Commands such as cancel/reschedule are not wrapped in `Request` merely for consistency with the project name.
+A semantic command may coordinate multiple modules in one database transaction when a current invariant requires atomicity; architecture aesthetics do not justify breaking required consistency.
 
 ## 6. Ports and adapters
 
-Application/domain code defines the capability it requires; technical implementations live in adapters.
+Application/domain code defines the capability it requires; technical implementations live outward in adapters.
 
 ```text
 api / provider adapter
@@ -161,37 +140,13 @@ domain + application ports
 adapters/db + adapters/providers
 ```
 
-Repository ports are semantic, not generic CRUD. SQLAlchemy Session/AsyncSession is already the technical Unit of Work; do not create a universal abstract UoW hierarchy without a demonstrated need.
+Repository ports are semantic rather than generic CRUD. SQLAlchemy Session/AsyncSession is already technical transaction/UoW machinery; do not create a universal abstract UoW hierarchy without demonstrated value.
 
-Provider adapters must not own authoritative booking/request/queue state.
+Provider adapters do not own authoritative business state.
 
-## 7. n8n boundary
+## 7. Cross-module imports
 
-n8n is an external extension/orchestration adapter.
-
-Preferred direction:
-
-```text
-Request Engine transaction
-  → outbox event
-  → n8n/provider
-  → authenticated semantic callback command
-  → Request Engine transaction
-```
-
-Forbidden:
-
-```text
-n8n → direct PostgreSQL mutation
-n8n → generic set_status endpoint
-provider call while Request Engine lock transaction remains open
-```
-
-An experimental flow may later be promoted into a native module without changing the public capability contract.
-
-## 8. Cross-module imports
-
-A module may use another module only through the target module's supported `contracts` package or another explicitly documented public transition surface.
+A module may use another business module only through the target module's supported `contracts` package and an approved dependency direction.
 
 Preferred:
 
@@ -205,24 +160,26 @@ Forbidden across modules:
 from request_engine.modules.booking.domain.reservation import Reservation
 from request_engine.modules.booking.application.commands.book_appointment import handle
 from request_engine.modules.booking.adapters.db.models import ReservationRow
-from request_engine.modules.booking.api.responses import ReservationResponse
+from request_engine.modules.booking.api.responses import ReservationView
 ```
 
-Deferred modules are especially restricted: V3 baseline modules must not depend on `delivery`, `payments`, or `dispatch` without a new accepted architecture decision.
+`contracts` does not automatically authorize an edge. The current permission map is documented in `14-architecture-fitness-functions.md` and executed by `tests/architecture/dependency_policy.py`.
 
-SQLAlchemy mappings, API DTOs and internal domain entities are not cross-module contracts.
+Do not hide a dependency from the graph with service locators, runtime imports, generic shared helpers or re-export facades.
 
-## 9. Internal dependency direction
+## 8. Internal dependency direction
 
-Domain does not import FastAPI, SQLAlchemy, provider SDKs, bootstrap, runtime settings or API DTOs.
+Domain does not import FastAPI, SQLAlchemy/persistence drivers, provider SDKs, bootstrap, runtime settings or API DTOs.
 
-Application does not depend on FastAPI or concrete provider/DB adapters. Adapter implementations may depend inward on application ports/contracts and domain types.
+Application does not depend on FastAPI, concrete provider/DB adapters, bootstrap or transport DTOs.
 
-API/Pydantic DTOs, domain objects and persistence mappings remain separate concepts even when fields currently look identical.
+Adapters may depend inward on application ports/contracts/domain values as appropriate.
 
-## 10. Platform boundary
+API/Pydantic DTOs, application Commands/Queries, domain objects, cross-module contracts and persistence mappings remain distinct concepts even when fields currently match.
 
-`platform/` is only for genuinely cross-cutting technical capabilities:
+## 9. Platform boundary
+
+`platform/` contains genuinely cross-cutting technical mechanics only, for example:
 
 ```text
 platform/db
@@ -235,119 +192,46 @@ platform/observability
 platform/security
 ```
 
-`platform/scheduling` owns generic technical mechanics such as clock abstraction, lease/fencing, worker claiming, retry/dead-letter plumbing and scheduling-lag telemetry. It does **not** decide why a reservation reminder, SlotOffer expiry or medication reminder exists.
+Platform may own clock/lease/fencing/retry/dead-letter/telemetry mechanics. It does not own why a Reservation, QueueEntry, recovery proposal, reminder or discovery publication exists.
 
-Business policy remains in the owning module.
+Do not move business logic into `platform`, `shared`, `common` or generic helpers to reduce measured module coupling.
 
-`platform` must not import business-module internals.
+## 10. Entrypoints and bootstrap
 
-## 11. Entrypoints and bootstrap
+- `entrypoints/http`: process/trust adapter, middleware, authentication extraction, global exception handling and module router installation; not a parallel business taxonomy.
+- `entrypoints/worker`: worker process startup/runtime; business semantics remain owned by modules.
+- `entrypoints/cli`: explicit operational/developer process commands.
+- `bootstrap`: settings and composition root; business code never imports it as a service locator.
 
-- `entrypoints/http`: FastAPI process adapter, middleware, dependency extraction, error translation and router registration; no business commands.
-- `entrypoints/worker`: outbox/scheduler/communication worker startup/runtime; business semantics remain in module contracts.
-- `entrypoints/cli`: explicit operational/developer commands.
-- `bootstrap`: composition root, settings and dependency wiring. Business code never imports bootstrap as a service locator.
+Cross-domain business policy discovered in composition code must receive an explicit business owner rather than remaining hidden there for graph aesthetics.
 
-## 12. Persistence and PostgreSQL
+## 11. Persistence and PostgreSQL
 
-Keep the valid decisions in `07-database-access-contract.md`:
+Keep the current decisions in `07-database-access-contract.md`:
 
-- one task-local Session/AsyncSession per authoritative command;
+- one task-local Session/AsyncSession per authoritative command by default;
 - explicit transaction framing;
-- ORM for ordinary persistence;
+- ORM/normal persistence where appropriate;
 - SQLAlchemy Core/explicit SQL for correctness-sensitive locking/range/batch operations;
 - never hide race-critical SQL behind generic repositories;
-- no external I/O while authoritative locks are held.
+- no external/provider I/O while authoritative DB locks are held.
 
-V3 will replace the broad V2 pre-baseline schema with a reduced clean candidate after the domain contracts settle; physical Python modules must not assume every V2 table survives.
+Schema shape itself is CONTROLLED and evolvable during `cohesion/system-optimization`; tenant/authority/atomicity/capacity/provenance/concurrency guarantees remain HARD unless replaced by an equal-or-stronger explicit contract.
 
-## 13. Queries and agent-facing surfaces
+## 12. Maintainability and evolution
 
-Queries belong to the owner of the read concept and return use-case DTOs rather than table-shaped entities.
+Architecture fitness functions protect ownership/direction, not arbitrary smallness.
 
-Examples:
+LOC, C901, navigation observations and fan-in/fan-out are non-blocking review signals. `HEALTHY_AS_IS` is valid. Never split a cohesive file, create forwarding modules or hide dependencies solely to make a metric smaller.
 
-```text
-business.get_info → catalog
-catalog.search_offerings → catalog
-appointments.find_slots → booking
-appointments.status → booking
-queue.status → queue
-waitlist.status → queue
-requests.status → requests
-```
-
-Agent/tool APIs are capability-oriented. Internal rows such as CapacityClaim or outbox records are not agent-facing tools.
-
-## 14. `request_cmd` and DB primitive ownership
-
-PostgreSQL functions may remain physically centralized, but wrappers belong to the logical owner.
-
-Expected V3 examples:
+The current module inventory and approved edges are CONTROLLED rather than immutable. Intentional evolution requires updating:
 
 ```text
-capacity-source locking → booking
-idempotency acquisition/completion → platform/idempotency
-outbox claiming/delivery → platform/outbox
-scheduled-action claiming/fencing → platform/scheduling
+current capability/ownership contract
+10-module-ownership-map.md
+13-connection-surfaces.md when boundary semantics change
+14-architecture-fitness-functions.md + executable policy/tests
+current guarantee/evidence disposition where affected
 ```
 
-Do not create a global business `db_commands.py`.
-
-## 15. Tests
-
-Tests are organized first by capability:
-
-```text
-tests/modules/<module>/
-tests/db/
-tests/architecture/
-tests/integration/
-tests/e2e/
-tests/fixtures/
-```
-
-Critical race tests use real PostgreSQL.
-
-V3 minimum race families:
-
-- booking double-booking/unit oversell/self-overlap reschedule;
-- queue concurrent CallNext;
-- SlotOffer accept/expiry/capacity races;
-- scheduled-action leases/fencing/dead-letter;
-- communication duplicate/provider-timeout/callback behavior;
-- n8n callback idempotency/tenant/authority races.
-
-Architecture tests enforce framework independence, platform isolation, cross-module contracts and deferred-module dependency restrictions.
-
-## 16. Cross-module atomicity
-
-A cross-module use case has one primary command owner. It may coordinate supported contracts of other modules inside the same PostgreSQL transaction when the domain invariant requires it.
-
-Do not split a correct local transaction into asynchronous events merely to make module boundaries look cleaner.
-
-Conversely, external provider/n8n communication is never made artificially atomic with PostgreSQL.
-
-## 17. New-module gate
-
-A new top-level module requires:
-
-- meaningful independent language/policy/lifecycle;
-- a stable public boundary;
-- enough independent change to justify separate ownership.
-
-A table, noun, endpoint, worker or provider integration alone is insufficient.
-
-An intake capability stays in `requests` until it demonstrates enough independent behavior to justify `intake/`.
-
-## 18. Goal
-
-A human or coding agent should be able to locate a business capability and find nearby its commands, rules, ports, DB/provider adapters, API adapter, tests and ownership documentation.
-
-The repository should encode the V3 north star:
-
-```text
-one public operational API
-        ≠
-one universal domain model
-```
+and exact-head proof.

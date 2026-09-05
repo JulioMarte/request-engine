@@ -58,5 +58,8 @@ def test_remote_pull_request_ci_remains_full_authoritative_backstop() -> None:
     assert "pull_request:" in workflow
     assert "Python quality and architecture" in workflow
     assert "PostgreSQL 18 current product proof" in workflow
-    assert "PostgreSQL 18 frozen V3 compatibility" in workflow
+    assert "bash scripts/ci/run_current_product.sh" in workflow
     assert "Observability runtime contract" in workflow
+    assert "postgres-production-head" in workflow
+    assert "PostgreSQL 18 frozen V3 compatibility" not in workflow
+    assert "run_v3_frozen_compatibility.sh" not in workflow

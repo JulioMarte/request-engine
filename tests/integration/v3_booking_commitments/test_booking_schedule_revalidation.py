@@ -10,13 +10,13 @@ import psycopg
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
+    PostgresContextualReservationCommands,
 )
-from request_engine.modules.booking.application.errors import AppointmentUnavailable
+from request_engine.modules.booking.application.errors import AppointmentOptionStale
 from request_engine.platform.db.session import SessionFactory
 
-from .booking_revalidation_fixture import book_command, create_fixture
+from .booking_revalidation_fixture import contextual_book_command, create_fixture
 
 PgConnection = Connection[Any]
 
@@ -65,13 +65,18 @@ async def test_i27_booking_revalidates_schedule_after_resource_lock(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_fixture(admin_conn)
-    reservations = PostgresReservationCommands(app_session_factory)
+    reservations = PostgresContextualReservationCommands(app_session_factory)
     start_at = datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
-    command = book_command(fixture, start_at=start_at)
+    command = await contextual_book_command(
+        fixture,
+        app_session_factory,
+        start_at=start_at,
+    )
 
-    # The fixture has a Monday 09:00-12:00 America/Santo_Domingo schedule;
-    # 13:00 UTC is therefore initially a valid 09:00 local slot.
+    # The option was valid when discovered. While booking waits on the Resource
+    # lock, availability changes and bumps Resource provenance; the command must
+    # be rejected as stale before any Reservation or CapacityClaim is committed.
     writer: PgConnection = psycopg.connect(_conninfo(), autocommit=False)
     try:
         writer.execute(
@@ -103,7 +108,7 @@ async def test_i27_booking_revalidates_schedule_after_resource_lock(
         )
         writer.commit()
 
-        with pytest.raises(AppointmentUnavailable):
+        with pytest.raises(AppointmentOptionStale):
             await asyncio.wait_for(booking_task, timeout=5)
     finally:
         writer.rollback()

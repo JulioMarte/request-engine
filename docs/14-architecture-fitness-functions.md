@@ -1,38 +1,29 @@
 # Request Engine — architecture fitness functions
 
-> **Estado:** normativo para las reglas estructurales ejecutables del backend V3.
+> **Estado:** normativo para las reglas estructurales ejecutables del backend actual.
 >
-> Este documento complementa `09-python-module-architecture.md`,
-> `10-module-ownership-map.md` y `13-connection-surfaces.md`. Los tests de
-> `tests/architecture/` hacen cumplir estas reglas; no sustituyen los contratos
-> de dominio/transacción.
->
-> Para evolución intencional de arquitectura en la etapa pre-producción, también
-> aplica `architecture/pre-production-evolution-policy.md`. Las fitness functions
-> detectan drift no revisado; no convierten una arquitectura anterior en inmutable.
+> Este documento complementa `09-python-module-architecture.md`, `10-module-ownership-map.md`, `13-connection-surfaces.md`, `testing/repository-governance-contract.md` y `architecture/system-optimization-mode.md`. Los tests de `tests/architecture/` hacen cumplir estas reglas; no sustituyen los contratos de dominio/transacción.
 
 ## 1. Purpose
 
 Request Engine treats architecture as an executable constraint, not only a diagram.
 
-The repository protects three things simultaneously:
+The repository protects simultaneously:
 
 ```text
 horizontal responsibility
 + vertical business ownership
 + explicit connection surfaces
++ understandable acyclic dependency direction
 ```
 
-A change may compile, pass feature tests and still be architecturally invalid if it
-crosses a boundary through an unsupported surface.
+A change may compile and pass feature tests while still being architecturally invalid if it crosses a boundary through an unsupported surface.
 
-Architecture fitness functions exist to detect that drift immediately, especially
-when code is produced or refactored by coding agents.
+Architecture fitness functions detect unreviewed drift. During system optimization they do **not** turn previous V3/Fx repository shape into an immutable constitution.
 
 ## 2. Cross-module rule
 
-A business module may depend on another business module only when both conditions
-are true:
+A business module may depend synchronously on another business module only when both conditions are true:
 
 1. the dependency direction is explicitly approved;
 2. the import uses the target module's published `contracts` surface.
@@ -40,73 +31,54 @@ are true:
 Example:
 
 ```text
-booking -> catalog.contracts        allowed
+booking -> catalog.contracts        allowed when the edge is approved
 booking -> catalog.domain           forbidden
 booking -> catalog.application      forbidden
 booking -> catalog.adapters         forbidden
 booking -> catalog.api              forbidden
 ```
 
-`contracts` is not universal permission. The module-to-module edge itself must also
-be approved.
+`contracts` is not universal permission. The module-to-module edge itself must also be approved.
 
-## 3. Approved synchronous Python dependency directions
+## 3. Current approved synchronous Python dependency directions
 
-The baseline policy is deliberately small:
+The executable source used by the dependency fitness tests is `tests/architecture/dependency_policy.py`. This document must describe the same accepted topology; if either changes intentionally, update both in one coherent architecture change.
 
-```text
-catalog
-   ^
-   |
-booking
-   ^
-   |
-queue
-
-booking
-   ^
-   |
-communications
-```
-
-In table form:
+Current permission map:
 
 | Owner | Approved synchronous business-module targets |
 |---|---|
 | `tenancy` | none |
 | `catalog` | none |
-| `requests` | none |
-| `booking` | `catalog` |
-| `queue` | `booking` |
+| `requests` | `tenancy` |
+| `booking` | `catalog`, `tenancy` |
+| `queue` | `booking`, `tenancy` |
 | `communications` | `booking` |
-| deferred modules | none until reactivated |
+| `discovery` | `booking` |
+| `delivery` | none |
+| `live_capacity` | `booking`, `delivery`, `queue` |
+| `operational_recovery` | `booking`, `communications`, `live_capacity` |
+| `operational_copilot` | `booking`, `catalog`, `discovery`, `live_capacity`, `operational_recovery`, `queue`, `tenancy` |
+| `payments` | none |
+| `dispatch` | none |
 
-This is a permission map, not a requirement that every permitted edge be used.
+This is a **permission map**, not a requirement that every permitted edge be used. Actual imports may be a strict subset.
 
-The policy intentionally does **not** pre-approve edges merely because two modules
-may eventually exchange information. For example, booking consequences consumed by
-communications normally cross an outbox/event boundary instead of creating
-`booking -> communications` coupling.
-
-Adding a new edge requires an architectural decision, not a mechanical test edit.
-Before adding it, answer:
+Do not widen the map mechanically to make a test pass. Before accepting a new synchronous edge answer:
 
 ```text
 Who owns the capability?
-Why must the dependency be synchronous?
+Why must this relationship be synchronous?
 What exact contract crosses the boundary?
 Does the caller require immediate consistency?
-Would an outbox/event surface preserve ownership better?
-Could this edge create a dependency cycle?
+Would an outbox/event/read model preserve ownership better?
+Could the edge create a dependency cycle?
+Is an orchestrator genuinely the correct owner of this fan-out?
 ```
 
-Update the ownership/connection-surface documentation when the answer changes the
-accepted architecture.
+A high-fan-out orchestrator is not automatically unhealthy. Fan-out is a review signal; hidden dependencies, cycles or wrong ownership are the actual architectural risks.
 
-An existing allowlist entry is therefore the default policy, not an eternal ban on
-new edges. A feature may change this table when its normative contract demonstrates
-that the old ownership topology is insufficient and the new topology remains
-explicit, acyclic and adversarially proven.
+An existing allowlist is the accepted current policy, not an eternal ban on evolution. A capability may change the topology when its current normative contract demonstrates that the old ownership model is insufficient and the replacement remains explicit, acyclic and proven.
 
 ## 4. Dependency cycles are forbidden
 
@@ -125,49 +97,29 @@ A cycle normally indicates at least one of:
 - a missing one-way contract needs to be designed;
 - two concepts are not actually separate bounded contexts.
 
-Do not solve cycles with a shared business `common` package or service locator.
+Do not solve cycles with a shared business `common` package, service locator, runtime import trick or re-export facade.
 
 ## 5. Layer fitness rules
 
 ### Domain
 
-`modules/<owner>/domain` must not depend on:
-
-- FastAPI;
-- SQLAlchemy/asyncpg/psycopg;
-- bootstrap or entrypoints;
-- the module's application layer;
-- the module's adapters;
-- the module's API transport.
-
-Domain code contains business policy/value semantics, not framework plumbing.
+`modules/<owner>/domain` must not depend on FastAPI, SQLAlchemy/asyncpg/psycopg, bootstrap/entrypoints, the module's application layer, adapters or API transport.
 
 ### Application
 
-`modules/<owner>/application` must not depend on:
-
-- FastAPI or persistence drivers/ORM;
-- bootstrap/entrypoints;
-- the module's concrete adapters;
-- the module's API transport.
-
-Application defines/uses semantic Commands, Queries and `Protocol` ports.
+`modules/<owner>/application` must not depend on FastAPI/persistence drivers, bootstrap/entrypoints, concrete adapters or API transport. Application defines/uses semantic Commands, Queries and `Protocol` ports.
 
 ### Contracts
 
-`modules/<owner>/contracts` is a published connection surface. It must remain
-framework-free and dependency-light. It must not re-export the owner module's domain,
-application, adapter or API internals.
+`modules/<owner>/contracts` is a published connection surface. It must remain framework-free and dependency-light and must not re-export owner domain/application/adapter/API internals.
 
-If another module needs a concept, map the smallest stable representation into the
-contract instead of exposing an internal entity/repository/transport DTO.
+If another module needs a concept, map the smallest stable representation into the contract instead of exposing an internal entity/repository/transport DTO.
 
 ### Database adapters
 
-`modules/<owner>/adapters/db` may know persistence infrastructure but must not depend
-on FastAPI, module HTTP DTOs or process entrypoints.
+`modules/<owner>/adapters/db` may know persistence infrastructure but must not depend on FastAPI, module HTTP DTOs or process entrypoints.
 
-The mapping direction is:
+Mapping direction:
 
 ```text
 PostgreSQL row/result
@@ -179,43 +131,17 @@ PostgreSQL row/result
 
 Never `DB adapter -> HTTP DTO`.
 
-## 6. HTTP composition fitness rule
+## 6. HTTP/composition fitness rules
 
-A module HTTP router is an inbound adapter and must be typed against application
-surfaces, not concrete PostgreSQL implementations.
+A module HTTP router is an inbound adapter and must be typed against application surfaces rather than concrete PostgreSQL implementations.
 
-Correct:
+Concrete DB/provider construction belongs in the module-owned install/composition surface or process composition root according to `13-connection-surfaces.md`.
 
-```text
-modules/booking/api/router.py
-        |
-        | AppointmentAvailabilityReader / BookAppointmentHandler / ...
-        v
-booking application
-```
-
-Concrete construction is allowed only at the module-owned installation/composition
-surface:
-
-```text
-entrypoints/http/app.py
-        |
-        | booking.api.install_http(...)
-        v
-modules/booking/api/__init__.py
-        |
-        | construct Postgres... adapters
-        v
-router typed against application Protocols
-```
-
-This keeps `entrypoints/http` ignorant of module internals while also keeping the
-router ignorant of persistence implementation.
+`entrypoints/http` and `bootstrap` are composition/trust boundaries. They must not become a hidden parallel business taxonomy or service locator. If cross-domain business policy appears there, assign an explicit owner rather than hiding fan-out from the business-module graph.
 
 ## 7. What the tests enforce
 
-`tests/architecture/test_connection_surfaces.py` protects the process/module HTTP
-boundary.
+`tests/architecture/test_connection_surfaces.py` protects process/module composition boundaries.
 
 `tests/architecture/test_dependency_policy.py` protects:
 
@@ -228,43 +154,69 @@ boundary.
 - dependency-light public contracts;
 - persistence separation from HTTP transport.
 
-`tests/architecture/test_repository_structure.py` continues to protect baseline
-module ownership, platform purity, no global horizontal business roots, deferred
-module isolation and other repository-level rules.
+`tests/architecture/test_repository_governance_contract.py` protects type/DTO/instruction/repository governance boundaries.
 
-`tests/architecture/test_branch_workflow_contract.py` protects the repository
-integration topology defined by `docs/architecture/branch-integration-contract.md`:
+`tests/architecture/test_branch_workflow_contract.py` protects serialized development integration topology.
 
-- ordinary PRs target `development`;
-- only `development -> main` may target `main`;
-- `tmp/*` branches cannot become ordinary PR heads;
-- every ordinary PR must claim the single development integration lane by setting
-  `.github/development-integration-lane` to the exact `GITHUB_HEAD_REF`;
-- a stale/parallel sibling branch therefore receives an explicit integration-lane
-  failure after another branch is integrated into `development`.
+Other architecture tests may protect narrower current capabilities. Their authority comes from the semantic property they defend, not from their filename or release-era origin.
 
-The lane guard is intentionally part of architecture CI rather than a separate
-workflow so it does not add another Actions pipeline or status check.
+These are fitness functions, not substitutes for PostgreSQL races/invariants, application tests or production-like E2E proof.
 
-These tests are **fitness functions**, not business correctness tests. PostgreSQL
-race/invariant tests, unit tests and HTTP integration tests remain independently
-required.
+## 8. Maintainability signals are not architecture verdicts
+
+Current quality tooling may emit:
+
+```text
+QR-FSIZE-001     file-size review candidate
+QR-CPLX-001      C901/McCabe review candidate
+QR-NAV-001       navigation/forwarding review candidate
+QR-COUPLING-001  new outbound module-dependency review candidate
+```
+
+These are non-blocking semantic-review prompts. There is no hard `120 LOC`, `C901 > 10`, file-count, fan-in or fan-out architecture cliff.
+
+The required review path is defined by:
+
+- `docs/engineering-quality/agent-semantic-review-playbook.md`;
+- `docs/engineering-quality/semantic-review-protocol.md`.
+
+`HEALTHY_AS_IS` is valid. Do not split cohesive files, add forwarding wrappers, hide dependencies or introduce abstraction ceremony only to improve a metric.
+
+Deterministic HARD failures — unsupported internal imports, unapproved edges, cycles, inward framework leakage, security/authority/transaction invariants — remain independently blocking and cannot be waived by semantic review.
+
+## 9. Fitness-function evolution
 
 A fitness-function failure has two legitimate dispositions:
 
 ```text
 UNINTENTIONAL DRIFT
-  repair the implementation to satisfy the accepted architecture
+  repair implementation to satisfy accepted architecture
 
 INTENTIONAL ARCHITECTURE EVOLUTION
-  update the normative architecture/ownership/connection-surface contract and
-  adapt or replace the fitness function so it protects the new accepted rule
+  update current normative ownership/connection contract
+  update executable policy/test coherently
+  preserve or strengthen the protected guarantee
+  provide exact-head evidence
 ```
 
-The second path is not a bypass. It requires the evidence bundle defined by
-`architecture/pre-production-evolution-policy.md`.
+The second path is not a bypass. It is governed by `architecture/system-optimization-mode.md`, `architecture/pre-production-evolution-policy.md` and `testing/repository-governance-contract.md`.
 
-## 8. Failure messages are part of the agent interface
+Exact snapshots/allowlists are useful only where the listed shape is itself CONTROLLED. They must not force current Request Engine to retain an old module inventory, capability list, migration-head assumption or repository shape merely because it was once release-proven.
+
+When evolving a structural test:
+
+```text
+old assertion
+    -> identify protected risk
+    -> define current architecture
+    -> KEEP / ADAPT / REPLACE / REMOVE / HISTORICAL disposition
+    -> preserve semantic proof
+    -> add adversarial evidence when risk is behavioral/concurrent/security-sensitive
+```
+
+Removing an obsolete structural assertion without preserving its protected intent is invalid. Keeping an obsolete assertion after the accepted contract changed is also invalid.
+
+## 10. Failure messages are part of the agent interface
 
 Architecture-test failures should explain:
 
@@ -272,35 +224,7 @@ Architecture-test failures should explain:
 what boundary was crossed
 which file/import crossed it
 what surface is allowed
-what design question must be answered before changing the policy
+what design question must be answered before changing policy
 ```
 
-Branch-workflow failures additionally explain the repository recovery action. A
-`Development integration lane mismatch` means the PR head no longer represents the
-current serialized `development` integration state. The correct response is to
-fetch/reconcile with current `origin/development`, set the lane cursor to the actual
-PR head, and rerun required exact-head checks. It is not valid to weaken the test,
-add a bypass branch, retarget the PR to `main`, or stack it on another feature branch.
-
-## 9. Fitness functions must protect intent, not obsolete shape
-
-Architecture CI has lower authority than an intentionally superseding normative
-product/architecture contract.
-
-Exact snapshots and allowlists are useful drift detectors, but they must evolve when
-the accepted architecture evolves. They must not force current Request Engine to
-retain an old module edge inventory, capability inventory, migration-head assumption
-or repository shape merely because that shape was once release-proven.
-
-When changing one of these tests, preserve the reason it existed:
-
-```text
-old structural assertion
-      -> identify protected risk
-      -> define new architecture
-      -> adapt/replace proof against that risk
-      -> add adversarial evidence where the risk is behavioral/concurrent/security-sensitive
-```
-
-Removing an obsolete structural assertion without proving the protected intent is
-invalid. Keeping an obsolete assertion after the contract changed is also invalid.
+Branch-workflow failures additionally explain the repository recovery action. A `Development integration lane mismatch` is an integration-state error: reconcile with current `origin/development`, set `.github/development-integration-lane` to the actual PR head and rerun exact-head checks. Do not weaken the test, create a bypass branch or retarget ordinary work to `main`.

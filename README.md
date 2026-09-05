@@ -1,102 +1,72 @@
 # Request Engine
 
-Request Engine is a **headless, multi-tenant operational capability API** for agents, forms, applications and automation systems. It exposes deterministic business capabilities such as structured business information, appointment booking, queues, waitlists, transactional communications and durable Requests without requiring every business process to fit one universal workflow model.
+Request Engine is a **headless, multi-tenant operational capability API** for agents, forms, applications and automation systems. It exposes deterministic business capabilities for identity/authority, operational configuration, discovery, booking/capacity, queues/waitlists, live service execution, communications, operational projection/recovery and bounded external operational tooling without forcing every process into one universal workflow model.
 
-PostgreSQL owns local relational/transactional truth, locks and consistency backstops. Python owns semantic commands/queries, authorization, policy orchestration, external I/O and transaction framing.
+PostgreSQL owns relational/transactional truth, constraints, tenant/security backstops, locks and durable facts. Python owns semantic commands/queries, authorization/policy orchestration, provider/external I/O and transaction framing.
 
-Request Engine V3 has completed its capability-first baseline freeze and release proof. G01–G20 are closed `PASS`, the reviewed Alembic `0001_initial` is structurally/behaviorally/runtime-equivalent to the frozen V3 candidate, and V3 was promoted from `development` to `main` in PR #72. The active development line is therefore **post-V3-baseline**: `0001_initial` is immutable production migration history and future schema evolution is append-only.
+## Current repository mode
 
-The historical V2 SQL design chain and the frozen V3 candidate remain useful executable provenance. Neither is the mutable production migration line.
+Request Engine is still pre-production and is currently in a dedicated cohesion/system-optimization phase.
 
-## Read first
+Read first:
 
-Start with `docs/README.md`, which defines canonical precedence and current release/baseline status.
+- `docs/architecture/system-optimization-mode.md` — current optimization/rebaseline authority;
+- `docs/testing/current-guarantees.toml` — semantic guarantees that must not disappear silently;
+- `docs/README.md` — current documentation index and precedence;
+- `docs/10-module-ownership-map.md` — current business ownership;
+- `migrations/README.md` — current schema-evolution/rebaseline rules.
 
-Most relevant current documents:
+The released V3 baseline and earlier V2 design chain remain historical provenance. They are **not permanent ceilings on current schema/module/test/repository shape**. During this pre-production phase a deliberate architecture/schema rebaseline may be performed after the required audit and proof. Do not casually rewrite migration history during unrelated work.
 
-- `docs/11-capability-first-v3.md` — current product thesis, capability semantics and V3 baseline;
-- `docs/v3/01-capability-contracts.md` — public/application capability contracts;
-- `docs/v3/02-pre-sql-contract.md` — cardinalities, transactions, invariants and lock/race contracts;
-- `docs/release/v3-release-gates.md` — canonical G01–G20 release gate registry;
-- `docs/release/v3-current-release-roadmap.md` — V3 freeze/release provenance and post-release status;
-- `docs/07-database-access-contract.md` — Python ↔ PostgreSQL boundary;
-- `docs/09-python-module-architecture.md` — physical Python layout/import boundaries;
-- `docs/10-module-ownership-map.md` — business ownership;
-- `docs/adr/README.md` — durable architectural rationale.
+The current rule is:
 
-`docs/12-v3-transition-plan.md`, `docs/v3/sql-disposition.md`, and earlier Phase 6 planning/rebaseline documents are transition/history references. They do not override current post-baseline status.
-
-`docs/legacy/**` is historical and non-authoritative.
+```text
+freeze guarantees, not accidental repository shape
+```
 
 ## Product semantics
 
-Public/application behavior is explicit about four different semantics:
+Public/application behavior distinguishes four different semantics:
 
 ```text
-Query            read current state
+Query            read/derive current state
 Command          execute a semantic immediate mutation
 Request          create durable new business demand requiring later processing
 ScheduledAction  execute durable future work
 ```
 
-Do not use `Request` as a universal wrapper for every operation merely because of the project name.
+Do not use `Request` as a universal wrapper for every mutation merely because of the project name.
 
-Examples of capability-oriented surfaces:
-
-```text
-business.get_info
-catalog.search_offerings
-appointments.find_slots
-appointments.book
-appointments.cancel
-appointments.reschedule
-appointments.confirm_attendance
-queue.join
-queue.status
-waitlist.join
-waitlist.status
-quotes.request
-requests.status
-```
-
-Internal persistence nouns such as CapacityClaim, outbox rows or provider events are not automatically public/agent tools.
+Public capabilities are semantic rather than table-shaped. Internal persistence nouns such as claims, outbox rows, provider events or lock roots are not automatically public tools/resources.
 
 ## Repository architecture
 
 Python is organized **module first, layer second**.
 
 ```text
-request-engine/
-├── src/request_engine/
-│   ├── bootstrap/                # composition root + runtime settings
-│   ├── entrypoints/              # HTTP, worker and CLI process adapters
-│   ├── platform/                 # technical cross-cutting capabilities
-│   │   ├── db/
-│   │   ├── idempotency/
-│   │   ├── outbox/
-│   │   ├── audit/
-│   │   ├── events/
-│   │   ├── scheduling/
-│   │   ├── observability/
-│   │   └── security/
-│   └── modules/
-│       ├── tenancy/              # V3 baseline
-│       ├── catalog/              # V3 baseline
-│       ├── requests/             # V3 baseline
-│       ├── booking/              # V3 baseline
-│       ├── queue/                # V3 baseline
-│       ├── communications/       # V3 baseline
-│       ├── delivery/             # bounded/deferred scope
-│       ├── payments/             # deferred/incubating
-│       └── dispatch/             # deferred/incubating
-├── migrations/
-├── tests/
-├── docs/
-├── scripts/
-└── deploy/
+src/request_engine/
+├── bootstrap/       # composition/settings
+├── entrypoints/     # HTTP/worker/CLI process + trust boundaries
+├── platform/        # technical cross-cutting mechanics
+└── modules/
+    ├── tenancy/
+    ├── catalog/
+    ├── requests/
+    ├── booking/
+    ├── queue/
+    ├── communications/
+    ├── discovery/
+    ├── delivery/
+    ├── live_capacity/
+    ├── operational_recovery/
+    ├── operational_copilot/
+    ├── payments/             # deferred/incubating
+    └── dispatch/             # deferred/incubating
 ```
 
-Baseline modules may not depend on deferred modules unless a concrete product requirement reactivates that boundary through an accepted architecture change.
+`operational_copilot` is a historical module name for the bounded typed operational-tool/admission boundary; it is not an embedded conversational/LLM runtime. `payments` and `dispatch` remain deferred/incubating until a concrete accepted capability establishes ownership.
+
+See `docs/09-python-module-architecture.md`, `docs/10-module-ownership-map.md`, `docs/13-connection-surfaces.md` and `docs/14-architecture-fitness-functions.md` for normative architecture.
 
 A module grows only the structure real code requires:
 
@@ -115,74 +85,83 @@ module/
 └── README.md
 ```
 
-Do not create empty architectural folders pre-emptively.
+This is a growth shape, not required ceremony. File size/file count are not architecture targets.
 
-## Current V3 baseline capabilities
+## Current ownership model
 
-### Structured business information
+The detailed source is `docs/10-module-ownership-map.md`. At a high level:
 
-Operational profile/location/hours/Offering truth that agents and applications can query. Request Engine does not become a universal CMS/RAG system.
+- `tenancy` — Organization/Principal/Party/Representation and tenant/subject authority;
+- `catalog` — Location/Offering/OfferingVersion and service/configuration vocabulary;
+- `requests` — durable new business demand;
+- `booking` — Resource planning/contextual supply, availability, holds/claims and Reservations;
+- `queue` — live waiting/calling/no-show and waitlist/released-slot interest;
+- `communications` — transactional communication intent/delivery/reminder semantics;
+- `discovery` — explicitly published cross-tenant supply projection and Booking handoff;
+- `delivery` — ReservationAccess and actual service/execution facts;
+- `live_capacity` — advisory ETA/capacity/intake projection over owner facts;
+- `operational_recovery` — recovery proposal/execution composition over owner capabilities;
+- `operational_copilot` — typed external operational tools/admission over published owner contracts.
 
-### Booking
+Important durable distinction:
 
-Local `Resource` availability, Holds/claims and Reservations with `exclusive`/`units` capacity models. Booking owns race-safe book/cancel/reschedule semantics.
+```text
+Reservation    = planned commitment/capacity history
+QueueEntry     = arrival/wait/call truth
+ServiceSession = actual execution truth
+```
 
-Reservation confirmation is distinct from customer/patient attendance confirmation.
-
-### Service queue
-
-FIFO service flow for people/items waiting to be served now.
-
-### Waitlist
-
-Future capacity interest, distinct from the live service queue. Released capacity may produce expiring `SlotOffer` opportunities that still revalidate through booking.
-
-### Transactional communications
-
-Request Engine owns durable communication intent/result; WhatsApp, SMS, email, voice and n8n are replaceable adapters/providers.
-
-### Durable scheduling
-
-`platform/scheduling` owns generic lease/fencing/retry/dead-letter mechanics for future actions. Business modules own why those actions exist.
-
-### Generic Requests and n8n extension
-
-New or volatile processes can begin as durable Request/intake + outbox → n8n → authenticated idempotent semantic callback. Stable high-value processes can later be promoted into native modules without changing the external capability contract.
-
-Principle:
-
-> **Experiment outside; harden inside.**
+Projection/recovery/tooling modules compose these owner facts; they do not gain shadow mutation authority over them.
 
 ## Key implementation rules
 
 - One semantic command/query has one obvious owner.
-- Application code defines semantic ports; DB/provider implementations are adapters.
-- Repositories are semantic persistence adapters, not generic CRUD stores.
-- SQLAlchemy ORM is appropriate for ordinary persistence; Core/explicit SQL is preferred for locks, ranges, `SKIP LOCKED`, aggregate concurrency checks and narrow `request_cmd.*` primitives.
-- Domain objects, persistence mappings, API DTOs and cross-module contracts are separate concepts.
-- Cross-module transactions are allowed when a real local invariant requires one atomic transaction.
-- Cross-module imports use the target module's `contracts` surface.
-- `platform` may not depend on business modules.
-- `bootstrap` wires dependencies; business code must not use it as a service locator.
-- PostgreSQL constraints and concurrency protocols are part of correctness, not implementation details to mock away.
+- Cross-module imports use the target module's published `contracts` surface and an approved dependency direction.
+- Application code defines semantic ports; DB/provider implementations remain adapters.
+- Domain/application/contracts do not depend on HTTP/Pydantic/persistence implementation details.
+- Repositories/adapters are semantic persistence surfaces, not generic CRUD stores.
+- SQLAlchemy ORM is appropriate for ordinary persistence; explicit PostgreSQL/SQLAlchemy Core is appropriate where locking/range/batch semantics are part of correctness.
+- Cross-module transactions are allowed when a real invariant requires one atomic transaction.
+- `platform` contains technical cross-cutting mechanics, not displaced business policy.
+- `bootstrap` composes dependencies; business code must not use it as a service locator.
+- PostgreSQL constraints, RLS/privileges and concurrency protocols are correctness mechanisms, not implementation details to mock away.
 - No external network I/O occurs while authoritative database locks are held.
-- n8n/providers never mutate Request Engine storage directly; callbacks execute authenticated idempotent semantic commands.
+- Providers/n8n do not mutate Request Engine storage directly; callbacks execute authenticated/idempotent semantic operations.
 
 ## SQL and migrations
 
-There are now three intentionally different schema-history surfaces:
+Executable schema evolution lives in:
 
 ```text
-migrations/sql/design_chain/   historical V2 executable design history
-migrations/sql/v3_candidate/   frozen V3 candidate/provenance used by release proof
-migrations/versions/           production Alembic history beginning at 0001_initial
+migrations/versions/       current Alembic line
 ```
 
-`migrations/versions/0001_initial.py` is the immutable V3 production baseline proven equivalent to the frozen candidate. Do not rewrite, regenerate, squash or reinterpret it after release. Future production schema changes are append-only Alembic revisions (`0002`, `0003`, ... as applicable to repository naming policy).
+Historical/provenance surfaces currently include:
 
-The V2 design chain remains historical evidence and must not receive new V2.x deltas by default. The frozen V3 candidate remains release provenance and must not be treated as the normal place for post-release schema evolution.
+```text
+migrations/sql/design_chain/   V2 design history
+migrations/sql/v3_candidate/   V3 release-candidate provenance
+migrations/f2_steps/           preserved feature-development SQL provenance/support
+```
 
-See `migrations/README.md` before changing SQL.
+Those historical paths are not current schema authority merely because they remain in the working tree.
+
+Current CI requires exactly one repository Alembic head and upgrades a clean PostgreSQL 18 database to that head. Do not hardcode one old revision in documentation as timeless current truth.
+
+Before changing schema, read `docs/architecture/system-optimization-mode.md`, `migrations/README.md` and `migrations/AGENTS.md`. A future rebaseline, if justified by the complete PostgreSQL audit, is a dedicated controlled operation — not a blind squash or pg_dump of the current chain.
+
+## Testing and engineering quality
+
+Current semantic guarantees live in `docs/testing/current-guarantees.toml`. Test filenames/directories such as `v3_*`, `f1_*` or `f2_*` may record origin; they do not freeze current architecture.
+
+Architecture HARD failures remain blocking. Maintainability metrics such as file LOC, C901 and module fan-in/fan-out are non-blocking `REVIEW_CANDIDATE` signals requiring semantic review; there is no hard 120-line architecture ceiling.
+
+Read:
+
+- `docs/testing/README.md`
+- `docs/testing/repository-governance-contract.md`
+- `docs/testing/evidence-authoring-guide.md`
+- `docs/engineering-quality/README.md`
 
 ## Development tooling
 
@@ -197,25 +176,30 @@ uv run pyright
 uv run pytest
 ```
 
+For repository-managed local publication and exact-head CI expectations, read `AGENTS.md`, `CONTRIBUTING.md` and `docs/engineering-quality/local-publish-certification.md`.
+
 ## LLM / coding agents
 
-Repository documentation is the engineering system of record. `AGENTS.md` is a compact map/guardrail file, with nearer instruction files adding local rules.
+Repository documentation is the engineering system of record. `AGENTS.md` is the repository-wide operational map, with nearer instruction files adding path-specific rules.
 
 Before changing code, a human or agent should be able to answer:
 
 1. Which capability/module owns this behavior?
-2. Is it a Query, Command, Request, or ScheduledAction?
-3. Which public contract may another module depend on?
-4. Which PostgreSQL row(s) serialize the authoritative mutation?
-5. Which locks/races/failure modes must be proven?
-6. Which provider work occurs only after commit?
-7. Which tests demonstrate the invariant rather than merely the happy path?
-8. Does a schema change require a new append-only Alembic migration rather than touching the frozen baseline/candidate?
+2. Is it a Query, Command, Request or ScheduledAction?
+3. Which supported contract crosses each module/transport/provider boundary?
+4. What authority/tenant context is required?
+5. Which PostgreSQL facts/locks serialize the authoritative mutation?
+6. What are retry/concurrency/ambiguous-failure semantics?
+7. Which current guarantee(s) does the change affect?
+8. Which tests can falsify a regression in those guarantees?
+9. Is a schema change an ordinary controlled migration or part of the dedicated audited rebaseline?
 
-The V3 north star is intentionally simple:
+North star:
 
 ```text
 one public operational API
         ≠
-one universal domain model
+one universal bounded context
+        ≠
+one frozen historical repository shape
 ```

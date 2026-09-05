@@ -7,21 +7,28 @@ through the effective-policy read and freezes it into
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
+    PostgresAppointmentAvailabilityReader,
+)
+from request_engine.modules.booking.adapters.db.contextual_reservation_commands import (
+    PostgresContextualReservationCommands,
 )
 from request_engine.modules.booking.application.authority import BOOK_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
+    book_appointment,
 )
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.booking.application.queries.find_appointment_slots import (
+    FindAppointmentSlotsQuery,
+    find_appointment_slots,
+)
 from request_engine.modules.catalog.adapters.db.offering_policy_commands import (
     PostgresOfferingBookingPolicyCommands,
 )
@@ -62,6 +69,7 @@ class PolicyWorld:
     capability_id: UUID
     requirement_id: UUID
     resource_id: UUID
+    assignment_id: UUID
 
 
 def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
@@ -106,7 +114,15 @@ def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
         """,
         (world.organization_id, f"location-{suffix}", f"Location {suffix}"),
     )
-    # Bootstrap booking policy written by offering creation.
+    conn.execute(
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id, location_id, weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '08:00', '17:00')
+        """,
+        (world.organization_id, world.location_id),
+    )
+
     offering_id = _uuid_row(
         conn,
         """
@@ -132,6 +148,14 @@ def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
             '{"slot_step_minutes": 30}',
         ),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 3500, 'DOP')
+        """,
+        (world.organization_id, world.offering_version_id),
+    )
     world.capability_id = _uuid_row(
         conn,
         """
@@ -156,17 +180,12 @@ def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
         conn,
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, %s, 'exclusive', 1)
+        ) VALUES (%s, %s, %s, 'exclusive', 1)
         RETURNING id
         """,
-        (
-            world.organization_id,
-            world.location_id,
-            f"resource-{suffix}",
-            f"Resource {suffix}",
-        ),
+        (world.organization_id, f"resource-{suffix}", f"Resource {suffix}"),
     )
     conn.execute(
         """
@@ -176,15 +195,29 @@ def _seed_policy_world(conn: PgConnection, prefix: str) -> PolicyWorld:
         """,
         (world.organization_id, world.resource_id, world.capability_id),
     )
+    world.assignment_id = _uuid_row(
+        conn,
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (
+            %s, %s, %s,
+            tstzrange('2029-01-01T00:00:00+00'::timestamptz, NULL, '[)')
+        )
+        RETURNING id
+        """,
+        (world.organization_id, world.resource_id, world.location_id),
+    )
     conn.execute(
         """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id, resource_location_assignment_id,
+            weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '09:00', '12:00')
         """,
-        (world.organization_id, world.resource_id),
+        (world.organization_id, world.assignment_id),
     )
-    # Representation authority for the catalog policy command and for booking.
+
     for scope_key in ("operations.manage_terms", BOOK_APPOINTMENT_SCOPE):
         conn.execute(
             """
@@ -223,8 +256,6 @@ def _override_policy() -> policy_commands.BookingPolicyInput:
 
 
 def _expected_policy_json() -> dict[str, object]:
-    """Independent oracle: the policy the API contract declares, by hand."""
-
     return {
         "slot_step_minutes": 15,
         "attendance": {
@@ -263,6 +294,47 @@ def _policy_command(world: PolicyWorld, *, expected_revision: int, key: str):
     )
 
 
+async def _contextual_booking_command(
+    world: PolicyWorld,
+    session_factory: SessionFactory,
+) -> BookAppointmentCommand:
+    start_at = datetime(2030, 1, 7, 13, 0, tzinfo=UTC)
+    slots = await find_appointment_slots(
+        PostgresAppointmentAvailabilityReader(session_factory),
+        FindAppointmentSlotsQuery(
+            organization_id=world.organization_id,
+            offering_version_id=world.offering_version_id,
+            location_id=world.location_id,
+            resource_id=world.resource_id,
+            window_start=start_at,
+            window_end=start_at + timedelta(hours=1),
+            limit=20,
+        ),
+    )
+    slot = next((candidate for candidate in slots if candidate.start_at == start_at), None)
+    assert slot is not None
+    assert slot.planned_duration_minutes is not None
+    assert slot.amount is not None
+    assert slot.currency is not None
+    assert slot.location_operational_revision is not None
+    assert slot.configuration_fingerprint is not None
+    return BookAppointmentCommand(
+        organization_id=world.organization_id,
+        principal_id=world.principal_id,
+        offering_version_id=world.offering_version_id,
+        subject_party_id=world.subject_party_id,
+        start_at=slot.start_at,
+        resources=slot.resources,
+        location_id=world.location_id,
+        idempotency_key=f"book-{uuid4().hex}",
+        expected_planned_duration_minutes=slot.planned_duration_minutes,
+        expected_amount=slot.amount,
+        expected_currency=slot.currency,
+        expected_location_operational_revision=slot.location_operational_revision,
+        expected_configuration_fingerprint=slot.configuration_fingerprint,
+    )
+
+
 @pytest.mark.asyncio
 async def test_booking_policy_override_freezes_into_future_reservations(
     admin_conn: PgConnection,
@@ -276,10 +348,8 @@ async def test_booking_policy_override_freezes_into_future_reservations(
     ).set_offering_version_booking_policy(
         _policy_command(world, expected_revision=0, key=f"policy-{uuid4().hex}")
     )
-
     assert state.booking_policy_revision == 1
 
-    # Bootstrap policy stays intact on the immutable OfferingVersion row.
     bootstrap_policy = admin_conn.execute(
         """
         SELECT booking_policy
@@ -300,23 +370,9 @@ async def test_booking_policy_override_freezes_into_future_reservations(
     ).fetchall()
     assert ledger == [(1, expected)]
 
-    # A future reservation freezes the effective (overridden) policy.
-    reservation_commands = PostgresReservationCommands(command_session_factory)
-    reservation = await reservation_commands.book_appointment(
-        BookAppointmentCommand(
-            organization_id=world.organization_id,
-            principal_id=world.principal_id,
-            offering_version_id=world.offering_version_id,
-            subject_party_id=world.subject_party_id,
-            start_at=datetime(2030, 1, 7, 13, 0, tzinfo=UTC),
-            resources=(
-                ResourceChoice(
-                    requirement_id=world.requirement_id,
-                    resource_id=world.resource_id,
-                ),
-            ),
-            idempotency_key=f"book-{uuid4().hex}",
-        )
+    reservation = await book_appointment(
+        PostgresContextualReservationCommands(command_session_factory),
+        await _contextual_booking_command(world, command_session_factory),
     )
     snapshot = admin_conn.execute(
         """

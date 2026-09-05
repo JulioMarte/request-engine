@@ -18,7 +18,6 @@ from request_engine.modules.booking.adapters.db.live_capacity_resource import (
 )
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_resource_exceptions,
-    load_resource_schedules,
 )
 from request_engine.modules.booking.domain.availability import ResourceAvailability
 
@@ -54,29 +53,9 @@ async def load_availability_windows(
         observed_at=observed_at,
         horizon_end=horizon_end,
     )
-    contextualized, by_resource = await load_contextualization(
+    _, by_resource = await load_contextualization(
         session, organization_id, (resource_id,), observed_at, horizon_end
     )
-    if resource_id not in contextualized:
-        if resource.location_id != location_id:
-            return None
-        schedules = await load_resource_schedules(session, organization_id, (resource_id,))
-        return (
-            AvailabilityWindow(
-                profiles=(
-                    ResourceAvailability(
-                        capacity_model=resource.capacity_model,
-                        capacity_units=resource.capacity_units,
-                        default_timezone=resource.timezone,
-                        schedules=schedules.get(resource_id, ()),
-                        exceptions=broad.get(resource_id, ()),
-                        live_claims=opaque_claims,
-                    ),
-                ),
-                effective_start=None,
-                effective_end=None,
-            ),
-        )
     assignments = tuple(
         item for item in by_resource.get(resource_id, ()) if item.location_id == location_id
     )
