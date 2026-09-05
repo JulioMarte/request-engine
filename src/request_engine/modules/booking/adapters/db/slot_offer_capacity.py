@@ -12,9 +12,12 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.booking.adapters.db.contextual_supply import (
+    load_assignment_exceptions,
+    load_assignment_schedules,
+)
 from request_engine.modules.booking.adapters.db.reservation_commands import (
     load_bookable_offering,
-    load_locked_profiles,
     load_requirements,
     lock_resource_ids,
     lock_resources,
@@ -25,7 +28,6 @@ from request_engine.modules.booking.adapters.db.reservation_commands import (
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
     load_resource_exceptions,
-    load_resource_schedules,
 )
 from request_engine.modules.booking.application.errors import (
     AppointmentUnavailable,
@@ -65,16 +67,13 @@ class _Candidate:
     ordinal: int
     quantity: int
     resource_id: UUID
+    assignment_id: UUID
+    assignment_revision: int
     profile: ResourceAvailability
 
 
 class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
-    """Booking-owned capacity primitives used by queue offer orchestration.
-
-    The transaction handle is intentionally opaque in the cross-module contract.
-    The queue owns the surrounding transaction; this adapter owns all booking
-    capacity validation and mutation performed inside it.
-    """
+    """Booking-owned capacity primitives used by queue offer orchestration."""
 
     async def acquire_slot_offer_hold(
         self,
@@ -85,6 +84,8 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
         start_at = require_aware_utc(request.start_at, "start_at")
         end_at = require_aware_utc(request.end_at, "end_at")
         expires_at = require_aware_utc(request.expires_at, "expires_at")
+        if request.location_id is None:
+            raise SlotOfferCapacityUnavailable("SlotOpportunity requires a Location")
         now = cast(datetime, (await session.execute(text("SELECT clock_timestamp()"))).scalar_one())
         if expires_at <= now:
             raise InvalidHoldExpiration()
@@ -118,7 +119,9 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                                r.id AS resource_id,
                                r.capacity_model,
                                r.capacity_units,
-                               COALESCE(l.timezone, 'UTC') AS default_timezone
+                               rla.id AS assignment_id,
+                               rla.revision AS assignment_revision,
+                               l.timezone AS location_timezone
                         FROM request_engine.offering_resource_requirements rr
                         JOIN request_engine.resource_capability_assignments a
                           ON a.organization_id = rr.organization_id
@@ -126,24 +129,31 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                         JOIN request_engine.resources r
                           ON r.organization_id = a.organization_id
                          AND r.id = a.resource_id
-                        LEFT JOIN request_engine.locations l
-                          ON l.organization_id = r.organization_id
-                         AND l.id = r.location_id
+                        JOIN request_engine.resource_location_assignments rla
+                          ON rla.organization_id = r.organization_id
+                         AND rla.resource_id = r.id
+                         AND rla.location_id = :location_id
+                         AND rla.effective_during @> :start_at
+                         AND (
+                             upper_inf(rla.effective_during)
+                             OR upper(rla.effective_during) >= :end_at
+                         )
+                        JOIN request_engine.locations l
+                          ON l.organization_id = rla.organization_id
+                         AND l.id = rla.location_id
+                         AND l.active
                         WHERE rr.organization_id = :organization_id
                           AND rr.offering_version_id = :offering_version_id
                           AND r.active
-                          AND (
-                              CAST(:location_id AS uuid) IS NULL
-                              OR r.location_id IS NULL
-                              OR r.location_id = CAST(:location_id AS uuid)
-                          )
-                        ORDER BY rr.ordinal, r.id
+                        ORDER BY rr.ordinal, r.id, rla.id
                         """
                     ),
                     {
                         "organization_id": request.organization_id,
                         "offering_version_id": request.offering_version_id,
                         "location_id": request.location_id,
+                        "start_at": start_at,
+                        "end_at": end_at,
                     },
                 )
             )
@@ -156,7 +166,19 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
         resource_ids = tuple(
             sorted({cast(UUID, row["resource_id"]) for row in candidate_rows}, key=str)
         )
-        schedules = await load_resource_schedules(session, request.organization_id, resource_ids)
+        assignment_ids = tuple(
+            sorted({cast(UUID, row["assignment_id"]) for row in candidate_rows}, key=str)
+        )
+        assignment_schedules = await load_assignment_schedules(
+            session, request.organization_id, assignment_ids
+        )
+        assignment_exceptions = await load_assignment_exceptions(
+            session,
+            request.organization_id,
+            assignment_ids,
+            start_at,
+            end_at,
+        )
         exceptions = await load_resource_exceptions(
             session,
             request.organization_id,
@@ -173,7 +195,8 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
         )
         candidates = _build_candidates(
             candidate_rows,
-            schedules=schedules,
+            assignment_schedules=assignment_schedules,
+            assignment_exceptions=assignment_exceptions,
             exceptions=exceptions,
             live_claims=live_claims,
         )
@@ -195,8 +218,11 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
         if any(not by_ordinal[ordinal] for ordinal in ordinals):
             raise SlotOfferCapacityUnavailable("SlotOpportunity no longer has complete capacity")
 
-        choice_groups: list[list[_Candidate]] = [
-            sorted(by_ordinal[ordinal], key=lambda value: str(value.resource_id))
+        choice_groups = [
+            sorted(
+                by_ordinal[ordinal],
+                key=lambda value: (str(value.resource_id), str(value.assignment_id)),
+            )
             for ordinal in ordinals
         ]
         all_available: list[tuple[_Candidate, ...]] = []
@@ -218,17 +244,16 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                 "candidate preferred Resource is not available for this slot"
             )
 
-        # Every speculative combination owns a SAVEPOINT that includes its
-        # Resource/shared-root locks and its complete Hold/Claim write set.
-        # A losing combination must release those locks before another ordering
-        # is attempted; otherwise retries can accumulate roots and defeat the
-        # canonical lock topology. Shared-capacity conflicts can surface only at
-        # CapacityClaim INSERT, so the write itself belongs inside the attempt.
         for selected in eligible_combinations:
             try:
                 async with session.begin_nested():
                     choices_tuple = tuple(
-                        ResourceChoice(candidate.requirement_id, candidate.resource_id)
+                        ResourceChoice(
+                            candidate.requirement_id,
+                            candidate.resource_id,
+                            candidate.assignment_id,
+                            candidate.assignment_revision,
+                        )
                         for candidate in selected
                     )
                     choices = {choice.requirement_id: choice for choice in choices_tuple}
@@ -243,12 +268,20 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                         requirements=requirements,
                         choices=choices,
                         resources=resources,
-                        location_id=request.location_id,
+                        location_id=None,
                     )
-                    locked_profiles = await load_locked_profiles(
+                    await _lock_assignments(
                         session,
                         organization_id=request.organization_id,
-                        resources=resources,
+                        location_id=request.location_id,
+                        selected=selected,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )
+                    locked_profiles = await _load_selected_profiles(
+                        session,
+                        organization_id=request.organization_id,
+                        selected=selected,
                         start_at=start_at,
                         end_at=end_at,
                     )
@@ -298,8 +331,11 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                             )
                         ).scalar_one(),
                     )
+                    selected_by_requirement = {
+                        candidate.requirement_id: candidate for candidate in selected
+                    }
                     for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
-                        choice = choices[requirement.id]
+                        candidate = selected_by_requirement[requirement.id]
                         await session.execute(
                             text(
                                 """
@@ -308,6 +344,7 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                                     resource_id,
                                     requirement_id,
                                     hold_id,
+                                    resource_location_assignment_id,
                                     during,
                                     quantity
                                 ) VALUES (
@@ -315,6 +352,7 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                                     :resource_id,
                                     :requirement_id,
                                     :hold_id,
+                                    :assignment_id,
                                     tstzrange(:start_at, :end_at, '[)'),
                                     :quantity
                                 )
@@ -322,9 +360,10 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                             ),
                             {
                                 "organization_id": request.organization_id,
-                                "resource_id": choice.resource_id,
+                                "resource_id": candidate.resource_id,
                                 "requirement_id": requirement.id,
                                 "hold_id": hold_id,
+                                "assignment_id": candidate.assignment_id,
                                 "start_at": start_at,
                                 "end_at": end_at,
                                 "quantity": requirement.quantity,
@@ -395,10 +434,7 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                         "subject_party_id": hold_row["subject_party_id"],
                         "location_id": hold_row["location_id"],
                         "during": hold_row["during"],
-                        "booking_policy": json.dumps(
-                            booking_policy,
-                            separators=(",", ":"),
-                        ),
+                        "booking_policy": json.dumps(booking_policy, separators=(",", ":")),
                     },
                 )
             ).scalar_one(),
@@ -505,25 +541,30 @@ def _is_capacity_conflict(exc: IntegrityError) -> bool:
 def _build_candidates(
     rows: Sequence[RowMapping],
     *,
-    schedules: dict[UUID, tuple[RecurringAvailability, ...]],
+    assignment_schedules: dict[UUID, tuple[RecurringAvailability, ...]],
+    assignment_exceptions: dict[UUID, tuple[AvailabilityException, ...]],
     exceptions: dict[UUID, tuple[AvailabilityException, ...]],
     live_claims: dict[UUID, tuple[LiveCapacityClaim, ...]],
 ) -> tuple[_Candidate, ...]:
     result: list[_Candidate] = []
     for row in rows:
         resource_id = cast(UUID, row["resource_id"])
+        assignment_id = cast(UUID, row["assignment_id"])
         result.append(
             _Candidate(
                 requirement_id=cast(UUID, row["requirement_id"]),
                 ordinal=cast(int, row["ordinal"]),
                 quantity=cast(int, row["quantity"]),
                 resource_id=resource_id,
+                assignment_id=assignment_id,
+                assignment_revision=cast(int, row["assignment_revision"]),
                 profile=ResourceAvailability(
                     capacity_model=CapacityModel(cast(str, row["capacity_model"])),
                     capacity_units=cast(int, row["capacity_units"]),
-                    default_timezone=cast(str, row["default_timezone"]),
-                    schedules=schedules.get(resource_id, ()),
-                    exceptions=exceptions.get(resource_id, ()),
+                    default_timezone=cast(str, row["location_timezone"]),
+                    schedules=assignment_schedules.get(assignment_id, ()),
+                    exceptions=exceptions.get(resource_id, ())
+                    + assignment_exceptions.get(assignment_id, ()),
                     live_claims=live_claims.get(resource_id, ()),
                 ),
             )
@@ -551,6 +592,87 @@ def _combination_has_capacity(
         ):
             return False
     return True
+
+
+async def _lock_assignments(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    location_id: UUID,
+    selected: tuple[_Candidate, ...],
+    start_at: datetime,
+    end_at: datetime,
+) -> None:
+    expected = {candidate.assignment_id: candidate.assignment_revision for candidate in selected}
+    rows = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT id, revision, location_id, effective_during
+                    FROM request_engine.resource_location_assignments
+                    WHERE organization_id = :organization_id
+                      AND id = ANY(CAST(:assignment_ids AS uuid[]))
+                    ORDER BY id
+                    FOR UPDATE
+                    """
+                ),
+                {
+                    "organization_id": organization_id,
+                    "assignment_ids": [str(value) for value in sorted(expected, key=str)],
+                },
+            )
+        )
+        .mappings()
+        .all()
+    )
+    if len(rows) != len(expected):
+        raise AppointmentUnavailable("ResourceLocationAssignment changed")
+    for row in rows:
+        assignment_id = cast(UUID, row["id"])
+        if cast(UUID, row["location_id"]) != location_id:
+            raise AppointmentUnavailable("ResourceLocationAssignment changed")
+        if cast(int, row["revision"]) != expected[assignment_id]:
+            raise AppointmentUnavailable("ResourceLocationAssignment changed")
+        during = row["effective_during"]
+        if start_at not in during or (during.upper is not None and during.upper < end_at):
+            raise AppointmentUnavailable("ResourceLocationAssignment changed")
+
+
+async def _load_selected_profiles(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    selected: tuple[_Candidate, ...],
+    start_at: datetime,
+    end_at: datetime,
+) -> dict[UUID, ResourceAvailability]:
+    resource_ids = tuple(sorted({candidate.resource_id for candidate in selected}, key=str))
+    assignment_ids = tuple(sorted({candidate.assignment_id for candidate in selected}, key=str))
+    schedules = await load_assignment_schedules(session, organization_id, assignment_ids)
+    assignment_exceptions = await load_assignment_exceptions(
+        session, organization_id, assignment_ids, start_at, end_at
+    )
+    broad_exceptions = await load_resource_exceptions(
+        session, organization_id, resource_ids, start_at, end_at
+    )
+    claims = await load_live_capacity_claims(
+        session, organization_id, resource_ids, start_at, end_at
+    )
+    profiles: dict[UUID, ResourceAvailability] = {}
+    for candidate in selected:
+        if candidate.resource_id in profiles:
+            continue
+        profiles[candidate.resource_id] = ResourceAvailability(
+            capacity_model=candidate.profile.capacity_model,
+            capacity_units=candidate.profile.capacity_units,
+            default_timezone=candidate.profile.default_timezone,
+            schedules=schedules.get(candidate.assignment_id, ()),
+            exceptions=broad_exceptions.get(candidate.resource_id, ())
+            + assignment_exceptions.get(candidate.assignment_id, ()),
+            live_claims=claims.get(candidate.resource_id, ()),
+        )
+    return profiles
 
 
 async def _lock_hold(
