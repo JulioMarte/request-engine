@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -82,7 +82,9 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     tenant_b = create_contextual_tenant(admin_conn, "fallback-b")
     root_id = _shared_root(admin_conn)
 
-    ordered_resources = tuple(sorted((resource.resource_id for resource in tenant_a.resources), key=str))
+    ordered_resources = tuple(
+        sorted((resource.resource_id for resource in tenant_a.resources), key=str)
+    )
     blocked_resource, free_resource = ordered_resources
     foreign_resource = tenant_b.resources[0].resource_id
     _bind_resource(admin_conn, tenant_a, blocked_resource, root_id)
