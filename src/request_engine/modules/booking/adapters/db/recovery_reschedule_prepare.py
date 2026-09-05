@@ -32,7 +32,7 @@ from request_engine.modules.booking.contracts.recovery import (
     RecoveryRescheduleRequest,
     RecoveryTargetUnavailable,
 )
-from request_engine.domain.policy import slot_step_minutes
+from request_engine.modules.booking.domain.policy import slot_step_minutes
 
 
 @dataclass(frozen=True, slots=True)
