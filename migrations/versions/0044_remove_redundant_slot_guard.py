@@ -17,10 +17,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute("SET ROLE request_engine_schema_owner")
-    op.execute(
-        "DROP TRIGGER slot_offers_00_guard_subject_match "
-        "ON request_engine.slot_offers"
-    )
+    op.execute("DROP TRIGGER slot_offers_00_guard_subject_match ON request_engine.slot_offers")
     op.execute("DROP FUNCTION request_engine.guard_slot_offer_subject_match()")
     op.execute("RESET ROLE")
 
