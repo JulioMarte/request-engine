@@ -29,7 +29,7 @@ evidence = ["invariant", "adversarial", "concurrency"]
 
 [[proofs]]
 guarantee = "INV-CAPACITY-001"
-path = "tests/integration/v3_booking_commitments/test_capacity_hold_races.py"
+path = "tests/integration/v3_booking_core/test_booking_core.py"
 evidence = ["invariant", "adversarial", "concurrency", "capacity"]
 
 [[proofs]]
