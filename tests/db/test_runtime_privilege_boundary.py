@@ -107,6 +107,30 @@ def test_schema_owner_default_function_acl_denies_public_execute(
     assert rows == []
 
 
+@pytest.mark.postgres
+def test_schema_owner_default_relation_acl_grants_no_app_authority(
+    admin_conn: PgConnection,
+) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT COALESCE(n.nspname, ''), acl.privilege_type
+        FROM pg_default_acl d
+        LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
+        CROSS JOIN LATERAL aclexplode(d.defaclacl) acl
+        WHERE pg_get_userbyid(d.defaclrole) = 'request_engine_schema_owner'
+          AND (n.nspname = ANY(%s) OR n.nspname IS NULL)
+          AND d.defaclobjtype = 'r'
+          AND acl.grantee = (
+              SELECT oid FROM pg_roles WHERE rolname = 'request_engine_app'
+          )
+        ORDER BY 1, 2
+        """,
+        (list(_APPLICATION_SCHEMAS),),
+    ).fetchall()
+
+    assert rows == []
+
+
 @pytest.mark.parametrize("group_role", _RUNTIME_GROUP_ROLES)
 def test_real_runtime_logins_cannot_escalate_or_create_application_objects(
     admin_conn: PgConnection,
