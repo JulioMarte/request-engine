@@ -8,7 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 SCHEMAS = ("request_engine", "request_read", "request_cmd", "request_admin")
-_SCHEMALESS_QUERIES = {"roles", "role_memberships"}
+_SCHEMALESS_QUERIES = {"roles", "role_memberships", "default_acls"}
 QUERIES = {
     "schemas": """
         SELECT n.nspname AS schema_name, pg_get_userbyid(n.nspowner) AS owner
@@ -156,6 +156,23 @@ QUERIES = {
            OR member.rolname LIKE 'request_engine_%'
         ORDER BY 1,2
     """,
+    "default_acls": """
+        SELECT pg_get_userbyid(d.defaclrole) AS owner,
+               COALESCE(n.nspname, '') AS schema_name,
+               d.defaclobjtype::text AS object_type,
+               CASE
+                   WHEN acl.grantee=0 THEN 'PUBLIC'
+                   ELSE pg_get_userbyid(acl.grantee)
+               END AS grantee,
+               acl.privilege_type,
+               acl.is_grantable,
+               pg_get_userbyid(acl.grantor) AS grantor
+        FROM pg_default_acl d
+        LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+        CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
+        WHERE pg_get_userbyid(d.defaclrole) LIKE 'request_engine_%'
+        ORDER BY 1,2,3,4,5,6
+    """,
 }
 
 
@@ -165,7 +182,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    payload: dict[str, object] = {"schema_version": 4, "schemas": list(SCHEMAS)}
+    payload: dict[str, object] = {"schema_version": 5, "schemas": list(SCHEMAS)}
     with psycopg.connect("", row_factory=dict_row) as conn:
         for name, query in QUERIES.items():
             if name in _SCHEMALESS_QUERIES:
