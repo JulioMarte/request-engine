@@ -1,5 +1,3 @@
-# pyright: reportPrivateUsage=false
-
 import asyncio
 from collections.abc import Coroutine
 from datetime import UTC, datetime
@@ -9,31 +7,27 @@ from uuid import UUID, uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.commitment_commands import (
-    PostgresBookingCommitmentCommands,
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeBookingCommitmentCommands,
+    CapacitySafeReservationCommands,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
-)
-from request_engine.modules.booking.application.commands.book_appointment import (
-    book_appointment,
-)
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
     cancel_reservation,
 )
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
-    RescheduleReservationCommand,
     reschedule_reservation,
 )
 from request_engine.modules.booking.application.errors import ReservationRevisionConflict
 from request_engine.modules.booking.contracts.appointments import Reservation
 from request_engine.platform.db.session import SessionFactory
 
-from .test_booking_commitments import (
-    _book_command,
-    _choice,
-    _create_fixture,
+from .contextual_booking_support import (
+    contextual_book_command,
+    contextual_reschedule_command,
+    contextual_slot_at,
+    create_contextual_tenant,
 )
 
 PgConnection = Connection[Any]
@@ -70,23 +64,33 @@ async def _start_behind_reservation_lock(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
+@pytest.mark.concurrency
 async def test_cancel_and_reschedule_serialize_to_one_reservation_revision(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    fixture = _create_fixture(admin_conn)
-    reservations = PostgresReservationCommands(session_factory)
-    commitments = PostgresBookingCommitmentCommands(session_factory)
+    fixture = create_contextual_tenant(admin_conn, "reservation-race")
+    reservations = CapacitySafeReservationCommands(session_factory)
+    commitments = CapacitySafeBookingCommitmentCommands(session_factory)
     original_start = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
     moved_start = datetime(2026, 8, 17, 14, 0, tzinfo=UTC)
+    resource_id = fixture.resources[0].resource_id
 
+    original_slot = await contextual_slot_at(
+        fixture,
+        session_factory,
+        resource_id=resource_id,
+        start_at=original_start,
+    )
+    moved_slot = await contextual_slot_at(
+        fixture,
+        session_factory,
+        resource_id=resource_id,
+        start_at=moved_start,
+    )
     reservation = await book_appointment(
         reservations,
-        _book_command(
-            fixture,
-            subject_party_id=fixture.subject_party_id,
-            start_at=original_start,
-        ),
+        contextual_book_command(fixture, original_slot, key_prefix="race-book"),
     )
 
     cancel_result, reschedule_result = await _start_behind_reservation_lock(
@@ -101,23 +105,19 @@ async def test_cancel_and_reschedule_serialize_to_one_reservation_revision(
                     principal_id=fixture.principal_id,
                     reservation_id=reservation.id,
                     expected_revision=reservation.revision,
-                    reason="phase-6d-race",
+                    reason="reservation-race",
                     idempotency_key=f"cancel-race-{uuid4().hex}",
                     allow_subject_override=True,
                 ),
             ),
             reschedule_reservation(
                 commitments,
-                RescheduleReservationCommand(
-                    organization_id=fixture.organization_id,
-                    principal_id=fixture.principal_id,
+                contextual_reschedule_command(
+                    fixture,
+                    moved_slot,
                     reservation_id=reservation.id,
                     expected_revision=reservation.revision,
-                    location_id=fixture.location_id,
-                    start_at=moved_start,
-                    resources=_choice(fixture),
-                    idempotency_key=f"reschedule-race-{uuid4().hex}",
-                    allow_subject_override=True,
+                    key_prefix="reschedule-race",
                 ),
             ),
         ),
