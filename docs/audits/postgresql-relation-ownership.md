@@ -8,7 +8,7 @@ This manifest accounts for every relation in that effective catalog exactly once
 
 Database object ownership remains `request_engine_schema_owner`; `capability owner` here means semantic/persistence responsibility, not PostgreSQL `relowner`.
 
-## Booking — 21
+## Booking — 20
 
 - `request_engine.attendance_responses`
 - `request_engine.availability_schedules`
@@ -25,7 +25,6 @@ Database object ownership remains `request_engine_schema_owner`; `capability own
 - `request_engine.resource_location_schedule_exceptions`
 - `request_engine.resources`
 - `request_engine.schedule_exceptions`
-- `request_engine.shared_capacity_authority_events`
 - `request_engine.shared_capacity_bindings`
 - `request_engine.shared_capacity_claim_links`
 - `request_engine.shared_capacity_identities`
@@ -146,15 +145,16 @@ Platform ownership here is technical mechanics, not a business catch-all.
 - `request_engine.principals`
 - `request_engine.representations`
 
-## Explicit composition boundary — 1
+## Explicit composition boundaries — 2
 
 - `request_engine.recovery_source_revisions` — **KEEP**, jointly scoped Live Capacity ↔ Operational Recovery transactional freshness fence. Direct app DML was removed by `0042`; supported access is through `request_read.recovery_source_revision(...)` and `request_cmd.lock_recovery_source_revision(...)`.
+- `request_engine.shared_capacity_authority_events` — **KEEP**, Tenancy ↔ Booking authority ledger. It records both `global_identity.created` and SharedCapacity identity/binding authority events, so assigning it solely to Booking would hide an intentional cross-boundary audit fact.
 
 ## Totals
 
 | Capability owner | Relations |
 |---|---:|
-| Booking | 21 |
+| Booking | 20 |
 | Tenancy | 15 |
 | Queue | 14 |
 | Catalog | 12 |
@@ -166,6 +166,7 @@ Platform ownership here is technical mechanics, not a business catch-all.
 | Requests | 5 |
 | Live Capacity | 2 |
 | Explicit Live Capacity + Operational Recovery composition | 1 |
+| Explicit Tenancy + Booking authority-ledger composition | 1 |
 | **Total** | **102** |
 
 ## Rebaseline implication
