@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "db" / "compare_schema_catalogs.py"
 _SPEC = importlib.util.spec_from_file_location("compare_schema_catalogs", _SCRIPT)
