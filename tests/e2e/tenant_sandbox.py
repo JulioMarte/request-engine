@@ -184,6 +184,14 @@ def seed_tenant_sandbox(conn: support.PgConnection, prefix: str) -> TenantSandbo
         """,
         (organization_id, offering_id, json.dumps({"slot_step_minutes": 30})),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 3500, 'DOP')
+        """,
+        (organization_id, offering_version_id),
+    )
     capability_id = _uuid_row(
         conn,
         """
