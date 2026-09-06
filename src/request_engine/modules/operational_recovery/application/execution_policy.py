@@ -41,10 +41,17 @@ def affected_reservation(
     return result
 
 
+def require_recovery_target(
+    reservation_id: UUID,
+    target: RecoveryTarget | None,
+) -> RecoveryTarget:
+    if target is None:
+        raise RecoveryTargetUnavailable(reservation_id)
+    return target
+
+
 def require_target(affected: AffectedReservation) -> RecoveryTarget:
-    if affected.target is None:
-        raise RecoveryTargetUnavailable(affected.reservation_id)
-    return affected.target
+    return require_recovery_target(affected.reservation_id, affected.target)
 
 
 def raise_rejected(execution: RecoveryExecution) -> None:
