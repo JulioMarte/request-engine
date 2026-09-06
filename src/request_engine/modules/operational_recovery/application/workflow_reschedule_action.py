@@ -2,7 +2,7 @@ from request_engine.modules.booking.contracts.recovery import RecoveryBookingPor
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
 from request_engine.modules.operational_recovery.application.execution_policy import (
     affected_reservation,
-    require_actionable,
+    require_target,
 )
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.proposal_ops import get_proposal
@@ -55,7 +55,7 @@ async def execute_reschedule_action(
         proposal_id=command.proposal_id,
     )
     affected = affected_reservation(proposal, command.reservation_id)
-    require_actionable(affected)
+    require_target(affected)
     payload = reschedule_payload(command)
     action, terminal, newly_authorized = await authorize_or_resume_action(
         repository=workflow_repository,
