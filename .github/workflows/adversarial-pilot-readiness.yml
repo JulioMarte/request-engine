@@ -1,0 +1,46 @@
+name: Adversarial pilot-readiness audit
+
+on:
+  pull_request:
+    branches:
+      - development
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adversarial-pilot-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  readiness-probes:
+    name: "Pilot readiness probe / ${{ matrix.probe.name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        probe:
+          - name: party-duplicate-resolution
+            nodeid: tests/adversarial/test_pilot_readiness_contract.py::test_party_identity_has_first_class_duplicate_resolution_capability
+          - name: walk-in-preferred-resource
+            nodeid: tests/adversarial/test_pilot_readiness_contract.py::test_walk_in_queue_can_persist_preferred_resource
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Resolve development environment
+        run: uv sync --all-groups
+      - name: Run isolated adversarial probe
+        run: uv run pytest "${{ matrix.probe.nodeid }}" -q --tb=short
