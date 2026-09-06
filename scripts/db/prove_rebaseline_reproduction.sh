@@ -18,14 +18,21 @@ DIFF="$ARTIFACT_DIR/rebaseline-catalog-diff.json"
 
 mkdir -p "$ARTIFACT_DIR"
 
-# The candidate starts from PostgreSQL's effective schema, not from historical
-# migration text. Keep ownership and ACL statements; only Alembic bookkeeping is
-# excluded because a replacement revision will own its own version row.
-pg_dump \
-  --schema-only \
-  --exclude-table=public.alembic_version \
-  --file="$RAW_DUMP" \
-  "$SOURCE_DB"
+# GitHub's Ubuntu image can carry an older PostgreSQL client than the PostgreSQL
+# 18 service. Dump through the PostgreSQL 18 image so server/client major
+# versions match without changing the workflow runner image or package state.
+# Keep ownership and ACL statements; exclude only Alembic bookkeeping.
+docker run --rm --network host \
+  --env PGPASSWORD \
+  postgres:18 \
+  pg_dump \
+    --host="${PGHOST:-127.0.0.1}" \
+    --port="${PGPORT:-5432}" \
+    --username="${PGUSER:-postgres}" \
+    --dbname="$SOURCE_DB" \
+    --schema-only \
+    --exclude-table=public.alembic_version \
+  > "$RAW_DUMP"
 
 # PostgreSQL 17+ plain dumps may contain psql-only session guard meta-commands
 # such as \restrict/\unrestrict. The eventual Alembic baseline is executed via
