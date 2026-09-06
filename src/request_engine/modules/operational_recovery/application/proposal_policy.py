@@ -14,11 +14,7 @@ def choose_recovery_target(
     """Choose the first current contextual reschedule target outside the original interval."""
 
     candidate = next(
-        (
-            slot
-            for slot in slots
-            if slot.start_at != original_start or slot.end_at != original_end
-        ),
+        (slot for slot in slots if slot.start_at != original_start or slot.end_at != original_end),
         None,
     )
     return _target_from_slot(candidate) if candidate is not None else None
