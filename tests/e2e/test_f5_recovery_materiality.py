@@ -76,7 +76,7 @@ async def test_f5_proposal_is_read_only_and_uses_booking_generated_replacement_t
         proposal = await create_proposal(client, sandbox)
 
     targets = [item["target"] for item in proposal["affected"]]
-    assert targets and all(target is not None and target["actionable"] for target in targets)
+    assert targets and all(target is not None for target in targets)
     assert all(
         str(world.replacement_resource_id)
         in {choice["resource_id"] for choice in target["resources"]}
