@@ -18,9 +18,7 @@ def _uuid(
     return cast(UUID, row[0])
 
 
-@pytest.mark.integration
-@pytest.mark.postgres
-def test_resource_assignment_rejects_cross_location_overlap(admin_conn: PgConnection) -> None:
+def _fixture(admin_conn: PgConnection) -> tuple[UUID, UUID, UUID, UUID]:
     suffix = uuid4().hex
     organization_id = _uuid(
         admin_conn,
@@ -29,7 +27,7 @@ def test_resource_assignment_rejects_cross_location_overlap(admin_conn: PgConnec
         VALUES (%s, %s)
         RETURNING id
         """,
-        (f"assignment-exclusivity-{suffix}", "Assignment Exclusivity"),
+        (f"assignment-overlap-{suffix}", "Assignment Overlap"),
     )
     location_one = _uuid(
         admin_conn,
@@ -60,8 +58,43 @@ def test_resource_assignment_rejects_cross_location_overlap(admin_conn: PgConnec
         ) VALUES (%s, %s, %s, 'exclusive', 1)
         RETURNING id
         """,
-        (organization_id, f"resource-{suffix}", "Exclusive Resource"),
+        (organization_id, f"resource-{suffix}", "Shared Resource"),
     )
+    return organization_id, location_one, location_two, resource_id
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+def test_resource_assignment_allows_cross_location_overlap(admin_conn: PgConnection) -> None:
+    organization_id, location_one, location_two, resource_id = _fixture(admin_conn)
+    for location_id in (location_one, location_two):
+        admin_conn.execute(
+            """
+            INSERT INTO request_engine.resource_location_assignments (
+                organization_id, resource_id, location_id, effective_during
+            ) VALUES (
+                %s, %s, %s,
+                tstzrange('2030-01-01T00:00:00+00', '2030-02-01T00:00:00+00', '[)')
+            )
+            """,
+            (organization_id, resource_id, location_id),
+        )
+
+    count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s AND resource_id = %s
+        """,
+        (organization_id, resource_id),
+    ).fetchone()
+    assert count == (2,)
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+def test_resource_assignment_rejects_same_location_overlap(admin_conn: PgConnection) -> None:
+    organization_id, location_id, _, resource_id = _fixture(admin_conn)
     admin_conn.execute(
         """
         INSERT INTO request_engine.resource_location_assignments (
@@ -71,7 +104,7 @@ def test_resource_assignment_rejects_cross_location_overlap(admin_conn: PgConnec
             tstzrange('2030-01-01T00:00:00+00', '2030-02-01T00:00:00+00', '[)')
         )
         """,
-        (organization_id, resource_id, location_one),
+        (organization_id, resource_id, location_id),
     )
 
     with pytest.raises(psycopg.errors.ExclusionViolation):
@@ -84,6 +117,6 @@ def test_resource_assignment_rejects_cross_location_overlap(admin_conn: PgConnec
                 tstzrange('2030-01-15T00:00:00+00', '2030-03-01T00:00:00+00', '[)')
             )
             """,
-            (organization_id, resource_id, location_two),
+            (organization_id, resource_id, location_id),
         )
     admin_conn.rollback()
