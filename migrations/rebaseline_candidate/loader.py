@@ -6,9 +6,56 @@ import re
 from pathlib import Path
 from typing import Any
 
+from psycopg import ClientCursor
+
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
 _ROLE_NAME = re.compile(r'^CREATE ROLE "([^"]+)" WITH .+;$')
+_ROLE_QUERY = """
+    SELECT rolname,
+           rolsuper,
+           rolinherit,
+           rolcreaterole,
+           rolcreatedb,
+           rolcanlogin,
+           rolreplication,
+           rolbypassrls,
+           rolconnlimit,
+           rolvaliduntil::text,
+           rolpassword IS NOT NULL
+    FROM pg_authid
+    WHERE rolname LIKE 'request_engine_%'
+    ORDER BY rolname
+"""
+_MEMBERSHIP_QUERY = """
+    SELECT parent.rolname, member.rolname
+    FROM pg_auth_members membership
+    JOIN pg_roles parent ON parent.oid = membership.roleid
+    JOIN pg_roles member ON member.oid = membership.member
+    WHERE parent.rolname LIKE 'request_engine_%'
+       OR member.rolname LIKE 'request_engine_%'
+    ORDER BY parent.rolname, member.rolname
+"""
+_SETTING_QUERY = """
+    SELECT role.rolname, COALESCE(database.datname, ''), setting.setconfig
+    FROM pg_db_role_setting setting
+    JOIN pg_roles role ON role.oid = setting.setrole
+    LEFT JOIN pg_database database ON database.oid = setting.setdatabase
+    WHERE role.rolname LIKE 'request_engine_%'
+    ORDER BY role.rolname, database.datname
+"""
+_ROLE_FIELDS = (
+    "superuser",
+    "inherit",
+    "create_role",
+    "create_db",
+    "can_login",
+    "replication",
+    "bypass_rls",
+    "connection_limit",
+    "valid_until",
+    "has_password",
+)
 
 
 def _sha256(payload: bytes) -> str:
@@ -59,11 +106,11 @@ def load_schema_sql() -> str:
 
 
 def load_role_statements() -> dict[str, str]:
-    manifest = _manifest()["role_bootstrap"]
+    role_manifest = _manifest()["role_bootstrap"]
     payload = _verified_file(
-        ROOT / manifest["path"],
-        expected_bytes=manifest["bytes"],
-        expected_sha256=manifest["sha256"],
+        ROOT / role_manifest["path"],
+        expected_bytes=role_manifest["bytes"],
+        expected_sha256=role_manifest["sha256"],
     )
     statements: dict[str, str] = {}
     for line in payload.decode("utf-8").splitlines():
@@ -77,6 +124,52 @@ def load_role_statements() -> dict[str, str]:
         if role_name in statements:
             raise RuntimeError(f"duplicate rebaseline role statement: {role_name}")
         statements[role_name] = statement
+
+    expected_roles = role_manifest["expected_roles"]
+    if set(statements) != set(expected_roles):
+        raise RuntimeError("rebaseline role statements do not match manifest role names")
     if len(statements) != _manifest()["effective_model"]["roles"]:
         raise RuntimeError("rebaseline role bootstrap count does not match manifest")
     return statements
+
+
+def _actual_roles(cursor: ClientCursor[Any]) -> dict[str, dict[str, Any]]:
+    rows = cursor.execute(_ROLE_QUERY).fetchall()
+    return {
+        str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True))
+        for row in rows
+    }
+
+
+def ensure_exact_roles(driver_connection: Any) -> None:
+    role_manifest = _manifest()["role_bootstrap"]
+    expected_roles = role_manifest["expected_roles"]
+    statements = load_role_statements()
+
+    with ClientCursor(driver_connection) as cursor:
+        actual = _actual_roles(cursor)
+        unexpected = sorted(set(actual) - set(expected_roles))
+        if unexpected:
+            raise RuntimeError(
+                "unexpected Request Engine roles already exist: " + ", ".join(unexpected)
+            )
+
+        for role_name in sorted(set(expected_roles) - set(actual)):
+            cursor.execute(statements[role_name])
+
+        actual = _actual_roles(cursor)
+        if set(actual) != set(expected_roles):
+            raise RuntimeError("Request Engine role bootstrap did not produce the expected role set")
+        for role_name, expected in expected_roles.items():
+            if actual[role_name] != expected:
+                raise RuntimeError(
+                    f"existing Request Engine role {role_name} does not match audited topology"
+                )
+
+        memberships = cursor.execute(_MEMBERSHIP_QUERY).fetchall()
+        if memberships != role_manifest["role_memberships"]:
+            raise RuntimeError("Request Engine roles have unexpected role memberships")
+
+        settings = cursor.execute(_SETTING_QUERY).fetchall()
+        if settings != role_manifest["role_settings"]:
+            raise RuntimeError("Request Engine roles have unexpected role settings")
