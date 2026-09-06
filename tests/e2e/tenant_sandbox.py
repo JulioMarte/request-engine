@@ -162,6 +162,14 @@ def seed_tenant_sandbox(conn: support.PgConnection, prefix: str) -> TenantSandbo
         """,
         (organization_id, f"location-{suffix}", f"Location {suffix[:8]}"),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id, location_id, weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '08:00', '17:00')
+        """,
+        (organization_id, location_id),
+    )
     offering_key = f"offering-{suffix}"
     offering_id = _uuid_row(
         conn,
