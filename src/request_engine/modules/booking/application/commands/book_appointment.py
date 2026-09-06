@@ -30,11 +30,6 @@ class BookAppointmentCommand:
     origin_request_id: UUID | None = None
     allow_subject_override: bool = False
 
-    @property
-    def is_contextual(self) -> bool:
-        """Compatibility shim for adapters while contextual booking is structurally mandatory."""
-        return True
-
 
 class BookAppointmentHandler(Protocol):
     async def book_appointment(self, command: BookAppointmentCommand) -> Reservation: ...
