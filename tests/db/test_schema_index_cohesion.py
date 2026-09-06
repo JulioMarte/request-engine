@@ -110,10 +110,12 @@ def test_unsupported_admin_health_views_are_absent(
 def test_worker_dead_letters_operator_projection_remains_supported(
     admin_conn: PgConnection,
 ) -> None:
-    definition = admin_conn.execute(
+    row = admin_conn.execute(
         "SELECT pg_get_viewdef('request_admin.worker_dead_letters_v1'::regclass, true)"
-    ).fetchone()[0]
+    ).fetchone()
 
+    assert row is not None
+    definition = str(row[0])
     assert "scheduled_actions" in definition
     assert "outbox_messages" in definition
     assert "provider_events" in definition
