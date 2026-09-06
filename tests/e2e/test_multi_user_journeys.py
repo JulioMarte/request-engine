@@ -158,6 +158,14 @@ def _seed_practice(conn: PgConnection, *, people_count: int = 8) -> Practice:
         """,
         (organization_id, f"main-{suffix}", json.dumps({"city": "Puerto Plata"})),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id, location_id, weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '08:00', '17:00')
+        """,
+        (organization_id, location_id),
+    )
     offering_key = f"consultation-{suffix}"
     offering_id = _uuid_row(
         conn,
@@ -185,6 +193,14 @@ def _seed_practice(conn: PgConnection, *, people_count: int = 8) -> Practice:
             json.dumps({"price": 2500, "currency": "DOP"}),
         ),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 2500, 'DOP')
+        """,
+        (organization_id, offering_version_id),
+    )
     capability_id = _uuid_row(
         conn,
         """
@@ -207,12 +223,12 @@ def _seed_practice(conn: PgConnection, *, people_count: int = 8) -> Practice:
         conn,
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, 'Dr. E2E', 'exclusive', 1)
+        ) VALUES (%s, %s, 'Dr. E2E', 'exclusive', 1)
         RETURNING id
         """,
-        (organization_id, location_id, f"doctor-{suffix}"),
+        (organization_id, f"doctor-{suffix}"),
     )
     conn.execute(
         """
@@ -222,13 +238,24 @@ def _seed_practice(conn: PgConnection, *, people_count: int = 8) -> Practice:
         """,
         (organization_id, resource_id, capability_id),
     )
+    assignment_id = _uuid_row(
+        conn,
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (%s, %s, %s, tstzrange('2000-01-01T00:00:00+00', NULL, '[)'))
+        RETURNING id
+        """,
+        (organization_id, resource_id, location_id),
+    )
     conn.execute(
         """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id, resource_location_assignment_id,
+            weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '09:00', '12:00')
         """,
-        (organization_id, resource_id),
+        (organization_id, assignment_id),
     )
     queue_id = _uuid_row(
         conn,
