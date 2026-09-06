@@ -4,12 +4,14 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi.routing import APIRoute
 
-from request_engine.modules.booking.adapters.appointment_options import SignedAppointmentOptionCodec
+from request_engine.modules.booking.adapters.appointment_options import (
+    SignedAppointmentOptionCodec,
+)
 from request_engine.modules.booking.api.models import ReservationView, RescheduleReservationBody
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
