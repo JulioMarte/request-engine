@@ -2,19 +2,19 @@
 
 Status: pre-rebaseline effective-model audit
 
-Source: catalog version 5 from green head `4a4a3e20ad79cecf59132f55b8fd671023b06427`, adjusted for `0044_remove_redundant_slot_guard`.
+Source: catalog version 5 from green head `4a4a3e20ad79cecf59132f55b8fd671023b06427`, adjusted through `0048_remove_legacy_location`. `0044_remove_redundant_slot_guard` removes the redundant SlotOffer subject trigger; `0048` removes `availability_schedules` and therefore its capability-local `availability_schedules_bump_resource` trigger.
 
-The post-`0044` topology contains **163 triggers**. Every trigger resolves to a classified routine and a classified relation; there are no unknown trigger functions.
+The post-`0048` topology contains **162 triggers**. Every trigger resolves to a classified routine and a classified relation; there are no unknown trigger functions.
 
 Classification result:
 
 | Topology class | Triggers | Decision |
 |---|---:|---|
-| capability-local invariant | 72 | `KEEP` |
+| capability-local invariant | 71 | `KEEP` |
 | shared Platform persistence mechanic | 67 | `KEEP` |
 | explicit cross-capability composition | 24 | `KEEP` after the redundant SlotOffer subject guard removal |
 | unexplained owner mismatch | **0** | none |
-| **Total** | **163** | |
+| **Total** | **162** | |
 
 A trigger is capability-local when its relation owner and routine owner match. Shared Platform mechanics are intentionally reusable persistence utilities such as `touch_updated_at`, `guard_exact_revision_step` and `reject_immutable_mutation`; they do not claim business ownership. Cross-capability triggers are listed exhaustively below.
 
@@ -80,14 +80,16 @@ The relation retains its capability owner; Platform owns only the reusable mecha
 
 Classification: `KEEP`.
 
-## Capability-local invariants — 72
+## Capability-local invariants — 71
 
-The remaining 72 triggers invoke a routine classified to the same capability as the relation. They include Booking capacity/provenance guards, Queue lifecycle/FIFO facts, Delivery execution/interruption guards, Discovery publication/mapping lifecycle, Tenancy identity/contact facts, Catalog operational revisions, Communications transitions, Live Capacity policy guards, Operational Recovery immutable/transition facts, Requests lifecycle and local Platform worker mechanics.
+The remaining 71 triggers invoke a routine classified to the same capability as the relation. They include Booking capacity/provenance guards, Queue lifecycle/FIFO facts, Delivery execution/interruption guards, Discovery publication/mapping lifecycle, Tenancy identity/contact facts, Catalog operational revisions, Communications transitions, Live Capacity policy guards, Operational Recovery immutable/transition facts, Requests lifecycle and local Platform worker mechanics.
 
-Because both sides of each installation have already been exhaustively mapped in `postgresql-relation-ownership.md` and `postgresql-routine-ownership.md`, these triggers require no artificial cross-module owner.
+The removed `availability_schedules_bump_resource` trigger belonged to this class. Its removal follows directly from removal of the pre-launch `availability_schedules` recurring-authority table; `schedule_exceptions` and contextual assignment children retain their current Resource revision propagation paths.
+
+Because both sides of each surviving installation have already been exhaustively mapped in `postgresql-relation-ownership.md` and `postgresql-routine-ownership.md`, these triggers require no artificial cross-module owner.
 
 Classification: `KEEP`.
 
 ## Rebaseline implication
 
-The trigger topology has no remaining unexplained cross-owner installation in the post-`0044` model. Final exact-head CI must confirm the effective catalog contains 163 triggers, no `slot_offers_00_guard_subject_match`, and no `guard_slot_offer_subject_match()` routine. Any later migration that changes those counts requires re-running the topology classification rather than treating these numbers as a permanent repository freeze.
+The trigger topology has no remaining unexplained cross-owner installation in the post-`0048` model. Final exact-head CI must confirm the effective catalog contains 162 triggers, no `availability_schedules_bump_resource`, no `slot_offers_00_guard_subject_match`, and no `guard_slot_offer_subject_match()` routine. Any later migration that changes those counts requires re-running the topology classification rather than treating these numbers as a permanent repository freeze.
