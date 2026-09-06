@@ -77,8 +77,7 @@ def test_materializer_reconstructs_only_manifested_candidate(tmp_path: Path) -> 
     )
 
     reconstructed = b"".join(
-        (output_dir / name).read_bytes()
-        for name in ("0001_schema.01.sql", "0001_schema.02.sql")
+        (output_dir / name).read_bytes() for name in ("0001_schema.01.sql", "0001_schema.02.sql")
     )
     assert reconstructed == schema
     assert (output_dir / "0001_roles.sql").read_bytes() == roles
