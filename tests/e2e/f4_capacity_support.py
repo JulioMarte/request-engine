@@ -36,17 +36,26 @@ def f4_actor(sandbox: TenantSandbox) -> ActorContext:
 
 
 def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    conn.execute(
+    """Assert the baseline contextual assignment required by live-operation tests.
+
+    TenantSandbox now owns baseline Resource-at-Location supply.  Retaining a second
+    INSERT here would create overlapping authoritative assignments for the same
+    Resource and Location, which the production exclusion constraint correctly rejects.
+    """
+    assignment = conn.execute(
         """
-        INSERT INTO request_engine.resource_location_assignments (
-            organization_id, resource_id, location_id, effective_during
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange('2026-01-01T00:00:00+00'::timestamptz, NULL, '[)')
-        )
+        SELECT 1
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> clock_timestamp()
+        LIMIT 1
         """,
         (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    )
+    ).fetchone()
+    assert assignment is not None, "TenantSandbox must provide live Resource assignment"
 
 
 def seed_today_schedule(
