@@ -2,9 +2,9 @@
 
 Status: **closed for pre-rebaseline schema design**
 
-This audit classifies the effective PostgreSQL model produced by `alembic upgrade head` for the current Request Engine product. It is deliberately about current product truth, not about preserving the historical shape of unreleased migrations.
+This audit classifies the effective PostgreSQL model produced by `alembic upgrade head` for the current Request Engine product. It is deliberately about current product truth, not preserving the historical shape of unreleased migrations.
 
-The audit is now closed: there is no known material `REMOVE`, `RESHAPE` or `NEEDS_PROOF` finding left in the effective schema. Designing the replacement pre-production initial baseline is authorized. Baseline construction itself remains a separate phase and must preserve the effective model and proof topology recorded here.
+There is no known material `REMOVE`, `RESHAPE` or `NEEDS_PROOF` finding left in the effective schema. The replacement pre-production initial baseline is authorized as the next phase. Baseline construction remains a separate reproduction exercise and must preserve the effective model and proof topology recorded here.
 
 ## Classification policy
 
@@ -13,44 +13,77 @@ The audit is now closed: there is no known material `REMOVE`, `RESHAPE` or `NEED
 - `REMOVE`: no supported current consumer or invariant justifies the object.
 - `NEEDS_PROOF`: evidence is insufficient and blocks rebaseline.
 
-For bulk relation-owned objects such as ordinary `NOT NULL`, `CHECK`, `FOREIGN KEY`, primary-key and unique constraints, semantic ownership follows the owning relation unless an object establishes a cross-capability or temporal/concurrency boundary. High-risk exceptions are classified explicitly. Enumerating 1,575 constraint names in Markdown would not add audit evidence; the machine-readable catalog is the exhaustive physical inventory.
+Bulk relation-owned objects inherit semantic ownership from the relation unless they establish a cross-capability, temporal, concurrency or privilege boundary. The machine-readable catalog is the exhaustive physical inventory; the manifests classify the semantics and exceptions.
 
-Likewise, an index is not classified as useful merely because it exists. Static pre-launch evidence can prove invalidity, exact duplication and known plan-sensitive access paths, but cannot honestly prove production utilization before production traffic exists. Post-launch pruning must use `pg_stat_user_indexes`, query plans and real workload telemetry.
+Static pre-launch evidence can prove invalid indexes, exact duplication and known plan-sensitive access paths, but cannot prove production index utilization before production traffic exists. Post-launch pruning remains a telemetry/query-plan decision.
 
 ## Final exact-head evidence
 
-Final closure evidence is CI **#4138** on exact branch head:
+Final pre-rebaseline closure evidence is CI **#4164** on exact branch head:
 
-`9a3347f898504c7d1baea00d58ef3491ca4d66e0`
+`4ba7dbf092528f26aee5db1003af455a381d3431`
 
-The complete workflow is green:
+The relevant gates are green:
 
 - Python quality and architecture: `success`;
 - PostgreSQL 18 current product proof: `success`;
 - Observability runtime contract: `success`;
-- PostgreSQL 18 V2 design history: `success`;
-- aggregate V3 candidate/vertical gate: `success`.
+- PostgreSQL 18 V2 design history: `success`.
 
 The exact-head PostgreSQL artifact reports:
 
 - schema catalog version 5;
-- **101 relations**: 90 physical tables and 11 views;
+- **99 relations**;
+- **1,085 columns**;
+- **9 views**;
 - **145 routines**;
 - **162 triggers**;
 - **84 RLS policies**;
 - **276 indexes**;
 - **1,575 validated constraints**;
-- **69 SECURITY DEFINER routines**;
-- six database roles;
-- zero `request_engine_*` role memberships;
-- 12 explicit column grants;
-- 82 trigger-returning routines and **82/82 referenced**;
-- **256 executed current-product test files**;
-- `proof-execution.json` → **`gaps: []`**.
+- six Request Engine roles;
+- zero Request Engine role memberships;
+- zero Request Engine role settings;
+- 12 explicit column grants.
 
-### Analyzer v4 closure
+### Rebaseline reproduction evidence
 
-The final exact-head `schema-cohesion-analysis.json` reports all critical structural anomaly sets empty:
+The audited head is no longer proven only by replaying history. CI #4164 generated a schema-only candidate from the effective model and proved all of the following:
+
+1. replay into a second empty database in the source PostgreSQL cluster;
+2. bootstrap of the audited six Request Engine roles into a completely independent PostgreSQL 18 cluster;
+3. replay of the candidate schema into that independent cluster;
+4. independent export and comparison of schema and role catalogs.
+
+All three comparison artifacts report:
+
+```text
+equivalent = true
+first_difference = null
+```
+
+The schema comparator permits one normalization only: surviving column ordinals are densified per relation so historical `DROP COLUMN` `attnum` holes do not make an otherwise identical fresh baseline appear different. Adversarial unit tests prove that this normalization still rejects a real reordering of surviving columns.
+
+The fresh role proof requires exactly six roles with:
+
+- `NOSUPERUSER`;
+- `INHERIT`;
+- `NOCREATEROLE`;
+- `NOCREATEDB`;
+- `NOLOGIN`;
+- `NOREPLICATION`;
+- connection limit `-1`;
+- no password;
+- no `VALID UNTIL`;
+- no role memberships;
+- no role settings;
+- `BYPASSRLS` only for `request_engine_admin` and `request_engine_discovery_definer`.
+
+Role password presence is read from privileged `pg_authid`, not the masked `pg_roles.rolpassword` representation.
+
+## Analyzer v5 closure
+
+The final `schema-cohesion-analysis.json` reports all critical structural anomaly sets empty:
 
 ```text
 exact_view_definition_duplicates = []
@@ -65,89 +98,90 @@ immutable_app_mutation_grants = []
 rls_relations_without_policy = []
 policies_on_non_rls_relations = []
 version_families = []
+orphan_view_candidates = []
 ```
 
-Two classes of non-empty review output remain intentionally `KEEP` rather than anomalies.
+Two zero-Python-reference views remain and neither is an orphan:
 
-#### Three multi-policy RLS relations
+- `request_admin.worker_dead_letters_v1` is an explicit external/operator SQL contract documented by `docs/v3/10-worker-runtime-hardening.md`;
+- `request_read.service_queue_status_v2` is a database dependency of `request_read.live_service_staff_v1`.
+
+The analyzer therefore distinguishes `zero_production_reference_views` from true orphan candidates instead of treating absence of Python imports as proof of dead administrative SQL.
+
+### Multi-policy RLS relations
+
+Three relations intentionally have multiple policies:
 
 - `live_capacity_projection_policies`;
 - `recovery_source_revisions`;
 - `service_queue_intake_controls`.
 
-Each has the ordinary tenant policy plus one narrow `pg_trigger_depth() > 0` schema-owner trigger-context exception. Their purpose and authority are classified in `postgresql-security-privilege-topology.md`. They are not a reason to generalize trigger bypass or FORCE RLS globally.
-
-#### Three admin health views with no Python consumer
-
-- `request_admin.outbox_health_v1`;
-- `request_admin.scheduled_action_health_v1`;
-- `request_admin.worker_dead_letters_v1`.
-
-The analyzer correctly marks them as orphan *candidates* because they have no Python/database dependent. They are nevertheless intentional admin/operator SQL surfaces. Lack of Python consumption is not evidence that an administrative SQL projection is dead.
-
-`request_read.service_queue_status_v2` also has zero direct Python references but is not orphaned: `request_read.live_service_staff_v1` depends on it.
+Each has ordinary tenant policy plus a narrow reviewed trigger-context schema-owner exception. Their authority is classified in `postgresql-security-privilege-topology.md`; they are not justification for generalized trigger bypass or blanket FORCE RLS changes.
 
 ## Resolved REMOVE / RESHAPE findings
 
 ### Runtime ACLs and immutable facts
 
-Thirteen append-only relations once advertised app `UPDATE` authority while triggers rejected those mutations. `0035_schema_cohesion_hardening` removed the contradictory grants and synchronization was moved to mutable aggregate roots where required.
+Thirteen append-only relations once advertised app `UPDATE` authority while triggers rejected those mutations. `0035_schema_cohesion_hardening` removed contradictory grants and synchronization moved to mutable aggregate roots where required.
 
-Final artifact: zero app `UPDATE/DELETE` grants on relations protected by `reject_immutable_mutation()`.
+Final evidence: zero app `UPDATE/DELETE` grants on relations protected by `reject_immutable_mutation()`.
 
 Classification: resolved `RESHAPE`; immutable facts `KEEP`.
 
 ### Discovery privileged ownership
 
-`request_engine_discovery_definer` is the dedicated `NOLOGIN BYPASSRLS` owner for the reviewed Discovery privileged surface. It has no role memberships and no general schema creation authority.
+`request_engine_discovery_definer` is the dedicated `NOLOGIN BYPASSRLS` owner for the reviewed Discovery privileged surface, with no memberships or general schema creation authority.
 
-Three `UPDATE(id)` column grants are required solely for the reviewed `SELECT ... FOR UPDATE` row-lock paths over `offerings`, `offering_service_classifications` and `discovery_publications`; they are not business mutation APIs.
+Three `UPDATE(id)` grants exist only for reviewed `SELECT ... FOR UPDATE` paths over `offerings`, `offering_service_classifications` and `discovery_publications`; they are not business mutation APIs.
 
 Classification: resolved `RESHAPE`; current topology `KEEP`.
 
 ### Future ACL fail-closed behavior
 
-`0038_future_acl_fail_closed` prevents new schema-owner relations/functions from inheriting broad runtime authority automatically. PUBLIC has no table/column/routine grant in the effective model and no surviving grant is grantable.
+`0038_future_acl_fail_closed` prevents new schema-owner relations/functions from inheriting broad runtime authority automatically. PUBLIC has no table/column/routine grants in the effective model and no surviving grant is grantable.
 
 Classification: resolved `RESHAPE`; explicit grants `KEEP`.
 
 ### Column-level grants
 
-All **12/12** effective column grants map to a current writer/lock path:
+All **12/12** column grants map to current writer/lock paths:
 
 - five Operational Recovery execution lifecycle columns;
 - two Queue recall-hold release columns;
 - two Queue skip-consumption columns;
 - three Discovery-definer row-lock columns.
 
-No orphan grant was found and none should be widened to relation-level UPDATE merely to simplify a baseline.
+Classification: `KEEP`; none should be widened merely to simplify a baseline.
 
-Classification: `KEEP`.
+### Unsupported read/admin wrappers
 
-### Unsupported read wrappers
-
-Removed:
+Removed read wrappers:
 
 - `request_read.offering_summary_v1`;
 - `request_read.request_status_v1`;
 - `request_read.waitlist_status_v1`;
 - `request_read.service_queue_status_v1`.
 
-Surviving read views have either a current application/database consumer or an explicit admin/operator contract.
+`0050_remove_admin_health_views` additionally removed:
 
-Classification: completed `REMOVE`.
+- `request_admin.outbox_health_v1`;
+- `request_admin.scheduled_action_health_v1`.
+
+Those two administrative summaries had no application consumer, no database dependent and no explicit operator contract. `request_admin.worker_dead_letters_v1` was deliberately retained because it *does* have a normative operator contract.
+
+Classification: completed `REMOVE`; surviving views are justified by application/database consumption or an explicit external contract.
 
 ### Redundant indexes / temporal access
 
-Removed redundant access paths including `service_sessions_queue_idx` and the waitlist index removed by `0047`. Added `reservations_org_during_gist` for the tenant-scoped Day Board temporal predicate.
+Redundant access paths including `service_sessions_queue_idx` and the waitlist index removed by `0047` are gone. `reservations_org_during_gist` provides the tenant-scoped Day Board temporal access path.
 
-Final artifact: 276 valid indexes, zero exact definition duplicates.
+Final evidence: 276 valid indexes and zero exact index-definition duplicates.
 
-Classification: resolved `RESHAPE`; current topology `KEEP` pending real post-launch workload telemetry.
+Classification: resolved `RESHAPE`; current topology `KEEP` pending post-launch workload telemetry.
 
 ### Recovery freshness authority
 
-`recovery_source_revisions` is a synchronous freshness/version fence, not disposable cache. `0042_recovery_fence_boundary` removed direct app DML and exposes explicit read/lock SQL boundaries instead.
+`recovery_source_revisions` is a synchronous freshness/version fence, not disposable cache. `0042_recovery_fence_boundary` removed direct app DML and exposes explicit read/lock boundaries.
 
 Classification: `KEEP` as the Live Capacity ↔ Operational Recovery composition fence.
 
@@ -155,11 +189,11 @@ Classification: `KEEP` as the Live Capacity ↔ Operational Recovery composition
 
 `0043_queue_delivery_boundary` moves Delivery-originated QueueEntry lifecycle mutation behind explicit `request_cmd.mark_queue_entry_service_started/completed(...)` command functions. Cross-row coherence triggers remain invariant backstops.
 
-Classification: resolved `RESHAPE`; explicit composition boundary `KEEP`.
+Classification: resolved `RESHAPE`; composition boundary `KEEP`.
 
 ### Redundant SlotOffer subject guard
 
-`0044_remove_redundant_slot_guard` removed `guard_slot_offer_subject_match()` because `guard_slot_offer_live_hold()` already enforced that invariant plus the stronger live Hold/source contract.
+`0044_remove_redundant_slot_guard` removed `guard_slot_offer_subject_match()` because `guard_slot_offer_live_hold()` already enforces that invariant plus the stronger live Hold/source contract.
 
 Classification: completed `REMOVE`.
 
@@ -178,55 +212,29 @@ Resource
     └── ResourceLocationAvailability [0..N]
 ```
 
-The same Resource may be assigned concurrently to multiple different Locations. The no-overlap exclusion is scoped to Organization + Resource + Location; actual commitments still share the same Resource capacity root.
+A Resource may be assigned concurrently to multiple different Locations. Assignment overlap exclusion is scoped to Organization + Resource + Location; commitments still share the Resource capacity root.
 
-Because the product has not launched and there are no customer rows to preserve, manufacturing a backfill/equivalence migration for the removed representation would have protected nonexistent data rather than a product guarantee.
+Because the product has not launched and there are no customer rows to preserve, no compatibility backfill was manufactured for nonexistent production state.
 
 Classification: completed `REMOVE`; contextual model `KEEP`.
 
 ### Legacy/noncontextual Booking state
 
-Appointment options and booking commands now require contextual provenance structurally. The unreleased noncontextual/`aptopt_v1` compatibility path and its compatibility-only errors/tests were removed.
-
-Direct Booking, Discovery handoff and reschedule converge on one contextual commitment model.
+Appointment options and booking commands require contextual provenance. The unreleased `aptopt_v1`/noncontextual compatibility path and compatibility-only errors/tests were removed. Direct Booking, Discovery handoff and reschedule converge on one contextual commitment model.
 
 Classification: completed `REMOVE`.
 
 ### Duplicate recovery bump trigger functions
 
-`0049_consolidate_recovery_bump` replaced:
+`0049_consolidate_recovery_bump` replaced two duplicate helpers with `bump_direct_queue_recovery_source_revision()`. The two source trigger installations remain but call the same narrow helper.
 
-- `bump_queue_recovery_source_revision()`;
-- `bump_projection_policy_recovery_source_revision()`
-
-with:
-
-- `bump_direct_queue_recovery_source_revision()`.
-
-The two source triggers remain separate installations but call the same narrow helper. Routines reduced 146 → 145 while triggers remain 162.
-
-Final artifact: exact routine duplicates `[]`; trigger routines 82/82 referenced.
+Final evidence: 145 routines, 162 triggers, exact routine duplicates `[]`, and no unreferenced trigger routine.
 
 Classification: completed `REMOVE`; consolidated helper `KEEP`.
 
 ## Constraints and indexes
 
-The final catalog contains:
-
-| Constraint type | Count |
-|---|---:|
-| NOT NULL | 770 |
-| CHECK | 392 |
-| FOREIGN KEY | 198 |
-| UNIQUE | 107 |
-| PRIMARY KEY | 90 |
-| constraint trigger | 13 |
-| EXCLUDE | 5 |
-| **Total** | **1,575** |
-
-All are validated.
-
-The five EXCLUDE constraints were individually reviewed and encode current invariants:
+The final catalog contains **1,575 validated constraints**. The five EXCLUDE constraints individually encode current invariants:
 
 - `booking_context_terms_no_active_overlap`;
 - `discovery_publications_no_active_overlap`;
@@ -234,82 +242,55 @@ The five EXCLUDE constraints were individually reviewed and encode current invar
 - `resource_location_assignments_no_overlap`;
 - `resource_location_exceptions_no_active_overlap`.
 
-A foreign key does not mechanically imply that a matching child index is required. Child-side indexes remain query/locking/workload decisions rather than schema-shape dogma.
+A foreign key does not mechanically imply a matching child index; child-side indexing remains a query/locking/workload decision.
 
 Classification: current constraint/index topology `KEEP`; see `postgresql-constraint-index-topology.md`.
 
-## RLS topology
+## RLS and privilege topology
 
-The final model contains:
+The final model contains 84 policies, zero RLS relations without policy and zero policies on non-RLS relations. A blanket FORCE-RLS conversion remains rejected because reviewed privileged trigger/SECURITY DEFINER paths intentionally depend on their present authority boundaries.
 
-- 81 RLS relations;
-- 42 FORCE-RLS relations;
-- 39 ordinary RLS relations;
-- 84 policies;
-- zero RLS relation without a policy;
-- zero policy installed on a non-RLS relation.
+All surviving SECURITY DEFINER routines retain explicit owner/caller classification in `postgresql-security-definer-callers.md`.
 
-A blanket FORCE-RLS conversion is explicitly rejected: several privileged trigger/SECURITY DEFINER paths rely on reviewed schema-owner behavior. Changing that requires redesigning those paths, not flipping a global hardening switch.
+Final privilege evidence includes:
 
-Classification: `KEEP`.
+- zero PUBLIC table/column/routine grants;
+- zero grantable runtime grants;
+- explicit runtime role topology;
+- no Request Engine role memberships/settings;
+- trigger/internal routines do not advertise runtime callers.
 
-## SECURITY DEFINER closure
-
-All **69/69** surviving SECURITY DEFINER routines have an explicit owner/caller classification in `postgresql-security-definer-callers.md`.
-
-Final evidence:
-
-- zero PUBLIC routine grants;
-- zero grantable routine grants;
-- trigger/internal-only routines do not advertise runtime callers;
-- admin-only, worker/admin, app command/read and Discovery definer boundaries are distinguished rather than collapsed into schema-wide EXECUTE.
-
-Classification: security-definer authority closure complete; `KEEP`.
+Classification: current security topology `KEEP`.
 
 ## Effective-object manifests
 
-The audit consists of the machine-readable exact-head catalog plus these semantic manifests:
+The machine-readable exact-head catalog is the exhaustive inventory. Semantic manifests are:
 
-- `postgresql-relation-ownership.md` — relation/view ownership;
+- `postgresql-relation-ownership.md` — **99/99** relations;
 - `postgresql-routine-ownership.md` — **145/145** routines;
-- `postgresql-trigger-topology.md` — **162** trigger installations and 82/82 trigger functions referenced;
-- `postgresql-security-privilege-topology.md` — roles, RLS and table/column/routine grant topology;
-- `postgresql-security-definer-callers.md` — **69/69** SECURITY DEFINER owner/caller classifications;
-- `postgresql-constraint-index-topology.md` — constraint/index structural and high-risk-object classification.
-
-The catalog remains the exhaustive physical inventory. The manifests describe the semantic ownership and exceptions that a clean baseline must preserve.
-
-## Proof-system closure
-
-`current-guarantees.toml` remains normative. `current-proof-map.toml` is evidence mapping, not another frozen file constitution.
-
-Final exact-head current-product proof executed **256** test files and reports:
-
-```text
-gaps = []
-```
-
-Historical filenames such as `v3_*` are not defects by themselves when the test still proves a current invariant and executes in the current lane. Compatibility-only tests that constrained unreleased obsolete behavior were removed during this audit.
-
-Classification: current proof system `KEEP`.
+- `postgresql-trigger-topology.md` — **162** trigger installations;
+- `postgresql-security-privilege-topology.md` — roles, RLS and grants;
+- `postgresql-security-definer-callers.md` — SECURITY DEFINER owner/caller classifications;
+- `postgresql-constraint-index-topology.md` — constraint/index classification.
 
 ## Rebaseline decision
 
-### GO — design the replacement initial baseline
+### GO — construct and prove the replacement initial baseline
 
-The PostgreSQL Schema & Proof Cohesion Audit no longer has a known material blocker. The evidence supports moving to a new phase whose job is **baseline construction**, not further speculative cleanup.
+The effective-schema audit is closed. Further speculative object deletion would now create more risk than value.
 
-That does **not** mean “generate one giant migration and delete history immediately.” The replacement baseline must be treated as a reproduction exercise against this audited effective model.
+The next phase is not “delete migrations.” It is to materialize a proposed replacement `0001` and prove it independently against the exact audited target.
 
-Before replacing the historical migration chain, the baseline phase must prove at minimum:
+Before the historical chain may be removed, the proposed baseline must prove:
 
-1. clean PostgreSQL 18 install from the proposed new initial baseline;
-2. effective catalog equivalence for the audited current model, allowing only intentionally documented baseline-normalization differences;
-3. all current-product proofs remain green with `gaps: []`;
-4. role/RLS/ACL/SECURITY DEFINER topology remains fail-closed and equivalent;
-5. relation/routine/trigger counts and semantic manifests remain reconciled;
-6. no legacy `availability_schedules`, `resources.location_id`, noncontextual Booking state, redundant SlotOffer guard or pre-0049 duplicate recovery helper is accidentally resurrected;
-7. the old migration chain is retained until the new baseline has passed the reproduction proof, then removed/consolidated deliberately;
-8. only after that successful reproduction should a new freeze/baseline contract be established.
+1. clean PostgreSQL 18 installation with **no pre-existing Request Engine roles**;
+2. role bootstrap recreates the audited six-role topology;
+3. `alembic upgrade head` from the proposed single baseline succeeds;
+4. schema catalog equals the audited 99-relation model, permitting only the documented `attnum`-gap normalization;
+5. role catalog equality is exact;
+6. all current-product proofs remain green with `gaps: []`;
+7. RLS/ACL/SECURITY DEFINER topology remains fail-closed and equivalent;
+8. no removed Resource/Booking/admin-view/recovery-helper compatibility state is resurrected;
+9. only after those proofs pass may the old migration chain and old V3 payload be removed deliberately.
 
-No additional cleanup migration is justified by the current exact-head evidence. Continuing to mutate the effective schema without a concrete finding would now be optimization by speculation and would increase risk rather than reduce it.
+The baseline should keep cluster-global role bootstrap and database-local schema payload conceptually separate. A readable audited schema source plus checksum is preferred over making opaque compressed blobs the only reviewable representation.
