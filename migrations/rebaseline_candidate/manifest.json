@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "source": {
+    "branch": "cohesion/system-optimization",
+    "head_sha": "4ba7dbf092528f26aee5db1003af455a381d3431",
+    "ci_run_number": 4164,
+    "ci_run_id": 34065584913,
+    "postgresql_version": "18.6"
+  },
+  "schema_payload": {
+    "source_artifact_name": "rebaseline-candidate.sql",
+    "bytes": 734622,
+    "sha256": "6e7d98e995c882336eeb4c2674bca9eb37269b1b5f29ed15bfbfb4b2bbe04a9d",
+    "materialized_parts": [
+      {
+        "path": "0001_schema.01.sql",
+        "bytes": 124970,
+        "sha256": "a7bfe75c4aa1e5e61a84984a8da829a3b104667470a4511ca40c838de4bae224"
+      },
+      {
+        "path": "0001_schema.02.sql",
+        "bytes": 124996,
+        "sha256": "e31a059f603f327b1e236710e6d77b7ac96a36332f7981db6733227f631c3598"
+      },
+      {
+        "path": "0001_schema.03.sql",
+        "bytes": 124984,
+        "sha256": "b5905eb626b04ec7341b8f2ba900686f396a2548740581ce8fc0afe40d544806"
+      },
+      {
+        "path": "0001_schema.04.sql",
+        "bytes": 124942,
+        "sha256": "030f79b5aed1c7d96732dd7f00897d0fca948939f4423042fb5aa7f67f961725"
+      },
+      {
+        "path": "0001_schema.05.sql",
+        "bytes": 125000,
+        "sha256": "39ac061dbe0b58506209e2153810e5e5ec5ed61cfd32a875eb840c913150d83e"
+      },
+      {
+        "path": "0001_schema.06.sql",
+        "bytes": 109730,
+        "sha256": "6fce5a5cd73e59d4c41aea7bdc2fc074c30347bf63ef652fda84e84a7f8c49aa"
+      }
+    ]
+  },
+  "role_bootstrap": {
+    "source_artifact_name": "rebaseline-role-bootstrap.sql",
+    "path": "0001_roles.sql",
+    "bytes": 852,
+    "sha256": "19d9b3f1856de381a4899ce97023f66d7b429c8ab50839ff3b83885a157162df"
+  },
+  "effective_model": {
+    "relations": 99,
+    "tables": 90,
+    "views": 9,
+    "columns": 1085,
+    "constraints": 1575,
+    "indexes": 276,
+    "routines": 145,
+    "triggers": 162,
+    "policies": 84,
+    "roles": 6,
+    "role_memberships": 0,
+    "column_grants": 12
+  },
+  "proof": {
+    "fresh_schema_equivalent": true,
+    "fresh_roles_equivalent": true,
+    "current_product_executed_test_files": 256,
+    "current_product_proof_gaps": []
+  }
+}
