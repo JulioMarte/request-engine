@@ -28,9 +28,7 @@ def _normalize(catalog: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _first_difference(
-    expected: dict[str, Any], actual: dict[str, Any]
-) -> dict[str, object] | None:
+def _first_difference(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, object] | None:
     keys = sorted(set(expected) | set(actual))
     for key in keys:
         if key not in expected:
