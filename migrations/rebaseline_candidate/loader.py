@@ -179,7 +179,9 @@ def ensure_exact_roles(driver_connection: Any) -> None:
 
         actual = _actual_roles(cursor)
         if set(actual) != set(expected_roles):
-            raise RuntimeError("Request Engine role bootstrap did not produce the expected role set")
+            raise RuntimeError(
+                "Request Engine role bootstrap did not produce the expected role set"
+            )
         for role_name, expected in expected_roles.items():
             if actual[role_name] != expected:
                 raise RuntimeError(
