@@ -6,6 +6,22 @@ from psycopg import Connection
 PgConnection = Connection[Any]
 
 
+def _routine_definition(admin_conn: PgConnection, routine_name: str) -> str:
+    row = admin_conn.execute(
+        """
+        SELECT pg_get_functiondef(p.oid)
+        FROM pg_proc AS p
+        JOIN pg_namespace AS n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'request_engine'
+          AND p.proname = %s
+          AND p.prokind = 'f'
+        """,
+        (routine_name,),
+    ).fetchone()
+    assert row is not None
+    return row[0].lower()
+
+
 @pytest.mark.integration
 @pytest.mark.postgres
 def test_legacy_resource_location_and_schedule_schema_are_absent(
@@ -54,17 +70,16 @@ def test_no_current_database_routine_references_legacy_availability_schedule(
 def test_resource_commitment_guard_does_not_reference_removed_location_column(
     admin_conn: PgConnection,
 ) -> None:
-    definition = admin_conn.execute(
-        """
-        SELECT pg_get_functiondef(p.oid)
-        FROM pg_proc AS p
-        JOIN pg_namespace AS n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'request_engine'
-          AND p.proname = 'guard_resource_commitment_sensitive_change'
-          AND p.prokind = 'f'
-        """
-    ).fetchone()
-    assert definition is not None
-    sql = definition[0].lower()
+    sql = _routine_definition(admin_conn, 'guard_resource_commitment_sensitive_change')
     assert 'new.location_id' not in sql
     assert 'old.location_id' not in sql
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+def test_capacity_claim_guard_has_no_legacy_resource_location_fallback(
+    admin_conn: PgConnection,
+) -> None:
+    sql = _routine_definition(admin_conn, 'guard_capacity_claim')
+    assert 'v_resource_location' not in sql
+    assert 'r.capacity_model, r.capacity_units, r.active, r.location_id' not in sql
