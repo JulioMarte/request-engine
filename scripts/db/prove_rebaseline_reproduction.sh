@@ -53,9 +53,9 @@ if any(not (line.startswith("\\restrict") or line.startswith("\\unrestrict")) fo
 target.write_text("\n".join(clean) + "\n", encoding="utf-8")
 PY
 
-# Replay into a second empty database in the same PostgreSQL cluster. Roles are
-# cluster-global and therefore already exist at this stage; a separate clean-
-# cluster bootstrap proof is required before the candidate becomes 0001.
+# First prove database-level reproduction in an empty database within the source
+# cluster. This catches dump/replay defects cheaply while the existing audited
+# roles remain available for ownership and ACL statements.
 psql --dbname=postgres --set=ON_ERROR_STOP=1 \
   --command="DROP DATABASE IF EXISTS ${CANDIDATE_DB} WITH (FORCE)"
 psql --dbname=postgres --set=ON_ERROR_STOP=1 \
@@ -74,5 +74,10 @@ uv run python scripts/db/compare_schema_catalogs.py \
   --expected "$SOURCE_CATALOG" \
   --actual "$CANDIDATE_CATALOG" \
   --output "$DIFF"
+
+# Then repeat against an independent PostgreSQL 18 cluster that has none of the
+# Request Engine roles. This proves the candidate can bootstrap the audited
+# cluster-global role topology instead of inheriting it from migration history.
+bash scripts/db/prove_rebaseline_fresh_cluster.sh "$ARTIFACT_DIR"
 
 rm -f "$RAW_DUMP"
