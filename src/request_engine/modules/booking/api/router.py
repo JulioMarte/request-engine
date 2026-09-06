@@ -163,21 +163,6 @@ def create_router(
     ) -> ReservationView:
         require_capability(actor, "appointments.reschedule")
         option = option_codec.decode(actor.organization_id, body.option_id)
-        if not option.is_contextual:
-            raise booking_errors.InvalidResourceSelection(
-                "reschedule requires a contextual appointment option"
-            )
-        if (
-            option.location_id is None
-            or option.planned_duration_minutes is None
-            or option.amount is None
-            or option.currency is None
-            or option.location_operational_revision is None
-            or option.configuration_fingerprint is None
-        ):
-            raise booking_errors.InvalidResourceSelection(
-                "reschedule option is missing contextual provenance"
-            )
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
