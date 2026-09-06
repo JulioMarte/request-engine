@@ -65,15 +65,13 @@ class RecoverySourceCheckpointView(BaseModel):
 class RecoveryTargetView(BaseModel):
     start_at: datetime
     end_at: datetime
-    location_id: UUID | None
+    location_id: UUID
     resources: tuple[RecoveryResourceChoiceView, ...]
-    actionable: bool
-    blocked_reason: str | None
-    planned_duration_minutes: int | None
-    amount: Decimal | None
-    currency: str | None
-    location_operational_revision: int | None
-    configuration_fingerprint: str | None
+    planned_duration_minutes: int
+    amount: Decimal
+    currency: str
+    location_operational_revision: int
+    configuration_fingerprint: str
 
     @classmethod
     def from_contract(cls, item: RecoveryTarget) -> "RecoveryTargetView":
@@ -91,8 +89,6 @@ class RecoveryTargetView(BaseModel):
                 )
                 for value in item.resources
             ),
-            actionable=item.actionable,
-            blocked_reason=item.blocked_reason,
             planned_duration_minutes=item.planned_duration_minutes,
             amount=item.amount,
             currency=item.currency,
