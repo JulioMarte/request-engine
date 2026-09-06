@@ -69,8 +69,6 @@ class DiscoveryOptionView(BaseModel):
     def from_option(cls, item: DiscoveryOption, option_id: str) -> "DiscoveryOptionView":
         candidate = item.candidate
         slot = item.slot
-        if slot.planned_duration_minutes is None or slot.amount is None or slot.currency is None:
-            raise ValueError("discovery option is missing deterministic commercial terms")
 
         provider: PublicProviderView | None = None
         if candidate.provider_visibility == "public":
