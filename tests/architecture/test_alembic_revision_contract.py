@@ -8,12 +8,18 @@ ALEMBIC_VERSION_NUM_MAX_LENGTH = 32
 def _revision_id(path: Path) -> str:
     module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in module.body:
-        if not isinstance(node, ast.AnnAssign):
+        target: ast.expr | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.AnnAssign):
+            target = node.target
+            value = node.value
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            value = node.value
+        if not isinstance(target, ast.Name) or target.id != "revision":
             continue
-        if not isinstance(node.target, ast.Name) or node.target.id != "revision":
-            continue
-        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
-            return node.value.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
     raise AssertionError(f"{path} does not declare a literal revision id")
 
 
