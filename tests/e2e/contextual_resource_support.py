@@ -20,12 +20,12 @@ def add_contextual_resource(
     resource = conn.execute(
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, 'Preferred doctor', 'exclusive', 1)
+        ) VALUES (%s, %s, 'Preferred doctor', 'exclusive', 1)
         RETURNING id
         """,
-        (sandbox.organization_id, sandbox.location_id, f"preferred-{uuid4().hex}"),
+        (sandbox.organization_id, f"preferred-{uuid4().hex}"),
     ).fetchone()
     assert resource is not None
     resource_id = UUID(str(resource[0]))
