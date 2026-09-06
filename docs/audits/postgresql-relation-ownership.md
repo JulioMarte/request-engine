@@ -2,16 +2,15 @@
 
 Status: pre-rebaseline effective-model audit
 
-Source checkpoint: green current-product catalog from `4a4a3e20ad79cecf59132f55b8fd671023b06427` (catalog schema version 5). The later `0044` change removes one trigger/function only and does not change this relation set.
+Source checkpoint: green current-product catalog from `4a4a3e20ad79cecf59132f55b8fd671023b06427` (catalog schema version 5), followed by reviewed migrations through `0048_remove_legacy_location`. `0044` removes a redundant trigger/function, `0045`/`0046` harden ACLs, `0047` removes a redundant index, and `0048` removes the pre-launch `availability_schedules` relation plus the legacy `resources.location_id` column. Of those changes, only `0048` changes the relation count.
 
-This manifest accounts for every relation in that effective catalog exactly once: **102/102 mapped, 0 missing, 0 extra**. Unless explicitly noted as a composition boundary, each relation is classified `KEEP` under the capability owner below.
+This manifest accounts for the expected effective relation set after `0048`: **101 relations**. Exact-head PostgreSQL catalog export remains required before this count is treated as final rebaseline evidence. Unless explicitly noted as a composition boundary, each surviving relation is classified `KEEP` under the capability owner below.
 
 Database object ownership remains `request_engine_schema_owner`; `capability owner` here means semantic/persistence responsibility, not PostgreSQL `relowner`.
 
-## Booking — 20
+## Booking — 19
 
 - `request_engine.attendance_responses`
-- `request_engine.availability_schedules`
 - `request_engine.booking_context_terms`
 - `request_engine.capacity_claims`
 - `request_engine.capacity_holds`
@@ -30,6 +29,8 @@ Database object ownership remains `request_engine_schema_owner`; `capability own
 - `request_engine.shared_capacity_identities`
 - `request_read.reservation_day_v1` — Booking/Queue front-desk read composition; Booking owns the Reservation-day projection contract.
 - `request_read.reservation_status_v1`
+
+`request_engine.availability_schedules` is intentionally absent. It was a pre-launch compatibility relation superseded by Resource-at-Location assignments plus contextual recurring availability and was removed by `0048_remove_legacy_location`.
 
 ## Catalog — 12
 
@@ -154,7 +155,7 @@ Platform ownership here is technical mechanics, not a business catch-all.
 
 | Capability owner | Relations |
 |---|---:|
-| Booking | 20 |
+| Booking | 19 |
 | Tenancy | 15 |
 | Queue | 14 |
 | Catalog | 12 |
@@ -167,8 +168,8 @@ Platform ownership here is technical mechanics, not a business catch-all.
 | Live Capacity | 2 |
 | Explicit Live Capacity + Operational Recovery composition | 1 |
 | Explicit Tenancy + Booking authority-ledger composition | 1 |
-| **Total** | **102** |
+| **Total** | **101** |
 
 ## Rebaseline implication
 
-Relation ownership is no longer a `NEEDS_PROOF` blocker for the #3902 effective relation set. The remaining object-level audit must perform the same exhaustive accounting for routines, triggers, policies/roles/grants and verify the post-`0044` exact-head catalog before this manifest can be treated as final rebaseline evidence.
+Relation ownership is no longer a `NEEDS_PROOF` blocker for the previously exported #3902 relation set, and `availability_schedules` has now been deliberately removed from the target model. Rebaseline still requires an exact-head catalog export after `0048` to verify the expected 101-relation set and to account exhaustively for routines, triggers, policies/roles/grants and every later object-level correction before this manifest can be treated as final evidence.
