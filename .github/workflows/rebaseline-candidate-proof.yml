@@ -1,0 +1,78 @@
+name: Rebaseline candidate proof
+
+on:
+  push:
+    branches:
+      - cohesion/rebaseline-candidate
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality:
+    name: Candidate Python quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.12.5"
+      - name: Run canonical Python quality
+        run: >-
+          python scripts/ci/ci_jobs.py python-quality
+          --summary-output .ci/rebaseline-python-quality.json
+          --log-dir .ci/rebaseline-logs
+
+  postgres-current-product:
+    name: Candidate PostgreSQL 18 current product proof
+    needs: python-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_current
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_current"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_current
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_current
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.12.5"
+      - name: Run canonical current-product proof
+        run: bash scripts/ci/run_current_product.sh
+      - name: Upload candidate proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebaseline-candidate-proof
+          path: .ci/current-product/
+          include-hidden-files: true
+          if-no-files-found: warn
