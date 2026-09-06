@@ -10,6 +10,7 @@ from psycopg import ClientCursor
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "manifest.json"
+APPLICATION_SCHEMAS = ("request_admin", "request_cmd", "request_engine", "request_read")
 _ROLE_NAME = re.compile(r'^CREATE ROLE "([^"]+)" WITH .+;$')
 _ROLE_QUERY = """
     SELECT rolname,
@@ -139,6 +140,25 @@ def _actual_roles(cursor: ClientCursor[Any]) -> dict[str, dict[str, Any]]:
         str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True))
         for row in rows
     }
+
+
+def require_clean_database(driver_connection: Any) -> None:
+    with ClientCursor(driver_connection) as cursor:
+        rows = cursor.execute(
+            """
+            SELECT nspname
+            FROM pg_namespace
+            WHERE nspname = ANY(%s)
+            ORDER BY nspname
+            """,
+            (list(APPLICATION_SCHEMAS),),
+        ).fetchall()
+    if rows:
+        names = ", ".join(str(row[0]) for row in rows)
+        raise RuntimeError(
+            "replacement 0001 requires a clean database; existing Request Engine schemas: "
+            + names
+        )
 
 
 def ensure_exact_roles(driver_connection: Any) -> None:
