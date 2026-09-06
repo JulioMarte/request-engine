@@ -35,6 +35,8 @@ jobs:
             nodeid: tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py::test_resource_wide_exception_serializes_before_book_and_makes_option_stale
           - name: same-resource-two-locations-no-oversell
             nodeid: tests/integration/f1_operational_profile/test_adversarial_multilocation_capacity.py::test_same_resource_can_be_assigned_to_two_locations_but_cannot_be_oversold
+          - name: admin-bot-shared-owner-race
+            nodeid: tests/e2e/test_adversarial_cross_principal_intake_race.py::test_admin_and_bot_compete_through_one_owner_without_last_write_wins
     services:
       postgres:
         image: postgres:18
