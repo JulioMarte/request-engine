@@ -13,8 +13,8 @@ from request_engine.modules.operational_recovery.application.execution_booking i
 from request_engine.modules.operational_recovery.application.execution_policy import (
     affected_reservation,
     raise_rejected,
-    require_actionable,
     require_expected_proposal,
+    require_target,
 )
 from request_engine.modules.operational_recovery.application.fingerprints import (
     execution_fingerprint,
@@ -47,10 +47,7 @@ async def execute_recovery(
     )
     require_expected_proposal(command, proposal)
     affected = affected_reservation(proposal, command.reservation_id)
-    require_actionable(affected)
-    target = affected.target
-    if target is None:
-        raise RuntimeError("actionable recovery target is missing")
+    target = require_target(affected)
     fingerprint = execution_fingerprint(command, target)
     record = await repository.prepare_execution(
         organization_id=command.organization_id,
