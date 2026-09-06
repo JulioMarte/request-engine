@@ -61,7 +61,7 @@ def render(catalog: dict[str, Any]) -> str:
         bypass = "BYPASSRLS" if role["bypass_rls"] else "NOBYPASSRLS"
         statements.append(
             f'CREATE ROLE "{name}" WITH NOSUPERUSER INHERIT NOCREATEROLE '
-            f'NOCREATEDB NOLOGIN NOREPLICATION {bypass} CONNECTION LIMIT -1;'
+            f"NOCREATEDB NOLOGIN NOREPLICATION {bypass} CONNECTION LIMIT -1;"
         )
     return "\n".join(statements) + "\n"
 
