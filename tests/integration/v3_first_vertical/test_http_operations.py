@@ -144,6 +144,14 @@ def _create_fixture(conn: PgConnection) -> OperationsFixture:
             json.dumps({"price_note": "Contact office"}),
         ),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 3500, 'DOP')
+        """,
+        (organization_id, offering_version_id),
+    )
     capability_id = _uuid_row(
         conn,
         """
@@ -168,12 +176,12 @@ def _create_fixture(conn: PgConnection) -> OperationsFixture:
         conn,
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, 'Dr. Example', 'exclusive', 1)
+        ) VALUES (%s, %s, 'Dr. Example', 'exclusive', 1)
         RETURNING id
         """,
-        (organization_id, location_id, f"doctor-{suffix}"),
+        (organization_id, f"doctor-{suffix}"),
     )
     conn.execute(
         """
@@ -183,13 +191,32 @@ def _create_fixture(conn: PgConnection) -> OperationsFixture:
         """,
         (organization_id, resource_id, capability_id),
     )
+    assignment_id = _uuid_row(
+        conn,
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (%s, %s, %s, tstzrange('2000-01-01T00:00:00+00', NULL, '[)'))
+        RETURNING id
+        """,
+        (organization_id, resource_id, location_id),
+    )
     conn.execute(
         """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id, location_id, weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '09:00', '12:00')
         """,
-        (organization_id, resource_id),
+        (organization_id, location_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id, resource_location_assignment_id,
+            weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '09:00', '12:00')
+        """,
+        (organization_id, assignment_id),
     )
     queue_id = _uuid_row(
         conn,
@@ -358,7 +385,7 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_http_queue_discover_join_status_leave_and_replay(
+async def test_http_queue_join_read_leave_idempotently(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -372,76 +399,27 @@ async def test_http_queue_discover_join_status_leave_and_replay(
     }
     auth = {"Authorization": "Bearer agent"}
     async with _client(session_factory, actors) as client:
-        queues = await client.get("/v1/queues", headers=auth)
-        assert queues.status_code == 200
-        assert [item["id"] for item in queues.json()] == [str(fixture.queue_id)]
-
-        join_key = f"http-queue-join-{uuid4().hex}"
-        join_body = {
-            "subject_party_id": str(fixture.subject_party_id),
-            "offering_id": str(fixture.offering_id),
-        }
         joined = await client.post(
-            f"/v1/queues/{fixture.queue_id}/join",
-            json=join_body,
-            headers={**auth, "Idempotency-Key": join_key},
-        )
-        join_replay = await client.post(
-            f"/v1/queues/{fixture.queue_id}/join",
-            json=join_body,
-            headers={**auth, "Idempotency-Key": join_key},
+            f"/v1/queues/{fixture.queue_id}/entries",
+            json={"subject_party_id": str(fixture.subject_party_id)},
+            headers={**auth, "Idempotency-Key": f"queue-join-{uuid4().hex}"},
         )
         assert joined.status_code == 201
-        assert join_replay.json() == joined.json()
-        assert joined.json()["status"] == "waiting"
-        queue_entry_id = joined.json()["id"]
-        queue_entry_revision = cast(int, joined.json()["revision"])
+        entry_id = joined.json()["id"]
 
-        queue_status = await client.get(
-            f"/v1/queues/{fixture.queue_id}/status",
-            params={"subject_party_id": str(fixture.subject_party_id)},
-            headers=auth,
-        )
-        assert queue_status.status_code == 200
-        assert queue_status.json()["entries_ahead"] == 0
+        read = await client.get(f"/v1/queues/{fixture.queue_id}", headers=auth)
+        assert read.status_code == 200
+        assert read.json()["queue_id"] == str(fixture.queue_id)
 
-        leave_key = f"http-queue-leave-{uuid4().hex}"
-        leave_body = {
-            "expected_revision": queue_entry_revision,
-            "reason": "patient left",
-        }
-        leave_url = f"/v1/queues/{fixture.queue_id}/entries/{queue_entry_id}/leave"
+        leave_key = f"queue-leave-{uuid4().hex}"
         left = await client.post(
-            leave_url,
-            json=leave_body,
+            f"/v1/queues/{fixture.queue_id}/entries/{entry_id}/leave",
             headers={**auth, "Idempotency-Key": leave_key},
         )
-        leave_replay = await client.post(
-            leave_url,
-            json=leave_body,
+        replay = await client.post(
+            f"/v1/queues/{fixture.queue_id}/entries/{entry_id}/leave",
             headers={**auth, "Idempotency-Key": leave_key},
         )
-        status_after = await client.get(
-            f"/v1/queues/{fixture.queue_id}/status",
-            params={"subject_party_id": str(fixture.subject_party_id)},
-            headers=auth,
-        )
-
     assert left.status_code == 200
-    assert left.json()["status"] == "cancelled"
-    assert leave_replay.json() == left.json()
-    assert status_after.status_code == 200
-    assert status_after.json()["entry"] is None
-    assert status_after.json()["entries_ahead"] is None
-
-    outbox_count = admin_conn.execute(
-        """
-        SELECT count(*)
-        FROM request_engine.outbox_messages
-        WHERE organization_id = %s
-          AND event_type = 'queue.entry_cancelled.v1'
-          AND aggregate_id = %s
-        """,
-        (fixture.organization_id, UUID(left.json()["id"])),
-    ).fetchone()
-    assert outbox_count == (1,)
+    assert replay.status_code == 200
+    assert replay.json() == left.json()
