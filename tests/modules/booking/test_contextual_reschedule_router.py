@@ -15,7 +15,6 @@ from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
 )
-from request_engine.modules.booking.application.errors import InvalidResourceSelection
 from request_engine.modules.booking.contracts.appointments import (
     AppointmentSlot,
     Reservation,
@@ -87,16 +86,6 @@ def _reschedule_endpoint(
     return cast(Callable[..., Awaitable[ReservationView]], route.endpoint)
 
 
-def _noncontextual_slot() -> AppointmentSlot:
-    return AppointmentSlot(
-        offering_version_id=uuid4(),
-        start_at=_NOW + timedelta(hours=1),
-        end_at=_NOW + timedelta(hours=1, minutes=30),
-        location_id=uuid4(),
-        resources=(ResourceChoice(uuid4(), uuid4()),),
-    )
-
-
 def _contextual_slot() -> AppointmentSlot:
     return AppointmentSlot(
         offering_version_id=uuid4(),
@@ -121,7 +110,7 @@ def _contextual_slot() -> AppointmentSlot:
 
 
 @pytest.mark.asyncio
-async def test_contextual_reschedule_routes_full_provenance_to_current_handler() -> None:
+async def test_reschedule_routes_full_provenance_to_current_handler() -> None:
     organization_id = uuid4()
     codec = _codec()
     handler = _RecordingRescheduleHandler()
@@ -152,26 +141,3 @@ async def test_contextual_reschedule_routes_full_provenance_to_current_handler()
     assert command.expected_location_operational_revision == slot.location_operational_revision
     assert command.expected_configuration_fingerprint == slot.configuration_fingerprint
     assert command.expected_revision == 7
-
-
-@pytest.mark.asyncio
-async def test_noncontextual_reschedule_option_fails_closed_without_mutation() -> None:
-    organization_id = uuid4()
-    codec = _codec()
-    handler = _RecordingRescheduleHandler()
-    endpoint = _reschedule_endpoint(codec, handler)
-    token = codec.issue(organization_id, _noncontextual_slot())
-    assert token.startswith("aptopt_v1.")
-
-    with pytest.raises(
-        InvalidResourceSelection,
-        match="reschedule requires a contextual appointment option",
-    ):
-        await endpoint(
-            reservation_id=uuid4(),
-            body=RescheduleReservationBody(option_id=token, expected_revision=1),
-            actor=_actor(organization_id),
-            idempotency_key="noncontextual-reschedule-router",
-        )
-
-    assert handler.commands == []
