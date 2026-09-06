@@ -37,6 +37,10 @@ jobs:
             nodeid: tests/integration/f1_operational_profile/test_adversarial_multilocation_capacity.py::test_same_resource_can_be_assigned_to_two_locations_but_cannot_be_oversold
           - name: admin-bot-shared-owner-race
             nodeid: tests/e2e/test_adversarial_cross_principal_intake_race.py::test_admin_and_bot_compete_through_one_owner_without_last_write_wins
+          - name: multi-resource-commercial-foundation
+            nodeid: tests/integration/f1_operational_profile/test_multi_resource_commercial_provenance.py::test_multi_resource_booking_preserves_every_contextual_commercial_source
+          - name: dental-shared-chair-assistant-contention
+            nodeid: tests/integration/f1_operational_profile/test_adversarial_dental_resource_contention.py::test_two_dentists_cannot_double_book_one_chair_and_one_assistant
     services:
       postgres:
         image: postgres:18
