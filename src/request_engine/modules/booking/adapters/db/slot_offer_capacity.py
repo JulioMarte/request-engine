@@ -609,7 +609,14 @@ async def _lock_assignments(
             await session.execute(
                 text(
                     """
-                    SELECT id, revision, location_id, effective_during
+                    SELECT id,
+                           revision,
+                           location_id,
+                           effective_during @> CAST(:start_at AS timestamptz) AS contains_start,
+                           (
+                               upper_inf(effective_during)
+                               OR upper(effective_during) >= CAST(:end_at AS timestamptz)
+                           ) AS covers_end
                     FROM request_engine.resource_location_assignments
                     WHERE organization_id = :organization_id
                       AND id = ANY(CAST(:assignment_ids AS uuid[]))
@@ -620,6 +627,8 @@ async def _lock_assignments(
                 {
                     "organization_id": organization_id,
                     "assignment_ids": [str(value) for value in sorted(expected, key=str)],
+                    "start_at": start_at,
+                    "end_at": end_at,
                 },
             )
         )
@@ -634,8 +643,7 @@ async def _lock_assignments(
             raise AppointmentUnavailable("ResourceLocationAssignment changed")
         if cast(int, row["revision"]) != expected[assignment_id]:
             raise AppointmentUnavailable("ResourceLocationAssignment changed")
-        during = row["effective_during"]
-        if start_at not in during or (during.upper is not None and during.upper < end_at):
+        if row["contains_start"] is not True or row["covers_end"] is not True:
             raise AppointmentUnavailable("ResourceLocationAssignment changed")
 
 
