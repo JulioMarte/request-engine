@@ -15,7 +15,7 @@ This document records the effective PostgreSQL model after `alembic upgrade head
 
 The current-product lane upgrades a clean PostgreSQL 18 database to the repository's single Alembic head, then exports the effective catalog before running current proofs. The catalog includes relations and view definitions, columns, constraints, indexes, routines and definitions, triggers, RLS policies, table/column/routine grants, roles and memberships, default ACLs and view dependencies.
 
-The last fully green audit checkpoint before the final `0044`/proof-map cleanup was exact head `4a4a3e20ad79cecf59132f55b8fd671023b06427` in CI #3902. Its artifact reported:
+The last fully green catalog checkpoint available during the audit was exact head `4a4a3e20ad79cecf59132f55b8fd671023b06427` in CI #3902. Its artifact reported:
 
 - schema catalog version 5;
 - 102 relations;
@@ -27,7 +27,7 @@ The last fully green audit checkpoint before the final `0044`/proof-map cleanup 
 - 11 surviving views, no identical view definitions and no parallel version families;
 - `proof-execution.json` with 258 executed test files and `gaps: []`.
 
-The later `0044_remove_redundant_slot_guard` migration and proof-map cleanup must receive their own exact-head green artifact before this audit can be closed.
+That checkpoint predates later accepted cohesion changes, including `0044_remove_redundant_slot_guard`, `0047_remove_waitlist_index`, and `0048_remove_legacy_location`. The expected post-`0048` relation count is 101 because `request_engine.availability_schedules` is removed and no later migration adds a relation, but that number is an audit expectation rather than final evidence. A fresh exact-head PostgreSQL 18 catalog export is required before rebaseline.
 
 ## Resolved during this audit
 
@@ -93,7 +93,7 @@ ON request_engine.reservations USING gist (organization_id, during);
 
 The plan-oriented proof now exercises the tenant-scoped Day Board predicate (`organization_id = ... AND during && ...`) rather than proving only an unscoped range overlap.
 
-Classification: `KEEP`, pending final exact-head CI after the strengthened plan proof.
+Classification: `KEEP`, subject to final exact-head catalog/proof confirmation.
 
 ### Recovery freshness fence authority — RESHAPE resolved
 
@@ -121,21 +121,51 @@ Database coherence triggers remain as invariant backstops across QueueEntry and 
 
 Classification: explicit composition boundary `KEEP`.
 
-### SlotOffer guard topology — REMOVE in progress
+### SlotOffer guard topology — REMOVE resolved
 
-The effective trigger topology showed two BEFORE INSERT paths on `slot_offers` where `guard_slot_offer_subject_match()` checked only Hold-subject versus WaitlistEntry-subject provenance while `guard_slot_offer_live_hold()` already performs that same check plus live hold, expiry, OfferingVersion, Offering, Location and time-range consistency.
+The effective trigger topology showed two BEFORE INSERT paths on `slot_offers` where `guard_slot_offer_subject_match()` checked only Hold-subject versus WaitlistEntry-subject provenance while `guard_slot_offer_live_hold()` already performed that check plus live hold, expiry, OfferingVersion, Offering, Location and time-range consistency.
 
 `0044_remove_redundant_slot_guard` removes the subject-only trigger/function and retains the stronger live-hold guard and deferred cross-row consistency backstops.
 
-Classification: redundant subject-only guard `REMOVE`; remaining Booking ↔ Queue SlotOffer/CapacityHold consistency topology `KEEP` as an explicit composition boundary, pending exact-head PostgreSQL proof of `0044`.
+Classification: redundant subject-only guard `REMOVE`; remaining Booking ↔ Queue SlotOffer/CapacityHold consistency topology `KEEP`, subject to final exact-head catalog confirmation.
+
+### Legacy Resource location and recurring availability persistence — REMOVE resolved
+
+The pre-launch model carried two overlapping representations of Resource context:
+
+- `resources.location_id` as an implicit single Location association;
+- `availability_schedules` as recurring Resource-wide availability with its own timezone/validity state.
+
+The current product model instead makes contextual eligibility and recurring supply explicit:
+
+```text
+Resource
+└── ResourceLocationAssignment [0..N]
+    └── ResourceLocationAvailability [0..N]
+```
+
+A Resource may have concurrent assignments at multiple Locations; all commitments still consume the same Resource capacity. Location timezone belongs to `locations.timezone`, and assignment provenance is carried into reservable appointment options and authoritative booking.
+
+Because Request Engine is pre-launch and has no production/customer rows to preserve, historical backfill/equivalence work for the removed representation would protect nonexistent data rather than a product guarantee. `0048_remove_legacy_location` therefore drops `request_engine.availability_schedules` and `resources.location_id` directly. Current proofs also assert that no surviving PostgreSQL routine references `availability_schedules`.
+
+Classification: `availability_schedules` and `resources.location_id` `REMOVE`; `ResourceLocationAssignment` and `ResourceLocationAvailability` `KEEP` as current contextual authority.
 
 ## Current KEEP decisions
 
-### Resource-wide vs assignment/location schedules
+### Resource-wide exceptions vs assignment/location availability
 
-`availability_schedules` / `schedule_exceptions` and `resource_location_availability` / `resource_location_schedule_exceptions` are distinct authorities: resource-wide scheduling versus ResourceLocationAssignment-specific scheduling, with Location operational hours as a separate layer.
+The removed `availability_schedules` table must not be treated as a current recurring scheduling authority. Current recurring availability is assignment-contextual through `resource_location_availability`, while Location operational hours remain a separate Location authority.
 
-Classification: `KEEP`.
+`request_engine.schedule_exceptions` remains a distinct Resource-wide exception layer where current consumers/invariants require an exception to suppress or alter Resource availability independently of one assignment. Assignment-specific exceptions remain contextual to `ResourceLocationAssignment`.
+
+This is not a justification for recreating Resource-wide recurring schedules. The distinction is:
+
+- recurring availability: assignment/location contextual;
+- broad Resource exception: Resource-wide when explicitly modeled;
+- contextual exception: assignment-specific;
+- Location operational availability: Location-owned.
+
+Classification: surviving exception layers `KEEP` while their current consumers/invariants remain proven; legacy Resource-wide recurring schedule persistence `REMOVE`.
 
 ### RLS FORCE/non-FORCE mixture
 
@@ -157,17 +187,15 @@ Classification: `KEEP`.
 
 `current-guarantees.toml` is normative. `current-proof-map.toml` is migration/review evidence and must not become another exact-file constitution.
 
-`validate_current_proof_execution.py` counts an `INV-*` proof only when its mapped test file actually appears in current-product JUnit output. CI #3902 produced `gaps: []`, proving that no required evidence class depends solely on dormant historical files.
+The proof execution validator counts an `INV-*` proof only when its mapped test file actually appears in current-product JUnit output. CI #3902 produced `gaps: []`, proving that at that checkpoint no required evidence class depended solely on dormant historical files. Every later accepted schema/application change must receive the same exact-head treatment before the audit is closed.
 
-The proof map has now been reduced to representative executed evidence rather than hundreds of historical references. Obsolete files removed from current authority include:
+The proof map has been reduced to representative executed evidence rather than hundreds of historical references. Obsolete files removed from current authority include:
 
 - `tests/db/test_v3_runtime_privilege_closure.py`;
 - `tests/db/test_v3_release_catalog.py`;
 - `tests/db/test_v3_candidate.py`.
 
-The first encoded an obsolete broad app table-privilege default; the second duplicated current PUBLIC/default-ACL checks; the mixed candidate suite combined a historical repository-shape assertion with capacity, RLS, Queue and worker guarantees already covered by focal current suites.
-
-Historical `v3_*` naming is not itself a removal criterion. A historically named test remains `KEEP` when it still proves a current invariant and executes in current-product CI. The app callable inventory is one such current least-privilege guarantee; a neutral duplicate exists and its runner path can be normalized without changing semantics.
+Historical `v3_*` naming is not itself a removal criterion. A historically named test remains `KEEP` when it still proves a current invariant and executes in current-product CI. Conversely, a test whose only purpose is preserving an unreleased compatibility state is not current authority merely because it once protected a V3 behavior.
 
 Classification: proof execution system `KEEP`; obsolete closure/release/candidate suites `REMOVE`; remaining purely nominal path cleanup is non-semantic `RESHAPE`.
 
@@ -197,10 +225,11 @@ The remaining task is to make these classifications exhaustive rather than infer
 
 Rebaseline is **not authorized** yet. The remaining blockers are:
 
-1. Obtain exact-head green current-product proof after `0044` and the reduced proof map/test cleanup.
-2. Inspect the resulting effective catalog and confirm the redundant SlotOffer trigger/function are absent while the stronger live-hold/deferred consistency protections remain.
-3. Complete an exhaustive relation/routine/trigger/policy/role/grant ownership-and-classification manifest for the final effective schema; no material object may remain unclassified.
-4. Resolve any `REMOVE`, `RESHAPE` or `NEEDS_PROOF` finding produced by that final object-by-object pass.
-5. Re-export the final catalog after all corrections and require `proof-execution.json` to remain gap-free.
+1. Obtain an exact-head green current-product run after the accepted schema and application cohesion changes through `0048` and the contextual-only booking cleanup.
+2. Inspect the resulting effective PostgreSQL 18 catalog and verify the expected 101 relations, absence of `availability_schedules` and `resources.location_id`, and absence of the redundant SlotOffer guard while stronger consistency protections remain.
+3. Complete an exhaustive relation/routine/trigger/policy/role/grant/index/constraint ownership-and-classification manifest for the final effective schema; no material object may remain unclassified.
+4. Resolve every remaining `REMOVE`, `RESHAPE` or `NEEDS_PROOF` finding produced by that object-by-object pass.
+5. Remove remaining unreleased application compatibility/shadow states that can still represent product-invalid booking/resource context.
+6. Re-export the final catalog after all corrections and require `proof-execution.json` to remain gap-free.
 
 Only after these blockers are closed should the repository decide whether to consolidate the pre-production migration chain into a new clean baseline and establish a new freeze.
