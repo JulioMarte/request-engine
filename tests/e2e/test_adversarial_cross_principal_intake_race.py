@@ -109,8 +109,8 @@ async def test_admin_and_bot_compete_through_one_owner_without_last_write_wins(
 
     rows = e2e_admin_conn.execute(
         """
-        SELECT principal_id
-        FROM request_engine.audit_events
+        SELECT actor_principal_id
+        FROM request_engine.audit_records
         WHERE organization_id = %s
           AND command_name = 'queue.set_intake_control'
           AND aggregate_id = %s
