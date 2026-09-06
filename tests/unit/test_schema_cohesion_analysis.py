@@ -54,6 +54,49 @@ def _index(name: str, *, primary: bool = False, column: str = "value") -> dict[s
     }
 
 
+def _relation(name: str, *, rls: bool = False, force_rls: bool = False) -> dict[str, object]:
+    return {
+        "schema_name": "request_engine",
+        "relation_name": name,
+        "relation_kind": "r",
+        "definition": None,
+        "owner": "request_engine_schema_owner",
+        "row_security": rls,
+        "force_row_security": force_rls,
+        "is_partition": False,
+    }
+
+
+def _policy(relation: str, name: str = "tenant_policy") -> dict[str, object]:
+    return {
+        "schema_name": "request_engine",
+        "relation_name": relation,
+        "policy_name": name,
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "organization_id = request_engine.current_organization_id()",
+        "with_check": "organization_id = request_engine.current_organization_id()",
+    }
+
+
+def _grant(
+    relation: str,
+    privilege: str,
+    *,
+    grantee: str = "request_engine_app",
+    grantable: bool = False,
+) -> dict[str, object]:
+    return {
+        "schema_name": "request_engine",
+        "relation_name": relation,
+        "grantee": grantee,
+        "grantor": "request_engine_schema_owner",
+        "privilege_type": privilege,
+        "is_grantable": grantable,
+    }
+
+
 def _catalog() -> dict[str, object]:
     return {
         "relations": [],
@@ -61,6 +104,11 @@ def _catalog() -> dict[str, object]:
         "routines": [],
         "indexes": [],
         "triggers": [],
+        "policies": [],
+        "constraints": [],
+        "table_grants": [],
+        "column_grants": [],
+        "routine_grants": [],
     }
 
 
@@ -124,3 +172,98 @@ def test_unreferenced_trigger_routines_are_review_candidates() -> None:
     assert result["trigger_routine_count"] == 2
     assert result["referenced_trigger_routine_count"] == 1
     assert result["unreferenced_trigger_routines"] == ["request_engine.unused()"]
+
+
+def test_rls_analysis_surfaces_missing_and_misplaced_policies() -> None:
+    module = _load()
+    catalog = _catalog()
+    catalog["relations"] = [
+        _relation("protected", rls=True, force_rls=True),
+        _relation("missing", rls=True),
+        _relation("plain"),
+    ]
+    catalog["policies"] = [
+        _policy("protected"),
+        _policy("protected", "internal_writer"),
+        _policy("plain"),
+    ]
+
+    result = cast(dict[str, object], module.analyze(catalog))
+
+    assert result["rls_relation_count"] == 2
+    assert result["force_rls_relation_count"] == 1
+    assert result["policy_count"] == 3
+    assert result["rls_relations_without_policy"] == ["request_engine.missing"]
+    assert result["policies_on_non_rls_relations"] == [
+        "request_engine.plain.tenant_policy"
+    ]
+    assert result["multi_policy_relations"] == [
+        {
+            "relation": "request_engine.protected",
+            "policies": [
+                "request_engine.protected.internal_writer",
+                "request_engine.protected.tenant_policy",
+            ],
+        }
+    ]
+
+
+def test_grant_analysis_surfaces_public_grantable_and_immutable_mutation_authority() -> None:
+    module = _load()
+    catalog = _catalog()
+    catalog["relations"] = [_relation("immutable")]
+    catalog["triggers"] = [
+        {
+            "schema_name": "request_engine",
+            "relation_name": "immutable",
+            "trigger_name": "immutable_append_only",
+            "enabled": "O",
+            "definition": (
+                "CREATE TRIGGER immutable_append_only BEFORE UPDATE OR DELETE "
+                "ON request_engine.immutable FOR EACH ROW "
+                "EXECUTE FUNCTION request_engine.reject_immutable_mutation()"
+            ),
+        }
+    ]
+    catalog["table_grants"] = [
+        _grant("immutable", "UPDATE"),
+        _grant("immutable", "SELECT", grantee="PUBLIC"),
+        _grant("immutable", "INSERT", grantee="request_engine_admin", grantable=True),
+    ]
+
+    result = cast(dict[str, object], module.analyze(catalog))
+
+    assert result["public_grants"] == [
+        "table:request_engine.immutable:PUBLIC:SELECT"
+    ]
+    assert result["grantable_grants"] == [
+        "table:request_engine.immutable:request_engine_admin:INSERT"
+    ]
+    assert result["immutable_app_mutation_grants"] == [
+        "table:request_engine.immutable:request_engine_app:UPDATE"
+    ]
+
+
+def test_invalid_indexes_and_unvalidated_constraints_are_reported() -> None:
+    module = _load()
+    catalog = _catalog()
+    invalid = _index("invalid")
+    invalid["is_valid"] = False
+    catalog["indexes"] = [invalid]
+    catalog["constraints"] = [
+        {
+            "schema_name": "request_engine",
+            "relation_name": "sample",
+            "constraint_name": "sample_check",
+            "constraint_type": "c",
+            "definition": "CHECK (value > 0)",
+            "validated": False,
+        }
+    ]
+
+    result = cast(dict[str, object], module.analyze(catalog))
+
+    assert result["invalid_indexes"] == ["request_engine.sample.invalid"]
+    assert result["unvalidated_constraints"] == [
+        "request_engine.sample.sample_check"
+    ]
