@@ -37,6 +37,13 @@ uv run python scripts/db/analyze_schema_cohesion.py \
   --catalog "$ARTIFACT_DIR/schema-catalog.json" \
   --output "$ARTIFACT_DIR/schema-cohesion-analysis.json"
 
+# Before the historical migration chain is ever replaced, prove that a
+# schema-only PostgreSQL export of this exact audited head can reproduce the
+# effective model in a second empty database. This is evidence only: the current
+# Alembic chain remains the source migration authority until clean-cluster role
+# bootstrap and full candidate-baseline proofs are also green.
+bash scripts/db/prove_rebaseline_reproduction.sh "$ARTIFACT_DIR"
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
