@@ -25,10 +25,12 @@ jobs:
       fail-fast: false
       matrix:
         probe:
-          - name: party-duplicate-resolution
+          - name: party-duplicate-resolution-surface-scan
             nodeid: tests/adversarial/test_pilot_readiness_contract.py::test_party_identity_has_first_class_duplicate_resolution_capability
           - name: walk-in-preferred-resource
             nodeid: tests/adversarial/test_pilot_readiness_contract.py::test_walk_in_queue_can_persist_preferred_resource
+          - name: contextual-reschedule
+            nodeid: tests/adversarial/test_contextual_reschedule_readiness.py::test_public_reschedule_accepts_contextual_appointment_option
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
