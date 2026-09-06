@@ -305,8 +305,9 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
             "All duplicate/orphan outputs are review candidates, not automatic deletion decisions. "
             "Routine comparison ignores only the declared routine name while preserving signature, "
             "security, volatility, configuration and implementation. Index comparison ignores only "
-            "the index name. RLS/grant outputs identify structural authority anomalies, not business "
-            "authorization by themselves. External SQL callers and published contracts still require review."
+            "the index name. RLS/grant outputs identify structural authority anomalies, not "
+            "business authorization by themselves. External SQL callers and published contracts "
+            "still require review."
         ),
     }
     result.update(_rls_analysis(catalog))
