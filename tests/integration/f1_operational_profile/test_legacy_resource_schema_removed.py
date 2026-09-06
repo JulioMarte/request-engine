@@ -70,9 +70,9 @@ def test_no_current_database_routine_references_legacy_availability_schedule(
 def test_resource_commitment_guard_does_not_reference_removed_location_column(
     admin_conn: PgConnection,
 ) -> None:
-    sql = _routine_definition(admin_conn, 'guard_resource_commitment_sensitive_change')
-    assert 'new.location_id' not in sql
-    assert 'old.location_id' not in sql
+    sql = _routine_definition(admin_conn, "guard_resource_commitment_sensitive_change")
+    assert "new.location_id" not in sql
+    assert "old.location_id" not in sql
 
 
 @pytest.mark.integration
@@ -80,6 +80,6 @@ def test_resource_commitment_guard_does_not_reference_removed_location_column(
 def test_capacity_claim_guard_has_no_legacy_resource_location_fallback(
     admin_conn: PgConnection,
 ) -> None:
-    sql = _routine_definition(admin_conn, 'guard_capacity_claim')
-    assert 'v_resource_location' not in sql
-    assert 'r.capacity_model, r.capacity_units, r.active, r.location_id' not in sql
+    sql = _routine_definition(admin_conn, "guard_capacity_claim")
+    assert "v_resource_location" not in sql
+    assert "r.capacity_model, r.capacity_units, r.active, r.location_id" not in sql
