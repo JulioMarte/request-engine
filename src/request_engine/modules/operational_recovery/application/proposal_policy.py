@@ -11,7 +11,7 @@ def choose_recovery_target(
     original_start: datetime,
     original_end: datetime,
 ) -> RecoveryTarget | None:
-    """Choose the first current contextual reschedule target outside the original interval."""
+    """Choose the first current reschedule target outside the original interval."""
 
     candidate = next(
         (slot for slot in slots if slot.start_at != original_start or slot.end_at != original_end),
@@ -48,8 +48,6 @@ def _target_from_slot(slot: AppointmentSlot) -> RecoveryTarget:
         end_at=slot.end_at,
         location_id=slot.location_id,
         resources=slot.resources,
-        actionable=True,
-        blocked_reason=None,
         planned_duration_minutes=slot.planned_duration_minutes,
         amount=slot.amount,
         currency=slot.currency,
