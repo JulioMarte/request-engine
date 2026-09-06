@@ -385,7 +385,7 @@ async def test_http_discover_slot_book_read_and_cancel_idempotently(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
-async def test_http_queue_join_read_leave_idempotently(
+async def test_http_queue_discover_join_status_leave_and_replay(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
@@ -399,27 +399,76 @@ async def test_http_queue_join_read_leave_idempotently(
     }
     auth = {"Authorization": "Bearer agent"}
     async with _client(session_factory, actors) as client:
+        queues = await client.get("/v1/queues", headers=auth)
+        assert queues.status_code == 200
+        assert [item["id"] for item in queues.json()] == [str(fixture.queue_id)]
+
+        join_key = f"http-queue-join-{uuid4().hex}"
+        join_body = {
+            "subject_party_id": str(fixture.subject_party_id),
+            "offering_id": str(fixture.offering_id),
+        }
         joined = await client.post(
-            f"/v1/queues/{fixture.queue_id}/entries",
-            json={"subject_party_id": str(fixture.subject_party_id)},
-            headers={**auth, "Idempotency-Key": f"queue-join-{uuid4().hex}"},
+            f"/v1/queues/{fixture.queue_id}/join",
+            json=join_body,
+            headers={**auth, "Idempotency-Key": join_key},
+        )
+        join_replay = await client.post(
+            f"/v1/queues/{fixture.queue_id}/join",
+            json=join_body,
+            headers={**auth, "Idempotency-Key": join_key},
         )
         assert joined.status_code == 201
-        entry_id = joined.json()["id"]
+        assert join_replay.json() == joined.json()
+        assert joined.json()["status"] == "waiting"
+        queue_entry_id = joined.json()["id"]
+        queue_entry_revision = cast(int, joined.json()["revision"])
 
-        read = await client.get(f"/v1/queues/{fixture.queue_id}", headers=auth)
-        assert read.status_code == 200
-        assert read.json()["queue_id"] == str(fixture.queue_id)
+        queue_status = await client.get(
+            f"/v1/queues/{fixture.queue_id}/status",
+            params={"subject_party_id": str(fixture.subject_party_id)},
+            headers=auth,
+        )
+        assert queue_status.status_code == 200
+        assert queue_status.json()["entries_ahead"] == 0
 
-        leave_key = f"queue-leave-{uuid4().hex}"
+        leave_key = f"http-queue-leave-{uuid4().hex}"
+        leave_body = {
+            "expected_revision": queue_entry_revision,
+            "reason": "patient left",
+        }
+        leave_url = f"/v1/queues/{fixture.queue_id}/entries/{queue_entry_id}/leave"
         left = await client.post(
-            f"/v1/queues/{fixture.queue_id}/entries/{entry_id}/leave",
+            leave_url,
+            json=leave_body,
             headers={**auth, "Idempotency-Key": leave_key},
         )
-        replay = await client.post(
-            f"/v1/queues/{fixture.queue_id}/entries/{entry_id}/leave",
+        leave_replay = await client.post(
+            leave_url,
+            json=leave_body,
             headers={**auth, "Idempotency-Key": leave_key},
         )
+        status_after = await client.get(
+            f"/v1/queues/{fixture.queue_id}/status",
+            params={"subject_party_id": str(fixture.subject_party_id)},
+            headers=auth,
+        )
+
     assert left.status_code == 200
-    assert replay.status_code == 200
-    assert replay.json() == left.json()
+    assert left.json()["status"] == "cancelled"
+    assert leave_replay.json() == left.json()
+    assert status_after.status_code == 200
+    assert status_after.json()["entry"] is None
+    assert status_after.json()["entries_ahead"] is None
+
+    outbox_count = admin_conn.execute(
+        """
+        SELECT count(*)
+        FROM request_engine.outbox_messages
+        WHERE organization_id = %s
+          AND event_type = 'queue.entry_cancelled.v1'
+          AND aggregate_id = %s
+        """,
+        (fixture.organization_id, UUID(left.json()["id"])),
+    ).fetchone()
+    assert outbox_count == (1,)
