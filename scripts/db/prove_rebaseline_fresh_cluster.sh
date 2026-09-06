@@ -55,20 +55,6 @@ if [[ -z "$FRESH_PORT" ]]; then
   exit 1
 fi
 
-ready=0
-for _ in {1..30}; do
-  if docker exec "$FRESH_CONTAINER" pg_isready -U postgres -d "$SOURCE_DB" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  sleep 1
-done
-if [[ "$ready" -ne 1 ]]; then
-  docker logs "$FRESH_CONTAINER" >&2 || true
-  echo "fresh PostgreSQL cluster did not become ready" >&2
-  exit 1
-fi
-
 fresh_psql=(
   psql
   --host=127.0.0.1
@@ -77,6 +63,27 @@ fresh_psql=(
   --dbname="$SOURCE_DB"
   --set=ON_ERROR_STOP=1
 )
+
+# The official postgres image starts a temporary Unix-socket-only server during
+# initdb, shuts it down, then starts the final TCP server. An in-container
+# pg_isready can therefore report success for the temporary server and create a
+# race with the following host connection. Probe the exact external TCP path the
+# proof will use instead; success means the final server is accepting queries.
+ready=0
+for _ in {1..30}; do
+  if "${fresh_psql[@]}" --tuples-only --no-align --command="SELECT 1" \
+    >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$ready" -ne 1 ]]; then
+  docker logs "$FRESH_CONTAINER" >&2 || true
+  echo "fresh PostgreSQL cluster did not become externally ready" >&2
+  exit 1
+fi
+
 "${fresh_psql[@]}" --file="$ROLE_BOOTSTRAP"
 "${fresh_psql[@]}" --file="$PAYLOAD_DUMP"
 
