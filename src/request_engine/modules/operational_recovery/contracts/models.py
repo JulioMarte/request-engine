@@ -55,7 +55,6 @@ class AffectedReservation:
     original_end_at: datetime
     target: RecoveryTarget | None
     replacement_target: RecoveryTarget | None = None
-    contextual_commitment: bool = False
 
 
 @dataclass(frozen=True, slots=True)
