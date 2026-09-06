@@ -1,0 +1,81 @@
+name: Adversarial positive-capability challenges
+
+on:
+  pull_request:
+    branches:
+      - development
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adversarial-positive-challenges-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  postgres-challenge:
+    name: "Positive challenge / ${{ matrix.challenge.name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        challenge:
+          - name: empty-tenant-onboarding
+            nodeid: tests/e2e/test_onboarding_journey.py::test_newly_provisioned_organization_becomes_operational_through_http
+          - name: shared-capacity-race
+            nodeid: tests/e2e/test_discovery_shared_capacity_race.py::test_discovery_shared_capacity_race_has_one_opaque_winner
+          - name: copilot-concurrent-recovery
+            nodeid: tests/e2e/test_f6_mutation_concurrency_matrix.py::test_f6_concurrent_recovery_proposal_and_execution_replay_once
+          - name: resource-wide-config-race
+            nodeid: tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py::test_resource_wide_exception_serializes_before_book_and_makes_option_stale
+          - name: same-resource-two-locations-no-oversell
+            nodeid: tests/integration/f1_operational_profile/test_adversarial_multilocation_capacity.py::test_same_resource_can_be_assigned_to_two_locations_but_cannot_be_oversold
+          - name: admin-bot-shared-owner-race
+            nodeid: tests/e2e/test_adversarial_cross_principal_intake_race.py::test_admin_and_bot_compete_through_one_owner_without_last_write_wins
+          - name: multi-resource-commercial-foundation
+            nodeid: tests/integration/f1_operational_profile/test_multi_resource_commercial_provenance.py::test_multi_resource_booking_preserves_every_contextual_commercial_source
+          - name: dental-shared-chair-assistant-contention
+            nodeid: tests/integration/f1_operational_profile/test_adversarial_dental_resource_contention.py::test_two_dentists_cannot_double_book_one_chair_and_one_assistant
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: request_engine_current
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d request_engine_current"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: request_engine_current
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/request_engine_current
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install and cache uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Resolve development environment
+        run: uv sync --all-groups
+      - name: Upgrade exact branch schema
+        run: uv run alembic upgrade head
+      - name: Run isolated positive challenge
+        run: uv run pytest "${{ matrix.challenge.nodeid }}" -q -m postgres --tb=short --durations=10
