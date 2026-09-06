@@ -58,7 +58,6 @@ def test_recovery_target_skips_original_interval_and_selects_next_slot() -> None
         original_end=NOW + timedelta(hours=1),
     )
     assert target is not None
-    assert target.actionable is True
     assert target.start_at == next_slot.start_at
     assert target.configuration_fingerprint == next_slot.configuration_fingerprint
 
@@ -78,8 +77,20 @@ def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() ->
         start_at=NOW + timedelta(hours=2),
         end_at=NOW + timedelta(hours=3),
         location_id=UUID(int=2),
-        resources=(ResourceChoice(UUID(int=3), UUID(int=4)),),
-        actionable=True,
+        resources=(
+            ResourceChoice(
+                UUID(int=3),
+                UUID(int=4),
+                UUID(int=10),
+                1,
+                1,
+            ),
+        ),
+        planned_duration_minutes=60,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=2,
+        configuration_fingerprint="sha256:execution-target",
     )
     base = ExecuteRecoveryCommand(
         organization_id=UUID(int=5),
