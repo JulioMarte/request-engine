@@ -47,3 +47,24 @@ def test_no_current_database_routine_references_legacy_availability_schedule(
         """
     ).fetchall()
     assert routines == []
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+def test_resource_commitment_guard_does_not_reference_removed_location_column(
+    admin_conn: PgConnection,
+) -> None:
+    definition = admin_conn.execute(
+        """
+        SELECT pg_get_functiondef(p.oid)
+        FROM pg_proc AS p
+        JOIN pg_namespace AS n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'request_engine'
+          AND p.proname = 'guard_resource_commitment_sensitive_change'
+          AND p.prokind = 'f'
+        """
+    ).fetchone()
+    assert definition is not None
+    sql = definition[0].lower()
+    assert 'new.location_id' not in sql
+    assert 'old.location_id' not in sql
