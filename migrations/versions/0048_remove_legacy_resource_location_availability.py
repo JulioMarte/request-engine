@@ -54,7 +54,9 @@ BEGIN
        );
 
     IF v_live_claims > 0 THEN
-        RAISE EXCEPTION 'Resource % has live capacity commitments; capacity/active change requires explicit commitment handling', OLD.id
+        RAISE EXCEPTION
+            'Resource % has live commitments; capacity/active change requires explicit handling',
+            OLD.id
             USING ERRCODE = '55000';
     END IF;
 
@@ -241,7 +243,6 @@ BEGIN
         RAISE EXCEPTION
             'Resource % capacity exceeded: requested %, live %, capacity %',
             NEW.resource_id,
-            NEW.quantity,
             v_other_quantity,
             v_capacity_units
             USING ERRCODE = '23P01';
