@@ -18,7 +18,6 @@ from request_engine.modules.booking.application.queries.find_appointment_slots i
     FindAppointmentSlotsQuery,
     find_appointment_slots,
 )
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
@@ -211,33 +210,6 @@ def create_fixture(conn: PgConnection) -> BookingRevalidationFixture:
         assignment_id=assignment_id,
         assignment_revision=assignment_revision,
         availability_revision=availability_revision,
-    )
-
-
-def legacy_book_command(
-    fixture: BookingRevalidationFixture,
-    *,
-    start_at: datetime,
-) -> BookAppointmentCommand:
-    """Temporary migration helper for tests not yet converted to option-backed booking."""
-    return BookAppointmentCommand(
-        organization_id=fixture.organization_id,
-        principal_id=fixture.principal_id,
-        offering_version_id=fixture.offering_version_id,
-        subject_party_id=fixture.subject_party_id,
-        location_id=fixture.location_id,
-        start_at=start_at,
-        resources=(
-            ResourceChoice(
-                fixture.requirement_id,
-                fixture.resource_id,
-                resource_location_assignment_id=fixture.assignment_id,
-                assignment_revision=fixture.assignment_revision,
-                availability_revision=fixture.availability_revision,
-            ),
-        ),
-        idempotency_key=f"i27-book-{uuid4().hex}",
-        allow_subject_override=True,
     )
 
 
