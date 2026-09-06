@@ -114,6 +114,125 @@ def _unreferenced_trigger_routines(catalog: dict[str, object]) -> list[str]:
     )
 
 
+def _relation_label(row: dict[str, Any]) -> str:
+    return f"{row['schema_name']}.{row['relation_name']}"
+
+
+def _policy_label(row: dict[str, Any]) -> str:
+    return f"{row['schema_name']}.{row['relation_name']}.{row['policy_name']}"
+
+
+def _rls_analysis(catalog: dict[str, object]) -> dict[str, object]:
+    relations = _dict_rows(catalog, "relations")
+    policies = _dict_rows(catalog, "policies")
+    relation_by_key = {
+        (str(row["schema_name"]), str(row["relation_name"])): row for row in relations
+    }
+    policy_keys: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for policy in policies:
+        policy_keys[(str(policy["schema_name"]), str(policy["relation_name"]))].append(policy)
+
+    rls_relations = [row for row in relations if bool(row.get("row_security"))]
+    rls_without_policy = sorted(
+        _relation_label(row)
+        for row in rls_relations
+        if (str(row["schema_name"]), str(row["relation_name"])) not in policy_keys
+    )
+    policies_on_non_rls = sorted(
+        _policy_label(policy)
+        for policy in policies
+        if not bool(
+            relation_by_key.get(
+                (str(policy["schema_name"]), str(policy["relation_name"])), {}
+            ).get("row_security")
+        )
+    )
+    multi_policy_relations = [
+        {
+            "relation": f"{schema}.{relation}",
+            "policies": sorted(_policy_label(policy) for policy in relation_policies),
+        }
+        for (schema, relation), relation_policies in sorted(policy_keys.items())
+        if len(relation_policies) > 1
+    ]
+    return {
+        "rls_relation_count": len(rls_relations),
+        "force_rls_relation_count": sum(
+            1 for row in rls_relations if bool(row.get("force_row_security"))
+        ),
+        "policy_count": len(policies),
+        "rls_relations_without_policy": rls_without_policy,
+        "policies_on_non_rls_relations": policies_on_non_rls,
+        "multi_policy_relations": multi_policy_relations,
+    }
+
+
+def _grant_label(kind: str, row: dict[str, Any]) -> str:
+    schema = row["schema_name"]
+    relation = row.get("relation_name")
+    routine = row.get("routine_name")
+    column = row.get("column_name")
+    target = relation or routine
+    if column is not None:
+        target = f"{target}.{column}"
+    return f"{kind}:{schema}.{target}:{row['grantee']}:{row['privilege_type']}"
+
+
+def _grant_analysis(catalog: dict[str, object]) -> dict[str, object]:
+    collections = (
+        ("table", _dict_rows(catalog, "table_grants")),
+        ("column", _dict_rows(catalog, "column_grants")),
+        ("routine", _dict_rows(catalog, "routine_grants")),
+    )
+    public_grants: list[str] = []
+    grantable_grants: list[str] = []
+    for kind, rows in collections:
+        for row in rows:
+            if str(row["grantee"]).upper() == "PUBLIC":
+                public_grants.append(_grant_label(kind, row))
+            if bool(row.get("is_grantable")):
+                grantable_grants.append(_grant_label(kind, row))
+    return {
+        "public_grants": sorted(public_grants),
+        "grantable_grants": sorted(grantable_grants),
+    }
+
+
+def _invalid_indexes(catalog: dict[str, object]) -> list[str]:
+    return sorted(
+        f"{row['schema_name']}.{row['relation_name']}.{row['index_name']}"
+        for row in _dict_rows(catalog, "indexes")
+        if not bool(row.get("is_valid"))
+    )
+
+
+def _unvalidated_constraints(catalog: dict[str, object]) -> list[str]:
+    return sorted(
+        f"{row['schema_name']}.{row['relation_name']}.{row['constraint_name']}"
+        for row in _dict_rows(catalog, "constraints")
+        if not bool(row.get("validated"))
+    )
+
+
+def _immutable_relations(catalog: dict[str, object]) -> set[tuple[str, str]]:
+    return {
+        (str(trigger["schema_name"]), str(trigger["relation_name"]))
+        for trigger in _dict_rows(catalog, "triggers")
+        if "reject_immutable_mutation()" in str(trigger["definition"])
+    }
+
+
+def _immutable_app_mutation_grants(catalog: dict[str, object]) -> list[str]:
+    immutable = _immutable_relations(catalog)
+    return sorted(
+        _grant_label("table", grant)
+        for grant in _dict_rows(catalog, "table_grants")
+        if grant["grantee"] == "request_engine_app"
+        and grant["privilege_type"] in {"UPDATE", "DELETE"}
+        and (str(grant["schema_name"]), str(grant["relation_name"])) in immutable
+    )
+
+
 def analyze(catalog: dict[str, object]) -> dict[str, object]:
     views = _view_rows(catalog)
     view_dependents = _view_dependents(catalog)
@@ -166,8 +285,8 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
     trigger_routines = _trigger_routines(catalog)
     referenced_trigger_routines = _trigger_routine_names(catalog)
 
-    return {
-        "schema_version": 3,
+    result: dict[str, object] = {
+        "schema_version": 4,
         "view_count": len(views),
         "version_families": version_families,
         "exact_view_definition_duplicates": sorted(exact_view_duplicates),
@@ -179,13 +298,20 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
         "trigger_routine_count": len(trigger_routines),
         "referenced_trigger_routine_count": len(referenced_trigger_routines),
         "unreferenced_trigger_routines": _unreferenced_trigger_routines(catalog),
+        "invalid_indexes": _invalid_indexes(catalog),
+        "unvalidated_constraints": _unvalidated_constraints(catalog),
+        "immutable_app_mutation_grants": _immutable_app_mutation_grants(catalog),
         "note": (
             "All duplicate/orphan outputs are review candidates, not automatic deletion decisions. "
             "Routine comparison ignores only the declared routine name while preserving signature, "
             "security, volatility, configuration and implementation. Index comparison ignores only "
-            "the index name. External SQL callers and published contracts still require review."
+            "the index name. RLS/grant outputs identify structural authority anomalies, not business "
+            "authorization by themselves. External SQL callers and published contracts still require review."
         ),
     }
+    result.update(_rls_analysis(catalog))
+    result.update(_grant_analysis(catalog))
+    return result
 
 
 def main() -> None:
