@@ -10,7 +10,6 @@ from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
 from .world_clock import (
     configure_world_timezone,
-    location_timezone,
     set_world_timezone,
     world_weekday,
     world_window_start,
@@ -60,17 +59,46 @@ def seed_today_schedule(
         set_world_timezone(conn, sandbox, business_timezone)
     else:
         configure_world_timezone(conn, sandbox)
-    timezone = location_timezone(conn, sandbox)
+
+    starts_at = world_window_start(conn)
+    weekday = world_weekday(conn, sandbox)
+    row = conn.execute(
+        """
+        SELECT id
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> %s::timestamptz
+        ORDER BY lower(effective_during) DESC
+        LIMIT 1
+        """,
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id, starts_at),
+    ).fetchone()
+    assert row is not None, "test sandbox has no active contextual Resource assignment"
+    assignment_id = row[0]
+
     conn.execute(
-        "DELETE FROM request_engine.availability_schedules "
-        "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
-        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox)),
+        """
+        DELETE FROM request_engine.resource_location_availability
+        WHERE organization_id = %s
+          AND resource_location_assignment_id = %s
+          AND weekday = %s
+        """,
+        (sandbox.organization_id, assignment_id, weekday),
     )
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules "
-        "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,'00:00','23:59',%s)",
-        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox), timezone.key),
+        """
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id,
+            resource_location_assignment_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, '00:00', '23:59')
+        """,
+        (sandbox.organization_id, assignment_id, weekday),
     )
 
 
