@@ -11,12 +11,6 @@ from .tenant_sandbox import TenantSandbox, auth, client_with_actors, seed_tenant
 
 
 def _called_entry(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
-    conn.execute(
-        "INSERT INTO request_engine.resource_location_assignments "
-        "(organization_id,resource_id,location_id,effective_during) "
-        "VALUES (%s,%s,%s,tstzrange('2020-01-01T00:00Z',NULL,'[)'))",
-        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    )
     row = conn.execute(
         "WITH transition AS (SELECT clock_timestamp() AS at) "
         "INSERT INTO request_engine.queue_entries "
