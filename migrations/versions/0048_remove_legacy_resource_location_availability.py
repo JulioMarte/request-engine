@@ -243,6 +243,7 @@ BEGIN
         RAISE EXCEPTION
             'Resource % capacity exceeded: requested %, live %, capacity %',
             NEW.resource_id,
+            NEW.quantity,
             v_other_quantity,
             v_capacity_units
             USING ERRCODE = '23P01';
