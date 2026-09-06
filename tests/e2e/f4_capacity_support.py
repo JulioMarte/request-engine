@@ -81,6 +81,28 @@ def seed_today_schedule(
 
     conn.execute(
         """
+        DELETE FROM request_engine.location_operational_hours
+        WHERE organization_id = %s
+          AND location_id = %s
+          AND weekday = %s
+        """,
+        (sandbox.organization_id, sandbox.location_id, weekday),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id,
+            location_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, '00:00', '23:59')
+        """,
+        (sandbox.organization_id, sandbox.location_id, weekday),
+    )
+
+    conn.execute(
+        """
         DELETE FROM request_engine.resource_location_availability
         WHERE organization_id = %s
           AND resource_location_assignment_id = %s
@@ -121,8 +143,7 @@ async def same_day_slots(
     assert response.status_code == 200, response.text
     slots = cast(list[dict[str, Any]], response.json())
     assert len(slots) >= 2, (
-        "test world slot supply exhausted; the world business day is configured "
-        "in locations.timezone (default America/Santo_Domingo) and slot worlds "
-        "require hours of runway before its local midnight"
+        "test world slot supply exhausted; contextual worlds require both Location hours "
+        "and ResourceLocationAvailability with runway before local midnight"
     )
     return slots
