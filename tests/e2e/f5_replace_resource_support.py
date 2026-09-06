@@ -9,7 +9,6 @@ from httpx import AsyncClient, Response
 from .f5_recovery_support import seed_replacement_resource
 from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
-from .world_clock import world_weekday
 
 
 class AlternateContextualSupply:
@@ -24,19 +23,20 @@ def seed_alternate_contextual_supply(
 ) -> AlternateContextualSupply:
     resource_id = seed_replacement_resource(conn, sandbox)
     assignment = conn.execute(
-        "INSERT INTO request_engine.resource_location_assignments "
-        "(organization_id,resource_id,location_id,effective_during) "
-        "VALUES (%s,%s,%s,tstzrange('2026-01-01T00:00:00Z',NULL,'[)')) RETURNING id",
+        """
+        SELECT id
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+        ORDER BY lower(effective_during) DESC
+        LIMIT 1
+        """,
         (sandbox.organization_id, resource_id, sandbox.location_id),
     ).fetchone()
     assert assignment is not None
     assignment_id = cast(UUID, assignment[0])
-    conn.execute(
-        "INSERT INTO request_engine.resource_location_availability "
-        "(organization_id,resource_location_assignment_id,weekday,local_start,local_end) "
-        "VALUES (%s,%s,%s,'00:00','23:59')",
-        (sandbox.organization_id, assignment_id, world_weekday(conn, sandbox)),
-    )
     conn.execute(
         "INSERT INTO request_engine.booking_context_terms "
         "(organization_id,resource_location_assignment_id,offering_version_id,effective_during,"
