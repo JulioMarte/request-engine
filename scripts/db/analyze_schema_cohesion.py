@@ -142,9 +142,9 @@ def _rls_analysis(catalog: dict[str, object]) -> dict[str, object]:
         _policy_label(policy)
         for policy in policies
         if not bool(
-            relation_by_key.get(
-                (str(policy["schema_name"]), str(policy["relation_name"])), {}
-            ).get("row_security")
+            relation_by_key.get((str(policy["schema_name"]), str(policy["relation_name"])), {}).get(
+                "row_security"
+            )
         )
     )
     multi_policy_relations = [
