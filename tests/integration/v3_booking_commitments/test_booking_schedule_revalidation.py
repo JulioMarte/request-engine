@@ -44,7 +44,8 @@ def _wait_until_booking_waits_on_resource_lock() -> None:
                     SELECT 1
                     FROM pg_stat_activity
                     WHERE wait_event_type = 'Lock'
-                      AND position('FOR UPDATE OF r' in query) > 0
+                      AND position('FROM request_engine.resources' in query) > 0
+                      AND position('FOR UPDATE' in query) > 0
                 )
                 """
             ).fetchone()
@@ -65,7 +66,7 @@ async def test_i27_booking_revalidates_schedule_after_resource_lock(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_fixture(admin_conn)
-    reservations = PostgresContextualReservationCommands(app_session_factory)
+    reservations = PostgresContexualReservationCommands(app_session_factory)
     start_at = datetime(2026, 8, 24, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
     command = await contextual_book_command(
@@ -100,7 +101,7 @@ async def test_i27_booking_revalidates_schedule_after_resource_lock(
             INSERT INTO request_engine.schedule_exceptions (
                 organization_id, resource_id, during, exception_kind, reason
             ) VALUES (
-                %s, %s, tstzrange(%s, %s, '[)'), 'unavailable',
+                %s, %s, tstzrange(%s, %s, '[):'), 'unavailable',
                 'I27 post-plan schedule invalidation'
             )
             """,
