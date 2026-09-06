@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 import pytest
@@ -24,7 +25,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.invariant, pytest.mark.contract]
 NOW = datetime(2026, 8, 26, 13, 0, tzinfo=UTC)
 
 
-def _slot(identity: int, *, contextual: bool) -> AppointmentSlot:
+def _slot(identity: int) -> AppointmentSlot:
     start = NOW + timedelta(hours=identity)
     return AppointmentSlot(
         offering_version_id=UUID(int=1),
@@ -35,53 +36,41 @@ def _slot(identity: int, *, contextual: bool) -> AppointmentSlot:
             ResourceChoice(
                 requirement_id=UUID(int=3),
                 resource_id=UUID(int=10 + identity),
-                resource_location_assignment_id=(UUID(int=20 + identity) if contextual else None),
-                assignment_revision=1 if contextual else None,
+                resource_location_assignment_id=UUID(int=20 + identity),
+                assignment_revision=1,
                 availability_revision=4,
             ),
         ),
+        planned_duration_minutes=60,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=2,
+        configuration_fingerprint=f"sha256:target-{identity}",
     )
 
 
-def test_legacy_source_skips_contextual_target_for_legacy_slot() -> None:
-    contextual = _slot(1, contextual=True)
-    legacy = _slot(2, contextual=False)
+def test_recovery_target_skips_original_interval_and_selects_next_slot() -> None:
+    original = replace(_slot(1), start_at=NOW, end_at=NOW + timedelta(hours=1))
+    next_slot = _slot(2)
     target = choose_recovery_target(
-        (contextual, legacy),
+        (original, next_slot),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
-        source_contextual=False,
     )
     assert target is not None
     assert target.actionable is True
-    assert target.start_at == legacy.start_at
+    assert target.start_at == next_slot.start_at
+    assert target.configuration_fingerprint == next_slot.configuration_fingerprint
 
 
-def test_contextual_source_selects_contextual_target() -> None:
-    legacy = _slot(1, contextual=False)
-    contextual = _slot(2, contextual=True)
+def test_recovery_target_is_none_when_only_original_interval_exists() -> None:
+    original = replace(_slot(1), start_at=NOW, end_at=NOW + timedelta(hours=1))
     target = choose_recovery_target(
-        (legacy, contextual),
+        (original,),
         original_start=NOW,
         original_end=NOW + timedelta(hours=1),
-        source_contextual=True,
     )
-    assert target is not None
-    assert target.actionable is True
-    assert target.start_at == contextual.start_at
-    assert target.blocked_reason is None
-
-
-def test_contextual_source_fails_closed_when_only_legacy_target_exists() -> None:
-    target = choose_recovery_target(
-        (_slot(1, contextual=False),),
-        original_start=NOW,
-        original_end=NOW + timedelta(hours=1),
-        source_contextual=True,
-    )
-    assert target is not None
-    assert target.actionable is False
-    assert target.blocked_reason == "contextual_source_requires_contextual_target"
+    assert target is None
 
 
 def test_execution_replay_fingerprint_is_bound_to_actor_and_idempotency_key() -> None:
