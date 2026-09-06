@@ -10,9 +10,7 @@ def _load(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
-def _first_difference(
-    expected: dict[str, Any], actual: dict[str, Any]
-) -> dict[str, object] | None:
+def _first_difference(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, object] | None:
     keys = sorted(set(expected) | set(actual))
     for key in keys:
         if key not in expected:
