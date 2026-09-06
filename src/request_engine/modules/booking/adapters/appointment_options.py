@@ -59,12 +59,6 @@ class SignedAppointmentOptionCodec:
         now = _require_aware(self._now(), "codec clock")
         expires_at = now + self._ttl
         resources = _sorted_resources(slot.resources)
-        amount = cast(Decimal, slot.amount)
-        currency = cast(str, slot.currency)
-        duration = cast(int, slot.planned_duration_minutes)
-        location_revision = cast(int, slot.location_operational_revision)
-        fingerprint = cast(str, slot.configuration_fingerprint)
-        location_id = cast(UUID, slot.location_id)
 
         payload: dict[str, object] = {
             "v": _FORMAT,
@@ -72,7 +66,7 @@ class SignedAppointmentOptionCodec:
             "offering_version_id": str(slot.offering_version_id),
             "start_at": _require_aware(slot.start_at, "slot.start_at").isoformat(),
             "end_at": _require_aware(slot.end_at, "slot.end_at").isoformat(),
-            "location_id": str(location_id),
+            "location_id": str(slot.location_id),
             "resources": [
                 {
                     "requirement_id": str(choice.requirement_id),
@@ -85,11 +79,11 @@ class SignedAppointmentOptionCodec:
                 }
                 for choice in resources
             ],
-            "planned_duration_minutes": duration,
-            "amount": str(amount),
-            "currency": currency,
-            "location_operational_revision": location_revision,
-            "configuration_fingerprint": fingerprint,
+            "planned_duration_minutes": slot.planned_duration_minutes,
+            "amount": str(slot.amount),
+            "currency": slot.currency,
+            "location_operational_revision": slot.location_operational_revision,
+            "configuration_fingerprint": slot.configuration_fingerprint,
             "issued_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
@@ -176,15 +170,13 @@ class SignedAppointmentOptionCodec:
 
 
 def _validate_slot(slot: AppointmentSlot) -> None:
-    if slot.location_id is None:
-        raise ValueError("AppointmentSlot requires location_id")
-    if slot.planned_duration_minutes is None or slot.planned_duration_minutes <= 0:
+    if slot.planned_duration_minutes <= 0:
         raise ValueError("AppointmentSlot requires positive planned duration")
-    if slot.amount is None or slot.amount < 0:
+    if slot.amount < 0:
         raise ValueError("AppointmentSlot requires non-negative amount")
-    if slot.currency is None or not _is_currency(slot.currency):
+    if not _is_currency(slot.currency):
         raise ValueError("AppointmentSlot requires uppercase three-letter currency")
-    if slot.location_operational_revision is None or slot.location_operational_revision <= 0:
+    if slot.location_operational_revision <= 0:
         raise ValueError("AppointmentSlot requires Location operational revision")
     if not slot.configuration_fingerprint:
         raise ValueError("AppointmentSlot requires configuration fingerprint")
