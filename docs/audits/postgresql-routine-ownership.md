@@ -2,9 +2,11 @@
 
 Status: pre-rebaseline effective-model audit
 
-Source: effective catalog version 5 from green head `4a4a3e20ad79cecf59132f55b8fd671023b06427`, adjusted for `0044_remove_redundant_slot_guard`, which removes only `request_engine.guard_slot_offer_subject_match()`.
+Source: exact PostgreSQL 18 catalog from green head `3aa13def2102e3fdb225d5a7302971f8f8db824b`, CI #4126, after migrations through `0049_consolidate_recovery_bump`.
 
-Every surviving routine is accounted for exactly once: **146/146 classified, 0 unclassified**. `Capability owner` describes semantic responsibility. Entries under explicit composition sections are intentionally cross-capability PostgreSQL boundaries and are not assigned falsely to one module.
+Every surviving routine is accounted for exactly once: **145/145 classified, 0 unclassified**. `Capability owner` describes semantic responsibility. Entries under explicit composition sections are intentionally cross-capability PostgreSQL boundaries and are not assigned falsely to one module.
+
+The exact-head cohesion analyzer reports **0 exact routine implementation duplicates** and **82/82 trigger-returning routines referenced by at least one trigger**.
 
 Unless stated otherwise, classification is `KEEP`.
 
@@ -180,25 +182,28 @@ These guards are installed on Booking-owned `reservations` and fence the exact D
 - `request_engine.guard_discovery_handoff_latest_version()`
 - `request_engine.guard_discovery_handoff_reservation()`
 
-## Live Capacity ↔ Operational Recovery composition — 15
+## Live Capacity ↔ Operational Recovery composition — 14
 
 These routines maintain/read the synchronous recovery freshness fence and schedule/coalesce reassessment. Their cross-owner source reads are intentional because the fence exists specifically to version the F4/F5 composition scope.
 
 - `request_cmd.lock_recovery_source_revision()`
 - `request_cmd.schedule_recovery_reassessment()`
 - `request_engine.bump_capacity_claim_recovery_source_revision()`
+- `request_engine.bump_direct_queue_recovery_source_revision()` — shared by direct QueueEntry and Live Capacity projection-policy changes whose rows both carry `organization_id` + `service_queue_id`.
 - `request_engine.bump_estimate_policy_recovery_source_revision()`
 - `request_engine.bump_intake_control_recovery_source_revision()`
 - `request_engine.bump_interruption_recovery_source_revision()`
 - `request_engine.bump_location_revision_recovery_sources()`
-- `request_engine.bump_projection_policy_recovery_source_revision()`
-- `request_engine.bump_queue_recovery_source_revision()`
 - `request_engine.bump_recovery_source_revision()`
 - `request_engine.bump_reservation_recovery_source_revision()`
 - `request_engine.bump_resource_activity_recovery_source_revision()`
 - `request_engine.bump_resource_revision_recovery_sources()`
 - `request_engine.bump_service_session_recovery_source_revision()`
 - `request_read.recovery_source_revision()`
+
+`0049_consolidate_recovery_bump` removes the byte-for-byte duplicate `bump_queue_recovery_source_revision()` and `bump_projection_policy_recovery_source_revision()` implementations and rewires their two triggers to `bump_direct_queue_recovery_source_revision()`. The consolidation does not introduce dynamic SQL or a generalized table-dispatch helper; the new function consumes only `OLD/NEW.organization_id` and `OLD/NEW.service_queue_id`, matching the two source relations' shared trigger contract.
+
+Classification: consolidated freshness helper `KEEP`; removed duplicate helpers `REMOVE` resolved.
 
 ## Queue ↔ Delivery composition — 3
 
@@ -221,7 +226,7 @@ These are the explicit atomic lifecycle boundary introduced/hardened by `0043`; 
 | Platform | 33 |
 | Booking | 29 |
 | Tenancy | 17 |
-| Live Capacity + Operational Recovery | 15 |
+| Live Capacity + Operational Recovery | 14 |
 | Queue | 12 |
 | Discovery | 11 |
 | Booking + Queue | 6 |
@@ -234,8 +239,8 @@ These are the explicit atomic lifecycle boundary introduced/hardened by `0043`; 
 | Live Capacity | 2 |
 | Requests | 1 |
 | Tenancy + Booking authority ledger | 1 |
-| **Total** | **146** |
+| **Total** | **145** |
 
 ## Rebaseline implication
 
-Routine ownership is no longer unclassified for the post-`0044` effective topology. Final exact-head catalog validation must still prove that the removed SlotOffer routine is absent and that no later migration added an unclassified routine. Trigger ownership is audited separately in `postgresql-trigger-topology.md`; its installation topology is the final authority for whether a cross-capability routine is local or an explicit composition boundary.
+Routine ownership is exhaustive for the #4126 post-`0049` effective topology: **145 routines, 0 unclassified, 0 exact implementation duplicates, and 0 unreferenced trigger-returning routines**. Final exact-head catalog validation must reproduce those structural properties after the remaining audit/documentation work. Trigger ownership is audited separately in `postgresql-trigger-topology.md`; its installation topology remains the authority for whether a cross-capability routine is local or an explicit composition boundary.
