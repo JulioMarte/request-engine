@@ -10,6 +10,9 @@ from typing import Any, cast
 ROOT = Path(__file__).resolve().parents[2]
 _VERSIONED = re.compile(r"^(?P<family>.+)_v(?P<version>[0-9]+)$")
 _TRIGGER_CALL = re.compile(r"EXECUTE FUNCTION (?P<routine>[^\s(]+)\(")
+_EXTERNAL_VIEW_CONTRACTS = {
+    "request_admin.worker_dead_letters_v1": "docs/v3/10-worker-runtime-hardening.md",
+}
 
 
 def _dict_rows(payload: dict[str, object], key: str) -> list[dict[str, Any]]:
@@ -243,6 +246,7 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
     for view in views:
         schema = str(view["schema_name"])
         name = str(view["relation_name"])
+        label = f"{schema}.{name}"
         definition = cast(str | None, view.get("definition"))
         match = _VERSIONED.match(name)
         if match:
@@ -250,16 +254,18 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
                 {"name": name, "version": int(match.group("version"))}
             )
         if definition:
-            duplicate_definitions[definition].append(f"{schema}.{name}")
+            duplicate_definitions[definition].append(label)
         references = _production_references(name)
         database_dependents = view_dependents.get((schema, name), [])
+        external_contract = _EXTERNAL_VIEW_CONTRACTS.get(label)
         view_usage.append(
             {
-                "view": f"{schema}.{name}",
+                "view": label,
                 "production_references": references,
                 "production_reference_count": len(references),
                 "database_view_dependents": database_dependents,
                 "database_view_dependent_count": len(database_dependents),
+                "external_contract": external_contract,
             }
         )
 
@@ -276,21 +282,26 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
         for row in view_usage
         if cast(int, row["production_reference_count"]) == 0
     )
+    external_contract_views = sorted(
+        cast(str, row["view"]) for row in view_usage if row["external_contract"] is not None
+    )
     orphan_view_candidates = sorted(
         cast(str, row["view"])
         for row in view_usage
         if cast(int, row["production_reference_count"]) == 0
         and cast(int, row["database_view_dependent_count"]) == 0
+        and row["external_contract"] is None
     )
     trigger_routines = _trigger_routines(catalog)
     referenced_trigger_routines = _trigger_routine_names(catalog)
 
     result: dict[str, object] = {
-        "schema_version": 4,
+        "schema_version": 5,
         "view_count": len(views),
         "version_families": version_families,
         "exact_view_definition_duplicates": sorted(exact_view_duplicates),
         "zero_production_reference_views": zero_reference_views,
+        "external_contract_views": external_contract_views,
         "orphan_view_candidates": orphan_view_candidates,
         "view_usage": sorted(view_usage, key=lambda row: cast(str, row["view"])),
         "exact_routine_implementation_duplicates": _exact_routine_duplicates(catalog),
@@ -302,12 +313,12 @@ def analyze(catalog: dict[str, object]) -> dict[str, object]:
         "unvalidated_constraints": _unvalidated_constraints(catalog),
         "immutable_app_mutation_grants": _immutable_app_mutation_grants(catalog),
         "note": (
-            "All duplicate/orphan outputs are review candidates, not automatic deletion decisions. "
-            "Routine comparison ignores only the declared routine name while preserving signature, "
-            "security, volatility, configuration and implementation. Index comparison ignores only "
-            "the index name. RLS/grant outputs identify structural authority anomalies, not "
-            "business authorization by themselves. External SQL callers and published contracts "
-            "still require review."
+            "Duplicate/orphan outputs are review candidates, not automatic deletion decisions. "
+            "Externally consumed operator views require an explicit repository contract and are "
+            "reported separately from orphan candidates. Routine comparison ignores only the "
+            "declared routine name while preserving signature, security, volatility, configuration "
+            "and implementation. Index comparison ignores only the index name. RLS/grant outputs "
+            "identify structural authority anomalies, not business authorization by themselves."
         ),
     }
     result.update(_rls_analysis(catalog))
