@@ -2,9 +2,9 @@
 
 Status: pre-rebaseline effective-model audit
 
-Source: catalog version 5 from green head `4a4a3e20ad79cecf59132f55b8fd671023b06427`, adjusted through `0048_remove_legacy_location`. `0044_remove_redundant_slot_guard` removes the redundant SlotOffer subject trigger; `0048` removes `availability_schedules` and therefore its capability-local `availability_schedules_bump_resource` trigger.
+Source: exact PostgreSQL 18 catalog from green head `3aa13def2102e3fdb225d5a7302971f8f8db824b`, CI #4126, after migrations through `0049_consolidate_recovery_bump`.
 
-The post-`0048` topology contains **162 triggers**. Every trigger resolves to a classified routine and a classified relation; there are no unknown trigger functions.
+The post-`0049` topology contains **162 triggers**. Every trigger resolves to a classified routine and a classified relation; the exact-head cohesion analyzer reports **82 trigger-returning routines, all 82 referenced, 0 unreferenced**.
 
 Classification result:
 
@@ -12,7 +12,7 @@ Classification result:
 |---|---:|---|
 | capability-local invariant | 71 | `KEEP` |
 | shared Platform persistence mechanic | 67 | `KEEP` |
-| explicit cross-capability composition | 24 | `KEEP` after the redundant SlotOffer subject guard removal |
+| explicit cross-capability composition | 24 | `KEEP` after the reviewed consolidations/removals |
 | unexplained owner mismatch | **0** | none |
 | **Total** | **162** | |
 
@@ -48,16 +48,18 @@ These functions are not classified as ordinary Discovery-local guards: they are 
 These triggers advance the synchronous recovery source revision when authoritative facts that can change the F4/F5 assessment scope change. They are the reason the freshness ledger is not disposable shadow state.
 
 - `capacity_claims.capacity_claims_bump_recovery_source_revision` → `request_engine.bump_capacity_claim_recovery_source_revision()`
-- `live_capacity_projection_policies.live_capacity_projection_policies_bump_recovery_source_revision` → `request_engine.bump_projection_policy_recovery_source_revision()`
+- `live_capacity_projection_policies.live_capacity_projection_policies_bump_recovery_source_revision` → `request_engine.bump_direct_queue_recovery_source_revision()`
 - `live_capacity_workload_estimate_policies.live_capacity_workload_estimate_policies_bump_recovery_source_r` → `request_engine.bump_estimate_policy_recovery_source_revision()`
 - `locations.locations_bump_recovery_source_revision` → `request_engine.bump_location_revision_recovery_sources()`
-- `queue_entries.queue_entries_bump_recovery_source_revision` → `request_engine.bump_queue_recovery_source_revision()`
+- `queue_entries.queue_entries_bump_recovery_source_revision` → `request_engine.bump_direct_queue_recovery_source_revision()`
 - `reservations.reservations_bump_recovery_source_revision` → `request_engine.bump_reservation_recovery_source_revision()`
 - `resource_activities.resource_activities_bump_recovery_source_revision` → `request_engine.bump_resource_activity_recovery_source_revision()`
 - `resources.resources_bump_recovery_source_revision` → `request_engine.bump_resource_revision_recovery_sources()`
 - `service_queue_intake_controls.service_queue_intake_controls_bump_recovery_source_revision` → `request_engine.bump_intake_control_recovery_source_revision()`
 - `service_session_interruptions.service_session_interruptions_bump_recovery_source_revision` → `request_engine.bump_interruption_recovery_source_revision()`
 - `service_sessions.service_sessions_bump_recovery_source_revision` → `request_engine.bump_service_session_recovery_source_revision()`
+
+`0049_consolidate_recovery_bump` keeps both source triggers but replaces their two identical helper routines with one narrow shared helper. The trigger count therefore remains 162 while the routine count falls by one. The consolidation changes no source relation, trigger timing/event set or recovery-fence target.
 
 Classification: `KEEP` as the explicit Live Capacity ↔ Operational Recovery transactional freshness boundary.
 
@@ -86,10 +88,12 @@ The remaining 71 triggers invoke a routine classified to the same capability as 
 
 The removed `availability_schedules_bump_resource` trigger belonged to this class. Its removal follows directly from removal of the pre-launch `availability_schedules` recurring-authority table; `schedule_exceptions` and contextual assignment children retain their current Resource revision propagation paths.
 
-Because both sides of each surviving installation have already been exhaustively mapped in `postgresql-relation-ownership.md` and `postgresql-routine-ownership.md`, these triggers require no artificial cross-module owner.
+Because both sides of each surviving installation have already been mapped in `postgresql-relation-ownership.md` and `postgresql-routine-ownership.md`, these triggers require no artificial cross-module owner.
 
 Classification: `KEEP`.
 
 ## Rebaseline implication
 
-The trigger topology has no remaining unexplained cross-owner installation in the post-`0048` model. Final exact-head CI must confirm the effective catalog contains 162 triggers, no `availability_schedules_bump_resource`, no `slot_offers_00_guard_subject_match`, and no `guard_slot_offer_subject_match()` routine. Any later migration that changes those counts requires re-running the topology classification rather than treating these numbers as a permanent repository freeze.
+The #4126 post-`0049` topology has **162 triggers, 82 referenced trigger functions and no unexplained cross-owner installation**. It contains neither `availability_schedules_bump_resource` nor `slot_offers_00_guard_subject_match`, and the removed `guard_slot_offer_subject_match()`, `bump_queue_recovery_source_revision()` and `bump_projection_policy_recovery_source_revision()` routines are absent.
+
+Final exact-head CI must reproduce these structural properties after the remaining audit/documentation work. The numbers are evidence for this intended schema, not a permanent repository-shape freeze; any later schema change requires re-running the topology classification.
