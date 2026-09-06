@@ -9,6 +9,10 @@ from psycopg.rows import dict_row
 
 ROLE_PREFIX = "request_engine_%"
 
+# pg_roles deliberately masks rolpassword as ******** for every role. This proof
+# runs as the PostgreSQL bootstrap superuser, so use pg_authid for the actual
+# nullable credential state as well as the authoritative cluster-global role
+# attributes.
 ROLE_QUERY = """
     SELECT rolname AS role_name,
            rolsuper AS superuser,
@@ -21,7 +25,7 @@ ROLE_QUERY = """
            rolconnlimit AS connection_limit,
            rolvaliduntil::text AS valid_until,
            rolpassword IS NOT NULL AS has_password
-    FROM pg_roles
+    FROM pg_authid
     WHERE rolname LIKE %s
     ORDER BY rolname
 """
