@@ -8,7 +8,10 @@ from request_engine.modules.booking.application.commands.book_appointment import
     BookAppointmentCommand,
     book_appointment,
 )
-from request_engine.modules.booking.application.errors import AppointmentOptionStale, OfferingVersionNotBookable
+from request_engine.modules.booking.application.errors import (
+    AppointmentOptionStale,
+    OfferingVersionNotBookable,
+)
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
 
 
