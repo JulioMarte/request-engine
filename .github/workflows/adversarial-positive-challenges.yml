@@ -33,6 +33,8 @@ jobs:
             nodeid: tests/e2e/test_f6_mutation_concurrency_matrix.py::test_f6_concurrent_recovery_proposal_and_execution_replay_once
           - name: resource-wide-config-race
             nodeid: tests/integration/f1_operational_profile/test_contextual_booking_additional_races.py::test_resource_wide_exception_serializes_before_book_and_makes_option_stale
+          - name: same-resource-two-locations-no-oversell
+            nodeid: tests/integration/f1_operational_profile/test_adversarial_multilocation_capacity.py::test_same_resource_can_be_assigned_to_two_locations_but_cannot_be_oversold
     services:
       postgres:
         image: postgres:18
