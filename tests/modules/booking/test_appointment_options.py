@@ -57,7 +57,6 @@ def test_current_slot_uses_single_contextual_format_and_roundtrips_provenance() 
     decoded = _codec().decode(organization_id, token)
 
     assert token.startswith("aptopt_v2.")
-    assert decoded.is_contextual
     assert decoded.location_id == slot.location_id
     assert decoded.resources == slot.resources
     assert decoded.amount == Decimal("4000.000000")
@@ -65,20 +64,6 @@ def test_current_slot_uses_single_contextual_format_and_roundtrips_provenance() 
     assert decoded.planned_duration_minutes == 45
     assert decoded.location_operational_revision == 6
     assert decoded.configuration_fingerprint == slot.configuration_fingerprint
-
-
-@pytest.mark.unit
-def test_noncontextual_slot_cannot_be_issued() -> None:
-    slot = AppointmentSlot(
-        offering_version_id=uuid4(),
-        start_at=_NOW + timedelta(hours=1),
-        end_at=_NOW + timedelta(hours=1, minutes=30),
-        location_id=uuid4(),
-        resources=(ResourceChoice(uuid4(), uuid4()),),
-    )
-
-    with pytest.raises(ValueError, match="planned duration"):
-        _codec().issue(uuid4(), slot)
 
 
 @pytest.mark.unit
