@@ -1,4 +1,16 @@
-from scripts.db.compare_schema_catalogs import compare
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+from typing import Any, Callable, cast
+
+_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "db" / "compare_schema_catalogs.py"
+_SPEC = importlib.util.spec_from_file_location("compare_schema_catalogs", _SCRIPT)
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError("cannot load compare_schema_catalogs.py")
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+compare = cast(Callable[[dict[str, Any], dict[str, Any]], dict[str, object]], _MODULE.compare)
 
 
 def _column(name: str, ordinal: int) -> dict[str, object]:
