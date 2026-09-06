@@ -1,6 +1,6 @@
 # Cross-tenant identity and shared capacity — implementation design
 
-Status: Implemented capability for development integration. Acceptance of this capability is gated by the exact-head CI/evidence run for the pull request; it does **not** by itself declare the global V3 freeze/release complete.
+Status: Current implemented capability under pre-production cohesion/rebaseline optimization. Acceptance of changes to this capability is gated by exact-head CI/evidence; historical V3 freeze/release terminology is not authority for the current product model.
 
 ## Goal
 
@@ -10,12 +10,14 @@ Allow one real-world indivisible capacity—for example a doctor, consultant, st
 
 - `Organization` remains the tenant security and administrative boundary.
 - `Party` remains tenant-local; this capability does not create a global customer/patient directory.
-- `Resource` remains tenant-local and keeps Organization-specific availability and booking configuration.
-- `CapacityClaim` remains the sole authoritative capacity-consumption ledger.
+- `Resource` remains tenant-local and keeps Organization-specific capacity and qualification configuration.
+- Resource-at-Location eligibility is represented by `ResourceLocationAssignment`; recurring contextual availability is represented by `ResourceLocationAvailability`.
+- A Resource may have temporally overlapping assignments in different Locations. This is eligibility/provenance, not independent duplicated capacity. Overlap for the same Resource and same Location remains prohibited.
+- `CapacityClaim` remains the sole authoritative capacity-consumption ledger, so commitments against one Resource serialize on that Resource regardless of how many Locations make it eligible.
 - Cross-tenant identity correlation never grants cross-tenant read authority.
 - Shared-capacity conflicts expose only ordinary availability/unavailability semantics.
 - Government identifiers, email addresses, phone numbers and provider account IDs are not public or primary identifiers.
-- Unbound Resources retain the existing V3 tenant-local behavior.
+- Unbound Resources remain tenant-local and consume no Location eligibility until an assignment exists.
 - Initial shared capacity applies only to `exclusive` Resources.
 
 ## Implemented model
@@ -34,7 +36,7 @@ This cardinality rule cannot detect two different `GlobalIdentity` rows that con
 
 `SharedCapacityIdentity` is the implemented schema name for the hidden serialization root representing one indivisible physical/logical capacity shared by tenant-local Resources.
 
-The conceptual term “shared root” is used throughout transaction documentation, but the persisted/API identifier remains `SharedCapacityIdentity` in this version. Renaming it is nomenclature cleanup, not a correctness requirement, and is deliberately not mixed into the final security hardening.
+The conceptual term “shared root” is used throughout transaction documentation, but the persisted/API identifier remains `SharedCapacityIdentity` in this version. Renaming it is nomenclature cleanup, not a correctness requirement, and is deliberately not mixed into correctness hardening.
 
 ### SharedCapacityBinding
 
@@ -108,7 +110,8 @@ Shared capacity makes claim history security-relevant. PostgreSQL enforces that:
 - linked claims cannot rewrite organization, Resource, requirement, Hold, interval, quantity or creation time underneath an append-only shared link;
 - Hold claims may acquire a Reservation id once during legitimate promotion, but existing Reservation provenance cannot be retargeted;
 - when Hold and Reservation coexist on a promoted claim, subject, OfferingVersion, location and interval must agree;
-- replacement targets must be active claims for the same Organization, Reservation and requirement; self-reference and cycles are excluded by the supported transition protocol.
+- replacement targets must be active claims for the same Organization, Reservation and requirement; self-reference and cycles are excluded by the supported transition protocol;
+- contextual Reservation replacement records the authoritative `resource_location_assignment_id` on each replacement claim, preserving the Location eligibility/provenance that justified that commitment.
 
 ## SlotOffer transaction and integrity model
 
@@ -152,11 +155,10 @@ This boundary prevents a stable SlotOffer id from silently changing historical m
 PostgreSQL `23P01` is normalized to ordinary capacity-unavailable semantics only for operations that may acquire new capacity:
 
 - direct Booking;
-- CapacityHold acquisition;
 - Reservation reschedule;
 - SlotOffer Hold acquisition.
 
-Cancellation, Hold confirmation, SlotOffer acceptance/promotion and release operate on already-owned capacity. Unexpected `23P01` from those paths propagates as an invariant failure rather than being disguised as normal contention.
+Cancellation, SlotOffer acceptance/promotion and release operate on already-owned capacity. Unexpected `23P01` from those paths propagates as an invariant failure rather than being disguised as normal contention.
 
 The public Booking API returns the same opaque `appointment_unavailable` response for local and shared contention. The global HTTP integrity handler does not translate arbitrary `23P01` errors into Booking failures.
 
@@ -172,21 +174,26 @@ The operator day-board slice also touches Booking API composition, but it is rea
 
 The S0b-R2 party-governance slice touched `bootstrap/http.py` composition plumbing only: it passes the deployment-supplied acting-operator capability source through to the entrypoint's operator resolution (the relay admitted by `platform.acting_for_operator` then runs semantic capability checks against the *operator's* tenant-filtered grant set). It introduces no shared-capacity surface, no cross-tenant read or write path, and no change to lock order or the `23P01` boundary above; all party/revision/staff mutations remain strictly tenant-scoped and enforced by the relay's fail-closed checks described in `docs/v3/38` §9.1.
 
-### Post-V3 contextual booking extension
+### Current contextual Booking model
 
-F1 operational profile/contextual supply extends direct Booking with Resource-at-Location configuration while preserving every shared-capacity rule above.
+F1 operational profile/contextual supply is now the sole Resource-at-Location scheduling model used by current Booking. The pre-launch compatibility structures `resources.location_id` and `availability_schedules` are removed from the effective schema; current code must not recreate or read them.
 
-For a contextual `aptopt_v2` direct booking:
+For contextual direct booking and Reservation reschedule:
 
 - the tenant-local `Resource` remains the local capacity root;
-- `ResourceLocationAssignment` is eligibility/provenance only and never replaces `CapacityClaim` or `SharedCapacityIdentity` serialization;
-- contextual booking revalidates Offering/Location/assignment/schedule/commercial observations before claim creation;
-- if the Resource has a shared-capacity binding, the existing shared-root lock/contended-capacity path remains mandatory;
-- local and cross-tenant shared contention remain observationally identical at the public Booking error boundary;
-- contextual CapacityHold and contextual Reservation reschedule are deliberately unsupported in F1 and fail closed as `contextual_commitment_unsupported` **before** released-V3 commitment handlers can discard assignment/schedule/commercial provenance;
-- released `aptopt_v1` Hold/reschedule behavior remains unchanged.
+- `ResourceLocationAssignment` is Location eligibility/provenance only and never replaces `CapacityClaim` or `SharedCapacityIdentity` serialization;
+- a Resource may be eligible through overlapping assignments in different Locations; this does **not** create independent capacity copies because all commitments still consume the same Resource capacity and, when bound, the same hidden shared root;
+- assignments for the same Resource and same Location may not overlap, preventing ambiguous duplicate contextual provenance for that Location;
+- recurring Resource-at-Location availability comes only from `ResourceLocationAvailability`; Location timezone/operational constraints come from the assigned Location;
+- direct Booking revalidates Offering, Location, assignment, schedule, commercial terms and Resource observations before claim creation;
+- Reservation reschedule first authorizes the acting principal against the Reservation's existing `subject_party_id` under `MANAGE_APPOINTMENT_SCOPE`, subject to the explicit operator-override contract;
+- Reservation reschedule locks the union of old and replacement Resources before replacing claims, resolves and locks selected assignments, checks Resource availability revisions, Location operational revision, assignment revisions, schedule/exceptions and contextual commercial terms, and rejects stale configuration fingerprints;
+- reschedule preserves the Reservation's committed amount/currency/planned-duration semantics; a target whose current contextual terms would alter those committed commercial facts is rejected rather than silently repriced;
+- each replacement `CapacityClaim` records the selected `resource_location_assignment_id` so historical commitment provenance does not depend on a mutable or inferred Resource location;
+- if a Resource has a shared-capacity binding, direct Booking and reschedule continue through the existing shared-root lock/contended-capacity path;
+- local and cross-tenant shared contention remain observationally identical at the public Booking error boundary.
 
-This extension changes the Booking/API error boundary only to classify unsupported contextual commitment attempts explicitly. It does not weaken shared-capacity privacy, expose hidden shared-root identity, introduce a second capacity ledger, or reinterpret arbitrary PostgreSQL integrity failures as normal contention.
+The removal of `resources.location_id` and `availability_schedules` is therefore a pre-launch model consolidation, not a relaxation of shared-capacity serialization. Location assignment answers **where the Resource is eligible**; `CapacityClaim` and, when present, `SharedCapacityIdentity` answer **whether the Resource's capacity is already consumed**. These responsibilities must remain separate.
 
 ### F2 geospatial cross-tenant discovery extension
 
@@ -198,14 +205,14 @@ For a `discoopt_v1` booking selected from cross-tenant discovery:
 - concrete Resource selection remains server-side handoff state and hidden provider identity is not serialized into the public token;
 - the handoff preserves exact Publication and Offering-to-classification Mapping observations, but neither fact consumes capacity;
 - normal tenant `appointments.book` authority is still required after selection;
-- Booking resolves the opaque handoff and revalidates Publication/Mapping plus the normal F1 schedule, assignment, terms and Resource observations inside the authoritative booking transaction;
+- Booking resolves the opaque handoff and revalidates Publication/Mapping plus the normal contextual schedule, assignment, terms and Resource observations inside the authoritative booking transaction;
 - `CapacityClaim` remains the only capacity-consumption ledger;
 - if a selected Resource is bound to shared capacity, Booking follows the same local-Resource → hidden-SharedCapacityIdentity lock topology described above before committing the claim;
 - two discoverable tenant-local Resources bound to one real-world shared root therefore still arbitrate on the same hidden mutex;
 - a lost local or cross-tenant shared contention race remains the ordinary opaque `appointment_unavailable` outcome and does not reveal the foreign tenant, Reservation, shared-root identity or GlobalIdentity;
 - publication or classification revocation can make the discovery handoff stale, but it cannot rewrite or bypass already-authoritative shared-capacity provenance.
 
-The dedicated `request_engine_discovery` runtime role has no authority to enumerate private shared-capacity tables and no generic tenant-table authority. The internal Booking availability gateway is publication-fenced and may calculate slots, but only the normal Booking commitment path can create Reservation/CapacityClaim state. F2 therefore adds a discovery trust boundary without weakening ADR 0011/V3 shared-capacity serialization or privacy.
+The dedicated `request_engine_discovery` runtime role has no authority to enumerate private shared-capacity tables and no generic tenant-table authority. The internal Booking availability gateway is publication-fenced and may calculate slots, but only the normal Booking commitment path can create Reservation/CapacityClaim state. F2 therefore adds a discovery trust boundary without weakening shared-capacity serialization or privacy.
 
 ## Privacy contract
 
@@ -231,8 +238,7 @@ The branch contains PostgreSQL/application tests for:
 - guessed foreign Resource rejection through protected shared-root locking;
 - local-Resource-first and stable shared-root lock ordering;
 - simultaneous cross-tenant Booking arbitration and half-open adjacency;
-- Hold vs Booking and SlotOffer vs Booking winner orders;
-- fallback to another eligible Resource after hidden shared-root contention without orphan speculative state;
+- SlotOffer vs Booking winner orders and speculative fallback without orphan state;
 - SlotOffer semantic source locks, offered-state consistency, terminal acceptance consistency and source provenance immutability;
 - CapacityClaim non-reactivation, promotion coherence, replacement provenance and linked historical immutability;
 - person one-active-root cardinality;
@@ -240,15 +246,17 @@ The branch contains PostgreSQL/application tests for:
 - reschedule rollback and simultaneous inverse-root reschedules;
 - binding activation/revocation races, backfill, historical-link preservation and unsafe different-root rebind rejection;
 - opaque public Booking errors and narrow persistence-level conflict translation;
-- clean PostgreSQL 18 bootstrap, schema fingerprint/catalog audit and generated `0001_initial` equivalence;
 - contextual direct booking with a globally bound Resource respecting the same hidden shared-capacity mutex;
-- contextual unsupported Hold/reschedule failing closed without falling through to released V3 commitment handlers.
+- contextual Reservation reschedule retaining subject authority, assignment provenance, configuration freshness and the existing local/shared capacity mutex;
+- cross-Location assignment overlap remaining legal while same-Location temporal overlap remains rejected;
+- absence of the pre-launch `resources.location_id` and `availability_schedules` compatibility schema;
+- Resource bootstrap creating a contextual Location assignment even when no weekly availability windows are supplied.
 
 F2 adds required evidence that discovery publication cannot become shared-capacity authority, that `discoopt_v1` does not expose hidden Resource/shared-root identifiers, and that discovery-originated concurrent Booking still resolves through the existing hidden shared mutex with one winner and the normal opaque loser semantics.
 
-Release/concurrency fixtures that exercise these temporal paths must use deterministic intervals that remain future-relative for the lifetime of the proof corpus. A calendar date that can silently become historical is not valid evidence for SlotOpportunity/Booking availability semantics; the current fixtures therefore use a far-future Monday while preserving the same weekday and Santo Domingo wall-clock schedule relationship.
+Temporal fixtures must use deterministic intervals that remain future-relative for the lifetime of the proof corpus. A calendar date that can silently become historical is not valid evidence for SlotOpportunity/Booking availability semantics; current fixtures therefore use far-future dates where the behavior depends on future eligibility.
 
-`V3-I62..V3-I66` and `R25..R29` remain tracked in the release matrices. Their matrix status is tied to Phase 6/global release evidence and should not be interpreted as a claim that landing this capability alone completes the global V3 release.
+Historical V3 release matrices may remain as provenance, but their matrix status is not current product authority and must not be used to reintroduce removed compatibility paths or freeze-era repository shape.
 
 ## Residual risks and explicit assumptions
 
@@ -257,29 +265,4 @@ Release/concurrency fixtures that exercise these temporal paths must use determi
 - Legitimate booking probes expose the accepted busy/free fact for the shared physical capacity.
 - Request-context GUCs recorded on authority events supplement database session provenance; they are not independently trusted against arbitrary SQL under a compromised session.
 - Global/shared identity retirement and merge/split are intentionally unsupported workflows in this capability.
-- There is no arbitrary maximum Resource count in `lock_shared_capacity_roots()` because the current normative V3 contract permits `0..N` resource requirements. A future cardinality limit must be introduced normatively.
-
-## Acceptance and release boundary
-
-This capability is acceptable for integration when the exact pull-request head passes the repository's required quality/architecture, PostgreSQL 18 V2 history, V3 repeated bootstrap, V3 candidate/vertical, concurrency, mutation, order-independence and evidence checks and the PR remains up to date/mergeable with `development`.
-
-That integration decision is narrower than the global V3 freeze/release decision. Any unrelated Phase 6 gates that remain incomplete continue to block global V3 release even after this capability is merged.
-
-## Business onboarding integration (post-baseline)
-
-The business onboarding capability (doc 44) integrates with this design without
-changing shared-capacity authority semantics:
-
-- `load_bookable_offering()` (used by the reservation commands) now resolves the
-  effective `booking_policy` through the append-only
-  `request_engine.offering_version_booking_policies` ledger (last revision wins,
-  bootstrap column as the initial value) instead of reading the
-  `offering_versions.booking_policy` column directly. The ledger override
-  changes lifecycle/policy parameters only (attendance, communications,
-  slot recovery, slot grid); it does not touch capacity authority, hold
-  semantics, or the hidden shared-capacity mutex.
-- Booking bootstrap creation routes (`POST /v1/booking/resources` and the
-  catalog onboarding routes) moved from the operations app composition to the
-  public capability-guarded app composition. They are new owner commands with
-  their own registered capabilities; they do not bypass
-  `require_operational_authority` on the persistence commands.
+- There is no arbitrary maximum Resource count in `lock_shared_capacity_roots()` because the current product contract permits `0..N` resource requirements. A future cardinality limit must be introduced normatively.
