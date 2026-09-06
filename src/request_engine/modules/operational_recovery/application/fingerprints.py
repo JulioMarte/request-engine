@@ -92,7 +92,6 @@ def affected_payload(item: AffectedReservation) -> dict[str, object]:
         "expected_revision": item.expected_revision,
         "original_start_at": item.original_start_at.isoformat(),
         "original_end_at": item.original_end_at.isoformat(),
-        "contextual_commitment": item.contextual_commitment,
         "target": target_payload(item.target) if item.target is not None else None,
         "replacement_target": (
             target_payload(item.replacement_target) if item.replacement_target is not None else None
