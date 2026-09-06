@@ -10,7 +10,27 @@ def _load(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
 
-def _first_difference(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, object] | None:
+def _normalized_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    positions: dict[tuple[str, str], int] = {}
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        key = (str(row["schema_name"]), str(row["relation_name"]))
+        position = positions.get(key, 0) + 1
+        positions[key] = position
+        normalized.append({**row, "ordinal": position})
+    return normalized
+
+
+def _normalize(catalog: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(catalog)
+    columns = cast(list[dict[str, Any]], catalog.get("columns", []))
+    normalized["columns"] = _normalized_columns(columns)
+    return normalized
+
+
+def _first_difference(
+    expected: dict[str, Any], actual: dict[str, Any]
+) -> dict[str, object] | None:
     keys = sorted(set(expected) | set(actual))
     for key in keys:
         if key not in expected:
@@ -48,17 +68,20 @@ def _first_difference(expected: dict[str, Any], actual: dict[str, Any]) -> dict[
 
 
 def compare(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, object]:
-    difference = _first_difference(expected, actual)
+    difference = _first_difference(_normalize(expected), _normalize(actual))
     return {
         "equivalent": difference is None,
         "first_difference": difference,
         "expected_counts": expected.get("counts"),
         "actual_counts": actual.get("counts"),
+        "normalizations": [
+            "column ordinals are densified per relation to ignore DROP COLUMN attnum gaps"
+        ],
     }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compare two effective schema catalogs exactly")
+    parser = argparse.ArgumentParser(description="Compare two effective schema catalogs")
     parser.add_argument("--expected", type=Path, required=True)
     parser.add_argument("--actual", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
