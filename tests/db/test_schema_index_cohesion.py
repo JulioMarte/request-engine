@@ -85,3 +85,38 @@ def test_reservation_day_board_predicate_can_use_temporal_gist_access_path(
 
     plan = "\n".join(str(row[0]) for row in rows)
     assert "reservations_org_during_gist" in plan
+
+
+@pytest.mark.postgres
+def test_unsupported_admin_health_views_are_absent(
+    admin_conn: PgConnection,
+) -> None:
+    rows = admin_conn.execute(
+        """
+        SELECT c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'request_admin'
+          AND c.relkind = 'v'
+          AND c.relname IN ('outbox_health_v1', 'scheduled_action_health_v1')
+        ORDER BY c.relname
+        """
+    ).fetchall()
+
+    assert rows == []
+
+
+@pytest.mark.postgres
+def test_worker_dead_letters_operator_projection_remains_supported(
+    admin_conn: PgConnection,
+) -> None:
+    definition = admin_conn.execute(
+        "SELECT pg_get_viewdef('request_admin.worker_dead_letters_v1'::regclass, true)"
+    ).fetchone()[0]
+
+    assert "scheduled_actions" in definition
+    assert "outbox_messages" in definition
+    assert "provider_events" in definition
+    assert "'scheduled_action'::text" in definition
+    assert "'outbox_message'::text" in definition
+    assert "'provider_event'::text" in definition
