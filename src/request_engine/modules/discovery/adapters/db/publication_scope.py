@@ -32,23 +32,19 @@ async def validate_scope(
                               AND l.id = :location_id AND l.active
                         ) AS location_ok,
                         (CAST(:resource_id AS uuid) IS NULL OR EXISTS (
-                            SELECT 1 FROM request_engine.resources r
+                            SELECT 1
+                            FROM request_engine.resources r
+                            JOIN request_engine.resource_location_assignments a
+                              ON a.organization_id = r.organization_id
+                             AND a.resource_id = r.id
+                             AND a.location_id = :location_id
+                             AND a.status = 'active'
+                             AND a.effective_during && tstzrange(
+                                 :effective_start, :effective_end, '[)'
+                             )
                             WHERE r.organization_id = :organization_id
-                              AND r.id = CAST(:resource_id AS uuid) AND r.active
-                              AND (
-                                  r.location_id = :location_id
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM request_engine.resource_location_assignments a
-                                      WHERE a.organization_id = r.organization_id
-                                        AND a.resource_id = r.id
-                                        AND a.location_id = :location_id
-                                        AND a.status = 'active'
-                                        AND a.effective_during && tstzrange(
-                                            :effective_start, :effective_end, '[)'
-                                        )
-                                  )
-                              )
+                              AND r.id = CAST(:resource_id AS uuid)
+                              AND r.active
                         )) AS resource_ok,
                         EXISTS (
                             SELECT 1

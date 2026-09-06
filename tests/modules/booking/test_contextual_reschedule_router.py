@@ -15,7 +15,6 @@ from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
 )
-from request_engine.modules.booking.application.errors import ContextualCommitmentUnsupported
 from request_engine.modules.booking.contracts.appointments import (
     AppointmentSlot,
     Reservation,
@@ -87,16 +86,6 @@ def _reschedule_endpoint(
     return cast(Callable[..., Awaitable[ReservationView]], route.endpoint)
 
 
-def _legacy_slot() -> AppointmentSlot:
-    return AppointmentSlot(
-        offering_version_id=uuid4(),
-        start_at=_NOW + timedelta(hours=1),
-        end_at=_NOW + timedelta(hours=1, minutes=30),
-        location_id=uuid4(),
-        resources=(ResourceChoice(uuid4(), uuid4()),),
-    )
-
-
 def _contextual_slot() -> AppointmentSlot:
     return AppointmentSlot(
         offering_version_id=uuid4(),
@@ -121,41 +110,21 @@ def _contextual_slot() -> AppointmentSlot:
 
 
 @pytest.mark.asyncio
-async def test_contextual_v2_reschedule_fails_closed_before_legacy_handler() -> None:
+async def test_reschedule_routes_full_provenance_to_current_handler() -> None:
     organization_id = uuid4()
     codec = _codec()
     handler = _RecordingRescheduleHandler()
     endpoint = _reschedule_endpoint(codec, handler)
-    token = codec.issue(organization_id, _contextual_slot())
-    assert token.startswith("aptopt_v2.")
-
-    with pytest.raises(ContextualCommitmentUnsupported, match="reschedule"):
-        await endpoint(
-            reservation_id=uuid4(),
-            body=RescheduleReservationBody(option_id=token, expected_revision=1),
-            actor=_actor(organization_id),
-            idempotency_key="contextual-reschedule-router",
-        )
-
-    assert handler.commands == []
-
-
-@pytest.mark.asyncio
-async def test_legacy_v1_reschedule_still_reaches_released_handler() -> None:
-    organization_id = uuid4()
-    codec = _codec()
-    handler = _RecordingRescheduleHandler()
-    endpoint = _reschedule_endpoint(codec, handler)
-    slot = _legacy_slot()
+    slot = _contextual_slot()
     token = codec.issue(organization_id, slot)
-    assert token.startswith("aptopt_v1.")
+    assert token.startswith("aptopt_v2.")
     reservation_id = uuid4()
 
     result = await endpoint(
         reservation_id=reservation_id,
         body=RescheduleReservationBody(option_id=token, expected_revision=7),
         actor=_actor(organization_id),
-        idempotency_key="legacy-reschedule-router",
+        idempotency_key="contextual-reschedule-router",
     )
 
     assert result.id == reservation_id
@@ -166,4 +135,9 @@ async def test_legacy_v1_reschedule_still_reaches_released_handler() -> None:
     assert command.start_at == slot.start_at
     assert command.resources == slot.resources
     assert command.location_id == slot.location_id
+    assert command.expected_planned_duration_minutes == slot.planned_duration_minutes
+    assert command.expected_amount == slot.amount
+    assert command.expected_currency == slot.currency
+    assert command.expected_location_operational_revision == slot.location_operational_revision
+    assert command.expected_configuration_fingerprint == slot.configuration_fingerprint
     assert command.expected_revision == 7

@@ -15,7 +15,7 @@ from .f6_copilot_support import copilot_actor, execute
 from .f6_roadmap_support import seed_location_operational_hours
 from .operational_support import PgConnection
 from .tenant_sandbox import client_with_actors, seed_tenant_sandbox
-from .world_clock import location_timezone
+from .world_clock import location_timezone, world_weekday
 
 pytestmark = [
     pytest.mark.asyncio,
@@ -41,6 +41,11 @@ async def test_rest_of_day_ignores_inactive_expired_and_future_hours(
     assert row is not None
     local_date = cast(date, row[0])
 
+    e2e_admin_conn.execute(
+        "DELETE FROM request_engine.location_operational_hours "
+        "WHERE organization_id=%s AND location_id=%s AND weekday=%s",
+        (sandbox.organization_id, sandbox.location_id, world_weekday(e2e_admin_conn, sandbox)),
+    )
     seed_location_operational_hours(
         e2e_admin_conn,
         sandbox,

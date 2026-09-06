@@ -9,12 +9,13 @@ if TYPE_CHECKING:
 
 
 def is_f2_discoverable(slot: AppointmentSlot) -> bool:
-    return (
-        slot.location_id is not None
-        and slot.configuration_fingerprint is not None
-        and slot.planned_duration_minutes is not None
-        and slot.amount is not None
-        and slot.currency is not None
+    return bool(slot.resources) and all(
+        choice.resource_location_assignment_id is not None
+        and choice.assignment_revision is not None
+        and choice.assignment_revision > 0
+        and choice.availability_revision is not None
+        and choice.availability_revision > 0
+        for choice in slot.resources
     )
 
 

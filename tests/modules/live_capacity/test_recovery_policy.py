@@ -22,7 +22,6 @@ def _planned(identity: int, *, hour: int) -> PlannedWorkloadFact:
         planned_starts_at=start,
         planned_ends_at=start + timedelta(hours=1),
         planned_duration_seconds=3600,
-        contextual_commitment=False,
     )
 
 

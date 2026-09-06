@@ -91,14 +91,12 @@ async def _build_affected(
         slots,
         original_start=commitment.planned_starts_at,
         original_end=commitment.planned_ends_at,
-        source_contextual=commitment.contextual_commitment,
     )
     replacement_target = choose_replacement_target(
         slots,
         original_start=commitment.planned_starts_at,
         original_end=commitment.planned_ends_at,
         source_resource_id=assessment.resource_id,
-        source_contextual=commitment.contextual_commitment,
     )
     return AffectedReservation(
         reservation_id=commitment.reservation_id,
@@ -109,5 +107,4 @@ async def _build_affected(
         original_end_at=commitment.planned_ends_at,
         target=target,
         replacement_target=replacement_target,
-        contextual_commitment=commitment.contextual_commitment,
     )

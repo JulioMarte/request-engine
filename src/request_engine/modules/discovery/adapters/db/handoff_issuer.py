@@ -54,7 +54,7 @@ class PostgresDiscoveryHandoffIssuer:
                         "mapping_id": candidate.mapping_id,
                         "mapping_revision": candidate.mapping_revision,
                         "offering_version_id": slot.offering_version_id,
-                        "location_id": cast(UUID, slot.location_id),
+                        "location_id": slot.location_id,
                         "selection": json.dumps(selection, separators=(",", ":")),
                         "expires_at": expires_at,
                     },
@@ -67,13 +67,13 @@ class PostgresDiscoveryHandoffIssuer:
 
 
 def _selection(slot: AppointmentSlot) -> dict[str, object]:
-    if slot.location_id is None or slot.configuration_fingerprint is None:
-        raise ValueError("F2 discovery requires contextual appointment supply")
-    if slot.amount is None or slot.currency is None or slot.planned_duration_minutes is None:
-        raise ValueError("F2 discovery requires deterministic commercial terms")
-    if slot.location_operational_revision is None:
-        raise ValueError("F2 discovery requires Location revision")
-    amount = slot.amount
+    for choice in slot.resources:
+        if choice.resource_location_assignment_id is None:
+            raise ValueError("F2 discovery requires ResourceLocationAssignment provenance")
+        if choice.assignment_revision is None or choice.assignment_revision <= 0:
+            raise ValueError("F2 discovery requires positive assignment revision")
+        if choice.availability_revision is None or choice.availability_revision <= 0:
+            raise ValueError("F2 discovery requires Resource availability revision")
     return {
         "offering_version_id": str(slot.offering_version_id),
         "start_at": slot.start_at.isoformat(),
@@ -83,10 +83,8 @@ def _selection(slot: AppointmentSlot) -> dict[str, object]:
             {
                 "requirement_id": str(choice.requirement_id),
                 "resource_id": str(choice.resource_id),
-                "resource_location_assignment_id": (
-                    str(choice.resource_location_assignment_id)
-                    if choice.resource_location_assignment_id is not None
-                    else None
+                "resource_location_assignment_id": str(
+                    cast(UUID, choice.resource_location_assignment_id)
                 ),
                 "assignment_revision": choice.assignment_revision,
                 "availability_revision": choice.availability_revision,
@@ -94,7 +92,7 @@ def _selection(slot: AppointmentSlot) -> dict[str, object]:
             for choice in slot.resources
         ],
         "planned_duration_minutes": slot.planned_duration_minutes,
-        "amount": str(amount),
+        "amount": str(slot.amount),
         "currency": slot.currency,
         "location_operational_revision": slot.location_operational_revision,
         "configuration_fingerprint": slot.configuration_fingerprint,

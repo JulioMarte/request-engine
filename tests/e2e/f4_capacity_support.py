@@ -10,7 +10,6 @@ from .operational_support import PgConnection
 from .tenant_sandbox import TenantSandbox, auth
 from .world_clock import (
     configure_world_timezone,
-    location_timezone,
     set_world_timezone,
     world_weekday,
     world_window_start,
@@ -37,17 +36,26 @@ def f4_actor(sandbox: TenantSandbox) -> ActorContext:
 
 
 def seed_live_execution_assignment(conn: PgConnection, sandbox: TenantSandbox) -> None:
-    conn.execute(
+    """Assert the baseline contextual assignment required by live-operation tests.
+
+    TenantSandbox now owns baseline Resource-at-Location supply.  Retaining a second
+    INSERT here would create overlapping authoritative assignments for the same
+    Resource and Location, which the production exclusion constraint correctly rejects.
+    """
+    assignment = conn.execute(
         """
-        INSERT INTO request_engine.resource_location_assignments (
-            organization_id, resource_id, location_id, effective_during
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange('2026-01-01T00:00:00+00'::timestamptz, NULL, '[)')
-        )
+        SELECT 1
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> clock_timestamp()
+        LIMIT 1
         """,
         (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    )
+    ).fetchone()
+    assert assignment is not None, "TenantSandbox must provide live Resource assignment"
 
 
 def seed_today_schedule(
@@ -60,17 +68,68 @@ def seed_today_schedule(
         set_world_timezone(conn, sandbox, business_timezone)
     else:
         configure_world_timezone(conn, sandbox)
-    timezone = location_timezone(conn, sandbox)
+
+    starts_at = world_window_start(conn)
+    weekday = world_weekday(conn, sandbox)
+    row = conn.execute(
+        """
+        SELECT id
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> %s::timestamptz
+        ORDER BY lower(effective_during) DESC
+        LIMIT 1
+        """,
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id, starts_at),
+    ).fetchone()
+    assert row is not None, "test sandbox has no active contextual Resource assignment"
+    assignment_id = row[0]
+
     conn.execute(
-        "DELETE FROM request_engine.availability_schedules "
-        "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
-        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox)),
+        """
+        DELETE FROM request_engine.location_operational_hours
+        WHERE organization_id = %s
+          AND location_id = %s
+          AND weekday = %s
+        """,
+        (sandbox.organization_id, sandbox.location_id, weekday),
     )
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules "
-        "(organization_id,resource_id,weekday,local_start,local_end,timezone) "
-        "VALUES (%s,%s,%s,'00:00','23:59',%s)",
-        (sandbox.organization_id, sandbox.resource_id, world_weekday(conn, sandbox), timezone.key),
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id,
+            location_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, '00:00', '23:59')
+        """,
+        (sandbox.organization_id, sandbox.location_id, weekday),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM request_engine.resource_location_availability
+        WHERE organization_id = %s
+          AND resource_location_assignment_id = %s
+          AND weekday = %s
+        """,
+        (sandbox.organization_id, assignment_id, weekday),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id,
+            resource_location_assignment_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, '00:00', '23:59')
+        """,
+        (sandbox.organization_id, assignment_id, weekday),
     )
 
 
@@ -93,8 +152,7 @@ async def same_day_slots(
     assert response.status_code == 200, response.text
     slots = cast(list[dict[str, Any]], response.json())
     assert len(slots) >= 2, (
-        "test world slot supply exhausted; the world business day is configured "
-        "in locations.timezone (default America/Santo_Domingo) and slot worlds "
-        "require hours of runway before its local midnight"
+        "test world slot supply exhausted; contextual worlds require both Location hours "
+        "and ResourceLocationAvailability with runway before local midnight"
     )
     return slots

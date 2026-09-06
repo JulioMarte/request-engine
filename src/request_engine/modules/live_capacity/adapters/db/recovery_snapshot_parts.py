@@ -14,7 +14,6 @@ def planned_payload(planned: tuple[PlannedWorkloadFact, ...]) -> list[dict[str, 
             "starts_at": item.planned_starts_at.isoformat(),
             "ends_at": item.planned_ends_at.isoformat(),
             "duration_seconds": item.planned_duration_seconds,
-            "contextual_commitment": item.contextual_commitment,
         }
         for item in sorted(
             planned,

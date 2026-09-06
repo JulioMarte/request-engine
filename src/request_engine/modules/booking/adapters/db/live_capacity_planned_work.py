@@ -28,15 +28,7 @@ async def load_planned_same_day_work(
                            r.subject_party_id,
                            r.revision,
                            lower(r.during) AS starts_at,
-                           upper(r.during) AS ends_at,
-                           EXISTS (
-                               SELECT 1
-                               FROM request_engine.capacity_claims contextual_claim
-                               WHERE contextual_claim.organization_id = r.organization_id
-                                 AND contextual_claim.reservation_id = r.id
-                                 AND contextual_claim.status = 'active'
-                                 AND contextual_claim.resource_location_assignment_id IS NOT NULL
-                           ) AS contextual_commitment
+                           upper(r.during) AS ends_at
                     FROM request_engine.reservations r
                     JOIN request_engine.capacity_claims c
                       ON c.organization_id = r.organization_id
@@ -79,7 +71,6 @@ async def load_planned_same_day_work(
             ),
             subject_party_id=cast(UUID, row["subject_party_id"]),
             reservation_revision=cast(int, row["revision"]),
-            contextual_commitment=cast(bool, row["contextual_commitment"]),
         )
         for row in rows
     )

@@ -59,7 +59,6 @@ class CopilotAtRiskCommitmentView(BaseModel):
     reservation_revision: int
     planned_starts_at: datetime
     planned_ends_at: datetime
-    contextual_commitment: bool
 
 
 class CopilotAtRiskView(BaseModel):

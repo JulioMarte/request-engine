@@ -17,12 +17,6 @@ from .tenant_sandbox import (
 
 
 def _seed_live_session(conn: PgConnection, sandbox: TenantSandbox) -> UUID:
-    conn.execute(
-        "INSERT INTO request_engine.resource_location_assignments "
-        "(organization_id,resource_id,location_id,effective_during) "
-        "VALUES (%s,%s,%s,tstzrange('2029-01-01T00:00Z',NULL,'[)'))",
-        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    )
     row = conn.execute(
         "INSERT INTO request_engine.queue_entries "
         "(organization_id,service_queue_id,subject_party_id,status,"

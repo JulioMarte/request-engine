@@ -1,7 +1,7 @@
-# Frozen reviewed executable surface of the request_engine_app runtime role,
-# in the ``schema.function(identity_arguments)`` form. Every entry is
-# introduced by an accepted, reviewed migration grant; this inventory must
-# change only together with a new reviewed grant and its own evidence.
+# Reviewed executable authority surface of the request_engine_app runtime role,
+# in the ``schema.function(identity_arguments)`` form. Every entry is introduced
+# by an accepted, reviewed migration grant; this inventory changes only together
+# with a reviewed grant and evidence for the authority being added or removed.
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
@@ -18,6 +18,14 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     "request_cmd.lock_recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)",
     "request_cmd.lock_scheduled_action_claim(p_action_id uuid, p_claim_token uuid)",
     "request_cmd.lock_shared_capacity_roots(p_organization_id uuid, p_resource_ids uuid[])",
+    (
+        "request_cmd.mark_queue_entry_service_completed(p_organization_id uuid, "
+        "p_queue_entry_id uuid, p_completed_at timestamp with time zone)"
+    ),
+    (
+        "request_cmd.mark_queue_entry_service_started(p_organization_id uuid, "
+        "p_queue_entry_id uuid, p_started_at timestamp with time zone)"
+    ),
     (
         "request_cmd.schedule_recovery_reassessment(p_organization_id uuid, "
         "p_service_queue_id uuid, p_revision bigint)"
@@ -56,4 +64,5 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_engine.resolve_current_party_authority(p_organization_id uuid, "
         "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
     ),
+    ("request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)"),
 }

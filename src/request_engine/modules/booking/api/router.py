@@ -163,8 +163,6 @@ def create_router(
     ) -> ReservationView:
         require_capability(actor, "appointments.reschedule")
         option = option_codec.decode(actor.organization_id, body.option_id)
-        if option.is_contextual:
-            raise booking_errors.ContextualCommitmentUnsupported("reschedule")
         reservation = await reschedule_reservation(
             reschedule_handler,
             RescheduleReservationCommand(
@@ -174,6 +172,11 @@ def create_router(
                 start_at=option.start_at,
                 resources=option.resources,
                 location_id=option.location_id,
+                expected_planned_duration_minutes=option.planned_duration_minutes,
+                expected_amount=option.amount,
+                expected_currency=option.currency,
+                expected_location_operational_revision=option.location_operational_revision,
+                expected_configuration_fingerprint=option.configuration_fingerprint,
                 idempotency_key=idempotency_key,
                 expected_revision=body.expected_revision,
                 allow_subject_override=actor.allows(SUBJECT_OVERRIDE_PERMISSION),

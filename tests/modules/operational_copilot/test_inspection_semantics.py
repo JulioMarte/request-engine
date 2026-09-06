@@ -51,7 +51,6 @@ class StubAtRiskReader:
                     planned_starts_at=datetime(2026, 8, 30, 14, 0, tzinfo=UTC),
                     planned_ends_at=datetime(2026, 8, 30, 14, 30, tzinfo=UTC),
                     planned_duration_seconds=1800,
-                    contextual_commitment=False,
                 ),
             ),
         )
@@ -90,5 +89,4 @@ def test_names_are_never_resolved_to_queues() -> None:
 
 
 def _run_interpret(copilot: OperationalCopilot, text: str):
-
     return asyncio.run(copilot.interpret(CTX, text))

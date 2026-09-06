@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
@@ -65,8 +66,20 @@ def proposal() -> RescheduleProposal:
         start_at=NOW + timedelta(hours=2),
         end_at=NOW + timedelta(hours=3),
         location_id=LOCATION,
-        resources=(ResourceChoice(REQUIREMENT, RESOURCE),),
-        actionable=True,
+        resources=(
+            ResourceChoice(
+                requirement_id=REQUIREMENT,
+                resource_id=RESOURCE,
+                resource_location_assignment_id=UUID(int=23),
+                assignment_revision=1,
+                availability_revision=1,
+            ),
+        ),
+        planned_duration_minutes=60,
+        amount=Decimal("3500"),
+        currency="DOP",
+        location_operational_revision=1,
+        configuration_fingerprint="sha256:workflow-reschedule-target",
     )
     affected = AffectedReservation(
         RESERVATION,

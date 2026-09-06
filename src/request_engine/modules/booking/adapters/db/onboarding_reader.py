@@ -20,24 +20,16 @@ class PostgresBookingOnboardingReader:
                         FROM request_engine.resources AS r
                         WHERE r.organization_id = :organization_id
                           AND r.active
-                          AND (
-                              EXISTS (
-                                  SELECT 1
-                                  FROM request_engine.resource_location_assignments AS a
-                                  JOIN request_engine.resource_location_availability AS w
-                                    ON w.organization_id = a.organization_id
-                                   AND w.resource_location_assignment_id = a.id
-                                   AND w.active
-                                  WHERE a.organization_id = r.organization_id
-                                    AND a.resource_id = r.id
-                              )
-                              OR EXISTS (
-                                  SELECT 1
-                                  FROM request_engine.availability_schedules AS s
-                                  WHERE s.organization_id = r.organization_id
-                                    AND s.resource_id = r.id
-                                    AND s.active
-                              )
+                          AND EXISTS (
+                              SELECT 1
+                              FROM request_engine.resource_location_assignments AS a
+                              JOIN request_engine.resource_location_availability AS w
+                                ON w.organization_id = a.organization_id
+                               AND w.resource_location_assignment_id = a.id
+                               AND w.active
+                              WHERE a.organization_id = r.organization_id
+                                AND a.resource_id = r.id
+                                AND a.status = 'active'
                           )
                         """
                     ),

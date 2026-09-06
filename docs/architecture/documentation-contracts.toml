@@ -3,7 +3,7 @@ schema_version = 1
 # Contract-sensitive production surfaces. When a pull request changes one of
 # these paths it must also change the normative documentation listed for the
 # rule. Keep this registry narrow: it protects architectural/operational
-# contracts, not every implementation detail.
+# contracts, not every implementation detail or historical construction input.
 
 [[rules]]
 id = "worker-runtime"
@@ -23,7 +23,6 @@ required_docs_mode = "all"
 id = "cross-tenant-shared-capacity"
 description = "Cross-tenant shared-capacity identity, authority, serialization, privacy, and booking integration"
 triggers = [
-  "migrations/sql/v3_candidate/*cross-tenant-*.sql",
   "src/request_engine/modules/booking/adapters/db/reservation_commands.py",
   "src/request_engine/modules/booking/adapters/db/commitment_commands.py",
   "src/request_engine/modules/booking/adapters/db/slot_offer_capacity.py",

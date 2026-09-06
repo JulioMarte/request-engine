@@ -96,7 +96,7 @@ def proposal_affected(
                 if item["target"] is not None
                 else None
             ),
-            bool(item["target"]["actionable"]) if item["target"] is not None else False,
+            item["target"] is not None,
         )
         for item in affected
     ]

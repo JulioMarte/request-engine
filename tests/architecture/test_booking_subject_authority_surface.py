@@ -14,11 +14,15 @@ def test_authoritative_booking_mutations_resolve_subject_authority_in_transactio
     reservation_commands = (BOOKING_ROOT / "adapters" / "db" / "reservation_commands.py").read_text(
         encoding="utf-8"
     )
+    contextual_commands = (
+        BOOKING_ROOT / "adapters" / "db" / "contextual_reservation_commands.py"
+    ).read_text(encoding="utf-8")
     commitment_commands = (BOOKING_ROOT / "adapters" / "db" / "commitment_commands.py").read_text(
         encoding="utf-8"
     )
 
-    assert reservation_commands.count("require_subject_authority(") >= 2
+    booking_writers = reservation_commands + contextual_commands
+    assert booking_writers.count("require_subject_authority(") >= 2
     assert commitment_commands.count("require_subject_authority(") >= 1
-    assert '"subject_authority": authority.audit_details()' in reservation_commands
+    assert '"subject_authority": authority.audit_details()' in booking_writers
     assert '"subject_authority": authority.audit_details()' in commitment_commands

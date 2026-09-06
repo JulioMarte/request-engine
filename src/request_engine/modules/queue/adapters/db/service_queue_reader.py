@@ -42,11 +42,10 @@ class PostgresServiceQueueReader:
                     await session.execute(
                         text(
                             """
-                        SELECT queue_id, queue_key, display_name
-                        FROM request_read.service_queue_status_v1
+                        SELECT id AS queue_id, queue_key, display_name
+                        FROM request_engine.service_queues
                         WHERE organization_id = :organization_id
-                          AND queue_id = :queue_id
-                        LIMIT 1
+                          AND id = :queue_id
                         """
                         ),
                         {"organization_id": organization_id, "queue_id": queue_id},

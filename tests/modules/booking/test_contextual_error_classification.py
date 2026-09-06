@@ -1,20 +1,15 @@
-import json
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import Request, status
 
-from request_engine.modules.booking.api.errors import booking_error_handler
 from request_engine.modules.booking.application.commands.book_appointment import (
     BookAppointmentCommand,
     book_appointment,
 )
 from request_engine.modules.booking.application.errors import (
     AppointmentOptionStale,
-    ContextualCommitmentUnsupported,
     OfferingVersionNotBookable,
 )
 from request_engine.modules.booking.contracts.appointments import Reservation, ResourceChoice
@@ -25,28 +20,6 @@ class _NotBookableHandler:
         raise OfferingVersionNotBookable(command.offering_version_id)
 
 
-def _choice() -> tuple[ResourceChoice, ...]:
-    return (
-        ResourceChoice(
-            requirement_id=uuid4(),
-            resource_id=uuid4(),
-            availability_revision=1,
-        ),
-    )
-
-
-def _legacy_command(offering_version_id: UUID) -> BookAppointmentCommand:
-    return BookAppointmentCommand(
-        organization_id=uuid4(),
-        principal_id=uuid4(),
-        offering_version_id=offering_version_id,
-        subject_party_id=uuid4(),
-        start_at=datetime.now(UTC),
-        resources=_choice(),
-        idempotency_key=f"legacy-error-classification-{uuid4().hex}",
-    )
-
-
 def _contextual_command(offering_version_id: UUID) -> BookAppointmentCommand:
     return BookAppointmentCommand(
         organization_id=uuid4(),
@@ -54,7 +27,15 @@ def _contextual_command(offering_version_id: UUID) -> BookAppointmentCommand:
         offering_version_id=offering_version_id,
         subject_party_id=uuid4(),
         start_at=datetime.now(UTC),
-        resources=_choice(),
+        resources=(
+            ResourceChoice(
+                requirement_id=uuid4(),
+                resource_id=uuid4(),
+                resource_location_assignment_id=uuid4(),
+                assignment_revision=1,
+                availability_revision=1,
+            ),
+        ),
         idempotency_key=f"contextual-error-classification-{uuid4().hex}",
         location_id=uuid4(),
         expected_planned_duration_minutes=30,
@@ -66,26 +47,6 @@ def _contextual_command(offering_version_id: UUID) -> BookAppointmentCommand:
 
 
 @pytest.mark.asyncio
-async def test_contextual_bookable_change_is_classified_as_stale() -> None:
+async def test_bookable_change_is_classified_as_stale() -> None:
     with pytest.raises(AppointmentOptionStale):
         await book_appointment(_NotBookableHandler(), _contextual_command(uuid4()))
-
-
-@pytest.mark.asyncio
-async def test_legacy_bookable_change_preserves_released_error() -> None:
-    with pytest.raises(OfferingVersionNotBookable):
-        await book_appointment(_NotBookableHandler(), _legacy_command(uuid4()))
-
-
-@pytest.mark.asyncio
-async def test_contextual_commitment_unsupported_has_machine_readable_http_error() -> None:
-    response = await booking_error_handler(
-        Request({"type": "http"}),
-        ContextualCommitmentUnsupported("reschedule"),
-    )
-    payload = cast(dict[str, object], json.loads(bytes(response.body)))
-    error = cast(dict[str, object], payload["error"])
-
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert error["code"] == "contextual_commitment_unsupported"
-    assert error["details"] == {"operation": "reschedule"}

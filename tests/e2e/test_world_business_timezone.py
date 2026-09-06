@@ -45,11 +45,21 @@ async def test_business_timezones_configured_far_from_the_runner_stay_material(
     )
     assert location_timezone(e2e_admin_conn, sandbox).key == forced_timezone
     assert forced_timezone != "America/Santo_Domingo"
-    tokyo_weekday = world_weekday(e2e_admin_conn, sandbox)
+    local_weekday = world_weekday(e2e_admin_conn, sandbox)
     seeded = e2e_admin_conn.execute(
-        "SELECT local_start,local_end FROM request_engine.availability_schedules "
-        "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
-        (sandbox.organization_id, sandbox.resource_id, tokyo_weekday),
+        "SELECT availability.local_start,availability.local_end "
+        "FROM request_engine.resource_location_availability AS availability "
+        "JOIN request_engine.resource_location_assignments AS assignment "
+        "ON assignment.organization_id=availability.organization_id "
+        "AND assignment.id=availability.resource_location_assignment_id "
+        "WHERE availability.organization_id=%s AND assignment.resource_id=%s "
+        "AND assignment.location_id=%s AND availability.weekday=%s",
+        (
+            sandbox.organization_id,
+            sandbox.resource_id,
+            sandbox.location_id,
+            local_weekday,
+        ),
     ).fetchall()
     assert len(seeded) >= 1
 

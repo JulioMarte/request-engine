@@ -97,10 +97,8 @@ async def start_service(
         result = await insert_service_session(session, command, started_at)
         await session.execute(
             text(
-                "UPDATE request_engine.queue_entries SET status='serving', "
-                "service_started_at=:started_at, completed_at=NULL, "
-                "revision=revision+1, updated_at=clock_timestamp() "
-                "WHERE organization_id=:organization_id AND id=:entry_id"
+                "SELECT request_cmd.mark_queue_entry_service_started("
+                ":organization_id, :entry_id, :started_at)"
             ),
             {
                 "organization_id": command.organization_id,
