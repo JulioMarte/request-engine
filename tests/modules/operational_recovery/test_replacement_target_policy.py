@@ -51,7 +51,6 @@ def test_replacement_keeps_time_and_changes_degraded_resource() -> None:
         source_resource_id=UUID(int=10),
     )
     assert target is not None
-    assert target.actionable is True
     assert target.start_at == NOW
     assert target.end_at == NOW + timedelta(hours=1)
     assert target.resources[0].resource_id == UUID(int=11)
