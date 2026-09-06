@@ -2,7 +2,7 @@
 
 Status: active pre-rebaseline effective-model audit
 
-Source checkpoint: exact branch head `3aa13def2102e3fdb225d5a7302971f8f8db824b`, CI #4126, PostgreSQL 18 current-product proof. The schema is unchanged by the later analyzer-only commits; a later exact-head artifact must reconfirm these facts before rebaseline.
+Source checkpoint: exact branch head `3aa13def2102e3fdb225d5a7302971f8f8db824b`, CI #4126, PostgreSQL 18 current-product proof. The schema is unchanged by the later analyzer/documentation-only commits; a later exact-head artifact must reconfirm these facts before rebaseline.
 
 ## Effective security topology
 
@@ -16,10 +16,10 @@ The #4126 catalog reports:
 - zero `request_engine_*` role memberships;
 - zero table, column or routine grants to `PUBLIC`;
 - zero grantable table, column or routine grants;
-- 12 explicit column-level grants;
+- 12 explicit column-level grants, all mapped below to a supported writer/lock path;
 - 13 append-only relations protected by `reject_immutable_mutation()` and zero `request_engine_app` `UPDATE`/`DELETE` grants on those relations.
 
-Classification: the broad runtime security topology is `KEEP`, subject to the explicit exception reviews below and final exact-head reconfirmation.
+Classification: the broad runtime security topology is `KEEP`, subject to final exact-head reconfirmation.
 
 ## Roles
 
@@ -97,13 +97,72 @@ Append-only historical facts are a stronger case: 13 relations install `reject_i
 
 Classification: `KEEP`.
 
-## Column-level authority
+## Column-level authority — 12/12 mapped
 
-The catalog contains 12 explicit column grants. They exist to narrow mutable authority where a relation is otherwise more restricted, rather than to create hidden cross-module ownership.
+The catalog contains exactly 12 column grants. None is orphaned.
 
-These grants must remain part of the final privilege manifest and must not be expanded to table-wide `UPDATE` merely to simplify the baseline. Final rebaseline review should compare each column grant to its owning command path and reject any column with no supported writer.
+### Operational Recovery execution lifecycle — 5
 
-Classification: `KEEP` provisionally; exact per-column command-consumer review remains required before the final rebaseline authorization.
+`request_engine_app` has `UPDATE` only on these columns of `operational_recovery_executions`:
+
+- `status`;
+- `completed_at`;
+- `failure_code`;
+- `resulting_reservation_revision`;
+- `communication_task_id`.
+
+Supported writers:
+
+- `execution_transition_store.succeed_execution()` writes `status`, `resulting_reservation_revision`, `completed_at`;
+- `execution_transition_store.reject_execution()` writes `status`, `failure_code`, `completed_at`;
+- `execution_notification_store.attach_communication_task()` writes `communication_task_id` after successful execution.
+
+The grants intentionally avoid table-wide `UPDATE` on the execution fact.
+
+Classification: `KEEP`.
+
+### Queue recall-hold lifecycle — 2
+
+`request_engine_app` has `UPDATE` on:
+
+- `queue_entry_recall_holds.released_at`;
+- `queue_entry_recall_holds.release_kind`.
+
+Queue triage expiry/release paths update exactly these lifecycle columns while preserving the original hold identity/provenance. `triage_entry.expire_time_hold()` and `triage_selection.expire_queue_time_holds()` are direct current consumers.
+
+Classification: `KEEP`.
+
+### Queue skip consumption lifecycle — 2
+
+`request_engine_app` has `UPDATE` on:
+
+- `queue_entry_skips.consumed_at`;
+- `queue_entry_skips.consumed_by_entry_id`.
+
+`triage_selection.consume_active_skips()` writes exactly those fields when a later eligible QueueEntry consumes the active skip gate, then advances affected QueueEntry revisions.
+
+Classification: `KEEP`.
+
+### Discovery definer row-lock authority — 3
+
+`request_engine_discovery_definer` has `UPDATE(id)` on:
+
+- `offerings.id`;
+- `offering_service_classifications.id`;
+- `discovery_publications.id`.
+
+These are not supported business mutations. They provide the minimal PostgreSQL authority required for the Discovery→Booking SECURITY DEFINER fence to acquire row locks with `SELECT ... FOR UPDATE`:
+
+- `guard_discovery_handoff_latest_version()` locks the current `offerings` root;
+- `guard_discovery_handoff_reservation()` locks the exact active mapping and publication observed by the handoff.
+
+The definer role is `NOLOGIN`; it cannot be used as an ordinary client role. Expanding these narrow column grants to table-wide `UPDATE` would weaken the boundary, while removing them would break the authoritative row-lock fence.
+
+Classification: `KEEP` as lock authority, not mutation authority.
+
+### Column-grant conclusion
+
+All **12/12** column grants now map to a current supported writer or lock path. None justifies a schema change. Rebaseline must preserve the narrow column-level grants rather than replacing them with broader table authority.
 
 ## Routine execution authority
 
@@ -136,14 +195,13 @@ These outputs are review/falsification evidence, not automatic deletion rules. A
 
 ## Rebaseline implication
 
-Security topology is no longer an unbounded `NEEDS_PROOF` area. The current effective model has explicit role/RLS/ACL structure and repeatable anomaly detection.
+Security topology is no longer an unbounded `NEEDS_PROOF` area. The current effective model has explicit role/RLS/ACL structure, all 12 column grants have supported consumers, and anomaly detection is repeatable.
 
 Remaining security/privilege work before rebaseline:
 
 1. reconfirm the analyzer outputs on the final exact head;
-2. complete the exact 12-column-grant → supported writer mapping;
-3. ensure every SECURITY DEFINER routine retains an explicit caller/owner classification after the final routine manifest is updated for `0049`;
-4. keep the three multi-policy trigger exceptions explicit rather than silently broadening them;
-5. require `PUBLIC` grants, grantable runtime grants, append-only app mutation grants, RLS-without-policy and policy-without-RLS outputs to remain empty.
+2. preserve the final routine SECURITY DEFINER caller/owner classification from `postgresql-routine-ownership.md`;
+3. keep the three multi-policy trigger exceptions explicit rather than silently broadening them;
+4. require `PUBLIC` grants, grantable runtime grants, append-only app mutation grants, RLS-without-policy and policy-without-RLS outputs to remain empty.
 
 No new schema migration is justified by the current security evidence.
