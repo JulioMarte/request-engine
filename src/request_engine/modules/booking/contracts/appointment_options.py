@@ -9,28 +9,24 @@ from request_engine.modules.booking.contracts.appointments import AppointmentSlo
 
 @dataclass(frozen=True, slots=True)
 class DecodedAppointmentOption:
-    """Verified concrete booking selection recovered from an opaque option token."""
+    """Verified contextual booking selection recovered from an opaque option token."""
 
     organization_id: UUID
     offering_version_id: UUID
     start_at: datetime
     end_at: datetime
-    location_id: UUID | None
+    location_id: UUID
     resources: tuple[ResourceChoice, ...]
     expires_at: datetime
-    planned_duration_minutes: int | None = None
-    amount: Decimal | None = None
-    currency: str | None = None
-    location_operational_revision: int | None = None
-    configuration_fingerprint: str | None = None
-
-    @property
-    def is_contextual(self) -> bool:
-        return self.configuration_fingerprint is not None
+    planned_duration_minutes: int
+    amount: Decimal
+    currency: str
+    location_operational_revision: int
+    configuration_fingerprint: str
 
 
 class AppointmentOptionCodec(Protocol):
-    """Issue and verify opaque, tamper-evident appointment selection tokens."""
+    """Issue and verify opaque, tamper-evident contextual appointment selections."""
 
     def issue(self, organization_id: UUID, slot: AppointmentSlot) -> str: ...
 
