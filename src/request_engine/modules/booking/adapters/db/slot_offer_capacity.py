@@ -133,10 +133,10 @@ class PostgresSlotOfferCapacity(SlotOfferCapacityPort):
                           ON rla.organization_id = r.organization_id
                          AND rla.resource_id = r.id
                          AND rla.location_id = :location_id
-                         AND rla.effective_during @> :start_at
+                         AND rla.effective_during @> CAST(:start_at AS timestamptz)
                          AND (
                              upper_inf(rla.effective_during)
-                             OR upper(rla.effective_during) >= :end_at
+                             OR upper(rla.effective_during) >= CAST(:end_at AS timestamptz)
                          )
                         JOIN request_engine.locations l
                           ON l.organization_id = rla.organization_id
