@@ -26,3 +26,24 @@ def test_legacy_resource_location_and_schedule_schema_are_absent(
         """
     ).fetchone()
     assert column is None
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+def test_no_current_database_routine_references_legacy_availability_schedule(
+    admin_conn: PgConnection,
+) -> None:
+    routines = admin_conn.execute(
+        """
+        SELECT n.nspname, p.proname
+        FROM pg_proc AS p
+        JOIN pg_namespace AS n ON n.oid = p.pronamespace
+        WHERE n.nspname IN (
+            'request_engine', 'request_cmd', 'request_read', 'request_admin'
+        )
+          AND p.prokind IN ('f', 'p')
+          AND pg_get_functiondef(p.oid) ILIKE '%availability_schedules%'
+        ORDER BY n.nspname, p.proname
+        """
+    ).fetchall()
+    assert routines == []
