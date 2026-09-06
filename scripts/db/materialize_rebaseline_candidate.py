@@ -17,14 +17,10 @@ def _sha256(payload: bytes) -> str:
 def _read_verified(path: Path, *, expected_bytes: int, expected_sha256: str) -> bytes:
     payload = path.read_bytes()
     if len(payload) != expected_bytes:
-        raise RuntimeError(
-            f"{path}: expected {expected_bytes} bytes, found {len(payload)}"
-        )
+        raise RuntimeError(f"{path}: expected {expected_bytes} bytes, found {len(payload)}")
     digest = _sha256(payload)
     if digest != expected_sha256:
-        raise RuntimeError(
-            f"{path}: expected sha256 {expected_sha256}, found {digest}"
-        )
+        raise RuntimeError(f"{path}: expected sha256 {expected_sha256}, found {digest}")
     return payload
 
 
