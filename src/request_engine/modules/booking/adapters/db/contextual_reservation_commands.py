@@ -105,8 +105,6 @@ class PostgresContextualReservationCommands:
         self._reservation_lifecycle = PostgresReservationCommands(session_factory)
 
     async def book_appointment(self, command: BookAppointmentCommand) -> Reservation:
-        if not command.is_contextual:
-            raise InvalidResourceSelection("booking requires a contextual appointment option")
         return await self._book_contextual(command)
 
     async def cancel_reservation(self, command: CancelReservationCommand) -> Reservation:
@@ -160,7 +158,7 @@ class PostgresContextualReservationCommands:
                 allow_operator_override=command.allow_subject_override,
             )
 
-            location_id = cast(UUID, command.location_id)
+            location_id = command.location_id
             await _lock_expected_location(
                 session,
                 organization_id=command.organization_id,
@@ -429,14 +427,14 @@ def _expected_context(command: BookAppointmentCommand) -> _ExpectedContext:
     currency = command.expected_currency
     location_revision = command.expected_location_operational_revision
     fingerprint = command.expected_configuration_fingerprint
-    if duration is None or duration <= 0:
-        raise InvalidResourceSelection("contextual option is missing planned duration")
-    if amount is None or amount < 0:
-        raise InvalidResourceSelection("contextual option is missing amount")
-    if currency is None:
-        raise InvalidResourceSelection("contextual option is missing currency")
-    if location_revision is None or location_revision <= 0:
-        raise InvalidResourceSelection("contextual option is missing Location revision")
+    if duration <= 0:
+        raise InvalidResourceSelection("contextual option has invalid planned duration")
+    if amount < 0:
+        raise InvalidResourceSelection("contextual option has invalid amount")
+    if not currency:
+        raise InvalidResourceSelection("contextual option has invalid currency")
+    if location_revision <= 0:
+        raise InvalidResourceSelection("contextual option has invalid Location revision")
     if not fingerprint:
         raise InvalidResourceSelection("contextual option is missing configuration fingerprint")
     return _ExpectedContext(
