@@ -108,7 +108,6 @@ class AffectedReservationView(BaseModel):
     expected_revision: int
     original_start_at: datetime
     original_end_at: datetime
-    contextual_commitment: bool
     target: RecoveryTargetView | None
     replacement_target: RecoveryTargetView | None
 
@@ -123,7 +122,6 @@ class AffectedReservationView(BaseModel):
             expected_revision=item.expected_revision,
             original_start_at=item.original_start_at,
             original_end_at=item.original_end_at,
-            contextual_commitment=item.contextual_commitment,
             target=RecoveryTargetView.from_contract(target) if target is not None else None,
             replacement_target=(
                 RecoveryTargetView.from_contract(replacement) if replacement is not None else None
