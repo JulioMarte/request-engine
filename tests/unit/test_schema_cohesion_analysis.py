@@ -194,9 +194,7 @@ def test_rls_analysis_surfaces_missing_and_misplaced_policies() -> None:
     assert result["force_rls_relation_count"] == 1
     assert result["policy_count"] == 3
     assert result["rls_relations_without_policy"] == ["request_engine.missing"]
-    assert result["policies_on_non_rls_relations"] == [
-        "request_engine.plain.tenant_policy"
-    ]
+    assert result["policies_on_non_rls_relations"] == ["request_engine.plain.tenant_policy"]
     assert result["multi_policy_relations"] == [
         {
             "relation": "request_engine.protected",
@@ -233,9 +231,7 @@ def test_grant_analysis_surfaces_public_grantable_and_immutable_mutation_authori
 
     result = cast(dict[str, object], module.analyze(catalog))
 
-    assert result["public_grants"] == [
-        "table:request_engine.immutable:PUBLIC:SELECT"
-    ]
+    assert result["public_grants"] == ["table:request_engine.immutable:PUBLIC:SELECT"]
     assert result["grantable_grants"] == [
         "table:request_engine.immutable:request_engine_admin:INSERT"
     ]
@@ -264,6 +260,4 @@ def test_invalid_indexes_and_unvalidated_constraints_are_reported() -> None:
     result = cast(dict[str, object], module.analyze(catalog))
 
     assert result["invalid_indexes"] == ["request_engine.sample.invalid"]
-    assert result["unvalidated_constraints"] == [
-        "request_engine.sample.sample_check"
-    ]
+    assert result["unvalidated_constraints"] == ["request_engine.sample.sample_check"]
