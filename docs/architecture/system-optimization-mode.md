@@ -2,7 +2,7 @@
 
 Status: **normative for `cohesion/system-optimization` and for later integration work explicitly continuing this pre-production optimization phase.**
 
-This policy narrows and operationalizes `pre-production-evolution-policy.md` for the current cohesion/rebaseline work. It does not weaken Request Engine correctness guarantees.
+This policy narrows and operationalizes `pre-production-evolution-policy.md` for the current cohesion work. It does not weaken Request Engine correctness guarantees.
 
 ## 1. Objective
 
@@ -20,8 +20,7 @@ freeze guarantees, not accidental repository shape
 
 While Request Engine has no customer-owned production data and no externally committed compatibility contract, the following are **CONTROLLED but mutable**:
 
-- current PostgreSQL schema shape;
-- Alembic revision structure after an explicit rebaseline decision;
+- current PostgreSQL schema shape through new migrations;
 - internal module ownership and approved dependency edges;
 - private Python package/file layout;
 - non-public DTOs and internal contracts;
@@ -31,6 +30,8 @@ While Request Engine has no customer-owned production data and no externally com
 - pre-production HTTP/tool contracts that have no external compatibility commitment, after explicit contract disposition.
 
 Mutable does not mean casually editable. A change must still identify ownership, affected guarantees, compatibility consequences and replacement evidence.
+
+The accepted `0001_initial` baseline is now **history**, not part of the mutable surface for ordinary changes. Product evolution appends `0002+` rather than rewriting the accepted baseline.
 
 ## 3. What remains hard
 
@@ -54,23 +55,29 @@ The following remain HARD unless an explicit replacement architecture provides e
 
 ## 4. Database posture
 
-The current Alembic line and released V3 artifacts are evidence of how the repository reached its present schema. They are **not a permanent design ceiling** during system optimization.
+The PostgreSQL effective-schema audit and pre-production rebaseline are complete.
 
-Until the database audit is complete:
+Canonical migration authority is now:
 
-- do not casually rewrite `0001_initial` or later revisions;
-- ordinary schema changes should continue to use the current head unless the work item is explicitly a rebaseline;
-- do not append new SQL to `migrations/sql/v3_candidate` as if it were the active product schema;
-- do not modify historical V2/V3 artifacts merely to silence current-product tests.
+```text
+migrations/versions/0001_initial.py
+migrations/baseline/
+```
 
-A repository rebaseline is permitted only as a dedicated, reviewed change after the current schema has been audited. A valid rebaseline must:
+The accepted baseline was derived from the audited effective model, reproduced on independent PostgreSQL 18 clusters, promoted to a single Alembic root and re-proved by the normal current-product CI after the historical chain was removed.
 
-1. define the intended current schema from domain ownership and guarantees, not merely dump the existing database blindly;
-2. disposition every table/function/constraint/index/role/RLS policy that is removed or changed;
-3. preserve or strengthen all applicable entries in `current-guarantees.toml`;
-4. prove fresh bootstrap to exactly one Alembic head on PostgreSQL 18;
-5. run current-product invariant, security, race and E2E evidence against that head;
-6. explicitly record what historical migration/release machinery becomes Git/tag/release provenance instead of active repository machinery.
+From this point forward:
+
+1. `0001_initial` and `migrations/baseline/` are immutable accepted history;
+2. ordinary schema evolution appends `0002+` revisions from the current single head;
+3. current-product CI follows the repository head dynamically;
+4. baseline-integrity CI separately proves that accepted `0001` still installs from a clean PostgreSQL 18 cluster;
+5. no current guardrail may require `HEAD == 0001` forever;
+6. historical V2/V3 migration scaffolding is not current schema authority.
+
+The retained `migrations/sql/design_chain/` surface is historical V2 evidence still required by a repository status context; it is explicitly not the current product schema source.
+
+A future destructive rebaseline is possible only as another dedicated architecture operation while the product remains pre-production. It would require a fresh effective-schema audit, object disposition and independent clean-cluster reproduction proof. It must not be smuggled into ordinary feature or cleanup work.
 
 Once customer-owned production data or an external compatibility promise exists, this freedom expires and a production migration/versioning policy becomes mandatory.
 
@@ -125,7 +132,7 @@ These sources define the behavior/invariants that a redesign must preserve or ex
 
 ### 7.2 What repository/schema/module shape may change?
 
-For whether an existing pre-production shape may be reorganized, consolidated or rebaselined:
+For whether an existing pre-production shape may be reorganized or consolidated:
 
 ```text
 system-optimization-mode.md
@@ -146,18 +153,17 @@ No document gets to weaken a HARD guarantee by calling a change â€œoptimizationâ
 
 ## 8. Documentation rule
 
-Historical documents may remain historically accurate. Current maps, READMEs, AGENTS files, CI contracts and migration READMEs must describe the present system and must not issue instructions that assume V3 is still an active candidate freeze.
+Historical documents may remain historically accurate. Current maps, READMEs, AGENTS files, CI contracts and migration READMEs must describe the present system and must not issue instructions that assume V3 is still an active candidate freeze or that the completed rebaseline is still pending.
 
 Current indexes should route readers to authority instead of duplicating chronological feature status. If two current normative documents disagree, treat the contradiction as a repository defect and reconcile the semantic owner/evolution authority explicitly.
 
 ## 9. Exit condition
 
-This mode ends only when the repository has completed the cohesion/schema/tooling audit and the owner explicitly chooses a new production freeze.
+This mode ends only when the broader cohesion/tooling audit is complete and the owner explicitly chooses a production freeze.
 
-Before that freeze, Request Engine must have:
+The database rebaseline itself is **not** an open exit condition anymore; it is complete. Before production freeze, Request Engine still needs:
 
 - one current architecture and ownership map;
-- one coherent current schema baseline/migration policy;
 - current CI derived from current guarantees rather than release archaeology;
 - no known contradictory current agent/instruction/document authority;
 - no mandatory V2/V3 release machinery without a real compatibility/provenance requirement;
