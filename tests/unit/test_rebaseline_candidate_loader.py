@@ -9,11 +9,11 @@ from types import ModuleType
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-CANDIDATE = ROOT / "migrations" / "rebaseline_candidate" / "0001_initial.py"
+LOADER = ROOT / "migrations" / "rebaseline_candidate" / "loader.py"
 
 
 def _load() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("rebaseline_candidate_under_test", CANDIDATE)
+    spec = importlib.util.spec_from_file_location("rebaseline_loader_under_test", LOADER)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -43,25 +43,33 @@ def _candidate(tmp_path: Path, parts: list[bytes]) -> Path:
     return tmp_path
 
 
+def _point_loader_at(module: ModuleType, candidate: Path) -> None:
+    module.ROOT = candidate
+    module.MANIFEST_PATH = candidate / "manifest.json"
+
+
 def test_candidate_loader_reconstructs_manifested_sql(tmp_path: Path) -> None:
     module = _load()
     candidate = _candidate(tmp_path, [b"SELECT 1;\n", b"SELECT 2;\n"])
+    _point_loader_at(module, candidate)
 
-    assert module.load_candidate_sql(candidate) == "SELECT 1;\nSELECT 2;\n"
+    assert module.load_schema_sql() == "SELECT 1;\nSELECT 2;\n"
 
 
 def test_candidate_loader_rejects_mutated_part(tmp_path: Path) -> None:
     module = _load()
     candidate = _candidate(tmp_path, [b"SELECT 1;\n", b"SELECT 2;\n"])
+    _point_loader_at(module, candidate)
     (candidate / "0001_schema.02.sql").write_bytes(b"SELECT 3;\n")
 
     with pytest.raises(RuntimeError, match="expected sha256"):
-        module.load_candidate_sql(candidate)
+        module.load_schema_sql()
 
 
 def test_candidate_loader_rejects_psql_meta_commands(tmp_path: Path) -> None:
     module = _load()
     candidate = _candidate(tmp_path, [b"SELECT 1;\n\\unrestrict token\n"])
+    _point_loader_at(module, candidate)
 
     with pytest.raises(RuntimeError, match="psql meta-command"):
-        module.load_candidate_sql(candidate)
+        module.load_schema_sql()
