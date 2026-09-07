@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
-from request_engine.modules.booking.contracts.onboarding import BookingOnboardingReadinessReader
+from request_engine.modules.booking.contracts.onboarding import (
+    BookingOnboardingReadinessReader,
+)
 from request_engine.modules.catalog.contracts.onboarding import CatalogOnboardingReadinessReader
 from request_engine.modules.communications.contracts.onboarding import (
     CommunicationsOnboardingReadinessReader,
@@ -10,7 +12,6 @@ from request_engine.modules.onboarding.application.readiness import OwnerBackedO
 from request_engine.modules.queue.contracts.onboarding import QueueOnboardingReadinessReader
 from request_engine.modules.tenancy.contracts.onboarding_readiness import BusinessPartyReader
 from request_engine.platform.security.http import ActorResolver
-
 
 __all__ = ["install_http"]
 
