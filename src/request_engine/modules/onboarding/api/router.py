@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from request_engine.modules.onboarding.application.readiness import OnboardingReadinessReader
 from request_engine.platform.http.capability_routes import add_capability_route
@@ -9,12 +9,47 @@ from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver, require_capability
 
 
+class ReadinessBlockerView(BaseModel):
+    """Machine-readable setup blocker without transport-coupling Onboarding to another owner."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    owner: str
+    resolution_capabilities: tuple[str, ...] = ()
+
+
+class JourneyReadinessView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ready: bool
+    blockers: tuple[ReadinessBlockerView, ...] = ()
+
+
+class CountedJourneyReadinessView(JourneyReadinessView):
+    count: int
+
+
 class OnboardingReadinessView(BaseModel):
-    business_party: dict[str, bool]
-    locations: dict[str, object]
-    appointments: dict[str, object]
-    walk_in_queue: dict[str, object]
-    communications: dict[str, object]
+    model_config = ConfigDict(extra="forbid")
+
+    business_party: JourneyReadinessView
+    locations: CountedJourneyReadinessView
+    appointments: JourneyReadinessView
+    walk_in_queue: CountedJourneyReadinessView
+    communications: JourneyReadinessView
+
+
+def _blocker(
+    code: str,
+    owner: str,
+    *resolution_capabilities: str,
+) -> ReadinessBlockerView:
+    return ReadinessBlockerView(
+        code=code,
+        owner=owner,
+        resolution_capabilities=resolution_capabilities,
+    )
 
 
 def create_onboarding_readiness_router(
@@ -32,26 +67,68 @@ def create_onboarding_readiness_router(
     ) -> OnboardingReadinessView:
         require_capability(current, "onboarding.read")
         facts = await reader.read(organization_id=current.organization_id)
-        appointment_blockers: list[str] = []
-        if facts.bookable_offering_version_count == 0:
-            appointment_blockers.append("no_bookable_offering")
-        if facts.resource_supply_count == 0:
-            appointment_blockers.append("no_resource_supply")
-        communication_blockers: list[str] = (
-            ["channel_purpose_disabled"] if facts.disabled_purpose_count > 0 else []
+
+        business_party_blockers = (
+            ()
+            if facts.has_business_party
+            else (_blocker("business_party_missing", "tenancy"),)
         )
+        location_blockers = (
+            ()
+            if facts.location_count > 0
+            else (_blocker("location_missing", "catalog", "catalog.manage"),)
+        )
+
+        appointment_blockers: list[ReadinessBlockerView] = []
+        if facts.bookable_offering_version_count == 0:
+            appointment_blockers.append(
+                _blocker("no_bookable_offering", "catalog", "catalog.manage")
+            )
+        if facts.resource_supply_count == 0:
+            appointment_blockers.append(
+                _blocker("no_resource_supply", "booking", "booking.manage_supply")
+            )
+
+        queue_blockers = (
+            ()
+            if facts.active_queue_count > 0
+            else (_blocker("service_queue_missing", "queue", "queue.configure"),)
+        )
+        communication_blockers = (
+            ()
+            if facts.disabled_purpose_count == 0
+            else (
+                _blocker(
+                    "channel_purpose_disabled",
+                    "communications",
+                    "communications.configure",
+                ),
+            )
+        )
+
         return OnboardingReadinessView(
-            business_party={"ready": facts.has_business_party},
-            locations={"ready": facts.location_count > 0, "count": facts.location_count},
-            appointments={"ready": not appointment_blockers, "blockers": appointment_blockers},
-            walk_in_queue={
-                "ready": facts.active_queue_count > 0,
-                "queue_count": facts.active_queue_count,
-            },
-            communications={
-                "ready": not communication_blockers,
-                "blockers": communication_blockers,
-            },
+            business_party=JourneyReadinessView(
+                ready=not business_party_blockers,
+                blockers=business_party_blockers,
+            ),
+            locations=CountedJourneyReadinessView(
+                ready=not location_blockers,
+                count=facts.location_count,
+                blockers=location_blockers,
+            ),
+            appointments=JourneyReadinessView(
+                ready=not appointment_blockers,
+                blockers=tuple(appointment_blockers),
+            ),
+            walk_in_queue=CountedJourneyReadinessView(
+                ready=not queue_blockers,
+                count=facts.active_queue_count,
+                blockers=queue_blockers,
+            ),
+            communications=JourneyReadinessView(
+                ready=not communication_blockers,
+                blockers=communication_blockers,
+            ),
         )
 
     add_capability_route(
