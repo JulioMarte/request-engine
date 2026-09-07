@@ -44,5 +44,6 @@ def test_evolution_policy_requires_transition_safety_not_structural_freeze() -> 
     assert "customer-owned production data" in policy
     assert "published/external contract change" in policy
     assert "bad permanent gates" in policy
-    assert "exact schema/module/file/endpoint inventories" in policy
+    assert "frozen endpoint/module/file inventories" in policy
+    assert "present compatibility reason" in policy
     assert "rebaseline is not a cleanup technique" in policy
