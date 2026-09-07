@@ -142,9 +142,7 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER principals_guard_security_identity ON request_engine.principals")
     op.execute("DROP FUNCTION request_engine.guard_principal_security_identity()")
     op.execute("DROP INDEX request_engine.principals_platform_subject_uq")
-    op.execute(
-        "ALTER TABLE request_engine.principals ALTER COLUMN organization_id SET NOT NULL"
-    )
+    op.execute("ALTER TABLE request_engine.principals ALTER COLUMN organization_id SET NOT NULL")
     op.execute(
         "ALTER TABLE request_engine.principals DROP CONSTRAINT principals_authority_revision_check"
     )

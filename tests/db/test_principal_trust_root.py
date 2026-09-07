@@ -117,10 +117,13 @@ def test_tenant_runtime_cannot_observe_create_or_retarget_platform_principals(
             "SELECT set_config('request_engine.organization_id', %s, false)",
             (str(organization_id),),
         )
-        assert app_conn.execute(
-            "SELECT id FROM request_engine.principals WHERE id = %s",
-            (platform_id,),
-        ).fetchall() == []
+        assert (
+            app_conn.execute(
+                "SELECT id FROM request_engine.principals WHERE id = %s",
+                (platform_id,),
+            ).fetchall()
+            == []
+        )
         assert app_conn.execute(
             "SELECT id FROM request_engine.principals WHERE id = %s",
             (tenant_id,),

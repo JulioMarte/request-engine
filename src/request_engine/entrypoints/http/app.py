@@ -106,7 +106,5 @@ def create_app(
         appointment_option_signing_key=signing_key,
         identity_exchange_fingerprint_key=identity_key,
     )
-    app.include_router(
-        create_operation_catalog_router(actor_resolver=execution_actor_resolver)
-    )
+    app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
     return app

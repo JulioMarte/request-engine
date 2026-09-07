@@ -39,9 +39,7 @@ async def operator_resolution_unavailable_handler(_: Request, exc: Exception) ->
     )
 
 
-async def agent_acting_operator_relay_forbidden_handler(
-    _: Request, exc: Exception
-) -> JSONResponse:
+async def agent_acting_operator_relay_forbidden_handler(_: Request, exc: Exception) -> JSONResponse:
     return render_error_response(
         status.HTTP_403_FORBIDDEN,
         ErrorBody(
