@@ -75,9 +75,17 @@ uv run python scripts/db/compare_schema_catalogs.py \
   --actual "$CANDIDATE_CATALOG" \
   --output "$DIFF"
 
-# Then repeat against an independent PostgreSQL 18 cluster that has none of the
+# Repeat against an independent PostgreSQL 18 cluster that has none of the
 # Request Engine roles. This proves the candidate can bootstrap the audited
 # cluster-global role topology instead of inheriting it from migration history.
 bash scripts/db/prove_rebaseline_fresh_cluster.sh "$ARTIFACT_DIR"
+
+# Finally prove the *committed candidate contract*: the exact dump and role SQL
+# must match the immutable candidate manifest, and that manifested payload must
+# execute through a repository-proposed single Alembic revision on another
+# independent PostgreSQL 18 cluster. This closes the gap between "psql replay is
+# equivalent" and "the replacement 0001 itself is a viable migration" without
+# deleting the active historical line before the proof exists.
+bash scripts/db/prove_rebaseline_single_alembic.sh "$ARTIFACT_DIR"
 
 rm -f "$RAW_DUMP"
