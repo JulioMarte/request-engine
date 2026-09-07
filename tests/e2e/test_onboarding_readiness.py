@@ -66,6 +66,14 @@ def _actor(tenant: ProvisionedTenant) -> ActorContext:
     )
 
 
+def _blocker(code: str, owner: str, *resolution_capabilities: str) -> dict[str, object]:
+    return {
+        "code": code,
+        "owner": owner,
+        "resolution_capabilities": list(resolution_capabilities),
+    }
+
+
 def _uuid_row(
     conn: support.PgConnection,
     sql: LiteralString,
@@ -277,13 +285,27 @@ async def test_empty_organization_reports_every_bootstrap_blocker(
         report = await _readiness(client, tenant)
 
     assert report == {
-        "business_party": {"ready": False},
-        "locations": {"ready": False, "count": 0},
+        "business_party": {
+            "ready": False,
+            "blockers": [_blocker("business_party_missing", "tenancy")],
+        },
+        "locations": {
+            "ready": False,
+            "blockers": [_blocker("location_missing", "catalog", "catalog.manage")],
+            "count": 0,
+        },
         "appointments": {
             "ready": False,
-            "blockers": ["no_bookable_offering", "no_resource_supply"],
+            "blockers": [
+                _blocker("no_bookable_offering", "catalog", "catalog.manage"),
+                _blocker("no_resource_supply", "booking", "booking.manage_supply"),
+            ],
         },
-        "walk_in_queue": {"ready": False, "queue_count": 0},
+        "walk_in_queue": {
+            "ready": False,
+            "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
+            "count": 0,
+        },
         "communications": {"ready": True, "blockers": []},
     }
 
@@ -305,10 +327,17 @@ async def test_partial_organization_reports_only_remaining_blockers(
         report = await _readiness(client, tenant)
 
     assert report == {
-        "business_party": {"ready": True},
-        "locations": {"ready": True, "count": 1},
-        "appointments": {"ready": False, "blockers": ["no_resource_supply"]},
-        "walk_in_queue": {"ready": False, "queue_count": 0},
+        "business_party": {"ready": True, "blockers": []},
+        "locations": {"ready": True, "blockers": [], "count": 1},
+        "appointments": {
+            "ready": False,
+            "blockers": [_blocker("no_resource_supply", "booking", "booking.manage_supply")],
+        },
+        "walk_in_queue": {
+            "ready": False,
+            "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
+            "count": 0,
+        },
         "communications": {"ready": True, "blockers": []},
     }
 
@@ -342,10 +371,10 @@ async def test_complete_organization_has_no_blockers_and_disabled_purpose_blocks
 
         baseline = await _readiness(client, tenant)
         assert baseline == {
-            "business_party": {"ready": True},
-            "locations": {"ready": True, "count": 1},
+            "business_party": {"ready": True, "blockers": []},
+            "locations": {"ready": True, "blockers": [], "count": 1},
             "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": True, "queue_count": 1},
+            "walk_in_queue": {"ready": True, "blockers": [], "count": 1},
             "communications": {"ready": True, "blockers": []},
         }
 
@@ -353,7 +382,13 @@ async def test_complete_organization_has_no_blockers_and_disabled_purpose_blocks
         disabled = await _readiness(client, tenant)
         assert disabled["communications"] == {
             "ready": False,
-            "blockers": ["channel_purpose_disabled"],
+            "blockers": [
+                _blocker(
+                    "channel_purpose_disabled",
+                    "communications",
+                    "communications.configure",
+                )
+            ],
         }
 
         await _set_channel_policy(client, tenant, party_id, enabled=True, revision=1)

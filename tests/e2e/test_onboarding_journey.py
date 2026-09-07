@@ -86,6 +86,14 @@ def _key(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex}"
 
 
+def _blocker(code: str, owner: str, *resolution_capabilities: str) -> dict[str, object]:
+    return {
+        "code": code,
+        "owner": owner,
+        "resolution_capabilities": list(resolution_capabilities),
+    }
+
+
 def _actor(tenant: ProvisionedTenant) -> ActorContext:
     return ActorContext(
         organization_id=tenant.organization_id,
@@ -517,16 +525,29 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         _public_client(e2e_session_factory, tenant) as client,
         _operations_client(e2e_session_factory, tenant) as operations,
     ):
-        # 1. Empty world: every bootstrap blocker is visible.
         report = await _readiness(client, tenant)
         assert report == {
-            "business_party": {"ready": False},
-            "locations": {"ready": False, "count": 0},
+            "business_party": {
+                "ready": False,
+                "blockers": [_blocker("business_party_missing", "tenancy")],
+            },
+            "locations": {
+                "ready": False,
+                "blockers": [_blocker("location_missing", "catalog", "catalog.manage")],
+                "count": 0,
+            },
             "appointments": {
                 "ready": False,
-                "blockers": ["no_bookable_offering", "no_resource_supply"],
+                "blockers": [
+                    _blocker("no_bookable_offering", "catalog", "catalog.manage"),
+                    _blocker("no_resource_supply", "booking", "booking.manage_supply"),
+                ],
             },
-            "walk_in_queue": {"ready": False, "queue_count": 0},
+            "walk_in_queue": {
+                "ready": False,
+                "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
+                "count": 0,
+            },
             "communications": {"ready": True, "blockers": []},
         }
         assert (
@@ -539,7 +560,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             == 0
         )
 
-        # 2. Root business party + bootstrap authority.
         party_id = await _register_organization_party(client, tenant)
         bootstrap_key = _key("bootstrap")
         bootstrap = await _bootstrap_authority(
@@ -550,7 +570,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         assert set(cast(list[str], bootstrap["scope_keys"])) == _BOOTSTRAP_SCOPES
         _assert_bootstrap_grant(e2e_admin_conn, tenant)
 
-        # 3. Location, operating hours and a declared national holiday closure.
         location_response = await operations.post(
             "/v1/operations/locations",
             json={
@@ -577,17 +596,22 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         )
         await _declare_holiday(operations, tenant, party_id)
 
-        # Readiness after bootstrap + location: party and locations ready,
-        # appointments still blocked without supply.
         report = await _readiness(client, tenant)
         assert report == {
-            "business_party": {"ready": True},
-            "locations": {"ready": True, "count": 1},
+            "business_party": {"ready": True, "blockers": []},
+            "locations": {"ready": True, "blockers": [], "count": 1},
             "appointments": {
                 "ready": False,
-                "blockers": ["no_bookable_offering", "no_resource_supply"],
+                "blockers": [
+                    _blocker("no_bookable_offering", "catalog", "catalog.manage"),
+                    _blocker("no_resource_supply", "booking", "booking.manage_supply"),
+                ],
             },
-            "walk_in_queue": {"ready": False, "queue_count": 0},
+            "walk_in_queue": {
+                "ready": False,
+                "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
+                "count": 0,
+            },
             "communications": {"ready": True, "blockers": []},
         }
         hours = e2e_admin_conn.execute(
@@ -621,8 +645,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             _HOLIDAY + timedelta(days=1), time(0, 0), tzinfo=local_tz
         ).astimezone(UTC)
 
-        # 4. Catalog: capability, bookable offering + immutable version, and
-        # a booking-policy override on the append-only ledger.
         capability_id = await _create_capability(client, tenant, party_id)
         replayed_capability = e2e_admin_conn.execute(
             "SELECT id FROM request_engine.resource_capabilities WHERE organization_id = %s",
@@ -642,7 +664,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             (tenant.organization_id, offering_version_id),
         ).fetchone() == (1, True)
 
-        # 5. Supply: one exclusive resource with recurring weekly availability.
         resource_id = await _create_resource(client, tenant, party_id, location_id, capability_id)
         assert (
             _scalar(
@@ -661,24 +682,26 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             == 1
         )
 
-        # Readiness after offering + resource: appointments ready.
         report = await _readiness(client, tenant)
         assert report == {
-            "business_party": {"ready": True},
-            "locations": {"ready": True, "count": 1},
+            "business_party": {"ready": True, "blockers": []},
+            "locations": {"ready": True, "blockers": [], "count": 1},
             "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": False, "queue_count": 0},
+            "walk_in_queue": {
+                "ready": False,
+                "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
+                "count": 0,
+            },
             "communications": {"ready": True, "blockers": []},
         }
 
-        # 6. Queue for walk-in flow.
         queue_id = await _create_queue(client, tenant, party_id, location_id, offering_id)
         report = await _readiness(client, tenant)
         assert report == {
-            "business_party": {"ready": True},
-            "locations": {"ready": True, "count": 1},
+            "business_party": {"ready": True, "blockers": []},
+            "locations": {"ready": True, "blockers": [], "count": 1},
             "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": True, "queue_count": 1},
+            "walk_in_queue": {"ready": True, "blockers": [], "count": 1},
             "communications": {"ready": True, "blockers": []},
         }
         assert (
@@ -692,9 +715,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             == 1
         )
 
-        # 7. Communications channel policy: configure the confirmation
-        # purpose, prove optimistic-revision rejection, then prove a
-        # disabled purpose surfaces as the typed readiness blocker.
         policy = await _set_channel_policy(
             client,
             tenant,
@@ -740,7 +760,13 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         report = await _readiness(client, tenant)
         assert report["communications"] == {
             "ready": False,
-            "blockers": ["channel_purpose_disabled"],
+            "blockers": [
+                _blocker(
+                    "channel_purpose_disabled",
+                    "communications",
+                    "communications.configure",
+                )
+            ],
         }
         await _set_channel_policy(
             client,
@@ -751,7 +777,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             expected_revision=1,
         )
 
-        # 8. Customer, real slot discovery and booking.
         customer_party_id = await _register_customer_party(client, tenant)
         holiday_slots = await _find_slots(
             client,
@@ -784,7 +809,6 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
             e2e_admin_conn, tenant, reservation_id, resource_id, customer_party_id, option
         )
 
-        # 9. Walk-in queue admission.
         entry_id = await _join_queue(client, tenant, queue_id, customer_party_id)
         entry_row = e2e_admin_conn.execute(
             """
@@ -799,12 +823,11 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         assert entry_row[1] == customer_party_id
         assert entry_row[2] is None
 
-        # 10. Final readiness: fully operational, no blockers.
         report = await _readiness(client, tenant)
         assert report == {
-            "business_party": {"ready": True},
-            "locations": {"ready": True, "count": 1},
+            "business_party": {"ready": True, "blockers": []},
+            "locations": {"ready": True, "blockers": [], "count": 1},
             "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": True, "queue_count": 1},
+            "walk_in_queue": {"ready": True, "blockers": [], "count": 1},
             "communications": {"ready": True, "blockers": []},
         }
