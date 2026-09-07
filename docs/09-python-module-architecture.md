@@ -32,6 +32,7 @@ delivery
 live_capacity
 operational_recovery
 operational_copilot
+onboarding
 ```
 
 Payments/reconciliation and field-service dispatch remain possible future domain areas, **not current Python modules**. Do not pre-create empty packages for future capabilities; introduce a module only when accepted product scope gives it real ownership and code.
@@ -53,8 +54,9 @@ Detailed ownership lives in `10-module-ownership-map.md`.
 - `discovery`: explicitly published cross-tenant supply projection and opaque Booking handoff.
 - `delivery`: ReservationAccess and actual live service/execution truth.
 - `live_capacity`: advisory live-capacity/ETA/intake projection over published owner facts.
-- `operational_recovery`: immutable recovery proposal/execution composition over owner contracts.
+- `operational_recovery`: recovery proposal/execution/action orchestration over published Booking/Catalog/Communications/Live Capacity/Queue contracts; owns none of those source truths.
 - `operational_copilot`: bounded typed external operational-tool/admission surface; owns no underlying business truth or conversational runtime.
+- `onboarding`: read-only setup/readiness composition over published Tenancy/Catalog/Booking/Queue/Communications facts.
 
 When this summary and `10-module-ownership-map.md` disagree, reconcile the documentation defect; do not invent a third interpretation.
 
@@ -122,6 +124,8 @@ The implementation may be a typed function or a small handler object. Do not int
 
 A semantic command may coordinate multiple modules in one database transaction when a current invariant requires atomicity; architecture aesthetics do not justify breaking required consistency.
 
+Read-only cross-domain capabilities such as Onboarding may legitimately fan out to several owner contracts. The fan-out belongs in the owning module rather than in `entrypoints`/`bootstrap` merely to make the graph look smaller.
+
 ## 6. Ports and adapters
 
 Application/domain code defines the capability it requires; technical implementations live outward in adapters.
@@ -139,6 +143,8 @@ adapters/db + adapters/providers
 Repository ports are semantic rather than generic CRUD. SQLAlchemy Session/AsyncSession is already technical transaction/UoW machinery; do not create a universal abstract UoW hierarchy without demonstrated value.
 
 Provider adapters do not own authoritative business state.
+
+An orchestration module may keep a local port and adapt it to another owner's published contract under its own `adapters/` package when translation is genuinely part of the orchestration boundary. Do not place that translation in `bootstrap` to hide the dependency.
 
 ## 7. Cross-module imports
 
@@ -161,7 +167,7 @@ from request_engine.modules.booking.api.responses import ReservationView
 
 `contracts` does not automatically authorize an edge. The current permission map is documented in `14-architecture-fitness-functions.md` and executed by `tests/architecture/dependency_policy.py`.
 
-Do not hide a dependency from the graph with service locators, runtime imports, generic shared helpers or re-export facades.
+Do not hide a dependency from the graph with service locators, runtime imports, generic shared helpers, re-export facades or composition-root adapters.
 
 ## 8. Internal dependency direction
 
@@ -188,7 +194,7 @@ platform/observability
 platform/security
 ```
 
-Platform may own clock/lease/fencing/retry/dead-letter/telemetry mechanics. It does not own why a Reservation, QueueEntry, recovery proposal, reminder or discovery publication exists.
+Platform may own clock/lease/fencing/retry/dead-letter/telemetry mechanics. It does not own why a Reservation, QueueEntry, recovery proposal, reminder, discovery publication or onboarding blocker exists.
 
 Do not move business logic into `platform`, `shared`, `common` or generic helpers to reduce measured module coupling.
 
@@ -199,7 +205,7 @@ Do not move business logic into `platform`, `shared`, `common` or generic helper
 - `entrypoints/cli`: explicit operational/developer process commands.
 - `bootstrap`: settings and composition root; business code never imports it as a service locator.
 
-Cross-domain business policy discovered in composition code must receive an explicit business owner rather than remaining hidden there for graph aesthetics.
+Cross-domain business policy discovered in composition code must receive an explicit business owner rather than remaining hidden there for graph aesthetics. Composition roots may construct and inject module API surfaces; they do not own semantic translation between business capabilities.
 
 ## 11. Persistence and PostgreSQL
 
