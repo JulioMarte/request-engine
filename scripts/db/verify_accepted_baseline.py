@@ -103,7 +103,8 @@ def verify(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Verify the accepted Request Engine 0001 baseline independently of the current Alembic head."
+            "Verify the accepted Request Engine 0001 baseline independently "
+            "of the current Alembic head."
         )
     )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -121,7 +122,8 @@ def main() -> None:
     )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
+        args.output.write_text(payload, encoding="utf-8")
     print("accepted baseline integrity: PASS")
 
 
