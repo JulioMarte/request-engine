@@ -10,7 +10,8 @@ Before editing a module, read:
 4. the owning module `README.md`;
 5. the current capability/domain contract being changed;
 6. `docs/testing/current-guarantees.toml` for affected semantic guarantees;
-7. `docs/testing/repository-governance-contract.md` for HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification.
+7. `docs/testing/repository-governance-contract.md` for HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification;
+8. `docs/15-api-design-and-usability-standards.md` and `docs/16-canonical-operation-and-tool-projection-pattern.md` for machine-facing API/tool work.
 
 ## Current architecture posture
 
@@ -29,6 +30,7 @@ discovery
 delivery
 live_capacity
 operational_recovery
+onboarding
 operational_copilot
 ```
 
@@ -86,6 +88,25 @@ Do not create an adapter merely because two packages need to call each other. Fi
 For Python ↔ PostgreSQL, prefer semantic operations such as `ReservationCommands` or `AppointmentAvailabilityReader`, not generic CRUD repositories. Keep correctness-sensitive SQL visible enough to review locks, constraints and race behavior.
 
 For provider/network surfaces, external I/O occurs outside authoritative lock transactions and ambiguous outcomes reconcile before resend.
+
+## Machine-facing operation gate
+
+For any new or changed HTTP/agent-facing operation preserve these distinct concepts:
+
+```text
+owner
+capability policy
+OpenAPI operationId
+optional tool name/audiences
+```
+
+Use resource-oriented HTTP when standard resource semantics are truthful. Use semantic custom methods for domain actions such as booking, rescheduling, check-in, intake control or recovery execution rather than generic status PATCHes or an untyped command bus.
+
+Capability metadata remains authorization policy. Tool metadata is only projection/discovery metadata and must never replace capability/relationship/owner checks.
+
+A tool-exposed operation requires an explicit stable `operationId` and owner. Agent/MCP adapters must call the same typed owner operation used by normal application/API paths; they do not implement business policy a second time.
+
+Do not let model/tool input supply trusted `organization_id`, `principal_id`, authority Party, capability grants or trusted revision identity.
 
 ## Type and naming boundaries
 
