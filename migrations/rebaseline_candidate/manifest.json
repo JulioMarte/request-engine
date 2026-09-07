@@ -48,7 +48,83 @@
     "source_artifact_name": "rebaseline-role-bootstrap.sql",
     "path": "0001_roles.sql",
     "bytes": 852,
-    "sha256": "19d9b3f1856de381a4899ce97023f66d7b429c8ab50839ff3b83885a157162df"
+    "sha256": "19d9b3f1856de381a4899ce97023f66d7b429c8ab50839ff3b83885a157162df",
+    "expected_roles": {
+      "request_engine_admin": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": true,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      },
+      "request_engine_app": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": false,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      },
+      "request_engine_discovery": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": false,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      },
+      "request_engine_discovery_definer": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": true,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      },
+      "request_engine_schema_owner": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": false,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      },
+      "request_engine_worker": {
+        "superuser": false,
+        "inherit": true,
+        "create_role": false,
+        "create_db": false,
+        "can_login": false,
+        "replication": false,
+        "bypass_rls": false,
+        "connection_limit": -1,
+        "valid_until": null,
+        "has_password": false
+      }
+    },
+    "role_memberships": [],
+    "role_settings": []
   },
   "effective_model": {
     "relations": 99,
