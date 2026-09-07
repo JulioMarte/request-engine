@@ -19,7 +19,10 @@ from request_engine.entrypoints.http.operational_errors import (
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
 from request_engine.platform.idempotency.errors import IdempotencyConflict
-from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
+from request_engine.platform.security.acting_operator import (
+    AgentActingOperatorRelayForbidden,
+    OperatorResolutionUnavailable,
+)
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
 
@@ -36,12 +39,27 @@ async def operator_resolution_unavailable_handler(_: Request, exc: Exception) ->
     )
 
 
+async def agent_acting_operator_relay_forbidden_handler(_: Request, exc: Exception) -> JSONResponse:
+    return render_error_response(
+        status.HTTP_403_FORBIDDEN,
+        ErrorBody(
+            code="agent_delegation_required",
+            message="agents must use standing authority or an explicit bounded delegation",
+            resolution=ErrorResolution.CORRECT_REQUEST,
+            retryable=False,
+        ),
+    )
+
+
 def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
     app.add_exception_handler(
         OperatorResolutionUnavailable, operator_resolution_unavailable_handler
+    )
+    app.add_exception_handler(
+        AgentActingOperatorRelayForbidden, agent_acting_operator_relay_forbidden_handler
     )
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)

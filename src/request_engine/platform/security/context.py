@@ -7,6 +7,7 @@ from request_engine.platform.security.capabilities import grant_satisfies
 
 class PrincipalKind(StrEnum):
     HUMAN = "human"
+    AGENT = "agent"
     INTEGRATION = "integration"
     SYSTEM = "system"
 
@@ -15,9 +16,15 @@ class PrincipalKind(StrEnum):
 class ActorContext:
     """Trusted execution identity produced by an authentication adapter.
 
-    The request body never selects tenant or Principal identity. Deployment
-    adapters authenticate credentials first and then construct this context.
-    Party authority remains a separate tenant-owned decision.
+    ``principal_id`` is the security actor that is executing the operation for
+    ordinary HUMAN/AGENT/INTEGRATION/SYSTEM requests. ``subject_principal_id``
+    records a distinct requesting authority only when one is intentionally
+    represented. ``technical_principal_id`` remains the transport/workload
+    identity when a trusted relay is distinct from the effective actor.
+
+    Request bodies never select tenant, Principal, delegation, or authority
+    identity. Deployment adapters authenticate credentials and construct this
+    context from Request Engine-owned authority state.
     """
 
     organization_id: UUID
@@ -30,6 +37,10 @@ class ActorContext:
     platform: str | None = None
     acting_operator_principal_id: UUID | None = None
     technical_principal_id: UUID | None = None
+    subject_principal_id: UUID | None = None
+    delegation_id: UUID | None = None
+    authority_revision: int | None = None
+    interaction_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():
@@ -38,6 +49,12 @@ class ActorContext:
             raise ValueError("credential_id cannot be blank")
         if self.platform is not None and not self.platform.strip():
             raise ValueError("platform cannot be blank")
+        if self.authority_revision is not None and self.authority_revision <= 0:
+            raise ValueError("authority_revision must be positive")
+        if self.interaction_id is not None and not self.interaction_id.strip():
+            raise ValueError("interaction_id cannot be blank")
+        if self.subject_principal_id == self.principal_id:
+            raise ValueError("subject_principal_id must be omitted when actor and subject are identical")
 
     def allows(self, capability: str) -> bool:
         """Evaluate one canonical capability against materialized grants."""
