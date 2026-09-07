@@ -1,10 +1,8 @@
 # PostgreSQL relation ownership manifest
 
-Status: **closed for pre-rebaseline effective-model ownership**
+Status: **closed — accepted baseline ownership**
 
-Final exact-head evidence: CI **#4164** on branch head `4ba7dbf092528f26aee5db1003af455a381d3431`, after migrations through `0050_remove_admin_health_views`.
-
-The current effective model contains **99 relations**. The same 99-relation catalog was reproduced both in a second database of the source cluster and in an independent PostgreSQL 18 cluster with Request Engine roles bootstrapped from zero. Both schema comparisons report `equivalent: true` and `first_difference: null`; the independent role comparison does as well.
+The audited model contains **99 relations**. The model was first closed and independently reproduced in CI #4164, then promoted to the single `0001_initial` baseline and re-proved after the repository cut in CI **#4188** on `3f3e0fb43cdea194b6e60d07da0e0079189b04c5`.
 
 Database object ownership remains `request_engine_schema_owner`; `capability owner` below means semantic/persistence responsibility, not PostgreSQL `relowner`. Unless explicitly marked as a composition boundary, every surviving relation is classified `KEEP` under one capability owner.
 
@@ -30,7 +28,7 @@ Database object ownership remains `request_engine_schema_owner`; `capability own
 - `request_read.reservation_day_v1` — Booking/Queue front-desk read composition; Booking owns the Reservation-day projection contract.
 - `request_read.reservation_status_v1`
 
-`request_engine.availability_schedules` is intentionally absent. It was pre-launch compatibility persistence superseded by Resource-at-Location assignments and contextual availability and was removed by `0048_remove_legacy_location`.
+`request_engine.availability_schedules` is intentionally absent. It was pre-launch compatibility persistence superseded by Resource-at-Location assignments and contextual availability before the accepted baseline was cut.
 
 ## Catalog — 12
 
@@ -101,12 +99,12 @@ Platform ownership here is technical mechanics, not a business catch-all.
 - `request_engine.provider_events`
 - `request_engine.scheduled_actions`
 
-Removed before rebaseline by `0050_remove_admin_health_views`:
+Removed before the accepted baseline:
 
 - `request_admin.outbox_health_v1`;
 - `request_admin.scheduled_action_health_v1`.
 
-Those two projections had no production consumer, no database dependent and no explicit operator contract; their count/min/max summaries did not justify carrying implicit observability APIs into a new baseline.
+Those two projections had no production consumer, no database dependent and no explicit operator contract; their count/min/max summaries did not justify carrying implicit observability APIs into `0001`.
 
 ## Queue — 14
 
@@ -153,7 +151,7 @@ Those two projections had no production consumer, no database dependent and no e
 
 ## Explicit composition boundaries — 2
 
-- `request_engine.recovery_source_revisions` — **KEEP**, Live Capacity ↔ Operational Recovery synchronous freshness/version fence. Direct app DML was removed by `0042`; supported access is through explicit read/lock boundaries.
+- `request_engine.recovery_source_revisions` — **KEEP**, Live Capacity ↔ Operational Recovery synchronous freshness/version fence. Supported access is through explicit read/lock boundaries.
 - `request_engine.shared_capacity_authority_events` — **KEEP**, Tenancy ↔ Booking authority ledger. It records both global-identity and SharedCapacity authority events and is intentionally cross-boundary.
 
 ## Totals
@@ -175,6 +173,8 @@ Those two projections had no production consumer, no database dependent and no e
 | Explicit Tenancy + Booking authority-ledger composition | 1 |
 | **Total** | **99** |
 
-## Rebaseline implication
+## Post-rebaseline implication
 
-Relation ownership is no longer a rebaseline blocker. CI #4164 proves the exact 99-relation target can be reconstructed in a fresh PostgreSQL 18 cluster together with the audited six-role topology. The remaining gate is not another relation cleanup pass: it is to materialize the proposed replacement `0001`, install that baseline from a truly clean cluster and demonstrate that it reproduces this manifest and passes the full current-product proof before the historical Alembic chain is deleted.
+Relation ownership is no longer a rebaseline gate. These 99 relations are the accepted `0001_initial` model recorded under `migrations/baseline/` and proven from a clean PostgreSQL 18 cluster.
+
+Future `0002+` migrations may legitimately change this count, but they must update current ownership/audit evidence for any added, removed or reshaped relation. They must **not** rewrite the accepted baseline to keep this manifest numerically frozen.
