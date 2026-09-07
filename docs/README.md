@@ -4,21 +4,23 @@ This directory is the system of record for current Request Engine product/domain
 
 Historical release, roadmap and implementation documents may retain the language/status of the checkpoint they recorded. Their age, filename (`v3`, `f1`, `f7`, etc.) or former branch name does not by itself make them current authority.
 
-## 1. Current repository mode
+## 1. Evolution authority
 
-Request Engine is still pre-production and is currently operating under:
+Request Engine follows a permanent controlled-evolution model:
 
-1. `architecture/system-optimization-mode.md` — current cohesion/rebaseline mode;
-2. `architecture/pre-production-evolution-policy.md` — controlled contract/test evolution policy;
-3. `testing/current-guarantees.toml` — canonical semantic guarantee inventory.
+1. `architecture/continuous-evolution-policy.md` — **permanent evolution contract**: immutable history, evolvable future; migrations, compatibility, deprecation, rollout and production transition;
+2. `architecture/system-optimization-mode.md` — temporary current pre-production cohesion/optimization mode;
+3. `architecture/pre-production-evolution-policy.md` — additional breaking-change freedom while no customer-owned production data or external compatibility promise exists;
+4. `testing/current-guarantees.toml` — canonical semantic guarantee inventory.
 
-Current rule:
+The two governing phrases are:
 
 ```text
+immutable history, evolvable future
 freeze guarantees, not accidental repository shape
 ```
 
-V3 release evidence remains historical provenance. It is not a permanent ceiling on schema, module, test or repository shape. A future production freeze will be established only after the current cohesion/schema review is complete.
+There is no planned blanket architecture freeze. A production release may make particular history, data obligations and published compatibility commitments immutable; current architecture continues to evolve through controlled, migration-safe changes.
 
 ## 2. Current architecture map
 
@@ -32,157 +34,127 @@ For present-day ownership and boundaries, start here:
 6. `testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification;
 7. `15-api-design-and-usability-standards.md` — current public API design/usability guidance.
 
-The current business-module topology is capability-oriented. Historical feature labels such as F1–F7 describe when contracts/capabilities entered the system, not a requirement to organize current code by roadmap phase.
+Historical feature labels such as F1–F7 describe when capabilities entered the system; they do not define current package topology or create permanent compatibility obligations.
 
 ## 3. Current capability/domain contracts
 
-The documents below remain relevant where their semantics are still accepted. Their paths preserve historical naming; the owning module/contract and current guarantee inventory determine present authority.
+Historical paths may contain current semantic contracts. Authority comes from the owning module, current guarantee inventory and accepted contract status — not from the path name.
 
-### Operational profile / contextual supply
+Important current contract families include:
 
-- `v3/15-operational-profile-contextual-supply-contract.md` — Organization/Location operational truth, Resource-at-Location supply, contextual schedule/terms and related booking provenance.
-- `adr/0012-contextual-resource-location-supply.md` — durable contextual-supply rationale.
+- operational profile / contextual supply — `v3/15-operational-profile-contextual-supply-contract.md`;
+- discovery — `v3/24-geospatial-cross-tenant-discovery-contract.md`;
+- live service operations — `v3/26-live-service-operations-contract.md` and its accepted amendments;
+- live capacity — `v3/29-live-capacity-projection-contract.md`;
+- operational recovery — `v3/32-operational-recovery-communications-contract.md`;
+- operational agent tooling — `v3/35-operational-copilot-contract.md`;
+- front desk / communications / identity / onboarding — later accepted contracts under `v3/`.
 
-### Discovery
+Durable business distinctions such as Reservation versus QueueEntry versus ServiceSession remain current where adopted by the guarantee/owner contracts. Historical structural descriptions do not freeze implementation shape.
 
-- `v3/24-geospatial-cross-tenant-discovery-contract.md` — authorized cross-tenant publication/search and opaque Booking handoff.
-- `adr/0011-cross-tenant-shared-capacity.md` — shared-capacity identity/serialization rationale.
+## 4. Testing and guarantee governance
 
-### Live service operations
+Canonical evidence entry points:
 
-- `v3/26-live-service-operations-contract.md`
-- `v3/28-live-service-operations-integration-amendment.md`
-
-Durable current distinction:
-
-```text
-Reservation    = planned commitment/capacity history
-QueueEntry     = arrival/wait/call truth
-ServiceSession = actual execution truth
-```
-
-### Live capacity projection
-
-- `v3/29-live-capacity-projection-contract.md`
-
-Live Capacity is advisory projection over published Booking/Queue/Delivery facts. Scheduled capacity and live intake capacity remain distinct unless a newer accepted contract explicitly replaces that model.
-
-### Operational recovery
-
-- `v3/32-operational-recovery-communications-contract.md`
-
-Operational Recovery composes owner-controlled Booking, Live Capacity and Communications capabilities without becoming their underlying authority.
-
-### Agent operational tooling
-
-- `v3/35-operational-copilot-contract.md`
-
-`operational_copilot` is a historical module name for the bounded typed operational-tool/admission surface. Request Engine owns authoritative lookup/admission/execution boundaries; external agents/applications own conversation/reasoning/tool selection. The historical text parser is not the product definition.
-
-### Front-desk / communications / identity / onboarding contracts
-
-Later contracts include:
-
-- `v3/36-front-desk-operations-contract.md`
-- `v3/38-s0b-party-registry-contract.md`
-- `v3/43-same-day-triage.md`
-- `v3/44-business-onboarding-bootstrap-contract.md`
-
-These documents define accepted capability semantics where implemented. **Do not infer active branch, completion, deployment or current roadmap priority from the F/S label alone.** When implementation status matters, verify the actual repository/current-product evidence.
-
-Implementation plans/inventories adjacent to these contracts are useful provenance and review evidence but are subordinate to current normative contracts and present repository state.
-
-## 4. Baseline V3 design sources
-
-These remain important design/provenance sources where a current contract still relies on them:
-
-- `11-capability-first-v3.md`
-- `v3/01-capability-contracts.md`
-- `v3/02-pre-sql-contract.md`
-
-They do not freeze current schema/repository shape. Newer accepted capability contracts and `architecture/system-optimization-mode.md` may supersede structural assumptions while preserving equal-or-stronger semantic guarantees.
-
-V2 documents such as `00-product-definition.md`, `01-architecture-v2.md` and `02-pre-sql-domain-contract.md` are historical/source material unless a current document explicitly adopts a particular idea.
-
-## 5. Testing and guarantee governance
-
-Canonical test/evidence entry points:
-
-- `testing/current-guarantees.toml` — normative current semantic guarantee inventory;
+- `testing/current-guarantees.toml` — current semantic guarantees;
 - `testing/README.md` — current test architecture and CI evidence model;
-- `testing/repository-governance-contract.md` — repository/test/instruction rigidity classification;
+- `testing/repository-governance-contract.md` — repository/test rigidity classification;
 - `testing/evidence-authoring-guide.md` — falsifiable proof workflow;
-- `testing/current-proof-map.toml` — non-normative representative-proof migration map;
+- `testing/current-proof-map.toml` — representative proof mapping;
 - `testing/test-architecture-migration.md` — test-taxonomy/disposition provenance.
 
-A green general CI run is not by itself proof of every product capability. Exact-head evidence must still satisfy the applicable current guarantees and capability contract.
+Architecture tests should strongly enforce HARD properties, detect CONTROLLED drift and avoid freezing FLEXIBLE implementation details. Historical exact snapshots/fingerprints belong to historical evidence, not current-head ceilings.
 
-Current test paths may still contain `v3_*`, `f1_*`, `f2_*`, etc. Those names are historical provenance and may be consolidated during system optimization without changing a guarantee.
+A useful rule for every new durable gate is:
 
-## 6. Engineering quality
+```text
+If a legitimate future feature fails this assertion, what semantic/compatibility risk must that feature prove before the assertion may evolve?
+```
+
+If there is no meaningful answer beyond “the list/file/count changed”, the gate is probably freezing implementation shape and should not be HARD.
+
+## 5. Engineering quality
 
 Engineering-quality entry points:
 
-- `engineering-quality/README.md`
-- `engineering-quality/executable-fitness-function-specification.md`
-- `engineering-quality/semantic-review-protocol.md`
-- `engineering-quality/agent-semantic-review-playbook.md`
-- `engineering-quality/local-publish-certification.md`
-- `engineering-quality/guardrail-decision-record.md`
+- `engineering-quality/README.md`;
+- `engineering-quality/executable-fitness-function-specification.md`;
+- `engineering-quality/semantic-review-protocol.md`;
+- `engineering-quality/agent-semantic-review-playbook.md`;
+- `engineering-quality/local-publish-certification.md`;
+- `engineering-quality/guardrail-decision-record.md`.
 
-File LOC, C901, navigation/file-count observations and module fan-in/fan-out are heuristic review evidence. They are not automatic architecture verdicts. The retired hard file-size/mega-file experiments must not be presented as current merge blockers unless reintroduced through the documented HARD-gate approval process.
+LOC, C901, file counts and fan-in/fan-out are heuristic review signals. They are not permanent merge-blocking architecture laws without an explicit HARD-gate proof obligation and normative approval.
 
-## 7. PostgreSQL executable truth
+## 6. PostgreSQL executable truth
 
-Executable schema evolution lives under `migrations/`, not in this documentation index.
+Executable schema evolution lives under `migrations/`.
 
-Current authority:
-
-```text
-migrations/versions/     current Alembic line
-migrations/README.md     current schema-evolution/rebaseline policy
-migrations/AGENTS.md     schema-working rules
-```
-
-Do **not** copy a particular revision such as `0006` or `0034` into this index as timeless “current head”. The current head is discovered from the actual repository Alembic graph; CI requires exactly one head and upgrades a clean PostgreSQL 18 database to that head.
-
-Historical SQL/provenance surfaces such as:
+Current layout:
 
 ```text
-migrations/sql/v3_candidate/
-migrations/sql/design_chain/
-migrations/f2_steps/
+migrations/versions/          active Alembic lineage
+migrations/baseline/          immutable accepted 0001_initial payload
+migrations/sql/design_chain/  retained historical V2 evidence still exercised by CI
 ```
 
-are not current schema authority merely because they remain in the tree. Their retention/archival value will be dispositioned during the historical/release archaeology phase.
+`0001_initial` is immutable migration history, **not the maximum schema Request Engine is allowed to have**. Ordinary product evolution appends `0002+` from the single current Alembic head.
 
-Any future schema rebaseline is a dedicated controlled operation after the complete current PostgreSQL audit, governed by `architecture/system-optimization-mode.md` and `migrations/README.md`.
+Never copy a current migration number into general documentation as a timeless head. CI discovers the actual graph, requires one current head and proves clean `alembic upgrade head`.
 
-## 8. Release/historical provenance
+The old V3 Base85 payload, V3 candidate SQL, feature-step migration helpers and pre-rebaseline revision chain have been removed from current executable authority. Their provenance remains in Git/history. Do not reintroduce them merely because an old handoff or release document mentions them.
 
-`release/`, legacy transition documents and historical SQL/release artifacts answer questions such as:
+For database work read:
+
+1. `architecture/continuous-evolution-policy.md`;
+2. `migrations/README.md`;
+3. `migrations/AGENTS.md`;
+4. `07-database-access-contract.md`;
+5. the affected capability contract and guarantees.
+
+## 7. Compatibility and production transition
+
+Compatibility burden attaches to real consumers and data, not to every old repository shape.
+
+Before production/customer commitments, controlled breaking changes may be accepted with explicit contract/test disposition.
+
+When customer-owned production data or an independently deployed/external supported consumer exists, the compatibility trigger has fired. From then on:
+
+- accepted/applied migration history remains immutable;
+- schema still evolves through appended migrations;
+- use expand → migrate → contract when old/new representations must coexist;
+- destructive changes require explicit data/consumer migration and recovery analysis;
+- published surfaces require observable deprecation/removal criteria;
+- high-risk production changes require appropriate rollout/mitigation evidence;
+- rebaseline is no longer a repository-cleanup technique.
+
+See `architecture/continuous-evolution-policy.md` for the normative details.
+
+## 8. Historical provenance
+
+Historical release and transition material answers:
 
 ```text
 what did we prove then?
-what design decision existed at that checkpoint?
+what decision existed at that checkpoint?
 ```
 
-They do not automatically answer:
+It does not automatically answer:
 
 ```text
 what must current Request Engine look like now?
 ```
 
-The former frozen-V3 compatibility runner/historical test lane has been retired from active current CI during system optimization. Do not reintroduce it from an old document without a concrete present compatibility/provenance need and an explicit governance decision.
-
-`legacy/**` is historical and non-authoritative unless a task explicitly asks to inspect it.
+`legacy/**`, former V2/V3 release evidence, old handoffs and removed migration machinery are non-authoritative unless a current contract explicitly adopts a specific guarantee or pattern.
 
 ## 9. Documentation precedence
 
-For a current change, use this precedence model:
+For a current change use this precedence model:
 
 ```text
-system-optimization mode / current guarantee inventory
+continuous-evolution policy + current guarantee inventory
+        ↓
+current phase policy (for example system-optimization mode)
         ↓
 owning current capability/domain contract
         ↓
@@ -195,28 +167,21 @@ implementation plans / inventories / handoffs
 historical release / transition / V2 material
 ```
 
-A newer accepted capability contract may explicitly supersede an older structural rule. It must not silently weaken HARD guarantees.
+No phase policy may silently weaken a HARD guarantee. No historical structural statement may silently become a permanent freeze.
 
-When two **current** documents disagree, treat that as a repository defect: identify the semantic owner, reconcile the contradiction and update current indexes/tests in the same coherent change.
+When two current normative documents disagree, treat that as a repository defect: identify the semantic owner, reconcile the contradiction and update current indexes/tests in the same coherent change.
 
-## 10. Handoff documentation
+## 10. Documentation policy
 
-`handoff/` contains operational snapshots intended to help another engineer/agent resume work. Handoffs are not competing specifications and may describe traps or status that were true when written.
+Repository documentation is the source of truth. Agent instruction files are operational routers/guardrails.
 
-During system optimization:
+- durable domain/capability rules belong in the owning current contract;
+- durable evolutionary rules belong under `architecture/`;
+- durable rationale belongs in `adr/`;
+- testing/repository governance belongs in `testing/`;
+- engineering-quality policy belongs in `engineering-quality/`;
+- executable SQL/schema evolution belongs in `migrations/`;
+- historical release evidence may preserve historical wording;
+- current indexes, READMEs and instructions must describe the present system.
 
-- current contracts/policies have precedence over handoff status text;
-- do not preserve a retired freeze, branch name, test ratchet or migration checkpoint merely because a handoff mentions it;
-- stale handoff statements should be corrected or archived when they would misdirect current work.
-
-## 11. Documentation policy
-
-Repository documentation is the source of truth. Agent instruction files are concise routers/guardrails.
-
-- Durable domain/capability rules belong in the owning current contract.
-- Durable rationale belongs in `adr/`.
-- Testing/repository governance belongs in `testing/`.
-- Engineering-quality policy belongs in `engineering-quality/`.
-- Executable SQL/schema evolution belongs in `migrations/`.
-- Historical release evidence may preserve historical wording.
-- Current indexes, READMEs and instructions must describe the present system and must not present an obsolete branch, release candidate, frozen CI lane or migration checkpoint as current authority.
+A compatibility shim, deprecated contract, feature flag or historical proof retained for current operation must have a real reason to exist. Where applicable it should have an owner and retirement criterion so temporary protection does not become the next accidental freeze.
