@@ -60,9 +60,7 @@ def upgrade() -> None:
         "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
         "OWNER TO request_engine_schema_owner"
     )
-    op.execute(
-        "REVOKE ALL ON FUNCTION request_platform.read_principal_authority(uuid) FROM PUBLIC"
-    )
+    op.execute("REVOKE ALL ON FUNCTION request_platform.read_principal_authority(uuid) FROM PUBLIC")
     op.execute(
         "GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) "
         "TO request_engine_platform_control"

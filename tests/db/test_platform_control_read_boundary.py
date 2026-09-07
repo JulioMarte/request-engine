@@ -131,10 +131,13 @@ def test_platform_read_boundary_cannot_cross_into_tenant_authority(
             "SELECT set_config('request_engine.organization_id', %s, false)",
             (str(organization_id),),
         )
-        assert control_conn.execute(
-            "SELECT * FROM request_platform.read_principal_authority(%s)",
-            (tenant_id,),
-        ).fetchall() == []
+        assert (
+            control_conn.execute(
+                "SELECT * FROM request_platform.read_principal_authority(%s)",
+                (tenant_id,),
+            ).fetchall()
+            == []
+        )
     finally:
         control_conn.close()
 
