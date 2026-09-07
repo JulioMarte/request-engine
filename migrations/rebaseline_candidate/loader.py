@@ -73,14 +73,10 @@ def _manifest() -> dict[str, Any]:
 def _verified_file(path: Path, *, expected_bytes: int, expected_sha256: str) -> bytes:
     payload = path.read_bytes()
     if len(payload) != expected_bytes:
-        raise RuntimeError(
-            f"{path.name}: expected {expected_bytes} bytes, found {len(payload)}"
-        )
+        raise RuntimeError(f"{path.name}: expected {expected_bytes} bytes, found {len(payload)}")
     digest = _sha256(payload)
     if digest != expected_sha256:
-        raise RuntimeError(
-            f"{path.name}: expected sha256 {expected_sha256}, found {digest}"
-        )
+        raise RuntimeError(f"{path.name}: expected sha256 {expected_sha256}, found {digest}")
     return payload
 
 
@@ -136,10 +132,7 @@ def load_role_statements() -> dict[str, str]:
 
 def _actual_roles(cursor: ClientCursor[Any]) -> dict[str, dict[str, Any]]:
     rows = cursor.execute(_ROLE_QUERY).fetchall()
-    return {
-        str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True))
-        for row in rows
-    }
+    return {str(row[0]): dict(zip(_ROLE_FIELDS, row[1:], strict=True)) for row in rows}
 
 
 def require_clean_database(driver_connection: Any) -> None:
@@ -156,8 +149,7 @@ def require_clean_database(driver_connection: Any) -> None:
     if rows:
         names = ", ".join(str(row[0]) for row in rows)
         raise RuntimeError(
-            "replacement 0001 requires a clean database; existing Request Engine schemas: "
-            + names
+            "replacement 0001 requires a clean database; existing Request Engine schemas: " + names
         )
 
 
