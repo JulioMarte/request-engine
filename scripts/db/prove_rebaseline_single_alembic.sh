@@ -18,7 +18,8 @@ ANALYSIS="$ARTIFACT_DIR/rebaseline-single-alembic-schema-cohesion-analysis.json"
 SCHEMA_DIFF="$ARTIFACT_DIR/rebaseline-single-alembic-schema-diff.json"
 ROLE_DIFF="$ARTIFACT_DIR/rebaseline-single-alembic-role-diff.json"
 CONTAINER="request-engine-rebaseline-alembic-${RANDOM}-${RANDOM}"
-MANIFEST="migrations/rebaseline_candidate/manifest.json"
+BASELINE_ROOT="migrations/rebaseline_candidate"
+MANIFEST="$BASELINE_ROOT/manifest.json"
 BASELINE_REVISION="migrations/versions/0001_initial.py"
 
 if [[ ! -f "$SOURCE_SCHEMA_CATALOG" || ! -f "$SOURCE_ROLE_CATALOG" ]]; then
@@ -29,25 +30,31 @@ if [[ ! -f "$BASELINE_REVISION" ]]; then
   echo "promoted baseline revision is missing: $BASELINE_REVISION" >&2
   exit 1
 fi
+if [[ ! -f "$BASELINE_ROOT/loader.py" || ! -f "$MANIFEST" ]]; then
+  echo "promoted baseline runtime is incomplete: $BASELINE_ROOT" >&2
+  exit 1
+fi
 
 rm -rf "$MATERIALIZED_DIR" "$ALEMBIC_DIR"
 mkdir -p "$MATERIALIZED_DIR" "$ALEMBIC_DIR/versions"
 
-# This is intentionally a verification operation, not a generator. The
-# materializer refuses any artifact whose complete bytes or SHA256 differ from
-# the committed manifest, then verifies every materialized schema part.
+# Keep an independent artifact-integrity proof. The materializer refuses any
+# artifact whose complete bytes or SHA256 differ from the committed manifest
+# and verifies every materialized schema part before the isolated Alembic replay.
 uv run python scripts/db/materialize_rebaseline_candidate.py \
   --artifact-dir "$ARTIFACT_DIR" \
   --output-dir "$MATERIALIZED_DIR" \
   --manifest "$MANIFEST"
 cp "$MANIFEST" "$MATERIALIZED_DIR/manifest.json"
 
-# Exercise the exact promoted Alembic baseline in an isolated migration tree.
-# There must be one source of migration authority after the rebaseline; keeping
-# a second candidate-only revision would allow the proof and production line to
-# drift independently.
+# Exercise the exact promoted migration authority in an isolated Alembic tree.
+# 0001 intentionally delegates payload verification, clean-database enforcement
+# and exact role bootstrap to the committed runtime beside migrations/versions.
+# Copy that complete runtime as well as the revision: a proof that copies only
+# 0001.py is not a faithful installation of the promoted baseline.
 cp migrations/env.py "$ALEMBIC_DIR/env.py"
 cp "$BASELINE_REVISION" "$ALEMBIC_DIR/versions/0001_initial.py"
+cp -R "$BASELINE_ROOT" "$ALEMBIC_DIR/rebaseline_candidate"
 cp alembic.ini "$ALEMBIC_DIR/alembic.ini"
 sed -i "s#^script_location = migrations#script_location = ${ALEMBIC_DIR}#" \
   "$ALEMBIC_DIR/alembic.ini"
@@ -98,12 +105,12 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-"${candidate_psql[@]}" --file="$MATERIALIZED_DIR/0001_roles.sql"
-
+# Do not pre-create Request Engine roles here. Creating and validating the exact
+# audited role topology is a responsibility of the promoted 0001 itself; doing
+# it outside Alembic would let this proof bypass part of the baseline contract.
 export MIGRATION_DATABASE_URL="postgresql+psycopg://postgres:${PGPASSWORD}@127.0.0.1:${PORT}/${SOURCE_DB}"
-export REQUEST_ENGINE_REBASELINE_CANDIDATE_DIR="$MATERIALIZED_DIR"
 uv run alembic -c "$ALEMBIC_DIR/alembic.ini" upgrade head
-unset MIGRATION_DATABASE_URL REQUEST_ENGINE_REBASELINE_CANDIDATE_DIR
+unset MIGRATION_DATABASE_URL
 
 actual_head="$("${candidate_psql[@]}" --tuples-only --no-align \
   --command="SELECT version_num FROM alembic_version")"
