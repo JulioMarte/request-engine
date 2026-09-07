@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para las reglas estructurales ejecutables del backend actual.
 >
-> Este documento complementa `09-python-module-architecture.md`, `10-module-ownership-map.md`, `13-connection-surfaces.md`, `testing/repository-governance-contract.md` y `architecture/system-optimization-mode.md`. Los tests de `tests/architecture/` hacen cumplir estas reglas; no sustituyen los contratos de dominio/transacción.
+> Este documento complementa `09-python-module-architecture.md`, `10-module-ownership-map.md`, `13-connection-surfaces.md`, `testing/repository-governance-contract.md` y `architecture/continuous-evolution-policy.md`. Los tests de `tests/architecture/` hacen cumplir estas reglas; no sustituyen los contratos de dominio/transacción.
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ horizontal responsibility
 
 A change may compile and pass feature tests while still being architecturally invalid if it crosses a boundary through an unsupported surface.
 
-Architecture fitness functions detect unreviewed drift. During system optimization they do **not** turn previous V3/Fx repository shape into an immutable constitution.
+Architecture fitness functions detect unreviewed drift. They do **not** turn prior V2/V3/Fx repository shape into an immutable constitution.
 
 ## 2. Cross-module rule
 
@@ -40,11 +40,11 @@ booking -> catalog.api              forbidden
 
 `contracts` is not universal permission. The module-to-module edge itself must also be approved.
 
-## 3. Current approved synchronous Python dependency directions
+## 3. Current active module inventory and approved synchronous directions
 
-The executable source used by the dependency fitness tests is `tests/architecture/dependency_policy.py`. This document must describe the same accepted topology; if either changes intentionally, update both in one coherent architecture change.
+The executable source used by the dependency fitness tests is `tests/architecture/dependency_policy.py`. The test discovers the physical module inventory, so an added or removed package must be accompanied by an explicit policy decision.
 
-Current permission map:
+Current active modules and permission map:
 
 | Owner | Approved synchronous business-module targets |
 |---|---|
@@ -59,8 +59,8 @@ Current permission map:
 | `live_capacity` | `booking`, `delivery`, `queue` |
 | `operational_recovery` | `booking`, `communications`, `live_capacity` |
 | `operational_copilot` | `booking`, `catalog`, `discovery`, `live_capacity`, `operational_recovery`, `queue`, `tenancy` |
-| `payments` | none |
-| `dispatch` | none |
+
+Payments/reconciliation and field-service dispatch are future domain areas, not current Python modules or dependency-policy nodes. Do not create empty placeholder modules for them.
 
 This is a **permission map**, not a requirement that every permitted edge be used. Actual imports may be a strict subset.
 
@@ -78,7 +78,7 @@ Is an orchestrator genuinely the correct owner of this fan-out?
 
 A high-fan-out orchestrator is not automatically unhealthy. Fan-out is a review signal; hidden dependencies, cycles or wrong ownership are the actual architectural risks.
 
-An existing allowlist is the accepted current policy, not an eternal ban on evolution. A capability may change the topology when its current normative contract demonstrates that the old ownership model is insufficient and the replacement remains explicit, acyclic and proven.
+The current map is CONTROLLED, not immutable. A capability may change topology when the replacement ownership model is explicit, acyclic and proven.
 
 ## 4. Dependency cycles are forbidden
 
@@ -145,7 +145,8 @@ Concrete DB/provider construction belongs in the module-owned install/compositio
 
 `tests/architecture/test_dependency_policy.py` protects:
 
-- cross-module imports through `contracts` only;
+- every physical business module has an explicit dependency-policy entry;
+- cross-module imports use `contracts` only;
 - approved module dependency direction;
 - acyclic module graph;
 - domain inward dependency direction;
@@ -158,7 +159,7 @@ Concrete DB/provider construction belongs in the module-owned install/compositio
 
 `tests/architecture/test_branch_workflow_contract.py` protects serialized development integration topology.
 
-Other architecture tests may protect narrower current capabilities. Their authority comes from the semantic property they defend, not from their filename or release-era origin.
+Other architecture tests may protect narrower current capabilities. Their authority comes from the semantic property they defend, not from filename or release-era origin.
 
 These are fitness functions, not substitutes for PostgreSQL races/invariants, application tests or production-like E2E proof.
 
@@ -199,7 +200,7 @@ INTENTIONAL ARCHITECTURE EVOLUTION
   provide exact-head evidence
 ```
 
-The second path is not a bypass. It is governed by `architecture/system-optimization-mode.md`, `architecture/pre-production-evolution-policy.md` and `testing/repository-governance-contract.md`.
+The second path is not a bypass. It is governed by `architecture/continuous-evolution-policy.md`, `architecture/system-optimization-mode.md` and `testing/repository-governance-contract.md`.
 
 Exact snapshots/allowlists are useful only where the listed shape is itself CONTROLLED. They must not force current Request Engine to retain an old module inventory, capability list, migration-head assumption or repository shape merely because it was once release-proven.
 
@@ -227,4 +228,4 @@ what surface is allowed
 what design question must be answered before changing policy
 ```
 
-Branch-workflow failures additionally explain the repository recovery action. A `Development integration lane mismatch` is an integration-state error: reconcile with current `origin/development`, set `.github/development-integration-lane` to the actual PR head and rerun exact-head checks. Do not weaken the test, create a bypass branch or retarget ordinary work to `main`.
+Branch-workflow failures additionally explain the repository recovery action. A `Development integration lane mismatch` is an integration-state error: reconcile with current `origin/development`, set `.github/development-integration-lane` to the actual working PR branch and rerun exact-head checks. Do not weaken the test, create a bypass branch or retarget ordinary work to `main`.
