@@ -25,9 +25,6 @@ from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
 from request_engine.modules.tenancy.api.identity_exchange_http import (
     install_identity_exchange_http,
 )
-from request_engine.modules.tenancy.api.onboarding_readiness_routes import (
-    create_onboarding_readiness_router,
-)
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
 from request_engine.modules.tenancy.api.staff_contact_errors import (
@@ -39,15 +36,7 @@ from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
 )
-from request_engine.modules.tenancy.contracts.onboarding_readiness import (
-    BusinessPartyReader,
-)
-from request_engine.modules.tenancy.contracts.onboarding_readiness import (
-    OnboardingReadinessFacts as OnboardingReadinessFacts,
-)
-from request_engine.modules.tenancy.contracts.onboarding_readiness import (
-    OnboardingReadinessFactsReader as OnboardingReadinessFactsReader,
-)
+from request_engine.modules.tenancy.contracts.onboarding_readiness import BusinessPartyReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
@@ -79,7 +68,6 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     identity_exchange_fingerprint_key: bytes | None = None,
-    onboarding_facts_reader: OnboardingReadinessFactsReader | None = None,
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
@@ -116,14 +104,6 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)
-
-    if onboarding_facts_reader is not None:
-        app.include_router(
-            create_onboarding_readiness_router(
-                reader=onboarding_facts_reader,
-                actor_resolver=actor_resolver,
-            )
-        )
 
 
 def install_operational_http(
