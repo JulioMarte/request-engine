@@ -55,14 +55,10 @@ def load_candidate_sql(candidate_dir: Path | None = None) -> str:
         expected_bytes = cast(int, part["bytes"])
         expected_sha256 = cast(str, part["sha256"])
         if len(payload) != expected_bytes:
-            raise RuntimeError(
-                f"{path}: expected {expected_bytes} bytes, found {len(payload)}"
-            )
+            raise RuntimeError(f"{path}: expected {expected_bytes} bytes, found {len(payload)}")
         digest = _sha256(payload)
         if digest != expected_sha256:
-            raise RuntimeError(
-                f"{path}: expected sha256 {expected_sha256}, found {digest}"
-            )
+            raise RuntimeError(f"{path}: expected sha256 {expected_sha256}, found {digest}")
         payload_parts.append(payload)
 
     payload = b"".join(payload_parts)
@@ -81,9 +77,7 @@ def load_candidate_sql(candidate_dir: Path | None = None) -> str:
     text = payload.decode("utf-8")
     meta_commands = [line for line in text.splitlines() if line.startswith("\\")]
     if meta_commands:
-        raise RuntimeError(
-            f"rebaseline candidate contains psql meta-command(s): {meta_commands}"
-        )
+        raise RuntimeError(f"rebaseline candidate contains psql meta-command(s): {meta_commands}")
     return text
 
 
