@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from request_engine.entrypoints.http.operation_catalog import _authorized_operations
+from request_engine.entrypoints.http.operation_catalog import authorized_operations
 from request_engine.platform.security.context import ActorContext
 
 
@@ -53,7 +53,7 @@ def test_catalog_filters_known_admin_operation_when_actor_lacks_capability() -> 
         }
     }
 
-    operations = _authorized_operations(openapi, _actor("appointments.find_slots"))
+    operations = authorized_operations(openapi, _actor("appointments.find_slots"))
 
     assert [item.operation_id for item in operations] == ["appointments_find_slots"]
     assert all(item.capability != "catalog.manage" for item in operations)
@@ -71,7 +71,7 @@ def test_one_capability_can_authorize_multiple_distinct_operations() -> None:
         }
     }
 
-    operations = _authorized_operations(openapi, _actor("catalog.manage"))
+    operations = authorized_operations(openapi, _actor("catalog.manage"))
 
     assert [item.operation_id for item in operations] == [
         "catalog_location_create",
@@ -93,9 +93,9 @@ def test_tool_projection_metadata_is_returned_but_does_not_grant_visibility() ->
         }
     }
 
-    assert _authorized_operations(openapi, _actor()) == ()
+    assert authorized_operations(openapi, _actor()) == ()
 
-    operations = _authorized_operations(openapi, _actor("catalog.manage"))
+    operations = authorized_operations(openapi, _actor("catalog.manage"))
     assert len(operations) == 1
     assert operations[0].tool_name == "catalog.location.create"
     assert operations[0].tool_audiences == ("admin",)
@@ -114,4 +114,4 @@ def test_routes_without_canonical_operation_metadata_are_not_advertised() -> Non
         }
     }
 
-    assert _authorized_operations(openapi, _actor("catalog.manage")) == ()
+    assert authorized_operations(openapi, _actor("catalog.manage")) == ()

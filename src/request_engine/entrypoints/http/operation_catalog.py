@@ -33,10 +33,12 @@ class AuthorizedOperationCatalogView(BaseModel):
     operations: tuple[AuthorizedOperationView, ...]
 
 
-def _authorized_operations(
+def authorized_operations(
     openapi: dict[str, object],
     actor: ActorContext,
 ) -> tuple[AuthorizedOperationView, ...]:
+    """Project canonical OpenAPI operations that the current actor may invoke."""
+
     paths_value = openapi.get("paths", {})
     if not isinstance(paths_value, dict):
         return ()
@@ -111,7 +113,7 @@ def create_operation_catalog_router(*, actor_resolver: ActorResolver) -> APIRout
     ) -> AuthorizedOperationCatalogView:
         openapi = cast(dict[str, object], request.app.openapi())
         return AuthorizedOperationCatalogView(
-            operations=_authorized_operations(openapi, current),
+            operations=authorized_operations(openapi, current),
         )
 
     router.add_api_route(
@@ -128,5 +130,6 @@ def create_operation_catalog_router(*, actor_resolver: ActorResolver) -> APIRout
 __all__ = [
     "AuthorizedOperationCatalogView",
     "AuthorizedOperationView",
+    "authorized_operations",
     "create_operation_catalog_router",
 ]
