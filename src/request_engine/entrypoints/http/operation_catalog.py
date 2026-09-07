@@ -75,11 +75,11 @@ def _authorized_operations(
 
             tool_name = operation.get("x-request-engine-tool-name")
             audiences_value = operation.get("x-request-engine-tool-audiences", [])
-            audiences = (
-                tuple(item for item in audiences_value if isinstance(item, str))
-                if isinstance(audiences_value, list)
-                else ()
-            )
+            if isinstance(audiences_value, list):
+                audience_items = cast(list[object], audiences_value)
+                audiences = tuple(item for item in audience_items if isinstance(item, str))
+            else:
+                audiences = ()
             operations.append(
                 AuthorizedOperationView(
                     operation_id=cast(str, operation_id),
@@ -128,6 +128,5 @@ def create_operation_catalog_router(*, actor_resolver: ActorResolver) -> APIRout
 __all__ = [
     "AuthorizedOperationCatalogView",
     "AuthorizedOperationView",
-    "_authorized_operations",
     "create_operation_catalog_router",
 ]

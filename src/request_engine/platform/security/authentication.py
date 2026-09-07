@@ -4,6 +4,10 @@ from enum import StrEnum
 from typing import Protocol
 
 
+def _empty_metadata() -> dict[str, str]:
+    return {}
+
+
 class AuthenticatedSubjectClass(StrEnum):
     """Authentication-side subject class before RE Principal resolution."""
 
@@ -23,7 +27,7 @@ class AuthenticatedSubject:
     authority_id: str
     subject_id: str
     subject_class: AuthenticatedSubjectClass
-    metadata: Mapping[str, str] = field(default_factory=dict)
+    metadata: Mapping[str, str] = field(default_factory=_empty_metadata)
 
     def __post_init__(self) -> None:
         if not self.authority_id.strip():
