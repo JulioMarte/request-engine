@@ -82,6 +82,13 @@ def upgrade() -> None:
         """
     )
     op.execute(
+        "ALTER FUNCTION request_engine.guard_principal_security_identity() "
+        "OWNER TO request_engine_schema_owner"
+    )
+    op.execute(
+        "REVOKE ALL ON FUNCTION request_engine.guard_principal_security_identity() FROM PUBLIC"
+    )
+    op.execute(
         "CREATE TRIGGER principals_guard_security_identity "
         "BEFORE UPDATE ON request_engine.principals FOR EACH ROW "
         "EXECUTE FUNCTION request_engine.guard_principal_security_identity()"
@@ -122,6 +129,14 @@ def upgrade() -> None:
         END
         $$
         """
+    )
+    op.execute(
+        "ALTER FUNCTION request_engine.bump_principal_authority_from_representation() "
+        "OWNER TO request_engine_schema_owner"
+    )
+    op.execute(
+        "REVOKE ALL ON FUNCTION "
+        "request_engine.bump_principal_authority_from_representation() FROM PUBLIC"
     )
     op.execute(
         "CREATE TRIGGER representations_bump_principal_authority "

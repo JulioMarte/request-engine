@@ -64,27 +64,31 @@ def test_delegated_agent_authority_is_intersection_not_union() -> None:
 
 def test_expired_or_revoked_delegation_has_no_effective_authority() -> None:
     now = datetime(2026, 9, 7, 20, 0, tzinfo=UTC)
-    common = dict(
-        organization_id=uuid4(),
-        delegator_principal_id=uuid4(),
-        delegate_principal_id=uuid4(),
-        allowed_capabilities=frozenset({"appointments.reschedule"}),
-        revision=1,
-    )
+    organization_id = uuid4()
+    delegator_principal_id = uuid4()
+    delegate_principal_id = uuid4()
     policy = frozenset({"appointments.reschedule"})
 
     expired = DelegationGrant(
         id=uuid4(),
+        organization_id=organization_id,
+        delegator_principal_id=delegator_principal_id,
+        delegate_principal_id=delegate_principal_id,
+        allowed_capabilities=policy,
         not_before=now - timedelta(hours=2),
         expires_at=now - timedelta(hours=1),
-        **common,
+        revision=1,
     )
     revoked = DelegationGrant(
         id=uuid4(),
+        organization_id=organization_id,
+        delegator_principal_id=delegator_principal_id,
+        delegate_principal_id=delegate_principal_id,
+        allowed_capabilities=policy,
         not_before=now - timedelta(hours=1),
         expires_at=now + timedelta(hours=1),
+        revision=1,
         status=DelegationStatus.REVOKED,
-        **common,
     )
 
     for grant in (expired, revoked):
