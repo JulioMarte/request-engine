@@ -94,6 +94,7 @@ uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
   tests/db/test_platform_control_read_boundary.py \
+  tests/db/test_platform_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 
