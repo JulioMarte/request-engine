@@ -20,7 +20,7 @@ def _load() -> ModuleType:
 
 
 def _inputs() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    role = {
+    role: dict[str, Any] = {
         "role_name": "request_engine_app",
         "superuser": False,
         "inherit": True,
@@ -33,8 +33,10 @@ def _inputs() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
         "valid_until": None,
         "has_password": False,
     }
-    role_contract = {key: value for key, value in role.items() if key != "role_name"}
-    manifest = {
+    role_contract: dict[str, Any] = {
+        key: value for key, value in role.items() if key != "role_name"
+    }
+    manifest: dict[str, Any] = {
         "effective_model": {
             "relations": 2,
             "tables": 1,
@@ -55,7 +57,7 @@ def _inputs() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
             "role_settings": [],
         },
     }
-    schema_catalog = {
+    schema_catalog: dict[str, Any] = {
         "counts": {
             "relations": 2,
             "columns": 3,
@@ -71,13 +73,14 @@ def _inputs() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
             {"relation_kind": "v", "schema_name": "request_read", "relation_name": "items_v1"},
         ],
     }
-    role_catalog = {
+    role_catalog: dict[str, Any] = {
         "counts": {"roles": 1, "role_memberships": 0, "role_settings": 0},
         "roles": [role],
         "role_memberships": [],
         "role_settings": [],
     }
-    return manifest, schema_catalog, role_catalog, {}
+    analysis: dict[str, Any] = {}
+    return manifest, schema_catalog, role_catalog, analysis
 
 
 def test_verifier_accepts_exact_manifested_baseline() -> None:
