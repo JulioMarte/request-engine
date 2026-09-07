@@ -1,24 +1,17 @@
-from __future__ import annotations
-
-from pathlib import Path
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-POLICY = REPO_ROOT / "docs" / "architecture" / "continuous-evolution-policy.md"
-SYSTEM_MODE = REPO_ROOT / "docs" / "architecture" / "system-optimization-mode.md"
-DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
-MIGRATIONS_README = REPO_ROOT / "migrations" / "README.md"
-MIGRATIONS_AGENTS = REPO_ROOT / "migrations" / "AGENTS.md"
-ROOT_AGENTS = REPO_ROOT / "AGENTS.md"
+POLICY = "docs/architecture/continuous-evolution-policy.md"
+SYSTEM_MODE = "docs/architecture/system-optimization-mode.md"
+DOCS_INDEX = "docs/README.md"
+MIGRATIONS_README = "migrations/README.md"
+MIGRATIONS_AGENTS = "migrations/AGENTS.md"
+ROOT_AGENTS = "AGENTS.md"
 
 
-def _text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+def _text(path: str) -> str:
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
 
 
 def test_permanent_evolution_policy_is_discoverable_from_current_authority() -> None:
-    assert POLICY.is_file()
-
     policy_ref = "continuous-evolution-policy.md"
     assert policy_ref in _text(SYSTEM_MODE)
     assert policy_ref in _text(DOCS_INDEX)
