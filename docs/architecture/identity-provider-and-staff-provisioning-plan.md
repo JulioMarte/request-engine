@@ -1,370 +1,806 @@
-# Identity provider and staff provisioning plan
+# Tenant identity, authentication, and staff trust-root plan
 
-Status: **handoff / implementation plan for the next agent**.
+Status: **normative implementation handoff / architecture contract**.
 
 Branch: `cohesion/system-optimization`
 
-Starting HEAD when this plan was written: `51b713510a84b008fb1e39447cdfff1291151c85`.
+This file intentionally keeps its historical path so existing references do not break, but its scope is broader than "identity-provider integration". The target is the **tenant identity and staff trust root** of Request Engine.
 
-The branch is intentionally still in the system-optimization phase. Do not create a new branch unless the integration-lane rules require it. Continue on `cohesion/system-optimization` and keep the existing draft PR as the integration vehicle.
+The architecture MUST make Request Engine fully operable with **zero external identity providers configured**, while allowing OIDC, WorkOS, Clerk, Descope, Entra ID, Keycloak, Auth0, or future providers to be added later without redesigning Tenancy, Principal, Representation, capability grants, or business modules.
 
-## 0. Immediate repository state
+---
 
-The current exact-head CI run `#4285` / `34156734648` failed in `Python quality and architecture` at `ruff format --diff`; Ruff lint already passed. PostgreSQL jobs were skipped because the aggregate fails closed when Python quality fails.
+## 0. Immediate repository state and first instruction
 
-The formatter reported only mechanical formatting differences in:
+The implementation agent MUST begin from the exact current branch state, inspect current CI, and restore exact-head green evidence before layering identity work.
 
-- `src/request_engine/entrypoints/http/app.py`
-- `src/request_engine/entrypoints/http/module_composition.py` (missing final newline)
-- `src/request_engine/entrypoints/http/operational_app.py`
-- `src/request_engine/modules/onboarding/api/router.py`
+The previous handoff recorded a formatting-only Python failure from run `#4285` / `34156734648` at an earlier HEAD. That historical run is evidence only for that earlier commit; do not assume it still describes the current HEAD. Re-check exact-head CI first.
 
-**First task for the next agent:** apply `uv run ruff format` equivalent changes, push, and obtain a green exact-head Python lane before layering provisioning work. Do not claim PostgreSQL evidence from run #4285; PostgreSQL did not execute.
-
-## 1. Product problem to solve
-
-Request Engine cannot honestly claim self-service tenant onboarding while the first trusted administrator, employee memberships, Representation/grant lifecycle, and external identity binding are incomplete.
-
-A business tenant must be able to reach this state without SQL fixtures:
+Before DDL or identity integration code, inventory the current implementation of:
 
 ```text
-external human identity exists
+Organization
+Principal
+Party
+Representation
+capability grants / effective capabilities
+operational authority snapshots/revisions
+ActorResolver / ActorContext or current equivalent
+idempotency
+outbox
+provider-event handling
+RLS / tenant context
+```
+
+Do not create speculative parallel models until this audit is complete.
+
+---
+
+## 1. Product requirement
+
+Request Engine cannot claim real tenant onboarding while creation of the first trusted human, staff membership, authentication, authority delegation, revocation, and recovery require SQL fixtures or an external SaaS identity provider.
+
+The minimum providerless journey MUST be possible from a fresh PostgreSQL database:
+
+```text
+Request Engine starts with no external IdP configuration
+        ↓
+first human establishes a native authenticated identity
+        ↓
+platform/bootstrap trust admits one tenant-provisioning operation
         ↓
 Request Engine Organization exists
         ↓
 Organization Party exists
         ↓
-first human Principal is bound to the external identity
+Request Engine Principal exists
         ↓
-that Principal has explicit membership/Representation authority
+Native identity is bound to that Principal
         ↓
-that Principal receives the minimum bootstrap/admin capabilities
+first active staff membership/Representation exists
+        ↓
+minimum tenant-control and operational authority is materialized
         ↓
 Organization becomes administratively operable
         ↓
-admin can invite/add/revoke later staff without SQL
+first admin can invite/add a second staff member
+        ↓
+second staff member authenticates natively
+        ↓
+second staff member receives constrained RE authority
+        ↓
+second staff member can execute allowed business operations
+        ↓
+first admin revokes/suspends the second staff member
+        ↓
+existing session immediately loses RE authority
 ```
 
-The architecture must support identity platforms such as WorkOS AuthKit, Clerk, Descope, and future OIDC/JWT providers without making any of their tenant/organization/role models the Request Engine domain model.
+Only after this journey is proven should an external provider be treated as an implementation target.
+
+---
 
 ## 2. Non-negotiable architecture rule
 
-**External identity providers own authentication and credential lifecycle. Request Engine owns business tenancy and operational authorization.**
+**Authentication establishes who presented a trusted identity. Request Engine establishes what that identity may do inside a tenant.**
 
-Provider responsibilities may include:
+The authentication authority may be:
 
-- user authentication;
-- MFA/passkeys/passwords/social/SSO;
-- provider sessions;
-- provider user IDs;
-- provider organization/tenant IDs when the deployment chooses to use them;
-- provider membership/invitation lifecycle;
-- provider webhooks/events;
-- optional coarse provider roles used as input to a policy mapping.
+```text
+Request Engine Native
+Generic OIDC
+WorkOS
+Clerk
+Descope
+future provider
+```
+
+External providers are optional adapters. They are not a prerequisite for Request Engine to function.
 
 Request Engine remains authoritative for:
 
-- `Organization` as the tenant boundary;
-- `Principal` as the authenticated execution identity inside RE;
+- `Organization` as the business tenant boundary;
+- `Principal` as the internal execution/security identity;
+- tenant membership state;
 - `Party` as business/subject identity;
 - `Representation` as delegated business authority;
-- capability grants/effective capabilities;
-- operational scopes such as manage profile/supply/terms/discovery;
-- revocation semantics that must immediately affect RE execution;
-- provenance/audit of who granted/revoked authority;
-- tenant isolation and foreign-row opacity.
+- capability grants and delegation ceilings;
+- operational scopes;
+- authority revision/provenance;
+- immediate business-authorization revocation;
+- tenant isolation and foreign-row opacity;
+- the mapping between authenticated identities and RE Principals.
 
-Never authorize `booking.manage_supply`, `catalog.manage`, `queue.configure`, etc. merely because WorkOS/Clerk/Descope says `admin`. Provider roles can be translated by an explicit mapping policy into RE grants, but the effective RE authorization remains materialized and enforced by Tenancy/security.
+No provider role or claim may directly become RE business authority.
 
-## 3. Why the provider abstraction is necessary
-
-WorkOS, Clerk and Descope all support B2B organization/tenant membership but differ materially:
-
-- WorkOS models users and `OrganizationMembership` and supports users in zero, one or many organizations.
-- Clerk models Organizations, memberships, creator/default roles and role sets.
-- Descope models project-level identities plus tenant associations/tenant roles and can optionally isolate the same login ID per tenant.
-
-Therefore no table or domain object should be named after a provider-specific resource such as `clerk_organization_membership` as the canonical model. Provider-specific identifiers belong in correlation/binding tables or adapter state.
-
-## 4. Target conceptual model
-
-Before writing migrations, audit the existing schema and reuse current `Organization`, `Principal`, `Party`, `Representation` and grant structures wherever their semantics are sound. Do not duplicate them merely to match this plan.
-
-The target concepts are:
-
-### 4.1 ExternalIdentityBinding
-
-A durable correlation between an authenticated provider subject and an RE Principal.
-
-Suggested logical fields:
+Forbidden:
 
 ```text
-organization_id             -- tenant boundary when binding is tenant-scoped
-principal_id                -- RE authority identity
-provider                    -- e.g. workos, clerk, descope, oidc
-provider_environment        -- stable environment/instance identifier, not a secret
-provider_subject_id         -- external user/sub identifier
-provider_organization_id    -- nullable provider org/tenant correlation
-provider_membership_id      -- nullable provider membership correlation
-status                      -- active/revoked/suspended/pending
+provider says admin
+        ↓
+Request Engine grants *
+```
+
+Forbidden:
+
+```text
+provider membership appears
+        ↓
+automatic booking/catalog/queue/staff authority
+```
+
+Allowed only through an explicit RE-owned mapping/provisioning policy:
+
+```text
+external fact
+        ↓
+validated policy input
+        ↓
+RE-owned provisioning/authority command
+        ↓
+materialized RE authority
+```
+
+---
+
+## 3. Core semantic separation
+
+The implementation MUST keep these concepts distinct:
+
+```text
+Authentication identity  = who proved control of a credential/session
+Principal                = internal RE security actor
+Tenant membership         = where the Principal belongs administratively
+Representation            = whom/what the Principal is allowed to act for
+Capability                = what action the Principal may perform
+Scope                     = where/on what that action may be performed
+```
+
+A useful invariant is:
+
+```text
+Authentication proves WHO.
+Membership establishes WHERE the actor belongs.
+Representation establishes WHOM/WHAT the actor may act for.
+Capabilities establish WHAT the actor may do.
+Scope constrains WHERE/ON WHAT it may be done.
+```
+
+None of those facts may silently imply the next.
+
+In particular:
+
+```text
+valid credential != active membership
+active membership != administrative authority
+provider role != RE capability
+invitation != authority
+same email != same Principal
+```
+
+---
+
+## 4. Target topology
+
+```text
+                    Authentication Authorities
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+       RE Native          Generic OIDC        B2B providers
+                                                  |
+                                      WorkOS / Clerk / Descope
+          |                   |                   |
+          +-------------------+-------------------+
+                              |
+                              v
+                    AuthenticatedSubject
+                              |
+                              v
+                       IdentityBinding
+                              |
+                              v
+                          Principal
+                              |
+                +-------------+-------------+
+                |                           |
+                v                           v
+        Human staff membership        Service/integration
+                |
+                v
+          Representation
+                |
+                v
+        Capability grants
+                |
+                v
+        Effective authority
+                |
+                v
+   Booking / Queue / Catalog / Parties / ...
+```
+
+`AuthenticatedSubject` is provider-neutral. `IdentityBinding` is RE-owned correlation. `Principal` and all business authorization remain independent of the authentication mechanism.
+
+---
+
+## 5. IdentityAuthority
+
+Introduce a provider-neutral concept representing a source capable of asserting authenticated subjects.
+
+Conceptual fields, subject to the Slice 1 schema audit:
+
+```text
+identity_authority_id
+kind                     -- native | oidc | workos | clerk | descope | ...
+issuer_or_environment    -- stable namespace, never a secret
+status
+configuration_ref        -- optional secret/config indirection, never raw secret
+created_at
+revision
+```
+
+Do not hard-code one `provider` column on Organization as if a tenant could only ever authenticate through one authority.
+
+An Organization MAY eventually have multiple configured authorities concurrently.
+
+Examples:
+
+```text
+Clinic A
+  - RE Native
+  - WorkOS production connection
+
+Clinic B
+  - RE Native only
+
+Enterprise C
+  - corporate OIDC only
+```
+
+The data model should permit coexistence even if the first UI only exposes Native.
+
+---
+
+## 6. IdentityBinding
+
+Replace the conceptual `ExternalIdentityBinding` with provider-independent `IdentityBinding`.
+
+A binding means only:
+
+> this authenticated subject is correlated to this RE Principal in this valid tenant/security context.
+
+It does **not** itself grant business authority.
+
+Conceptual fields:
+
+```text
+organization_id             -- if binding is tenant-scoped after audit decision
+principal_id
+identity_authority_id
+subject_id                  -- immutable/stable identifier within that authority namespace
+status                      -- pending | active | suspended | revoked
 last_seen_at
 created_at
 revoked_at
 revision
+
+-- optional external correlation metadata, not canonical authority
+external_organization_id
+external_membership_id
 ```
 
-Do not assume email is an identity key. Email can change and can be shared/reused. The stable provider subject plus provider environment is the credential-side identity.
-
-A human may belong to multiple RE organizations. The design must decide whether that means one global external identity mapped to multiple tenant-scoped Principals or a reusable account identity plus tenant memberships. Preserve the current hard tenant boundary; do not weaken RLS to create a global mutable Principal unless the existing schema already safely supports it.
-
-### 4.2 StaffMembership / Representation lifecycle
-
-Prefer extending the existing Representation model instead of creating a parallel membership authority model if Representation already expresses the required semantics.
-
-Required lifecycle:
+The stable identity key is conceptually:
 
 ```text
-PENDING / INVITED
+(identity_authority_id, subject_id)
+```
+
+possibly plus the tenant boundary depending on the resolved Principal model.
+
+Email, phone number, display name, provider role, and provider organization name are never identity keys.
+
+---
+
+## 7. Native identity and credential boundary
+
+`RE Native` is the first real authentication implementation, not merely a fake adapter.
+
+Native authentication MUST be designed behind the same provider-neutral authentication boundary used by later adapters.
+
+Native credentials MUST NOT be stored on:
+
+```text
+Principal
+Party
+StaffMembership
+Representation
+```
+
+Keep credential/session concerns in a narrowly scoped security/identity subsystem at the platform edge or another ownership location justified by the Slice 1 audit.
+
+Minimum first-party native lifecycle required for providerless operation:
+
+```text
+native identity creation
+credential enrollment
+login/authentication
+session or token issuance
+logout
+session invalidation
+credential reset/recovery
+credential disable/revoke
+```
+
+Do not attempt to build every identity-provider feature in the first slice. Social login, enterprise SSO, passkeys, sophisticated MFA, device management, and other conveniences can follow after the minimal trust root is secure.
+
+Credential material MUST use accepted password/secret hashing primitives and deployment-managed secrets; raw passwords, reset secrets, access tokens, refresh tokens, or equivalent sensitive material must never enter audit logs, telemetry, outbox payloads, or ordinary domain tables.
+
+Native authentication owns native credential validity. Tenancy still owns business authority.
+
+---
+
+## 8. One Principal may have multiple authentication bindings
+
+The design SHOULD permit one RE Principal to be reachable through multiple authenticated identities where explicitly linked.
+
+Example migration:
+
+```text
+Principal P1
+  ├─ Native binding N1
+  └─ WorkOS binding W1
+
+Membership M1
+Representation R1
+Grants G1
+```
+
+After WorkOS is proven and accepted:
+
+```text
+disable N1
+```
+
+while preserving:
+
+```text
+Principal P1
+Membership M1
+Representation R1
+Grants G1
+Audit history
+```
+
+Changing authentication provider must not require reconstructing business authority.
+
+This is a required portability property.
+
+---
+
+## 9. Account linking is a security boundary
+
+Never automatically merge/link identities because they share:
+
+```text
+email
+phone
+name
+domain
+provider metadata
+```
+
+Default:
+
+```text
+same email across two IdentityAuthorities
+        !=
+permission to link the identities
+```
+
+A future/public account-link operation must require a strong proof such as:
+
+- successful authentication to both identities; or
+- an explicitly authorized recovery/admin workflow with auditable anti-takeover policy.
+
+The first implementation MAY simply disallow public cross-authority linking and expose only a tightly controlled reconciliation path.
+
+Required invariant:
+
+```text
+no implicit cross-authority account linking
+```
+
+---
+
+## 10. Staff membership and Representation
+
+Before adding a new membership table, inspect whether the existing Representation model plus existing Principal metadata can correctly express staff membership lifecycle.
+
+Do not create a parallel authorization system merely because external providers use the word "membership".
+
+The system must nevertheless be able to answer, owner-backed and unambiguously:
+
+```text
+Is this human active staff of this Organization?
+What Principal represents them?
+What business Party/authority anchor do they represent?
+What capabilities/scopes are effective?
+What may they delegate?
+Who created/changed/revoked this authority?
+What revision produced the current state?
+```
+
+Required conceptual staff lifecycle:
+
+```text
+INVITED / PENDING
 ACTIVE
 SUSPENDED
 REVOKED
 ```
 
-The lifecycle must answer:
+Suspension/revocation must affect RE authorization even if a native or external authentication session remains otherwise cryptographically valid.
 
-- who is a member of this Organization;
-- what Party/authority anchor they represent;
-- what operational scopes they hold;
-- which capabilities are granted;
-- who granted them;
-- when/revision under which policy;
-- whether the membership is currently executable;
-- whether provider membership is merely correlated or required.
+---
 
-### 4.3 ProviderConnection / IdentityProviderConfiguration
+## 11. Human and non-human Principals
 
-Provider secrets must not be stored as ordinary domain data. Configuration should be injected by deployment/secret manager.
+Do not force bots, integrations, automation workers, or platform actors into a human `StaffMembership` concept solely because all execute as Principals.
 
-RE may persist only non-secret correlation/configuration facts needed for deterministic routing, for example:
+Preserve or refine the existing Principal-kind taxonomy after audit, conceptually distinguishing at least:
 
 ```text
-provider
-provider_environment/issuer
-provider_organization_id
-webhook signing configuration reference (not secret value)
-provisioning_mode
-sync_mode
-status
+human/operator
+service/bot
+integration
+platform/deployment
 ```
 
-Suggested `provisioning_mode` values:
+The staff lifecycle in this plan is for human/operator membership. Service and integration Principal lifecycle must remain compatible with the same authorization infrastructure without pretending they are employees.
+
+---
+
+## 12. Tenant context is independent of authentication identity
+
+A person may belong to multiple Organizations.
+
+Therefore:
 
 ```text
-provider_first
-request_engine_first
-linked_existing
+authenticated identity != selected tenant
 ```
 
-Do not implement all modes in the first slice. The model should not prevent them.
-
-## 5. Recommended authority topology
-
-Treat authentication and business authorization as two independent gates:
+A protected request must resolve an unambiguous:
 
 ```text
-trusted provider credential/session
-        ↓ verify signature/issuer/audience/expiry
-provider subject
-        ↓ resolve binding
-Request Engine Principal
-        ↓ tenant policy
-capability grants
-        ↓ contextual authority
-Representation / operational scope
-        ↓ owner validation
-business command
+authenticated subject
+        ↓
+Principal
+        +
+Organization context
 ```
 
-A valid Clerk/WorkOS/Descope session with no active RE binding must produce a typed authentication/provisioning state, **not** an implicit all-powerful Principal.
+before business authorization.
 
-## 6. Bootstrap problem: the first admin
+Never silently select a tenant using:
 
-This is the core circular dependency that must be solved explicitly.
+```text
+first membership
+most recent membership
+email domain
+provider default organization
+arbitrary provider claim
+```
 
-Today `organization.bootstrap` assumes a freshly provisioned Principal and an active `organization` Party, then grants root operational scopes. That is insufficient for zero-to-one tenant creation.
+If tenant context is absent or ambiguous, return a typed failure rather than guessing.
 
-The first-admin flow must create the minimum trust root without requiring an already-existing tenant admin.
+Provider organization/tenant context may participate in exact correlation, but it is never sufficient by itself to create RE authority.
 
-### 6.1 Recommended bootstrap trust boundary
+---
 
-Create a **platform/deployment provisioning authority**, distinct from tenant administrator authority.
+## 13. Authentication adapter contracts: use capability facets, not one giant provider port
 
-Examples:
+Do **not** create a monolithic interface such as:
 
-- trusted backend signup service;
-- verified provider webhook consumer;
-- platform operator Principal;
-- one-time provisioning token minted by the control plane.
+```python
+class IdentityProviderPort(Protocol):
+    verify(...)
+    ensure_organization(...)
+    ensure_membership(...)
+    invite_member(...)
+    revoke_membership(...)
+    webhooks(...)
+```
 
-This authority may call a narrow bootstrap command such as conceptually:
+That interface accidentally assumes every authentication provider is a B2B directory. Generic OIDC does not guarantee organization creation, invitations, membership APIs, or webhooks.
+
+Use narrow provider-neutral facets, naming subject to repository conventions:
+
+```text
+Authenticator
+  verify/assert authenticated subject
+
+IdentityDirectory             optional
+  lookup/provision external identities
+
+ExternalOrganizationDirectory optional
+  ensure/read provider-side organizations
+
+ExternalMembershipDirectory   optional
+  ensure/read/revoke provider-side memberships
+
+InvitationTransport           optional
+  deliver/revoke provider invitations
+
+IdentityEventSource            optional
+  verify/normalize webhook or event ingress
+```
+
+Illustrative capability matrix:
+
+| Adapter | Authenticate | Identity directory | External org | External membership | Invitation transport | Events |
+|---|---:|---:|---:|---:|---:|---:|
+| RE Native | yes | yes | n/a | n/a | optional | internal |
+| Generic OIDC | yes | usually no | no | no | no | optional |
+| WorkOS | yes | yes | yes | yes | yes | yes |
+| Clerk | yes | yes | yes | yes | yes | yes |
+| Descope | yes | yes | tenant-specific | tenant-specific | provider-specific | yes |
+
+Tenancy/application code must import provider-neutral contracts only. Vendor SDK types remain at adapter edges.
+
+---
+
+## 14. Authentication resolution contract
+
+Preserve the current HTTP actor boundary (`ActorResolver` / `ActorContext` or exact current equivalent) rather than spreading auth logic through business routers.
+
+Provider-neutral resolution should conceptually perform:
+
+```text
+receive credential/session assertion
+        ↓
+select configured Authentication Authority deterministically
+        ↓
+verify credential/assertion according to that authority
+        ↓
+obtain AuthenticatedSubject(authority_id, subject_id, metadata)
+        ↓
+resolve active IdentityBinding
+        ↓
+resolve exact Organization context
+        ↓
+load current Principal + current RE authority
+        ↓
+return ActorContext
+```
+
+Never accept the following as authoritative from an ordinary request body:
+
+```text
+organization_id
+principal_id
+capabilities
+delegation ceiling
+Representation scopes
+```
+
+If authentication succeeds but no active binding/membership exists, return a typed provisioning/unbound state. Never synthesize an unrestricted Principal.
+
+---
+
+## 15. Authorization revision / immediate revocation
+
+Business authority cannot be trusted solely from a long-lived token snapshot.
+
+Introduce or reuse a monotonic authority revision/epoch mechanism if the current design does not already provide equivalent guarantees.
+
+Conceptually:
+
+```text
+Principal / tenant authority revision = 41
+session/cache was resolved at revision = 40
+        ↓
+re-resolve or reject stale authority
+```
+
+Any operation that changes effective authority should invalidate stale authorization state, including:
+
+```text
+membership suspend
+membership revoke
+binding revoke
+authority replacement
+delegation change
+relevant Representation revocation
+```
+
+The exact mechanism may be a revision, epoch, authoritative DB read, bounded cache keyed by revision, or an existing repository mechanism. The invariant matters more than the implementation name:
+
+> after an RE authority revocation commits, a previously valid external or native session must not continue authorizing protected business commands.
+
+For RE Native, where RE controls both authorization and sessions, revocation SHOULD also invalidate affected native sessions where policy requires it.
+
+---
+
+## 16. Bootstrap: zero-to-one trust root
+
+The current `organization.bootstrap` path only establishes root operational authority after prerequisite objects already exist. It does not solve zero-to-one tenant creation.
+
+Introduce a **platform/deployment provisioning authority** distinct from ordinary tenant authority.
+
+It may admit a narrow command such as conceptually:
 
 ```text
 tenancy.provision_organization
 ```
 
-It must not receive ordinary tenant business capabilities.
+It must not receive normal tenant business capabilities merely because it can bootstrap a tenant.
 
-### 6.2 Atomic internal bootstrap transaction
+### 16.1 Bootstrap authority should be narrow and consumable
 
-The internal RE transaction should create or reconcile, in one DB transaction where possible:
+Prefer one-time or tightly bounded provisioning intents over a permanently omnipotent bootstrap credential.
+
+Conceptual:
+
+```text
+ProvisioningIntent
+  id
+  nonce/dedupe key
+  permitted_action = organization.provision
+  expires_at
+  consumed_at
+  provenance
+```
+
+The trust-root creation must be idempotent and concurrency-safe.
+
+### 16.2 Atomic internal bootstrap
+
+Where compatible with the audited schema, one internal PostgreSQL transaction should create/reconcile:
 
 1. Organization;
 2. organization Party;
-3. initial Principal;
-4. external identity binding;
-5. initial active staff Representation/membership;
-6. initial RE capability grants;
-7. root operational Representation scopes;
-8. audit/provenance record;
-9. provisioning state / outbox intent.
+3. first Principal;
+4. Native or other IdentityBinding;
+5. first active staff membership/Representation;
+6. minimum tenant-control capability grants;
+7. required root operational Representation scopes;
+8. audit/provenance;
+9. provisioning state and any durable outbox intent.
 
-Either all internal authority facts become visible together or none do.
+Either the internal trust root becomes visible coherently or none of it does.
 
-Do not perform a WorkOS/Clerk/Descope network call while holding PostgreSQL locks or inside this transaction.
+No external network call may occur while holding this transaction open.
 
-## 7. External provider creation must be a durable saga, not a distributed transaction
+---
 
-There is no safe ACID transaction across PostgreSQL and WorkOS/Clerk/Descope.
+## 17. Tenant-control safety: do not define the invariant as "last admin"
 
-Use the repository's existing durable outbox/worker patterns.
+Core authorization should not depend on a hard-coded `admin` role.
 
-Recommended state machine:
+The real invariant is:
 
-```text
-REQUESTED
-INTERNAL_PROVISIONED
-PROVIDER_PENDING
-ACTIVE
-RECONCILIATION_REQUIRED
-FAILED_TERMINAL
-DEPROVISIONING
-REVOKED
-```
+> an ordinary tenant-level authority change must not strand the tenant with zero active Principals able to perform the minimum tenant-control/recovery operations, unless an explicit platform recovery path is being used.
 
-A minimal provider-first flow may skip provider creation but still needs reconciliation state.
+Define the exact minimum control authority from effective capabilities/policy after the schema audit.
 
-### Request-Engine-first mode
+This invariant must be concurrency-safe.
+
+The following race must not strand the tenant:
 
 ```text
-POST provisioning intent
-    ↓ transaction
-create internal tenant trust root + outbox(provider.organization.ensure)
-    ↓ worker
-create/reconcile provider organization + membership
-    ↓ transaction
-persist provider ids / binding / ACTIVE
+Controller A revokes Controller B
+Controller B revokes Controller A
 ```
 
-### Provider-first mode
+Application pre-checks alone are insufficient if concurrent transactions can violate the invariant. PostgreSQL proof is required.
+
+---
+
+## 18. Delegation and grant ceiling
+
+Possession is not delegation authority.
+
+Required invariant:
 
 ```text
-provider creates user/org/membership
-    ↓ signed webhook or trusted backend exchange
-normalize provider event
-    ↓ idempotent Tenancy command
-create/reconcile RE Organization + Party + Principal + Representation/grants
-    ↓ ACTIVE
+has capability X
+    !=
+may delegate capability X
 ```
 
-Both paths must converge on the same owner command semantics.
-
-## 8. Provider anti-corruption layer
-
-Create provider-neutral contracts in Platform or a narrowly scoped identity integration package. Do not let Tenancy import WorkOS/Clerk/Descope SDK types.
-
-Conceptual inbound normalized types:
+The effective authority delegated by one Principal must be a subset of the grantor's explicitly delegable authority under current policy:
 
 ```text
-AuthenticatedExternalSubject
-ExternalOrganizationRef
-ExternalMembershipRef
-ExternalInvitationRef
-ExternalIdentityEvent
+delegated_authority ⊆ grantor_delegable_authority
 ```
 
-Conceptual provider port:
-
-```python
-class IdentityProviderPort(Protocol):
-    async def ensure_organization(...): ...
-    async def ensure_membership(...): ...
-    async def invite_member(...): ...
-    async def revoke_membership(...): ...
-    async def resolve_subject(...): ...
-```
-
-Provider adapters:
+And delegation must never expand through chains:
 
 ```text
-platform/identity_providers/workos.py
-platform/identity_providers/clerk.py
-platform/identity_providers/descope.py
+Authority(C)
+  ⊆ B's delegable ceiling
+  ⊆ A's delegable ceiling
 ```
 
-Exact package names are not normative. Preserve repository ownership rules: vendor SDKs belong at an adapter edge, not inside Tenancy domain/application.
+A Principal must not self-escalate by granting itself new capabilities/scopes or by routing through another membership/Representation.
 
-The first implementation should use a fake/in-memory provider adapter in tests and **one** real provider adapter as proof. Do not implement three SDK integrations simultaneously before the contract stabilizes.
+The implementation must validate both capability and scope ceilings, not just capability names.
 
-## 9. Which provider to implement first
+---
 
-Recommendation: implement the generic OIDC/JWT authentication binding plus **one B2B provider integration**, then prove a second provider can satisfy the same port without schema changes.
+## 19. Declarative authority replacement with optimistic concurrency
 
-Good candidates:
-
-- WorkOS AuthKit: organization membership is explicit and suitable for B2B provisioning.
-- Clerk: very polished B2B Organization UX and creator/admin flows.
-- Descope: flexible tenant-scoped roles and useful agent/integration features.
-
-Do not choose based on provider role features alone because RE will not delegate its business authorization model to provider RBAC.
-
-Implementation order recommended for this branch:
+Prefer a constrained declarative command such as:
 
 ```text
-1. provider-neutral trust/binding model
-2. generic verified external-subject resolver contract
-3. WorkOS OR Clerk adapter
-4. second-provider contract test (may be fake fixture initially)
-5. Descope after the lifecycle contract is stable
+staff_authority_replace
 ```
 
-## 10. Authentication adapter contract
+over a public `grant arbitrary capability` primitive.
 
-The current HTTP architecture already uses `ActorResolver` and `ActorContext`. Preserve that boundary.
+Authority replacement MUST support revision conflict detection.
 
-Add a provider-backed resolver that performs:
+Conceptually:
 
 ```text
-verify credential/token
-verify issuer
-verify audience
-verify expiry/not-before
-extract immutable provider subject
-extract provider org/tenant context if present
-resolve ExternalIdentityBinding
-ensure binding ACTIVE
-load RE Principal + tenant grants
-return ActorContext
+staff_authority_replace(
+    membership_id,
+    expected_revision,
+    desired_authority
+)
 ```
 
-Never accept `organization_id`, `principal_id`, capabilities or Representation scopes from an untrusted request body.
+If the current revision differs:
 
-If a user is authenticated at the provider but not yet provisioned in RE, return a typed state such as `PrincipalProvisioningRequired`; do not mint a synthetic unrestricted ActorContext.
+```text
+AuthorityRevisionConflict
+```
 
-For users in multiple organizations, the active provider organization/tenant must map to exactly one RE Organization binding. Reject ambiguous/missing mapping rather than guessing from email/domain.
+Do not silently apply last-write-wins to security authority administration.
 
-## 11. Staff administration API that must exist before Stage C can be called complete
+---
 
-Tenancy should expose owner-backed operations similar to the following semantic set. Final names must follow the canonical operation pattern already introduced on the branch.
+## 20. Policy bundles are convenience, not core roles
+
+Do not create core capabilities such as:
+
+```text
+role.admin
+role.receptionist
+role.doctor
+```
+
+Use semantic capabilities and optional versioned policy bundles.
+
+Example:
+
+```text
+Receptionist bundle revision 3
+  -> booking operational permissions
+  -> queue permissions
+  -> allowed patient lookup/register permissions
+  -> no staff administration
+  -> no protected commercial/configuration authority unless explicitly added
+```
+
+When a bundle is materialized into authority, preserve provenance such as:
+
+```text
+assigned_from_bundle_id
+assigned_from_bundle_revision
+assigned_by
+assigned_at
+```
+
+Runtime authorization should continue to evaluate materialized RE authority, not a provider role string or mutable bundle name.
+
+---
+
+## 21. Staff administration surface
+
+Final operation names must follow the repository's canonical operation naming rules, but the semantic surface must cover at least:
 
 ### Queries
 
@@ -373,7 +809,8 @@ staff_membership_list
 staff_membership_read
 staff_effective_authority_read
 staff_invitation_list
-identity_provider_binding_read
+identity_binding_read
+identity_authority_list/read as justified
 ```
 
 ### Commands
@@ -387,16 +824,13 @@ staff_membership_suspend
 staff_membership_reactivate
 staff_membership_revoke
 staff_authority_replace
-external_identity_binding_reconcile
+identity_binding_reconcile
+identity_binding_revoke
 ```
 
-Avoid `grant arbitrary capability` as the primary public API if it allows accidental privilege construction. Prefer a constrained authority assignment command that validates grantability policy.
+Native identity lifecycle operations belong to the authentication/identity owner, not arbitrary Tenancy tables.
 
-## 12. Capability design
-
-Do not create role-shaped capabilities such as `role.admin` or `role.receptionist`.
-
-Recommended management capabilities are semantic actions, for example:
+Suggested management capabilities remain semantic:
 
 ```text
 organization.provision            -- platform/deployment only
@@ -408,469 +842,704 @@ identity.bind
 identity.reconcile
 ```
 
-Existing business capabilities remain unchanged:
+Do not expose `organization.provision` as a normal public/patient/agent operation.
+
+---
+
+## 22. Invitation lifecycle is RE-owned; delivery is replaceable
+
+Invitation intent belongs to Request Engine. Delivery may be native or external.
+
+Provider-independent flow:
 
 ```text
-organization.manage_profile
-catalog.manage
-booking.manage_supply
-queue.configure
-communications.configure
-...
-```
-
-A business persona is a policy bundle, not a capability key:
-
-```text
-receptionist policy
-    -> booking operational capabilities
-    -> queue capabilities
-    -> party lookup/register as justified
-    -> NO catalog terms/profile authority unless explicitly granted
-
-manager policy
-    -> wider operations
-
-admin policy
-    -> staff management + configuration
-```
-
-## 13. Anti-escalation requirements
-
-This feature is security-sensitive. The implementation is incomplete unless these are proven.
-
-### 13.1 No self-escalation
-
-A Principal must not be able to grant itself capabilities/scopes it does not have authority to delegate.
-
-### 13.2 Grant ceiling
-
-The grantor can only assign from an explicitly grantable set under the current policy. Possessing a business capability does not automatically imply permission to delegate it.
-
-### 13.3 Last-admin safety
-
-Decide explicitly whether removing/suspending the last tenant admin is allowed. Recommended default: reject unless a platform recovery path or another active admin exists.
-
-### 13.4 Cross-tenant opacity
-
-Foreign provider organization IDs, subject IDs, membership IDs, invitations and staff records must remain opaque across tenants.
-
-### 13.5 Immediate RE revocation
-
-Once a membership/binding/grant is revoked in RE, a still-valid external provider session must no longer authorize protected RE operations.
-
-Provider logout/session revocation may lag; RE authorization must not depend on waiting for provider session expiry.
-
-### 13.6 Webhook replay safety
-
-Provider webhooks are at-least-once inputs. Persist provider event IDs/dedupe keys and make handlers idempotent.
-
-### 13.7 Out-of-order events
-
-Do not let an older `membership.updated` event resurrect a membership after a newer revoke/delete. Persist provider version/timestamp/event ordering metadata where the provider supports it; otherwise use reconciliation reads for ambiguous cases.
-
-### 13.8 Provider compromise containment
-
-A provider role claim must never directly become an arbitrary RE capability set. Translation policy must have a fixed allowlist/role mapping controlled by RE deployment/configuration.
-
-## 14. Invitation lifecycle
-
-Invitation is useful but must not be confused with authority.
-
-Recommended lifecycle:
-
-```text
-invite requested
-    ↓
-RE durable StaffInvitation intent
-    ↓ outbox/provider adapter
-provider invitation created
-    ↓
-recipient authenticates/accepts
-    ↓ webhook or trusted callback
-provider subject correlated
-    ↓
+admin creates StaffInvitation intent
+        ↓
+RE commits durable invitation state
+        ↓
+InvitationTransport
+   ├─ native email/WhatsApp/link delivery
+   ├─ WorkOS
+   ├─ Clerk
+   └─ other
+        ↓
+recipient authenticates
+        ↓
+recipient proves/claims invitation according to policy
+        ↓
+IdentityBinding correlated or created
+        ↓
 RE membership/Representation activated
-    ↓
-capabilities become effective
+        ↓
+RE capabilities become effective
 ```
 
-An invitation alone grants nothing.
+A pending invitation grants zero business authority.
 
-Provider-managed invitation IDs/URLs are correlations, not the canonical authority object.
+External invitation IDs/URLs are correlation/delivery metadata, not canonical RE authority.
 
-## 15. Webhook ingestion
+Invitation acceptance must be idempotent and must activate at most the intended membership.
 
-Implement a provider-neutral ingress boundary with provider-specific signature verification adapters.
+---
 
-Never put provider payloads directly into Tenancy commands.
+## 23. Provider-first facts must not silently create authority
+
+When an external provider reports a new user/org/membership that RE did not request, the safe default is:
+
+```text
+external membership observed
+        ↓
+record/reconcile external fact
+        ↓
+PENDING / UNCLAIMED / RECONCILIATION_REQUIRED
+        ↓
+NO RE BUSINESS AUTHORITY
+```
+
+Activation may occur only when justified by an RE-owned fact or policy, for example:
+
+```text
+matching active StaffInvitation intent
+explicit tenant provisioning policy
+authorized tenant-control command
+platform recovery/provisioning workflow
+```
+
+This protects against provider-side role/membership compromise becoming RE authority by implication.
+
+---
+
+## 24. External-provider I/O is a saga, never a distributed transaction
+
+For providers that support organization/membership provisioning, do not hold PostgreSQL locks while making network calls.
+
+Pattern:
+
+```text
+RE transaction
+        ↓
+outbox
+        ↓
+provider worker
+        ↓
+external API
+        ↓
+RE reconciliation transaction
+```
+
+Do not use one giant state machine for all identity concerns.
+
+Separate at least conceptually:
+
+```text
+organization provisioning state
+identity binding state
+staff membership state
+invitation state
+external synchronization/reconciliation state
+```
+
+This permits valid combinations such as:
+
+```text
+membership = ACTIVE
+native binding = ACTIVE
+workos sync = RECONCILIATION_REQUIRED
+```
+
+without incorrectly disabling a staff member who can still authenticate natively.
+
+---
+
+## 25. Provider events and reconciliation
+
+Use a provider-neutral ingress boundary with provider-specific signature verification.
 
 Flow:
 
 ```text
-HTTP webhook
-  -> verify provider signature
-  -> validate timestamp/replay window
+HTTP/provider event
+  -> verify authenticity/signature
+  -> validate timestamp/replay window where applicable
   -> deserialize provider payload
-  -> normalize to ExternalIdentityEvent
-  -> persist/dedupe provider event
-  -> dispatch owner command
-  -> record result/provenance
+  -> normalize to provider-neutral event/fact
+  -> persist dedupe identity
+  -> decide whether event is authoritative or only a reconciliation signal
+  -> reconcile through owner command
+  -> record provenance/result
 ```
 
-Return success for safely deduped replay according to provider retry expectations.
+Never pass raw vendor payloads into Tenancy domain commands.
 
-Useful normalized event families:
+Webhook delivery is at-least-once. Replay must be harmless.
 
-```text
-user.created/updated/deleted
-organization.created/updated/deleted
-membership.created/updated/deleted
-invitation.accepted/revoked/expired
-```
+Out-of-order protection must be provider-aware:
 
-Only implement event families needed by the first supported lifecycle.
+- use monotonic provider version/order metadata when trustworthy;
+- otherwise treat the webhook as a **dirty/reconciliation signal** and fetch/derive current provider state;
+- never allow an older event to resurrect revoked RE authority.
 
-## 16. Source-of-truth matrix
+External events may influence correlation state but cannot bypass RE provisioning/delegation policy.
 
-The implementation must document this explicitly.
+---
 
-| Fact | Recommended authority |
+## 26. Source-of-truth matrix
+
+| Fact | Authority |
 |---|---|
-| password/passkey/MFA/session | identity provider |
-| provider user ID | identity provider |
+| Native credential validity | RE identity/authentication subsystem |
+| Native session validity | RE identity/authentication subsystem |
+| External password/passkey/MFA/session | configured external Authentication Authority |
+| External provider user/subject ID | external provider |
+| Authenticated subject namespace | corresponding Authentication Authority |
+| Identity → Principal correlation | Request Engine `IdentityBinding` |
 | RE Organization ID | Request Engine |
 | RE Principal ID | Request Engine |
+| staff membership state | Request Engine |
 | Organization business Party | Request Engine |
-| operational Representations | Request Engine |
-| RE capabilities | Request Engine |
-| provider org/tenant correlation | binding record |
-| provider membership correlation | binding record |
-| invitation delivery state | provider + reconciled RE intent |
-| effective authorization to RE command | Request Engine |
+| Representation / operational authority | Request Engine |
+| RE capabilities/delegation ceiling | Request Engine |
+| policy bundles | Request Engine |
+| provider role | external metadata / explicit mapping input only |
+| provider org/membership correlation | RE binding/sync metadata + provider fact |
+| invitation intent | Request Engine |
+| invitation delivery state | delivery provider + reconciled RE intent |
+| effective authorization to a business command | Request Engine |
 
-## 17. Provisioning state and onboarding readiness
+---
 
-Extend Onboarding only with owner-backed facts. Do not make Onboarding execute provisioning.
+## 27. Failure semantics
 
-Potential new readiness sections/blockers:
+Use typed failures. Avoid generic authorization/provisioning 500s.
 
-```text
-identity
-  provider_linked
-  initial_admin_active
-
-staff_administration
-  admin_authority_ready
-  staff_management_available
-```
-
-Suggested blockers:
+Examples, final naming subject to repository conventions:
 
 ```text
-identity_provider_not_linked
-initial_admin_missing
-initial_admin_authority_incomplete
-```
-
-Resolution guidance should continue using `owner + resolution_capabilities`, not hardcoded operation IDs from Tenancy transport.
-
-## 18. HTTP trust surfaces
-
-Keep security primary at authorization, not network placement.
-
-Recommended exposure:
-
-```text
-provider webhook endpoint                  deployment/provider ingress
-organization provisioning                 platform/control plane only
-staff membership/grant administration     authenticated admin/control plane
-staff read                                operator/admin according to policy
-normal business operations                existing public/operator surfaces
-```
-
-Do not expose `organization.provision` as a normal patient/public-agent tool.
-
-The authorized operation catalog introduced on this branch should eventually surface staff-management operations only to actors whose effective capabilities permit them.
-
-## 19. Database work sequence
-
-Do not start with a giant migration.
-
-### Phase P0 — schema audit
-
-Before DDL, inspect current tables/functions/RLS around:
-
-```text
-organizations
-principals
-parties
-representations
-principal capabilities/grants
-operational authority snapshots/revisions
-idempotency/audit/outbox
-```
-
-Document which existing structure can express memberships and bindings and what is genuinely missing.
-
-### Phase P1 — minimal binding + lifecycle schema
-
-Add only the minimum structures/columns required for:
-
-- external subject binding;
-- provider org/membership correlation;
-- active/suspended/revoked staff authority;
-- provenance/revision;
-- event dedupe/reconciliation if no suitable shared provider-event table exists.
-
-### Phase P2 — RLS/grants
-
-Every new tenant-owned table must have the same tenant opacity guarantees as current Tenancy state.
-
-### Phase P3 — indexes/constraints
-
-At minimum consider uniqueness for:
-
-```text
-(provider, provider_environment, provider_subject_id, organization mapping)
-provider membership correlation
-one active binding invariant where required
-provider event id dedupe
-```
-
-Exact constraints must follow the resolved global-vs-tenant Principal model.
-
-## 20. Test/proof plan
-
-### Unit/domain
-
-- binding normalization and identity key rules;
-- lifecycle transitions;
-- grant ceiling;
-- no self-escalation;
-- last-admin rule;
-- provider role -> RE policy mapping cannot emit unknown capabilities.
-
-### Integration
-
-- provider resolver maps a verified subject to the correct ActorContext;
-- wrong provider org context rejected;
-- revoked binding rejected even with valid provider token;
-- multi-org identity selects exact tenant, never first-match guessing;
-- invitation acceptance activates exactly one membership.
-
-### PostgreSQL
-
-- atomic Organization + Party + first Principal + Representation/grants bootstrap;
-- tenant RLS/foreign-row opacity for all new tables;
-- concurrent duplicate provisioning produces one tenant trust root;
-- concurrent invitation acceptance is idempotent;
-- revoke races cannot resurrect authority;
-- provider webhook replay is harmless;
-- out-of-order provider events are rejected/reconciled correctly;
-- audit/provenance facts commit atomically with authority changes.
-
-### E2E
-
-Prove a completely fresh environment using only supported APIs/adapters:
-
-```text
-1. external user authenticates
-2. create/provision business tenant
-3. first admin becomes active
-4. admin configures Organization/Location/Offering/Resource/Queue/communications
-5. admin invites receptionist
-6. receptionist accepts/authenticates
-7. receptionist can perform allowed Queue/Booking actions
-8. receptionist cannot change staff grants or protected admin configuration
-9. admin revokes receptionist
-10. receptionist's still-valid provider session is denied immediately by RE
-```
-
-Repeat the identity portion with a second provider adapter or contract fixture to prove the domain is not vendor-shaped.
-
-## 21. Failure semantics
-
-Define typed failures; avoid generic 500s.
-
-Examples:
-
-```text
-ExternalIdentityNotBound
-ExternalOrganizationNotBound
+AuthenticationRequired
+AuthenticationAuthorityUnavailable
+CredentialInvalid
+IdentityNotBound
+IdentityBindingSuspended
+IdentityBindingRevoked
+TenantContextRequired
+TenantContextAmbiguous
 PrincipalProvisioningRequired
 OrganizationAlreadyProvisioned
+ProvisioningIntentExpired
+ProvisioningIntentConsumed
 MembershipAlreadyActive
+MembershipSuspended
 MembershipRevoked
-LastAdministratorRemovalRejected
+TenantControlAuthorityWouldBeStranded
 GrantNotDelegable
+AuthorityRevisionConflict
+IdentityLinkProofRequired
+IdentityLinkConflict
 ProviderEventReplay
 ProviderReconciliationRequired
 ProviderUnavailable
 ```
 
-`ProviderUnavailable` must not roll back already-committed internal state if using the outbox saga. It should leave a recoverable provisioning state.
+Provider unavailability must not roll back already committed internal state when a durable saga is in use.
 
-## 22. Observability
+---
 
-Emit correlation-friendly structured telemetry without secrets/token contents:
+## 28. Observability and secrecy
+
+Emit structured correlation-friendly telemetry such as:
 
 ```text
-provider
-provider_event_type
-provider_event_id hash/id where safe
+identity_authority_kind
+identity_authority_id
 organization_id
 principal_id
 provisioning_id
 membership_id
+binding_id
+authority_revision
+provider_event_type
+provider_event_id/hash where safe
 state transition
 attempt
 result
 correlation_id
 ```
 
-Never log access tokens, refresh tokens, API secrets, invitation secrets, raw webhook signatures or sensitive JWT claims.
+Never log or place in ordinary audit/outbox telemetry:
 
-## 23. Provider-specific notes
+```text
+passwords
+password hashes
+access tokens
+refresh tokens
+reset secrets
+MFA secrets
+recovery codes
+raw webhook signatures
+API secrets
+sensitive JWT claims
+```
 
-### WorkOS
+Audit business/security decisions and provenance, not reusable credentials.
 
-WorkOS AuthKit's Organization Membership is a good correlation target. Invitations can result in a user plus organization membership. Treat WorkOS roles as optional input to mapping policy, not RE authority.
+---
 
-### Clerk
+## 29. Database sequence
 
-Clerk can automatically make the creator the first Organization member/admin and supports custom roles/permissions and role sets. This is useful UX, but RE must still create its own Principal/Representation/grants. The Clerk `org:admin` claim must not directly mean `*` in RE.
+Do not start with a giant migration.
 
-### Descope
+### P0 — current-schema audit
 
-Descope supports users belonging to multiple tenants with per-tenant roles and can optionally isolate the same login ID per tenant. The RE adapter must not assume one global email = one Principal. Descope tenant roles are mapping inputs only.
+Inspect exact current tables/functions/RLS for:
 
-## 24. Implementation slices / commits
+```text
+organizations
+principals
+parties
+representations
+capability grants
+authority revisions/snapshots
+idempotency
+audit
+outbox
+actor/tenant context
+staff administrative contacts
+```
 
-The next agent should work in narrow, certifiable slices.
+Deliver a disposition:
 
-### Slice 0 — restore green branch
+```text
+reuse as-is
+extend
+replace only with evidence
+missing
+```
 
-- apply Ruff formatting differences from CI #4285;
-- exact-head CI;
-- do not proceed if the failure is semantic rather than formatting.
+Resolve explicitly whether Principal is tenant-scoped and where a reusable authentication identity may safely live without weakening RLS.
 
-### Slice 1 — current-schema and authority audit
+### P1 — minimal native identity/binding schema
+
+Add only what the audit proves is missing for:
+
+```text
+IdentityAuthority
+Native identity/credential lifecycle
+IdentityBinding
+session/revocation lifecycle
+authority revision link if needed
+```
+
+### P2 — zero-to-one provisioning
+
+Add the minimum structures/functions needed to create the trust root atomically and idempotently.
+
+### P3 — staff lifecycle
+
+Add only missing lifecycle/provenance/revision state. Reuse Representation/grant infrastructure whenever semantically correct.
+
+### P4 — external synchronization
+
+Add provider correlation/event dedupe/reconciliation state only when implementing the first external adapter.
+
+### P5 — RLS/indexes/constraints
+
+Every new tenant-owned relation must preserve tenant opacity.
+
+Consider constraints for:
+
+```text
+(identity_authority_id, subject_id) uniqueness in resolved scope
+binding uniqueness
+provider membership correlation
+provider event dedupe
+one active membership/binding rules where required
+revision consistency
+native credential uniqueness in its correct namespace
+```
+
+Exact constraints must follow the audited global-vs-tenant identity model.
+
+---
+
+## 30. Security invariants that block completion
+
+The feature is incomplete unless all are demonstrated:
+
+1. **Providerless operability** — RE works with no external IdP configured.
+2. **No implicit authority** — authentication, provider membership, provider role, and invitation never directly grant business authority.
+3. **No self-escalation** — a Principal cannot expand its own authority.
+4. **Grant ceiling** — delegation is bounded by explicit delegable capability + scope policy.
+5. **Tenant-control continuity** — ordinary concurrent revocation cannot strand all tenant-control authority.
+6. **Cross-tenant opacity** — foreign bindings/memberships/invitations remain opaque.
+7. **Immediate RE revocation** — valid sessions cannot preserve revoked business authority.
+8. **Native session revocation** — where RE controls sessions, security-state changes invalidate them according to policy.
+9. **No implicit identity linking** — matching email/phone/name never merges Principals.
+10. **Account-link takeover resistance** — any supported link operation requires explicit strong proof/policy.
+11. **Webhook replay safety** — duplicate delivery is harmless.
+12. **Out-of-order protection** — stale provider events cannot resurrect authority.
+13. **Provider compromise containment** — provider roles/memberships remain constrained inputs.
+14. **Optimistic authority concurrency** — stale authority replacement fails explicitly.
+15. **Bootstrap containment** — provisioning authority cannot become ordinary tenant superuser authority by implication.
+16. **Credential secrecy** — credential material never leaks into domain/audit/telemetry surfaces.
+
+---
+
+## 31. Test and proof plan
+
+### Unit/domain
+
+Prove:
+
+```text
+identity namespace rules
+binding lifecycle
+no email-based auto-link
+membership lifecycle
+grant ceiling
+scope ceiling
+no self-escalation
+policy-bundle provenance
+authority revision conflicts
+provider role mapping cannot emit unknown/non-grantable capabilities
+```
+
+### Authentication integration
+
+Prove:
+
+```text
+native login -> AuthenticatedSubject -> correct Principal
+wrong credential rejected
+revoked native credential/session rejected
+valid external subject with no binding remains unauthorized
+wrong/ambiguous tenant context rejected
+multiple bindings resolve only by exact authority+subject+tenant rules
+```
+
+### PostgreSQL
+
+Prove:
+
+```text
+atomic Organization + Party + first Principal + binding + root authority bootstrap
+concurrent duplicate provisioning creates one trust root
+RLS/foreign-row opacity for every new tenant-owned relation
+concurrent invitation acceptance is idempotent
+revoke races cannot resurrect authority
+concurrent tenant-controller revocation cannot strand authority
+stale staff_authority_replace gets AuthorityRevisionConflict
+provider event replay is harmless
+out-of-order provider facts are ignored/reconciled safely
+audit/provenance commits atomically with authority changes
+```
+
+### Architecture fitness tests
+
+Prove:
+
+```text
+Tenancy domain/application imports no WorkOS/Clerk/Descope SDK types
+business modules import no credential implementation details
+Native adapter satisfies the same Authenticator contract used by external adapters
+adding/removing an external adapter requires no business-domain schema redesign
+```
+
+---
+
+## 32. Required E2E proofs
+
+### E2E A — providerless first principle
+
+Run from fresh PostgreSQL with external provider configuration absent and network access to identity SaaS unavailable:
+
+```text
+1. create native human identity
+2. authenticate natively
+3. provision Organization
+4. establish first Principal + membership + root authority
+5. configure Organization/Location/Offering/Resource/Queue/communications through supported APIs
+6. invite/create second staff identity
+7. second staff authenticates natively
+8. activate constrained membership/authority
+9. second staff performs allowed Queue/Booking operations
+10. second staff is denied staff-authority/configuration operations
+11. first staff revokes/suspends second staff
+12. second staff's existing session immediately loses RE business authority
+```
+
+This proof is mandatory before an external provider is considered necessary for product operation.
+
+### E2E B — Native → external provider migration
+
+Given:
+
+```text
+Principal P1
+NativeBinding N1
+Membership M1
+Representations/Grants G1
+```
+
+Add an external binding:
+
+```text
+WorkOS/OIDC Binding W1 -> P1
+```
+
+Then disable N1.
+
+Prove unchanged:
+
+```text
+Principal P1
+Membership M1
+Representations/Grants G1
+business audit history
+```
+
+No authority recreation is allowed.
+
+### E2E C — simultaneous authentication authorities
+
+Where supported by product policy, prove two explicitly linked authentication methods resolve to the same Principal and exactly the same current RE authority.
+
+### E2E D — external provider removal
+
+Disable/remove the external adapter/configuration and prove Native-based:
+
+```text
+Tenancy
+staff administration
+Booking
+Queue
+Catalog
+Parties
+```
+
+continue functioning without domain/schema rollback.
+
+---
+
+## 33. Implementation slices
+
+Work in narrow, certifiable slices.
+
+### Slice 0 — exact-head truth
+
+- inspect current branch/HEAD and CI;
+- restore green exact-head Python/architecture evidence;
+- do not inherit stale CI claims from the earlier handoff.
+
+### Slice 1 — authority/authentication schema audit
 
 Deliver:
 
-- exact current tables/functions/RLS involved;
+- exact current tables/functions/RLS;
 - current Principal provisioning path;
-- current Representation/grant tables/commands;
-- decision on tenant-scoped vs reusable/global external identity binding;
-- ADR/update to this document if the schema changes the proposed model.
+- current Representation/grant semantics;
+- current ActorResolver/ActorContext path;
+- current authority revision/revocation semantics;
+- decision on tenant-scoped Principal vs reusable authentication identity;
+- disposition of existing structures before DDL.
 
-No speculative DDL before this audit.
-
-### Slice 2 — provider-neutral identity contracts
-
-Implement:
-
-- external subject/binding domain types;
-- provider adapter Protocol;
-- fake adapter;
-- normalized event types;
-- architecture tests preventing vendor SDK imports into Tenancy domain/application.
-
-No real provider SDK required yet.
-
-### Slice 3 — zero-to-one Organization bootstrap
-
-Implement one owner command capable of atomically creating/reconciling:
-
-- Organization;
-- business Party;
-- initial Principal;
-- identity binding;
-- first active Representation/membership;
-- bootstrap/admin capability set;
-- operational authority scopes;
-- audit/provenance.
-
-Protect with platform-only capability/trust boundary and idempotency.
-
-This slice closes the `business_party_missing` + `initial_admin_missing` circular dependency.
-
-### Slice 4 — staff lifecycle
+### Slice 2 — provider-neutral authentication contracts
 
 Implement:
 
-- invite intent;
-- list/read staff;
-- activate/suspend/reactivate/revoke;
-- replace constrained authority/grants;
-- anti-self-escalation;
-- last-admin protection;
-- revision/idempotency semantics.
+```text
+IdentityAuthority
+AuthenticatedSubject
+IdentityBinding contracts
+Authenticator facet
+optional provider capability facets
+fake fixtures for deterministic tests
+architecture rules against vendor leakage
+```
 
-### Slice 5 — provider reconciliation/webhooks
+### Slice 3 — RE Native authentication
 
-Implement verified provider event ingestion, dedupe and state reconciliation using fake adapter first.
+Implement the minimum secure native identity/credential/session lifecycle necessary for first-party operation.
 
-### Slice 6 — first real provider
+No external SDK required.
 
-Implement WorkOS **or** Clerk adapter end to end.
+### Slice 4 — providerless zero-to-one tenant bootstrap
 
-Do not introduce vendor objects into Tenancy contracts.
+Implement the owner command/internal transaction that creates/reconciles:
 
-### Slice 7 — second-provider proof
+```text
+Organization
+business Party
+first Principal
+Native IdentityBinding
+first membership/Representation
+bootstrap tenant-control capabilities
+operational authority scopes
+audit/provenance
+```
 
-Implement enough of a second provider adapter/fixture to prove no schema/domain redesign is needed.
+Protect it with narrow platform/bootstrap trust and idempotency.
 
-### Slice 8 — onboarding/operation catalog integration
+### Slice 5 — providerless staff lifecycle
 
-- expose identity/admin readiness facts;
-- add canonical operation metadata;
-- let authorized operation catalog discover staff operations;
-- do not mark them as public tools by default.
+Implement:
 
-### Slice 9 — adversarial E2E
+```text
+invitation intent
+list/read staff
+activate/suspend/reactivate/revoke
+authority replace with expected revision
+grant/scope ceiling
+no self-escalation
+tenant-control continuity
+immediate RE revocation
+native session invalidation policy
+```
 
-Run the complete fresh-business + employee + revoke journey described above.
+At this point E2E A must pass.
 
-Only after this slice may docs claim administrative self-service is complete.
+### Slice 6 — provider conformance layer
 
-## 25. Definition of done
+Finalize optional capability facets and conformance tests using Native + fake adapters. Do not add vendor schema concepts to Tenancy.
 
-Do not call this feature complete until all of the following are true:
+### Slice 7 — Generic OIDC authentication-only adapter
 
-1. A fresh authenticated human can become the first administrator of a new RE tenant without SQL/manual fixtures.
-2. Organization, business Party, Principal, provider binding and root authority are created atomically or by a recoverable documented saga where external I/O is involved.
-3. An admin can invite/add, inspect, change and revoke staff through supported owner-backed operations.
-4. An employee cannot self-escalate or delegate authority beyond policy.
-5. A revoked employee is denied immediately by RE even if the identity-provider session remains valid.
-6. Foreign tenant staff/bindings are opaque.
-7. Provider webhook replay/out-of-order delivery cannot duplicate or resurrect authority.
-8. At least one real provider integration works.
-9. A second provider satisfies the same RE contracts without domain/schema redesign.
-10. No provider SDK types leak into Tenancy domain/application contracts.
-11. Onboarding reports the missing identity/admin prerequisites machine-readably.
-12. Authorized operation discovery reflects the employee's effective RE capabilities.
-13. Current semantic guarantees and PostgreSQL current-product proof remain green.
+Prove an authenticator that may provide **no** organization/invitation/membership API can still bind a subject safely to RE.
 
-## 26. Things the next agent must NOT do
+This is a key proof that the abstraction is not secretly WorkOS/Clerk-shaped.
 
-- Do not make Clerk/WorkOS/Descope the canonical source of Request Engine business authorization.
-- Do not equate email with identity.
-- Do not accept tenant/principal/capability identity from request bodies.
-- Do not call providers while holding DB locks.
-- Do not make invitations grant authority before acceptance/activation.
-- Do not introduce `admin`, `receptionist`, `doctor`, etc. as hard-coded core capability semantics.
+### Slice 8 — external event/reconciliation infrastructure
+
+Implement provider-neutral dedupe/reconciliation using fake fixtures first.
+
+### Slice 9 — first B2B provider
+
+Implement WorkOS **or** Clerk end to end as an adapter.
+
+External provider organizations/memberships remain correlations, not canonical RE authority.
+
+### Slice 10 — portability/migration proof
+
+Implement enough of a second external adapter or fixture to prove:
+
+```text
+no Principal redesign
+no membership redesign
+no Representation redesign
+no capability redesign
+no business-module redesign
+```
+
+Run E2E B/C/D as applicable.
+
+### Slice 11 — onboarding and authorized operation catalog
+
+Expose owner-backed readiness facts such as:
+
+```text
+identity
+  native_or_external_authentication_ready
+  initial_admin_active
+
+staff_administration
+  tenant_control_authority_ready
+  staff_management_available
+```
+
+Onboarding reads readiness; it does not own provisioning.
+
+Authorized operation discovery surfaces staff-management operations only when current RE capabilities allow them.
+
+### Slice 12 — adversarial closure
+
+Run all concurrency, tenant-opacity, account-linking, provider compromise, replay, stale-authority, providerless, and portability proofs.
+
+Only after this slice may documentation claim the tenant/staff trust root is complete.
+
+---
+
+## 34. Definition of Done
+
+Do not call this feature complete until **all** are true:
+
+1. Request Engine is fully operable with **zero external identity providers configured**.
+2. A fresh human can create/use a secure RE Native identity through supported surfaces.
+3. A fresh authenticated human can become the first administrator/controller of a new tenant without SQL/manual fixtures.
+4. Organization, business Party, Principal, IdentityBinding, membership, grants and required root authority are created atomically or through a documented recoverable internal/external saga where appropriate.
+5. An administrator/controller can invite/add, inspect, modify, suspend/reactivate and revoke staff through owner-backed operations.
+6. An employee cannot self-escalate or delegate beyond explicit capability/scope ceilings.
+7. Ordinary authority changes cannot strand all tenant-control authority, including under concurrency.
+8. Stale authority-replacement writes fail explicitly rather than silently overwriting newer changes.
+9. Revoked/suspended staff lose RE business authorization immediately even when an authentication session remains cryptographically valid.
+10. Native session/credential state is invalidated according to explicit security policy when relevant.
+11. Foreign tenant staff/bindings/invitations/provider correlations are opaque.
+12. Matching email/phone/name never causes implicit cross-authority account linking.
+13. Invitation state never grants authority before valid activation.
+14. Provider-first external membership never creates authority without an RE-owned provisioning intent/policy.
+15. Webhook replay/out-of-order delivery cannot duplicate or resurrect authority.
+16. Native authentication satisfies the same provider-neutral authentication contract used by external adapters.
+17. Generic OIDC can authenticate/bind without requiring B2B organization/membership/invitation capabilities.
+18. At least one real external provider can be added without altering canonical Principal/Membership/Representation/Capability semantics.
+19. A second-provider or conformance proof demonstrates portability without schema/domain redesign.
+20. Native → external-provider migration preserves the same Principal and business authority.
+21. Removing an external provider does not break providerless Request Engine operation.
+22. No vendor SDK types leak into Tenancy domain/application or business-module contracts.
+23. Onboarding reports missing identity/admin prerequisites machine-readably.
+24. Authorized operation discovery reflects current effective RE authority.
+25. Credential secrets never leak through domain/audit/telemetry/outbox surfaces.
+26. Current semantic guarantees and PostgreSQL current-product proof remain green on exact HEAD.
+
+---
+
+## 35. Things the implementation agent MUST NOT do
+
+- Do not make WorkOS, Clerk, Descope, OIDC, or any external IdP mandatory for Request Engine startup or core business operation.
+- Do not model Native as a privileged special case that bypasses the same authenticated-subject/binding boundary used by external adapters.
+- Do not make provider organization or membership objects the canonical RE tenant/membership model.
+- Do not equate email, phone, or display name with identity.
+- Do not auto-link identities by matching contact attributes.
+- Do not accept tenant/principal/capability/Representation authority from ordinary request bodies.
+- Do not equate authentication success with staff membership.
+- Do not equate staff membership with business authority.
 - Do not grant `*` because a provider claim says `admin`.
-- Do not create a second membership authority model if existing Representation can correctly own it.
-- Do not rewrite the baseline migration casually; schema remains controlled/mutable but requires the current audit/rebaseline discipline.
-- Do not weaken RLS, idempotency, provenance or concurrency proofs to make provider integration easier.
-- Do not resume MCP/tool projection until staff/identity authority is secure enough to determine who should see those operations.
+- Do not introduce `admin`, `receptionist`, `doctor`, etc. as hard-coded core authorization roles.
+- Do not expose unrestricted arbitrary-capability grant APIs where a constrained declarative authority operation will suffice.
+- Do not use last-write-wins for authority replacement.
+- Do not rely on application-only checks for concurrency-sensitive tenant-control continuity.
+- Do not let provider-first membership events silently activate RE authority.
+- Do not call external providers while holding PostgreSQL locks.
+- Do not create one monolithic provider interface that all providers must fake unsupported B2B capabilities to implement.
+- Do not create one giant state machine combining membership, identity binding, invitation, provisioning and provider synchronization.
+- Do not let stale webhooks resurrect revoked authority.
+- Do not store native credential material on Principal, Party, Representation or staff membership rows.
+- Do not log tokens/passwords/reset secrets/webhook secrets.
+- Do not create a second authorization/membership model if the existing Representation/grant model already owns the semantics correctly.
+- Do not weaken RLS, provenance, idempotency, revocation or concurrency guarantees for provider convenience.
+- Do not resume MCP/tool projection until the human identity/staff trust root is strong enough to determine who may discover and execute those operations.
 
-## 27. First concrete command for the next agent
+---
 
-Start by inspecting the exact branch and CI, then fix the known formatting-only failure. After a green Python lane, inventory Tenancy persistence and commands for `Organization`, `Principal`, `Party`, `Representation`, capability grants and operational authority. Produce the Slice 1 disposition before writing provider integration code.
+## 36. First concrete instruction for the next agent
 
-The strategic objective is not "support WorkOS" or "support Clerk". It is:
+Start from exact branch truth, then perform Slice 1 before writing migrations.
 
-> Make Request Engine capable of safely provisioning a real business and its first administrator, then administering human staff authority through a provider-neutral identity boundary, while external authentication providers remain replaceable adapters rather than owners of Request Engine's business authorization model.
+The strategic objective is **not**:
+
+> support WorkOS / Clerk / Descope.
+
+It is:
+
+> Make Request Engine capable of authenticating its own first human, provisioning a real tenant and its first trusted staff authority, administering human staff securely, and revoking that authority immediately without any external identity service; then make external authentication and B2B identity systems replaceable, optional adapters that can be added, migrated, combined, or removed without redesigning Request Engine's canonical business authority model.
+
+The strongest architectural proof is therefore not merely "two provider adapters compile". It is:
+
+```text
+providerless RE works completely
+        +
+external provider can be added without authority redesign
+        +
+Principal/authority survive provider migration
+        +
+external provider can be removed without breaking the product
+```
+
+That is the trust root this branch must close before additional administrative UX or MCP/tool projection becomes the priority.
