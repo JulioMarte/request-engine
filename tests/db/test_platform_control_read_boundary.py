@@ -72,9 +72,7 @@ def _grant(
 
 def _create_boundary_test_role(conn: PgConnection) -> str:
     role_name = f"re_platform_boundary_test_{uuid4().hex}"
-    conn.execute(
-        sql.SQL("CREATE ROLE {} NOLOGIN NOBYPASSRLS").format(sql.Identifier(role_name))
-    )
+    conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN NOBYPASSRLS").format(sql.Identifier(role_name)))
     conn.execute(
         sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(sql.Identifier(role_name))
     )
