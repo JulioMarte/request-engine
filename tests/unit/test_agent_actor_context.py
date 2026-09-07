@@ -5,8 +5,8 @@ from fastapi import Request
 
 from request_engine.platform.security.acting_operator import (
     ACTING_OPERATOR_HEADER,
-    AgentActingOperatorRelayForbidden,
     ActingOperatorActorResolver,
+    AgentActingOperatorRelayForbidden,
 )
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 

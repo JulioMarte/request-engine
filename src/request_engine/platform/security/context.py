@@ -54,7 +54,9 @@ class ActorContext:
         if self.interaction_id is not None and not self.interaction_id.strip():
             raise ValueError("interaction_id cannot be blank")
         if self.subject_principal_id == self.principal_id:
-            raise ValueError("subject_principal_id must be omitted when actor and subject are identical")
+            raise ValueError(
+                "subject_principal_id must be omitted when actor and subject are identical"
+            )
 
     def allows(self, capability: str) -> bool:
         """Evaluate one canonical capability against materialized grants."""

@@ -1,6 +1,7 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Mapping, Protocol
+from typing import Protocol
 
 
 class AuthenticatedSubjectClass(StrEnum):
