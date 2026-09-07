@@ -22,8 +22,14 @@ def _operation(app: FastAPI, path: str, method: str) -> dict[str, object]:
     return cast(dict[str, object], app.openapi()["paths"][path][method.lower()])
 
 
-def test_operations_app_maps_capability_failures_instead_of_leaking_500(monkeypatch: Any) -> None:
-    monkeypatch.setattr(operational_app, "install_operational_modules", lambda *args, **kwargs: None)
+def _noop_install(*args: object, **kwargs: object) -> None:
+    del args, kwargs
+
+
+def test_operations_app_maps_capability_failures_instead_of_leaking_500(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(operational_app, "install_operational_modules", _noop_install)
     app = operational_app.create_operational_app(
         session_factory=cast(Any, object()),
         actor_resolver=cast(Any, object()),
@@ -72,14 +78,22 @@ def test_catalog_operational_schedule_routes_publish_canonical_operation_policy(
     app.include_router(router)
 
     expected = {
-        ("/v1/operations/locations/{location_id}/hours", "put"):
-            "catalog_location_hours_replace",
-        ("/v1/operations/locations/{location_id}/hours-exceptions", "put"):
-            "catalog_location_hours_exception_upsert",
-        ("/v1/operations/offering-versions/{offering_version_id}/booking-terms", "put"):
-            "catalog_offering_booking_terms_configure",
-        ("/v1/operations/organization/holidays", "put"):
-            "catalog_organization_holidays_replace",
+        (
+            "/v1/operations/locations/{location_id}/hours",
+            "put",
+        ): "catalog_location_hours_replace",
+        (
+            "/v1/operations/locations/{location_id}/hours-exceptions",
+            "put",
+        ): "catalog_location_hours_exception_upsert",
+        (
+            "/v1/operations/offering-versions/{offering_version_id}/booking-terms",
+            "put",
+        ): "catalog_offering_booking_terms_configure",
+        (
+            "/v1/operations/organization/holidays",
+            "put",
+        ): "catalog_organization_holidays_replace",
     }
     for (path, method), operation_id in expected.items():
         operation = _operation(app, path, method)
