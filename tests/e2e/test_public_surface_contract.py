@@ -97,8 +97,10 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
             openapi, path=operation.path_template, method=operation.method
         )
         assert contract["operationId"] == expected_operation_id(operation.name, definition)
+        assert contract["x-request-engine-operation-id"] == contract["operationId"]
         assert contract["x-request-engine-capability"] == definition.key
         assert contract["x-request-engine-schema-version"] == definition.schema_version
+        assert contract["x-request-engine-kind"] == definition.kind.value
         assert contract["x-request-engine-idempotency"] == definition.idempotency.value
         assert contract["x-request-engine-expected-revision"] == definition.revision.value
         assert contract["x-request-engine-exposure"] == definition.exposure.value
