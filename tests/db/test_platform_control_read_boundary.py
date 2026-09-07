@@ -85,6 +85,7 @@ def _create_boundary_test_role(conn: PgConnection) -> str:
 
 
 def _drop_boundary_test_role(conn: PgConnection, role_name: str) -> None:
+    conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
     conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
 
 
