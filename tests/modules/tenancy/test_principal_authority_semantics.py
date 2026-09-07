@@ -88,14 +88,17 @@ def test_expired_or_revoked_delegation_has_no_effective_authority() -> None:
     )
 
     for grant in (expired, revoked):
-        assert effective_delegated_capabilities(
-            grant=grant,
-            now=now,
-            agent_policy_ceiling=policy,
-            delegator_current_delegable=policy,
-            current_tool_policy=policy,
-            current_context_policy=policy,
-        ) == frozenset()
+        assert (
+            effective_delegated_capabilities(
+                grant=grant,
+                now=now,
+                agent_policy_ceiling=policy,
+                delegator_current_delegable=policy,
+                current_tool_policy=policy,
+                current_context_policy=policy,
+            )
+            == frozenset()
+        )
 
 
 def test_principal_cannot_delegate_to_itself() -> None:

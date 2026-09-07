@@ -71,9 +71,7 @@ async def test_agent_cannot_use_legacy_acting_operator_relay() -> None:
         principal_kind=PrincipalKind.AGENT,
         capabilities=frozenset({"platform.acting_for_operator"}),
     )
-    resolver = ActingOperatorActorResolver(
-        _StaticActorResolver(agent), _UnexpectedOperatorResolver()
-    )
+    resolver = ActingOperatorActorResolver(_StaticActorResolver(agent), _UnexpectedOperatorResolver())
 
     with pytest.raises(AgentActingOperatorRelayForbidden):
         await resolver.resolve_actor(_request_with_acting_operator(human_id))

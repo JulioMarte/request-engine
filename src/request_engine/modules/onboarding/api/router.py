@@ -69,9 +69,7 @@ def project_readiness(facts: OnboardingReadiness) -> OnboardingReadinessView:
 
     appointment_blockers: list[ReadinessBlockerView] = []
     if facts.bookable_offering_version_count == 0:
-        appointment_blockers.append(
-            _blocker("no_bookable_offering", "catalog", "catalog.manage")
-        )
+        appointment_blockers.append(_blocker("no_bookable_offering", "catalog", "catalog.manage"))
     if facts.resource_supply_count == 0:
         appointment_blockers.append(
             _blocker("no_resource_supply", "booking", "booking.manage_supply")

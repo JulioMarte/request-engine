@@ -83,7 +83,5 @@ def create_operational_app(
         session_factory=session_factory,
         actor_resolver=request_actor_resolver,
     )
-    app.include_router(
-        create_operation_catalog_router(actor_resolver=request_actor_resolver)
-    )
+    app.include_router(create_operation_catalog_router(actor_resolver=request_actor_resolver))
     return app

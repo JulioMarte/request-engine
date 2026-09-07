@@ -23,9 +23,7 @@ class ProvisioningAuthorityCeiling:
         unauthorized = desired - self.maximum_assignable
         if unauthorized:
             names = ", ".join(sorted(unauthorized))
-            raise AuthorityAssignmentRejected(
-                f"authority outside creator/policy ceiling: {names}"
-            )
+            raise AuthorityAssignmentRejected(f"authority outside creator/policy ceiling: {names}")
 
 
 class DelegationStatus(StrEnum):
