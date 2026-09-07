@@ -27,6 +27,7 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
             "tenancy",
         }
     ),
+    "onboarding": frozenset({"booking", "catalog", "communications", "queue", "tenancy"}),
 }
 
 FRAMEWORK_OR_INFRA_PREFIXES = (
