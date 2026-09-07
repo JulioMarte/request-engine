@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para la organización física actual del backend Python.
 >
-> Complementa `10-module-ownership-map.md`, `07-database-access-contract.md`, `13-connection-surfaces.md`, `14-architecture-fitness-functions.md` y `architecture/system-optimization-mode.md`. No redefine por sí solo invariantes de dominio, autoridad o locking.
+> Complementa `10-module-ownership-map.md`, `07-database-access-contract.md`, `13-connection-surfaces.md`, `14-architecture-fitness-functions.md` y `architecture/continuous-evolution-policy.md`. No redefine por sí solo invariantes de dominio, autoridad o locking.
 
 ## 1. Decision
 
@@ -18,7 +18,7 @@ src/request_engine/
 └── modules/         # business ownership
 ```
 
-Current business-module inventory:
+Current active business-module inventory:
 
 ```text
 tenancy
@@ -32,35 +32,31 @@ delivery
 live_capacity
 operational_recovery
 operational_copilot
-payments
-dispatch
 ```
 
-`payments` and `dispatch` remain deferred/incubating until a concrete accepted capability gives them real ownership. `delivery` is active current architecture; it owns ReservationAccess and actual execution facts such as ServiceSession/ResourceActivity according to `10-module-ownership-map.md`.
+Payments/reconciliation and field-service dispatch remain possible future domain areas, **not current Python modules**. Do not pre-create empty packages for future capabilities; introduce a module only when accepted product scope gives it real ownership and code.
 
-The names `operational_copilot`, V3 and F1–F7 are historical naming/provenance where applicable. They do not create a separate architectural layer or freeze the module inventory. Module ownership may evolve deliberately under `architecture/system-optimization-mode.md` while preserving HARD guarantees.
+Historical names such as `operational_copilot`, V3 or F1–F7 may remain as provenance where useful. They do not create separate architectural layers or freeze current module shape.
 
-This is not a microservice split. Modules may share one process, one PostgreSQL database and one authoritative transaction when a command invariant requires it.
+This is not a microservice split. Modules may share one process, one PostgreSQL database and one authoritative transaction when an invariant requires it.
 
 ## 2. Current capability ownership summary
 
-Detailed ownership lives in `10-module-ownership-map.md`; this section is only a navigation summary.
+Detailed ownership lives in `10-module-ownership-map.md`.
 
 - `tenancy`: Organization, Principal, Party, Representation and tenant/subject authority truth.
-- `catalog`: Location/Offering/OfferingVersion and reusable service/capability vocabulary/configuration.
+- `catalog`: Location, Offering/OfferingVersion and reusable service/capability configuration vocabulary.
 - `requests`: durable new business demand requiring later processing.
-- `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and booking commitment/revalidation.
+- `booking`: Resource planning, contextual supply, availability, CapacityHold/CapacityClaim, Reservation and commitment/revalidation.
 - `queue`: ServiceQueue/QueueEntry waiting/calling/no-show plus Waitlist/SlotOpportunity/SlotOffer recovery interest.
-- `communications`: transactional communication intent, delivery facts, reminder/acknowledgement semantics.
+- `communications`: transactional communication intent, delivery facts, reminders and acknowledgements.
 - `discovery`: explicitly published cross-tenant supply projection and opaque Booking handoff.
 - `delivery`: ReservationAccess and actual live service/execution truth.
 - `live_capacity`: advisory live-capacity/ETA/intake projection over published owner facts.
 - `operational_recovery`: immutable recovery proposal/execution composition over owner contracts.
 - `operational_copilot`: bounded typed external operational-tool/admission surface; owns no underlying business truth or conversational runtime.
-- `payments`: deferred/incubating.
-- `dispatch`: deferred/incubating.
 
-Do not duplicate detailed ownership rules here. When this summary and `10-module-ownership-map.md` disagree, fix the current documentation defect rather than inventing a third interpretation.
+When this summary and `10-module-ownership-map.md` disagree, reconcile the documentation defect; do not invent a third interpretation.
 
 ## 3. Application semantics
 
@@ -99,7 +95,7 @@ modules/<module>/
 └── README.md
 ```
 
-This is a growth shape, not scaffolding to generate eagerly. A young module may remain a smaller cohesive set of files.
+This is a growth shape, **not scaffolding to generate eagerly**. A young module may remain a smaller cohesive set of files.
 
 Meanings:
 
@@ -216,7 +212,7 @@ Keep the current decisions in `07-database-access-contract.md`:
 - never hide race-critical SQL behind generic repositories;
 - no external/provider I/O while authoritative DB locks are held.
 
-Schema shape itself is CONTROLLED and evolvable during `cohesion/system-optimization`; tenant/authority/atomicity/capacity/provenance/concurrency guarantees remain HARD unless replaced by an equal-or-stronger explicit contract.
+The accepted `0001_initial` is immutable history; current schema evolves through appended `0002+` migrations under `continuous-evolution-policy.md`. Tenant/authority/atomicity/capacity/provenance/concurrency guarantees remain HARD unless replaced by equal-or-stronger explicit semantics and proof.
 
 ## 12. Maintainability and evolution
 
@@ -224,7 +220,7 @@ Architecture fitness functions protect ownership/direction, not arbitrary smalln
 
 LOC, C901, navigation observations and fan-in/fan-out are non-blocking review signals. `HEALTHY_AS_IS` is valid. Never split a cohesive file, create forwarding modules or hide dependencies solely to make a metric smaller.
 
-The current module inventory and approved edges are CONTROLLED rather than immutable. Intentional evolution requires updating:
+The current module inventory and approved edges are CONTROLLED rather than immutable. Intentional evolution requires updating, as applicable:
 
 ```text
 current capability/ownership contract
