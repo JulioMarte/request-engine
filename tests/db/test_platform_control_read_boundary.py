@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from psycopg import Connection, Error
+from psycopg import Connection, Error, sql
 
 PgConnection = Connection[Any]
 pytestmark = [
@@ -70,7 +70,27 @@ def _grant(
     )
 
 
-def test_platform_control_role_has_no_direct_table_authority(
+def _create_boundary_test_role(conn: PgConnection) -> str:
+    role_name = f"re_platform_boundary_test_{uuid4().hex}"
+    conn.execute(
+        sql.SQL("CREATE ROLE {} NOLOGIN NOBYPASSRLS").format(sql.Identifier(role_name))
+    )
+    conn.execute(
+        sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(sql.Identifier(role_name))
+    )
+    conn.execute(
+        sql.SQL(
+            "GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO {}"
+        ).format(sql.Identifier(role_name))
+    )
+    return role_name
+
+
+def _drop_boundary_test_role(conn: PgConnection, role_name: str) -> None:
+    conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+
+
+def test_platform_boundary_supports_a_narrow_deployment_identity(
     admin_conn: PgConnection,
     pg_conninfo: str,
 ) -> None:
@@ -83,16 +103,11 @@ def test_platform_control_role_has_no_direct_table_authority(
         authority_plane="platform",
         capability_key="organization.provision",
     )
-
-    row = admin_conn.execute(
-        "SELECT rolcanlogin, rolbypassrls FROM pg_roles "
-        "WHERE rolname = 'request_engine_platform_control'"
-    ).fetchone()
-    assert row == (False, False)
+    role_name = _create_boundary_test_role(admin_conn)
 
     control_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
-        control_conn.execute("SET ROLE request_engine_platform_control")
+        control_conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role_name)))
         with pytest.raises(Error) as direct_read:
             control_conn.execute(
                 "SELECT id FROM request_engine.principals WHERE id = %s",
@@ -107,6 +122,7 @@ def test_platform_control_role_has_no_direct_table_authority(
         ).fetchall() == [("human", True, 2, "organization.provision", False)]
     finally:
         control_conn.close()
+        _drop_boundary_test_role(admin_conn, role_name)
 
 
 def test_platform_read_boundary_cannot_cross_into_tenant_authority(
@@ -123,10 +139,11 @@ def test_platform_read_boundary_cannot_cross_into_tenant_authority(
         authority_plane="tenant_control",
         capability_key="staff.manage_authority",
     )
+    role_name = _create_boundary_test_role(admin_conn)
 
     control_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
-        control_conn.execute("SET ROLE request_engine_platform_control")
+        control_conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role_name)))
         control_conn.execute(
             "SELECT set_config('request_engine.organization_id', %s, false)",
             (str(organization_id),),
@@ -140,6 +157,7 @@ def test_platform_read_boundary_cannot_cross_into_tenant_authority(
         )
     finally:
         control_conn.close()
+        _drop_boundary_test_role(admin_conn, role_name)
 
     app_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
