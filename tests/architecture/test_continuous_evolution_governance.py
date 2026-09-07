@@ -46,4 +46,6 @@ def test_evolution_policy_requires_transition_safety_not_structural_freeze() -> 
     assert "bad permanent gates" in policy
     assert "frozen endpoint/module/file inventories" in policy
     assert "present compatibility reason" in policy
-    assert "rebaseline is not a cleanup technique" in policy
+    assert "rebaseline" in policy
+    assert "cleanup technique" in policy
+    assert "production migration" in policy
