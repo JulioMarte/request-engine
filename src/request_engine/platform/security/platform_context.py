@@ -44,7 +44,7 @@ class PlatformActorContext:
                 raise ValueError(f"non-platform capability in platform context: {capability}")
 
     def allows(self, capability: str) -> bool:
-        """Require exact canonical platform authority; aliases never elevate control-plane access."""
+        """Require exact canonical authority without legacy alias elevation."""
 
         definition = capability_definition(capability)
         return (
