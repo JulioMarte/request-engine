@@ -43,6 +43,10 @@ def upgrade() -> None:
         "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
         "OWNER TO request_engine_platform_definer"
     )
+    op.execute(
+        "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
+        "SET search_path TO pg_catalog, request_engine, pg_temp"
+    )
     op.execute("REVOKE CREATE ON SCHEMA request_platform FROM request_engine_platform_definer")
     op.execute(
         "REVOKE ALL ON FUNCTION request_platform.read_principal_authority(uuid) FROM PUBLIC"
@@ -51,14 +55,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "GRANT CREATE ON SCHEMA request_platform TO request_engine_schema_owner"
-    )
-    op.execute(
         "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
         "OWNER TO request_engine_schema_owner"
     )
     op.execute(
-        "REVOKE CREATE ON SCHEMA request_platform FROM request_engine_schema_owner"
+        "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
+        "SET search_path TO pg_catalog, request_engine"
     )
     op.execute("DROP OWNED BY request_engine_platform_definer")
     op.execute("DROP ROLE request_engine_platform_definer")
