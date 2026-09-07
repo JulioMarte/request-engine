@@ -20,6 +20,12 @@ from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _SIGNING_KEY = b"request-engine-e2e-contract-signing-key"
+_DISCOVERY_OPERATIONS = frozenset(
+    {
+        "capabilities.list",
+        "operation_catalog.list_authorized",
+    }
+)
 
 
 class RejectAllResolver:
@@ -88,12 +94,6 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
     operation_ids: set[str] = set()
     for operation in PUBLIC_HTTP_OPERATIONS:
-        if operation.capability is None:
-            assert operation.name == "capabilities.list"
-            continue
-
-        definition = capability_definition(operation.capability)
-        assert definition is not None
         contract = operation_contract(
             openapi, path=operation.path_template, method=operation.method
         )
@@ -101,6 +101,14 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
         assert isinstance(operation_id, str)
         assert operation_id not in operation_ids, operation_id
         operation_ids.add(operation_id)
+
+        if operation.capability is None:
+            assert operation.name in _DISCOVERY_OPERATIONS
+            assert contract["x-request-engine-discovery"] is True
+            continue
+
+        definition = capability_definition(operation.capability)
+        assert definition is not None
         assert operation_id == expected_operation_id(operation.name, definition)
         assert contract["x-request-engine-operation-id"] == operation_id
         owner = contract["x-request-engine-owner"]
@@ -130,8 +138,10 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     keys = [operation.operation_key for operation in PUBLIC_HTTP_OPERATIONS]
     assert len(names) == len(set(names))
     assert len(keys) == len(set(keys))
-    discovery = [operation for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None]
-    assert [operation.name for operation in discovery] == ["capabilities.list"]
+    discovery = {
+        operation.name for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None
+    }
+    assert discovery == _DISCOVERY_OPERATIONS
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
         if operation.method in {"POST", "PUT"}:
