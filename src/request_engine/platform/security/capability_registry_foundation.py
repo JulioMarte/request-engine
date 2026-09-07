@@ -94,7 +94,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Admission permission for trusted integrations to execute operator-directed"
         " mutations under a verified acting operator's authority.",
-        authority_plane=AuthorityPlane.PLATFORM,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
         runtime_available=False,
     ),
 )
