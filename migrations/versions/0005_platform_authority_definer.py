@@ -35,10 +35,7 @@ def upgrade() -> None:
     # PostgreSQL requires the prospective function owner to have CREATE on the
     # containing schema. Grant it only for the ownership transfer and revoke it
     # immediately; runtime execution needs no CREATE authority on request_platform.
-    op.execute(
-        "GRANT USAGE, CREATE ON SCHEMA request_platform "
-        "TO request_engine_platform_definer"
-    )
+    op.execute("GRANT USAGE, CREATE ON SCHEMA request_platform TO request_engine_platform_definer")
     op.execute(
         "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
         "OWNER TO request_engine_platform_definer"
@@ -48,9 +45,7 @@ def upgrade() -> None:
         "SET search_path TO pg_catalog, request_engine, pg_temp"
     )
     op.execute("REVOKE CREATE ON SCHEMA request_platform FROM request_engine_platform_definer")
-    op.execute(
-        "REVOKE ALL ON FUNCTION request_platform.read_principal_authority(uuid) FROM PUBLIC"
-    )
+    op.execute("REVOKE ALL ON FUNCTION request_platform.read_principal_authority(uuid) FROM PUBLIC")
 
 
 def downgrade() -> None:
