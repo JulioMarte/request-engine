@@ -13,6 +13,14 @@ class CapabilityKind(StrEnum):
     COMMAND = "command"
 
 
+class AuthorityPlane(StrEnum):
+    """Independent authorization planes; possession in one never implies another."""
+
+    PLATFORM = "platform"
+    TENANT_CONTROL = "tenant_control"
+    OPERATIONAL = "operational"
+
+
 class IdempotencyPolicy(StrEnum):
     NONE = "none"
     REQUIRED = "required"
@@ -32,6 +40,7 @@ class CapabilityDefinition:
     kind: CapabilityKind
     idempotency: IdempotencyPolicy
     revision: RevisionPolicy
+    authority_plane: AuthorityPlane = AuthorityPlane.OPERATIONAL
     schema_version: int = 1
     party_scope: str | None = None
     override_capability: str | None = None
@@ -48,6 +57,7 @@ def query_capability(
     exposure: CapabilityExposure,
     description: str,
     *,
+    authority_plane: AuthorityPlane = AuthorityPlane.OPERATIONAL,
     party_scope: str | None = None,
     override_capability: str | None = None,
     legacy_aliases: frozenset[str] = frozenset(),
@@ -60,6 +70,7 @@ def query_capability(
         kind=CapabilityKind.QUERY,
         idempotency=IdempotencyPolicy.NONE,
         revision=RevisionPolicy.NONE,
+        authority_plane=authority_plane,
         party_scope=party_scope,
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,
@@ -72,6 +83,7 @@ def command_capability(
     exposure: CapabilityExposure,
     description: str,
     *,
+    authority_plane: AuthorityPlane = AuthorityPlane.OPERATIONAL,
     revision: RevisionPolicy = RevisionPolicy.NONE,
     party_scope: str | None = None,
     override_capability: str | None = None,
@@ -85,6 +97,7 @@ def command_capability(
         kind=CapabilityKind.COMMAND,
         idempotency=IdempotencyPolicy.REQUIRED,
         revision=revision,
+        authority_plane=authority_plane,
         party_scope=party_scope,
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,

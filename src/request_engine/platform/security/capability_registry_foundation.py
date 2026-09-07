@@ -1,4 +1,5 @@
 from request_engine.platform.security.capability_types import (
+    AuthorityPlane,
     CapabilityDefinition,
     CapabilityExposure,
     RevisionPolicy,
@@ -93,6 +94,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Admission permission for trusted integrations to execute operator-directed"
         " mutations under a verified acting operator's authority.",
+        authority_plane=AuthorityPlane.PLATFORM,
         runtime_available=False,
     ),
 )
