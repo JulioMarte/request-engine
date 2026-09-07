@@ -12,9 +12,7 @@ from request_engine.entrypoints.http.operator_resolution import (
     OperatorCapabilitySource,
 )
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
-from request_engine.modules.tenancy.adapters.db.principal_authority_reader import (
-    PostgresPrincipalAuthorityReader,
-)
+from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
@@ -80,7 +78,7 @@ def create_app(
 
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
     operator_actors = operator_actor_resolver or DeploymentOperatorActorResolver(
-        PostgresPrincipalAuthorityReader(session_factory), operator_capability_source
+        build_principal_authority_reader(session_factory), operator_capability_source
     )
     relay_actor_resolver = ActingOperatorActorResolver(actor_resolver, operator_actors)
     request_actor_resolver = RequestExecutionActorResolver(relay_actor_resolver)

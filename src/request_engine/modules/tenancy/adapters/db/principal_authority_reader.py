@@ -2,12 +2,12 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from request_engine.modules.tenancy.contracts.principal_authority import (
+from request_engine.platform.db.session import SessionFactory, set_tenant_context
+from request_engine.platform.security.capabilities import capability_definition
+from request_engine.platform.security.principal_authority import (
     PrincipalAuthorityMaterializationError,
     PrincipalAuthoritySnapshot,
 )
-from request_engine.platform.db.session import SessionFactory, set_tenant_context
-from request_engine.platform.security.capabilities import capability_definition
 
 
 class PostgresPrincipalAuthorityReader:

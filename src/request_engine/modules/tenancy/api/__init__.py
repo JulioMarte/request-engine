@@ -15,6 +15,9 @@ from request_engine.modules.tenancy.adapters.db.party_authority_operational_read
 from request_engine.modules.tenancy.adapters.db.party_authority_reader import (
     PostgresPartyAuthorityReader,
 )
+from request_engine.modules.tenancy.adapters.db.principal_authority_reader import (
+    PostgresPrincipalAuthorityReader,
+)
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
 )
@@ -22,14 +25,10 @@ from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
 )
-from request_engine.modules.tenancy.api.identity_exchange_http import (
-    install_identity_exchange_http,
-)
+from request_engine.modules.tenancy.api.identity_exchange_http import install_identity_exchange_http
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
-from request_engine.modules.tenancy.api.staff_contact_errors import (
-    add_staff_contact_error_handlers,
-)
+from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
 from request_engine.modules.tenancy.contracts.authority import (
@@ -40,6 +39,7 @@ from request_engine.modules.tenancy.contracts.onboarding_readiness import Busine
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.principal_authority import PrincipalAuthorityReader
 
 
 def build_party_authority_reader(session_factory: SessionFactory) -> PartyAuthorityReader:
@@ -60,6 +60,12 @@ def build_onboarding_business_party_reader(session_factory: SessionFactory) -> B
     """Compose the tenancy-owned business-Party readiness reader for composition roots."""
 
     return PostgresBusinessPartyReader(session_factory)
+
+
+def build_principal_authority_reader(session_factory: SessionFactory) -> PrincipalAuthorityReader:
+    """Compose the RE-owned Principal authority reader behind the tenancy API surface."""
+
+    return PostgresPrincipalAuthorityReader(session_factory)
 
 
 def install_http(

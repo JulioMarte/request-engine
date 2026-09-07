@@ -3,12 +3,12 @@
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.modules.tenancy.contracts.principal_authority import (
+from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
+from request_engine.platform.security.context import ActorContext, PrincipalKind
+from request_engine.platform.security.principal_authority import (
     PrincipalAuthorityMaterializationError,
     PrincipalAuthorityReader,
 )
-from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
-from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 
 class OperatorCapabilitySource(Protocol):

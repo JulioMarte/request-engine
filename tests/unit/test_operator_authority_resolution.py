@@ -3,11 +3,11 @@ from uuid import UUID, uuid4
 import pytest
 
 from request_engine.entrypoints.http.operator_resolution import DeploymentOperatorActorResolver
-from request_engine.modules.tenancy.contracts.principal_authority import (
+from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
+from request_engine.platform.security.principal_authority import (
     PrincipalAuthorityMaterializationError,
     PrincipalAuthoritySnapshot,
 )
-from request_engine.platform.security.acting_operator import OperatorResolutionUnavailable
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
