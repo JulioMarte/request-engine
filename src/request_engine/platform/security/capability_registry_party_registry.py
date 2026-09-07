@@ -15,6 +15,11 @@ PARTY_REGISTRY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         ),
     ),
     command_capability(
+        "organization.manage_profile",
+        CapabilityExposure.OPERATOR,
+        "Manage the tenant Organization's operational profile and public contact information.",
+    ),
+    command_capability(
         "parties.register",
         CapabilityExposure.PUBLIC,
         "Register a person with contact points and identity documents.",
