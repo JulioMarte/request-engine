@@ -45,7 +45,7 @@ async def agent_acting_operator_relay_forbidden_handler(_: Request, exc: Excepti
         ErrorBody(
             code="agent_delegation_required",
             message="agents must use standing authority or an explicit bounded delegation",
-            resolution=ErrorResolution.CORRECT_REQUEST,
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
             retryable=False,
         ),
     )

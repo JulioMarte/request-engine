@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import Request
@@ -22,11 +22,13 @@ class _StaticActorResolver:
 
 
 class _UnexpectedOperatorResolver:
-    async def resolve_operator_actor(self, organization_id, principal_id):  # type: ignore[no-untyped-def]
+    async def resolve_operator_actor(
+        self, organization_id: UUID, principal_id: UUID
+    ) -> ActorContext | None:
         raise AssertionError("agent relay must fail before resolving a human operator")
 
 
-def _request_with_acting_operator(principal_id) -> Request:  # type: ignore[no-untyped-def]
+def _request_with_acting_operator(principal_id: UUID) -> Request:
     raw_headers = [(ACTING_OPERATOR_HEADER.lower().encode(), str(principal_id).encode())]
     return Request({"type": "http", "headers": raw_headers})
 
