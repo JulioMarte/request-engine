@@ -25,8 +25,6 @@ MODULE_DEPENDENCY_POLICY: dict[str, frozenset[str]] = {
             "tenancy",
         }
     ),
-    "payments": frozenset(),
-    "dispatch": frozenset(),
 }
 
 FRAMEWORK_OR_INFRA_PREFIXES = (
