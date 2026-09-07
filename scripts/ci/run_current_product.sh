@@ -86,6 +86,17 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
+# Principal trust-root, standing authority and platform-control boundaries are
+# current product truth after the accepted baseline. Keep these migration-backed
+# security guarantees in the same PostgreSQL gate so 0002+ authority evolution
+# cannot ship with only incidental or manually-run coverage.
+uv run pytest \
+  tests/db/test_principal_trust_root.py \
+  tests/db/test_principal_authority_grants.py \
+  tests/db/test_platform_control_read_boundary.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/principal-authority.xml"
+
 # F2 is part of current product truth, not a detached feature-local proof. Run the
 # complete F2 PostgreSQL proof set so the exact-head gate covers candidate and
 # handoff fences, privileges, public projection, publication concurrency, exact
