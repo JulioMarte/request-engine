@@ -9,6 +9,7 @@ import request_engine.modules.catalog.api.recovery_schedule as catalog_recovery_
 import request_engine.modules.communications.api.onboarding as communications_onboarding
 import request_engine.modules.onboarding.api as onboarding_api
 import request_engine.modules.operational_copilot.api as copilot_api
+import request_engine.modules.operational_recovery.api as recovery_api
 import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
@@ -28,13 +29,6 @@ from request_engine.modules.discovery.api.publication_runtime import (
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
-from request_engine.modules.operational_recovery.adapters.catalog_schedule import (
-    CatalogRecoveryLocationAdapter,
-)
-from request_engine.modules.operational_recovery.adapters.queue_intake import (
-    QueueRecoveryIntakeAdapter,
-)
-from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
 from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
     build_live_capacity_source as build_queue_live_capacity_source,
@@ -106,15 +100,15 @@ def install_business_modules(
     )
     queue_runtime = build_copilot_queue_runtime(session_factory)
     discovery_runtime = build_discovery_publication_runtime(session_factory)
-    recovery = install_recovery_http(
+    recovery = recovery_api.install_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         capacity=recovery_capacity,
         booking=build_recovery_booking_port(session_factory),
         communications=build_recovery_communication_port(session_factory),
-        intake=QueueRecoveryIntakeAdapter(queue_runtime.intake),
-        location_schedule=CatalogRecoveryLocationAdapter(
+        intake=recovery_api.adapt_queue_intake(queue_runtime.intake),
+        location_schedule=recovery_api.adapt_location_schedule(
             catalog_recovery_schedule.build_recovery_location_schedule_port(session_factory)
         ),
         assignment_schedule=booking_recovery_schedule.build_recovery_assignment_schedule_port(
