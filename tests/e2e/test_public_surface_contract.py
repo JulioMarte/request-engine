@@ -86,6 +86,7 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
     e2e_session_factory: SessionFactory,
 ) -> None:
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
+    operation_ids: set[str] = set()
     for operation in PUBLIC_HTTP_OPERATIONS:
         if operation.capability is None:
             assert operation.name == "capabilities.list"
@@ -96,8 +97,14 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
         contract = operation_contract(
             openapi, path=operation.path_template, method=operation.method
         )
-        assert contract["operationId"] == expected_operation_id(operation.name, definition)
-        assert contract["x-request-engine-operation-id"] == contract["operationId"]
+        operation_id = contract["operationId"]
+        assert isinstance(operation_id, str)
+        assert operation_id not in operation_ids, operation_id
+        operation_ids.add(operation_id)
+        assert operation_id == expected_operation_id(operation.name, definition)
+        assert contract["x-request-engine-operation-id"] == operation_id
+        owner = contract["x-request-engine-owner"]
+        assert isinstance(owner, str) and owner
         assert contract["x-request-engine-capability"] == definition.key
         assert contract["x-request-engine-schema-version"] == definition.schema_version
         assert contract["x-request-engine-kind"] == definition.kind.value
