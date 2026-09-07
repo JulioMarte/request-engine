@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, Response
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
+from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
 from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
     OperatorCapabilitySource,
@@ -104,5 +105,8 @@ def create_app(
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
         identity_exchange_fingerprint_key=identity_key,
+    )
+    app.include_router(
+        create_operation_catalog_router(actor_resolver=execution_actor_resolver)
     )
     return app
