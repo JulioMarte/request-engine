@@ -5,30 +5,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "request_engine"
 MODULES_ROOT = SRC_ROOT / "modules"
 
-BASELINE_MODULES = {
-    "tenancy",
-    "catalog",
-    "requests",
-    "booking",
-    "queue",
-    "communications",
-}
-
-DEFERRED_MODULES = {
-    "delivery",
-    "payments",
-    "dispatch",
-}
-
 BUSINESS_MODULES = frozenset(
     path.name for path in MODULES_ROOT.iterdir() if path.is_dir() and not path.name.startswith("__")
 )
 
-V3_CANONICAL_DOCS = {
-    "docs/11-capability-first-v3.md",
-    "docs/v3/01-capability-contracts.md",
-    "docs/v3/02-pre-sql-contract.md",
-    "docs/v3/sql-disposition.md",
+CURRENT_ARCHITECTURE_ENTRY_POINTS = {
+    "docs/architecture/system-optimization-mode.md",
+    "docs/testing/current-guarantees.toml",
+    "docs/09-python-module-architecture.md",
+    "docs/10-module-ownership-map.md",
+    "docs/13-connection-surfaces.md",
+    "docs/14-architecture-fitness-functions.md",
 }
 
 FORBIDDEN_HORIZONTAL_ROOTS = {
@@ -70,20 +57,15 @@ def _is_prefixed(import_name: str, prefix: str) -> bool:
     return import_name == prefix or import_name.startswith(f"{prefix}.")
 
 
-def test_business_modules_have_explicit_ownership_docs() -> None:
-    assert BASELINE_MODULES <= BUSINESS_MODULES
-    assert DEFERRED_MODULES <= BUSINESS_MODULES
+def test_every_business_module_has_local_ownership_documentation() -> None:
+    assert BUSINESS_MODULES
     for module_name in BUSINESS_MODULES:
         assert (MODULES_ROOT / module_name / "README.md").is_file()
 
 
-def test_baseline_and_deferred_module_labels_are_consistent() -> None:
-    assert BASELINE_MODULES.isdisjoint(DEFERRED_MODULES)
-
-
-def test_v3_canonical_contracts_exist() -> None:
-    missing = {path for path in V3_CANONICAL_DOCS if not (REPO_ROOT / path).is_file()}
-    assert missing == set()
+def test_current_architecture_entry_points_exist() -> None:
+    for path in CURRENT_ARCHITECTURE_ENTRY_POINTS:
+        assert (REPO_ROOT / path).is_file()
 
 
 def test_horizontal_business_layer_roots_do_not_reappear() -> None:
@@ -113,10 +95,7 @@ def test_runtime_settings_are_owned_by_bootstrap() -> None:
 def test_executable_sql_is_owned_by_migrations_not_docs() -> None:
     sql_in_docs = list((REPO_ROOT / "docs").glob("**/*.sql"))
     assert sql_in_docs == []
-
-    design_root = REPO_ROOT / "migrations" / "sql" / "design_chain"
-    assert design_root.is_dir()
-    assert list(design_root.glob("*.sql"))
+    assert (REPO_ROOT / "migrations" / "versions").is_dir()
 
 
 def test_test_suites_have_explicit_integration_boundary() -> None:
@@ -172,6 +151,7 @@ def test_platform_does_not_import_business_modules() -> None:
 
 
 def test_cross_module_imports_use_contracts_only() -> None:
+    """Retain a simple repository-shape backstop; dependency_policy owns full edge semantics."""
     violations: list[str] = []
 
     for owner in BUSINESS_MODULES:
@@ -193,19 +173,5 @@ def test_cross_module_imports_use_contracts_only() -> None:
                 allowed_prefix = f"request_engine.modules.{target}.contracts"
                 if not _is_prefixed(import_name, allowed_prefix):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
-
-    assert violations == []
-
-
-def test_baseline_modules_do_not_depend_on_deferred_modules() -> None:
-    violations: list[str] = []
-
-    for owner in BASELINE_MODULES:
-        for path in _python_files(MODULES_ROOT / owner):
-            for import_name in _imports(path):
-                for deferred in DEFERRED_MODULES:
-                    deferred_prefix = f"request_engine.modules.{deferred}"
-                    if _is_prefixed(import_name, deferred_prefix):
-                        violations.append(f"{path.relative_to(REPO_ROOT)} -> {import_name}")
 
     assert violations == []

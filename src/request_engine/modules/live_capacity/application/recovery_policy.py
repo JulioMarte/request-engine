@@ -50,7 +50,6 @@ def affected_recovery_commitments(
                 planned_starts_at=item.planned_starts_at,
                 planned_ends_at=item.planned_ends_at,
                 planned_duration_seconds=item.planned_duration_seconds or 0,
-                contextual_commitment=item.contextual_commitment,
             )
         )
     return tuple(result)

@@ -41,18 +41,17 @@ def affected_reservation(
     return result
 
 
-def require_actionable_target(
+def require_recovery_target(
     reservation_id: UUID,
     target: RecoveryTarget | None,
 ) -> RecoveryTarget:
-    if target is None or not target.actionable:
-        reason = target.blocked_reason if target is not None else None
-        raise RecoveryTargetUnavailable(reservation_id, reason)
+    if target is None:
+        raise RecoveryTargetUnavailable(reservation_id)
     return target
 
 
-def require_actionable(affected: AffectedReservation) -> None:
-    require_actionable_target(affected.reservation_id, affected.target)
+def require_target(affected: AffectedReservation) -> RecoveryTarget:
+    return require_recovery_target(affected.reservation_id, affected.target)
 
 
 def raise_rejected(execution: RecoveryExecution) -> None:

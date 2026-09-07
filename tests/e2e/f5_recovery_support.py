@@ -57,6 +57,29 @@ async def book_commitments(
     return reservations, slots
 
 
+def _assignment_id_at(
+    conn: PgConnection,
+    sandbox: TenantSandbox,
+    instant: datetime,
+) -> UUID:
+    row = conn.execute(
+        """
+        SELECT id
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> %s::timestamptz
+        ORDER BY lower(effective_during) DESC
+        LIMIT 1
+        """,
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id, instant),
+    ).fetchone()
+    assert row is not None, "recovery source has no active contextual assignment"
+    return cast(UUID, row[0])
+
+
 def restrict_source_to_first_slots(
     conn: PgConnection,
     sandbox: TenantSandbox,
@@ -74,21 +97,32 @@ def restrict_source_to_first_slots(
     )
     assert start_at.date() == end_at.date(), "slot world crossed local midnight"
     weekday = start_at.weekday()
+    assignment_id = _assignment_id_at(conn, sandbox, start_at)
     conn.execute(
-        "DELETE FROM request_engine.availability_schedules "
-        "WHERE organization_id=%s AND resource_id=%s AND weekday=%s",
-        (sandbox.organization_id, sandbox.resource_id, weekday),
+        """
+        DELETE FROM request_engine.resource_location_availability
+        WHERE organization_id = %s
+          AND resource_location_assignment_id = %s
+          AND weekday = %s
+        """,
+        (sandbox.organization_id, assignment_id, weekday),
     )
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules (organization_id,resource_id,"
-        "weekday,local_start,local_end,timezone) VALUES (%s,%s,%s,%s,%s,%s)",
+        """
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id,
+            resource_location_assignment_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, %s, %s)
+        """,
         (
             sandbox.organization_id,
-            sandbox.resource_id,
+            assignment_id,
             weekday,
             start_at.timetz().replace(tzinfo=None),
             end_at.timetz().replace(tzinfo=None),
-            location_timezone(conn, sandbox).key,
         ),
     )
 
@@ -109,15 +143,13 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
     ).fetchone()
     assert row is not None
     resource = conn.execute(
-        "INSERT INTO request_engine.resources (organization_id,location_id,resource_key,"
-        "display_name,capacity_model,capacity_units) "
-        "VALUES (%s,%s,%s,%s,'exclusive',1) RETURNING id",
-        (
-            sandbox.organization_id,
-            sandbox.location_id,
-            f"recovery-{uuid4().hex}",
-            "Recovery resource",
-        ),
+        """
+        INSERT INTO request_engine.resources (
+            organization_id, resource_key, display_name, capacity_model, capacity_units
+        ) VALUES (%s, %s, %s, 'exclusive', 1)
+        RETURNING id
+        """,
+        (sandbox.organization_id, f"recovery-{uuid4().hex}", "Recovery resource"),
     ).fetchone()
     assert resource is not None
     resource_id = cast(UUID, resource[0])
@@ -126,10 +158,30 @@ def seed_replacement_resource(conn: PgConnection, sandbox: TenantSandbox) -> UUI
         "(organization_id,resource_id,capability_id) VALUES (%s,%s,%s)",
         (sandbox.organization_id, resource_id, row[0]),
     )
+    assignment = conn.execute(
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (
+            %s, %s, %s,
+            tstzrange('2000-01-01T00:00:00+00'::timestamptz, NULL, '[)')
+        )
+        RETURNING id
+        """,
+        (sandbox.organization_id, resource_id, sandbox.location_id),
+    ).fetchone()
+    assert assignment is not None
     weekday = world_weekday(conn, sandbox)
     conn.execute(
-        "INSERT INTO request_engine.availability_schedules (organization_id,resource_id,weekday,"
-        "local_start,local_end,timezone) VALUES (%s,%s,%s,'00:00','23:59',%s)",
-        (sandbox.organization_id, resource_id, weekday, location_timezone(conn, sandbox).key),
+        """
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id,
+            resource_location_assignment_id,
+            weekday,
+            local_start,
+            local_end
+        ) VALUES (%s, %s, %s, '00:00', '23:59')
+        """,
+        (sandbox.organization_id, assignment[0], weekday),
     )
     return resource_id

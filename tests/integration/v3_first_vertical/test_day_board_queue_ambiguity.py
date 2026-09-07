@@ -1,21 +1,20 @@
 from datetime import UTC, datetime
-from uuid import uuid4
 
 import pytest
 
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeReservationCommands,
+)
 from request_engine.modules.booking.adapters.db.day_board_reader import (
     PostgresReservationDayBoardReader,
 )
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
-)
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-)
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.platform.db.session import SessionFactory
 
-from .booking_boundary_fixture import create_booking_boundary_fixture
+from .booking_boundary_fixture import (
+    contextual_booking_command,
+    create_booking_boundary_fixture,
+)
 from .triage_scenario import PgConnection, create_queue
 
 
@@ -27,23 +26,15 @@ async def test_day_board_does_not_pick_one_of_multiple_active_queue_entries(
     app_session_factory: SessionFactory,
 ) -> None:
     fixture = create_booking_boundary_fixture(admin_conn)
-    reservation = await PostgresReservationCommands(app_session_factory).book_appointment(
-        BookAppointmentCommand(
-            organization_id=fixture.organization_id,
-            principal_id=fixture.principal_id,
-            offering_version_id=fixture.offering_version_id,
-            subject_party_id=fixture.subject_party_id,
-            start_at=datetime(2026, 9, 7, 14, 0, tzinfo=UTC),
-            location_id=fixture.location_id,
-            resources=(
-                ResourceChoice(
-                    requirement_id=fixture.requirement_id,
-                    resource_id=fixture.resource_id,
-                ),
-            ),
-            idempotency_key=f"day-board-ambiguity-book-{uuid4().hex}",
-            allow_subject_override=True,
-        )
+    start_at = datetime(2026, 9, 7, 14, 0, tzinfo=UTC)
+    reservation = await book_appointment(
+        CapacitySafeReservationCommands(app_session_factory),
+        await contextual_booking_command(
+            fixture,
+            app_session_factory,
+            start_at=start_at,
+            key_prefix="day-board-ambiguity-book",
+        ),
     )
 
     for minute in (50, 55):

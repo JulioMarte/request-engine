@@ -1,142 +1,100 @@
 # Database migrations
 
-This directory owns executable PostgreSQL schema evolution and the provenance needed to explain how current and historical Request Engine schemas were produced.
+This directory owns executable PostgreSQL schema evolution and the historical design evidence that is still deliberately exercised by CI.
 
-The governing product-evolution policy is [`docs/architecture/pre-production-evolution-policy.md`](../docs/architecture/pre-production-evolution-policy.md). Its core rule is:
+Current governing policy:
 
-```text
-freeze the evidence, not the future
-```
+- `docs/architecture/continuous-evolution-policy.md` — permanent schema/application evolution model;
+- `docs/architecture/system-optimization-mode.md` — current pre-production optimization mode;
+- `docs/architecture/pre-production-evolution-policy.md` — current pre-production compatibility freedom;
+- `docs/testing/current-guarantees.toml` — semantic guarantees that evolution must preserve or explicitly supersede.
 
-## Schema/history tracks
+The permanent rule is **immutable history, evolvable future**. The accepted baseline is protected as history; current schema continues to evolve through appended migrations.
 
-```text
-migrations/sql/design_chain/   historical V2.6→V2.10 executable design history
-migrations/sql/v3_candidate/   frozen V3 release-candidate provenance
-migrations/versions/           current production-facing Alembic revision line
-migrations/f2_steps/           preserved pre-integration F2 SQL steps, not Alembic revisions
-```
-
-## Immutable historical baseline
-
-`migrations/versions/0001_initial.py` is the released V3 production baseline and remains immutable historical migration evidence.
-
-Do not rewrite, regenerate or squash `0001_initial`; do not back-port later feature DDL into it. Historical proof answers what was proven then; it must not become a permanent restriction on current pre-production product evolution.
-
-## Current Alembic line
-
-Before F4 introduces any SQL, the actual integrated production-facing line is:
+## Canonical layout
 
 ```text
-0001_initial
-  -> 0002_operational_profile_contextual_supply
-  -> 0003_f1_runtime_acl_completion
-  -> 0004_geospatial_cross_tenant_discovery
-  -> 0005_live_service_operations
-  -> 0006_f3_historical_fact_hardening
+migrations/versions/          active Alembic graph
+migrations/baseline/          immutable payload for accepted 0001_initial
+migrations/sql/design_chain/  historical V2 design proof still required by CI
 ```
 
-`0006_f3_historical_fact_hardening` is the current predecessor head for F4 unless an explicit repository rebaseline occurs before the F4 migration is created.
+`migrations/versions/0001_initial.py` is the accepted pre-production baseline. It bootstraps the six audited Request Engine roles and installs the checksummed PostgreSQL 18 schema payload from `migrations/baseline/`.
 
-Current CI must prove exactly one repository head and a database upgraded to that head.
+The baseline is **history now, not a mutable schema template**. Future product changes append `0002+` revisions. Do not regenerate or edit `0001_initial` or `migrations/baseline/` merely because current HEAD evolves.
 
-## Integrated history vs unreleased feature-local migrations
+## Baseline vs current HEAD
 
-Once a migration revision is integrated/released as supported history, treat it as append-only unless an explicit repository rebaseline decision says otherwise.
+CI protects two different contracts:
 
-While Request Engine remains greenfield/pre-production with no customer-owned data or external compatibility commitment, unreleased feature-local migration chains may be intentionally consolidated before integration when all of the following hold:
+1. **accepted baseline integrity** — `0001_initial` must continue to install from a clean PostgreSQL 18 cluster with the exact manifested role topology and accepted baseline model;
+2. **current-product integrity** — `alembic upgrade head` must reach the repository's single current head and pass the complete current guarantee, security, concurrency and E2E proof set.
 
-1. the feature has not been deployed to customer-owned data;
-2. consolidation is explicitly allowed by the pre-production evolution policy;
-3. released/integrated historical baselines are not silently rewritten;
-4. the final migration reproduces accepted schema/behavior instead of preserving known-wrong intermediate states;
-5. exact-head bootstrap, current-product and relevant compatibility lanes pass after consolidation;
-6. useful development provenance is retained separately when it improves reviewability.
+Those contracts must not be collapsed into `HEAD == 0001`. A reviewed `0002+` is legitimate evolution and must not require rewriting the baseline.
 
-This is a controlled pre-production rebaseline, not permission to delete failing history or bypass migration safety.
-
-## F2 consolidation
-
-F2 development SQL-bearing steps are preserved under `migrations/f2_steps/` and composed by:
+The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 
 ```text
-migrations/versions/0004_geospatial_cross_tenant_discovery.py
+99 relations = 90 tables + 9 views
+1,085 columns
+1,575 validated constraints
+276 indexes
+145 routines
+162 triggers
+84 RLS policies
+6 Request Engine roles
+0 role memberships
+12 column grants
 ```
 
-Those support modules are provenance, not independent Alembic revisions.
+These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
 
-## F3 integration and historical-fact hardening
+## Historical/provenance surfaces
 
-F3 entered the supported migration line as:
+`migrations/sql/design_chain/` is retained because the repository's V2 design-history status check still executes it through `scripts/db/apply_design_chain.sh`. It is not the current schema source of truth.
 
-```text
-0004_geospatial_cross_tenant_discovery
-  -> 0005_live_service_operations
-  -> 0006_f3_historical_fact_hardening
-```
+The old V3 Base85 payload, V3 candidate SQL, feature-step helper modules and the pre-rebaseline `0002..0050` chain are intentionally absent from current HEAD. Their provenance remains in Git history and historical documentation; keeping dead executable migration machinery beside the accepted baseline would create a false second authority.
 
-`0005_live_service_operations` introduces the live Queue/Delivery schema and primary F3 invariants.
+## Schema-change discipline
 
-`0006_f3_historical_fact_hardening` is a real append-only successor created after adversarial review to strengthen the immutability/append-preservation of historical execution facts, including completed ServiceSession and ServiceSessionInterruption history. It is not provisional history and must not be described as having been consolidated into `0005`.
+For any new schema change:
 
-F4 may add the next revision only after its normative schema semantics are accepted. The migration must declare the actual then-current head as `down_revision`.
+1. identify the owning capability and current guarantee affected;
+2. classify compatibility/data risk using `continuous-evolution-policy.md`;
+3. append a new Alembic revision from the current single head;
+4. use **expand → migrate → contract** when old/new application or data representations must coexist;
+5. review RLS, ownership, grants and SECURITY DEFINER impact;
+6. review transaction, lock, range/timezone and concurrency semantics;
+7. make non-trivial backfills resumable/idempotent/bounded/observable as applicable;
+8. add PostgreSQL-backed falsification evidence for database claims;
+9. keep accepted historical revisions and `migrations/baseline/` unchanged;
+10. prove clean `upgrade head` and the current-product proof map with no gaps.
 
-## Frozen V3 candidate provenance
+For production-sized tables, explicitly assess DDL lock/availability consequences. Use staged constraint validation, concurrent index creation or other PostgreSQL mechanisms when they materially reduce production risk; do not apply them mechanically when an ordinary transactional migration is demonstrably safer.
 
-The frozen V3 candidate remains under:
-
-```text
-migrations/sql/v3_candidate/
-```
-
-and may be installed in release-proof/equivalence contexts with:
-
-```bash
-bash scripts/db/apply_v3_candidate.sh
-```
-
-It is not the mutable current schema-development line. Do not append post-V3 product changes there or modify frozen files merely to match later Alembic history.
-
-## Historical V2 design chain
-
-The V2.6→V2.10 design chain remains under `migrations/sql/design_chain/` and may continue to execute in its dedicated CI lane so historical SQL knowledge does not silently rot.
-
-It is not production Alembic history and should not receive ordinary current-product migrations.
-
-## Current schema-evolution requirements
-
-For a schema change intended to become part of supported current history:
-
-1. update the owning canonical domain/architecture contract when semantics or invariants change;
-2. choose explicitly between append-only migration and justified pre-production rebaseline;
-3. preserve immutable historical release artifacts that still serve provenance;
-4. add/update PostgreSQL-backed tests for invariants, races, RLS/privileges and runtime behavior;
-5. prove fresh bootstrap to the single current head;
-6. prove supported upgrade paths when a real compatibility obligation exists;
-7. preserve rollback policy explicitly and do not fake reversibility for semantically irreversible changes;
-8. keep historical release/design evidence separate from current-product proof.
-
-For F4 specifically, prediction/read-model values such as ETA, queue position and remaining live capacity must not be persisted as authoritative counters merely for migration convenience. F4 schema persistence is limited to accepted configuration/policy/supporting structures unless its normative contract is explicitly amended.
-
-Once real customer-owned data or an external compatibility commitment exists, destructive history changes require explicit data migration, rollback/forward-safety and compatibility analysis.
-
-## V3 release provenance
-
-The V3 release baseline was closed with G01–G20 evidence, a frozen candidate inventory, reviewed `0001_initial`, structural fingerprinting, behavioral equivalence proof and production-like runtime-role bootstrap evidence.
-
-See `docs/release/v3-release-gates.md` and `docs/release/v3-current-release-roadmap.md` for historical release provenance.
+PostgreSQL target is 18+.
 
 ## SQL ownership
 
-PostgreSQL object responsibilities remain:
-
 ```text
 request_engine  authoritative relational state + integrity/RLS
-request_read    versioned capability-oriented read contracts
+request_read    capability-oriented read contracts
 request_cmd     narrow consistency/worker/idempotency primitives
 request_admin   explicit diagnostics/operations
 ```
 
-Python remains owner of business-command orchestration and transaction framing. PostgreSQL protects structural truth, concurrency, leases/fencing and local invariant backstops.
+Python owns business-command orchestration and transaction framing. PostgreSQL owns structural truth, concurrency, leases/fencing and local invariant backstops. No external/provider I/O occurs while authoritative database locks are held.
 
-No external/provider I/O occurs while authoritative database locks are held.
+## Production compatibility trigger
+
+Pre-production freedom ends when Request Engine stores customer-owned production data that must survive upgrades or when an external/independently deployed consumer has a supported compatibility promise.
+
+From that point, schema changes still evolve normally, but destructive operations require explicit data/consumer migration and roll-forward/rollback analysis. Deployment overlap must be considered, and published surfaces require controlled deprecation/removal criteria.
+
+History remains immutable; the future remains evolvable.
+
+## Future rebaseline policy
+
+A future destructive rebaseline is possible only while pre-production and only as an explicit repository-architecture operation backed by another effective-schema audit and clean-cluster reproduction proof. Never silently rewrite the accepted baseline as part of a feature or cleanup PR.
+
+After customer-owned production data exists, rebaseline is **not a cleanup technique**. Any extraordinary lineage replacement becomes a production data migration/cutover project with explicit transfer and recovery semantics.

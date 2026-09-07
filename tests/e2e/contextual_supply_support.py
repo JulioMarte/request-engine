@@ -17,6 +17,38 @@ def contextualize_sandbox(
     conn: support.PgConnection,
     sandbox: TenantSandbox,
 ) -> ContextualSupply:
+    """Add contextual commercial terms to an already contextual TenantSandbox.
+
+    TenantSandbox owns the baseline Resource-at-Location assignment and recurring
+    availability.  This helper specializes that supply for the contextual booking
+    scenarios instead of creating a second, overlapping assignment authority.
+    """
+    assignment = conn.execute(
+        """
+        SELECT id
+        FROM request_engine.resource_location_assignments
+        WHERE organization_id = %s
+          AND resource_id = %s
+          AND location_id = %s
+          AND status = 'active'
+          AND effective_during @> '2030-01-07T13:00:00+00'::timestamptz
+        ORDER BY lower(effective_during) DESC
+        LIMIT 1
+        """,
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
+    ).fetchone()
+    assert assignment is not None, "TenantSandbox must provide contextual Resource supply"
+    assignment_id = assignment[0]
+
+    conn.execute(
+        """
+        DELETE FROM request_engine.location_operational_hours
+        WHERE organization_id = %s
+          AND location_id = %s
+          AND weekday = 0
+        """,
+        (sandbox.organization_id, sandbox.location_id),
+    )
     conn.execute(
         """
         INSERT INTO request_engine.location_operational_hours (
@@ -25,20 +57,15 @@ def contextualize_sandbox(
         """,
         (sandbox.organization_id, sandbox.location_id),
     )
-    row = conn.execute(
+    conn.execute(
         """
-        INSERT INTO request_engine.resource_location_assignments (
-            organization_id, resource_id, location_id, effective_during
-        ) VALUES (
-            %s, %s, %s,
-            tstzrange('2026-01-01T00:00:00+00'::timestamptz, NULL, '[)')
-        )
-        RETURNING id
+        DELETE FROM request_engine.resource_location_availability
+        WHERE organization_id = %s
+          AND resource_location_assignment_id = %s
+          AND weekday = 0
         """,
-        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    ).fetchone()
-    assert row is not None
-    assignment_id = row[0]
+        (sandbox.organization_id, assignment_id),
+    )
     conn.execute(
         """
         INSERT INTO request_engine.resource_location_availability (

@@ -8,7 +8,7 @@ from request_engine.modules.operational_recovery.application import (
 )
 from request_engine.modules.operational_recovery.application.execution_policy import (
     affected_reservation,
-    require_actionable_target,
+    require_recovery_target,
 )
 from request_engine.modules.operational_recovery.application.ports import RecoveryRepository
 from request_engine.modules.operational_recovery.application.proposal_ops import get_proposal
@@ -68,7 +68,7 @@ async def execute_replace_resource_action(
             booking=booking,
             capacity=capacity,
         )
-    target = require_actionable_target(command.reservation_id, affected.replacement_target)
+    target = require_recovery_target(command.reservation_id, affected.replacement_target)
     reservation = await replace_owner.execute_booking_replace_resource_step(
         command=command,
         action=action,

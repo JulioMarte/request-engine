@@ -64,7 +64,7 @@ def reschedule_within_envelope(
     """
 
     target = affected.target
-    if target is None or not target.actionable:
+    if target is None:
         return False
     delay = target.start_at - affected.original_start_at
     if delay <= timedelta(0):

@@ -29,7 +29,6 @@ from request_engine.modules.booking.adapters.db.effective_booking_policy import 
 from request_engine.modules.booking.adapters.db.resource_availability import (
     load_live_capacity_claims,
     load_resource_exceptions,
-    load_resource_schedules,
 )
 from request_engine.modules.booking.application.errors import (
     BookingConfigurationError,
@@ -71,21 +70,14 @@ class _CandidateResource:
     ordinal: int
     quantity: int
     resource_id: UUID
-    legacy_location_id: UUID | None
     availability_revision: int
     profile: ResourceAvailability
-    assignment: AssignmentObservation | None = None
-    location: LocationObservation | None = None
+    assignment: AssignmentObservation
+    location: LocationObservation
 
     @property
-    def location_id(self) -> UUID | None:
-        if self.assignment is not None:
-            return self.assignment.location_id
-        return self.legacy_location_id
-
-    @property
-    def contextual(self) -> bool:
-        return self.assignment is not None
+    def location_id(self) -> UUID:
+        return self.assignment.location_id
 
 
 class PostgresAppointmentAvailabilityReader:
@@ -173,7 +165,7 @@ class PostgresAppointmentAvailabilityReader:
             resource_ids = tuple(
                 sorted({cast(UUID, row["resource_id"]) for row in candidate_rows}, key=str)
             )
-            contextualized, assignments_by_resource = await load_contextualization(
+            _, assignments_by_resource = await load_contextualization(
                 session,
                 query.organization_id,
                 resource_ids,
@@ -199,15 +191,6 @@ class PostgresAppointmentAvailabilityReader:
                     },
                     key=str,
                 )
-            )
-
-            legacy_resource_ids = tuple(
-                resource_id for resource_id in resource_ids if resource_id not in contextualized
-            )
-            legacy_schedules = await load_resource_schedules(
-                session,
-                query.organization_id,
-                legacy_resource_ids,
             )
             broad_exceptions = await load_resource_exceptions(
                 session,
@@ -255,9 +238,7 @@ class PostgresAppointmentAvailabilityReader:
         candidates = _build_candidate_resources(
             candidate_rows,
             query_location_id=query.location_id,
-            contextualized=contextualized,
             assignments_by_resource=assignments_by_resource,
-            legacy_schedules=legacy_schedules,
             broad_exceptions=broad_exceptions,
             live_claims=live_claims,
             assignment_schedules=assignment_schedules,
@@ -268,18 +249,7 @@ class PostgresAppointmentAvailabilityReader:
         if len(ordinals) != requirement_count:
             return ()
 
-        if not any(candidate.contextual for candidate in candidates):
-            return _legacy_slots(
-                candidates,
-                query=query,
-                ordinals=ordinals,
-                duration_minutes=base_duration,
-                step_minutes=step_minutes,
-                window_start=window_start,
-                window_end=window_end,
-            )
-
-        return _contextual_or_mixed_slots(
+        return _contextual_slots(
             candidates,
             query=query,
             ordinals=ordinals,
@@ -295,9 +265,7 @@ def _build_candidate_resources(
     rows: Sequence[RowMapping],
     *,
     query_location_id: UUID | None,
-    contextualized: set[UUID],
     assignments_by_resource: dict[UUID, tuple[AssignmentObservation, ...]],
-    legacy_schedules: dict[UUID, tuple[RecurringAvailability, ...]],
     broad_exceptions: dict[UUID, tuple[AvailabilityException, ...]],
     live_claims: dict[UUID, tuple[LiveCapacityClaim, ...]],
     assignment_schedules: dict[UUID, tuple[RecurringAvailability, ...]],
@@ -310,130 +278,42 @@ def _build_candidate_resources(
         ordinal = cast(int, row["ordinal"])
         quantity = cast(int, row["quantity"])
         resource_id = cast(UUID, row["resource_id"])
-        legacy_location_id = cast(UUID | None, row["location_id"])
         availability_revision = cast(int, row["availability_revision"])
         capacity_model = CapacityModel(cast(str, row["capacity_model"]))
         capacity_units = cast(int, row["capacity_units"])
 
-        if resource_id in contextualized:
-            for assignment in assignments_by_resource.get(resource_id, ()):
-                if query_location_id is not None and assignment.location_id != query_location_id:
-                    continue
-                location = locations.get(assignment.location_id)
-                if location is None:
-                    continue
-                exceptions = broad_exceptions.get(resource_id, ()) + assignment_exceptions.get(
-                    assignment.id, ()
-                )
-                candidates.append(
-                    _CandidateResource(
-                        requirement_id=requirement_id,
-                        ordinal=ordinal,
-                        quantity=quantity,
-                        resource_id=resource_id,
-                        legacy_location_id=legacy_location_id,
-                        availability_revision=availability_revision,
-                        profile=ResourceAvailability(
-                            capacity_model=capacity_model,
-                            capacity_units=capacity_units,
-                            default_timezone=location.timezone,
-                            schedules=assignment_schedules.get(assignment.id, ()),
-                            exceptions=exceptions,
-                            live_claims=live_claims.get(resource_id, ()),
-                        ),
-                        assignment=assignment,
-                        location=location,
-                    )
-                )
-            continue
-
-        legacy_location_id = cast(UUID | None, row["location_id"])
-        if query_location_id is not None and legacy_location_id not in (None, query_location_id):
-            continue
-        candidates.append(
-            _CandidateResource(
-                requirement_id=requirement_id,
-                ordinal=ordinal,
-                quantity=quantity,
-                resource_id=resource_id,
-                legacy_location_id=legacy_location_id,
-                availability_revision=availability_revision,
-                profile=ResourceAvailability(
-                    capacity_model=capacity_model,
-                    capacity_units=capacity_units,
-                    default_timezone=cast(str, row["default_timezone"]),
-                    schedules=legacy_schedules.get(resource_id, ()),
-                    exceptions=broad_exceptions.get(resource_id, ()),
-                    live_claims=live_claims.get(resource_id, ()),
-                ),
+        for assignment in assignments_by_resource.get(resource_id, ()):
+            if query_location_id is not None and assignment.location_id != query_location_id:
+                continue
+            location = locations.get(assignment.location_id)
+            if location is None:
+                continue
+            exceptions = broad_exceptions.get(resource_id, ()) + assignment_exceptions.get(
+                assignment.id, ()
             )
-        )
+            candidates.append(
+                _CandidateResource(
+                    requirement_id=requirement_id,
+                    ordinal=ordinal,
+                    quantity=quantity,
+                    resource_id=resource_id,
+                    availability_revision=availability_revision,
+                    profile=ResourceAvailability(
+                        capacity_model=capacity_model,
+                        capacity_units=capacity_units,
+                        default_timezone=location.timezone,
+                        schedules=assignment_schedules.get(assignment.id, ()),
+                        exceptions=exceptions,
+                        live_claims=live_claims.get(resource_id, ()),
+                    ),
+                    assignment=assignment,
+                    location=location,
+                )
+            )
     return tuple(candidates)
 
 
-def _legacy_slots(
-    candidates: tuple[_CandidateResource, ...],
-    *,
-    query: FindAppointmentSlotsQuery,
-    ordinals: list[int],
-    duration_minutes: int,
-    step_minutes: int,
-    window_start: object,
-    window_end: object,
-) -> tuple[AppointmentSlot, ...]:
-    from datetime import datetime
-
-    start = cast(datetime, window_start)
-    end = cast(datetime, window_end)
-    interval_candidates: dict[AvailableInterval, dict[int, list[_CandidateResource]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
-    for candidate in candidates:
-        intervals = find_resource_intervals(
-            candidate.profile,
-            window_start=start,
-            window_end=end,
-            duration_minutes=duration_minutes,
-            step_minutes=step_minutes,
-            required_quantity=candidate.quantity,
-        )
-        for interval in intervals:
-            interval_candidates[interval][candidate.ordinal].append(candidate)
-
-    slots: list[AppointmentSlot] = []
-    for interval in sorted(interval_candidates):
-        by_ordinal = interval_candidates[interval]
-        if any(ordinal not in by_ordinal for ordinal in ordinals):
-            continue
-        choices_by_requirement = [
-            sorted(by_ordinal[ordinal], key=lambda candidate: str(candidate.resource_id))
-            for ordinal in ordinals
-        ]
-        for combination in product(*choices_by_requirement):
-            if not _combination_has_capacity(combination, interval):
-                continue
-            resources = tuple(
-                ResourceChoice(
-                    requirement_id=candidate.requirement_id,
-                    resource_id=candidate.resource_id,
-                )
-                for candidate in combination
-            )
-            slots.append(
-                AppointmentSlot(
-                    offering_version_id=query.offering_version_id,
-                    start_at=interval.start_at,
-                    end_at=interval.end_at,
-                    location_id=_slot_location(query.location_id, combination),
-                    resources=resources,
-                )
-            )
-            if len(slots) >= query.limit:
-                return tuple(slots)
-    return tuple(slots)
-
-
-def _contextual_or_mixed_slots(
+def _contextual_slots(
     candidates: tuple[_CandidateResource, ...],
     *,
     query: FindAppointmentSlotsQuery,
@@ -461,15 +341,14 @@ def _contextual_or_mixed_slots(
             required_quantity=candidate.quantity,
         )
         for seed in seed_intervals:
-            if candidate.assignment is not None:
-                if not candidate.assignment.contains(seed.start_at, seed.end_at):
-                    continue
-                if candidate.location is None or not interval_is_scheduled_available(
-                    candidate.location.profile,
-                    start_at=seed.start_at,
-                    end_at=seed.end_at,
-                ):
-                    continue
+            if not candidate.assignment.contains(seed.start_at, seed.end_at):
+                continue
+            if not interval_is_scheduled_available(
+                candidate.location.profile,
+                start_at=seed.start_at,
+                end_at=seed.end_at,
+            ):
+                continue
             starts[seed.start_at][candidate.ordinal].append(candidate)
 
     slots: list[AppointmentSlot] = []
@@ -482,49 +361,25 @@ def _contextual_or_mixed_slots(
                 by_ordinal[ordinal],
                 key=lambda candidate: (
                     str(candidate.resource_id),
-                    str(candidate.assignment.id) if candidate.assignment is not None else "",
+                    str(candidate.assignment.id),
                 ),
             )
             for ordinal in ordinals
         ]
         for combination in product(*choices_by_requirement):
             location_id = _slot_location(query.location_id, combination)
-            has_contextual = any(candidate.contextual for candidate in combination)
-            if not has_contextual:
-                interval = AvailableInterval(
-                    start_at,
-                    start_at + timedelta(minutes=cast(int, base_terms.planned_duration_minutes)),
-                )
-                if interval.end_at > end or not _combination_exactly_available(
-                    combination, interval
-                ):
-                    continue
-                slots.append(
-                    AppointmentSlot(
-                        offering_version_id=query.offering_version_id,
-                        start_at=interval.start_at,
-                        end_at=interval.end_at,
-                        location_id=location_id,
-                        resources=tuple(
-                            ResourceChoice(item.requirement_id, item.resource_id)
-                            for item in combination
-                        ),
-                    )
-                )
-            else:
-                slot = _contextual_slot(
-                    combination,
-                    offering_version_id=query.offering_version_id,
-                    requested_location_id=location_id,
-                    start_at=start_at,
-                    window_end=end,
-                    base_terms=base_terms,
-                    context_terms=context_terms,
-                )
-                if slot is None:
-                    continue
-                slots.append(slot)
-
+            slot = _contextual_slot(
+                combination,
+                offering_version_id=query.offering_version_id,
+                requested_location_id=location_id,
+                start_at=start_at,
+                window_end=end,
+                base_terms=base_terms,
+                context_terms=context_terms,
+            )
+            if slot is None:
+                continue
+            slots.append(slot)
             if len(slots) >= query.limit:
                 return tuple(slots)
     return tuple(slots)
@@ -547,20 +402,12 @@ def _contextual_slot(
     if requested_location_id is None:
         return None
 
-    context_observations: list[ContextBookingTerms | None] = []
-    for candidate in combination:
-        if candidate.assignment is None:
-            context_observations.append(None)
-            continue
-        context_observations.append(
-            effective_context_terms(
-                context_terms.get(candidate.assignment.id, ()),
-                start,
-            )
-        )
-
+    context_observations = tuple(
+        effective_context_terms(context_terms.get(candidate.assignment.id, ()), start)
+        for candidate in combination
+    )
     try:
-        resolved = resolve_booking_terms(base_terms, tuple(context_observations))
+        resolved = resolve_booking_terms(base_terms, context_observations)
     except (MissingCommercialTerms, ConflictingContextualTerms, ContextNotBookable):
         return None
 
@@ -580,12 +427,8 @@ def _contextual_slot(
         ResourceChoice(
             requirement_id=candidate.requirement_id,
             resource_id=candidate.resource_id,
-            resource_location_assignment_id=(
-                candidate.assignment.id if candidate.assignment is not None else None
-            ),
-            assignment_revision=(
-                candidate.assignment.revision if candidate.assignment is not None else None
-            ),
+            resource_location_assignment_id=candidate.assignment.id,
+            assignment_revision=candidate.assignment.revision,
             availability_revision=candidate.availability_revision,
         )
         for candidate in combination
@@ -595,7 +438,7 @@ def _contextual_slot(
         location=location_observation,
         combination=combination,
         resolved=resolved,
-        context_observations=tuple(context_observations),
+        context_observations=context_observations,
     )
     return AppointmentSlot(
         offering_version_id=offering_version_id,
@@ -623,38 +466,14 @@ def _combination_exactly_available(
             end_at=interval.end_at,
         ):
             return False
-        if candidate.assignment is not None:
-            if not candidate.assignment.contains(interval.start_at, interval.end_at):
-                return False
-            if candidate.location is None or not interval_is_scheduled_available(
-                candidate.location.profile,
-                start_at=interval.start_at,
-                end_at=interval.end_at,
-            ):
-                return False
-        by_resource[candidate.resource_id].append(candidate)
-
-    for values in by_resource.values():
-        profile = values[0].profile
-        quantity = sum(value.quantity for value in values)
-        if profile.capacity_model is CapacityModel.EXCLUSIVE and len(values) > 1:
+        if not candidate.assignment.contains(interval.start_at, interval.end_at):
             return False
-        if not interval_has_resource_capacity(
-            profile,
+        if not interval_is_scheduled_available(
+            candidate.location.profile,
             start_at=interval.start_at,
             end_at=interval.end_at,
-            required_quantity=quantity,
         ):
             return False
-    return True
-
-
-def _combination_has_capacity(
-    combination: tuple[_CandidateResource, ...],
-    interval: AvailableInterval,
-) -> bool:
-    by_resource: dict[UUID, list[_CandidateResource]] = defaultdict(list)
-    for candidate in combination:
         by_resource[candidate.resource_id].append(candidate)
 
     for values in by_resource.values():
@@ -677,15 +496,10 @@ def _slot_location(
     combination: tuple[_CandidateResource, ...],
 ) -> UUID | None:
     if requested_location_id is not None:
-        if any(
-            candidate.location_id is not None and candidate.location_id != requested_location_id
-            for candidate in combination
-        ):
+        if any(candidate.location_id != requested_location_id for candidate in combination):
             return None
         return requested_location_id
-    locations = {
-        candidate.location_id for candidate in combination if candidate.location_id is not None
-    }
+    locations = {candidate.location_id for candidate in combination}
     return next(iter(locations)) if len(locations) == 1 else None
 
 
@@ -693,13 +507,7 @@ def _contextual_location(
     combination: tuple[_CandidateResource, ...],
     location_id: UUID,
 ) -> LocationObservation | None:
-    observations = {
-        candidate.location
-        for candidate in combination
-        if candidate.contextual and candidate.location is not None
-    }
-    if not observations:
-        return None
+    observations = {candidate.location for candidate in combination}
     if len(observations) != 1:
         return None
     observation = next(iter(observations))
@@ -729,18 +537,9 @@ def _configuration_fingerprint(
             {
                 "requirement_id": str(candidate.requirement_id),
                 "resource_id": str(candidate.resource_id),
-                "legacy_location_id": (
-                    str(candidate.legacy_location_id)
-                    if candidate.legacy_location_id is not None
-                    else None
-                ),
                 "availability_revision": candidate.availability_revision,
-                "assignment_id": (
-                    str(candidate.assignment.id) if candidate.assignment is not None else None
-                ),
-                "assignment_revision": (
-                    candidate.assignment.revision if candidate.assignment is not None else None
-                ),
+                "assignment_id": str(candidate.assignment.id),
+                "assignment_revision": candidate.assignment.revision,
             }
             for candidate in combination
         ],

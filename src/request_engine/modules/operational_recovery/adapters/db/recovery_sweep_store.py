@@ -11,8 +11,7 @@ _DISCOVERY = text(
     "FROM request_cmd.find_recovery_sweep_scopes(:limit) OFFSET :offset"
 )
 _CURRENT_REVISION = text(
-    "SELECT revision FROM request_engine.recovery_source_revisions "
-    "WHERE organization_id = :organization_id AND service_queue_id = :service_queue_id"
+    "SELECT request_read.recovery_source_revision(:organization_id, :service_queue_id)"
 )
 _SCHEDULE_REASSESSMENT = text(
     "SELECT request_cmd.schedule_recovery_reassessment("
@@ -65,7 +64,7 @@ class PostgresRecoverySweepStore:
 
 
 async def _current_revision(session: AsyncSession, scope: RecoverySweepScope) -> int | None:
-    row = (
+    return (
         await session.execute(
             _CURRENT_REVISION,
             {
@@ -74,4 +73,3 @@ async def _current_revision(session: AsyncSession, scope: RecoverySweepScope) ->
             },
         )
     ).scalar_one_or_none()
-    return row

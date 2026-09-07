@@ -5,14 +5,10 @@ from uuid import UUID, uuid4
 import pytest
 from psycopg import Connection
 
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeReservationCommands,
 )
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-    book_appointment,
-)
-from request_engine.modules.booking.contracts.appointments import ResourceChoice
+from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.communications.adapters.db.communication_commands import (
     PostgresCommunicationCommands,
 )
@@ -32,7 +28,10 @@ from request_engine.modules.communications.contracts.delivery import (
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.scheduling.postgres import PostgresScheduledActionWorker
 
-from .booking_boundary_fixture import create_booking_boundary_fixture
+from .booking_boundary_fixture import (
+    contextual_booking_command,
+    create_booking_boundary_fixture,
+)
 
 PgConnection = Connection[Any]
 PgRow = tuple[object, ...]
@@ -125,17 +124,12 @@ async def test_i47_provider_delivery_status_cannot_mutate_source_reservation_gra
 ) -> None:
     fixture = create_booking_boundary_fixture(admin_conn)
     reservation = await book_appointment(
-        PostgresReservationCommands(session_factory),
-        BookAppointmentCommand(
-            organization_id=fixture.organization_id,
-            principal_id=fixture.principal_id,
-            offering_version_id=fixture.offering_version_id,
-            subject_party_id=fixture.subject_party_id,
-            location_id=fixture.location_id,
+        CapacitySafeReservationCommands(session_factory),
+        await contextual_booking_command(
+            fixture,
+            session_factory,
             start_at=datetime(2026, 8, 24, 13, 0, tzinfo=UTC),
-            resources=(ResourceChoice(fixture.requirement_id, fixture.resource_id),),
-            idempotency_key=f"i47-book-{uuid4().hex}",
-            allow_subject_override=True,
+            key_prefix="i47-book",
         ),
     )
     contact_point_id = _contact_point(

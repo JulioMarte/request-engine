@@ -33,7 +33,6 @@ async def require_preserved_commercial_commitment(
                     FROM request_engine.reservation_commercial_commitments
                     WHERE organization_id = :organization_id
                       AND reservation_id = :reservation_id
-                    FOR UPDATE
                     """
                 ),
                 {

@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from psycopg import Connection
 
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeReservationCommands,
@@ -28,15 +29,33 @@ from request_engine.modules.queue.application.commands.offer_next_waitlist_candi
 )
 from request_engine.platform.db.session import SessionFactory
 
-from . import test_cross_tenant_shared_capacity as shared_capacity_support
-from .test_cross_tenant_shared_capacity import PgConnection, TenantBookingFixture
+from .contextual_booking_support import (
+    ContextualTenantFixture,
+    contextual_book_command,
+    contextual_slot_at,
+    create_contextual_tenant,
+    uuid_row,
+)
 
-support = cast(Any, shared_capacity_support)
+PgConnection = Connection[Any]
+
+
+def _shared_root(conn: PgConnection) -> UUID:
+    identity_id = uuid_row(
+        conn,
+        "SELECT request_admin.create_global_identity('person', NULL, %s, %s)",
+        ("test.control-plane", "slot-offer fallback shared professional"),
+    )
+    return uuid_row(
+        conn,
+        "SELECT request_admin.create_shared_capacity_identity(%s, %s, %s)",
+        (identity_id, "test.control-plane", "slot-offer fallback serialization"),
+    )
 
 
 def _bind_resource(
     conn: PgConnection,
-    fixture: TenantBookingFixture,
+    fixture: ContextualTenantFixture,
     resource_id: UUID,
     root_id: UUID,
 ) -> None:
@@ -52,53 +71,6 @@ def _bind_resource(
     )
 
 
-def _add_alternate_resource(conn: PgConnection, fixture: TenantBookingFixture) -> UUID:
-    capability_row = conn.execute(
-        """
-        SELECT capability_id
-        FROM request_engine.offering_resource_requirements
-        WHERE organization_id = %s AND id = %s
-        """,
-        (fixture.organization_id, fixture.requirement_id),
-    ).fetchone()
-    assert capability_row is not None
-    capability_id = cast(UUID, capability_row[0])
-    resource_row = conn.execute(
-        """
-        INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
-            capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, %s, 'exclusive', 1)
-        RETURNING id
-        """,
-        (
-            fixture.organization_id,
-            fixture.location_id,
-            f"alternate-{uuid4().hex}",
-            "Alternate provider",
-        ),
-    ).fetchone()
-    assert resource_row is not None
-    resource_id = cast(UUID, resource_row[0])
-    conn.execute(
-        """
-        INSERT INTO request_engine.resource_capability_assignments (
-            organization_id, resource_id, capability_id
-        ) VALUES (%s, %s, %s)
-        """,
-        (fixture.organization_id, resource_id, capability_id),
-    )
-    conn.execute(
-        """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
-        """,
-        (fixture.organization_id, resource_id),
-    )
-    return resource_id
-
-
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.postgres
@@ -106,35 +78,17 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    tenant_a = support._fixture(admin_conn, "fallback-a")
-    tenant_b = support._fixture(admin_conn, "fallback-b")
-    alternate_id = _add_alternate_resource(admin_conn, tenant_a)
-    root_id = support._shared_root(admin_conn)
+    tenant_a = create_contextual_tenant(admin_conn, "fallback-a", resource_count=2)
+    tenant_b = create_contextual_tenant(admin_conn, "fallback-b")
+    root_id = _shared_root(admin_conn)
 
     ordered_resources = tuple(
-        cast(UUID, row[0])
-        for row in admin_conn.execute(
-            """
-            SELECT r.id
-            FROM request_engine.resources r
-            JOIN request_engine.resource_capability_assignments a
-              ON a.organization_id = r.organization_id
-             AND a.resource_id = r.id
-            JOIN request_engine.offering_resource_requirements rr
-              ON rr.organization_id = a.organization_id
-             AND rr.capability_id = a.capability_id
-            WHERE r.organization_id = %s
-              AND rr.id = %s
-            ORDER BY r.id
-            """,
-            (tenant_a.organization_id, tenant_a.requirement_id),
-        ).fetchall()
+        sorted((resource.resource_id for resource in tenant_a.resources), key=str)
     )
-    assert set(ordered_resources) == {tenant_a.resource_id, alternate_id}
     blocked_resource, free_resource = ordered_resources
-
+    foreign_resource = tenant_b.resources[0].resource_id
     _bind_resource(admin_conn, tenant_a, blocked_resource, root_id)
-    _bind_resource(admin_conn, tenant_b, tenant_b.resource_id, root_id)
+    _bind_resource(admin_conn, tenant_b, foreign_resource, root_id)
 
     reservations = CapacitySafeReservationCommands(session_factory)
     waitlist = PostgresWaitlistCommands(session_factory)
@@ -146,7 +100,20 @@ async def test_slot_offer_retries_free_resource_after_hidden_shared_root_conflic
     start_at = datetime(2099, 8, 17, 13, 0, tzinfo=UTC)
     end_at = start_at + timedelta(minutes=30)
 
-    await book_appointment(reservations, support._book(tenant_b, start_at))
+    foreign_slot = await contextual_slot_at(
+        tenant_b,
+        session_factory,
+        resource_id=foreign_resource,
+        start_at=start_at,
+    )
+    await book_appointment(
+        reservations,
+        contextual_book_command(
+            tenant_b,
+            foreign_slot,
+            key_prefix="fallback-foreign-book",
+        ),
+    )
     entry = await join_waitlist(
         waitlist,
         JoinWaitlistCommand(

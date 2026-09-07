@@ -29,7 +29,7 @@ _F1_HELPERS = (
     "lock_booking_context_terms_resource",
     "lock_offering_version_booking_terms_root",
     "guard_capacity_claim_contextual_assignment",
-    "guard_f1_exact_revision_step",
+    "guard_exact_revision_step",
 )
 
 
@@ -89,7 +89,7 @@ def test_worker_has_no_direct_f1_authoritative_relation_privileges(
 
 
 @pytest.mark.postgres
-def test_f1_revisioned_aggregates_do_not_extend_frozen_v3_revision_guard(
+def test_f1_revisioned_aggregates_use_canonical_exact_revision_guard(
     admin_conn: PgConnection,
 ) -> None:
     rows = admin_conn.execute(
@@ -102,12 +102,12 @@ def test_f1_revisioned_aggregates_do_not_extend_frozen_v3_revision_guard(
          WHERE n.nspname = 'request_engine'
            AND c.relname IN ('resource_location_assignments', 'booking_context_terms')
            AND NOT t.tgisinternal
-           AND p.proname IN ('guard_exact_revision_step', 'guard_f1_exact_revision_step')
+           AND p.proname = 'guard_exact_revision_step'
          ORDER BY c.relname, p.proname
         """
     ).fetchall()
 
     assert rows == [
-        ("booking_context_terms", "guard_f1_exact_revision_step"),
-        ("resource_location_assignments", "guard_f1_exact_revision_step"),
+        ("booking_context_terms", "guard_exact_revision_step"),
+        ("resource_location_assignments", "guard_exact_revision_step"),
     ]

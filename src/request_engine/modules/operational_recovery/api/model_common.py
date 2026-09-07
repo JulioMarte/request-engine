@@ -65,15 +65,13 @@ class RecoverySourceCheckpointView(BaseModel):
 class RecoveryTargetView(BaseModel):
     start_at: datetime
     end_at: datetime
-    location_id: UUID | None
+    location_id: UUID
     resources: tuple[RecoveryResourceChoiceView, ...]
-    actionable: bool
-    blocked_reason: str | None
-    planned_duration_minutes: int | None
-    amount: Decimal | None
-    currency: str | None
-    location_operational_revision: int | None
-    configuration_fingerprint: str | None
+    planned_duration_minutes: int
+    amount: Decimal
+    currency: str
+    location_operational_revision: int
+    configuration_fingerprint: str
 
     @classmethod
     def from_contract(cls, item: RecoveryTarget) -> "RecoveryTargetView":
@@ -91,8 +89,6 @@ class RecoveryTargetView(BaseModel):
                 )
                 for value in item.resources
             ),
-            actionable=item.actionable,
-            blocked_reason=item.blocked_reason,
             planned_duration_minutes=item.planned_duration_minutes,
             amount=item.amount,
             currency=item.currency,
@@ -108,7 +104,6 @@ class AffectedReservationView(BaseModel):
     expected_revision: int
     original_start_at: datetime
     original_end_at: datetime
-    contextual_commitment: bool
     target: RecoveryTargetView | None
     replacement_target: RecoveryTargetView | None
 
@@ -123,7 +118,6 @@ class AffectedReservationView(BaseModel):
             expected_revision=item.expected_revision,
             original_start_at=item.original_start_at,
             original_end_at=item.original_end_at,
-            contextual_commitment=item.contextual_commitment,
             target=RecoveryTargetView.from_contract(target) if target is not None else None,
             replacement_target=(
                 RecoveryTargetView.from_contract(replacement) if replacement is not None else None

@@ -115,13 +115,6 @@ def _booking_error(exc: booking_errors.BookingError) -> tuple[int, ErrorBody]:
             resolution=ErrorResolution.FIX_REQUEST,
             details={"reservation_id": str(exc.reservation_id), "reason": exc.reason},
         )
-    if isinstance(exc, booking_errors.ContextualCommitmentUnsupported):
-        return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
-            code="contextual_commitment_unsupported",
-            message="this contextual commitment operation is not supported in F1",
-            resolution=ErrorResolution.FIX_REQUEST,
-            details={"operation": exc.operation},
-        )
     if isinstance(exc, booking_errors.InvalidResourceSelection):
         return status.HTTP_422_UNPROCESSABLE_CONTENT, ErrorBody(
             code="invalid_resource_selection",

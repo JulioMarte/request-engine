@@ -1,8 +1,21 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 from psycopg import Connection
+
+from request_engine.modules.booking.adapters.db.appointment_availability_reader import (
+    PostgresAppointmentAvailabilityReader,
+)
+from request_engine.modules.booking.application.commands.book_appointment import (
+    BookAppointmentCommand,
+)
+from request_engine.modules.booking.application.queries.find_appointment_slots import (
+    FindAppointmentSlotsQuery,
+    find_appointment_slots,
+)
+from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
 
@@ -16,6 +29,9 @@ class BookingBoundaryFixture:
     offering_version_id: UUID
     requirement_id: UUID
     resource_id: UUID
+    assignment_id: UUID
+    assignment_revision: int
+    availability_revision: int
 
 
 def _uuid_row(
@@ -68,6 +84,14 @@ def create_booking_boundary_fixture(conn: PgConnection) -> BookingBoundaryFixtur
         """,
         (organization_id, f"i47-office-{suffix}"),
     )
+    conn.execute(
+        """
+        INSERT INTO request_engine.location_operational_hours (
+            organization_id, location_id, weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '08:00', '17:00')
+        """,
+        (organization_id, location_id),
+    )
     offering_id = _uuid_row(
         conn,
         """
@@ -88,6 +112,14 @@ def create_booking_boundary_fixture(conn: PgConnection) -> BookingBoundaryFixtur
         RETURNING id
         """,
         (organization_id, offering_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 2500, 'DOP')
+        """,
+        (organization_id, offering_version_id),
     )
     capability_id = _uuid_row(
         conn,
@@ -113,12 +145,12 @@ def create_booking_boundary_fixture(conn: PgConnection) -> BookingBoundaryFixtur
         conn,
         """
         INSERT INTO request_engine.resources (
-            organization_id, location_id, resource_key, display_name,
+            organization_id, resource_key, display_name,
             capacity_model, capacity_units
-        ) VALUES (%s, %s, %s, 'I47 doctor', 'exclusive', 1)
+        ) VALUES (%s, %s, 'I47 doctor', 'exclusive', 1)
         RETURNING id
         """,
-        (organization_id, location_id, f"i47-doctor-{suffix}"),
+        (organization_id, f"i47-doctor-{suffix}"),
     )
     conn.execute(
         """
@@ -128,14 +160,40 @@ def create_booking_boundary_fixture(conn: PgConnection) -> BookingBoundaryFixtur
         """,
         (organization_id, resource_id, capability_id),
     )
+    assignment_id = _uuid_row(
+        conn,
+        """
+        INSERT INTO request_engine.resource_location_assignments (
+            organization_id, resource_id, location_id, effective_during
+        ) VALUES (
+            %s, %s, %s,
+            tstzrange('2026-01-01T00:00:00+00'::timestamptz, NULL, '[)')
+        )
+        RETURNING id
+        """,
+        (organization_id, resource_id, location_id),
+    )
     conn.execute(
         """
-        INSERT INTO request_engine.availability_schedules (
-            organization_id, resource_id, weekday, local_start, local_end, timezone
-        ) VALUES (%s, %s, 0, '09:00', '12:00', 'America/Santo_Domingo')
+        INSERT INTO request_engine.resource_location_availability (
+            organization_id, resource_location_assignment_id,
+            weekday, local_start, local_end
+        ) VALUES (%s, %s, 0, '09:00', '12:00')
         """,
-        (organization_id, resource_id),
+        (organization_id, assignment_id),
     )
+    provenance = conn.execute(
+        """
+        SELECT a.revision, r.availability_revision
+        FROM request_engine.resource_location_assignments a
+        JOIN request_engine.resources r
+          ON r.organization_id = a.organization_id
+         AND r.id = a.resource_id
+        WHERE a.organization_id = %s AND a.id = %s
+        """,
+        (organization_id, assignment_id),
+    ).fetchone()
+    assert provenance is not None
     return BookingBoundaryFixture(
         organization_id=organization_id,
         principal_id=principal_id,
@@ -144,4 +202,52 @@ def create_booking_boundary_fixture(conn: PgConnection) -> BookingBoundaryFixtur
         offering_version_id=offering_version_id,
         requirement_id=requirement_id,
         resource_id=resource_id,
+        assignment_id=assignment_id,
+        assignment_revision=cast(int, provenance[0]),
+        availability_revision=cast(int, provenance[1]),
+    )
+
+
+async def contextual_booking_command(
+    fixture: BookingBoundaryFixture,
+    session_factory: SessionFactory,
+    *,
+    start_at: datetime,
+    key_prefix: str,
+) -> BookAppointmentCommand:
+    slots = await find_appointment_slots(
+        PostgresAppointmentAvailabilityReader(session_factory),
+        FindAppointmentSlotsQuery(
+            organization_id=fixture.organization_id,
+            offering_version_id=fixture.offering_version_id,
+            location_id=fixture.location_id,
+            resource_id=fixture.resource_id,
+            window_start=start_at,
+            window_end=start_at + timedelta(hours=1),
+            limit=20,
+        ),
+    )
+    slot = next((candidate for candidate in slots if candidate.start_at == start_at), None)
+    if slot is None:
+        raise AssertionError("expected contextual appointment option was not available")
+    assert slot.planned_duration_minutes is not None
+    assert slot.amount is not None
+    assert slot.currency is not None
+    assert slot.location_operational_revision is not None
+    assert slot.configuration_fingerprint is not None
+    return BookAppointmentCommand(
+        organization_id=fixture.organization_id,
+        principal_id=fixture.principal_id,
+        offering_version_id=fixture.offering_version_id,
+        subject_party_id=fixture.subject_party_id,
+        start_at=slot.start_at,
+        location_id=fixture.location_id,
+        resources=slot.resources,
+        idempotency_key=f"{key_prefix}-{uuid4().hex}",
+        allow_subject_override=True,
+        expected_planned_duration_minutes=slot.planned_duration_minutes,
+        expected_amount=slot.amount,
+        expected_currency=slot.currency,
+        expected_location_operational_revision=slot.location_operational_revision,
+        expected_configuration_fingerprint=slot.configuration_fingerprint,
     )

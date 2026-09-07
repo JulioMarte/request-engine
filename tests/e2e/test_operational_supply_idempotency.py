@@ -9,6 +9,17 @@ from .operator_journey_support import operator_client, revision
 from .tenant_sandbox import auth, seed_tenant_sandbox
 
 
+def _remove_baseline_supply(conn: PgConnection, organization_id: UUID) -> None:
+    conn.execute(
+        "DELETE FROM request_engine.resource_location_availability WHERE organization_id = %s",
+        (organization_id,),
+    )
+    conn.execute(
+        "DELETE FROM request_engine.resource_location_assignments WHERE organization_id = %s",
+        (organization_id,),
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
@@ -18,6 +29,7 @@ async def test_assignment_create_replays_once_and_rejects_conflicting_reuse(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "supply-replay")
+    _remove_baseline_supply(e2e_admin_conn, sandbox.organization_id)
     e2e_admin_conn.execute(
         """
         INSERT INTO request_engine.representations (

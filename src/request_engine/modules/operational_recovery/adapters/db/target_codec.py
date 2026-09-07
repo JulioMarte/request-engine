@@ -33,12 +33,10 @@ def target_to_json(target: RecoveryTarget) -> dict[str, object]:
     return {
         "start_at": target.start_at.isoformat(),
         "end_at": target.end_at.isoformat(),
-        "location_id": str(target.location_id) if target.location_id else None,
+        "location_id": str(target.location_id),
         "resources": [resource_to_json(choice) for choice in target.resources],
-        "actionable": target.actionable,
-        "blocked_reason": target.blocked_reason,
         "planned_duration_minutes": target.planned_duration_minutes,
-        "amount": str(target.amount) if target.amount is not None else None,
+        "amount": str(target.amount),
         "currency": target.currency,
         "location_operational_revision": target.location_operational_revision,
         "configuration_fingerprint": target.configuration_fingerprint,
@@ -47,21 +45,14 @@ def target_to_json(target: RecoveryTarget) -> dict[str, object]:
 
 def target_from_json(raw: dict[str, object]) -> RecoveryTarget:
     resources = cast(list[dict[str, object]], raw["resources"])
-    location = cast(str | None, raw.get("location_id"))
-    amount = cast(str | None, raw.get("amount"))
     return RecoveryTarget(
         start_at=datetime.fromisoformat(cast(str, raw["start_at"])),
         end_at=datetime.fromisoformat(cast(str, raw["end_at"])),
-        location_id=UUID(location) if location else None,
+        location_id=UUID(cast(str, raw["location_id"])),
         resources=tuple(resource_from_json(item) for item in resources),
-        actionable=cast(bool, raw["actionable"]),
-        blocked_reason=cast(str | None, raw.get("blocked_reason")),
-        planned_duration_minutes=cast(int | None, raw.get("planned_duration_minutes")),
-        amount=Decimal(amount) if amount is not None else None,
-        currency=cast(str | None, raw.get("currency")),
-        location_operational_revision=cast(
-            int | None,
-            raw.get("location_operational_revision"),
-        ),
-        configuration_fingerprint=cast(str | None, raw.get("configuration_fingerprint")),
+        planned_duration_minutes=cast(int, raw["planned_duration_minutes"]),
+        amount=Decimal(cast(str, raw["amount"])),
+        currency=cast(str, raw["currency"]),
+        location_operational_revision=cast(int, raw["location_operational_revision"]),
+        configuration_fingerprint=cast(str, raw["configuration_fingerprint"]),
     )

@@ -124,16 +124,22 @@ async def test_search_clips_availability_to_publication_window() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_excludes_legacy_slot_without_commercial_provenance() -> None:
+async def test_search_excludes_slot_without_resource_assignment_provenance() -> None:
     item = candidate(100.0)
-    legacy = AppointmentSlot(
-        item.offering_version_id,
-        NOW + timedelta(hours=1),
-        NOW + timedelta(hours=1, minutes=30),
-        item.location_id,
-        (),
+    incomplete = contextual_slot(item, NOW + timedelta(hours=1))
+    incomplete = AppointmentSlot(
+        offering_version_id=incomplete.offering_version_id,
+        start_at=incomplete.start_at,
+        end_at=incomplete.end_at,
+        location_id=incomplete.location_id,
+        resources=(ResourceChoice(uuid4(), uuid4(), availability_revision=1),),
+        planned_duration_minutes=incomplete.planned_duration_minutes,
+        amount=incomplete.amount,
+        currency=incomplete.currency,
+        location_operational_revision=incomplete.location_operational_revision,
+        configuration_fingerprint=incomplete.configuration_fingerprint,
     )
     result = await search_published_supply(
-        Candidates((item,)), Slots({item.organization_id: (legacy,)}), search_query()
+        Candidates((item,)), Slots({item.organization_id: (incomplete,)}), search_query()
     )
     assert result == ()

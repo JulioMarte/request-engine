@@ -64,12 +64,12 @@ JOBS: dict[str, tuple[Step, ...]] = {
         Step(
             "secret-scan",
             "High-confidence secret scan",
-            "uv run python scripts/release/scan_v3_secrets.py",
+            "uv run python scripts/security/scan_secrets.py",
         ),
         Step(
             "python-sast",
             "Python security static analysis",
-            "uv run python scripts/release/scan_v3_python_security.py",
+            "uv run python scripts/security/scan_python_security.py",
         ),
         Step(
             "dependency-audit",
@@ -86,134 +86,6 @@ JOBS: dict[str, tuple[Step, ...]] = {
             "v2-design-chain",
             "Apply historical V2 design chain",
             "bash scripts/db/apply_design_chain.sh",
-        ),
-    ),
-    "postgres-v3-bootstrap-proof": (
-        NORMALIZE_SHELL,
-        Step(
-            "v3-bootstrap-proof",
-            "Prove repeated clean V3 candidate bootstrap",
-            "bash scripts/db/prove_v3_candidate_bootstrap.sh",
-            timeout_seconds=1200,
-        ),
-    ),
-    "postgres-v3-candidate": (
-        NORMALIZE_SHELL,
-        Step(
-            "v3-bootstrap",
-            "Apply clean V3 candidate as bootstrap principal",
-            "bash scripts/db/apply_v3_candidate.sh",
-        ),
-        Step("uv-sync", "Resolve test environment", "uv sync --all-groups"),
-        Step(
-            "test-quality-audit",
-            "Audit V3 test quality",
-            "mkdir -p .phase6 && uv run python scripts/release/audit_v3_test_quality.py "
-            "--output .phase6/v3-test-quality.json",
-        ),
-        Step(
-            "test-collection-integrity",
-            "Prove V3 pytest collection integrity",
-            "uv run python scripts/release/prove_v3_test_collection.py "
-            "--output .phase6/v3-test-collection.json",
-        ),
-        Step(
-            "schema-fingerprint",
-            "Generate V3 schema fingerprint",
-            "mkdir -p .phase6 && uv run python scripts/db/v3_schema_fingerprint.py "
-            "--json-output .phase6/v3-schema.json --sha-output .phase6/v3-schema.sha256 "
-            "&& cat .phase6/v3-schema.sha256",
-        ),
-        Step(
-            "catalog-audit",
-            "Audit V3 PostgreSQL catalog",
-            "uv run python scripts/db/audit_v3_catalog.py "
-            "--json-output .phase6/v3-catalog-audit.json",
-        ),
-        Step(
-            "worker-query-plans",
-            "Prove measured worker query plans",
-            "uv run python scripts/release/prove_v3_worker_query_plans.py "
-            "--output .phase6/v3-worker-query-plans.json",
-        ),
-        Step(
-            "queue-query-plans",
-            "Prove measured Queue and SlotOffer query plans",
-            "uv run python scripts/release/prove_v3_queue_query_plans.py "
-            "--output .phase6/v3-queue-query-plans.json",
-        ),
-        Step(
-            "booking-query-plans",
-            "Prove measured Booking and capacity query plans",
-            "uv run python scripts/release/prove_v3_booking_query_plans_bound.py "
-            "--output .phase6/v3-booking-query-plans.json",
-        ),
-        Step(
-            "public-api-contract",
-            "Prove frozen V3 public API contract",
-            "uv run python scripts/release/prove_v3_public_api_contract.py "
-            "--output .phase6/v3-public-api-contract.json",
-        ),
-        Step(
-            "initial-equivalence",
-            "Generate and prove 0001 initial candidate equivalence",
-            "uv run python scripts/db/build_v3_initial_candidate.py "
-            "--output .phase6/0001_initial.candidate.sql "
-            "&& uv run bash scripts/db/prove_v3_initial_equivalence.sh "
-            "| tee .phase6/v3-initial-equivalence.txt",
-            timeout_seconds=1200,
-        ),
-        Step(
-            "v3-tests",
-            "V3 PostgreSQL invariant, E2E, race, and vertical tests",
-            "mkdir -p .phase6 && uv run pytest tests/db tests/e2e "
-            "tests/integration/v3_first_vertical tests/integration/v3_booking_core "
-            "tests/integration/v3_booking_commitments tests/integration/v3_slot_offer_recovery "
-            "tests/integration/v3_reservation_lifecycle tests/integration/v3_worker_runtime "
-            "tests/integration/v3_delivery "
-            "-q -m postgres --tb=short --durations=20 "
-            "--junitxml=.phase6/v3-tests-junit.xml",
-            timeout_seconds=2400,
-        ),
-        Step(
-            "concurrency-stability",
-            "Repeat critical V3 concurrency proofs",
-            "uv run python scripts/release/prove_v3_concurrency_stability.py "
-            "--rounds 3 --output .phase6/v3-concurrency-stability.json",
-            timeout_seconds=2400,
-        ),
-        Step(
-            "test-order-independence",
-            "Prove V3 PostgreSQL tests are order independent",
-            "uv run python scripts/release/prove_v3_test_order_independence.py "
-            "--output .phase6/v3-test-order-independence.json",
-            timeout_seconds=2400,
-        ),
-        Step(
-            "mutation-probes",
-            "Kill critical mutations",
-            "uv run python scripts/release/run_v3_mutation_probes.py "
-            "--output .phase6/v3-mutation-probes.json",
-            timeout_seconds=1800,
-        ),
-        Step(
-            "adversarial-failure-proof",
-            "Compose mandatory G18 adversarial and failure proof",
-            "uv run python scripts/release/prove_v3_adversarial_failure.py "
-            "--output .phase6/v3-adversarial-failure-proof.json",
-        ),
-        Step(
-            "evidence-manifest",
-            "Generate executable release evidence manifest",
-            "uv run python scripts/release/build_v3_evidence_manifest.py "
-            "--output .phase6/v3-evidence-manifest.json",
-            always=True,
-        ),
-        Step(
-            "evidence-validity",
-            "Require valid V3 candidate evidence",
-            "uv run python scripts/release/build_v3_evidence_manifest.py "
-            "--output .phase6/v3-evidence-manifest.json --require-valid",
         ),
     ),
 }

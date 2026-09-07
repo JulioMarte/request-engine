@@ -198,13 +198,14 @@ def test_llm_instruction_adapters_route_through_agents_contracts() -> None:
     )
 
 
-def test_copilot_adapter_routes_to_current_authority_not_v2_contracts() -> None:
+def test_copilot_adapter_routes_to_current_optimization_authority() -> None:
     copilot = (ROOT / ".github" / "copilot-instructions.md").read_text(encoding="utf-8")
 
     assert "AGENTS.md" in copilot
     assert "docs/README.md" in copilot
+    assert "docs/architecture/system-optimization-mode.md" in copilot
+    assert "docs/testing/current-guarantees.toml" in copilot
     assert "docs/testing/repository-governance-contract.md" in copilot
-    assert "for released V3 invariants use `docs/v3/02-pre-sql-contract.md`" in copilot
     assert "Do not infer current requirements from `docs/02-pre-sql-domain-contract.md`" in copilot
 
 

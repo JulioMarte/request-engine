@@ -100,12 +100,11 @@ def _replacement_item(proposal: dict[str, Any], resource_id: UUID) -> dict[str, 
 def _assert_replacement_target(
     item: dict[str, Any], target: dict[str, Any], resource_id: UUID, assignment_id: UUID
 ) -> None:
-    assert target["actionable"] is True
+    assert target["configuration_fingerprint"]
     assert target["start_at"] == item["original_start_at"]
     assert target["end_at"] == item["original_end_at"]
     assert target["resources"][0]["resource_id"] == str(resource_id)
     assert target["resources"][0]["resource_location_assignment_id"] == str(assignment_id)
-    assert target["configuration_fingerprint"]
 
 
 def _commercial_commitment(conn: PgConnection, reservation_id: UUID) -> tuple[object, ...]:

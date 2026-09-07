@@ -18,12 +18,16 @@ _LOCK: LiteralString = "SELECT request_cmd.lock_recovery_source_revision(%s,%s)"
 _ALTER_PROBE: LiteralString = (
     "ALTER TABLE request_engine.operational_recovery_proposals ADD COLUMN probe text"
 )
-_FORGED_PROBES: tuple[LiteralString, ...] = (
-    "UPDATE request_engine.operational_recovery_incidents SET status='resolved' WHERE id=%s",
+_INCIDENT_FORGED_UPDATE: LiteralString = (
+    "UPDATE request_engine.operational_recovery_incidents SET status='resolved' WHERE id=%s"
+)
+_ACTION_FORGED_UPDATE: LiteralString = (
     "UPDATE request_engine.operational_recovery_actions SET status='succeeded' "
-    "WHERE organization_id=%s",
+    "WHERE organization_id=%s"
+)
+_PROPOSAL_FORGED_UPDATE: LiteralString = (
     "UPDATE request_engine.operational_recovery_proposals SET command_fingerprint='forged' "
-    "WHERE id=%s",
+    "WHERE id=%s"
 )
 _ACTION_INSERT: LiteralString = (
     "INSERT INTO request_engine.operational_recovery_actions (organization_id,incident_id,"
@@ -59,13 +63,21 @@ def _denied(c: PgConnection, state: str, sql: LiteralString, args: tuple[object,
     assert raised.value.sqlstate == state
 
 
-def _granted(conn: PgConnection, role: str, privilege: str) -> bool:
+def _has_privilege(conn: PgConnection, role: str, table: str, privilege: str) -> bool:
     row = conn.execute(
-        "SELECT bool_and(has_table_privilege(%s,t,%s)) FROM unnest(%s::text[]) t",
-        (role, privilege, list(WORKFLOW_TABLES)),
+        "SELECT has_table_privilege(%s,%s,%s)",
+        (role, table, privilege),
     ).fetchone()
     assert row is not None
     return cast(bool, row[0])
+
+
+def _all_have_privilege(conn: PgConnection, role: str, privilege: str) -> bool:
+    return all(_has_privilege(conn, role, table, privilege) for table in WORKFLOW_TABLES)
+
+
+def _none_have_privilege(conn: PgConnection, role: str, privilege: str) -> bool:
+    return all(not _has_privilege(conn, role, table, privilege) for table in WORKFLOW_TABLES)
 
 
 def _seed_tenant_workflow(
@@ -101,9 +113,11 @@ def test_f5_workflow_tables_force_rls_and_runtime_least_privilege(
         second_rows = _seed_tenant_workflow(app_conn, second, second_principal)
         _tenant_context(app_conn, first.organization_id)
         assert app_conn.execute(f"SELECT {_ID_COLUMNS}").fetchone() == first_rows
-        targets = (second_rows[0], second.organization_id, second_rows[2])
-        for sql, target in zip(_FORGED_PROBES, targets, strict=True):
-            assert app_conn.execute(sql, (target,)).rowcount == 0
+
+        assert app_conn.execute(_INCIDENT_FORGED_UPDATE, (second_rows[0],)).rowcount == 0
+        assert app_conn.execute(_ACTION_FORGED_UPDATE, (second.organization_id,)).rowcount == 0
+        _denied(app_conn, "42501", _PROPOSAL_FORGED_UPDATE, (second_rows[2],))
+
         forged = (second.organization_id, second_rows[0], second_principal, "guess", "forged", 1)
         _denied(app_conn, "42501", _ACTION_INSERT, forged)
 
@@ -112,12 +126,30 @@ def test_f5_workflow_tables_force_rls_and_runtime_least_privilege(
         assert admin_conn.execute(f"SELECT {_ID_COLUMNS}").fetchone() == first_rows
         admin_conn.execute("RESET ROLE")
 
-        for privilege in ("SELECT", "INSERT", "UPDATE"):
-            assert _granted(app_conn, "request_engine_app", privilege)
+        for privilege in ("SELECT", "INSERT"):
+            assert _all_have_privilege(app_conn, "request_engine_app", privilege)
+        assert _has_privilege(
+            app_conn,
+            "request_engine_app",
+            "request_engine.operational_recovery_incidents",
+            "UPDATE",
+        )
+        assert _has_privilege(
+            app_conn,
+            "request_engine_app",
+            "request_engine.operational_recovery_actions",
+            "UPDATE",
+        )
+        assert not _has_privilege(
+            app_conn,
+            "request_engine_app",
+            "request_engine.operational_recovery_proposals",
+            "UPDATE",
+        )
         for privilege in ("DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"):
-            assert not _granted(app_conn, "request_engine_app", privilege)
+            assert _none_have_privilege(app_conn, "request_engine_app", privilege)
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"):
-            assert not _granted(app_conn, "request_engine_worker", privilege)
+            assert _none_have_privilege(app_conn, "request_engine_worker", privilege)
 
         _denied(app_conn, "42501", "DELETE FROM request_engine.operational_recovery_incidents")
         _denied(app_conn, "42501", "TRUNCATE request_engine.operational_recovery_actions")

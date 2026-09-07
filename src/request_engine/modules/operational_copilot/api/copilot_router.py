@@ -63,7 +63,6 @@ def create_copilot_router(
                         reservation_revision=fact.reservation_revision,
                         planned_starts_at=fact.planned_starts_at,
                         planned_ends_at=fact.planned_ends_at,
-                        contextual_commitment=fact.contextual_commitment,
                     )
                     for fact in assessment.affected_commitments
                 ],
