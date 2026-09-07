@@ -1,7 +1,7 @@
 from request_engine.platform.security.capabilities import (
     AuthorityPlane,
-    capability_definition,
     canonical_capability_keys,
+    capability_definition,
     grant_satisfies,
 )
 

@@ -109,7 +109,8 @@ def upgrade() -> None:
                    OR OLD.status <> 'active' OR NEW.status <> 'revoked'
                    OR NEW.revision <> OLD.revision + 1
                 THEN
-                    RAISE EXCEPTION 'Principal authority grant may only transition active to revoked'
+                    RAISE EXCEPTION
+                        'Principal authority grant may only transition active to revoked'
                         USING ERRCODE = '55000';
                 END IF;
                 RETURN NEW;
