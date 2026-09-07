@@ -19,9 +19,14 @@ SCHEMA_DIFF="$ARTIFACT_DIR/rebaseline-single-alembic-schema-diff.json"
 ROLE_DIFF="$ARTIFACT_DIR/rebaseline-single-alembic-role-diff.json"
 CONTAINER="request-engine-rebaseline-alembic-${RANDOM}-${RANDOM}"
 MANIFEST="migrations/rebaseline_candidate/manifest.json"
+BASELINE_REVISION="migrations/versions/0001_initial.py"
 
 if [[ ! -f "$SOURCE_SCHEMA_CATALOG" || ! -f "$SOURCE_ROLE_CATALOG" ]]; then
   echo "fresh-cluster source catalogs must exist before single-Alembic proof" >&2
+  exit 1
+fi
+if [[ ! -f "$BASELINE_REVISION" ]]; then
+  echo "promoted baseline revision is missing: $BASELINE_REVISION" >&2
   exit 1
 fi
 
@@ -37,9 +42,12 @@ uv run python scripts/db/materialize_rebaseline_candidate.py \
   --manifest "$MANIFEST"
 cp "$MANIFEST" "$MATERIALIZED_DIR/manifest.json"
 
+# Exercise the exact promoted Alembic baseline in an isolated migration tree.
+# There must be one source of migration authority after the rebaseline; keeping
+# a second candidate-only revision would allow the proof and production line to
+# drift independently.
 cp migrations/env.py "$ALEMBIC_DIR/env.py"
-cp migrations/rebaseline_candidate/0001_initial.py \
-  "$ALEMBIC_DIR/versions/0001_initial.py"
+cp "$BASELINE_REVISION" "$ALEMBIC_DIR/versions/0001_initial.py"
 cp alembic.ini "$ALEMBIC_DIR/alembic.ini"
 sed -i "s#^script_location = migrations#script_location = ${ALEMBIC_DIR}#" \
   "$ALEMBIC_DIR/alembic.ini"
