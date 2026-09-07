@@ -22,9 +22,10 @@ class PostgresPrincipalAuthorityReader:
         async with self._session_factory() as session, session.begin():
             await set_tenant_context(session, organization_id)
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT p.principal_kind, p.active, p.principal_plane,
                                p.authority_revision, g.capability_key,
                                g.authority_plane, g.delegable
@@ -37,10 +38,13 @@ class PostgresPrincipalAuthorityReader:
                            AND p.id = :principal_id
                          ORDER BY g.capability_key
                         """
-                    ),
-                    {"organization_id": organization_id, "principal_id": principal_id},
+                        ),
+                        {"organization_id": organization_id, "principal_id": principal_id},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
         if not rows:
             return None
         principal = rows[0]
@@ -55,9 +59,7 @@ class PostgresPrincipalAuthorityReader:
                 continue
             definition = capability_definition(key)
             if definition is None:
-                raise PrincipalAuthorityMaterializationError(
-                    f"unknown persisted capability: {key}"
-                )
+                raise PrincipalAuthorityMaterializationError(f"unknown persisted capability: {key}")
             if row["authority_plane"] != definition.authority_plane.value:
                 raise PrincipalAuthorityMaterializationError(
                     f"authority plane mismatch for persisted capability: {key}"
