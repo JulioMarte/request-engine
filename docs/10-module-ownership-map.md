@@ -1,61 +1,74 @@
-# Request Engine — module ownership map
+# Request Engine — current module ownership map
 
-> **Estado:** normativo para ownership del backend capability-first V3 y extensiones post-V3 actualmente activas.
+> **Estado:** normativo para ownership del backend actual.
 >
-> `docs/v3/02-pre-sql-contract.md` conserva el baseline V3. Las extensiones post-V3 lo modifican explícitamente mediante contratos posteriores. F3: `26` + `28`. F4 projection ownership: `29-live-capacity-projection-contract.md`. F5 recovery ownership: `32-operational-recovery-communications-contract.md`. F6 external-agent tooling boundary: `35-operational-copilot-contract.md`.
+> Este documento describe el sistema que existe hoy. No usa V2/V3/F1–F7 como autoridad arquitectónica. La semántica que debe preservarse proviene de `docs/testing/current-guarantees.toml` y de los contratos actuales de cada capability; la evolución estructural se rige por `docs/architecture/continuous-evolution-policy.md`, `docs/architecture/system-optimization-mode.md` y `docs/09-python-module-architecture.md`.
 
-## 1. Current summary
+## 1. Current architecture
 
-| Module | Status | Primary ownership |
-|---|---|---|
-| `tenancy` | baseline | Organization, Principal, Party, PartyContactPoint identity, Representation, tenant authority |
-| `catalog` | baseline | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement, structured business info |
-| `requests` | baseline | RequestDefinition/Version, durable Request, participants/correlation, generic extension payload/result boundary |
-| `booking` | baseline + F1 | Resource, contextual Resource-at-Location supply, availability, CapacityHold/Claim, Reservation, AttendanceResponse, booking commitment/revalidation |
-| `queue` | baseline + F3 | ServiceQueue/QueueEntry waiting/calling/no-show, check-in/walk-in, FIFO, expected workload, WaitlistEntry/SlotOpportunity/SlotOffer |
-| `communications` | baseline | CommunicationTask/Delivery, communication policy refs, ReminderPlan/Acknowledgement |
-| `discovery` | active post-V3 F2 | canonical service mapping, publication, cross-tenant discovery projection, opaque discovery handoff |
-| `delivery` | active post-V3 F3 | ReservationAccess, ServiceSession, ServiceSessionInterruption, ResourceActivity and actual execution truth |
-| `live_capacity` | active post-V3 F4 | projection-scope/estimate policy and deterministic live-capacity/ETA/intake-evaluation semantics over published Booking/Queue/Delivery facts |
-| `operational_recovery` | active post-V3 F5 | immutable recovery proposal/provenance, explicit one-shot recovery execution fact and lineage to Communications intent |
-| `operational_copilot` | active post-V3 F6 | agent-facing typed operational tool/admission surface over published owner reads/commands; owns no conversational runtime or underlying business truth |
-| `payments` | deferred | future pricing/payment/reconciliation domain |
-| `dispatch` | deferred | future field-service dispatch/feasibility domain |
-| `platform` | technical | DB, idempotency, outbox, scheduling mechanics, audit/events, observability, security plumbing |
+Request Engine is a modular monolith. Business truth lives in explicit business modules; technical cross-cutting mechanics live in `platform`; process composition lives in `bootstrap` and `entrypoints`.
 
-Active modules depend across boundaries through contracts/composition, not by importing another module's adapters/application internals.
+Current active business-module inventory:
 
----
+```text
+tenancy
+catalog
+requests
+booking
+queue
+communications
+discovery
+delivery
+live_capacity
+operational_recovery
+operational_copilot
+```
 
-## 2. Tenancy
+`payments` and `dispatch` are **not current Python modules**. They remain future domain areas only. If either becomes real product scope, it must enter the module inventory through an explicit ownership/dependency decision rather than pre-created scaffolding.
 
-Owns Organization, Principal, Party, PartyContactPoint identity/normalization and Representation. It remains the hard tenant/authority boundary. A Party/contact point is not a CRM profile and identifiers never grant authority implicitly.
+## 2. Ownership summary
 
----
+| Module | Primary ownership |
+|---|---|
+| `tenancy` | Organization, Principal, Party, PartyContactPoint identity/normalization, Representation and tenant/subject authority truth |
+| `catalog` | Location, Offering/OfferingVersion, ResourceCapability vocabulary, OfferingResourceRequirement and structured operational configuration |
+| `requests` | RequestDefinition/Version, durable new business Request, participants/correlation and bounded generic request-extension payload/result boundary |
+| `booking` | Resource planning, contextual Resource-at-Location supply, availability, BookingContextTerms/commercial provenance, CapacityHold/CapacityClaim, Reservation, AttendanceResponse and commitment/revalidation |
+| `queue` | ServiceQueue/QueueEntry waiting/calling/no-show/check-in/walk-in/FIFO plus WaitlistEntry/SlotOpportunity/SlotOffer recovery interest |
+| `communications` | transactional communication intent, CommunicationTask/Delivery, reminder/acknowledgement and provider-delivery lineage |
+| `discovery` | explicitly published cross-tenant supply projection, canonical mapping/publication and opaque Booking handoff |
+| `delivery` | ReservationAccess plus actual ServiceSession/Interruption/ResourceActivity execution truth |
+| `live_capacity` | advisory live-capacity/ETA/intake projection over published Booking/Queue/Delivery facts |
+| `operational_recovery` | immutable recovery proposal/provenance and one-shot recovery execution composition over owner contracts |
+| `operational_copilot` | bounded typed external operational-tool/admission surface; owns no underlying business truth or conversational runtime |
+| `platform` | technical DB/idempotency/outbox/scheduling/audit/events/observability/security mechanics only |
 
-## 3. Catalog
+The table is an ownership map, not a mandate to retain today’s filesystem forever. Moving ownership is allowed only through an explicit architecture change that preserves or supersedes the affected guarantees and updates the executable dependency policy.
 
-Owns stable/versioned operational configuration including Location, Offering/OfferingVersion, ResourceCapability and OfferingResourceRequirement. Catalog describes what can be offered/configured; Booking resolves that configuration to concrete capacity.
+## 3. Hard ownership boundaries
 
----
+### Tenancy
 
-## 4. Requests
+Owns identity and authority truth. A caller-supplied tenant, principal, Party or Representation identifier never manufactures authority. Party/contact-point records are not a generic CRM profile.
 
-Owns durable new business demand requiring later processing. A generic Request is not a universal mutation envelope for Booking, Queue, Delivery, Live Capacity or Operational Recovery.
+### Catalog
 
----
+Owns stable/versioned service vocabulary and operational configuration such as Location, Offering/OfferingVersion, ResourceCapability and OfferingResourceRequirement. Catalog describes what can be configured/offered; it does not own concrete committed capacity.
 
-## 5. Booking
+### Requests
 
-Owns planning and local capacity truth:
+Owns durable new business demand requiring later processing. `Request` is not a universal mutation envelope for Booking, Queue, Delivery, Recovery or other capabilities.
+
+### Booking
+
+Owns planning and committed capacity truth:
 
 ```text
 Resource
 ResourceCapability assignment
 ResourceLocationAssignment + contextual availability
 BookingContextTerms / commercial commitment provenance
-AvailabilitySchedule
-ScheduleException
+AvailabilitySchedule / ScheduleException
 CapacityHold
 CapacityClaim
 Reservation
@@ -65,60 +78,37 @@ AttendanceResponse
 Core rules:
 
 ```text
-Resource = booking capacity serialization root
+Resource      = booking capacity serialization root
 CapacityClaim = Hold/Reservation consumption truth
-Reservation = planned commitment/history
+Reservation   = planned commitment/history
 ```
 
-F3 execution never rewrites Reservation/CapacityClaim because reality differed from plan. F4 consumes effective planning availability and same-day commitment facts but cannot become capacity authority. F5 delegates every legal reschedule back to Booking and must not update Reservation or CapacityClaim rows itself.
+Live execution does not rewrite planning history merely because reality differed from plan. Live Capacity is advisory and Operational Recovery must delegate legal Reservation/capacity changes back to Booking.
 
-Booking publishes narrow F4/F5 contracts rather than permitting `live_capacity` or `operational_recovery` to import Booking DB/application internals. The F5 recovery reschedule adapter owns authoritative stale guards that require Booking locks, including Reservation revision, Resource/Location revisions, exact source commitment membership and target-capacity revalidation.
+### Queue
 
-Contextual source/target recovery reschedule fails closed until Booking has a contextual reschedule implementation that preserves assignment and commercial provenance.
+Owns waiting/calling/admission/no-show state through ServiceQueue/QueueEntry. FIFO selection and customer/staff queue projections remain Queue semantics.
 
----
+Queue also owns waitlist/released-slot interest through WaitlistEntry/SlotOpportunity/SlotOffer. Waitlist interest never becomes capacity authority; Booking remains the CapacityHold/CapacityClaim owner.
 
-## 6. Queue
+### Communications
 
-### 6.1 ServiceQueue — waiting now
+Owns transactional communication intent and delivery lineage. Provider outcomes cannot directly become Booking, Queue, Delivery, Discovery, Live Capacity or Recovery authority.
 
-Owns ServiceQueue and QueueEntry, including subject join/status/leave, operator check-in/walk-in, arrival/admission facts, FIFO CallNext, called/no-show state, customer/staff queue projections and expected workload classification reference.
+### Discovery
 
-FIFO remains `(admitted_at, id)` and position remains derived.
+Owns tenant-authorized publication/search projection and opaque handoff. Existence of Organization/Catalog/Booking data does not imply discoverability. Booking revalidates authoritative truth at commitment time.
 
-Queue does not own actual service execution. Delivery writes QueueEntry serving/completed compatibility state atomically with ServiceSession transitions.
+### Delivery
 
-For F4, Queue publishes only the live waiting/called facts required for projection. `live_capacity` must not use a staff identity DTO as its internal capacity source merely because that DTO already exists.
-
-### 6.2 Waitlist / released-slot recovery
-
-Owns WaitlistEntry, SlotOpportunity and SlotOffer. Waitlist is future interest and never consumes capacity. Booking remains CapacityHold/Claim authority. This released-slot recovery chain is distinct from F5 operational recovery after already-committed capacity becomes unsatisfiable.
-
----
-
-## 7. Communications
-
-Owns transactional communication intent, delivery facts and reminder intent. Provider delivery state cannot directly mutate Booking, Queue, Delivery, Live Capacity or Operational Recovery truth.
-
-For F5, Communications owns `CommunicationTask`, delivery/outbox/provider retry/dedupe semantics. Operational Recovery may retain only the lineage identity of the task caused by a recovery execution.
-
----
-
-## 8. Delivery — active post-V3 F3
-
-### 8.1 ReservationAccess
-
-Owns post-commit access artifacts required to execute a confirmed Reservation without making Booking provider-aware.
-
-### 8.2 Live service execution
-
-Owns:
+Owns actual service execution truth:
 
 ```text
+ReservationAccess
 ServiceSession
 ServiceSessionInterruption
 ResourceActivity
-actual Resource/Location used for execution
+actual Resource / Location used
 actual workload classification
 actual execution timestamps
 ```
@@ -126,282 +116,126 @@ actual execution timestamps
 Boundary:
 
 ```text
-Reservation     = planned commitment/capacity history -> booking
-QueueEntry      = arrival/wait/call state             -> queue
-ServiceSession  = what actually happened              -> delivery
+Reservation    = planned commitment/capacity history -> booking
+QueueEntry     = arrival/wait/call state              -> queue
+ServiceSession = what actually happened               -> delivery
 ```
 
-Service start/complete compose Queue + Delivery in one PostgreSQL transaction. Pause/resume owns durable interruption history. ResourceActivity represents non-patient occupation and never fabricates a Party/Reservation/QueueEntry/ServiceSession.
+Queue compatibility state and Delivery execution state may commit atomically when the lifecycle invariant requires one transaction; that does not transfer ownership.
 
-For F4, Delivery may publish current Resource occupation and bounded completed-session history. F4 consumes those facts; it does not rewrite them or use historical observations to silently mutate Delivery/Queue policy.
+### Live Capacity
 
----
+Owns projection semantics only. It may combine published Booking, Queue and Delivery facts into deterministic live-capacity/ETA/intake results, but it does not own committed capacity, QueueEntry lifecycle, ServiceSession truth or recovery mutation.
 
-## 9. Live Capacity — active F4 feature
+Hard rules include:
 
-`live_capacity` owns **projection semantics**, not capacity commitment or live execution truth.
+- one coherent DB observation instant/snapshot;
+- scheduled capacity and live intake headroom remain distinct;
+- one real workload contributes at most once across Reservation/QueueEntry/ServiceSession representations;
+- observed history may inform a projection but must not silently rewrite configured policy;
+- uncertainty remains explicit instead of fabricated precision;
+- reads/evaluations do not mutate authoritative source facts.
 
-Owns conceptually:
+### Operational Recovery
+
+Owns recovery composition and authorization lineage, not the underlying authorities. It may consume Live Capacity checkpoints, Booking alternatives and Communications contracts, but Booking remains Reservation/capacity authority and Communications remains delivery authority.
+
+Proposal creation is immutable/idempotent and side-effect free with respect to Booking/Communications. Execution is one-shot, attributable to the authorizing Principal, stale-guarded by owner truth and resumable through stable idempotency identities.
+
+### Operational Copilot
+
+`operational_copilot` is a historical package name for the bounded external operational-tool boundary. It is not an embedded LLM/copilot and owns no conversational state.
+
+It may expose typed reads/commands and deterministic admission/refusal over registered owner contracts. Model/tool arguments cannot create tenant, principal, Party, capability or revision authority. Ambiguous authoritative lookup fails closed rather than guessing.
+
+### Platform
+
+`platform` owns cross-cutting technical mechanics only: database/transaction support, idempotency, outbox/events, worker scheduling/fencing/retry/dead-letter mechanics, audit, observability and security plumbing.
+
+Business meaning must not be moved into `platform`, `shared`, `common` or generic helpers merely to reduce visible module coupling.
+
+## 4. Current synchronous dependency permission map
+
+The executable source of truth for allowed synchronous Python edges is `tests/architecture/dependency_policy.py`; `docs/14-architecture-fitness-functions.md` describes the same policy.
 
 ```text
-LiveCapacityProjectionPolicy / projection scope
-WorkloadEstimatePolicy
-workload-estimate resolution/fallback/provenance
-remaining-workload composition
-projection over effective operational intervals
-staff live-capacity projection
-customer-safe self-relative ETA projection
-read-only intake evaluation
-projection uncertainty/blocking semantics
-F5-facing recovery capacity assessment/checkpoint
+tenancy              -> none
+catalog              -> none
+requests             -> tenancy
+booking              -> catalog, tenancy
+queue                -> booking, tenancy
+communications       -> booking
+discovery            -> booking
+delivery             -> none
+live_capacity        -> booking, delivery, queue
+operational_recovery -> booking, communications, live_capacity
+operational_copilot  -> booking, catalog, discovery, live_capacity,
+                        operational_recovery, queue, tenancy
 ```
 
-Initial scope is explicit:
+Permission is not usage and does not transfer ownership. Every cross-module import must still use the target module’s supported `contracts` surface. The actual dependency graph must remain acyclic.
 
-```text
-one ServiceQueue + one Resource + one Location
-```
-
-This is projection configuration, not automatic Resource assignment.
-
-Consumes through published contracts/read surfaces:
-
-```text
-booking
-  effective remaining Resource/Location availability
-  same-day planning/commitment facts
-
-queue
-  waiting/called entries + expected workload
-
-delivery
-  current execution/occupation + bounded completed historical observations
-```
-
-Does **not** own:
-
-```text
-Reservation / CapacityClaim                 -> booking
-ServiceQueue / QueueEntry                   -> queue
-ServiceSession / interruption/activity      -> delivery
-OperationalRecoveryProposal / Execution     -> operational_recovery
-OperationalWorkloadClassification identity -> queue/F3 configuration
-Resource schedule truth                     -> booking
-Location schedule truth                     -> catalog/booking composition
-```
-
-Hard rules:
-
-- projection is advisory and relative to a DB observation instant;
-- scheduled capacity and live intake capacity remain distinct;
-- the same workload is deduplicated across Reservation → QueueEntry → ServiceSession representations;
-- observed durations may influence a projection but never silently mutate configured policy;
-- ETA, queue position and remaining live capacity are not authoritative persisted counters;
-- unknown/open-ended inputs produce explicit partial/indeterminate state rather than fabricated precision;
-- F4 does not mutate Booking/Queue/Delivery facts or send communications;
-- F5 may consume a replayable F4 checkpoint, but cannot reimplement F4 capacity projection.
-
-Typical capabilities:
-
-```text
-live_capacity.read
-live_capacity.evaluate_intake
-live_capacity.customer_read
-```
-
----
-
-## 10. Operational Recovery — active F5 feature
-
-`operational_recovery` owns recovery **composition and authorization lineage**, not the authorities being composed.
-
-Owns:
-
-```text
-immutable RescheduleProposal snapshot
-source/proposal fingerprint and replayable checkpoint
-AffectedReservation recovery composition
-one-shot RecoveryExecution fact
-prepared -> succeeded | rejected crash/retry state
-CommunicationTask lineage identity
-```
-
-Consumes only published contracts from:
-
-```text
-live_capacity   -> material shortfall + source checkpoint
-booking         -> recovery alternatives + guarded legal reschedule
-communications  -> transactional notification intent
-```
-
-Does not own:
-
-```text
-Resource / schedule / CapacityClaim -> booking
-Reservation mutation                -> booking
-projection semantics                -> live_capacity
-CommunicationTask / delivery        -> communications
-provider/network I/O                -> communications/provider adapters
-generic RecoveryWorkflow            -> not introduced
-```
-
-Hard rules:
-
-- proposal creation is idempotent because it persists an immutable snapshot;
-- proposal generation has no Reservation/capacity/communication side effects;
-- one execution command targets one affected Reservation in v1;
-- execution is explicitly attributable to the authorizing Principal and bound to its idempotency identity;
-- Booking revalidates stale source/target truth under its canonical Reservation/Resource locks;
-- a crash after Booking commit is resumed through the same Booking idempotency identity rather than repeating the business effect;
-- communication creation happens only after a succeeded recovery execution and uses stable idempotency/dedupe identities;
-- contextual recovery reschedule is currently fail-closed rather than silently dropping contextual provenance.
-
-Canonical capabilities:
-
-```text
-operational_recovery.read
-operational_recovery.propose
-operational_recovery.execute
-```
-
----
-
-## 11. Payments — deferred
-
-Financial distinctions remain design knowledge, not current baseline dependencies. Re-entry requires explicit product policy.
-
----
-
-## 12. Dispatch — deferred
-
-Field-service destination, feasibility, routing and workforce planning remain outside current scope.
-
----
-
-## 13. Discovery — active post-V3 F2
-
-Discovery owns tenant-authorized published-supply search and opaque handoff semantics. It does not own Organization authority, Catalog truth, Booking capacity, Delivery execution, Live Capacity projection or Operational Recovery.
-
----
-
-## 14. Platform
-
-Platform is technical infrastructure, never a business catch-all: DB/transactions, idempotency, outbox, scheduling mechanics, audit/events, observability and security plumbing.
-
----
-
-## 15. Cross-module transaction/read examples
+## 5. Current composition examples
 
 ### BookAppointment
 
-Owner: Booking. Reservation and claims commit atomically. Advisory discovery/live-capacity state never substitutes for commitment-time validation.
+Owner: Booking. Reservation and CapacityClaim effects commit atomically; advisory Discovery/Live Capacity data never substitutes for commitment-time validation.
 
-### CheckIn / WalkIn
+### CheckIn / WalkIn / CallNext
 
-Owner: Queue. Reservation-backed check-in validates planning without changing it. Walk-in creates QueueEntry without Reservation.
-
-### CallNext
-
-Owner: Queue. ServiceQueue serializes deterministic FIFO selection.
+Owner: Queue. Reservation-backed check-in validates planning without rewriting it. Walk-in creates waiting truth without fabricating a Reservation. CallNext serializes deterministic Queue selection.
 
 ### StartService / CompleteService
 
-Composition: Queue + Delivery; execution owner: Delivery. Queue compatibility state and ServiceSession execution state commit together.
+Composition: Queue + Delivery; execution truth owner: Delivery. The transaction may update Queue compatibility state together with ServiceSession state because the lifecycle invariant requires coherence.
 
-### Pause / Resume / ResourceActivity
+### BuildLiveCapacityProjection / EvaluateIntake
 
-Owner: Delivery.
-
-### BuildLiveCapacityProjection
-
-Owner: Live Capacity; **read-only composition**.
-
-```text
-one DB observation snapshot
--> published Booking planning/availability facts
--> published Queue live workload facts
--> published Delivery execution/occupation/history facts
--> deterministic deduplication + estimate resolution
--> project workload over remaining effective intervals
--> return advisory result/provenance
-```
-
-This read does not acquire Booking/Queue mutation locks merely to compute ETA and does not mutate source facts.
-
-### EvaluateIntake
-
-Owner: Live Capacity; read-only advisory evaluation of one specified additional workload against the current projection. It does not create QueueEntry/Reservation/CapacityClaim or stop intake.
+Owner: Live Capacity. Read-only composition over published Booking/Queue/Delivery facts; does not create Reservation, CapacityClaim, QueueEntry or ServiceSession.
 
 ### CreateRecoveryProposal
 
-Owner: Operational Recovery; idempotent immutable snapshot composition over F4 + Booking published contracts. It produces no Booking or Communications mutation.
+Owner: Operational Recovery. Immutable idempotent snapshot over published owner contracts; no Booking/Communications mutation.
 
 ### ExecuteRecovery
 
-Composition: Operational Recovery → Booking → Communications.
+Composition:
 
 ```text
-persist/resume one RecoveryExecution identity
--> first-attempt F4 freshness preflight
--> Booking idempotent guarded reschedule under authoritative locks
--> mark execution succeeded
--> create/reuse one Communications intent
--> attach CommunicationTask lineage
+Operational Recovery
+    -> Live Capacity freshness/checkpoint semantics
+    -> Booking guarded idempotent legal mutation
+    -> Communications transactional intent
 ```
 
-Booking remains Reservation/capacity authority and Communications remains delivery authority.
+Each owner retains final authority over its own facts.
 
----
+## 6. Future domain areas are not current modules
 
-## 16. Ownership change gate
+Payments/reconciliation and field-service dispatch/feasibility/routing remain possible future product areas. They intentionally have no package, dependency-policy node or current persistence ownership.
 
-Moving a concept between top-level modules or activating a deferred/new module requires updating:
+Activation requires:
 
-- capability contracts or normative post-V3 contract/amendment;
-- pre-SQL/current transaction contracts when invariants change;
+1. an accepted product capability and explicit business owner;
+2. a connection-surface/transaction design;
+3. an explicit dependency-policy decision;
+4. current guarantee/evidence disposition;
+5. only then, the minimum package structure required by real code.
+
+Do not recreate empty `payments`/`dispatch` packages as placeholders.
+
+## 7. Ownership change gate
+
+Moving a concept between modules, adding a new module or materially changing a connection surface requires one coherent change that updates, as applicable:
+
+- the current capability/domain contract;
 - this ownership map;
+- `docs/09-python-module-architecture.md`;
+- `docs/13-connection-surfaces.md`;
+- `docs/14-architecture-fitness-functions.md` and `tests/architecture/dependency_policy.py`;
 - affected module READMEs/contracts/tests;
-- DB/read/cmd mapping;
-- an ADR when the decision is hard to reverse.
+- PostgreSQL ownership/read/cmd surfaces when persistence changes;
+- `docs/testing/current-guarantees.toml` evidence disposition when a protected guarantee changes;
+- an ADR when the ownership decision is difficult to reverse.
 
-## 17. Agent Operational Tooling — active F6 feature
-
-`operational_copilot` is the historical module name for F6's **agent-facing operational tooling boundary**. It is not an embedded copilot and does not own conversation, an LLM, prompt orchestration or general natural-language understanding.
-
-F6 owns the bounded adapter/tool layer required for external agents/applications to use existing Request Engine authority safely:
-
-```text
-typed tool requests/results
-bounded lookup/read composition
-admission/refusal policy
-deterministic lowering to owner contracts
-explicit registered execution adapters
-machine-readable execution receipts
-```
-
-F6 may execute an operation **through** a registered owner adapter; that does not make F6 the owner of the mutation. Booking, Queue, Delivery, Discovery, Live Capacity, Operational Recovery and Communications retain their existing domain authority and final validation.
-
-A compliant external agent may interpret conversational language and choose tools. Request Engine must supply authoritative lookup/state surfaces when the caller needs Resource, Assignment, ServiceQueue, Offering, Location, current revisions or other operational facts to construct a safe command. F6 lookup must return ambiguity rather than guessing when multiple authoritative candidates match.
-
-The current deterministic text parser is an optional bounded adapter/test surface. It is not the product definition of F6, and Request Engine does not need a general NLU/date parser to complete F6.
-
-Tenant, principal, idempotency and party authority come only from the trusted application boundary. Model/tool arguments cannot manufacture authority or trusted revisions. F6 execution must preserve both its own capability gate and the executor-declared owner capability gate.
-
-Normative contract: `docs/v3/35-operational-copilot-contract.md`.
-
-Never infer:
-
-```text
-table → domain entity → repository → endpoint
-model output → trusted identity/authority/revision
-```
-
-The north star remains:
-
-```text
-one public operational API/tool surface
-        ≠
-one universal bounded context
-        ≠
-an embedded copilot
-```
+Historical V2/V3/Fx documents may explain provenance, but they do not override this current map solely because they described an earlier implementation shape.
