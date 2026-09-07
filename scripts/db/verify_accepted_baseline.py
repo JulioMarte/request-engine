@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MANIFEST = ROOT / "migrations" / "rebaseline_candidate" / "manifest.json"
+DEFAULT_MANIFEST = ROOT / "migrations" / "baseline" / "manifest.json"
 
 _EMPTY_ANALYZER_FINDINGS = (
     "exact_view_definition_duplicates",
@@ -50,7 +50,7 @@ def verify(
     schema_catalog: dict[str, Any],
     role_catalog: dict[str, Any],
     analysis: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     expected = manifest["effective_model"]
     counts = schema_catalog["counts"]
     tables, views = _relation_counts(schema_catalog)
@@ -91,6 +91,14 @@ def verify(
     if nonempty:
         raise RuntimeError(f"accepted baseline cohesion findings are no longer empty: {nonempty!r}")
 
+    return {
+        "schema_equivalent": True,
+        "role_equivalent": True,
+        "effective_model": actual_model,
+        "analyzer_anomalies": {},
+        "baseline_revision": "0001_initial",
+    }
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -102,14 +110,18 @@ def main() -> None:
     parser.add_argument("--schema-catalog", type=Path, required=True)
     parser.add_argument("--role-catalog", type=Path, required=True)
     parser.add_argument("--analysis", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
-    verify(
+    result = verify(
         manifest=_load(args.manifest),
         schema_catalog=_load(args.schema_catalog),
         role_catalog=_load(args.role_catalog),
         analysis=_load(args.analysis),
     )
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("accepted baseline integrity: PASS")
 
 
