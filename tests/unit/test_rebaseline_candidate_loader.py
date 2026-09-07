@@ -44,8 +44,8 @@ def _candidate(tmp_path: Path, parts: list[bytes]) -> Path:
 
 
 def _point_loader_at(module: ModuleType, candidate: Path) -> None:
-    module.ROOT = candidate
-    module.MANIFEST_PATH = candidate / "manifest.json"
+    module.__dict__["ROOT"] = candidate
+    module.__dict__["MANIFEST_PATH"] = candidate / "manifest.json"
 
 
 def test_candidate_loader_reconstructs_manifested_sql(tmp_path: Path) -> None:
