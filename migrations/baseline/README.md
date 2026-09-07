@@ -1,17 +1,18 @@
-# PostgreSQL rebaseline candidate
+# PostgreSQL baseline
 
-This directory contains the reviewed pre-production replacement baseline payload for Request Engine.
+This directory is the canonical, immutable payload for Request Engine Alembic revision `0001_initial`.
 
-The schema SQL is the exact PostgreSQL 18.6 schema-only artifact produced by current-product CI #4164 from `cohesion/system-optimization@4ba7dbf092528f26aee5db1003af455a381d3431`. `manifest.json` records the complete payload checksum, per-part checksums, audited role topology and effective-model counts.
+It was materialized from the audited PostgreSQL 18.6 effective model produced by current-product CI #4164 at `4ba7dbf092528f26aee5db1003af455a381d3431`, then promoted only after clean-cluster, exact-role and single-Alembic reproduction proofs were green. Final repository cleanup is validated independently by normal current-product CI.
 
-The active migration line on this candidate branch intentionally contains only `migrations/versions/0001_initial.py`. That revision:
+`manifest.json` records the complete schema checksum, per-part checksums, the six-role bootstrap topology and accepted baseline counts. `loader.py` verifies those checksums and the exact role contract before `0001_initial` executes the SQL.
 
-1. requires a database with no existing Request Engine application schemas;
-2. verifies and bootstraps exactly the six audited `request_engine_*` roles;
-3. verifies every materialized SQL part and the reconstructed payload SHA256;
-4. executes the reviewed schema through Psycopg's simple-query protocol;
-5. leaves Alembic to record `0001_initial` after successful schema creation.
+The baseline contract is intentionally different from the current Alembic head contract:
 
-This directory is not historical migration archaeology. It is the reviewable source payload for the current product model. The old `0002..0050` chain must remain outside the active line once this candidate is accepted; its provenance remains available in Git history.
+- `migrations/baseline/` and `0001_initial` are immutable accepted history;
+- future schema evolution appends `0002+` revisions under `migrations/versions/`;
+- current-product CI upgrades to the repository head and proves current invariants;
+- baseline-integrity CI separately proves that the accepted `0001` still installs from a clean PostgreSQL 18 cluster.
 
-Acceptance requires normal pull-request CI against `development`, clean PostgreSQL 18 bootstrap, exact schema/role catalog equivalence to the audited 99-relation model, and the complete current-product proof with no gaps.
+Do **not** regenerate or edit this payload to make a later migration easier. If the product evolves, add a new Alembic revision. A future destructive rebaseline would require a new explicit audit and proof cycle rather than silently rewriting this directory.
+
+The original `rebaseline-candidate.sql` and `rebaseline-role-bootstrap.sql` names retained in `manifest.json` are provenance identifiers for the CI artifacts from which this accepted payload was materialized; they are not active repository paths or candidate status.
