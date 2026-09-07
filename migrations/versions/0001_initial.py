@@ -18,10 +18,10 @@ down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_LOADER = Path(__file__).resolve().parents[1] / "rebaseline_candidate" / "loader.py"
+_LOADER = Path(__file__).resolve().parents[1] / "baseline" / "loader.py"
 
 
-def _load_candidate() -> tuple[Callable[[], str], Callable[[Any], None], Callable[[Any], None]]:
+def _load_baseline() -> tuple[Callable[[], str], Callable[[Any], None], Callable[[Any], None]]:
     namespace = runpy.run_path(str(_LOADER))
     load_schema = cast(Callable[[], str], namespace["load_schema_sql"])
     require_clean = cast(Callable[[Any], None], namespace["require_clean_database"])
@@ -41,7 +41,7 @@ def upgrade() -> None:
     if driver_connection is None:
         raise RuntimeError("0001_initial requires the live psycopg driver connection")
 
-    load_schema, require_clean, ensure_roles = _load_candidate()
+    load_schema, require_clean, ensure_roles = _load_baseline()
     schema_sql = load_schema()
     require_clean(driver_connection)
     ensure_roles(driver_connection)
