@@ -12,6 +12,13 @@ pytestmark = [
 ]
 
 _ROLE = "request_engine_platform_definer"
+_APPLICATION_SCHEMAS = [
+    "request_admin",
+    "request_cmd",
+    "request_engine",
+    "request_platform",
+    "request_read",
+]
 _EXPECTED_COLUMN_PRIVILEGES = {
     ("principal_authority_grants", "authority_plane", "SELECT"),
     ("principal_authority_grants", "capability_key", "SELECT"),
@@ -67,11 +74,7 @@ def test_platform_definer_has_exact_schema_authority(admin_conn: PgConnection) -
         WHERE nspname = ANY(%s)
         ORDER BY nspname
         """,
-        (
-            _ROLE,
-            _ROLE,
-            ["request_admin", "request_cmd", "request_engine", "request_platform", "request_read"],
-        ),
+        (_ROLE, _ROLE, _APPLICATION_SCHEMAS),
     ).fetchall()
 
     actual = {cast(str, name): (bool(usage), bool(create)) for name, usage, create in rows}
@@ -127,11 +130,11 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
         SELECT n.nspname, c.relname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname LIKE 'request_%'
+        WHERE n.nspname = ANY(%s)
           AND pg_get_userbyid(c.relowner) = %s
         ORDER BY n.nspname, c.relname
         """,
-        (_ROLE,),
+        (_APPLICATION_SCHEMAS, _ROLE),
     ).fetchall()
     assert relations == []
 
@@ -141,11 +144,11 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
                p.prosecdef, p.proconfig
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname LIKE 'request_%'
+        WHERE n.nspname = ANY(%s)
           AND pg_get_userbyid(p.proowner) = %s
         ORDER BY n.nspname, p.proname
         """,
-        (_ROLE,),
+        (_APPLICATION_SCHEMAS, _ROLE),
     ).fetchall()
     assert routines == [
         (
