@@ -1,6 +1,6 @@
 # Administrative setup capability audit
 
-Status: **current Stage C migration inventory**, subordinate to `docs/16-canonical-operation-and-tool-projection-pattern.md`, `docs/15-api-design-and-usability-standards.md` and the owning module contracts.
+Status: **current Stage C/D migration inventory**, subordinate to `docs/16-canonical-operation-and-tool-projection-pattern.md`, `docs/15-api-design-and-usability-standards.md` and the owning module contracts.
 
 ## 1. Product question
 
@@ -35,21 +35,40 @@ an active ServiceQueue exists
 required communication purposes are enabled
 ```
 
-Current readiness blockers include:
+Stage D now normalizes missing facts as machine-readable blockers:
 
 ```text
-no_bookable_offering
-no_resource_supply
-channel_purpose_disabled
+code
+owner
+resolution_capabilities
 ```
 
-Location/Party/Queue readiness is currently represented by section-level `ready` flags rather than the same blocker vocabulary. Stage D should normalize that without turning Onboarding into the executor.
+Examples:
+
+```text
+location_missing
+  owner = catalog
+  resolution_capabilities = [catalog.manage]
+
+no_resource_supply
+  owner = booking
+  resolution_capabilities = [booking.manage_supply]
+
+service_queue_missing
+  owner = queue
+  resolution_capabilities = [queue.configure]
+```
+
+The blockers deliberately do **not** hardcode owner HTTP `operationId`s. Onboarding owns readiness semantics, not the HTTP operation namespace of Catalog/Booking/Queue/etc. Stage E can map a blocker's resolution capability to the concrete operations currently mounted, visible and authorized for an ActorContext.
+
+`business_party_missing` currently has no resolution capability. This is intentional: Stage C has not yet proved a supported owner operation that creates the tenant business Party from a fresh state. `organization.bootstrap` establishes authority over an existing authoritative Party; it must not be falsely advertised as creating that Party.
 
 ## 3. Resolution matrix
 
 | Setup/readiness fact | Owner | Canonical operation(s) now available | Capability | Contextual authority | Status |
 |---|---|---|---|---|---|
 | establish initial operational authority | tenancy | `tenancy_operational_authority_bootstrap` | `organization.bootstrap` | bootstrap-specific Tenancy validation | READY |
+| update Organization operational profile/contacts | tenancy | `tenancy_organization_profile_update`, `tenancy_organization_contacts_replace` | `organization.manage_profile` | exact operational Representation scope | READY |
 | create/update Location profile | catalog | `catalog_location_create`, `catalog_location_update`, `catalog_location_contacts_update` | `catalog.manage` | exact operational Representation scope validated by Catalog | READY |
 | configure Location hours/exceptions | catalog | `catalog_location_hours_replace`, `catalog_location_hours_exception_upsert` | `catalog.manage` | exact operational Representation scope + revision | READY |
 | create Resource capability vocabulary | catalog | `catalog_manage_resource_capabilities` | `catalog.manage` | owner authority validation | READY |
@@ -62,6 +81,8 @@ Location/Party/Queue readiness is currently represented by section-level `ready`
 | create ServiceQueue | queue | `queue_service_queue_create` | `queue.configure` | Queue owner authority validation | READY |
 | configure communication purpose/channel policy | communications | `communications_configure_channel_policy` | `communications.configure` | Communications owner authority + revision | READY |
 | read setup readiness | onboarding | `onboarding_read` | `onboarding.read` | organization-scoped read | READY |
+| create tenant business Party from fresh state | tenancy | not yet proven | not yet proven | must establish authoritative tenant ownership safely | BLOCKER |
+| manage employee Representation/capability grants | tenancy | not yet found/proven | not yet designed | revocable least-privilege delegated authority | BLOCKER |
 
 `READY` means an owner-backed operation exists; it does **not** mean the whole administrative UX/tool journey is complete or polished.
 
@@ -98,6 +119,7 @@ Current coarse capabilities are intentionally broader than individual operation 
 Examples:
 
 ```text
+organization.manage_profile
 catalog.manage
 booking.manage_supply
 queue.configure
@@ -116,6 +138,8 @@ while the exact Party/Representation scope means:
 
 Both must remain enforceable.
 
+`organization.bootstrap` and `organization.manage_profile` are intentionally separate. Initial authority establishment is a different grant decision from ongoing Organization profile/contact maintenance.
+
 ### Do not prematurely create role-shaped capabilities
 
 Do not add `receptionist`, `manager`, `doctor`, `owner` capability keys. Roles/personas are deployment/business-policy groupings of stable capabilities.
@@ -130,20 +154,27 @@ Their descriptions now state the actual current authority family. This changes d
 
 ## 7. Current gaps
 
-### C1 — Onboarding does not yet link blockers to operations
+### C1 / D1 — blocker guidance exists, operation resolution does not yet
 
-A client receives `no_resource_supply`, but not yet:
+Stage D now gives clients stable blocker codes, the semantic owner and one or more resolution capabilities. It intentionally stops there.
+
+The future authorized operation catalog must resolve:
 
 ```text
-owner = booking
-suggested_operation_ids = [booking_resource_create, booking_resource_assignment_create, ...]
+blocker resolution capability
+        +
+current ActorContext
+        +
+mounted canonical operations
+        ->
+visible / authorized operation choices
 ```
 
-That belongs to Stage D. Suggested operations are guidance only and never grant authority.
+This avoids embedding HTTP operation identities in Onboarding and naturally handles one capability authorizing multiple operations.
 
 ### C2 — operations-app metadata coverage is incomplete
 
-Catalog Location/schedule operations and Booking assignment operations are being migrated to `add_capability_route`, but the entire operations app has not yet been audited. Remaining raw `router.add_api_route` surfaces must be classified and migrated when they represent machine-facing capability operations.
+Catalog Location/schedule operations, Booking assignment operations and Tenancy Organization profile operations have been migrated to `add_capability_route`, but the entire operations app has not yet been audited. Remaining raw `router.add_api_route` surfaces must be classified and migrated when they represent machine-facing capability operations.
 
 ### C3 — many administrative responses are untyped
 
@@ -170,18 +201,40 @@ public_discovery
 
 without making Onboarding own the underlying facts.
 
-### C6 — staff-management/permission administration is a separate completeness question
+### C6 — staff-management/permission administration is a current blocker
 
-Bootstrapping initial operational authority exists, but Stage C has not yet proven that an administrator can create/manage every employee Principal/Representation/grant lifecycle needed for a real organization solely through supported APIs. This must be audited before claiming complete self-service administration.
+The inspected Tenancy command/API surface supports Party/contact/identity operations and initial operational-authority bootstrap, but no supported machine-facing lifecycle has yet been found/proven for creating, listing, changing and revoking employee Representation/capability grants.
+
+This means Request Engine must **not** yet claim complete self-service administration for the user's target model of public patient agent + private employee/admin agents.
+
+Do not solve this by adding permissions inside the tool gateway. Tenancy must own the lifecycle because it is authoritative identity/delegation state. A proper design must cover at least:
+
+```text
+create or associate employee Principal/Party
+create delegated Representation/grant
+list effective grants/scopes
+change grant set
+revoke/suspend delegated authority
+audit who granted/revoked what and when
+prevent cross-tenant or self-escalation
+invalidate/reject stale authority promptly
+```
+
+The exact persistence model must be audited before exposing commands.
+
+### C7 — fresh business Party bootstrap is not yet proven
+
+Onboarding can detect the absence of the Organization business Party, but the inspected API surface has not yet established a safe owner-backed operation that creates that Party from a truly fresh tenant state. This gap must be resolved or explicitly delegated to a deployment/provisioning boundary.
 
 ## 8. Tool suitability for setup operations
 
-The operations above are generally good admin-tool candidates because they are explicit, typed commands with owner authority and idempotency.
+The READY operations above are generally good admin-tool candidates because they are explicit owner commands with authority/idempotency semantics.
 
 Recommended default audience:
 
 ```text
 tenancy operational-authority bootstrap          admin
+Organization profile/contact management          admin
 Catalog configuration                            admin
 Booking Resource/supply configuration            admin
 Queue creation/configuration                     admin
@@ -193,17 +246,19 @@ This audience metadata is a discovery default, not a permission grant. Real empl
 
 Some operational commands may later be exposed to `operator` as policy requires; do not widen them merely because an agent could technically call them.
 
-## 9. Stage C implementation completed so far
+## 9. Stage C/D implementation completed so far
 
-- operations app now maps `CapabilityRequired` to the canonical 403 response rather than allowing a missing capability to become an unhandled server error;
-- Catalog Location/profile/schedule operations now use `add_capability_route`, explicit stable operation IDs and `catalog.manage` gates;
+- operations app maps `CapabilityRequired` to the canonical 403 response rather than allowing a missing capability to become an unhandled server error;
+- Catalog Location/profile/schedule operations use `add_capability_route`, explicit stable operation IDs and `catalog.manage` gates;
 - Booking Resource creation has an explicit stable operation ID;
-- Booking assignment/create/retire/availability operations now use `add_capability_route`, explicit stable operation IDs and `booking.manage_supply` gates;
+- Booking assignment/create/retire/availability operations use `add_capability_route`, explicit stable operation IDs and `booking.manage_supply` gates;
 - Queue creation has an explicit stable operation ID;
 - Tenancy operational-authority bootstrap has an explicit stable operation ID;
+- Tenancy Organization profile/contact operations use a distinct `organization.manage_profile` capability and canonical operation IDs;
 - existing Communications channel-policy configuration already follows the canonical route/capability pattern;
 - capability descriptions for Catalog and Booking were reconciled with current behavior;
-- architecture/E2E tests protect capability failure mapping and operation metadata relationships.
+- Onboarding readiness blockers are typed as `code + owner + resolution_capabilities` across Party, Location, appointments, Queue and Communications sections;
+- architecture/module tests protect capability failure mapping, operation metadata relationships and blocker semantics.
 
 No PostgreSQL schema or owner transaction semantics were changed by this work.
 
@@ -211,12 +266,12 @@ No PostgreSQL schema or owner transaction semantics were changed by this work.
 
 Do not claim complete administrative self-service until all are true:
 
-1. every minimum readiness blocker has at least one supported owner operation that can resolve it;
+1. every minimum readiness blocker has a supported owner operation or an explicit provisioning owner that can resolve it;
 2. staff/authority lifecycle has a supported admin journey, not SQL-only setup;
 3. configuration operations carry canonical operation/capability/owner metadata and typed schemas sufficient for safe tool projection;
 4. operator/admin capability failures return structured 403s;
 5. current grants can represent the intended public vs receptionist/operator vs admin separation without granting broad accidental authority;
-6. an end-to-end admin journey can bootstrap a fresh Organization to a chosen readiness state using only supported APIs;
+6. an end-to-end admin journey can bootstrap a fresh Organization to a chosen readiness state using only supported APIs/provisioning boundaries;
 7. a lower-authority Principal is adversarially proven unable to execute the admin operations even when it knows their exact HTTP/tool identities.
 
-Stage D may begin for readiness/action linkage in parallel with remaining protocol typing, but Stage E authorized tool-catalog work must not claim safe completeness until these authority criteria are proven.
+Stage D blocker semantics are now in place. Stage E authorized tool-catalog work may begin as infrastructure, but it must not claim safe administrative completeness until the authority/provisioning blockers above are resolved and adversarially proved.
