@@ -4,9 +4,12 @@ This directory owns executable PostgreSQL schema evolution and the historical de
 
 Current governing policy:
 
-- `docs/architecture/system-optimization-mode.md`
-- `docs/architecture/pre-production-evolution-policy.md`
-- `docs/testing/current-guarantees.toml`
+- `docs/architecture/continuous-evolution-policy.md` — permanent schema/application evolution model;
+- `docs/architecture/system-optimization-mode.md` — current pre-production optimization mode;
+- `docs/architecture/pre-production-evolution-policy.md` — current pre-production compatibility freedom;
+- `docs/testing/current-guarantees.toml` — semantic guarantees that evolution must preserve or explicitly supersede.
+
+The permanent rule is **immutable history, evolvable future**. The accepted baseline is protected as history; current schema continues to evolve through appended migrations.
 
 ## Canonical layout
 
@@ -44,6 +47,8 @@ The accepted baseline model recorded in `migrations/baseline/manifest.json` is:
 12 column grants
 ```
 
+These counts describe the accepted `0001` checkpoint. They are **not ratchets for current HEAD**. Current product counts may change through legitimate migrations; baseline-integrity proof remains pinned to the historical baseline.
+
 ## Historical/provenance surfaces
 
 `migrations/sql/design_chain/` is retained because the repository's V2 design-history status check still executes it through `scripts/db/apply_design_chain.sh`. It is not the current schema source of truth.
@@ -55,12 +60,17 @@ The old V3 Base85 payload, V3 candidate SQL, feature-step helper modules and the
 For any new schema change:
 
 1. identify the owning capability and current guarantee affected;
-2. append a new Alembic revision from the current single head;
-3. review RLS, ownership, grants and SECURITY DEFINER impact;
-4. review transaction, lock, range/timezone and concurrency semantics;
-5. add PostgreSQL-backed falsification evidence for database claims;
-6. keep `0001_initial` and `migrations/baseline/` unchanged;
-7. prove clean `upgrade head` and the current-product proof map with no gaps.
+2. classify compatibility/data risk using `continuous-evolution-policy.md`;
+3. append a new Alembic revision from the current single head;
+4. use **expand → migrate → contract** when old/new application or data representations must coexist;
+5. review RLS, ownership, grants and SECURITY DEFINER impact;
+6. review transaction, lock, range/timezone and concurrency semantics;
+7. make non-trivial backfills resumable/idempotent/bounded/observable as applicable;
+8. add PostgreSQL-backed falsification evidence for database claims;
+9. keep accepted historical revisions and `migrations/baseline/` unchanged;
+10. prove clean `upgrade head` and the current-product proof map with no gaps.
+
+For production-sized tables, explicitly assess DDL lock/availability consequences. Use staged constraint validation, concurrent index creation or other PostgreSQL mechanisms when they materially reduce production risk; do not apply them mechanically when an ordinary transactional migration is demonstrably safer.
 
 PostgreSQL target is 18+.
 
@@ -75,6 +85,16 @@ request_admin   explicit diagnostics/operations
 
 Python owns business-command orchestration and transaction framing. PostgreSQL owns structural truth, concurrency, leases/fencing and local invariant backstops. No external/provider I/O occurs while authoritative database locks are held.
 
+## Production compatibility trigger
+
+Pre-production freedom ends when Request Engine stores customer-owned production data that must survive upgrades or when an external/independently deployed consumer has a supported compatibility promise.
+
+From that point, schema changes still evolve normally, but destructive operations require explicit data/consumer migration and roll-forward/rollback analysis. Deployment overlap must be considered, and published surfaces require controlled deprecation/removal criteria.
+
+History remains immutable; the future remains evolvable.
+
 ## Future rebaseline policy
 
-Request Engine is still pre-production, so a future destructive rebaseline is possible in principle, but it is **not** ordinary schema evolution. It would require another explicit effective-schema audit, clean-cluster reproduction proof and repository-level decision. Never silently rewrite the accepted baseline as part of a feature or cleanup PR.
+A future destructive rebaseline is possible only while pre-production and only as an explicit repository-architecture operation backed by another effective-schema audit and clean-cluster reproduction proof. Never silently rewrite the accepted baseline as part of a feature or cleanup PR.
+
+After customer-owned production data exists, rebaseline is **not a cleanup technique**. Any extraordinary lineage replacement becomes a production data migration/cutover project with explicit transfer and recovery semantics.
