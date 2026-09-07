@@ -29,9 +29,7 @@ def _candidate(tmp_path: Path, parts: list[bytes]) -> Path:
     for index, payload in enumerate(parts, start=1):
         name = f"0001_schema.{index:02d}.sql"
         (tmp_path / name).write_bytes(payload)
-        materialized_parts.append(
-            {"path": name, "bytes": len(payload), "sha256": _sha256(payload)}
-        )
+        materialized_parts.append({"path": name, "bytes": len(payload), "sha256": _sha256(payload)})
     combined = b"".join(parts)
     manifest = {
         "schema_version": 1,
