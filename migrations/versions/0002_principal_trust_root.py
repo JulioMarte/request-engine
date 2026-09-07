@@ -24,10 +24,7 @@ def upgrade() -> None:
         "ALTER TABLE request_engine.principals "
         "ADD COLUMN authority_revision bigint NOT NULL DEFAULT 1"
     )
-    op.execute(
-        "ALTER TABLE request_engine.principals "
-        "ALTER COLUMN organization_id DROP NOT NULL"
-    )
+    op.execute("ALTER TABLE request_engine.principals ALTER COLUMN organization_id DROP NOT NULL")
     op.execute(
         "ALTER TABLE request_engine.principals "
         "ADD CONSTRAINT principals_principal_plane_check "
@@ -135,8 +132,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DROP TRIGGER representations_bump_principal_authority "
-        "ON request_engine.representations"
+        "DROP TRIGGER representations_bump_principal_authority ON request_engine.representations"
     )
     op.execute("DROP FUNCTION request_engine.bump_principal_authority_from_representation()")
     op.execute("DROP TRIGGER principals_guard_security_identity ON request_engine.principals")
