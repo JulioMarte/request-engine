@@ -23,7 +23,9 @@ from request_engine.modules.operational_recovery.adapters.db.workflow_repository
 from request_engine.modules.operational_recovery.adapters.queue_intake import (
     QueueRecoveryIntakeAdapter,
 )
-from request_engine.modules.operational_recovery.api.errors import operational_recovery_error_handler
+from request_engine.modules.operational_recovery.api.errors import (
+    operational_recovery_error_handler,
+)
 from request_engine.modules.operational_recovery.api.router import create_router
 from request_engine.modules.operational_recovery.api.runtime import OperationalRecoveryRuntime
 from request_engine.modules.operational_recovery.api.workflow_autonomy_router import (
@@ -40,7 +42,9 @@ from request_engine.modules.operational_recovery.api.workflow_reschedule_router 
 )
 from request_engine.modules.operational_recovery.api.workflow_router import create_workflow_router
 from request_engine.modules.operational_recovery.application.errors import OperationalRecoveryError
-from request_engine.modules.operational_recovery.application.service import OperationalRecoveryService
+from request_engine.modules.operational_recovery.application.service import (
+    OperationalRecoveryService,
+)
 from request_engine.modules.operational_recovery.application.workflow_intake_port import (
     RecoveryIntakeControlPort,
 )
@@ -68,7 +72,9 @@ __all__ = [
 ]
 
 
-def adapt_location_schedule(schedule: RecoveryLocationSchedulePort) -> RecoveryLocationExtensionPort:
+def adapt_location_schedule(
+    schedule: RecoveryLocationSchedulePort,
+) -> RecoveryLocationExtensionPort:
     """Expose Recovery's adapter without making composition roots import module internals."""
 
     return CatalogRecoveryLocationAdapter(schedule)
