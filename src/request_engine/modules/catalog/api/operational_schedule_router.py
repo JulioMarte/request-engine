@@ -26,8 +26,9 @@ from request_engine.modules.catalog.application.commands.set_location_operationa
     SetLocationOperationalHoursHandler,
     set_location_operational_hours,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.http import ActorResolver, require_capability
 
 IdempotencyKey = Annotated[
     str,
@@ -95,6 +96,7 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         windows = tuple(LocationOperationalHoursInput(**item.model_dump()) for item in body.windows)
         return await set_location_operational_hours(
             hours_handler,
@@ -115,6 +117,7 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         return await set_location_hours_exception(
             exception_handler,
             SetLocationHoursExceptionCommand(
@@ -132,6 +135,7 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         command = base_terms_command.ConfigureOfferingVersionBookingTermsCommand(
             organization_id=current.organization_id,
             principal_id=current.principal_id,
@@ -151,6 +155,7 @@ def create_operational_schedule_router(
         key: IdempotencyKey,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> object:
+        require_capability(current, "catalog.manage")
         return await declare_organization_holidays(
             holidays_handler,
             DeclareOrganizationHolidaysCommand(
@@ -165,10 +170,36 @@ def create_operational_schedule_router(
             ),
         )
 
-    router.add_api_route("/locations/{location_id}/hours", hours, methods=["PUT"])
-    router.add_api_route("/locations/{location_id}/hours-exceptions", exception, methods=["PUT"])
-    router.add_api_route(
-        "/offering-versions/{offering_version_id}/booking-terms", base_terms, methods=["PUT"]
+    add_capability_route(
+        router,
+        "/locations/{location_id}/hours",
+        hours,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_location_hours_replace",
     )
-    router.add_api_route("/organization/holidays", holidays, methods=["PUT"])
+    add_capability_route(
+        router,
+        "/locations/{location_id}/hours-exceptions",
+        exception,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_location_hours_exception_upsert",
+    )
+    add_capability_route(
+        router,
+        "/offering-versions/{offering_version_id}/booking-terms",
+        base_terms,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_offering_booking_terms_configure",
+    )
+    add_capability_route(
+        router,
+        "/organization/holidays",
+        holidays,
+        capability="catalog.manage",
+        methods=["PUT"],
+        operation_id="catalog_organization_holidays_replace",
+    )
     return router
