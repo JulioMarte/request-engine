@@ -8,10 +8,12 @@ _TRUSTED_SCHEMAS = {
     "request_admin",
     "request_cmd",
     "request_engine",
+    "request_platform",
     "request_read",
 }
 _TRUSTED_DEFINER_OWNERS = {
     "request_engine_discovery_definer",
+    "request_engine_platform_definer",
     "request_engine_schema_owner",
 }
 _COLUMN_UPDATE_AUTHORITY = {
