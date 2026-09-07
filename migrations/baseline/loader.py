@@ -66,7 +66,7 @@ def _sha256(payload: bytes) -> str:
 def _manifest() -> dict[str, Any]:
     payload = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     if payload.get("schema_version") != 1:
-        raise RuntimeError("unsupported rebaseline candidate manifest")
+        raise RuntimeError("unsupported accepted baseline manifest")
     return payload
 
 
@@ -93,12 +93,12 @@ def load_schema_sql() -> str:
         )
     payload = b"".join(payloads)
     if len(payload) != manifest["bytes"]:
-        raise RuntimeError("materialized schema byte length does not match manifest")
+        raise RuntimeError("baseline schema byte length does not match manifest")
     if _sha256(payload) != manifest["sha256"]:
-        raise RuntimeError("materialized schema checksum does not match manifest")
+        raise RuntimeError("baseline schema checksum does not match manifest")
     text = payload.decode("utf-8")
     if any(line.startswith("\\") for line in text.splitlines()):
-        raise RuntimeError("rebaseline schema contains a psql meta-command")
+        raise RuntimeError("baseline schema contains a psql meta-command")
     return text
 
 
@@ -116,17 +116,17 @@ def load_role_statements() -> dict[str, str]:
             continue
         match = _ROLE_NAME.fullmatch(statement)
         if match is None:
-            raise RuntimeError("rebaseline role bootstrap contains an unexpected statement")
+            raise RuntimeError("baseline role bootstrap contains an unexpected statement")
         role_name = match.group(1)
         if role_name in statements:
-            raise RuntimeError(f"duplicate rebaseline role statement: {role_name}")
+            raise RuntimeError(f"duplicate baseline role statement: {role_name}")
         statements[role_name] = statement
 
     expected_roles = role_manifest["expected_roles"]
     if set(statements) != set(expected_roles):
-        raise RuntimeError("rebaseline role statements do not match manifest role names")
+        raise RuntimeError("baseline role statements do not match manifest role names")
     if len(statements) != _manifest()["effective_model"]["roles"]:
-        raise RuntimeError("rebaseline role bootstrap count does not match manifest")
+        raise RuntimeError("baseline role bootstrap count does not match manifest")
     return statements
 
 
@@ -149,7 +149,7 @@ def require_clean_database(driver_connection: Any) -> None:
     if rows:
         names = ", ".join(str(row[0]) for row in rows)
         raise RuntimeError(
-            "replacement 0001 requires a clean database; existing Request Engine schemas: " + names
+            "accepted 0001 requires a clean database; existing Request Engine schemas: " + names
         )
 
 
