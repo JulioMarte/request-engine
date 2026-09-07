@@ -68,6 +68,18 @@ async def test_f6_proactive_intake_text_requires_current_operational_day_end(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "f6-no-operational-day-end")
+    # The generic sandbox seeds Monday operational hours for slot-oriented E2E
+    # tests. This proof specifically requires *no* current operational day end,
+    # so remove that unrelated fixture state rather than making the assertion
+    # depend on which weekday the CI runner happens to execute on.
+    e2e_admin_conn.execute(
+        """
+        DELETE FROM request_engine.location_operational_hours
+        WHERE organization_id = %s
+          AND location_id = %s
+        """,
+        (sandbox.organization_id, sandbox.location_id),
+    )
     actors = {sandbox.token: copilot_actor(sandbox)}
     async with client_with_actors(e2e_session_factory, actors) as client:
         incident = await client.get(
