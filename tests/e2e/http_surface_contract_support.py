@@ -31,9 +31,12 @@ _OPERATION_ID_OVERRIDES = {
     "parties.list_administrative_identifiers": "parties_list_administrative_identifiers",
     "staff.register_contact": "staff_manage_own_admin_contact_register",
     "staff.request_contact_verification": "staff_manage_own_admin_contact_request_verification",
+    "organization.bootstrap": "tenancy_operational_authority_bootstrap",
     "catalog.manage.resource_capability": "catalog_manage_resource_capabilities",
     "catalog.manage.offering": "catalog_manage_offerings",
     "catalog.manage.offering_booking_policy": ("catalog_manage_offering_version_booking_policy"),
+    "booking.manage_supply": "booking_resource_create",
+    "queue.configure": "queue_service_queue_create",
     "communications.configure_channel_policy": "communications_configure_channel_policy",
 }
 
