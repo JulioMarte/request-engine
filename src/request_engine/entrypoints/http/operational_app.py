@@ -12,6 +12,7 @@ from request_engine.entrypoints.http.errors import (
     integrity_error_handler,
     request_validation_error_handler,
 )
+from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
 from request_engine.entrypoints.http.operational_composition import install_operational_modules
 from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
@@ -81,5 +82,8 @@ def create_operational_app(
         app,
         session_factory=session_factory,
         actor_resolver=request_actor_resolver,
+    )
+    app.include_router(
+        create_operation_catalog_router(actor_resolver=request_actor_resolver)
     )
     return app
