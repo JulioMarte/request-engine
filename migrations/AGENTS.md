@@ -4,25 +4,31 @@ These instructions apply to `migrations/**` and supplement the repository-root `
 
 Before editing schema or migration code, read:
 
-1. `docs/architecture/system-optimization-mode.md` — current pre-production cohesion/rebaseline policy;
-2. `docs/architecture/pre-production-evolution-policy.md` — general pre-production evolution policy;
-3. `docs/testing/current-guarantees.toml` — semantic guarantees that must survive schema evolution;
-4. `docs/10-module-ownership-map.md` — current business ownership;
-5. `docs/07-database-access-contract.md` — Python/PostgreSQL ownership and transaction boundary;
-6. `migrations/README.md` — executable schema-history layout and current migration posture;
+1. `docs/architecture/system-optimization-mode.md`;
+2. `docs/architecture/pre-production-evolution-policy.md`;
+3. `docs/testing/current-guarantees.toml`;
+4. `docs/10-module-ownership-map.md`;
+5. `docs/07-database-access-contract.md`;
+6. `migrations/README.md`;
 7. the current capability/domain contract affected by the change.
 
 Use V2/V3 release material only as historical design/provenance unless a current contract explicitly adopts one of its guarantees or PostgreSQL patterns.
 
 ## Current posture
 
-Request Engine is pre-production and is currently in an explicit system-optimization phase.
+Request Engine is pre-production and has completed the audited PostgreSQL rebaseline on this line.
 
-`migrations/versions/` is the current production-facing Alembic line. `migrations/sql/v3_candidate/` is **not** an active schema-development surface. `migrations/sql/design_chain/` is historical V2 design history.
+The migration layout is now:
 
-Do not assume that a historical V3 candidate, release fingerprint, exact migration count or old revision name is normative for the current product.
+```text
+migrations/versions/          active Alembic graph
+migrations/baseline/          immutable accepted 0001 payload
+migrations/sql/design_chain/  historical V2 proof retained by CI
+```
 
-Until a dedicated repository rebaseline is explicitly approved and designed, ordinary schema changes still append from the current single Alembic head. A rebaseline is a controlled architecture operation, not a shortcut for making migration tests easier.
+`0001_initial` and `migrations/baseline/` are accepted history. Ordinary schema work **must append `0002+`** from the current single Alembic head. Do not regenerate, edit or replace the baseline to make later work easier.
+
+Do not assume that historical V2/V3 candidate names, release fingerprints, old migration counts or removed revision names are normative for current product behavior.
 
 ## Database guarantees
 
@@ -54,7 +60,6 @@ Authoritative table/function/constraint involved
 READ / PLAN / LOCK / VALIDATE / WRITE / EMIT protocol, if applicable
 Serialization root and lock order
 Tenant/RLS/role implications
-Upgrade or rebaseline decision
 Failure/concurrency behavior
 Proof that will falsify a bad implementation
 ```
@@ -63,13 +68,21 @@ Do not infer `table -> domain entity -> repository -> endpoint`. Database object
 
 `request_read.*` remains read-only contract space. `request_cmd.*` remains narrow consistency/worker/idempotency primitives inside Python-owned command orchestration; do not move workflow-sized business policy into stored procedures for convenience.
 
-## Rebaseline rule
+## Baseline rule
 
-A current-schema rebaseline is permitted during this phase only as a dedicated change after the complete schema audit. Do not casually edit `0001_initial` or regenerate its payload while unrelated work is in progress.
+The accepted baseline is frozen as **migration history**, not as a ceiling on the product schema.
 
-A valid rebaseline must be derived from the intended current domain model and must disposition obsolete tables, functions, indexes, constraints, roles and RLS policies explicitly. It must then prove clean PostgreSQL 18 bootstrap to exactly one head plus the current invariant/security/concurrency/E2E evidence.
+A valid new migration:
 
-Historical V2/V3 artifacts may subsequently be retained, moved or removed according to their real provenance value; they must not remain active merely to preserve release archaeology.
+1. leaves `0001_initial` and `migrations/baseline/` byte-stable;
+2. appends from the single current Alembic head;
+3. preserves baseline role/bootstrap compatibility where applicable;
+4. proves the resulting current HEAD against the current guarantee map;
+5. adds or updates exact PostgreSQL evidence for changed invariants.
+
+A future destructive rebaseline is a separate architecture operation requiring a new effective-schema audit and independent clean-cluster proof. It must never happen implicitly inside ordinary feature work.
+
+Historical SQL or helper modules that are not executed by a current proof or active migration belong in Git history, not beside the active migration authority. `migrations/sql/design_chain/` is the present exception because CI still executes it as V2 design-history evidence.
 
 ## Testing
 
@@ -77,4 +90,4 @@ Use real PostgreSQL 18 whenever the claim depends on constraints, ranges, locks,
 
 Concurrency tests use independent connections/transactions and deterministic synchronization. Do not simulate races with one transaction or timing-only sleeps.
 
-Current-product proof follows the repository Alembic head dynamically. Do not pin current-product tests back to a historical revision name.
+Current-product proof follows the repository Alembic head dynamically. Accepted-baseline integrity is proved separately from current HEAD; never pin current-product tests back to `0001_initial`.
