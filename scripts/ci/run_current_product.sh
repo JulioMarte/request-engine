@@ -10,10 +10,9 @@ mkdir -p "$ARTIFACT_DIR"
 python scripts/ci/normalize_ci_line_endings.py
 uv sync --all-groups
 
-# Current-product proof follows the repository's accepted migration head. A
-# feature/rebaseline may intentionally change that head; the safety condition is
-# one unambiguous repository head and a database actually upgraded to it, not a
-# permanent equality to the revision that happened to introduce F1.
+# Current-product proof follows the repository's accepted migration head. Future
+# schema changes append 0002+ revisions; the accepted 0001 is verified
+# independently below and must never be rewritten merely to match a later head.
 mapfile -t repository_heads < <(uv run alembic heads | awk 'NF {print $1}')
 if [[ ${#repository_heads[@]} -ne 1 ]]; then
   printf 'expected exactly one Alembic head, found %s: %s\n' \
@@ -29,20 +28,19 @@ if [[ "$actual_head" != "$expected_head" ]]; then
   exit 1
 fi
 
-# Audit the effective PostgreSQL model, not the migration history that produced
-# it. The catalog artifact is the primary evidence for pre-rebaseline cohesion.
+# Audit the effective PostgreSQL model at current HEAD. This catalog is current
+# product evidence and may legitimately diverge from the immutable 0001 after a
+# reviewed 0002+ migration is introduced.
 uv run python scripts/db/export_schema_catalog.py \
   --output "$ARTIFACT_DIR/schema-catalog.json"
 uv run python scripts/db/analyze_schema_cohesion.py \
   --catalog "$ARTIFACT_DIR/schema-catalog.json" \
   --output "$ARTIFACT_DIR/schema-cohesion-analysis.json"
 
-# Before the historical migration chain is ever replaced, prove that a
-# schema-only PostgreSQL export of this exact audited head can reproduce the
-# effective model in a second empty database. This is evidence only: the current
-# Alembic chain remains the source migration authority until clean-cluster role
-# bootstrap and full candidate-baseline proofs are also green.
-bash scripts/db/prove_rebaseline_reproduction.sh "$ARTIFACT_DIR"
+# Separately prove that the accepted 0001 baseline remains installable and
+# internally coherent in a clean PostgreSQL 18 cluster. This protects the root
+# migration without imposing a permanent equality between 0001 and current HEAD.
+bash scripts/db/prove_baseline_integrity.sh "$ARTIFACT_DIR"
 
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
