@@ -13,8 +13,6 @@ import request_engine.modules.operational_copilot.api as copilot_api
 import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
-from request_engine.bootstrap.recovery_catalog import CatalogRecoveryLocationAdapter
-from request_engine.bootstrap.recovery_queue import QueueRecoveryIntakeAdapter
 from request_engine.modules.booking.api import install_http as install_booking_http
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.onboarding import BookingOnboardingReadinessReader
@@ -36,6 +34,12 @@ from request_engine.modules.discovery.api.publication_runtime import (
 )
 from request_engine.modules.live_capacity.api import install_http as install_live_capacity_http
 from request_engine.modules.live_capacity.api.recovery import build_recovery_capacity_source
+from request_engine.modules.operational_recovery.adapters.catalog_schedule import (
+    CatalogRecoveryLocationAdapter,
+)
+from request_engine.modules.operational_recovery.adapters.queue_intake import (
+    QueueRecoveryIntakeAdapter,
+)
 from request_engine.modules.operational_recovery.api import install_http as install_recovery_http
 from request_engine.modules.queue.api.copilot import build_copilot_queue_runtime
 from request_engine.modules.queue.api.live_capacity import (
