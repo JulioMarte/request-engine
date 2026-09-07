@@ -32,11 +32,30 @@ For present-day ownership and boundaries, start here:
 4. `13-connection-surfaces.md` — mandatory layer/module/DB/provider connection surfaces;
 5. `14-architecture-fitness-functions.md` — executable dependency/surface fitness rules;
 6. `testing/repository-governance-contract.md` — HARD / CONTROLLED / FLEXIBLE / HISTORICAL classification;
-7. `15-api-design-and-usability-standards.md` — current public API design/usability guidance.
+7. `15-api-design-and-usability-standards.md` — current HTTP/OpenAPI house standard;
+8. `16-canonical-operation-and-tool-projection-pattern.md` — normative owner/capability/operation/tool projection pattern for UX, integrations and agents.
 
 Historical feature labels such as F1–F7 describe when capabilities entered the system; they do not define current package topology or create permanent compatibility obligations.
 
-## 3. Current capability/domain contracts
+## 3. Current API / agent-tool authority
+
+For any new machine-facing operation, read docs 15 and 16 together.
+
+The governing shape is:
+
+```text
+business owner
+    -> capability policy
+    -> typed semantic operation
+    -> canonical HTTP/OpenAPI
+    -> optional authorized tool/MCP projection
+```
+
+Do not create a second business implementation for agents. `CapabilityDefinition` remains authorization-policy authority; OpenAPI `operationId` identifies one HTTP operation; an optional tool name identifies an agent-facing projection. These identities are related but not interchangeable.
+
+The historical `operational_copilot` package is not a separate source of business truth. Its structured tools are migration input toward the generic authorized operation/tool gateway described by doc 16.
+
+## 4. Current capability/domain contracts
 
 Historical paths may contain current semantic contracts. Authority comes from the owning module, current guarantee inventory and accepted contract status — not from the path name.
 
@@ -47,12 +66,12 @@ Important current contract families include:
 - live service operations — `v3/26-live-service-operations-contract.md` and its accepted amendments;
 - live capacity — `v3/29-live-capacity-projection-contract.md`;
 - operational recovery — `v3/32-operational-recovery-communications-contract.md`;
-- operational agent tooling — `v3/35-operational-copilot-contract.md`;
-- front desk / communications / identity / onboarding — later accepted contracts under `v3/`.
+- historical operational agent tooling contract — `v3/35-operational-copilot-contract.md`, now interpreted through current docs 15/16 and the ownership map;
+- front desk / communications / identity / onboarding — later accepted contracts under `v3/` where their current owner/guarantee semantics remain adopted.
 
 Durable business distinctions such as Reservation versus QueueEntry versus ServiceSession remain current where adopted by the guarantee/owner contracts. Historical structural descriptions do not freeze implementation shape.
 
-## 4. Testing and guarantee governance
+## 5. Testing and guarantee governance
 
 Canonical evidence entry points:
 
@@ -73,7 +92,7 @@ If a legitimate future feature fails this assertion, what semantic/compatibility
 
 If there is no meaningful answer beyond “the list/file/count changed”, the gate is probably freezing implementation shape and should not be HARD.
 
-## 5. Engineering quality
+## 6. Engineering quality
 
 Engineering-quality entry points:
 
@@ -86,7 +105,7 @@ Engineering-quality entry points:
 
 LOC, C901, file counts and fan-in/fan-out are heuristic review signals. They are not permanent merge-blocking architecture laws without an explicit HARD-gate proof obligation and normative approval.
 
-## 6. PostgreSQL executable truth
+## 7. PostgreSQL executable truth
 
 Executable schema evolution lives under `migrations/`.
 
@@ -112,7 +131,7 @@ For database work read:
 4. `07-database-access-contract.md`;
 5. the affected capability contract and guarantees.
 
-## 7. Compatibility and production transition
+## 8. Compatibility and production transition
 
 Compatibility burden attaches to real consumers and data, not to every old repository shape.
 
@@ -130,7 +149,7 @@ When customer-owned production data or an independently deployed/external suppor
 
 See `architecture/continuous-evolution-policy.md` for the normative details.
 
-## 8. Historical provenance
+## 9. Historical provenance
 
 Historical release and transition material answers:
 
@@ -147,7 +166,7 @@ what must current Request Engine look like now?
 
 `legacy/**`, former V2/V3 release evidence, old handoffs and removed migration machinery are non-authoritative unless a current contract explicitly adopts a specific guarantee or pattern.
 
-## 9. Documentation precedence
+## 10. Documentation precedence
 
 For a current change use this precedence model:
 
@@ -158,7 +177,7 @@ current phase policy (for example system-optimization mode)
         ↓
 owning current capability/domain contract
         ↓
-current ownership + connection/database contracts
+current ownership + connection/database/API-operation contracts
         ↓
 repository/test governance + executable fitness functions
         ↓
@@ -171,12 +190,13 @@ No phase policy may silently weaken a HARD guarantee. No historical structural s
 
 When two current normative documents disagree, treat that as a repository defect: identify the semantic owner, reconcile the contradiction and update current indexes/tests in the same coherent change.
 
-## 10. Documentation policy
+## 11. Documentation policy
 
 Repository documentation is the source of truth. Agent instruction files are operational routers/guardrails.
 
 - durable domain/capability rules belong in the owning current contract;
 - durable evolutionary rules belong under `architecture/`;
+- durable API/operation/tool projection rules belong in docs 15/16;
 - durable rationale belongs in `adr/`;
 - testing/repository governance belongs in `testing/`;
 - engineering-quality policy belongs in `engineering-quality/`;
