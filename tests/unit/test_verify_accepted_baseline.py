@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -18,7 +19,7 @@ def _load() -> ModuleType:
     return module
 
 
-def _inputs() -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+def _inputs() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     role = {
         "role_name": "request_engine_app",
         "superuser": False,
