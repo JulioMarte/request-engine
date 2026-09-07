@@ -8,6 +8,8 @@ MODULES_ROOT = SRC_ROOT / "modules"
 
 HTTP_MODULES = {"requests", "catalog", "booking", "queue"}
 OPERATIONAL_HTTP_MODULES = {"tenancy", "catalog", "booking"}
+# Entrypoint-local process composition, security/error adapters and discovery
+# projections are permitted here. Business transport remains module-owned.
 ENTRYPOINT_ALLOWED_PYTHON = {
     "__init__.py",
     "app.py",
@@ -17,6 +19,7 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "errors.py",
     "error_handlers.py",
     "module_composition.py",
+    "operation_catalog.py",
     "operational_app.py",
     "operational_composition.py",
     "operational_errors.py",
