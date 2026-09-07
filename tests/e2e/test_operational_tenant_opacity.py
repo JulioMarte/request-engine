@@ -7,10 +7,10 @@ from request_engine.entrypoints.http.operational_app import create_operational_a
 from request_engine.platform.db.session import SessionFactory
 
 from .operational_support import PgConnection
+from .operator_journey_support import operator_actor
 from .tenant_sandbox import (
     SandboxResolver,
     TenantSandbox,
-    actor_for,
     auth,
     seed_tenant_sandbox,
 )
@@ -32,7 +32,8 @@ def _grant(conn: PgConnection, sandbox: TenantSandbox) -> None:
 
 
 def _client(factory: SessionFactory, sandbox: TenantSandbox) -> AsyncClient:
-    resolver = SandboxResolver({sandbox.token: actor_for(sandbox)})
+    actor = operator_actor(sandbox, capabilities=frozenset({"catalog.manage"}))
+    resolver = SandboxResolver({sandbox.token: actor})
     app = create_operational_app(session_factory=factory, actor_resolver=resolver)
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
