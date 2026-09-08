@@ -19,7 +19,6 @@ class InviteNativeStaffCommand:
     binding_id: UUID
     identity_authority_id: UUID
     native_identity_id: UUID
-    authority_anchor_party_id: UUID
     provenance_reference: str
     idempotency_key: str
 

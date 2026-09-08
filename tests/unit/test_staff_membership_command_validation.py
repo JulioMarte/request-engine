@@ -65,7 +65,6 @@ async def test_staff_invitation_rejects_invalid_provenance_before_db_access() ->
                     binding_id=uuid4(),
                     identity_authority_id=uuid4(),
                     native_identity_id=uuid4(),
-                    authority_anchor_party_id=uuid4(),
                     provenance_reference=provenance,
                     idempotency_key="invite-test",
                 ),

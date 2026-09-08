@@ -92,7 +92,6 @@ class PostgresStaffMembershipCommands:
                 "binding_id": command.binding_id,
                 "identity_authority_id": command.identity_authority_id,
                 "native_identity_id": command.native_identity_id,
-                "authority_anchor_party_id": command.authority_anchor_party_id,
                 "provenance_reference": provenance,
             },
         )
@@ -116,7 +115,7 @@ class PostgresStaffMembershipCommands:
                         :binding_id,
                         :identity_authority_id,
                         :native_identity_id,
-                        :authority_anchor_party_id,
+                        CAST(NULL AS uuid),
                         :provenance_reference
                     )
                     """
@@ -127,7 +126,6 @@ class PostgresStaffMembershipCommands:
                     "binding_id": command.binding_id,
                     "identity_authority_id": command.identity_authority_id,
                     "native_identity_id": command.native_identity_id,
-                    "authority_anchor_party_id": command.authority_anchor_party_id,
                     "provenance_reference": provenance,
                 },
             )
