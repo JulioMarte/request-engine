@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -23,7 +23,11 @@ _CONTROL_CAPABILITIES = {
 }
 
 
-def _uuid_row(conn: PgConnection, query: str, params: tuple[object, ...]) -> UUID:
+def _uuid_row(
+    conn: PgConnection,
+    query: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
     row = conn.execute(query, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
