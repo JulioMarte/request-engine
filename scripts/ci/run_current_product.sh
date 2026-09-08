@@ -93,10 +93,8 @@ uv run pytest \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
 # Principal trust-root, standing authority, identity bindings, platform-control,
-# one-time bootstrap intents and atomic root establishment are current product
-# truth after the accepted baseline. Keep the privileged bootstrap role and
-# ceremony in this gate so future identity evolution cannot widen either
-# authority or function ownership without an exact-head PostgreSQL proof.
+# one-time bootstrap intents, atomic root establishment and bounded A->B
+# provisioning are current product truth after the accepted baseline.
 uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
@@ -106,6 +104,8 @@ uv run pytest \
   tests/db/test_platform_root_bootstrap_intents.py \
   tests/db/test_platform_root_bootstrap_consume.py \
   tests/db/test_platform_root_bootstrap_definer_topology.py \
+  tests/db/test_platform_tenant_provisioner.py \
+  tests/db/test_platform_control_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 
