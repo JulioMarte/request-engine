@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -102,7 +102,7 @@ class NativeSessionAuthenticator:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._session_reader = session_reader
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     async def authenticate(self, evidence: NativeSessionEvidence) -> AuthenticatedSubject:
         parsed = parse_opaque_token(evidence.raw_token)
