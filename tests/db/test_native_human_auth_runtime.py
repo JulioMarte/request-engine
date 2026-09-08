@@ -115,9 +115,7 @@ async def test_disabling_native_identity_authority_invalidates_existing_session(
         """,
         (authority_id, f"test:{authority_id}"),
     )
-    service = NativeHumanAuthService(
-        store=PostgresNativeHumanAuthStore(command_session_factory)
-    )
+    service = NativeHumanAuthService(store=PostgresNativeHumanAuthStore(command_session_factory))
     authenticator = NativeSessionAuthenticator(
         session_reader=PostgresNativeSessionReader(command_session_factory)
     )
