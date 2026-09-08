@@ -7,8 +7,8 @@ from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel, Field
 
 from request_engine.platform.security.native_auth import parse_opaque_token
-from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_http import bearer_token
+from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
     NativeSessionEvidence,
@@ -50,7 +50,10 @@ def create_native_auth_router(
         response_model=NativeSessionResponse,
         status_code=status.HTTP_201_CREATED,
     )
-    async def create_session(payload: NativeLoginRequest, response: Response) -> NativeSessionResponse:
+    async def create_session(
+        payload: NativeLoginRequest,
+        response: Response,
+    ) -> NativeSessionResponse:
         issued = await service.authenticate_password(
             identity_authority_id=identity_authority_id,
             login_handle=payload.login_handle,
