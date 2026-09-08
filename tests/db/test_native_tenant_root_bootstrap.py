@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -24,7 +24,11 @@ _OPERATIONAL_SCOPES = (
 )
 
 
-def _uuid_row(conn: PgConnection, sql: str, params: tuple[object, ...]) -> UUID:
+def _uuid_row(
+    conn: PgConnection,
+    sql: LiteralString,
+    params: tuple[object, ...],
+) -> UUID:
     row = conn.execute(sql, params).fetchone()
     assert row is not None
     return cast(UUID, row[0])
@@ -138,7 +142,12 @@ def _provision(
             ),
         ).fetchone()
         assert row is not None
-        return tuple(cast(tuple[UUID, UUID, UUID, UUID], row))
+        return (
+            cast(UUID, row[0]),
+            cast(UUID, row[1]),
+            cast(UUID, row[2]),
+            cast(UUID, row[3]),
+        )
     finally:
         conn.execute("RESET ROLE")
 
