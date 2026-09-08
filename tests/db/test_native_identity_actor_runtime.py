@@ -34,15 +34,17 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
     assert hasattr(admin, "execute")
     suffix = uuid4().hex
     authority_id = uuid4()
-    organization_id = admin.execute(  # type: ignore[attr-defined]
+    organization_row = admin.execute(  # type: ignore[attr-defined]
         """
         INSERT INTO request_engine.organizations (organization_key, display_name, public_profile)
         VALUES (%s, %s, '{}'::jsonb)
         RETURNING id
         """,
         (f"native-auth-{suffix}", f"Native Auth {suffix[:8]}"),
-    ).fetchone()[0]
-    principal_id = admin.execute(  # type: ignore[attr-defined]
+    ).fetchone()
+    assert organization_row is not None
+    organization_id = UUID(str(organization_row[0]))
+    principal_row = admin.execute(  # type: ignore[attr-defined]
         """
         INSERT INTO request_engine.principals (
             organization_id, principal_kind, external_subject
@@ -50,7 +52,9 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         RETURNING id
         """,
         (organization_id, f"native-human-{suffix}"),
-    ).fetchone()[0]
+    ).fetchone()
+    assert principal_row is not None
+    principal_id = UUID(str(principal_row[0]))
     admin.execute(  # type: ignore[attr-defined]
         """
         INSERT INTO request_engine.identity_authorities (id, kind, issuer_or_environment)
