@@ -7,9 +7,10 @@ from request_engine.modules.tenancy.adapters.db.staff_membership_commands import
 
 
 def test_staff_authority_validation_accepts_only_canonical_tenant_control_keys() -> None:
-    assert _validate_tenant_control_capabilities(
-        ("staff.invite", "staff.manage_authority")
-    ) == ("staff.invite", "staff.manage_authority")
+    assert _validate_tenant_control_capabilities(("staff.invite", "staff.manage_authority")) == (
+        "staff.invite",
+        "staff.manage_authority",
+    )
 
     with pytest.raises(ValueError, match="not tenant-control"):
         _validate_tenant_control_capabilities(("appointments.cancel",))
