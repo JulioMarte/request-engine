@@ -11,7 +11,7 @@ pytestmark = [
     pytest.mark.security,
 ]
 
-_ROLE = "request_engine_platform_definer"
+_ROLE = "request_platform_definer"
 _APPLICATION_SCHEMAS = [
     "request_admin",
     "request_cmd",
@@ -47,6 +47,10 @@ def test_platform_definer_has_exact_role_elevation(admin_conn: PgConnection) -> 
     ).fetchone()
 
     assert row == (False, False, True, False, False, False, True, -1, None, False)
+
+
+def test_platform_definer_does_not_collide_with_accepted_baseline_role_namespace() -> None:
+    assert not _ROLE.startswith("request_engine_")
 
 
 def test_platform_definer_has_no_role_memberships(admin_conn: PgConnection) -> None:
