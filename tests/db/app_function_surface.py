@@ -50,6 +50,11 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "p_principal_id uuid)"
     ),
     (
+        "request_engine.invite_native_staff(p_membership_id uuid, p_principal_id uuid, "
+        "p_binding_id uuid, p_identity_authority_id uuid, p_native_identity_id uuid, "
+        "p_authority_anchor_party_id uuid, p_provenance_reference text)"
+    ),
+    (
         "request_engine.lock_current_party_authority(p_organization_id uuid, "
         "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
     ),
@@ -61,8 +66,17 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     ),
     "request_engine.read_discovery_booking_handoff(p_token_hash text)",
     (
+        "request_engine.replace_staff_authority(p_membership_id uuid, "
+        "p_expected_authority_revision bigint, p_desired_capabilities text[], "
+        "p_provenance_reference text)"
+    ),
+    (
         "request_engine.resolve_current_party_authority(p_organization_id uuid, "
         "p_principal_id uuid, p_represented_party_id uuid, p_scope_key text)"
+    ),
+    (
+        "request_engine.transition_staff_membership(p_membership_id uuid, "
+        "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),
     ("request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)"),
 }
