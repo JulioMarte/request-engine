@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,7 +18,7 @@ from request_engine.platform.security.native_session import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
-NOW = datetime(2026, 9, 8, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 8, tzinfo=UTC)
 
 
 class FakeSessionReader:
