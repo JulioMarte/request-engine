@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -88,7 +89,7 @@ class NativeSessionAuthenticator:
         self,
         *,
         session_reader: NativeSessionReader,
-        clock: callable[[], datetime] | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._session_reader = session_reader
         self._clock = clock or (lambda: datetime.now(timezone.utc))
