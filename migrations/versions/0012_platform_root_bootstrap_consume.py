@@ -19,9 +19,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _ROLE = "request_bootstrap_definer"
-_FUNCTION = (
-    "request_platform.establish_root(uuid, bytea, uuid, uuid, text, uuid, text, uuid, uuid)"
-)
+_FUNCTION = "request_platform.establish_root(uuid, bytea, uuid, uuid, text, uuid, text, uuid, uuid)"
 
 
 def upgrade() -> None:
@@ -63,10 +61,7 @@ def upgrade() -> None:
         """
     )
     op.execute(f"GRANT USAGE ON SCHEMA request_engine TO {_ROLE}")
-    op.execute(
-        "GRANT SELECT (id, kind, status) ON request_engine.identity_authorities "
-        f"TO {_ROLE}"
-    )
+    op.execute(f"GRANT SELECT (id, kind, status) ON request_engine.identity_authorities TO {_ROLE}")
     op.execute(
         "GRANT SELECT (id, token_digest, permitted_action, provenance_reference, status, "
         "expires_at), UPDATE (status, revision, consumed_at) "
@@ -240,8 +235,7 @@ def downgrade() -> None:
         f"ON request_engine.platform_bootstrap_intents FROM {_ROLE}"
     )
     op.execute(
-        "REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities "
-        f"FROM {_ROLE}"
+        f"REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities FROM {_ROLE}"
     )
     op.execute(f"REVOKE USAGE ON SCHEMA request_engine FROM {_ROLE}")
     # Cluster-global role is intentionally retained for another RE database.
