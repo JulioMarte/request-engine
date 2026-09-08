@@ -92,13 +92,14 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
-# Principal trust-root, standing authority and platform-control boundaries are
-# current product truth after the accepted baseline. Keep these migration-backed
-# security guarantees in the same PostgreSQL gate so 0002+ authority evolution
-# cannot ship with only incidental or manually-run coverage.
+# Principal trust-root, standing authority, identity bindings and platform-control
+# boundaries are current product truth after the accepted baseline. Keep these
+# migration-backed security guarantees in the same PostgreSQL gate so 0002+
+# authority/identity evolution cannot ship with only incidental coverage.
 uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
+  tests/db/test_identity_bindings.py \
   tests/db/test_platform_control_read_boundary.py \
   tests/db/test_platform_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
