@@ -24,10 +24,6 @@ _FUNCTION = (
 
 def upgrade() -> None:
     op.execute(
-        "GRANT SELECT (native_identity_id, kind, status) "
-        f"ON request_engine.native_credentials TO {_DEFINER_ROLE}"
-    )
-    op.execute(
         "GRANT INSERT (organization_id) "
         f"ON request_engine.principal_authority_grants TO {_DEFINER_ROLE}"
     )
@@ -142,24 +138,10 @@ def upgrade() -> None:
                 RETURN;
             END IF;
 
-            PERFORM 1
-              FROM request_engine.native_identities AS native_identity
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = native_identity.identity_authority_id
-             WHERE native_identity.id = p_native_identity_id
-               AND native_identity.identity_authority_id = p_identity_authority_id
-               AND native_identity.status = 'active'
-               AND authority.kind = 'native'
-               AND authority.status = 'active'
-               AND EXISTS (
-                   SELECT 1
-                     FROM request_engine.native_credentials AS credential
-                    WHERE credential.native_identity_id = native_identity.id
-                      AND credential.kind = 'password'
-                      AND credential.status = 'active'
-               )
-             FOR KEY SHARE OF native_identity, authority;
-            IF NOT FOUND THEN
+            IF NOT request_auth.lock_credentialed_native_identity(
+                p_identity_authority_id,
+                p_native_identity_id
+            ) THEN
                 RAISE EXCEPTION
                     'First tenant controller requires an active credentialed Native identity'
                     USING ERRCODE = '23514';
@@ -265,8 +247,4 @@ def downgrade() -> None:
     op.execute(
         "REVOKE INSERT (organization_id) "
         f"ON request_engine.principal_authority_grants FROM {_DEFINER_ROLE}"
-    )
-    op.execute(
-        "REVOKE SELECT (native_identity_id, kind, status) "
-        f"ON request_engine.native_credentials FROM {_DEFINER_ROLE}"
     )
