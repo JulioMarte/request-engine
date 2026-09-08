@@ -21,6 +21,7 @@ class InviteNativeStaffCommand:
     native_identity_id: UUID
     authority_anchor_party_id: UUID
     provenance_reference: str
+    idempotency_key: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,7 @@ class ReplaceStaffAuthorityCommand:
     expected_authority_revision: int
     desired_capabilities: tuple[str, ...]
     provenance_reference: str
+    idempotency_key: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,7 @@ class TransitionStaffMembershipCommand:
     expected_revision: int
     target_status: StaffMembershipTargetStatus
     provenance_reference: str
+    idempotency_key: str
 
 
 class StaffMembershipCommands(Protocol):

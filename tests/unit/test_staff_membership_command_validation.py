@@ -45,6 +45,7 @@ async def test_staff_authority_rejects_non_tenant_control_and_noncanonical_keys(
                     expected_authority_revision=1,
                     desired_capabilities=capabilities,
                     provenance_reference="staff-authority:test",
+                    idempotency_key="authority-test",
                 ),
             )
 
@@ -66,5 +67,6 @@ async def test_staff_invitation_rejects_invalid_provenance_before_db_access() ->
                     native_identity_id=uuid4(),
                     authority_anchor_party_id=uuid4(),
                     provenance_reference=provenance,
+                    idempotency_key="invite-test",
                 ),
             )
