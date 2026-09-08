@@ -180,7 +180,7 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     )
 
     assert admin_conn.execute(
-        "SELECT legal_name FROM request_engine.organizations WHERE id = %s",
+        "SELECT display_name FROM request_engine.organizations WHERE id = %s",
         (organization_id,),
     ).fetchone() == ("Native Tenant",)
     assert admin_conn.execute(
