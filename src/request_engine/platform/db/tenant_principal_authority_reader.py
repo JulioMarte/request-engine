@@ -9,8 +9,8 @@ from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.capability_types import AuthorityPlane
 from request_engine.platform.security.principal_authority import (
     PrincipalAuthorityMaterializationError,
-    PrincipalAuthoritySnapshot,
     PrincipalAuthorityReader,
+    PrincipalAuthoritySnapshot,
 )
 
 
