@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, TypeGuard
 from uuid import UUID, uuid4
@@ -70,7 +71,7 @@ class NativeSessionIssued:
     native_identity_id: UUID
     credential_id: UUID
     session_id: UUID
-    raw_token: str
+    raw_token: str = field(repr=False)
     expires_at: datetime
 
 
@@ -78,7 +79,7 @@ class NativeSessionIssued:
 class NativeRecoveryIssued:
     native_identity_id: UUID
     recovery_id: UUID
-    raw_token: str
+    raw_token: str = field(repr=False)
     expires_at: datetime
 
 
@@ -149,8 +150,8 @@ class NativeHumanAuthStore(Protocol):
 class NativeHumanAuthService:
     """Own providerless HUMAN credential/session semantics without business authority.
 
-    Raw passwords and opaque tokens never cross the store boundary. The service
-    emits Authenticator-compatible session material; Principal authority is
+    Raw passwords and opaque tokens never cross the store boundary. Password
+    hashing/verification is moved off the event loop. Principal authority is
     resolved independently for every protected request.
     """
 
@@ -181,7 +182,7 @@ class NativeHumanAuthService:
         normalized = normalize_login_handle(login_handle)
         native_identity_id = uuid4()
         credential_id = uuid4()
-        verifier = hash_password(password)
+        verifier = await asyncio.to_thread(hash_password, password)
         created = await self._store.create_identity(
             identity_authority_id=identity_authority_id,
             native_identity_id=native_identity_id,
@@ -208,9 +209,9 @@ class NativeHumanAuthService:
             identity_authority_id=identity_authority_id,
             login_handle=normalize_login_handle(login_handle),
         )
-        if not _credential_is_usable(snapshot) or not verify_password(
-            password, snapshot.verifier
-        ):
+        if not _credential_is_usable(snapshot):
+            raise CredentialInvalid("native credential is invalid")
+        if not await asyncio.to_thread(verify_password, password, snapshot.verifier):
             raise CredentialInvalid("native credential is invalid")
 
         token = issue_opaque_token()
@@ -224,7 +225,6 @@ class NativeHumanAuthService:
             expires_at=expires_at,
         )
         if not created:
-            # The credential may have been revoked/rotated after password verification.
             raise CredentialInvalid("native credential is no longer usable")
         return NativeSessionIssued(
             native_identity_id=snapshot.native_identity_id,
@@ -265,17 +265,18 @@ class NativeHumanAuthService:
             identity_authority_id=identity_authority_id,
             login_handle=normalize_login_handle(login_handle),
         )
-        if not _credential_is_usable(snapshot) or not verify_password(
-            current_password, snapshot.verifier
-        ):
+        if not _credential_is_usable(snapshot):
+            raise CredentialInvalid("native credential is invalid")
+        if not await asyncio.to_thread(verify_password, current_password, snapshot.verifier):
             raise CredentialInvalid("native credential is invalid")
 
         new_credential_id = uuid4()
+        new_verifier = await asyncio.to_thread(hash_password, new_password)
         rotated = await self._store.rotate_password(
             native_identity_id=snapshot.native_identity_id,
             expected_credential_id=snapshot.credential_id,
             new_credential_id=new_credential_id,
-            new_verifier=hash_password(new_password),
+            new_verifier=new_verifier,
             reason="credential_rotation",
         )
         if not rotated:
@@ -303,8 +304,6 @@ class NativeHumanAuthService:
             login_handle=normalize_login_handle(login_handle),
         )
         if not _credential_is_usable(snapshot):
-            # Public recovery callers can return a generic accepted response and
-            # avoid turning this method into an account-enumeration oracle.
             return None
         token = issue_opaque_token()
         expires_at = self._now() + self._recovery_ttl
@@ -326,11 +325,12 @@ class NativeHumanAuthService:
 
     async def consume_recovery(self, *, raw_token: str, new_password: str) -> UUID:
         parsed = parse_opaque_token(raw_token)
+        new_verifier = await asyncio.to_thread(hash_password, new_password)
         native_identity_id = await self._store.consume_recovery_intent(
             recovery_id=parsed.token_id,
             token_digest=digest_opaque_secret(parsed.secret),
             new_credential_id=uuid4(),
-            new_verifier=hash_password(new_password),
+            new_verifier=new_verifier,
         )
         if native_identity_id is None:
             raise RecoveryIntentInvalid("recovery intent is invalid, expired, or already consumed")
