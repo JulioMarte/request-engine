@@ -58,6 +58,33 @@ def upgrade() -> None:
                AND i.login_handle = p_login_handle
         $$;
 
+        CREATE FUNCTION request_auth.lock_credentialed_native_identity(
+            p_identity_authority_id uuid,
+            p_native_identity_id uuid
+        ) RETURNS boolean
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        SET search_path TO 'pg_catalog', 'request_engine'
+        AS $$
+        BEGIN
+            PERFORM 1
+              FROM request_engine.native_identities AS native_identity
+              JOIN request_engine.identity_authorities AS authority
+                ON authority.id = native_identity.identity_authority_id
+              JOIN request_engine.native_credentials AS credential
+                ON credential.native_identity_id = native_identity.id
+               AND credential.kind = 'password'
+               AND credential.status = 'active'
+             WHERE native_identity.id = p_native_identity_id
+               AND native_identity.identity_authority_id = p_identity_authority_id
+               AND native_identity.status = 'active'
+               AND authority.kind = 'native'
+               AND authority.status = 'active'
+             FOR SHARE OF native_identity, authority, credential;
+            RETURN FOUND;
+        END
+        $$;
+
         CREATE FUNCTION request_auth.create_native_identity(
             p_identity_authority_id uuid,
             p_native_identity_id uuid,
@@ -466,7 +493,7 @@ def upgrade() -> None:
         $$;
         """
     )
-    signatures = (
+    runtime_signatures = (
         "read_native_password_credential(uuid, text)",
         "create_native_identity(uuid, uuid, text, uuid, text)",
         "create_native_session(uuid, uuid, uuid, bytea, text, timestamptz)",
@@ -478,14 +505,21 @@ def upgrade() -> None:
         "consume_native_recovery_intent(uuid, bytea, uuid, text)",
         "read_platform_identity_bindings(uuid, text)",
     )
-    for signature in signatures:
+    for signature in runtime_signatures:
         op.execute(f"ALTER FUNCTION request_auth.{signature} OWNER TO request_engine_schema_owner")
         op.execute(f"REVOKE ALL ON FUNCTION request_auth.{signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION request_auth.{signature} TO request_engine_app")
 
+    commitment_signature = "lock_credentialed_native_identity(uuid, uuid)"
+    op.execute(
+        f"ALTER FUNCTION request_auth.{commitment_signature} OWNER TO request_engine_schema_owner"
+    )
+    op.execute(f"REVOKE ALL ON FUNCTION request_auth.{commitment_signature} FROM PUBLIC")
+
 
 def downgrade() -> None:
     signatures = (
+        "lock_credentialed_native_identity(uuid, uuid)",
         "read_platform_identity_bindings(uuid, text)",
         "consume_native_recovery_intent(uuid, bytea, uuid, text)",
         "create_native_recovery_intent(uuid, uuid, bytea, text, timestamptz)",
