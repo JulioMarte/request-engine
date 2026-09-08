@@ -82,14 +82,17 @@ def test_platform_control_definer_has_only_reviewed_columns(
         for table, column, privilege in rows
     }
     assert actual == _EXPECTED_COLUMNS
-    assert admin_conn.execute(
-        """
-        SELECT table_name, privilege_type
-          FROM information_schema.role_table_grants
-         WHERE grantee = %s AND table_schema = 'request_engine'
-        """,
-        (_DEFINER,),
-    ).fetchall() == []
+    assert (
+        admin_conn.execute(
+            """
+            SELECT table_name, privilege_type
+              FROM information_schema.role_table_grants
+             WHERE grantee = %s AND table_schema = 'request_engine'
+            """,
+            (_DEFINER,),
+        ).fetchall()
+        == []
+    )
 
 
 def test_only_platform_control_runtime_can_execute_command(
