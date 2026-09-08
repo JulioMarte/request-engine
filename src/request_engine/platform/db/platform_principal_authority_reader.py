@@ -79,4 +79,18 @@ class PostgresPlatformPrincipalAuthorityReader:
                 .mappings()
                 .all()
             )
-        return materialize_platform_authority(principal_id=principal_id, rows=rows)
+
+        normalized_rows: list[dict[str, Any]] = [
+            {
+                "principal_kind": row["principal_kind"],
+                "active": row["active"],
+                "authority_revision": row["authority_revision"],
+                "capability_key": row["capability_key"],
+                "delegable": row["delegable"],
+            }
+            for row in rows
+        ]
+        return materialize_platform_authority(
+            principal_id=principal_id,
+            rows=normalized_rows,
+        )
