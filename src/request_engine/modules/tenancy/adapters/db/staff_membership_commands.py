@@ -14,6 +14,7 @@ from request_engine.modules.tenancy.application.errors import (
     StaffMembershipConflict,
     StaffMembershipForbidden,
     StaffMembershipInputInvalid,
+    StaffMembershipNotFound,
     StaffMembershipRevisionConflict,
 )
 from request_engine.platform.db.session import SessionFactory, actor_transaction
@@ -71,14 +72,14 @@ def _raise_staff_db_error(exc: DBAPIError) -> NoReturn:
     sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
     if sqlstate in {"28000", "42501"}:
         raise StaffMembershipForbidden("staff lifecycle authority was denied") from exc
+    if sqlstate == "P0002":
+        raise StaffMembershipNotFound("staff membership is not visible in this tenant") from exc
     if sqlstate == "40001":
         raise StaffMembershipRevisionConflict("staff lifecycle revision is stale") from exc
-    if sqlstate == "23505":
+    if sqlstate in {"23505", "23514", "55000"}:
         raise StaffMembershipConflict("staff lifecycle state conflicts with this request") from exc
-    if sqlstate in {"22023", "23514"}:
-        raise StaffMembershipInputInvalid(
-            "staff lifecycle invariant rejected this request"
-        ) from exc
+    if sqlstate == "22023":
+        raise StaffMembershipInputInvalid("staff lifecycle input was rejected") from exc
     raise exc
 
 

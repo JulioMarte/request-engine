@@ -145,6 +145,10 @@ class StaffMembershipForbidden(StaffMembershipError):
     """The current actor may not perform the requested Staff lifecycle operation."""
 
 
+class StaffMembershipNotFound(StaffMembershipError):
+    """No Staff membership is visible in the current tenant for the supplied identifier."""
+
+
 class StaffMembershipRevisionConflict(StaffMembershipError):
     """The requested Staff or authority revision is stale."""
 
@@ -154,4 +158,4 @@ class StaffMembershipConflict(StaffMembershipError):
 
 
 class StaffMembershipInputInvalid(StaffMembershipError):
-    """The requested Staff lifecycle mutation violates an invariant or input contract."""
+    """The requested Staff lifecycle mutation violates an input contract."""
