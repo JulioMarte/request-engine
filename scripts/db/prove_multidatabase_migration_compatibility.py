@@ -75,9 +75,7 @@ def main() -> None:
                 """
             ).fetchone()
             if definer_owner != ("request_platform_definer",):
-                raise RuntimeError(
-                    "second database did not reuse the audited platform definer"
-                )
+                raise RuntimeError("second database did not reuse the audited platform definer")
     finally:
         with psycopg.connect(admin_conninfo, autocommit=True) as admin:
             admin.execute(
