@@ -17,6 +17,7 @@ _EXPECTED_COLUMNS = {
     ("platform_bootstrap_intents", "provenance_reference", "SELECT"),
     ("platform_bootstrap_intents", "status", "SELECT"),
     ("platform_bootstrap_intents", "expires_at", "SELECT"),
+    ("platform_bootstrap_intents", "revision", "SELECT"),
     ("platform_bootstrap_intents", "status", "UPDATE"),
     ("platform_bootstrap_intents", "revision", "UPDATE"),
     ("platform_bootstrap_intents", "consumed_at", "UPDATE"),
