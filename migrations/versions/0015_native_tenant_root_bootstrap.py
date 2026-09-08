@@ -60,8 +60,7 @@ def upgrade() -> None:
         f"ON request_engine.native_identities TO {_DEFINER_ROLE}"
     )
     op.execute(
-        "GRANT SELECT (id, kind, status) "
-        f"ON request_engine.identity_authorities TO {_DEFINER_ROLE}"
+        f"GRANT SELECT (id, kind, status) ON request_engine.identity_authorities TO {_DEFINER_ROLE}"
     )
     op.execute(
         "GRANT INSERT (id, organization_id, party_kind, display_name, "
