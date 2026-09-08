@@ -26,9 +26,9 @@ class PostgresPlatformTenantProvisionerWriter:
     """Persist the specialized A->B platform provisioning transition.
 
     The supplied SessionFactory must connect through the dedicated
-    request_engine_platform_control runtime role. The creator Principal is not a
-    SQL argument; it is bound from the trusted PlatformActorContext and re-read
-    by PostgreSQL together with its current authority revision and grants.
+    request_platform_control runtime role. The creator Principal is not a SQL
+    argument; it is bound from the trusted PlatformActorContext and re-read by
+    PostgreSQL together with its current authority revision and grants.
     """
 
     def __init__(self, session_factory: SessionFactory) -> None:
