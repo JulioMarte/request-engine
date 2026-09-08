@@ -247,8 +247,7 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     assert scopes == [(scope,) for scope in _OPERATIONAL_SCOPES]
 
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.principals "
-        "WHERE organization_id = %s AND id = %s",
+        "SELECT count(*) FROM request_engine.principals WHERE organization_id = %s AND id = %s",
         (organization_id, provisioner),
     ).fetchone() == (0,)
     assert admin_conn.execute(
