@@ -5,7 +5,11 @@ from uuid import UUID
 from fastapi import Request
 
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.identity_resolution import IdentityPrincipalResolver
+from request_engine.platform.security.http import AuthenticationRequired
+from request_engine.platform.security.identity_resolution import (
+    IdentityPrincipalResolver,
+    TenantContextRequired,
+)
 from request_engine.platform.security.native_auth import parse_opaque_token
 from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
@@ -17,11 +21,7 @@ ORGANIZATION_HEADER = "X-RE-Organization-ID"
 _NATIVE_AUTHENTICATION_METHOD = "native_session"
 
 
-class AuthenticationRequired(RuntimeError):
-    pass
-
-
-class TenantContextInvalid(RuntimeError):
+class TenantContextInvalid(ValueError):
     pass
 
 
@@ -42,7 +42,7 @@ class NativeSessionHttpActorResolver:
         self._authenticator = authenticator
         self._principal_resolver = principal_resolver
 
-    async def __call__(self, request: Request) -> ActorContext:
+    async def resolve_actor(self, request: Request) -> ActorContext:
         raw_token = bearer_token(request)
         organization_id = tenant_context(request)
         parsed = parse_opaque_token(raw_token)
@@ -60,17 +60,18 @@ def bearer_token(request: Request) -> str:
     if value is None:
         raise AuthenticationRequired("Bearer authentication is required")
     scheme, separator, credential = value.partition(" ")
-    if separator != " " or scheme.casefold() != "bearer" or not credential.strip():
+    normalized = credential.strip()
+    if separator != " " or scheme.casefold() != "bearer" or not normalized:
         raise AuthenticationRequired("Bearer authentication is required")
-    if " " in credential.strip():
+    if " " in normalized:
         raise AuthenticationRequired("Bearer credential is malformed")
-    return credential.strip()
+    return normalized
 
 
 def tenant_context(request: Request) -> UUID:
     value = request.headers.get(ORGANIZATION_HEADER)
     if value is None or not value.strip():
-        raise TenantContextInvalid(f"{ORGANIZATION_HEADER} is required")
+        raise TenantContextRequired(f"{ORGANIZATION_HEADER} is required")
     try:
         return UUID(value.strip())
     except ValueError as exc:
