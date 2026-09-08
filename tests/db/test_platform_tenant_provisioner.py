@@ -113,9 +113,7 @@ def test_platform_controller_creates_bounded_tenant_provisioner(
         """,
         (provisioner,),
     ).fetchall()
-    assert grants == [
-        ("platform", "organization.provision", False, creator, "provisioning")
-    ]
+    assert grants == [("platform", "organization.provision", False, creator, "provisioning")]
 
 
 def test_tenant_provisioner_requires_current_delegable_organization_authority(
