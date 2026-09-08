@@ -209,6 +209,21 @@ def test_binding_state_changes_invalidate_principal_authority_but_last_seen_does
         (principal_id,),
     ).fetchone() == (2,)
 
+    with pytest.raises(Error) as last_seen_regression:
+        admin_conn.execute(
+            """
+            UPDATE request_engine.identity_bindings
+               SET status = 'suspended', revision = revision + 1, last_seen_at = created_at
+             WHERE id = %s
+            """,
+            (binding_id,),
+        )
+    assert last_seen_regression.value.sqlstate == "55000"
+    assert admin_conn.execute(
+        "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
+        (principal_id,),
+    ).fetchone() == (2,)
+
     admin_conn.execute(
         """
         UPDATE request_engine.identity_bindings
