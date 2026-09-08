@@ -35,10 +35,15 @@ async def native_authentication_error_handler(_: Request, exc: Exception) -> JSO
 async def tenant_context_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, (TenantContextRequired, TenantContextInvalid)):
         raise exc
+    code = (
+        "tenant_context_required"
+        if isinstance(exc, TenantContextRequired)
+        else "tenant_context_invalid"
+    )
     return render_error_response(
         status.HTTP_400_BAD_REQUEST,
         ErrorBody(
-            code=("tenant_context_required" if isinstance(exc, TenantContextRequired) else "tenant_context_invalid"),
+            code=code,
             message=str(exc),
             resolution=ErrorResolution.FIX_REQUEST,
             retryable=False,
