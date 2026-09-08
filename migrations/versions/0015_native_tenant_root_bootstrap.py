@@ -26,6 +26,7 @@ _FUNCTION = (
     "request_platform.provision_native_organization_root(uuid, text, text, uuid, uuid, "
     "uuid, uuid, text)"
 )
+_AUTH_LOCK_FUNCTION = "request_auth.lock_credentialed_native_identity(uuid, uuid)"
 
 
 def upgrade() -> None:
@@ -56,12 +57,10 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "GRANT SELECT (id, identity_authority_id, status) "
-        f"ON request_engine.native_identities TO {_DEFINER_ROLE}"
-    )
-    op.execute(
         f"GRANT SELECT (id, kind, status) ON request_engine.identity_authorities TO {_DEFINER_ROLE}"
     )
+    op.execute(f"GRANT USAGE ON SCHEMA request_auth TO {_DEFINER_ROLE}")
+    op.execute(f"GRANT EXECUTE ON FUNCTION {_AUTH_LOCK_FUNCTION} TO {_DEFINER_ROLE}")
     op.execute(
         "GRANT INSERT (id, organization_id, party_kind, display_name, "
         "created_by_principal_id, source_kind, platform) "
@@ -188,17 +187,10 @@ def upgrade() -> None:
                 RETURN;
             END IF;
 
-            PERFORM 1
-              FROM request_engine.native_identities AS native_identity
-              JOIN request_engine.identity_authorities AS authority
-                ON authority.id = native_identity.identity_authority_id
-             WHERE native_identity.id = p_native_identity_id
-               AND native_identity.identity_authority_id = p_identity_authority_id
-               AND native_identity.status = 'active'
-               AND authority.kind = 'native'
-               AND authority.status = 'active'
-             FOR KEY SHARE OF native_identity, authority;
-            IF NOT FOUND THEN
+            IF NOT request_auth.lock_credentialed_native_identity(
+                p_identity_authority_id,
+                p_native_identity_id
+            ) THEN
                 RAISE EXCEPTION 'First tenant controller requires an active Native identity'
                     USING ERRCODE = '23514';
             END IF;
@@ -309,13 +301,11 @@ def downgrade() -> None:
         "created_by_principal_id, source_kind, platform) "
         f"ON request_engine.parties FROM {_DEFINER_ROLE}"
     )
+    op.execute(f"REVOKE EXECUTE ON FUNCTION {_AUTH_LOCK_FUNCTION} FROM {_DEFINER_ROLE}")
+    op.execute(f"REVOKE USAGE ON SCHEMA request_auth FROM {_DEFINER_ROLE}")
     op.execute(
         "REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities "
         f"FROM {_DEFINER_ROLE}"
-    )
-    op.execute(
-        "REVOKE SELECT (id, identity_authority_id, status) "
-        f"ON request_engine.native_identities FROM {_DEFINER_ROLE}"
     )
     op.execute("DROP TABLE request_engine.organization_root_provisioning_facts")
     # The incomplete 0014 function is intentionally not restored on downgrade.
