@@ -1,4 +1,4 @@
-from typing import Protocol, runtime_checkable
+from typing import NoReturn, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -67,7 +67,7 @@ def _require_human_actor(actor: ActorContext) -> None:
         raise StaffMembershipForbidden("staff membership administration requires a HUMAN actor")
 
 
-def _raise_staff_db_error(exc: DBAPIError) -> None:
+def _raise_staff_db_error(exc: DBAPIError) -> NoReturn:
     sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
     if sqlstate in {"28000", "42501"}:
         raise StaffMembershipForbidden("staff lifecycle authority was denied") from exc
