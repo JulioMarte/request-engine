@@ -51,13 +51,15 @@ def _grant(
     principal_plane: str,
     authority_plane: str,
     capability_key: str,
+    grantor_id: UUID | None = None,
 ) -> None:
+    provenance_kind = "trust_bootstrap" if principal_plane == "platform" else "provisioning"
     conn.execute(
         """
         INSERT INTO request_engine.principal_authority_grants (
             organization_id, principal_id, principal_plane, authority_plane,
-            capability_key, provenance_kind, provenance_reference
-        ) VALUES (%s, %s, %s, %s, %s, 'trust_bootstrap', %s)
+            capability_key, granted_by_principal_id, provenance_kind, provenance_reference
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             organization_id,
@@ -65,6 +67,8 @@ def _grant(
             principal_plane,
             authority_plane,
             capability_key,
+            grantor_id,
+            provenance_kind,
             f"proof:{uuid4().hex}",
         ),
     )
@@ -130,6 +134,15 @@ def test_platform_read_boundary_cannot_cross_into_tenant_authority(
 ) -> None:
     organization_id = _organization(admin_conn)
     tenant_id = _principal(admin_conn, organization_id)
+    platform_grantor_id = _principal(admin_conn, None)
+    _grant(
+        admin_conn,
+        principal_id=platform_grantor_id,
+        organization_id=None,
+        principal_plane="platform",
+        authority_plane="platform",
+        capability_key="organization.provision",
+    )
     _grant(
         admin_conn,
         principal_id=tenant_id,
@@ -137,6 +150,7 @@ def test_platform_read_boundary_cannot_cross_into_tenant_authority(
         principal_plane="tenant",
         authority_plane="tenant_control",
         capability_key="staff.manage_authority",
+        grantor_id=platform_grantor_id,
     )
     role_name = _create_boundary_test_role(admin_conn)
 
