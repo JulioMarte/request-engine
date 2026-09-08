@@ -19,7 +19,7 @@ down_revision: str | Sequence[str] | None = "0012_platform_root_consume"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_RUNTIME_ROLE = "request_engine_platform_control"
+_RUNTIME_ROLE = "request_platform_control"
 _DEFINER_ROLE = "request_platform_control_definer"
 _FUNCTION = "request_platform.provision_tenant_provisioner(uuid, text, text)"
 
