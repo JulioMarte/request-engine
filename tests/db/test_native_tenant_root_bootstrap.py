@@ -185,11 +185,11 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     ).fetchone() == ("Native Tenant",)
     assert admin_conn.execute(
         """
-        SELECT party_kind, display_name, status, created_by_principal_id
+        SELECT party_kind, display_name, active, created_by_principal_id
           FROM request_engine.parties WHERE id = %s
         """,
         (party_id,),
-    ).fetchone() == ("organization", "Native Tenant", "active", None)
+    ).fetchone() == ("organization", "Native Tenant", True, None)
     revision = admin_conn.execute(
         """
         SELECT revision, change_kind, actor_principal_id, attributed_operator_principal_id
