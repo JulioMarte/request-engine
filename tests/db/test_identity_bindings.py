@@ -197,7 +197,11 @@ def test_binding_state_changes_invalidate_principal_authority_but_last_seen_does
     ).fetchone() == (2,)
 
     admin_conn.execute(
-        "UPDATE request_engine.identity_bindings SET last_seen_at = clock_timestamp() WHERE id = %s",
+        """
+        UPDATE request_engine.identity_bindings
+           SET last_seen_at = clock_timestamp()
+         WHERE id = %s
+        """,
         (binding_id,),
     )
     assert admin_conn.execute(
