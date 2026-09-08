@@ -187,19 +187,51 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     binding_id = created[3]
 
     assert admin_conn.execute(
-        "SELECT organization_id, party_kind, display_name, active "
-        "FROM request_engine.parties WHERE id = %s",
+        """
+        SELECT organization_id, party_kind, display_name, active,
+               created_by_principal_id, source_kind, platform
+          FROM request_engine.parties WHERE id = %s
+        """,
         (party_id,),
-    ).fetchone() == (organization_id, "organization", "Atomic Tenant", True)
+    ).fetchone() == (
+        organization_id,
+        "organization",
+        "Atomic Tenant",
+        True,
+        None,
+        None,
+        None,
+    )
     ledger = admin_conn.execute(
         """
-        SELECT revision, change_kind, display_name, active, source_kind, platform
+        SELECT revision, change_kind, display_name, active,
+               actor_principal_id, attributed_operator_principal_id, source_kind, platform
           FROM request_engine.party_identity_revisions
          WHERE organization_id = %s AND party_id = %s
         """,
         (organization_id, party_id),
     ).fetchall()
-    assert ledger == [(1, "registered", "Atomic Tenant", True, "operator", "request_engine")]
+    assert ledger == [(1, "registered", "Atomic Tenant", True, None, None, None, None)]
+
+    provisioning_fact = admin_conn.execute(
+        """
+        SELECT provisioned_by_principal_id, provenance_reference
+          FROM request_engine.organization_provisioning_facts
+         WHERE organization_id = %s
+        """,
+        (organization_id,),
+    ).fetchone()
+    assert provisioning_fact == (provisioner, provenance)
+    root_fact = admin_conn.execute(
+        """
+        SELECT organization_party_id, controller_principal_id,
+               provisioned_by_principal_id, provenance_reference
+          FROM request_engine.organization_root_provisioning_facts
+         WHERE organization_id = %s
+        """,
+        (organization_id,),
+    ).fetchone()
+    assert root_fact == (party_id, controller_id, provisioner, provenance)
 
     assert admin_conn.execute(
         """
