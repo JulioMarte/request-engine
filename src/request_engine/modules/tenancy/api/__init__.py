@@ -21,6 +21,9 @@ from request_engine.modules.tenancy.adapters.db.principal_authority_reader impor
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
 )
+from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
+    PostgresStaffMembershipCommands,
+)
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
@@ -30,6 +33,9 @@ from request_engine.modules.tenancy.api.operational_router import create_operati
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.application.commands.staff_membership import (
+    StaffMembershipCommands,
+)
 from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
 from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
@@ -66,6 +72,12 @@ def build_principal_authority_reader(session_factory: SessionFactory) -> Princip
     """Compose the RE-owned Principal authority reader behind the tenancy API surface."""
 
     return PostgresPrincipalAuthorityReader(session_factory)
+
+
+def build_staff_membership_commands(session_factory: SessionFactory) -> StaffMembershipCommands:
+    """Compose the tenant-owned Staff lifecycle writer behind the module API surface."""
+
+    return PostgresStaffMembershipCommands(session_factory)
 
 
 def install_http(
