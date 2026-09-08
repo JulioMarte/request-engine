@@ -92,14 +92,14 @@ def main() -> None:
                 SELECT rolname, rolcanlogin, rolsuper, rolbypassrls
                   FROM pg_roles
                  WHERE rolname IN (
-                     'request_engine_platform_control',
+                     'request_platform_control',
                      'request_platform_control_definer'
                  )
                  ORDER BY rolname
                 """
             ).fetchall()
             if roles != [
-                ("request_engine_platform_control", False, False, False),
+                ("request_platform_control", False, False, False),
                 ("request_platform_control_definer", False, False, True),
             ]:
                 raise RuntimeError(f"second database platform role topology mismatch: {roles!r}")
