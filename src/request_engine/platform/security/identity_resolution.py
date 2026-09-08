@@ -80,7 +80,17 @@ class IdentityBindingSnapshot:
 
 
 class IdentityBindingReader(Protocol):
-    async def read_subject_bindings(
+    """Plane-scoped reads; implementations must not enumerate cross-tenant bindings."""
+
+    async def read_tenant_subject_bindings(
+        self,
+        *,
+        identity_authority_id: UUID,
+        subject_id: str,
+        organization_id: UUID,
+    ) -> tuple[IdentityBindingSnapshot, ...]: ...
+
+    async def read_platform_subject_bindings(
         self, *, identity_authority_id: UUID, subject_id: str
     ) -> tuple[IdentityBindingSnapshot, ...]: ...
 
@@ -88,8 +98,9 @@ class IdentityBindingReader(Protocol):
 class IdentityPrincipalResolver:
     """Resolve a provider-neutral subject to current RE-owned authority.
 
-    The caller may select tenant context only through the trusted routing/session
-    layer. Principal ids and capabilities are never accepted as inputs.
+    Tenant selection happens before binding lookup so PostgreSQL RLS remains a
+    trust boundary rather than a post-query filter. Principal ids and
+    capabilities are never accepted as inputs.
     """
 
     def __init__(
@@ -115,26 +126,24 @@ class IdentityPrincipalResolver:
     ) -> ActorContext:
         if organization_id is None:
             raise TenantContextRequired("tenant routes require explicit tenant context")
-        bindings = await self._bindings_for(subject)
-        tenant_matches = tuple(
-            binding
-            for binding in bindings
-            if binding.principal_plane is IdentityBindingPlane.TENANT
-            and binding.organization_id == organization_id
+        authority_id = _authority_id(subject)
+        bindings = await self._binding_reader.read_tenant_subject_bindings(
+            identity_authority_id=authority_id,
+            subject_id=subject.subject_id,
+            organization_id=organization_id,
         )
-        binding = _select_binding(tenant_matches)
+        binding = _select_binding(bindings)
         authority = await self._tenant_authority_reader.read_tenant_principal_authority(
             organization_id=organization_id,
             principal_id=binding.principal_id,
         )
         if authority is None:
             raise PrincipalProvisioningRequired("bound tenant Principal is not currently usable")
-        principal_kind = _principal_kind(authority)
         return ActorContext(
             organization_id=organization_id,
             principal_id=binding.principal_id,
             capabilities=authority.capabilities,
-            principal_kind=principal_kind,
+            principal_kind=_principal_kind(authority),
             authentication_method=authentication_method,
             credential_id=credential_id,
             technical_principal_id=technical_principal_id,
@@ -151,41 +160,34 @@ class IdentityPrincipalResolver:
         technical_principal_id: UUID | None = None,
         interaction_id: str | None = None,
     ) -> PlatformActorContext:
-        bindings = await self._bindings_for(subject)
-        platform_matches = tuple(
-            binding
-            for binding in bindings
-            if binding.principal_plane is IdentityBindingPlane.PLATFORM
+        authority_id = _authority_id(subject)
+        bindings = await self._binding_reader.read_platform_subject_bindings(
+            identity_authority_id=authority_id,
+            subject_id=subject.subject_id,
         )
-        binding = _select_binding(platform_matches)
+        binding = _select_binding(bindings)
         authority = await self._platform_authority_reader.read_platform_principal_authority(
             principal_id=binding.principal_id
         )
         if authority is None:
             raise PrincipalProvisioningRequired("bound platform Principal is not currently usable")
-        principal_kind = _principal_kind(authority)
         return PlatformActorContext(
             principal_id=binding.principal_id,
             capabilities=authority.capabilities,
             authority_revision=authority.authority_revision,
-            principal_kind=principal_kind,
+            principal_kind=_principal_kind(authority),
             authentication_method=authentication_method,
             credential_id=credential_id,
             technical_principal_id=technical_principal_id,
             interaction_id=interaction_id,
         )
 
-    async def _bindings_for(
-        self, subject: AuthenticatedSubject
-    ) -> tuple[IdentityBindingSnapshot, ...]:
-        try:
-            authority_id = UUID(subject.authority_id)
-        except ValueError as exc:
-            raise IdentityNotBound("authentication authority is not RE-addressable") from exc
-        return await self._binding_reader.read_subject_bindings(
-            identity_authority_id=authority_id,
-            subject_id=subject.subject_id,
-        )
+
+def _authority_id(subject: AuthenticatedSubject) -> UUID:
+    try:
+        return UUID(subject.authority_id)
+    except ValueError as exc:
+        raise IdentityNotBound("authentication authority is not RE-addressable") from exc
 
 
 def _select_binding(bindings: tuple[IdentityBindingSnapshot, ...]) -> IdentityBindingSnapshot:
