@@ -4,7 +4,7 @@ import base64
 import hashlib
 import hmac
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 from request_engine.platform.security.authentication import (
@@ -44,7 +44,7 @@ class OpaqueTokenMaterial:
     """One-time raw token plus persistence-safe verification material."""
 
     token_id: UUID
-    raw_token: str
+    raw_token: str = field(repr=False)
     digest: bytes
     fingerprint: str
 
@@ -52,7 +52,7 @@ class OpaqueTokenMaterial:
 @dataclass(frozen=True, slots=True)
 class ParsedOpaqueToken:
     token_id: UUID
-    secret: str
+    secret: str = field(repr=False)
 
 
 def normalize_login_handle(value: str) -> str:
