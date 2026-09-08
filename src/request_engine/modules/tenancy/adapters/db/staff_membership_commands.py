@@ -76,7 +76,9 @@ def _raise_staff_db_error(exc: DBAPIError) -> NoReturn:
     if sqlstate == "23505":
         raise StaffMembershipConflict("staff lifecycle state conflicts with this request") from exc
     if sqlstate in {"22023", "23514"}:
-        raise StaffMembershipInputInvalid("staff lifecycle invariant rejected this request") from exc
+        raise StaffMembershipInputInvalid(
+            "staff lifecycle invariant rejected this request"
+        ) from exc
     raise exc
 
 
