@@ -1,4 +1,10 @@
-from .http_surface import PROBE_UUID, PROBE_UUID_2, HttpProbe, PublicHttpOperation, TenantIsolationMode
+from .http_surface import (
+    PROBE_UUID,
+    PROBE_UUID_2,
+    HttpProbe,
+    PublicHttpOperation,
+    TenantIsolationMode,
+)
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
