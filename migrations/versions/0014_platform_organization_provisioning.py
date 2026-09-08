@@ -1,6 +1,6 @@
 """Create Organizations without implicit tenant authority.
 
-Revision ID: 0014_platform_organization_provision
+Revision ID: 0014_org_provisioning
 Revises: 0013_platform_tenant_provisioner
 Create Date: 2026-09-08
 
@@ -13,7 +13,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0014_platform_organization_provision"
+revision: str = "0014_org_provisioning"
 down_revision: str | Sequence[str] | None = "0013_platform_tenant_provisioner"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
