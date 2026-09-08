@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
-from request_engine.platform.security.native_auth import OpaqueTokenMaterial
 from request_engine.platform.security.native_human_auth import (
     NativeHumanAuthStore,
     NativePasswordCredentialSnapshot,
@@ -99,7 +98,9 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
         *,
         native_identity_id: UUID,
         credential_id: UUID,
-        token: OpaqueTokenMaterial,
+        session_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
         expires_at: datetime,
     ) -> bool:
         return await self._call_boolean(
@@ -116,9 +117,9 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
             {
                 "native_identity_id": native_identity_id,
                 "credential_id": credential_id,
-                "session_id": token.token_id,
-                "token_digest": token.digest,
-                "token_fingerprint": token.fingerprint,
+                "session_id": session_id,
+                "token_digest": token_digest,
+                "token_fingerprint": token_fingerprint,
                 "expires_at": expires_at,
             },
         )
@@ -179,7 +180,9 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
         self,
         *,
         native_identity_id: UUID,
-        token: OpaqueTokenMaterial,
+        recovery_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
         expires_at: datetime,
     ) -> bool:
         return await self._call_boolean(
@@ -194,9 +197,9 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
             """,
             {
                 "identity_id": native_identity_id,
-                "recovery_id": token.token_id,
-                "token_digest": token.digest,
-                "token_fingerprint": token.fingerprint,
+                "recovery_id": recovery_id,
+                "token_digest": token_digest,
+                "token_fingerprint": token_fingerprint,
                 "expires_at": expires_at,
             },
         )
