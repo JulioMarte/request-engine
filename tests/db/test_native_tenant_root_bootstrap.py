@@ -268,7 +268,7 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     assert admin_conn.execute(
         """
         SELECT provisioned_by_principal_id, controller_principal_id,
-               controller_identity_binding_id, provenance_reference
+               controller_binding_id, provenance_reference
           FROM request_engine.organization_root_provisioning_facts
          WHERE organization_id = %s
         """,
