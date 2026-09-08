@@ -140,7 +140,7 @@ def add_staff_membership_routes(
         invite_native_staff,
         capability="staff.invite",
         methods=["POST"],
-        operation_id="staff_invite_native",
+        operation_id="staff_invite",
         response_model=NativeStaffInviteView,
         status_code=status.HTTP_201_CREATED,
     )
@@ -150,7 +150,7 @@ def add_staff_membership_routes(
         replace_authority,
         capability="staff.manage_authority",
         methods=["PUT"],
-        operation_id="staff_manage_authority_replace",
+        operation_id="staff_manage_authority",
         response_model=StaffAuthorityReplaceView,
     )
     add_capability_route(
@@ -159,6 +159,6 @@ def add_staff_membership_routes(
         transition_membership,
         capability="staff.manage_membership",
         methods=["PUT"],
-        operation_id="staff_manage_membership_transition",
+        operation_id="staff_manage_membership",
         response_model=StaffMembershipTransitionView,
     )

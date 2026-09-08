@@ -1,8 +1,11 @@
-"""S0b/S0c Party registry tenant-isolation probe flows (`parties.*`).
+"""S0b/S0c Party registry and Staff tenant-isolation probe flows.
 
 Expected outcomes are mutation-free for the actor's own tenant. Resource
 mutations address a foreign Party the actor cannot see; tenant-scoped lookups
-and identifier lists are read-only and filter foreign rows.
+and identifier lists are read-only and filter foreign rows. Staff lifecycle
+probes intentionally inject capability-bearing ActorContext values but use
+Principals that are not persisted Staff managers, proving PostgreSQL authority
+checks remain authoritative even when deployment evidence claims Staff grants.
 """
 
 from typing import TYPE_CHECKING
@@ -100,6 +103,39 @@ def foreign_request(
         return (f"/v1/staff/contacts/{PROBE_UUID}/request-verification", {}, None, 404)
     if operation.name == "staff.confirm_contact":
         return (f"/v1/staff/contacts/{PROBE_UUID}/confirm", {}, {"code": "123456"}, 404)
+    if operation.name == "staff.invite.native":
+        return (
+            "/v1/staff/members/native",
+            {},
+            {
+                "identity_authority_id": str(PROBE_UUID),
+                "native_identity_id": str(PROBE_UUID_2),
+                "provenance_reference": "cross-tenant-staff-probe",
+            },
+            403,
+        )
+    if operation.name == "staff.authority.replace":
+        return (
+            f"/v1/staff/members/{foreign.principal_id}/authority",
+            {},
+            {
+                "expected_authority_revision": 1,
+                "desired_capabilities": ["staff.invite"],
+                "provenance_reference": "cross-tenant-staff-probe",
+            },
+            403,
+        )
+    if operation.name == "staff.membership.transition":
+        return (
+            f"/v1/staff/members/{foreign.principal_id}/status",
+            {},
+            {
+                "expected_revision": 1,
+                "target_status": "suspended",
+                "provenance_reference": "cross-tenant-staff-probe",
+            },
+            403,
+        )
     if operation.name == "parties.lookup":
         return ("/v1/parties/lookup", {"mode": "phone", "value": "+18295550100"}, None, 200)
     raise AssertionError(f"missing S0b tenant probe for {operation.name}")

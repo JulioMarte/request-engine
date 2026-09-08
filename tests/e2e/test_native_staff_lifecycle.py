@@ -16,6 +16,7 @@ pytestmark = [
     pytest.mark.security,
     pytest.mark.invariant,
 ]
+_SIGNING_KEY = b"native-staff-e2e-appointment-signing-key-v1"
 
 
 def _uuid_row(
@@ -173,7 +174,7 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
     app = create_native_app(
         session_factory=e2e_session_factory,
         native_identity_authority_id=authority_id,
-        appointment_option_signing_key=b"native-staff-e2e-signing-key",
+        appointment_option_signing_key=_SIGNING_KEY,
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         root_token = await _login(
