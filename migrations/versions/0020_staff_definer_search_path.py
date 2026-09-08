@@ -18,17 +18,17 @@ depends_on: str | Sequence[str] | None = None
 _STAFF_DEFINERS = (
     (
         "request_engine.seed_root_staff_membership()",
-        "pg_catalog, request_engine, request_auth, pg_temp",
+        "pg_catalog, request_engine, pg_temp",
     ),
     ("request_engine.assert_staff_manager(text)", "pg_catalog, request_engine, pg_temp"),
     ("request_engine.assert_other_tenant_controller(uuid)", "pg_catalog, request_engine, pg_temp"),
     (
         "request_engine.invite_native_staff(uuid, uuid, uuid, uuid, uuid, uuid, text)",
-        "pg_catalog, request_engine, request_auth, pg_temp",
+        "pg_catalog, request_engine, pg_temp",
     ),
     (
         "request_engine.transition_staff_membership(uuid, bigint, text, text)",
-        "pg_catalog, request_engine, request_auth, pg_temp",
+        "pg_catalog, request_engine, pg_temp",
     ),
     (
         "request_engine.replace_staff_authority(uuid, bigint, text[], text)",
