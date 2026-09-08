@@ -50,7 +50,7 @@ def main() -> None:
         # 0001 must remain installable after post-baseline cluster-global roles exist.
         _run_alembic(proof_database, "0001_initial")
         # The same database must then reach current HEAD while reusing exact
-        # cluster-global control-plane definers rather than duplicating them unsafely.
+        # cluster-global control-plane roles rather than duplicating them unsafely.
         _run_alembic(proof_database, "head")
 
         with psycopg.connect(
@@ -71,16 +71,38 @@ def main() -> None:
                   FROM pg_proc AS p
                   JOIN pg_namespace AS n ON n.oid = p.pronamespace
                  WHERE n.nspname = 'request_platform'
-                   AND p.proname IN ('read_principal_authority', 'establish_root')
+                   AND p.proname IN (
+                       'read_principal_authority',
+                       'establish_root',
+                       'provision_tenant_provisioner'
+                   )
                  ORDER BY p.proname
                 """
             ).fetchall()
             expected = [
                 ("establish_root", "request_bootstrap_definer"),
+                ("provision_tenant_provisioner", "request_platform_control_definer"),
                 ("read_principal_authority", "request_platform_definer"),
             ]
             if owners != expected:
                 raise RuntimeError(f"second database definer ownership mismatch: {owners!r}")
+
+            roles = proof.execute(
+                """
+                SELECT rolname, rolcanlogin, rolsuper, rolbypassrls
+                  FROM pg_roles
+                 WHERE rolname IN (
+                     'request_engine_platform_control',
+                     'request_platform_control_definer'
+                 )
+                 ORDER BY rolname
+                """
+            ).fetchall()
+            if roles != [
+                ("request_engine_platform_control", False, False, False),
+                ("request_platform_control_definer", False, False, True),
+            ]:
+                raise RuntimeError(f"second database platform role topology mismatch: {roles!r}")
     finally:
         with psycopg.connect(admin_conninfo, autocommit=True) as admin:
             admin.execute(
