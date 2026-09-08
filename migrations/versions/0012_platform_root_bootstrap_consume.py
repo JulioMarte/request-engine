@@ -117,6 +117,9 @@ def upgrade() -> None:
             v_authority_kind text;
             v_authority_status text;
         BEGIN
+            -- Different intents must not race to create two initial Platform roots.
+            PERFORM pg_catalog.pg_advisory_xact_lock(1380274257, 1902476356);
+
             SELECT provenance_reference
               INTO v_provenance
               FROM request_engine.platform_bootstrap_intents
