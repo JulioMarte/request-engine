@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
+from request_engine.entrypoints.http.identity_runtime import build_identity_principal_resolver
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
@@ -34,6 +35,10 @@ from request_engine.platform.security.http import (
 )
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
+from request_engine.platform.security.subject_http import (
+    HttpSubjectResolver,
+    ProviderNeutralHttpActorResolver,
+)
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
 _IDENTITY_EXCHANGE_KEY_ENV = "REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY"
@@ -67,7 +72,14 @@ def create_app(
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
 ) -> FastAPI:
-    """Compose module-owned HTTP surfaces around explicit external ports."""
+    """Low-level composition seam around an already materialized actor resolver.
+
+    Production deployments should prefer create_native_app or
+    create_authenticated_app so authentication evidence must pass through
+    Request Engine-owned IdentityBinding and Principal-authority resolution.
+    This lower-level seam remains temporarily for module/E2E composition while
+    legacy tests are migrated away from capability-bearing fake resolvers.
+    """
 
     signing_key = appointment_option_signing_key
     if signing_key is None:
@@ -107,8 +119,8 @@ def create_app(
         title="Request Engine",
         version="0.1.0",
         description=(
-            "Headless customer-operations API. Authentication/tenant authority is supplied "
-            "by the deployment ActorResolver; request bodies never select their own tenant."
+            "Headless customer-operations API. Supported production composition resolves "
+            "authenticated subjects through Request Engine-owned identity and authority state."
         ),
     )
     app.middleware("http")(_request_execution_context)
@@ -141,6 +153,35 @@ def create_app(
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
     return app
+
+
+def create_authenticated_app(
+    *,
+    session_factory: SessionFactory,
+    subject_resolver: HttpSubjectResolver,
+    slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
+    appointment_option_signing_key: bytes | None = None,
+    identity_exchange_fingerprint_key: bytes | None = None,
+    tenant_capability_policy: TenantCapabilityPolicy | None = None,
+    operator_actor_resolver: OperatorActorResolver | None = None,
+    operator_capability_source: OperatorCapabilitySource | None = None,
+) -> FastAPI:
+    """Compose a provider-neutral deployment from authentication-only evidence."""
+
+    actor_resolver = ProviderNeutralHttpActorResolver(
+        subject_resolver=subject_resolver,
+        principal_resolver=build_identity_principal_resolver(session_factory),
+    )
+    return create_app(
+        session_factory=session_factory,
+        actor_resolver=actor_resolver,
+        slot_offer_ports=slot_offer_ports,
+        appointment_option_signing_key=appointment_option_signing_key,
+        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
+        tenant_capability_policy=tenant_capability_policy,
+        operator_actor_resolver=operator_actor_resolver,
+        operator_capability_source=operator_capability_source,
+    )
 
 
 def create_native_app(
