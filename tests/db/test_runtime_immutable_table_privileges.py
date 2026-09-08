@@ -33,6 +33,12 @@ _EXACT_DEFINER_OWNERS = {
         "provision_tenant_provisioner",
         "p_new_principal_id uuid, p_external_subject text, p_provenance_reference text",
     ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_organization",
+        "p_organization_id uuid, p_organization_key text, p_display_name text, "
+        "p_provenance_reference text",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
