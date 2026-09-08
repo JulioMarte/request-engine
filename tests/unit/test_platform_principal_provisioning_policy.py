@@ -19,9 +19,7 @@ def test_platform_creator_can_only_assign_current_delegable_authority_inside_pol
     request = _request("organization.provision")
 
     require_platform_principal_assignment(
-        creator_capabilities=frozenset(
-            {"platform.principal.provision", "organization.provision"}
-        ),
+        creator_capabilities=frozenset({"platform.principal.provision", "organization.provision"}),
         creator_delegable=frozenset({"organization.provision"}),
         policy_ceiling=frozenset({"organization.provision"}),
         request=request,
