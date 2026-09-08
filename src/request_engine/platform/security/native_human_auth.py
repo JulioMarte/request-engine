@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, TypeGuard
 from uuid import UUID, uuid4
 
@@ -168,7 +168,7 @@ class NativeHumanAuthService:
         if recovery_ttl <= timedelta(0):
             raise ValueError("recovery_ttl must be positive")
         self._store = store
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._session_ttl = session_ttl
         self._recovery_ttl = recovery_ttl
 
