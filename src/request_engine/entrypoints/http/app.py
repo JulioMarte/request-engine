@@ -92,7 +92,8 @@ def create_app(
     configured_native_components = sum(component is not None for component in native_components)
     if configured_native_components not in (0, len(native_components)):
         raise RuntimeError(
-            "Native authentication requires service, session authenticator and authority id together"
+            "Native authentication requires service, session authenticator "
+            "and authority id together"
         )
 
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
