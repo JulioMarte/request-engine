@@ -13,6 +13,7 @@ _ROOT_FUNCTION = (
     "request_platform.provision_native_organization_root(uuid, text, text, uuid, uuid, "
     "uuid, uuid, text)"
 )
+_AUTH_LOCK_FUNCTION = "request_auth.lock_credentialed_native_identity(uuid, uuid)"
 _OLD_ORGANIZATION_FUNCTION = "request_platform.provision_organization(uuid, text, text, text)"
 _EXPECTED_COLUMNS = {
     ("identity_authorities", "id", "SELECT"),
@@ -25,12 +26,6 @@ _EXPECTED_COLUMNS = {
     ("identity_bindings", "identity_authority_id", "INSERT"),
     ("identity_bindings", "subject_id", "INSERT"),
     ("identity_bindings", "status", "INSERT"),
-    ("native_credentials", "native_identity_id", "SELECT"),
-    ("native_credentials", "kind", "SELECT"),
-    ("native_credentials", "status", "SELECT"),
-    ("native_identities", "id", "SELECT"),
-    ("native_identities", "identity_authority_id", "SELECT"),
-    ("native_identities", "status", "SELECT"),
     ("organization_provisioning_facts", "organization_id", "INSERT"),
     ("organization_provisioning_facts", "provisioned_by_principal_id", "INSERT"),
     ("organization_provisioning_facts", "provenance_reference", "INSERT"),
@@ -157,6 +152,28 @@ def test_platform_control_definer_has_only_reviewed_columns(
         ).fetchall()
         == []
     )
+
+
+def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(
+    admin_conn: PgConnection,
+) -> None:
+    assert admin_conn.execute(
+        "SELECT has_schema_privilege(%s, 'request_auth', 'USAGE')",
+        (_DEFINER,),
+    ).fetchone() == (True,)
+    assert admin_conn.execute(
+        "SELECT has_schema_privilege(%s, 'request_auth', 'CREATE')",
+        (_DEFINER,),
+    ).fetchone() == (False,)
+    assert admin_conn.execute(
+        "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+        (_DEFINER, _AUTH_LOCK_FUNCTION),
+    ).fetchone() == (True,)
+    for role in (_RUNTIME, "request_engine_app", "public"):
+        assert admin_conn.execute(
+            "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+            (role, _AUTH_LOCK_FUNCTION),
+        ).fetchone() == (False,)
 
 
 def test_only_platform_control_runtime_can_execute_commands(
