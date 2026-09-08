@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -56,7 +58,7 @@ class PostgresIdentityBindingReader(IdentityBindingReader):
                 .mappings()
                 .all()
             )
-        return tuple(_materialize_binding(row) for row in rows)
+        return tuple(_materialize_binding(dict(row)) for row in rows)
 
     async def read_platform_subject_bindings(
         self, *, identity_authority_id: UUID, subject_id: str
@@ -90,25 +92,22 @@ class PostgresIdentityBindingReader(IdentityBindingReader):
                 .mappings()
                 .all()
             )
-        return tuple(_materialize_binding(row, id_key="binding_id") for row in rows)
+        return tuple(_materialize_binding(dict(row), id_key="binding_id") for row in rows)
 
 
 def _materialize_binding(
-    row: object,
+    row: Mapping[str, Any],
     *,
     id_key: str = "id",
 ) -> IdentityBindingSnapshot:
-    mapping = row
-    if not hasattr(mapping, "__getitem__"):
-        raise RuntimeError("identity binding row is not mapping-like")
-    organization_value = mapping["organization_id"]  # type: ignore[index]
+    organization_value = row["organization_id"]
     return IdentityBindingSnapshot(
-        binding_id=UUID(str(mapping[id_key])),  # type: ignore[index]
-        identity_authority_id=UUID(str(mapping["identity_authority_id"])),  # type: ignore[index]
-        subject_id=str(mapping["subject_id"]),  # type: ignore[index]
-        principal_id=UUID(str(mapping["principal_id"])),  # type: ignore[index]
-        principal_plane=IdentityBindingPlane(str(mapping["principal_plane"])),  # type: ignore[index]
+        binding_id=UUID(str(row[id_key])),
+        identity_authority_id=UUID(str(row["identity_authority_id"])),
+        subject_id=str(row["subject_id"]),
+        principal_id=UUID(str(row["principal_id"])),
+        principal_plane=IdentityBindingPlane(str(row["principal_plane"])),
         organization_id=None if organization_value is None else UUID(str(organization_value)),
-        status=IdentityBindingStatus(str(mapping["status"])),  # type: ignore[index]
-        revision=int(mapping["revision"]),  # type: ignore[index]
+        status=IdentityBindingStatus(str(row["status"])),
+        revision=int(row["revision"]),
     )
