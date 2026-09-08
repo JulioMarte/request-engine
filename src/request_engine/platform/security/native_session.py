@@ -32,6 +32,11 @@ class NativeCredentialStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class NativeIdentityAuthorityStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class SessionExpired(SessionTokenInvalid):
     pass
 
@@ -45,6 +50,10 @@ class NativeIdentityDisabled(SessionTokenInvalid):
 
 
 class NativeCredentialRevoked(SessionTokenInvalid):
+    pass
+
+
+class NativeIdentityAuthorityDisabled(SessionTokenInvalid):
     pass
 
 
@@ -70,6 +79,7 @@ class NativeSessionSnapshot:
     identity_status: NativeIdentityStatus
     credential_status: NativeCredentialStatus
     expires_at: datetime
+    authority_status: NativeIdentityAuthorityStatus = NativeIdentityAuthorityStatus.ACTIVE
 
     def __post_init__(self) -> None:
         if self.session_epoch <= 0 or self.current_session_epoch <= 0:
@@ -99,6 +109,8 @@ class NativeSessionAuthenticator:
         session = await self._session_reader.read_native_session(session_id=parsed.token_id)
         if session is None or not verify_opaque_secret(parsed.secret, session.token_digest):
             raise CredentialInvalid("native session credential is invalid")
+        if session.authority_status is NativeIdentityAuthorityStatus.DISABLED:
+            raise NativeIdentityAuthorityDisabled("native identity authority is disabled")
         if session.session_status is NativeSessionStatus.REVOKED:
             raise SessionRevoked("native session is revoked")
         if session.identity_status is NativeIdentityStatus.DISABLED:
