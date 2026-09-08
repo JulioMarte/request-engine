@@ -44,12 +44,6 @@ def create_native_auth_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/auth/native", tags=["Native authentication"])
 
-    @router.post(
-        "/sessions",
-        operation_id="nativeSessionCreate",
-        response_model=NativeSessionResponse,
-        status_code=status.HTTP_201_CREATED,
-    )
     async def create_session(
         payload: NativeLoginRequest,
         response: Response,
@@ -65,11 +59,6 @@ def create_native_auth_router(
             expires_at=issued.expires_at,
         )
 
-    @router.delete(
-        "/sessions/current",
-        operation_id="nativeSessionRevokeCurrent",
-        status_code=status.HTTP_204_NO_CONTENT,
-    )
     async def revoke_current_session(request: Request, response: Response) -> None:
         raw_token = bearer_token(request)
         parsed = parse_opaque_token(raw_token)
@@ -80,22 +69,12 @@ def create_native_auth_router(
         )
         _prevent_secret_caching(response)
 
-    @router.delete(
-        "/sessions",
-        operation_id="nativeSessionRevokeAll",
-        status_code=status.HTTP_204_NO_CONTENT,
-    )
     async def revoke_all_sessions(request: Request, response: Response) -> None:
         raw_token = bearer_token(request)
         subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
         await service.revoke_all_sessions(native_identity_id=UUID(subject.subject_id))
         _prevent_secret_caching(response)
 
-    @router.put(
-        "/password",
-        operation_id="nativePasswordRotate",
-        response_model=NativeCredentialRotationResponse,
-    )
     async def rotate_password(
         payload: NativePasswordRotationRequest,
         response: Response,
@@ -109,6 +88,35 @@ def create_native_auth_router(
         _prevent_secret_caching(response)
         return NativeCredentialRotationResponse(credential_id=credential_id)
 
+    router.add_api_route(
+        "/sessions",
+        create_session,
+        methods=["POST"],
+        operation_id="nativeSessionCreate",
+        response_model=NativeSessionResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    router.add_api_route(
+        "/sessions/current",
+        revoke_current_session,
+        methods=["DELETE"],
+        operation_id="nativeSessionRevokeCurrent",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    router.add_api_route(
+        "/sessions",
+        revoke_all_sessions,
+        methods=["DELETE"],
+        operation_id="nativeSessionRevokeAll",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    router.add_api_route(
+        "/password",
+        rotate_password,
+        methods=["PUT"],
+        operation_id="nativePasswordRotate",
+        response_model=NativeCredentialRotationResponse,
+    )
     return router
 
 
