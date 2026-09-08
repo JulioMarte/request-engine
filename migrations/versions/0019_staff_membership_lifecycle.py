@@ -275,7 +275,7 @@ def upgrade() -> None:
                     true,
                     v_grant.granted_by_principal_id,
                     'provisioning',
-                    NEW.provenance_reference || ':root-delegable'
+                    concat(NEW.provenance_reference, '-root-delegable')
                 );
             END LOOP;
             RETURN NEW;
