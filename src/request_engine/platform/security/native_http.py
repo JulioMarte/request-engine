@@ -1,37 +1,48 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 from fastapi import Request
 
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import AuthenticationRequired
-from request_engine.platform.security.identity_resolution import (
-    IdentityPrincipalResolver,
-    TenantContextRequired,
-)
+from request_engine.platform.security.identity_resolution import IdentityPrincipalResolver
 from request_engine.platform.security.native_auth import parse_opaque_token
 from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
     NativeSessionEvidence,
 )
+from request_engine.platform.security.subject_http import (
+    AuthenticatedHttpSubject,
+    ProviderNeutralHttpActorResolver,
+)
+from request_engine.platform.security.tenant_http import (
+    ORGANIZATION_HEADER,
+    TenantContextInvalid,
+    tenant_context,
+)
 
 AUTHORIZATION_HEADER = "Authorization"
-ORGANIZATION_HEADER = "X-RE-Organization-ID"
 _NATIVE_AUTHENTICATION_METHOD = "native_session"
 
 
-class TenantContextInvalid(ValueError):
-    pass
+class NativeSessionHttpSubjectResolver:
+    """Authenticate a Native bearer token without materializing RE authority."""
+
+    def __init__(self, authenticator: NativeSessionAuthenticator) -> None:
+        self._authenticator = authenticator
+
+    async def resolve_subject(self, request: Request) -> AuthenticatedHttpSubject:
+        raw_token = bearer_token(request)
+        parsed = parse_opaque_token(raw_token)
+        subject = await self._authenticator.authenticate(NativeSessionEvidence(raw_token))
+        return AuthenticatedHttpSubject(
+            subject=subject,
+            authentication_method=_NATIVE_AUTHENTICATION_METHOD,
+            credential_id=str(parsed.token_id),
+        )
 
 
 class NativeSessionHttpActorResolver:
-    """Resolve HTTP Bearer evidence to fresh tenant authority on every request.
-
-    The organization header is only a tenant selector. It never contributes
-    authority: the selected tenant must still have an ACTIVE IdentityBinding for
-    the authenticated subject, and authority is re-read from RE-owned state.
-    """
+    """Resolve Native HTTP evidence through the provider-neutral RE authority path."""
 
     def __init__(
         self,
@@ -39,20 +50,13 @@ class NativeSessionHttpActorResolver:
         authenticator: NativeSessionAuthenticator,
         principal_resolver: IdentityPrincipalResolver,
     ) -> None:
-        self._authenticator = authenticator
-        self._principal_resolver = principal_resolver
+        self._delegate = ProviderNeutralHttpActorResolver(
+            subject_resolver=NativeSessionHttpSubjectResolver(authenticator),
+            principal_resolver=principal_resolver,
+        )
 
     async def resolve_actor(self, request: Request) -> ActorContext:
-        raw_token = bearer_token(request)
-        organization_id = tenant_context(request)
-        parsed = parse_opaque_token(raw_token)
-        subject = await self._authenticator.authenticate(NativeSessionEvidence(raw_token))
-        return await self._principal_resolver.resolve_tenant_actor(
-            subject=subject,
-            organization_id=organization_id,
-            authentication_method=_NATIVE_AUTHENTICATION_METHOD,
-            credential_id=str(parsed.token_id),
-        )
+        return await self._delegate.resolve_actor(request)
 
 
 def bearer_token(request: Request) -> str:
@@ -68,11 +72,12 @@ def bearer_token(request: Request) -> str:
     return normalized
 
 
-def tenant_context(request: Request) -> UUID:
-    value = request.headers.get(ORGANIZATION_HEADER)
-    if value is None or not value.strip():
-        raise TenantContextRequired(f"{ORGANIZATION_HEADER} is required")
-    try:
-        return UUID(value.strip())
-    except ValueError as exc:
-        raise TenantContextInvalid(f"{ORGANIZATION_HEADER} must be a UUID") from exc
+__all__ = [
+    "AUTHORIZATION_HEADER",
+    "ORGANIZATION_HEADER",
+    "NativeSessionHttpActorResolver",
+    "NativeSessionHttpSubjectResolver",
+    "TenantContextInvalid",
+    "bearer_token",
+    "tenant_context",
+]
