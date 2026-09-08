@@ -13,8 +13,14 @@ _TRUSTED_SCHEMAS = {
 }
 _TRUSTED_DEFINER_OWNERS = {
     "request_engine_discovery_definer",
-    "request_engine_platform_definer",
     "request_engine_schema_owner",
+}
+_EXACT_DEFINER_OWNERS = {
+    (
+        "request_platform",
+        "read_principal_authority",
+        "p_principal_id uuid",
+    ): "request_platform_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
@@ -125,8 +131,14 @@ def test_security_definers_are_closed_across_all_runtime_schemas(
         configuration = cast(list[str] | None, config_value)
         public_execute = bool(public_value)
         function_name = f"{schema}.{name}({arguments})"
+        exact_owner = _EXACT_DEFINER_OWNERS.get((schema, name, arguments))
 
-        if owner not in _TRUSTED_DEFINER_OWNERS:
+        if exact_owner is not None:
+            if owner != exact_owner:
+                violations.append(
+                    f"{function_name}: owner={owner}, expected={exact_owner}"
+                )
+        elif owner not in _TRUSTED_DEFINER_OWNERS:
             violations.append(f"{function_name}: owner={owner}")
         if public_execute:
             violations.append(f"{function_name}: PUBLIC EXECUTE")
