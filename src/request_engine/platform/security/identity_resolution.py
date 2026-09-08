@@ -237,7 +237,9 @@ def _assert_subject_class(
     if subject_class is AuthenticatedSubjectClass.HUMAN:
         if principal_kind is PrincipalKind.HUMAN:
             return
-        raise IdentitySubjectClassMismatch("HUMAN authentication cannot activate a workload Principal")
+        raise IdentitySubjectClassMismatch(
+            "HUMAN authentication cannot activate a workload Principal"
+        )
     if subject_class is AuthenticatedSubjectClass.WORKLOAD:
         if principal_kind in {
             PrincipalKind.AGENT,
@@ -245,5 +247,9 @@ def _assert_subject_class(
             PrincipalKind.SYSTEM,
         }:
             return
-        raise IdentitySubjectClassMismatch("workload authentication cannot activate a HUMAN Principal")
-    raise IdentitySubjectClassMismatch("unknown authentication subject class cannot activate authority")
+        raise IdentitySubjectClassMismatch(
+            "workload authentication cannot activate a HUMAN Principal"
+        )
+    raise IdentitySubjectClassMismatch(
+        "unknown authentication subject class cannot activate authority"
+    )
