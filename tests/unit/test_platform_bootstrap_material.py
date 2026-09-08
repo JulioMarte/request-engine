@@ -35,16 +35,14 @@ def test_root_material_normalizes_login_and_derives_password_verifier() -> None:
         password="correct horse battery staple",
     )
 
+    identities = {
+        root.native_identity_id,
+        root.credential_id,
+        root.principal_id,
+        root.binding_id,
+    }
     assert root.login_handle == "initial.admin@example.com"
     assert verify_password("correct horse battery staple", root.password_verifier)
     assert "correct horse battery staple" not in root.password_verifier
-    assert len({root.native_identity_id, root.credential_id, root.principal_id, root.binding_id}) == 4
-    assert all(
-        isinstance(value, UUID)
-        for value in (
-            root.native_identity_id,
-            root.credential_id,
-            root.principal_id,
-            root.binding_id,
-        )
-    )
+    assert len(identities) == 4
+    assert all(isinstance(value, UUID) for value in identities)
