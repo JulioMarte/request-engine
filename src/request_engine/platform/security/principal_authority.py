@@ -9,7 +9,7 @@ class PrincipalAuthorityMaterializationError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class PrincipalAuthoritySnapshot:
-    """One MVCC-consistent snapshot of a tenant Principal and its standing authority."""
+    """One MVCC-consistent snapshot of a Principal and its standing authority."""
 
     principal_id: UUID
     principal_kind: str
@@ -21,4 +21,10 @@ class PrincipalAuthoritySnapshot:
 class PrincipalAuthorityReader(Protocol):
     async def read_tenant_principal_authority(
         self, *, organization_id: UUID, principal_id: UUID
+    ) -> PrincipalAuthoritySnapshot | None: ...
+
+
+class PlatformPrincipalAuthorityReader(Protocol):
+    async def read_platform_principal_authority(
+        self, *, principal_id: UUID
     ) -> PrincipalAuthoritySnapshot | None: ...
