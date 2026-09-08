@@ -25,7 +25,23 @@ class FakeBindingReader(IdentityBindingReader):
     def __init__(self, bindings: tuple[IdentityBindingSnapshot, ...]) -> None:
         self.bindings = bindings
 
-    async def read_subject_bindings(
+    async def read_tenant_subject_bindings(
+        self,
+        *,
+        identity_authority_id: UUID,
+        subject_id: str,
+        organization_id: UUID,
+    ) -> tuple[IdentityBindingSnapshot, ...]:
+        return tuple(
+            binding
+            for binding in self.bindings
+            if binding.identity_authority_id == identity_authority_id
+            and binding.subject_id == subject_id
+            and binding.principal_plane is IdentityBindingPlane.TENANT
+            and binding.organization_id == organization_id
+        )
+
+    async def read_platform_subject_bindings(
         self, *, identity_authority_id: UUID, subject_id: str
     ) -> tuple[IdentityBindingSnapshot, ...]:
         return tuple(
@@ -33,6 +49,7 @@ class FakeBindingReader(IdentityBindingReader):
             for binding in self.bindings
             if binding.identity_authority_id == identity_authority_id
             and binding.subject_id == subject_id
+            and binding.principal_plane is IdentityBindingPlane.PLATFORM
         )
 
 
@@ -97,7 +114,6 @@ async def test_tenant_context_is_mandatory() -> None:
         tenant_authority_reader=FakeTenantAuthorityReader({}),
         platform_authority_reader=FakePlatformAuthorityReader(),
     )
-
     with pytest.raises(TenantContextRequired):
         await resolver.resolve_tenant_actor(
             subject=_subject(uuid4()),
@@ -123,14 +139,12 @@ async def test_binding_selects_principal_but_authority_comes_from_current_snapsh
         ),
         platform_authority_reader=FakePlatformAuthorityReader(),
     )
-
     actor = await resolver.resolve_tenant_actor(
         subject=_subject(authority_id),
         organization_id=organization_id,
         authentication_method="native_session",
         credential_id="session:abc",
     )
-
     assert actor.principal_id == principal_id
     assert actor.organization_id == organization_id
     assert actor.authority_revision == 11
@@ -153,7 +167,6 @@ async def test_suspended_binding_denies_even_when_principal_has_authority() -> N
         tenant_authority_reader=FakeTenantAuthorityReader({principal_id: _authority(principal_id)}),
         platform_authority_reader=FakePlatformAuthorityReader(),
     )
-
     with pytest.raises(IdentityBindingSuspended):
         await resolver.resolve_tenant_actor(
             subject=_subject(authority_id),
@@ -185,7 +198,6 @@ async def test_duplicate_active_binding_fails_closed() -> None:
         tenant_authority_reader=FakeTenantAuthorityReader({}),
         platform_authority_reader=FakePlatformAuthorityReader(),
     )
-
     with pytest.raises(TenantContextAmbiguous):
         await resolver.resolve_tenant_actor(
             subject=_subject(authority_id),
