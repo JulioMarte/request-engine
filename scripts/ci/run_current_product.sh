@@ -108,6 +108,7 @@ uv run pytest \
   tests/db/test_platform_tenant_provisioner.py \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_staff_membership_lifecycle.py \
+  tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
