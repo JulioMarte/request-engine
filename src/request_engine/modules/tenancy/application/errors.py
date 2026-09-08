@@ -1,4 +1,4 @@
-"""Typed errors for the tenancy party registry commands."""
+"""Typed errors for tenancy-owned command failures."""
 
 from datetime import datetime
 from uuid import UUID
@@ -135,3 +135,23 @@ class StaffContactForbidden(PartyRegistryError):
             " staff administrative contacts"
         )
         self.principal_id = principal_id
+
+
+class StaffMembershipError(Exception):
+    """Base class for stable Staff lifecycle failures."""
+
+
+class StaffMembershipForbidden(StaffMembershipError):
+    """The current actor may not perform the requested Staff lifecycle operation."""
+
+
+class StaffMembershipRevisionConflict(StaffMembershipError):
+    """The requested Staff or authority revision is stale."""
+
+
+class StaffMembershipConflict(StaffMembershipError):
+    """The requested Staff lifecycle mutation conflicts with current persisted state."""
+
+
+class StaffMembershipInputInvalid(StaffMembershipError):
+    """The requested Staff lifecycle mutation violates an invariant or input contract."""

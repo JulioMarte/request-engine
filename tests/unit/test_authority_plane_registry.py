@@ -1,5 +1,7 @@
 from request_engine.platform.security.capabilities import (
     AuthorityPlane,
+    CapabilityExposure,
+    RevisionPolicy,
     canonical_capability_keys,
     capability_definition,
     grant_satisfies,
@@ -48,12 +50,28 @@ def test_authority_planes_do_not_create_implicit_capability_implication() -> Non
     assert not grant_satisfies("appointments.book", "staff.manage_authority")
 
 
-def test_control_capabilities_are_not_runtime_discoverable_before_surfaces_exist() -> None:
+def test_staff_lifecycle_capabilities_are_runtime_operator_surfaces() -> None:
+    expected_revision = {
+        "staff.invite": RevisionPolicy.NONE,
+        "staff.manage_membership": RevisionPolicy.REQUIRED,
+        "staff.manage_authority": RevisionPolicy.REQUIRED,
+    }
+    for key, revision in expected_revision.items():
+        definition = capability_definition(key)
+        assert definition is not None
+        assert definition.runtime_available is True
+        assert definition.discoverable is True
+        assert definition.exposure is CapabilityExposure.OPERATOR
+        assert definition.revision is revision
+
+
+def test_unimplemented_control_capabilities_remain_internal_and_nonruntime() -> None:
     for key in (
         "platform.principal.provision",
         "organization.provision",
-        "staff.manage_authority",
         "agent.provision",
+        "agent.manage_authority",
+        "agent.suspend",
         "identity.bind",
     ):
         definition = capability_definition(key)

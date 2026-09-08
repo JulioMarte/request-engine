@@ -33,6 +33,10 @@ from request_engine.modules.tenancy.api.operational_router import create_operati
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
+from request_engine.modules.tenancy.api.staff_membership_errors import (
+    add_staff_membership_error_handlers,
+)
+from request_engine.modules.tenancy.api.staff_membership_routes import add_staff_membership_routes
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     StaffMembershipCommands,
 )
@@ -108,17 +112,23 @@ def install_http(
         )
     )
     add_staff_contact_error_handlers(app)
+    add_staff_membership_error_handlers(app)
 
     async def authenticated_actor(request: Request) -> ActorContext:
         return await actor_resolver.resolve_actor(request)
 
-    staff_commands = PostgresPrincipalContactCommands(session_factory)
+    contact_commands = PostgresPrincipalContactCommands(session_factory)
     staff_router = APIRouter(prefix="/v1/staff", tags=["staff"])
     add_staff_contact_routes(
         staff_router,
-        register_handler=staff_commands,
-        verification_handler=staff_commands,
-        confirm_handler=staff_commands,
+        register_handler=contact_commands,
+        verification_handler=contact_commands,
+        confirm_handler=contact_commands,
+        authenticated_actor=authenticated_actor,
+    )
+    add_staff_membership_routes(
+        staff_router,
+        commands=PostgresStaffMembershipCommands(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)

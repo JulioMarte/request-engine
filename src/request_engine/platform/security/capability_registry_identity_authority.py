@@ -2,6 +2,7 @@ from request_engine.platform.security.capability_types import (
     AuthorityPlane,
     CapabilityDefinition,
     CapabilityExposure,
+    RevisionPolicy,
     command_capability,
 )
 
@@ -17,6 +18,21 @@ def _authority_capability(
         description,
         authority_plane=plane,
         runtime_available=False,
+    )
+
+
+def _staff_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
     )
 
 
@@ -41,20 +57,19 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         AuthorityPlane.PLATFORM,
         "Execute the narrowly governed platform identity recovery workflow.",
     ),
-    _authority_capability(
+    _staff_capability(
         "staff.invite",
-        AuthorityPlane.TENANT_CONTROL,
-        "Invite a human Principal into the current tenant.",
+        "Invite a credentialed Native human identity into the current tenant.",
     ),
-    _authority_capability(
+    _staff_capability(
         "staff.manage_membership",
-        AuthorityPlane.TENANT_CONTROL,
-        "Activate, suspend, or end human staff membership in the current tenant.",
+        "Activate, suspend, or revoke human staff membership in the current tenant.",
+        revision=RevisionPolicy.REQUIRED,
     ),
-    _authority_capability(
+    _staff_capability(
         "staff.manage_authority",
-        AuthorityPlane.TENANT_CONTROL,
-        "Assign or revoke bounded tenant authority for human staff.",
+        "Replace bounded tenant-control authority for human staff.",
+        revision=RevisionPolicy.REQUIRED,
     ),
     _authority_capability(
         "agent.provision",

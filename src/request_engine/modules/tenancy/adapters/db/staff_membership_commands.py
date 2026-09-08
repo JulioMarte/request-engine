@@ -1,12 +1,20 @@
+from typing import Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     InviteNativeStaffCommand,
     InviteNativeStaffResult,
     ReplaceStaffAuthorityCommand,
     TransitionStaffMembershipCommand,
+)
+from request_engine.modules.tenancy.application.errors import (
+    StaffMembershipConflict,
+    StaffMembershipForbidden,
+    StaffMembershipInputInvalid,
+    StaffMembershipRevisionConflict,
 )
 from request_engine.platform.db.session import SessionFactory, actor_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -21,6 +29,11 @@ from request_engine.platform.security.context import ActorContext, PrincipalKind
 _INVITE_CAPABILITY = "staff.invite"
 _AUTHORITY_CAPABILITY = "staff.manage_authority"
 _MEMBERSHIP_CAPABILITY = "staff.manage_membership"
+
+
+@runtime_checkable
+class _HasSqlState(Protocol):
+    sqlstate: str | None
 
 
 def _validate_provenance_reference(value: str) -> str:
@@ -51,7 +64,20 @@ def _validate_tenant_control_capabilities(capabilities: tuple[str, ...]) -> tupl
 
 def _require_human_actor(actor: ActorContext) -> None:
     if actor.principal_kind is not PrincipalKind.HUMAN:
-        raise ValueError("staff membership administration requires a HUMAN actor")
+        raise StaffMembershipForbidden("staff membership administration requires a HUMAN actor")
+
+
+def _raise_staff_db_error(exc: DBAPIError) -> None:
+    sqlstate = exc.orig.sqlstate if isinstance(exc.orig, _HasSqlState) else None
+    if sqlstate in {"28000", "42501"}:
+        raise StaffMembershipForbidden("staff lifecycle authority was denied") from exc
+    if sqlstate == "40001":
+        raise StaffMembershipRevisionConflict("staff lifecycle revision is stale") from exc
+    if sqlstate == "23505":
+        raise StaffMembershipConflict("staff lifecycle state conflicts with this request") from exc
+    if sqlstate in {"22023", "23514"}:
+        raise StaffMembershipInputInvalid("staff lifecycle invariant rejected this request") from exc
+    raise exc
 
 
 def _replay_uuid(replay: dict[str, object], key: str) -> UUID:
@@ -118,29 +144,32 @@ class PostgresStaffMembershipCommands:
                 principal_id=uuid4(),
                 binding_id=uuid4(),
             )
-            result = await session.execute(
-                text(
-                    """
-                    SELECT request_engine.invite_native_staff(
-                        :membership_id,
-                        :principal_id,
-                        :binding_id,
-                        :identity_authority_id,
-                        :native_identity_id,
-                        CAST(NULL AS uuid),
-                        :provenance_reference
-                    )
-                    """
-                ),
-                {
-                    "membership_id": invitation.membership_id,
-                    "principal_id": invitation.principal_id,
-                    "binding_id": invitation.binding_id,
-                    "identity_authority_id": command.identity_authority_id,
-                    "native_identity_id": command.native_identity_id,
-                    "provenance_reference": provenance,
-                },
-            )
+            try:
+                result = await session.execute(
+                    text(
+                        """
+                        SELECT request_engine.invite_native_staff(
+                            :membership_id,
+                            :principal_id,
+                            :binding_id,
+                            :identity_authority_id,
+                            :native_identity_id,
+                            CAST(NULL AS uuid),
+                            :provenance_reference
+                        )
+                        """
+                    ),
+                    {
+                        "membership_id": invitation.membership_id,
+                        "principal_id": invitation.principal_id,
+                        "binding_id": invitation.binding_id,
+                        "identity_authority_id": command.identity_authority_id,
+                        "native_identity_id": command.native_identity_id,
+                        "provenance_reference": provenance,
+                    },
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             returned_binding_id = result.scalar_one()
             if returned_binding_id != invitation.binding_id:
                 raise RuntimeError("staff invitation returned an unexpected binding identifier")
@@ -186,24 +215,27 @@ class PostgresStaffMembershipCommands:
             )
             if replay is not None:
                 return _replay_revision(replay, "authority_revision")
-            result = await session.execute(
-                text(
-                    """
-                    SELECT request_engine.replace_staff_authority(
-                        :membership_id,
-                        :expected_authority_revision,
-                        :desired_capabilities,
-                        :provenance_reference
-                    )
-                    """
-                ),
-                {
-                    "membership_id": command.membership_id,
-                    "expected_authority_revision": command.expected_authority_revision,
-                    "desired_capabilities": list(desired),
-                    "provenance_reference": provenance,
-                },
-            )
+            try:
+                result = await session.execute(
+                    text(
+                        """
+                        SELECT request_engine.replace_staff_authority(
+                            :membership_id,
+                            :expected_authority_revision,
+                            :desired_capabilities,
+                            :provenance_reference
+                        )
+                        """
+                    ),
+                    {
+                        "membership_id": command.membership_id,
+                        "expected_authority_revision": command.expected_authority_revision,
+                        "desired_capabilities": list(desired),
+                        "provenance_reference": provenance,
+                    },
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             authority_revision = int(result.scalar_one())
             await complete_idempotency(
                 session,
@@ -242,24 +274,27 @@ class PostgresStaffMembershipCommands:
             )
             if replay is not None:
                 return _replay_revision(replay, "membership_revision")
-            result = await session.execute(
-                text(
-                    """
-                    SELECT request_engine.transition_staff_membership(
-                        :membership_id,
-                        :expected_revision,
-                        :target_status,
-                        :provenance_reference
-                    )
-                    """
-                ),
-                {
-                    "membership_id": command.membership_id,
-                    "expected_revision": command.expected_revision,
-                    "target_status": command.target_status.value,
-                    "provenance_reference": provenance,
-                },
-            )
+            try:
+                result = await session.execute(
+                    text(
+                        """
+                        SELECT request_engine.transition_staff_membership(
+                            :membership_id,
+                            :expected_revision,
+                            :target_status,
+                            :provenance_reference
+                        )
+                        """
+                    ),
+                    {
+                        "membership_id": command.membership_id,
+                        "expected_revision": command.expected_revision,
+                        "target_status": command.target_status.value,
+                        "provenance_reference": provenance,
+                    },
+                )
+            except DBAPIError as exc:
+                _raise_staff_db_error(exc)
             membership_revision = int(result.scalar_one())
             await complete_idempotency(
                 session,
