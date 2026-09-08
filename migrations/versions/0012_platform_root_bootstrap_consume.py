@@ -64,7 +64,7 @@ def upgrade() -> None:
     op.execute(f"GRANT SELECT (id, kind, status) ON request_engine.identity_authorities TO {_ROLE}")
     op.execute(
         "GRANT SELECT (id, token_digest, permitted_action, provenance_reference, status, "
-        "expires_at), UPDATE (status, revision, consumed_at) "
+        "expires_at, revision), UPDATE (status, revision, consumed_at) "
         f"ON request_engine.platform_bootstrap_intents TO {_ROLE}"
     )
     op.execute(
@@ -230,7 +230,7 @@ def downgrade() -> None:
     )
     op.execute(
         "REVOKE SELECT (id, token_digest, permitted_action, provenance_reference, status, "
-        "expires_at), UPDATE (status, revision, consumed_at) "
+        "expires_at, revision), UPDATE (status, revision, consumed_at) "
         f"ON request_engine.platform_bootstrap_intents FROM {_ROLE}"
     )
     op.execute(
