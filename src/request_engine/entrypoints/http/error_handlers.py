@@ -14,6 +14,11 @@ from request_engine.entrypoints.http.errors import (
     render_error_response,
     request_validation_error_handler,
 )
+from request_engine.entrypoints.http.native_auth_errors import (
+    identity_resolution_error_handler,
+    native_authentication_error_handler,
+    tenant_context_error_handler,
+)
 from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
 )
@@ -24,6 +29,18 @@ from request_engine.platform.security.acting_operator import (
     OperatorResolutionUnavailable,
 )
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
+from request_engine.platform.security.identity_resolution import (
+    IdentityBindingPending,
+    IdentityBindingRevoked,
+    IdentityBindingSuspended,
+    IdentityNotBound,
+    IdentitySubjectClassMismatch,
+    PrincipalProvisioningRequired,
+    TenantContextAmbiguous,
+    TenantContextRequired,
+)
+from request_engine.platform.security.native_auth import NativeAuthenticationError
+from request_engine.platform.security.native_http import TenantContextInvalid
 from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
 
 
@@ -53,6 +70,19 @@ async def agent_acting_operator_relay_forbidden_handler(_: Request, exc: Excepti
 
 def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
+    app.add_exception_handler(NativeAuthenticationError, native_authentication_error_handler)
+    app.add_exception_handler(TenantContextRequired, tenant_context_error_handler)
+    app.add_exception_handler(TenantContextInvalid, tenant_context_error_handler)
+    for error_type in (
+        IdentityNotBound,
+        IdentityBindingPending,
+        IdentityBindingSuspended,
+        IdentityBindingRevoked,
+        TenantContextAmbiguous,
+        PrincipalProvisioningRequired,
+        IdentitySubjectClassMismatch,
+    ):
+        app.add_exception_handler(error_type, identity_resolution_error_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
     app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
     app.add_exception_handler(
