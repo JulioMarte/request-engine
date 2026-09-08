@@ -86,10 +86,7 @@ def upgrade() -> None:
     # containing schema. Grant it only for the ownership transfer and revoke it
     # immediately; runtime execution needs no CREATE authority on request_platform.
     op.execute(f"GRANT USAGE, CREATE ON SCHEMA request_platform TO {_ROLE}")
-    op.execute(
-        "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
-        f"OWNER TO {_ROLE}"
-    )
+    op.execute(f"ALTER FUNCTION request_platform.read_principal_authority(uuid) OWNER TO {_ROLE}")
     op.execute(
         "ALTER FUNCTION request_platform.read_principal_authority(uuid) "
         "SET search_path TO pg_catalog, request_engine, pg_temp"
