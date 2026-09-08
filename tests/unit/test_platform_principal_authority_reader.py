@@ -56,7 +56,10 @@ def test_inactive_platform_principal_has_no_materialized_authority() -> None:
 
 
 def test_unknown_platform_capability_fails_closed() -> None:
-    with pytest.raises(PrincipalAuthorityMaterializationError, match="unknown persisted capability"):
+    with pytest.raises(
+        PrincipalAuthorityMaterializationError,
+        match="unknown persisted capability",
+    ):
         materialize_platform_authority(
             principal_id=uuid4(),
             rows=[_row(capability_key="platform.unknown.superpower")],
