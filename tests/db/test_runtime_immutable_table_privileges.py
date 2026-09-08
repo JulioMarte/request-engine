@@ -21,6 +21,13 @@ _EXACT_DEFINER_OWNERS = {
         "read_principal_authority",
         "p_principal_id uuid",
     ): "request_platform_definer",
+    (
+        "request_platform",
+        "establish_root",
+        "p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, "
+        "p_password_verifier text, p_principal_id uuid, p_binding_id uuid",
+    ): "request_bootstrap_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
