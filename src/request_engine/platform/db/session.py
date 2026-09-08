@@ -15,6 +15,7 @@ from request_engine.platform.security.discovery_handoff_context import (
     current_discovery_handoff_id,
 )
 from request_engine.platform.security.execution_context import current_actor_context
+from request_engine.platform.security.platform_context import PlatformActorContext
 
 SessionFactory = async_sessionmaker[AsyncSession]
 
@@ -81,6 +82,35 @@ async def set_actor_context(session: AsyncSession, actor: ActorContext) -> None:
     )
 
 
+async def set_platform_actor_context(
+    session: AsyncSession,
+    actor: PlatformActorContext,
+) -> None:
+    """Bind tenant-less Platform Principal provenance to one DB transaction."""
+
+    await session.execute(
+        text(
+            """
+            SELECT
+                set_config('request_engine.authenticated_principal_id', :principal_id, true),
+                set_config('request_engine.principal_kind', :principal_kind, true),
+                set_config('request_engine.authentication_method', :authentication_method, true),
+                set_config('request_engine.correlation_id', :correlation_id, true),
+                set_config('request_engine.credential_id', :credential_id, true),
+                set_config('request_engine.authority_revision', :authority_revision, true)
+            """
+        ),
+        {
+            "principal_id": str(actor.principal_id),
+            "principal_kind": actor.principal_kind.value,
+            "authentication_method": actor.authentication_method,
+            "correlation_id": str(actor.correlation_id),
+            "credential_id": actor.credential_id or "",
+            "authority_revision": str(actor.authority_revision),
+        },
+    )
+
+
 @asynccontextmanager
 async def tenant_transaction(
     session_factory: SessionFactory,
@@ -110,4 +140,16 @@ async def actor_transaction(
     async with session_factory() as session, session.begin():
         await set_actor_context(session, actor)
         await _set_discovery_handoff_context(session)
+        yield session
+
+
+@asynccontextmanager
+async def platform_actor_transaction(
+    session_factory: SessionFactory,
+    actor: PlatformActorContext,
+) -> AsyncGenerator[AsyncSession]:
+    """Open a tenant-less transaction bound to trusted Platform Principal provenance."""
+
+    async with session_factory() as session, session.begin():
+        await set_platform_actor_context(session, actor)
         yield session
