@@ -17,10 +17,10 @@ _CONTROL_CAPABILITIES = (
     "staff.manage_membership",
 )
 _OPERATIONAL_SCOPES = (
-    "manage_commercial_terms",
-    "manage_contextual_supply",
-    "manage_discovery",
-    "manage_operational_profile",
+    "operations.manage_discovery",
+    "operations.manage_profile",
+    "operations.manage_supply",
+    "operations.manage_terms",
 )
 
 
