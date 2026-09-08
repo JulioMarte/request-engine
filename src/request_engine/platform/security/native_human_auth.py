@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from typing import Protocol, TypeGuard
 from uuid import UUID, uuid4
 
 from request_engine.platform.security.native_auth import (
@@ -336,7 +336,9 @@ class NativeHumanAuthService:
         return value
 
 
-def _credential_is_usable(snapshot: NativePasswordCredentialSnapshot | None) -> bool:
+def _credential_is_usable(
+    snapshot: NativePasswordCredentialSnapshot | None,
+) -> TypeGuard[NativePasswordCredentialSnapshot]:
     return bool(
         snapshot is not None
         and snapshot.identity_status is NativeIdentityStatus.ACTIVE
