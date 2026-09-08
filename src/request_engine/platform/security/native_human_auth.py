@@ -8,7 +8,6 @@ from uuid import UUID, uuid4
 
 from request_engine.platform.security.native_auth import (
     CredentialInvalid,
-    OpaqueTokenMaterial,
     digest_opaque_secret,
     hash_password,
     issue_opaque_token,
@@ -103,7 +102,9 @@ class NativeHumanAuthStore(Protocol):
         *,
         native_identity_id: UUID,
         credential_id: UUID,
-        token: OpaqueTokenMaterial,
+        session_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
         expires_at: datetime,
     ) -> bool: ...
 
@@ -129,7 +130,9 @@ class NativeHumanAuthStore(Protocol):
         self,
         *,
         native_identity_id: UUID,
-        token: OpaqueTokenMaterial,
+        recovery_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
         expires_at: datetime,
     ) -> bool: ...
 
@@ -215,7 +218,9 @@ class NativeHumanAuthService:
         created = await self._store.create_session(
             native_identity_id=snapshot.native_identity_id,
             credential_id=snapshot.credential_id,
-            token=token,
+            session_id=token.token_id,
+            token_digest=token.digest,
+            token_fingerprint=token.fingerprint,
             expires_at=expires_at,
         )
         if not created:
@@ -305,7 +310,9 @@ class NativeHumanAuthService:
         expires_at = self._now() + self._recovery_ttl
         created = await self._store.create_recovery_intent(
             native_identity_id=snapshot.native_identity_id,
-            token=token,
+            recovery_id=token.token_id,
+            token_digest=token.digest,
+            token_fingerprint=token.fingerprint,
             expires_at=expires_at,
         )
         if not created:
