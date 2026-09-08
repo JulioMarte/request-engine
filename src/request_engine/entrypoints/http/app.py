@@ -1,11 +1,13 @@
 import os
 from collections.abc import Awaitable, Callable
+from uuid import UUID
 
 from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
+from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
 from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
@@ -29,6 +31,8 @@ from request_engine.platform.security.http import (
     TenantCapabilityActorResolver,
     request_correlation_id,
 )
+from request_engine.platform.security.native_human_auth import NativeHumanAuthService
+from request_engine.platform.security.native_session import NativeSessionAuthenticator
 
 _APPOINTMENT_OPTION_SIGNING_KEY_ENV = "REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY"
 _IDENTITY_EXCHANGE_KEY_ENV = "REQUEST_ENGINE_IDENTITY_EXCHANGE_KEY"
@@ -58,6 +62,9 @@ def create_app(
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
+    native_auth_service: NativeHumanAuthService | None = None,
+    native_session_authenticator: NativeSessionAuthenticator | None = None,
+    native_identity_authority_id: UUID | None = None,
 ) -> FastAPI:
     """Compose module-owned HTTP surfaces around explicit external ports."""
 
@@ -76,6 +83,17 @@ def create_app(
         if configured_identity_key is not None:
             identity_key = configured_identity_key.encode("utf-8")
 
+    native_components = (
+        native_auth_service,
+        native_session_authenticator,
+        native_identity_authority_id,
+    )
+    configured_native_components = sum(component is not None for component in native_components)
+    if configured_native_components not in (0, len(native_components)):
+        raise RuntimeError(
+            "Native authentication requires service, session authenticator and authority id together"
+        )
+
     policy = tenant_capability_policy or BaselineTenantCapabilityPolicy()
     operator_actors = operator_actor_resolver or DeploymentOperatorActorResolver(
         build_principal_authority_reader(session_factory), operator_capability_source
@@ -93,6 +111,18 @@ def create_app(
     )
     app.middleware("http")(_request_execution_context)
     add_global_error_handlers(app)
+    if (
+        native_auth_service is not None
+        and native_session_authenticator is not None
+        and native_identity_authority_id is not None
+    ):
+        app.include_router(
+            create_native_auth_router(
+                service=native_auth_service,
+                authenticator=native_session_authenticator,
+                identity_authority_id=native_identity_authority_id,
+            )
+        )
     app.include_router(
         create_capability_router(
             actor_resolver=request_actor_resolver,
