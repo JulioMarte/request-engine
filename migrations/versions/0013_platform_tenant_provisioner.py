@@ -79,9 +79,7 @@ def upgrade() -> None:
         "capability_key, delegable, granted_by_principal_id, provenance_kind, "
         f"provenance_reference) ON request_engine.principal_authority_grants TO {_DEFINER_ROLE}"
     )
-    op.execute(
-        f"GRANT UPDATE (authority_revision) ON request_engine.principals TO {_DEFINER_ROLE}"
-    )
+    op.execute(f"GRANT UPDATE (authority_revision) ON request_engine.principals TO {_DEFINER_ROLE}")
     op.execute(f"GRANT USAGE, CREATE ON SCHEMA request_platform TO {_DEFINER_ROLE}")
     op.execute(
         """
