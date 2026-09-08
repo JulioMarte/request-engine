@@ -130,8 +130,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        "DROP TRIGGER platform_bootstrap_intents_guard "
-        "ON request_engine.platform_bootstrap_intents"
+        "DROP TRIGGER platform_bootstrap_intents_guard ON request_engine.platform_bootstrap_intents"
     )
     op.execute("DROP FUNCTION request_engine.guard_platform_bootstrap_intent()")
     op.execute("DROP TABLE request_engine.platform_bootstrap_intents")
