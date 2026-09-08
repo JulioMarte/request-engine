@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -40,7 +40,7 @@ async def test_native_human_login_and_revocation_use_least_privilege_runtime_bou
     store = PostgresNativeHumanAuthStore(command_session_factory)
     service = NativeHumanAuthService(
         store=store,
-        clock=lambda: datetime.now(timezone.utc),
+        clock=lambda: datetime.now(UTC),
     )
     authenticator = NativeSessionAuthenticator(
         session_reader=PostgresNativeSessionReader(command_session_factory)
