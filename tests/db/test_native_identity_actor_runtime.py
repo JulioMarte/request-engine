@@ -43,7 +43,8 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         (f"native-auth-{suffix}", f"Native Auth {suffix[:8]}"),
     ).fetchone()
     assert organization_row is not None
-    organization_id = UUID(str(organization_row[0]))
+    organization_id = organization_row[0]
+    assert isinstance(organization_id, UUID)
     principal_row = admin.execute(  # type: ignore[attr-defined]
         """
         INSERT INTO request_engine.principals (
@@ -54,7 +55,8 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         (organization_id, f"native-human-{suffix}"),
     ).fetchone()
     assert principal_row is not None
-    principal_id = UUID(str(principal_row[0]))
+    principal_id = principal_row[0]
+    assert isinstance(principal_id, UUID)
     admin.execute(  # type: ignore[attr-defined]
         """
         INSERT INTO request_engine.identity_authorities (id, kind, issuer_or_environment)
