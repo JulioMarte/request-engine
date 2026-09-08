@@ -135,9 +135,7 @@ def test_security_definers_are_closed_across_all_runtime_schemas(
 
         if exact_owner is not None:
             if owner != exact_owner:
-                violations.append(
-                    f"{function_name}: owner={owner}, expected={exact_owner}"
-                )
+                violations.append(f"{function_name}: owner={owner}, expected={exact_owner}")
         elif owner not in _TRUSTED_DEFINER_OWNERS:
             violations.append(f"{function_name}: owner={owner}")
         if public_execute:
