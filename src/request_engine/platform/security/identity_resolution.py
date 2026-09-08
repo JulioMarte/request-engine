@@ -5,7 +5,10 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from request_engine.platform.security.authentication import AuthenticatedSubject
+from request_engine.platform.security.authentication import (
+    AuthenticatedSubject,
+    AuthenticatedSubjectClass,
+)
 from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.platform_context import PlatformActorContext
 from request_engine.platform.security.principal_authority import (
@@ -44,6 +47,10 @@ class TenantContextAmbiguous(IdentityResolutionError):
 
 
 class PrincipalProvisioningRequired(IdentityResolutionError):
+    pass
+
+
+class IdentitySubjectClassMismatch(IdentityResolutionError):
     pass
 
 
@@ -103,7 +110,9 @@ class IdentityPrincipalResolver:
 
     Tenant selection happens before binding lookup so PostgreSQL RLS remains a
     trust boundary rather than a post-query filter. Principal ids and
-    capabilities are never accepted as inputs.
+    capabilities are never accepted as inputs. The authentication subject class
+    is also checked against the canonical Principal kind so a workload cannot
+    become a HUMAN and a HUMAN credential cannot activate an Agent Principal.
     """
 
     def __init__(
@@ -142,11 +151,13 @@ class IdentityPrincipalResolver:
         )
         if authority is None:
             raise PrincipalProvisioningRequired("bound tenant Principal is not currently usable")
+        principal_kind = _principal_kind(authority)
+        _assert_subject_class(subject.subject_class, principal_kind)
         return ActorContext(
             organization_id=organization_id,
             principal_id=binding.principal_id,
             capabilities=authority.capabilities,
-            principal_kind=_principal_kind(authority),
+            principal_kind=principal_kind,
             authentication_method=authentication_method,
             credential_id=credential_id,
             technical_principal_id=technical_principal_id,
@@ -174,11 +185,13 @@ class IdentityPrincipalResolver:
         )
         if authority is None:
             raise PrincipalProvisioningRequired("bound platform Principal is not currently usable")
+        principal_kind = _principal_kind(authority)
+        _assert_subject_class(subject.subject_class, principal_kind)
         return PlatformActorContext(
             principal_id=binding.principal_id,
             capabilities=authority.capabilities,
             authority_revision=authority.authority_revision,
-            principal_kind=_principal_kind(authority),
+            principal_kind=principal_kind,
             authentication_method=authentication_method,
             credential_id=credential_id,
             technical_principal_id=technical_principal_id,
@@ -215,3 +228,22 @@ def _principal_kind(authority: PrincipalAuthoritySnapshot) -> PrincipalKind:
         return PrincipalKind(authority.principal_kind)
     except ValueError as exc:
         raise PrincipalProvisioningRequired("Principal kind cannot be safely materialized") from exc
+
+
+def _assert_subject_class(
+    subject_class: AuthenticatedSubjectClass,
+    principal_kind: PrincipalKind,
+) -> None:
+    if subject_class is AuthenticatedSubjectClass.HUMAN:
+        if principal_kind is PrincipalKind.HUMAN:
+            return
+        raise IdentitySubjectClassMismatch("HUMAN authentication cannot activate a workload Principal")
+    if subject_class is AuthenticatedSubjectClass.WORKLOAD:
+        if principal_kind in {
+            PrincipalKind.AGENT,
+            PrincipalKind.INTEGRATION,
+            PrincipalKind.SYSTEM,
+        }:
+            return
+        raise IdentitySubjectClassMismatch("workload authentication cannot activate a HUMAN Principal")
+    raise IdentitySubjectClassMismatch("unknown authentication subject class cannot activate authority")
