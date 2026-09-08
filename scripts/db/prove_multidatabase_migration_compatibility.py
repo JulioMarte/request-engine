@@ -49,8 +49,8 @@ def main() -> None:
     try:
         # 0001 must remain installable after post-baseline cluster-global roles exist.
         _run_alembic(proof_database, "0001_initial")
-        # The same database must then reach current HEAD while reusing an exact
-        # cluster-global platform definer instead of attempting an unsafe duplicate.
+        # The same database must then reach current HEAD while reusing exact
+        # cluster-global control-plane definers rather than duplicating them unsafely.
         _run_alembic(proof_database, "head")
 
         with psycopg.connect(
@@ -65,17 +65,22 @@ def main() -> None:
             head = proof.execute("SELECT version_num FROM alembic_version").fetchone()
             if head is None:
                 raise RuntimeError("second database has no Alembic head")
-            definer_owner = proof.execute(
+            owners = proof.execute(
                 """
-                SELECT pg_get_userbyid(p.proowner)
+                SELECT p.proname, pg_get_userbyid(p.proowner)
                   FROM pg_proc AS p
                   JOIN pg_namespace AS n ON n.oid = p.pronamespace
                  WHERE n.nspname = 'request_platform'
-                   AND p.proname = 'read_principal_authority'
+                   AND p.proname IN ('read_principal_authority', 'establish_root')
+                 ORDER BY p.proname
                 """
-            ).fetchone()
-            if definer_owner != ("request_platform_definer",):
-                raise RuntimeError("second database did not reuse the audited platform definer")
+            ).fetchall()
+            expected = [
+                ("establish_root", "request_bootstrap_definer"),
+                ("read_principal_authority", "request_platform_definer"),
+            ]
+            if owners != expected:
+                raise RuntimeError(f"second database definer ownership mismatch: {owners!r}")
     finally:
         with psycopg.connect(admin_conninfo, autocommit=True) as admin:
             admin.execute(
