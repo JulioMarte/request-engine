@@ -88,14 +88,14 @@ def upgrade() -> None:
                     USING ERRCODE = '22023';
             END IF;
 
-            SELECT principal_kind, authority_revision
+            SELECT principal.principal_kind, principal.authority_revision
               INTO v_creator_kind, v_current_revision
-              FROM request_engine.principals
-             WHERE id = v_creator_id
-               AND principal_plane = 'platform'
-               AND organization_id IS NULL
-               AND active
-             FOR UPDATE;
+              FROM request_engine.principals AS principal
+             WHERE principal.id = v_creator_id
+               AND principal.principal_plane = 'platform'
+               AND principal.organization_id IS NULL
+               AND principal.active
+             FOR UPDATE OF principal;
             IF NOT FOUND OR v_creator_kind <> 'human' THEN
                 RAISE EXCEPTION 'Current Platform Principal is not provision-capable'
                     USING ERRCODE = '42501';
@@ -104,21 +104,21 @@ def upgrade() -> None:
                 RAISE EXCEPTION 'Platform authority revision is stale' USING ERRCODE = '40001';
             END IF;
             SELECT EXISTS (
-                SELECT 1 FROM request_engine.principal_authority_grants
-                 WHERE principal_id = v_creator_id
-                   AND principal_plane = 'platform'
-                   AND authority_plane = 'platform'
-                   AND capability_key = 'organization.provision'
-                   AND status = 'active'
+                SELECT 1 FROM request_engine.principal_authority_grants AS grant_row
+                 WHERE grant_row.principal_id = v_creator_id
+                   AND grant_row.principal_plane = 'platform'
+                   AND grant_row.authority_plane = 'platform'
+                   AND grant_row.capability_key = 'organization.provision'
+                   AND grant_row.status = 'active'
             ) INTO v_can_provision;
             IF NOT v_can_provision THEN
                 RAISE EXCEPTION 'Current Platform Principal lacks organization.provision'
                     USING ERRCODE = '42501';
             END IF;
 
-            SELECT * INTO v_existing
-              FROM request_engine.organization_root_provisioning_facts
-             WHERE organization_id = p_organization_id;
+            SELECT root_fact.* INTO v_existing
+              FROM request_engine.organization_root_provisioning_facts AS root_fact
+             WHERE root_fact.organization_id = p_organization_id;
             IF FOUND THEN
                 IF v_existing.organization_party_id <> p_organization_party_id
                    OR v_existing.controller_principal_id <> p_controller_principal_id
