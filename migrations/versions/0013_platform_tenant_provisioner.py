@@ -69,8 +69,8 @@ def upgrade() -> None:
     op.execute(f"GRANT USAGE ON SCHEMA request_platform TO {_RUNTIME_ROLE}")
     op.execute(f"GRANT USAGE ON SCHEMA request_engine TO {_DEFINER_ROLE}")
     op.execute(
-        "GRANT SELECT (id, principal_plane, principal_kind, active, authority_revision), "
-        "INSERT (id, principal_plane, principal_kind, external_subject) "
+        "GRANT SELECT (id, organization_id, principal_plane, principal_kind, active, "
+        "authority_revision), INSERT (id, principal_plane, principal_kind, external_subject) "
         f"ON request_engine.principals TO {_DEFINER_ROLE}"
     )
     op.execute(
@@ -210,8 +210,8 @@ def downgrade() -> None:
         f"REVOKE UPDATE (authority_revision) ON request_engine.principals FROM {_DEFINER_ROLE}"
     )
     op.execute(
-        "REVOKE SELECT (id, principal_plane, principal_kind, active, authority_revision), "
-        "INSERT (id, principal_plane, principal_kind, external_subject) "
+        "REVOKE SELECT (id, organization_id, principal_plane, principal_kind, active, "
+        "authority_revision), INSERT (id, principal_plane, principal_kind, external_subject) "
         f"ON request_engine.principals FROM {_DEFINER_ROLE}"
     )
     op.execute(f"REVOKE USAGE ON SCHEMA request_engine FROM {_DEFINER_ROLE}")
