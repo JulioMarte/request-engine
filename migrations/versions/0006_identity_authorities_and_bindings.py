@@ -117,11 +117,16 @@ def upgrade() -> None:
                     RAISE EXCEPTION 'Identity binding identity and scope are immutable'
                         USING ERRCODE = '55000';
                 END IF;
+                IF OLD.last_seen_at IS NOT NULL
+                   AND (NEW.last_seen_at IS NULL OR NEW.last_seen_at < OLD.last_seen_at)
+                THEN
+                    RAISE EXCEPTION 'Identity binding last_seen_at cannot regress'
+                        USING ERRCODE = '55000';
+                END IF;
                 IF NEW.status = OLD.status THEN
                     IF NEW.revision <> OLD.revision
                        OR NEW.revoked_at IS DISTINCT FROM OLD.revoked_at
                        OR NEW.last_seen_at IS NOT DISTINCT FROM OLD.last_seen_at
-                       OR (OLD.last_seen_at IS NOT NULL AND NEW.last_seen_at < OLD.last_seen_at)
                     THEN
                         RAISE EXCEPTION 'Only monotonic last_seen_at may change'
                             USING ERRCODE = '55000';
