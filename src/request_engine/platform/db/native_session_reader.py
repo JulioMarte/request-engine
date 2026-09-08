@@ -6,6 +6,7 @@ from sqlalchemy import text
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
+    NativeIdentityAuthorityStatus,
     NativeIdentityStatus,
     NativeSessionSnapshot,
     NativeSessionStatus,
@@ -35,6 +36,7 @@ class PostgresNativeSessionReader:
                                    session_status,
                                    identity_status,
                                    credential_status,
+                                   authority_status,
                                    expires_at
                               FROM request_auth.read_native_session(:session_id)
                             """
@@ -61,5 +63,6 @@ class PostgresNativeSessionReader:
             session_status=NativeSessionStatus(str(row["session_status"])),
             identity_status=NativeIdentityStatus(str(row["identity_status"])),
             credential_status=NativeCredentialStatus(str(row["credential_status"])),
+            authority_status=NativeIdentityAuthorityStatus(str(row["authority_status"])),
             expires_at=expires_at,
         )
