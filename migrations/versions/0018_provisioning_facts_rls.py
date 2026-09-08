@@ -46,8 +46,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     for table in reversed(_TABLES):
-        op.execute(
-            f"DROP POLICY {table}_tenant_isolation ON request_engine.{table}"
-        )
+        op.execute(f"DROP POLICY {table}_tenant_isolation ON request_engine.{table}")
         op.execute(f"ALTER TABLE request_engine.{table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE request_engine.{table} DISABLE ROW LEVEL SECURITY")
