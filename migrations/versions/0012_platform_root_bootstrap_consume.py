@@ -63,16 +63,37 @@ def upgrade() -> None:
         """
     )
     op.execute(f"GRANT USAGE ON SCHEMA request_engine TO {_ROLE}")
-    op.execute(f"GRANT SELECT ON request_engine.identity_authorities TO {_ROLE}")
-    op.execute(f"GRANT SELECT, UPDATE ON request_engine.platform_bootstrap_intents TO {_ROLE}")
-    op.execute(f"GRANT INSERT ON request_engine.native_identities TO {_ROLE}")
-    op.execute(f"GRANT INSERT ON request_engine.native_credentials TO {_ROLE}")
-    op.execute(f"GRANT SELECT, INSERT ON request_engine.principals TO {_ROLE}")
     op.execute(
-        f"GRANT UPDATE (authority_revision) ON request_engine.principals TO {_ROLE}"
+        "GRANT SELECT (id, kind, status) ON request_engine.identity_authorities "
+        f"TO {_ROLE}"
     )
-    op.execute(f"GRANT INSERT ON request_engine.identity_bindings TO {_ROLE}")
-    op.execute(f"GRANT INSERT ON request_engine.principal_authority_grants TO {_ROLE}")
+    op.execute(
+        "GRANT SELECT (id, token_digest, permitted_action, provenance_reference, status, "
+        "expires_at), UPDATE (status, revision, consumed_at) "
+        f"ON request_engine.platform_bootstrap_intents TO {_ROLE}"
+    )
+    op.execute(
+        "GRANT INSERT (id, identity_authority_id, login_handle) "
+        f"ON request_engine.native_identities TO {_ROLE}"
+    )
+    op.execute(
+        "GRANT INSERT (id, native_identity_id, verifier) "
+        f"ON request_engine.native_credentials TO {_ROLE}"
+    )
+    op.execute(
+        "GRANT SELECT (id, organization_id, principal_plane, active), "
+        "INSERT (id, principal_plane, principal_kind, external_subject), "
+        f"UPDATE (authority_revision) ON request_engine.principals TO {_ROLE}"
+    )
+    op.execute(
+        "GRANT INSERT (id, principal_id, principal_plane, identity_authority_id, "
+        f"subject_id, status) ON request_engine.identity_bindings TO {_ROLE}"
+    )
+    op.execute(
+        "GRANT INSERT (principal_id, principal_plane, authority_plane, capability_key, "
+        "delegable, provenance_kind, provenance_reference) "
+        f"ON request_engine.principal_authority_grants TO {_ROLE}"
+    )
     op.execute(f"GRANT USAGE, CREATE ON SCHEMA request_platform TO {_ROLE}")
     op.execute(
         """
@@ -188,15 +209,36 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(f"DROP FUNCTION {_FUNCTION}")
     op.execute(f"REVOKE USAGE ON SCHEMA request_platform FROM {_ROLE}")
-    op.execute(f"REVOKE INSERT ON request_engine.principal_authority_grants FROM {_ROLE}")
-    op.execute(f"REVOKE INSERT ON request_engine.identity_bindings FROM {_ROLE}")
-    op.execute(f"REVOKE UPDATE (authority_revision) ON request_engine.principals FROM {_ROLE}")
-    op.execute(f"REVOKE SELECT, INSERT ON request_engine.principals FROM {_ROLE}")
-    op.execute(f"REVOKE INSERT ON request_engine.native_credentials FROM {_ROLE}")
-    op.execute(f"REVOKE INSERT ON request_engine.native_identities FROM {_ROLE}")
     op.execute(
-        f"REVOKE SELECT, UPDATE ON request_engine.platform_bootstrap_intents FROM {_ROLE}"
+        "REVOKE INSERT (principal_id, principal_plane, authority_plane, capability_key, "
+        "delegable, provenance_kind, provenance_reference) "
+        f"ON request_engine.principal_authority_grants FROM {_ROLE}"
     )
-    op.execute(f"REVOKE SELECT ON request_engine.identity_authorities FROM {_ROLE}")
+    op.execute(
+        "REVOKE INSERT (id, principal_id, principal_plane, identity_authority_id, "
+        f"subject_id, status) ON request_engine.identity_bindings FROM {_ROLE}"
+    )
+    op.execute(
+        "REVOKE SELECT (id, organization_id, principal_plane, active), "
+        "INSERT (id, principal_plane, principal_kind, external_subject), "
+        f"UPDATE (authority_revision) ON request_engine.principals FROM {_ROLE}"
+    )
+    op.execute(
+        "REVOKE INSERT (id, native_identity_id, verifier) "
+        f"ON request_engine.native_credentials FROM {_ROLE}"
+    )
+    op.execute(
+        "REVOKE INSERT (id, identity_authority_id, login_handle) "
+        f"ON request_engine.native_identities FROM {_ROLE}"
+    )
+    op.execute(
+        "REVOKE SELECT (id, token_digest, permitted_action, provenance_reference, status, "
+        "expires_at), UPDATE (status, revision, consumed_at) "
+        f"ON request_engine.platform_bootstrap_intents FROM {_ROLE}"
+    )
+    op.execute(
+        "REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities "
+        f"FROM {_ROLE}"
+    )
     op.execute(f"REVOKE USAGE ON SCHEMA request_engine FROM {_ROLE}")
     # Cluster-global role is intentionally retained for another RE database.
