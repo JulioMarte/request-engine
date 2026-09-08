@@ -76,7 +76,7 @@ def upgrade() -> None:
         f"ON request_engine.native_credentials TO {_ROLE}"
     )
     op.execute(
-        "GRANT SELECT (id, organization_id, principal_plane, active), "
+        "GRANT SELECT (id, organization_id, principal_plane, active, authority_revision), "
         "INSERT (id, principal_plane, principal_kind, external_subject), "
         f"UPDATE (authority_revision) ON request_engine.principals TO {_ROLE}"
     )
@@ -216,7 +216,7 @@ def downgrade() -> None:
         f"subject_id, status) ON request_engine.identity_bindings FROM {_ROLE}"
     )
     op.execute(
-        "REVOKE SELECT (id, organization_id, principal_plane, active), "
+        "REVOKE SELECT (id, organization_id, principal_plane, active, authority_revision), "
         "INSERT (id, principal_plane, principal_kind, external_subject), "
         f"UPDATE (authority_revision) ON request_engine.principals FROM {_ROLE}"
     )
