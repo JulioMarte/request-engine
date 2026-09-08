@@ -28,6 +28,11 @@ _EXACT_DEFINER_OWNERS = {
         "p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, "
         "p_password_verifier text, p_principal_id uuid, p_binding_id uuid",
     ): "request_bootstrap_definer",
+    (
+        "request_platform",
+        "provision_tenant_provisioner",
+        "p_new_principal_id uuid, p_external_subject text, p_provenance_reference text",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
