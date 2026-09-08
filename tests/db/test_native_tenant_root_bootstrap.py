@@ -148,7 +148,7 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
     provenance = f"proof:{uuid4().hex}"
 
     _set_actor(admin_conn, provisioner)
-    admin_conn.execute("SET ROLE request_engine_platform_control")
+    admin_conn.execute("SET ROLE request_platform_control")
     try:
         created = _provision_root(
             admin_conn,
@@ -269,7 +269,7 @@ def test_uncredentialed_native_identity_cannot_become_first_controller(
     authority_id, native_identity_id = _native_identity(admin_conn, credentialed=False)
     _set_actor(admin_conn, provisioner)
 
-    admin_conn.execute("SET ROLE request_engine_platform_control")
+    admin_conn.execute("SET ROLE request_platform_control")
     try:
         with pytest.raises(Error) as rejected:
             _provision_root(
