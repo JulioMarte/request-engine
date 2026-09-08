@@ -64,7 +64,7 @@ def upgrade() -> None:
             v_creator_kind text;
             v_can_provision boolean;
             v_binding_id uuid := pg_catalog.gen_random_uuid();
-            v_existing request_engine.organization_root_provisioning_facts%ROWTYPE;
+            v_existing record;
         BEGIN
             BEGIN
                 v_creator_id := current_setting(
@@ -116,7 +116,13 @@ def upgrade() -> None:
                     USING ERRCODE = '42501';
             END IF;
 
-            SELECT root_fact.* INTO v_existing
+            SELECT root_fact.organization_id,
+                   root_fact.organization_party_id,
+                   root_fact.controller_principal_id,
+                   root_fact.controller_binding_id,
+                   root_fact.provisioned_by_principal_id,
+                   root_fact.provenance_reference
+              INTO v_existing
               FROM request_engine.organization_root_provisioning_facts AS root_fact
              WHERE root_fact.organization_id = p_organization_id;
             IF FOUND THEN
