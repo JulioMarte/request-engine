@@ -75,7 +75,10 @@ class IdentityBindingSnapshot:
             raise ValueError("identity binding revision must be positive")
         if self.principal_plane is IdentityBindingPlane.TENANT and self.organization_id is None:
             raise ValueError("tenant binding requires organization_id")
-        if self.principal_plane is IdentityBindingPlane.PLATFORM and self.organization_id is not None:
+        if (
+            self.principal_plane is IdentityBindingPlane.PLATFORM
+            and self.organization_id is not None
+        ):
             raise ValueError("platform binding cannot carry organization_id")
 
 
@@ -191,7 +194,9 @@ def _authority_id(subject: AuthenticatedSubject) -> UUID:
 
 
 def _select_binding(bindings: tuple[IdentityBindingSnapshot, ...]) -> IdentityBindingSnapshot:
-    active = tuple(binding for binding in bindings if binding.status is IdentityBindingStatus.ACTIVE)
+    active = tuple(
+        binding for binding in bindings if binding.status is IdentityBindingStatus.ACTIVE
+    )
     if len(active) == 1:
         return active[0]
     if len(active) > 1:
