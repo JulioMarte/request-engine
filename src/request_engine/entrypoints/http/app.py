@@ -6,7 +6,6 @@ from fastapi import FastAPI, Request, Response
 
 from request_engine.entrypoints.http.capabilities import create_capability_router
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
-from request_engine.entrypoints.http.identity_runtime import build_identity_principal_resolver
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
@@ -15,6 +14,7 @@ from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
     OperatorCapabilitySource,
 )
+from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
 from request_engine.platform.db.session import SessionFactory

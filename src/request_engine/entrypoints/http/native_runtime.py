@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from request_engine.entrypoints.http.identity_runtime import build_identity_principal_resolver
+from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.native_session_reader import PostgresNativeSessionReader
 from request_engine.platform.db.session import SessionFactory
