@@ -138,8 +138,7 @@ def upgrade() -> None:
             SELECT kind, status
               INTO v_authority_kind, v_authority_status
               FROM request_engine.identity_authorities
-             WHERE id = p_identity_authority_id
-             FOR KEY SHARE;
+             WHERE id = p_identity_authority_id;
             IF NOT FOUND OR v_authority_kind <> 'native' OR v_authority_status <> 'active' THEN
                 RAISE EXCEPTION 'Platform root requires an active Native identity authority'
                     USING ERRCODE = '23514';
