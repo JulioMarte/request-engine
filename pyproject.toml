@@ -14,6 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
+request-engine-platform-bootstrap = "request_engine.entrypoints.platform_bootstrap_cli:main"
 request-engine-worker = "request_engine.entrypoints.worker.cli:main"
 
 [dependency-groups]
