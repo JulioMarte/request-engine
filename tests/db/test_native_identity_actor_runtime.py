@@ -1,6 +1,8 @@
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from psycopg import Connection
 from starlette.requests import Request
 
 from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
@@ -9,6 +11,7 @@ from request_engine.platform.security.identity_resolution import IdentityBinding
 
 pytestmark = [pytest.mark.postgres, pytest.mark.integration, pytest.mark.security]
 PASSWORD = "correct horse battery staple"
+PgConnection = Connection[Any]
 
 
 def _request(*, token: str, organization_id: UUID) -> Request:
@@ -27,14 +30,12 @@ def _request(*, token: str, organization_id: UUID) -> Request:
 
 @pytest.mark.asyncio
 async def test_native_session_resolves_current_principal_and_binding_revocation_is_immediate(
-    admin_conn: object,
+    admin_conn: PgConnection,
     command_session_factory: SessionFactory,
 ) -> None:
-    admin = admin_conn
-    assert hasattr(admin, "execute")
     suffix = uuid4().hex
     authority_id = uuid4()
-    organization_row = admin.execute(  # type: ignore[attr-defined]
+    organization_row = admin_conn.execute(
         """
         INSERT INTO request_engine.organizations (organization_key, display_name, public_profile)
         VALUES (%s, %s, '{}'::jsonb)
@@ -45,7 +46,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
     assert organization_row is not None
     assert isinstance(organization_row[0], UUID)
     organization_id = organization_row[0]
-    principal_row = admin.execute(  # type: ignore[attr-defined]
+    principal_row = admin_conn.execute(
         """
         INSERT INTO request_engine.principals (
             organization_id, principal_kind, external_subject
@@ -57,7 +58,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
     assert principal_row is not None
     assert isinstance(principal_row[0], UUID)
     principal_id = principal_row[0]
-    admin.execute(  # type: ignore[attr-defined]
+    admin_conn.execute(
         """
         INSERT INTO request_engine.identity_authorities (id, kind, issuer_or_environment)
         VALUES (%s, 'native', %s)
@@ -71,7 +72,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         login_handle=f"native-{suffix}@example.test",
         password=PASSWORD,
     )
-    admin.execute(  # type: ignore[attr-defined]
+    admin_conn.execute(
         """
         INSERT INTO request_engine.identity_bindings (
             organization_id, principal_id, principal_plane,
@@ -80,7 +81,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         """,
         (organization_id, principal_id, authority_id, str(enrollment.native_identity_id)),
     )
-    admin.execute(  # type: ignore[attr-defined]
+    admin_conn.execute(
         """
         INSERT INTO request_engine.principal_authority_grants (
             organization_id, principal_id, principal_plane, authority_plane,
@@ -106,7 +107,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
     assert actor.capabilities == frozenset({"appointments.read"})
     assert actor.credential_id == str(issued.session_id)
 
-    admin.execute(  # type: ignore[attr-defined]
+    admin_conn.execute(
         """
         UPDATE request_engine.identity_bindings
            SET status = 'suspended', revision = revision + 1
