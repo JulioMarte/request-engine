@@ -123,7 +123,7 @@ def upgrade() -> None:
                        OR NEW.last_seen_at IS NOT DISTINCT FROM OLD.last_seen_at
                        OR (OLD.last_seen_at IS NOT NULL AND NEW.last_seen_at < OLD.last_seen_at)
                     THEN
-                        RAISE EXCEPTION 'Only monotonic last_seen_at may change without state transition'
+                        RAISE EXCEPTION 'Only monotonic last_seen_at may change'
                             USING ERRCODE = '55000';
                     END IF;
                     RETURN NEW;
