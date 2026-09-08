@@ -311,7 +311,8 @@ def downgrade() -> None:
         f"ON request_engine.parties FROM {_DEFINER_ROLE}"
     )
     op.execute(
-        f"REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities FROM {_DEFINER_ROLE}"
+        "REVOKE SELECT (id, kind, status) ON request_engine.identity_authorities "
+        f"FROM {_DEFINER_ROLE}"
     )
     op.execute(
         "REVOKE SELECT (id, identity_authority_id, status) "
