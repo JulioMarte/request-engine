@@ -84,7 +84,7 @@ def test_platform_controller_creates_bounded_tenant_provisioner(
     provisioner = uuid4()
 
     _set_platform_actor(admin_conn, creator, revision)
-    admin_conn.execute("SET ROLE request_engine_platform_control")
+    admin_conn.execute("SET ROLE request_platform_control")
     try:
         row = admin_conn.execute(
             "SELECT request_platform.provision_tenant_provisioner(%s, %s, %s)",
@@ -134,7 +134,7 @@ def test_tenant_provisioner_requires_current_delegable_organization_authority(
     )
     _set_platform_actor(admin_conn, creator, _revision(admin_conn, creator))
 
-    admin_conn.execute("SET ROLE request_engine_platform_control")
+    admin_conn.execute("SET ROLE request_platform_control")
     try:
         with pytest.raises(Error) as rejected:
             admin_conn.execute(
@@ -171,7 +171,7 @@ def test_stale_platform_authority_revision_cannot_provision(
     )
     _set_platform_actor(admin_conn, creator, stale_revision)
 
-    admin_conn.execute("SET ROLE request_engine_platform_control")
+    admin_conn.execute("SET ROLE request_platform_control")
     try:
         with pytest.raises(Error) as rejected:
             admin_conn.execute(
