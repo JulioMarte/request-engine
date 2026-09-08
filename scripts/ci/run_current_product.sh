@@ -92,11 +92,11 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
 
-# Principal trust-root, standing authority, identity bindings, platform-control
-# and one-time bootstrap-intent boundaries are current product truth after the
-# accepted baseline. Keep these migration-backed security guarantees in the same
-# PostgreSQL gate so 0002+ authority/identity evolution cannot ship with only
-# incidental coverage.
+# Principal trust-root, standing authority, identity bindings, platform-control,
+# one-time bootstrap intents and atomic root establishment are current product
+# truth after the accepted baseline. Keep the privileged bootstrap role and
+# ceremony in this gate so future identity evolution cannot widen either
+# authority or function ownership without an exact-head PostgreSQL proof.
 uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
@@ -104,6 +104,8 @@ uv run pytest \
   tests/db/test_platform_control_read_boundary.py \
   tests/db/test_platform_definer_topology.py \
   tests/db/test_platform_root_bootstrap_intents.py \
+  tests/db/test_platform_root_bootstrap_consume.py \
+  tests/db/test_platform_root_bootstrap_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 
