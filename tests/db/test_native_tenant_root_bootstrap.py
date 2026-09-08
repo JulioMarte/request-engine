@@ -241,11 +241,19 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
         (organization_id, provisioner),
     ).fetchone() == (0,)
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.representations WHERE organization_id = %s AND principal_id = %s",
+        """
+        SELECT count(*)
+          FROM request_engine.representations
+         WHERE organization_id = %s AND principal_id = %s
+        """,
         (organization_id, provisioner),
     ).fetchone() == (0,)
     assert admin_conn.execute(
-        "SELECT count(*) FROM request_engine.principal_authority_grants WHERE organization_id = %s AND principal_id = %s",
+        """
+        SELECT count(*)
+          FROM request_engine.principal_authority_grants
+         WHERE organization_id = %s AND principal_id = %s
+        """,
         (organization_id, provisioner),
     ).fetchone() == (0,)
     assert admin_conn.execute(
