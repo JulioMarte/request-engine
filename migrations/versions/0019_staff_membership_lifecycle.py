@@ -837,12 +837,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP FUNCTION request_engine.replace_staff_authority(uuid, bigint, text[], text)"
-    )
-    op.execute(
-        "DROP FUNCTION request_engine.transition_staff_membership(uuid, bigint, text, text)"
-    )
+    op.execute("DROP FUNCTION request_engine.replace_staff_authority(uuid, bigint, text[], text)")
+    op.execute("DROP FUNCTION request_engine.transition_staff_membership(uuid, bigint, text, text)")
     op.execute(
         "DROP FUNCTION request_engine.invite_native_staff(uuid, uuid, uuid, uuid, uuid, uuid, text)"
     )
