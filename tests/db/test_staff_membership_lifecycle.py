@@ -241,9 +241,7 @@ def test_root_bootstrap_materializes_active_staff_with_delegable_control(
 def test_staff_authority_replace_is_bounded_by_delegable_ceiling(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(
-        admin_conn
-    )
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
     authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
     membership_id, staff_id, _staff_binding_id = _invite_and_activate(
         admin_conn,
@@ -308,9 +306,7 @@ def test_staff_authority_replace_is_bounded_by_delegable_ceiling(
 def test_staff_suspension_disables_principal_and_revokes_native_session(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(
-        admin_conn
-    )
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
     authority_id, native_identity_id, credential_id = _native_identity(admin_conn)
     membership_id, staff_id, staff_binding_id = _invite_and_activate(
         admin_conn,
@@ -380,9 +376,7 @@ def test_staff_suspension_disables_principal_and_revokes_native_session(
 def test_last_recovery_capable_controller_cannot_be_removed(
     admin_conn: PgConnection,
 ) -> None:
-    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(
-        admin_conn
-    )
+    organization_id, party_id, root_id, _binding_id, _provisioner_id = _provision_root(admin_conn)
     authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
     membership_id, staff_id, _staff_binding_id = _invite_and_activate(
         admin_conn,
