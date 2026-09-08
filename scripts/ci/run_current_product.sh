@@ -42,6 +42,12 @@ uv run python scripts/db/analyze_schema_cohesion.py \
 # migration without imposing a permanent equality between 0001 and current HEAD.
 bash scripts/db/prove_baseline_integrity.sh "$ARTIFACT_DIR"
 
+# PostgreSQL roles are cluster-global while Alembic state is database-local.
+# Prove that post-baseline control-plane roles do not poison a second Request
+# Engine database in the same cluster: 0001 must still install and that database
+# must then reach the exact current HEAD by safely reusing verified shared roles.
+uv run python scripts/db/prove_multidatabase_migration_compatibility.py
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
