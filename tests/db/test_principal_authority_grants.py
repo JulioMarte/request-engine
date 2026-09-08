@@ -213,21 +213,32 @@ def test_tenant_runtime_reads_only_own_grants_and_cannot_mutate_them(
     tenant_id = _principal(admin_conn, organization_id)
     other_tenant_id = _principal(admin_conn, other_organization_id)
     platform_id = _principal(admin_conn, None, platform=True)
-    for principal_id, org_id, plane, capability in (
-        (tenant_id, organization_id, "tenant", "appointments.book"),
-        (other_tenant_id, other_organization_id, "tenant", "appointments.read"),
-        (platform_id, None, "platform", "organization.provision"),
+
+    _grant(
+        admin_conn,
+        principal_id=platform_id,
+        organization_id=None,
+        principal_plane="platform",
+        authority_plane="platform",
+        capability_key="organization.provision",
+        delegable=False,
+        grantor_id=None,
+        provenance_kind="trust_bootstrap",
+    )
+    for principal_id, org_id, capability in (
+        (tenant_id, organization_id, "appointments.book"),
+        (other_tenant_id, other_organization_id, "appointments.read"),
     ):
         _grant(
             admin_conn,
             principal_id=principal_id,
             organization_id=org_id,
-            principal_plane=plane,
-            authority_plane="platform" if plane == "platform" else "operational",
+            principal_plane="tenant",
+            authority_plane="operational",
             capability_key=capability,
             delegable=False,
-            grantor_id=None,
-            provenance_kind="trust_bootstrap",
+            grantor_id=platform_id,
+            provenance_kind="provisioning",
         )
 
     app_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
@@ -246,7 +257,7 @@ def test_tenant_runtime_reads_only_own_grants_and_cannot_mutate_them(
                 "(organization_id, principal_id, principal_plane, authority_plane, capability_key, "
                 "provenance_kind, provenance_reference) "
                 "VALUES (%s, %s, 'tenant', 'operational', 'appointments.cancel', "
-                "'trust_bootstrap', 'runtime')",
+                "'authority_management', 'runtime')",
                 (organization_id, tenant_id),
             )
         assert insert_denied.value.sqlstate == "42501"
