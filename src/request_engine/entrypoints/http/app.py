@@ -8,6 +8,7 @@ from request_engine.entrypoints.http.capabilities import create_capability_route
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
+from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
 from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
 from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
@@ -139,3 +140,38 @@ def create_app(
     )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
     return app
+
+
+def create_native_app(
+    *,
+    session_factory: SessionFactory,
+    native_identity_authority_id: UUID,
+    slot_offer_ports: QueueSlotOfferHttpPorts | None = None,
+    appointment_option_signing_key: bytes | None = None,
+    identity_exchange_fingerprint_key: bytes | None = None,
+    tenant_capability_policy: TenantCapabilityPolicy | None = None,
+    operator_actor_resolver: OperatorActorResolver | None = None,
+    operator_capability_source: OperatorCapabilitySource | None = None,
+) -> FastAPI:
+    """Compose a providerless deployment whose protected routes trust Native sessions.
+
+    This is the zero-external-IdP composition root. Native authentication proves
+    credential possession only; the resulting HTTP actor resolver still performs
+    a fresh IdentityBinding and Principal-authority lookup on every protected
+    request.
+    """
+
+    runtime = build_native_human_runtime(session_factory)
+    return create_app(
+        session_factory=session_factory,
+        actor_resolver=runtime.actor_resolver,
+        slot_offer_ports=slot_offer_ports,
+        appointment_option_signing_key=appointment_option_signing_key,
+        identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
+        tenant_capability_policy=tenant_capability_policy,
+        operator_actor_resolver=operator_actor_resolver,
+        operator_capability_source=operator_capability_source,
+        native_auth_service=runtime.service,
+        native_session_authenticator=runtime.authenticator,
+        native_identity_authority_id=native_identity_authority_id,
+    )
