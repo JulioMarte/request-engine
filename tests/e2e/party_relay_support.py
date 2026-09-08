@@ -29,11 +29,48 @@ PARTY_CAPABILITIES = frozenset(
 RELAY_PERMISSION = "platform.acting_for_operator"
 
 
+def _seed_platform_provisioner(conn: PgConnection) -> UUID:
+    row = conn.execute(
+        """
+        INSERT INTO request_engine.principals (
+            principal_plane,
+            principal_kind,
+            external_subject
+        ) VALUES ('platform', 'human', %s)
+        RETURNING id
+        """,
+        (f"e2e-party-relay-provisioner-{uuid4().hex}",),
+    ).fetchone()
+    assert row is not None
+    provisioner_id = cast(UUID, row[0])
+    conn.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            organization_id,
+            principal_id,
+            principal_plane,
+            authority_plane,
+            capability_key,
+            delegable,
+            granted_by_principal_id,
+            provenance_kind,
+            provenance_reference
+        ) VALUES (
+            NULL, %s, 'platform', 'platform', 'organization.provision', true,
+            NULL, 'trust_bootstrap', %s
+        )
+        """,
+        (provisioner_id, f"e2e-party-relay-root:{uuid4().hex}"),
+    )
+    return provisioner_id
+
+
 def _grant_operator_authority(
     conn: PgConnection,
     *,
     organization_id: UUID,
     principal_id: UUID,
+    provisioner_id: UUID,
     capabilities: frozenset[str],
 ) -> None:
     for capability in sorted(capabilities):
@@ -46,14 +83,19 @@ def _grant_operator_authority(
                 authority_plane,
                 capability_key,
                 delegable,
+                granted_by_principal_id,
                 provenance_kind,
                 provenance_reference
-            ) VALUES (%s, %s, 'tenant', 'operational', %s, false, 'trust_bootstrap', %s)
+            ) VALUES (
+                %s, %s, 'tenant', 'operational', %s, false, %s,
+                'provisioning', %s
+            )
             """,
             (
                 organization_id,
                 principal_id,
                 capability,
+                provisioner_id,
                 f"e2e-party-relay:{uuid4().hex}",
             ),
         )
@@ -62,9 +104,10 @@ def _grant_operator_authority(
 def seed_party_registry_tenant(conn: PgConnection) -> tuple[UUID, dict[str, UUID]]:
     """One tenant with real operator/bot principals plus cross-tenant bait."""
 
+    provisioner_id = _seed_platform_provisioner(conn)
     organization_id = new_org(conn, "s0b-party")
     foreign_organization_id = new_org(conn, "s0b-party-foreign")
-    ids: dict[str, UUID] = {}
+    ids: dict[str, UUID] = {"platform_provisioner": provisioner_id}
     for key, kind, organization, subject in (
         ("operator", "human", organization_id, "front-desk"),
         ("second_operator", "human", organization_id, "second-desk"),
@@ -86,18 +129,21 @@ def seed_party_registry_tenant(conn: PgConnection) -> tuple[UUID, dict[str, UUID
         conn,
         organization_id=organization_id,
         principal_id=ids["operator"],
+        provisioner_id=provisioner_id,
         capabilities=PARTY_CAPABILITIES,
     )
     _grant_operator_authority(
         conn,
         organization_id=organization_id,
         principal_id=ids["second_operator"],
+        provisioner_id=provisioner_id,
         capabilities=PARTY_CAPABILITIES,
     )
     _grant_operator_authority(
         conn,
         organization_id=organization_id,
         principal_id=ids["limited_operator"],
+        provisioner_id=provisioner_id,
         capabilities=PARTY_CAPABILITIES - {"parties.register"},
     )
     return organization_id, ids
