@@ -6,7 +6,7 @@ from psycopg import Connection
 PgConnection = Connection[Any]
 pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.security]
 
-_RUNTIME = "request_engine_platform_control"
+_RUNTIME = "request_platform_control"
 _DEFINER = "request_platform_control_definer"
 _PROVISIONER_FUNCTION = "request_platform.provision_tenant_provisioner(uuid, text, text)"
 _ROOT_FUNCTION = (
