@@ -94,7 +94,8 @@ uv run pytest \
 
 # Principal trust-root, standing authority, identity bindings, platform-control,
 # one-time bootstrap intents, atomic root establishment, bounded A->B provisioning,
-# and atomic B->tenant-root provisioning are current product truth after baseline.
+# atomic B->tenant-root provisioning and tenant staff lifecycle are current
+# product truth after baseline.
 uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
@@ -106,6 +107,7 @@ uv run pytest \
   tests/db/test_platform_root_bootstrap_definer_topology.py \
   tests/db/test_platform_tenant_provisioner.py \
   tests/db/test_native_tenant_root_bootstrap.py \
+  tests/db/test_staff_membership_lifecycle.py \
   tests/db/test_platform_control_definer_topology.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
