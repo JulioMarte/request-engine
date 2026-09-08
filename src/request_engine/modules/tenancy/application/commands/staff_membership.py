@@ -14,13 +14,17 @@ class StaffMembershipTargetStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class InviteNativeStaffCommand:
-    membership_id: UUID
-    principal_id: UUID
-    binding_id: UUID
     identity_authority_id: UUID
     native_identity_id: UUID
     provenance_reference: str
     idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class InviteNativeStaffResult:
+    membership_id: UUID
+    principal_id: UUID
+    binding_id: UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +50,7 @@ class StaffMembershipCommands(Protocol):
         self,
         actor: ActorContext,
         command: InviteNativeStaffCommand,
-    ) -> UUID: ...
+    ) -> InviteNativeStaffResult: ...
 
     async def replace_staff_authority(
         self,

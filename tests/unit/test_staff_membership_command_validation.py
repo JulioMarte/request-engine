@@ -60,9 +60,6 @@ async def test_staff_invitation_rejects_invalid_provenance_before_db_access() ->
             await writer.invite_native_staff(
                 actor,
                 InviteNativeStaffCommand(
-                    membership_id=uuid4(),
-                    principal_id=uuid4(),
-                    binding_id=uuid4(),
                     identity_authority_id=uuid4(),
                     native_identity_id=uuid4(),
                     provenance_reference=provenance,

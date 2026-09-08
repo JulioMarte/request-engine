@@ -1,9 +1,10 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     InviteNativeStaffCommand,
+    InviteNativeStaffResult,
     ReplaceStaffAuthorityCommand,
     TransitionStaffMembershipCommand,
 )
@@ -63,6 +64,14 @@ def _replay_uuid(replay: dict[str, object], key: str) -> UUID:
         raise RuntimeError(f"completed staff idempotency replay has invalid {key}") from exc
 
 
+def _replay_invitation(replay: dict[str, object]) -> InviteNativeStaffResult:
+    return InviteNativeStaffResult(
+        membership_id=_replay_uuid(replay, "membership_id"),
+        principal_id=_replay_uuid(replay, "principal_id"),
+        binding_id=_replay_uuid(replay, "binding_id"),
+    )
+
+
 def _replay_revision(replay: dict[str, object], key: str) -> int:
     value = replay.get(key)
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -80,16 +89,13 @@ class PostgresStaffMembershipCommands:
         self,
         actor: ActorContext,
         command: InviteNativeStaffCommand,
-    ) -> UUID:
+    ) -> InviteNativeStaffResult:
         _require_human_actor(actor)
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(
             _INVITE_CAPABILITY,
             {
-                "membership_id": command.membership_id,
-                "principal_id": command.principal_id,
-                "binding_id": command.binding_id,
                 "identity_authority_id": command.identity_authority_id,
                 "native_identity_id": command.native_identity_id,
                 "provenance_reference": provenance,
@@ -105,7 +111,13 @@ class PostgresStaffMembershipCommands:
                 fingerprint=fingerprint,
             )
             if replay is not None:
-                return _replay_uuid(replay, "binding_id")
+                return _replay_invitation(replay)
+
+            invitation = InviteNativeStaffResult(
+                membership_id=uuid4(),
+                principal_id=uuid4(),
+                binding_id=uuid4(),
+            )
             result = await session.execute(
                 text(
                     """
@@ -121,23 +133,27 @@ class PostgresStaffMembershipCommands:
                     """
                 ),
                 {
-                    "membership_id": command.membership_id,
-                    "principal_id": command.principal_id,
-                    "binding_id": command.binding_id,
+                    "membership_id": invitation.membership_id,
+                    "principal_id": invitation.principal_id,
+                    "binding_id": invitation.binding_id,
                     "identity_authority_id": command.identity_authority_id,
                     "native_identity_id": command.native_identity_id,
                     "provenance_reference": provenance,
                 },
             )
-            binding_id = result.scalar_one()
-            if not isinstance(binding_id, UUID):
-                raise RuntimeError("staff invitation returned an invalid binding identifier")
+            returned_binding_id = result.scalar_one()
+            if returned_binding_id != invitation.binding_id:
+                raise RuntimeError("staff invitation returned an unexpected binding identifier")
             await complete_idempotency(
                 session,
                 idempotency_id,
-                {"binding_id": str(binding_id)},
+                {
+                    "membership_id": str(invitation.membership_id),
+                    "principal_id": str(invitation.principal_id),
+                    "binding_id": str(invitation.binding_id),
+                },
             )
-            return binding_id
+            return invitation
 
     async def replace_staff_authority(
         self,
