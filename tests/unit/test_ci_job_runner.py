@@ -73,3 +73,50 @@ def test_timed_out_step_is_killed_and_reported(tmp_path: Path) -> None:
     assert result["status"] == "TIMEOUT"
     assert result["returncode"] != 0
     assert float(result["seconds"]) < 10
+
+
+def _fake_which(mapping: dict[str, str | None]) -> Any:
+    def which(name: str, *args: Any, **kwargs: Any) -> str | None:
+        return mapping.get(name)
+
+    return which
+
+
+def _patch_windows_resolver_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("SYSTEMROOT", str(tmp_path / "Windows"))
+    for variable in ("ProgramFiles", "ProgramFiles(x86)", "LocalAppData"):
+        monkeypatch.delenv(variable, raising=False)
+
+
+def test_windows_resolver_rejects_wsl_bash_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _load_runner_module()
+    wsl_bash = tmp_path / "Windows" / "System32" / "bash.exe"
+    wsl_bash.parent.mkdir(parents=True)
+    wsl_bash.write_bytes(b"")
+    _patch_windows_resolver_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(shutil, "which", _fake_which({"git": None, "bash": str(wsl_bash)}))
+
+    with pytest.raises(RuntimeError):
+        runner._resolve_bash()
+
+
+def test_windows_resolver_finds_git_bash_without_git_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _load_runner_module()
+    bash_exe = tmp_path / "Git" / "bin" / "bash.exe"
+    bash_exe.parent.mkdir(parents=True)
+    bash_exe.write_bytes(b"")
+    wsl_bash = tmp_path / "Windows" / "System32" / "bash.exe"
+    wsl_bash.parent.mkdir(parents=True)
+    wsl_bash.write_bytes(b"")
+    _patch_windows_resolver_env(tmp_path, monkeypatch)
+    monkeypatch.setenv("ProgramFiles", str(tmp_path))
+    monkeypatch.setattr(shutil, "which", _fake_which({"git": None, "bash": str(wsl_bash)}))
+
+    resolved = runner._resolve_bash()
+
+    assert Path(resolved) == bash_exe.resolve()
