@@ -1,7 +1,13 @@
 from fastapi import APIRouter, FastAPI, Request
 
+from request_engine.modules.tenancy.adapters.db.agent_governance_commands import (
+    PostgresAgentGovernanceCommands,
+)
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
+)
+from request_engine.modules.tenancy.adapters.db.delegation_commands import (
+    PostgresDelegationCommands,
 )
 from request_engine.modules.tenancy.adapters.db.onboarding_party_reader import (
     PostgresBusinessPartyReader,
@@ -24,10 +30,18 @@ from request_engine.modules.tenancy.adapters.db.principal_contact_commands impor
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
+from request_engine.modules.tenancy.api.agent_governance_errors import (
+    add_agent_governance_error_handlers,
+)
+from request_engine.modules.tenancy.api.agent_governance_routes import (
+    add_agent_governance_routes,
+)
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
 )
+from request_engine.modules.tenancy.api.delegation_errors import add_delegation_error_handlers
+from request_engine.modules.tenancy.api.delegation_routes import add_delegation_routes
 from request_engine.modules.tenancy.api.identity_exchange_http import install_identity_exchange_http
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
@@ -132,6 +146,24 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(staff_router)
+
+    add_agent_governance_error_handlers(app)
+    agents_router = APIRouter(prefix="/v1/agents", tags=["agents"])
+    add_agent_governance_routes(
+        agents_router,
+        commands=PostgresAgentGovernanceCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(agents_router)
+
+    add_delegation_error_handlers(app)
+    delegations_router = APIRouter(prefix="/v1/delegations", tags=["delegations"])
+    add_delegation_routes(
+        delegations_router,
+        commands=PostgresDelegationCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(delegations_router)
 
 
 def install_operational_http(

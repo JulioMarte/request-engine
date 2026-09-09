@@ -1,12 +1,16 @@
+from typing import Any
 from uuid import uuid4
 
 import psycopg
 import pytest
+from psycopg import Connection
 
 pytestmark = [pytest.mark.postgres, pytest.mark.security, pytest.mark.invariant]
 
 
-def test_workload_credential_is_only_readable_through_auth_boundary(admin_conn) -> None:
+def test_workload_credential_is_only_readable_through_auth_boundary(
+    admin_conn: Connection[Any],
+) -> None:
     authority_id = uuid4()
     identity_id = uuid4()
     credential_id = uuid4()
@@ -54,7 +58,9 @@ def test_workload_credential_is_only_readable_through_auth_boundary(admin_conn) 
     assert bytes(row[4]) == b"w" * 32
 
 
-def test_workload_identity_rejects_non_workload_authority(admin_conn) -> None:
+def test_workload_identity_rejects_non_workload_authority(
+    admin_conn: Connection[Any],
+) -> None:
     authority_id = uuid4()
     admin_conn.execute(
         """

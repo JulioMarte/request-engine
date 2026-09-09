@@ -36,6 +36,15 @@ def _staff_capability(
     )
 
 
+def _agent_capability(key: str, description: str) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    )
+
+
 IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _authority_capability(
         "platform.principal.provision",
@@ -71,20 +80,25 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Replace bounded tenant-control authority for human staff.",
         revision=RevisionPolicy.REQUIRED,
     ),
-    _authority_capability(
+    _agent_capability(
         "agent.provision",
-        AuthorityPlane.TENANT_CONTROL,
         "Provision an Agent Principal and its workload identity in the current tenant.",
     ),
-    _authority_capability(
+    _agent_capability(
         "agent.manage_authority",
-        AuthorityPlane.TENANT_CONTROL,
         "Assign or revoke bounded standing authority for an Agent Principal.",
     ),
-    _authority_capability(
+    _agent_capability(
         "agent.suspend",
-        AuthorityPlane.TENANT_CONTROL,
-        "Suspend an Agent Principal and invalidate its executable authority.",
+        "Suspend, reactivate, or revoke an Agent Principal in the current tenant.",
+    ),
+    _agent_capability(
+        "delegation.create",
+        "Delegate bounded temporary authority the delegator may itself delegate.",
+    ),
+    _agent_capability(
+        "delegation.revoke",
+        "Revoke a bounded temporary delegation in the current tenant.",
     ),
     _authority_capability(
         "identity.bind",

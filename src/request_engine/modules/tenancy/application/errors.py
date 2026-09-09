@@ -159,3 +159,51 @@ class StaffMembershipConflict(StaffMembershipError):
 
 class StaffMembershipInputInvalid(StaffMembershipError):
     """The requested Staff lifecycle mutation violates an input contract."""
+
+
+class AgentGovernanceError(Exception):
+    """Base class for stable Agent governance failures."""
+
+
+class AgentGovernanceForbidden(AgentGovernanceError):
+    """The current actor may not perform the requested Agent governance operation."""
+
+
+class AgentGovernanceNotFound(AgentGovernanceError):
+    """No Agent profile is visible in the current tenant for the supplied identifier."""
+
+
+class AgentGovernanceRevisionConflict(AgentGovernanceError):
+    """The requested Agent profile or authority revision is stale."""
+
+
+class AgentGovernanceConflict(AgentGovernanceError):
+    """The requested Agent governance mutation conflicts with current persisted state."""
+
+
+class AgentGovernanceInputInvalid(AgentGovernanceError):
+    """The requested Agent governance mutation violates an input contract."""
+
+
+class DelegationError(Exception):
+    """Base class for stable delegation failures."""
+
+
+class DelegationForbidden(DelegationError):
+    """The current actor may not perform the requested delegation operation."""
+
+
+class DelegationNotFound(DelegationError):
+    """No delegation is visible in the current tenant for the supplied identifier."""
+
+
+class DelegationRevisionConflict(DelegationError):
+    """The requested delegation revision is stale."""
+
+
+class DelegationConflict(DelegationError):
+    """The requested delegation mutation conflicts with current persisted state."""
+
+
+class DelegationInputInvalid(DelegationError):
+    """The requested delegation mutation violates an input contract."""

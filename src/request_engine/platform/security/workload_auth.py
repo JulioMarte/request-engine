@@ -81,9 +81,7 @@ class WorkloadCredentialAuthenticator:
 
     async def authenticate(self, evidence: WorkloadCredentialEvidence) -> AuthenticatedSubject:
         parsed = parse_workload_token(evidence.raw_token)
-        snapshot = await self._reader.read_workload_credential(
-            credential_id=parsed.credential_id
-        )
+        snapshot = await self._reader.read_workload_credential(credential_id=parsed.credential_id)
         if snapshot is None or not _snapshot_is_usable(snapshot):
             raise WorkloadCredentialInvalid("workload credential is invalid")
         actual = hashlib.sha256(parsed.secret.encode("utf-8")).digest()

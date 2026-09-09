@@ -29,7 +29,9 @@ class StaticWorkloadReader:
         return self.snapshot
 
 
-def _snapshot(*, secret: str, identity_status: WorkloadIdentityStatus) -> WorkloadCredentialSnapshot:
+def _snapshot(
+    *, secret: str, identity_status: WorkloadIdentityStatus
+) -> WorkloadCredentialSnapshot:
     return WorkloadCredentialSnapshot(
         credential_id=uuid4(),
         workload_identity_id=uuid4(),

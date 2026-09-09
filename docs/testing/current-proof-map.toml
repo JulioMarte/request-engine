@@ -201,3 +201,43 @@ evidence = ["invariant", "adversarial"]
 guarantee = "INV-CONTACT-VERIFICATION-001"
 path = "tests/integration/s0b_party_registry/test_contact_point_verification_guard.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WORKLOAD-AUTH-001"
+path = "tests/db/test_workload_authentication.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-WORKLOAD-AUTH-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-AUTHORITY-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-AUTHORITY-001"
+path = "tests/e2e/test_platform_provisioning_journey.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-LIFECYCLE-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-LIFECYCLE-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-PROVENANCE-001"
+path = "tests/db/test_agent_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-PROVENANCE-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]

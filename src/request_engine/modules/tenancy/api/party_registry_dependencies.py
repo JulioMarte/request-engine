@@ -24,8 +24,13 @@ IdempotencyKey = Annotated[
 
 
 def source_kind(actor: ActorContext) -> PartySourceKind:
-    """Derive authority attribution from the effective principal's kind."""
+    """Derive authority attribution from the effective principal's kind.
 
-    if actor.principal_kind is PrincipalKind.HUMAN:
+    An AGENT Principal executes tenant operations under its own standing
+    authority, so attribution-bearing changes it produces are operator-side
+    facts. A business subject is a Party, never a security actor.
+    """
+
+    if actor.principal_kind in (PrincipalKind.HUMAN, PrincipalKind.AGENT):
         return PartySourceKind.OPERATOR
     return PartySourceKind.SUBJECT

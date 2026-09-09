@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from psycopg import Connection
 
 from request_engine.entrypoints.http.app import create_native_app
-from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
+from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.session import SessionFactory
 
 PgConnection = Connection[Any]
@@ -142,7 +142,7 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
     e2e_session_factory: SessionFactory,
 ) -> None:
     authority_id = _create_native_authority(e2e_admin_conn)
-    enrollment_runtime = build_native_human_runtime(e2e_session_factory)
+    enrollment_runtime = build_native_auth_runtime(e2e_session_factory)
     root_password = "root-e2e-password-1"
     staff_password = "staff-e2e-password-2"
     root_identity = await enrollment_runtime.service.enroll_password_identity(

@@ -5,7 +5,7 @@ import pytest
 from psycopg import Connection
 from starlette.requests import Request
 
-from request_engine.entrypoints.http.native_runtime import build_native_human_runtime
+from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.identity_resolution import IdentityBindingSuspended
 
@@ -66,7 +66,7 @@ async def test_native_session_resolves_current_principal_and_binding_revocation_
         (authority_id, f"native-test:{suffix}"),
     )
 
-    runtime = build_native_human_runtime(command_session_factory)
+    runtime = build_native_auth_runtime(command_session_factory)
     enrollment = await runtime.service.enroll_password_identity(
         identity_authority_id=authority_id,
         login_handle=f"native-{suffix}@example.test",

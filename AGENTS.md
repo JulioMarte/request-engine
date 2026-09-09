@@ -2,6 +2,9 @@
 
 These instructions apply repository-wide. A nearer `AGENTS.md` may add path-specific rules but must not contradict current repository policy.
 
+# nota :
+1-tenemos una instancia local de postgresql corriendo en el puerto 5432 en un contenedor de docker asegurate de que esta este actualizada porque si no te fijas bien todo puede funcionar localmente pero cuando hagas el ci en github el resultado se desbiara.
+2-tambien has el uso correcto de sub agentes para dividir tu trabajo de manera logica.
 ## Reporting discipline — mandatory
 
 When reporting changes:

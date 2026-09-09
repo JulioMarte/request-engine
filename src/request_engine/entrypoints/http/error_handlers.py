@@ -15,9 +15,11 @@ from request_engine.entrypoints.http.errors import (
     request_validation_error_handler,
 )
 from request_engine.entrypoints.http.native_auth_errors import (
+    delegation_resolution_error_handler,
     identity_resolution_error_handler,
     native_authentication_error_handler,
     tenant_context_error_handler,
+    workload_authentication_error_handler,
 )
 from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
@@ -28,6 +30,7 @@ from request_engine.platform.security.acting_operator import (
     AgentActingOperatorRelayForbidden,
     OperatorResolutionUnavailable,
 )
+from request_engine.platform.security.delegation import DelegationResolutionError
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 from request_engine.platform.security.identity_resolution import (
     IdentityBindingPending,
@@ -42,6 +45,7 @@ from request_engine.platform.security.identity_resolution import (
 from request_engine.platform.security.native_auth import NativeAuthenticationError
 from request_engine.platform.security.native_http import TenantContextInvalid
 from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
+from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
 
 
 async def operator_resolution_unavailable_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -71,6 +75,8 @@ async def agent_acting_operator_relay_forbidden_handler(_: Request, exc: Excepti
 def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(NativeAuthenticationError, native_authentication_error_handler)
+    app.add_exception_handler(WorkloadAuthenticationError, workload_authentication_error_handler)
+    app.add_exception_handler(DelegationResolutionError, delegation_resolution_error_handler)
     app.add_exception_handler(TenantContextRequired, tenant_context_error_handler)
     app.add_exception_handler(TenantContextInvalid, tenant_context_error_handler)
     for error_type in (

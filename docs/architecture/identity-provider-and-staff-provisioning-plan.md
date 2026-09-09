@@ -1324,6 +1324,8 @@ continue functioning without domain/schema rollback.
 
 Work in narrow, certifiable slices.
 
+The sequence from Slice 4 onward is amended by `principal-agent-and-provisioning-authority-model.md` (its Section 33 "Implementation sequence amendment"): first-class workload/agent authentication, platform/tenant-provisioner and agent-governance slices are defined there, and first-class AGENT Principal support is part of the trust root. Follow that amended sequence where the two differ; current implementation status is recorded in that document's "Implementation status (current branch)" section.
+
 ### Slice 0 — exact-head truth
 
 - inspect current branch/HEAD and CI;

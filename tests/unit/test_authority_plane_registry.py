@@ -65,13 +65,18 @@ def test_staff_lifecycle_capabilities_are_runtime_operator_surfaces() -> None:
         assert definition.revision is revision
 
 
+def test_agent_lifecycle_capabilities_are_runtime_operator_surfaces() -> None:
+    for key in ("agent.provision", "agent.manage_authority", "agent.suspend"):
+        definition = capability_definition(key)
+        assert definition is not None
+        assert definition.runtime_available is True
+        assert definition.exposure is CapabilityExposure.OPERATOR
+
+
 def test_unimplemented_control_capabilities_remain_internal_and_nonruntime() -> None:
     for key in (
         "platform.principal.provision",
         "organization.provision",
-        "agent.provision",
-        "agent.manage_authority",
-        "agent.suspend",
         "identity.bind",
     ):
         definition = capability_definition(key)

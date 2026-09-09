@@ -1433,3 +1433,35 @@ The desired Request Engine behavior can be summarized without architecture jargo
 > Request Engine, not the LLM, prompt, MCP client, identity provider, or chat platform, decides whether an operation is permitted. Every important mutation must remain attributable and must fail closed when identity, tenant, delegation, scope, revision, or approval is ambiguous or invalid.
 
 That is the trust model the implementation must preserve.
+
+---
+
+## 36. Implementation status (current branch)
+
+Status on `cohesion/system-optimization` as of migrations `0023_workload_authentication` and `0024_agent_governance` (both applied). This section is descriptive status, not a normative amendment of the contract above.
+
+```text
+Slice 1   complete
+Slice 2   complete
+Slice 3   complete
+Slice 4   complete for RE-native workload credentials
+Slice 5   complete
+Slice 6   complete
+Slice 7   partially complete
+Slice 8   open
+Slice 9   open
+Slice 10  open
+Slice 11  open
+Slice 12  open
+```
+
+Implemented on the current branch:
+
+- Workload bearer authentication (Slice 4, RE-native scope): `request_engine.workload_identities` / `request_engine.workload_credentials` behind the SECURITY DEFINER read boundary `request_auth.read_workload_credential`; `WorkloadCredentialAuthenticator` (`platform/security/workload_auth.py`) emits a provider-neutral WORKLOAD `AuthenticatedSubject`; `DispatchedBearerSubjectResolver` (`platform/security/workload_http.py`) deterministically dispatches one bearer-token namespace between native human sessions and workload credentials. Subject-class gating (`identity_resolution.py` `_assert_subject_class`) prevents HUMAN credentials from activating workload Principals and workload credentials from activating HUMAN Principals.
+- Agent governance (Slice 7, core): `request_engine.agent_profiles` with status `pending/active/suspended/revoked`, operating mode `autonomous/assisted`, sponsor, provenance `agent_provisioning`, tenant-isolated RLS and org-bound composite FKs to `principals(organization_id, id)`; SECURITY DEFINER `request_engine.provision_agent` / `replace_agent_authority` / `transition_agent_profile` granted to `request_engine_app`. PostgreSQL enforces: agent standing authority only from the provisioner's active + delegable grants restricted to `authority_plane='operational'` (no platform/tenant-control/identity authority for AGENT Principals); agent grants always `delegable=false`; the `pending→active|revoked`, `active→suspended|revoked`, `suspended→active|revoked` state machine with `revision+1`; sponsor must be an active tenant HUMAN; self-provisioning forbidden.
+- Kill switch behavior: suspension deactivates the Principal and suspends its identity binding so authorization fails closed immediately; revocation additionally revokes active workload credentials and disables the workload identity, so the bearer token stops authenticating.
+- HTTP surface: `POST /v1/agents` (`agent.provision`), `PUT /v1/agents/{id}/authority` (`agent.manage_authority`), `PUT /v1/agents/{id}/status` (`agent.suspend`) in `modules/tenancy/api/agent_governance_routes.py`, HUMAN-actor gated and idempotent via `request_cmd` idempotency primitives; the one-time workload token is returned exactly once on provisioning and replay returns durable facts with `token=null`.
+
+Proof ownership: `tests/db/test_agent_governance.py` (six real-PostgreSQL proofs), `tests/db/test_workload_authentication.py`, `tests/e2e/test_native_agent_lifecycle.py` (E2E B analog), `tests/e2e/test_platform_provisioning_journey.py` (bootstrap via the `platform_bootstrap_cli` env-driven path: tenant provisioner → organization from zero → staff lifecycle → agent lifecycle, including no-amplification and provisioner-cannot-access-tenant negatives), and unit evidence in `tests/unit/test_agent_governance_*.py`, `tests/unit/test_workload_auth.py` and `tests/unit/test_authority_plane_registry.py`.
+
+Still open in Slice 7: tool policy, risk policy/approvals and safety budgets (sections 16-18). Slice 8 (delegated task authority with actor/subject attribution, sections 13-15) and Slices 9-12 (provider conformance, external B2B providers, optional MCP projection, adversarial closure) are open.

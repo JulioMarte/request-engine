@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from request_engine.entrypoints.http.errors import render_error_response
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
+from request_engine.platform.security.delegation import DelegationResolutionError
 from request_engine.platform.security.identity_resolution import (
     IdentityBindingPending,
     IdentityBindingRevoked,
@@ -15,6 +16,7 @@ from request_engine.platform.security.identity_resolution import (
 )
 from request_engine.platform.security.native_auth import NativeAuthenticationError
 from request_engine.platform.security.native_http import TenantContextInvalid
+from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
 
 
 async def native_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -29,6 +31,35 @@ async def native_authentication_error_handler(_: Request, exc: Exception) -> JSO
             retryable=False,
         ),
         headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def workload_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, WorkloadAuthenticationError):
+        raise exc
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="credential_invalid",
+            message="the workload credential is invalid or no longer usable",
+            resolution=ErrorResolution.REAUTHENTICATE,
+            retryable=False,
+        ),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def delegation_resolution_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, DelegationResolutionError):
+        raise exc
+    return render_error_response(
+        status.HTTP_403_FORBIDDEN,
+        ErrorBody(
+            code="delegation_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+            retryable=False,
+        ),
     )
 
 
