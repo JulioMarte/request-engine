@@ -4,7 +4,9 @@ from request_engine.platform.security.capability_types import (
     CapabilityExposure,
     RevisionPolicy,
     command_capability,
+    query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 
 def _authority_capability(
@@ -18,6 +20,7 @@ def _authority_capability(
         description,
         authority_plane=plane,
         runtime_available=False,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     )
 
 
@@ -33,11 +36,28 @@ def _staff_capability(
         description,
         authority_plane=AuthorityPlane.TENANT_CONTROL,
         revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     )
 
 
-def _agent_capability(key: str, description: str) -> CapabilityDefinition:
+def _agent_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
     return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
+def _agent_query_capability(key: str, description: str) -> CapabilityDefinition:
+    return query_capability(
         key,
         CapabilityExposure.OPERATOR,
         description,
@@ -91,6 +111,15 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _agent_capability(
         "agent.suspend",
         "Suspend, reactivate, or revoke an Agent Principal in the current tenant.",
+    ),
+    _agent_query_capability(
+        "agent.policy.read",
+        "Read the tool/risk policy ceiling of an Agent Principal in the current tenant.",
+    ),
+    _agent_capability(
+        "agent.manage_policy",
+        "Replace the tool/risk policy ceiling of an Agent Principal in the current tenant.",
+        revision=RevisionPolicy.REQUIRED,
     ),
     _agent_capability(
         "delegation.create",

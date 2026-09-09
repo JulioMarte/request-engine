@@ -15,6 +15,8 @@ from request_engine.entrypoints.platform_bootstrap_cli import (
 )
 from request_engine.platform.db.session import SessionFactory
 
+from .agent_policy_support import grant_agent_policy_authority, provision_agent_policy
+
 PgConnection = Connection[Any]
 pytestmark = [
     pytest.mark.e2e,
@@ -263,6 +265,11 @@ async def test_platform_bootstrap_provisions_the_full_actor_chain_from_environme
             f"platform-journey:lookup-grant-{uuid4().hex}",
         ),
     )
+    grant_agent_policy_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+    )
 
     app = create_native_app(
         session_factory=e2e_session_factory,
@@ -433,6 +440,19 @@ async def test_platform_bootstrap_provisions_the_full_actor_chain_from_environme
             },
         )
         assert assigned.status_code == 200, assigned.text
+
+        policy = await provision_agent_policy(
+            client,
+            controller_headers=_tenant_headers(
+                token=controller_token,
+                organization_id=organization_id,
+            ),
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=["parties.lookup"],
+            risk_ceiling="read",
+            max_mutations_per_minute=60,
+        )
+        assert policy["policy_revision"] == 1
 
         agent_lookup = await client.get(
             "/v1/parties/lookup",

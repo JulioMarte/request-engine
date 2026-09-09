@@ -185,6 +185,22 @@ class AgentGovernanceInputInvalid(AgentGovernanceError):
     """The requested Agent governance mutation violates an input contract."""
 
 
+class AgentPolicyError(Exception):
+    """Base class for stable Agent policy failures."""
+
+
+class AgentPolicyForbidden(AgentPolicyError):
+    """The current actor may not perform the requested Agent policy operation."""
+
+
+class AgentPolicyNotFound(AgentPolicyError):
+    """No Agent policy is visible in the current tenant for the supplied Agent."""
+
+
+class AgentPolicyInputInvalid(AgentPolicyError):
+    """The requested Agent policy change violates an input contract."""
+
+
 class DelegationError(Exception):
     """Base class for stable delegation failures."""
 

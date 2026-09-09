@@ -10,6 +10,8 @@ from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.session import SessionFactory
 
+from .agent_policy_support import grant_agent_policy_authority, provision_agent_policy
+
 PgConnection = Connection[Any]
 pytestmark = [
     pytest.mark.e2e,
@@ -200,6 +202,17 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
             controller_principal_id=controller_principal_id,
             capability_key=capability,
         )
+    _grant_controller_delegable_operational_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+        capability_key="appointments.book",
+    )
+    grant_agent_policy_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+    )
 
     app = create_native_app(
         session_factory=e2e_session_factory,
@@ -289,13 +302,117 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
             ),
             json={
                 "expected_authority_revision": agent_authority_revision,
-                "desired_capabilities": ["parties.register", "parties.lookup"],
+                "desired_capabilities": [
+                    "parties.register",
+                    "parties.lookup",
+                    "appointments.book",
+                ],
                 "provenance_reference": "native-agent-e2e-authority",
             },
         )
         assert assigned.status_code == 200, assigned.text
 
         agent_display_name = f"Agent Registered Patient {uuid4().hex[:8]}"
+        controller_headers = _tenant_headers(
+            token=root_token,
+            organization_id=organization_id,
+        )
+
+        no_policy = await client.get(
+            "/v1/parties/lookup",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+            params={"mode": "name", "value": "nobody"},
+        )
+        assert no_policy.status_code == 403, no_policy.text
+        assert no_policy.json()["error"]["code"] == "agent_policy_denied"
+
+        policy = await provision_agent_policy(
+            client,
+            controller_headers=controller_headers,
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=["parties.lookup"],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=10,
+        )
+        assert policy["policy_revision"] == 1
+
+        excluded_by_policy = await client.post(
+            "/v1/parties",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+                idempotency_key=f"agent-excluded-{uuid4().hex}",
+            ),
+            json={"display_name": agent_display_name},
+        )
+        assert excluded_by_policy.status_code == 403, excluded_by_policy.text
+        assert excluded_by_policy.json()["error"]["code"] == "capability_required"
+
+        still_allowed_read = await client.get(
+            "/v1/parties/lookup",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+            params={"mode": "name", "value": "nobody"},
+        )
+        assert still_allowed_read.status_code == 200, still_allowed_read.text
+
+        widened = await provision_agent_policy(
+            client,
+            controller_headers=controller_headers,
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=["parties.register", "parties.lookup", "appointments.book"],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=10,
+        )
+        assert widened["policy_revision"] == 2
+
+        above_ceiling = await client.post(
+            "/v1/appointments",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+                idempotency_key=f"agent-booking-{uuid4().hex}",
+            ),
+            json={"option_id": f"e2e-option-{uuid4().hex}", "subject_party_id": str(uuid4())},
+        )
+        assert above_ceiling.status_code == 403, above_ceiling.text
+        assert above_ceiling.json()["error"]["code"] == "agent_risk_denied"
+
+        authority_change_attempt = await client.put(
+            f"/v1/agents/{agent_principal_id}/status",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+                idempotency_key=f"agent-self-suspend-{uuid4().hex}",
+            ),
+            json={
+                "expected_revision": 2,
+                "target_status": "suspended",
+                "provenance_reference": "native-agent-e2e-self-suspend",
+            },
+        )
+        assert authority_change_attempt.status_code == 403, authority_change_attempt.text
+        assert authority_change_attempt.json()["error"]["code"] == "agent_risk_denied"
+        assert e2e_admin_conn.execute(
+            "SELECT revision, status FROM request_engine.agent_profiles WHERE principal_id = %s",
+            (agent_principal_id,),
+        ).fetchone() == (2, "active")
+
+        unmarked_route = await client.get(
+            "/v1/operation-catalog",
+            headers=_tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+        )
+        assert unmarked_route.status_code == 403, unmarked_route.text
+        assert unmarked_route.json()["error"]["code"] == "agent_policy_denied"
+
         registered_by_agent = await client.post(
             "/v1/parties",
             headers=_tenant_headers(
@@ -343,7 +460,7 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
             json=provision_body,
         )
         assert forbidden_self_provision.status_code == 403, forbidden_self_provision.text
-        assert forbidden_self_provision.json()["error"]["code"] == "capability_required"
+        assert forbidden_self_provision.json()["error"]["code"] == "agent_risk_denied"
 
         suspended = await client.put(
             f"/v1/agents/{agent_principal_id}/status",

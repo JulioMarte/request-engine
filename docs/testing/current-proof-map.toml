@@ -241,3 +241,33 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-AGENT-PROVENANCE-001"
 path = "tests/e2e/test_native_agent_lifecycle.py"
 evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/db/test_agent_policy.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-POLICY-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-RISK-001"
+path = "tests/unit/test_agent_policy_enforcement.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-RISK-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-BUDGET-001"
+path = "tests/db/test_agent_policy.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-AGENT-BUDGET-001"
+path = "tests/e2e/test_native_agent_safety_enforcement.py"
+evidence = ["contract", "invariant", "security"]

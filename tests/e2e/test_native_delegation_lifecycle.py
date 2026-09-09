@@ -10,6 +10,8 @@ from request_engine.entrypoints.http.app import create_native_app
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
 from request_engine.platform.db.session import SessionFactory
 
+from .agent_policy_support import grant_agent_policy_authority, provision_agent_policy
+
 PgConnection = Connection[Any]
 pytestmark = [
     pytest.mark.e2e,
@@ -223,6 +225,11 @@ async def test_delegated_agent_authority_is_bounded_intersected_and_revocable(
         capability_key="delegation.revoke",
         authority_plane="tenant_control",
     )
+    grant_agent_policy_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+    )
 
     app = create_native_app(
         session_factory=e2e_session_factory,
@@ -340,6 +347,19 @@ async def test_delegated_agent_authority_is_bounded_intersected_and_revocable(
             },
         )
         assert assigned.status_code == 200, assigned.text
+
+        policy = await provision_agent_policy(
+            client,
+            controller_headers=_tenant_headers(
+                token=controller_token,
+                organization_id=organization_id,
+            ),
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=["parties.register", "parties.lookup"],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=60,
+        )
+        assert policy["policy_revision"] == 1
 
         manager_token = await _login(
             client,

@@ -104,5 +104,11 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_engine.transition_staff_membership(p_membership_id uuid, "
         "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),
+    (
+        "request_engine.upsert_agent_policy(p_agent_principal_id uuid, "
+        "p_allowed_capabilities text[], p_denied_capabilities text[], "
+        "p_risk_ceiling text, p_max_mutations_per_minute integer, "
+        "p_provenance_reference text)"
+    ),
     ("request_read.recovery_source_revision(p_organization_id uuid, p_service_queue_id uuid)"),
 }

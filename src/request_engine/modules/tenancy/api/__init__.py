@@ -3,6 +3,9 @@ from fastapi import APIRouter, FastAPI, Request
 from request_engine.modules.tenancy.adapters.db.agent_governance_commands import (
     PostgresAgentGovernanceCommands,
 )
+from request_engine.modules.tenancy.adapters.db.agent_policy_commands import (
+    PostgresAgentPolicyCommands,
+)
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
 )
@@ -36,6 +39,10 @@ from request_engine.modules.tenancy.api.agent_governance_errors import (
 from request_engine.modules.tenancy.api.agent_governance_routes import (
     add_agent_governance_routes,
 )
+from request_engine.modules.tenancy.api.agent_policy_errors import (
+    add_agent_policy_error_handlers,
+)
+from request_engine.modules.tenancy.api.agent_policy_routes import add_agent_policy_routes
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
@@ -148,10 +155,16 @@ def install_http(
     app.include_router(staff_router)
 
     add_agent_governance_error_handlers(app)
+    add_agent_policy_error_handlers(app)
     agents_router = APIRouter(prefix="/v1/agents", tags=["agents"])
     add_agent_governance_routes(
         agents_router,
         commands=PostgresAgentGovernanceCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    add_agent_policy_routes(
+        agents_router,
+        commands=PostgresAgentPolicyCommands(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(agents_router)

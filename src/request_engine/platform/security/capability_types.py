@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from request_engine.platform.security.operation_risk import OperationRiskClass
+
 
 class CapabilityExposure(StrEnum):
     PUBLIC = "public"
@@ -46,10 +48,19 @@ class CapabilityDefinition:
     override_capability: str | None = None
     legacy_aliases: frozenset[str] = frozenset()
     runtime_available: bool = True
+    risk_class: OperationRiskClass | None = None
 
     @property
     def discoverable(self) -> bool:
         return self.exposure is not CapabilityExposure.INTERNAL
+
+    @property
+    def effective_risk_class(self) -> OperationRiskClass | None:
+        if self.risk_class is not None:
+            return self.risk_class
+        if self.kind is CapabilityKind.QUERY:
+            return OperationRiskClass.READ
+        return None
 
 
 def query_capability(
@@ -62,6 +73,7 @@ def query_capability(
     override_capability: str | None = None,
     legacy_aliases: frozenset[str] = frozenset(),
     runtime_available: bool = True,
+    risk_class: OperationRiskClass | None = None,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -75,6 +87,7 @@ def query_capability(
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,
         runtime_available=runtime_available,
+        risk_class=risk_class,
     )
 
 
@@ -89,6 +102,7 @@ def command_capability(
     override_capability: str | None = None,
     legacy_aliases: frozenset[str] = frozenset(),
     runtime_available: bool = True,
+    risk_class: OperationRiskClass | None = None,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -102,4 +116,5 @@ def command_capability(
         override_capability=override_capability,
         legacy_aliases=legacy_aliases,
         runtime_available=runtime_available,
+        risk_class=risk_class,
     )

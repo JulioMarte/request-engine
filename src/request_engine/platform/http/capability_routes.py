@@ -99,3 +99,9 @@ def add_capability_route(
         openapi_extra=extra,
         **kwargs,
     )
+    registered = router.routes[-1]
+    if getattr(registered, "operation_id", None) != resolved_operation_id:
+        raise RuntimeError(
+            f"capability route registration did not append operation {resolved_operation_id!r}"
+        )
+    registered.request_engine_capability = definition.key  # type: ignore[reportAttributeAccessIssue]

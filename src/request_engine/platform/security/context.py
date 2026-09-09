@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from request_engine.platform.security.agent_policy import AgentPolicySnapshot
 from request_engine.platform.security.capabilities import grant_satisfies
 
 
@@ -41,6 +42,7 @@ class ActorContext:
     delegation_id: UUID | None = None
     authority_revision: int | None = None
     interaction_id: str | None = None
+    agent_policy: AgentPolicySnapshot | None = None
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():

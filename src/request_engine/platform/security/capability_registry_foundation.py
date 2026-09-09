@@ -6,6 +6,7 @@ from request_engine.platform.security.capability_types import (
     command_capability,
     query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     query_capability(
@@ -39,6 +40,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.book",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.book_appointment"}),
+        risk_class=OperationRiskClass.EXTERNAL_COMMITMENT,
     ),
     query_capability(
         "appointments.read",
@@ -56,6 +58,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.cancel_reservation"}),
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
     ),
     command_capability(
         "appointments.reschedule",
@@ -65,6 +68,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
         legacy_aliases=frozenset({"booking.reschedule_reservation"}),
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
     ),
     command_capability(
         "appointments.confirm_attendance",
@@ -81,6 +85,7 @@ FOUNDATION_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.REQUIRED,
         party_scope="appointments.manage",
         override_capability="appointments.subject_override",
+        risk_class=OperationRiskClass.LOW_IMPACT_WRITE,
     ),
     command_capability(
         "appointments.subject_override",

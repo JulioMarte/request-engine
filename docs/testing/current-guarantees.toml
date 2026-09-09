@@ -271,3 +271,24 @@ statement = "Agent provisioning provenance (sponsor, established_by, provenance 
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-AGENT-POLICY-001"
+statement = "An AGENT Principal without an explicit tool policy is denied every operation (fail closed, including routes without capability metadata), and effective agent authority is the granted ∩ allowed − denied intersection read fresh from the tenant-scoped policy on every request; policy rows remain tenant-isolated."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-RISK-001"
+statement = "Agent execution is bounded by the policy risk ceiling: unclassified command capabilities deny agents, and AUTHORITY_CHANGE operations are unconditionally denied for agent actors regardless of grants, delegation or ceiling."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-BUDGET-001"
+statement = "Per-minute agent mutation budgets are enforced through a race-safe conditional upsert so concurrent requests cannot exceed the configured limit within one window; exhausted budgets deny further mutations with 429 while read operations and other agents' budgets remain unaffected."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]

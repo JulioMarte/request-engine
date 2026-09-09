@@ -17,12 +17,15 @@ from request_engine.entrypoints.http.operator_resolution import (
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.modules.queue.api import QueueSlotOfferHttpPorts
 from request_engine.modules.tenancy.api import build_principal_authority_reader
+from request_engine.platform.db.agent_budget_enforcer import PostgresAgentBudgetEnforcer
+from request_engine.platform.db.agent_policy_reader import PostgresAgentPolicyReader
 from request_engine.platform.db.delegation_reader import PostgresDelegationReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.acting_operator import (
     ActingOperatorActorResolver,
     OperatorActorResolver,
 )
+from request_engine.platform.security.agent_policy_http import AgentPolicyActorResolver
 from request_engine.platform.security.delegation_http import DelegatedAgentActorResolver
 from request_engine.platform.security.discovery import (
     BaselineTenantCapabilityPolicy,
@@ -208,9 +211,13 @@ def create_native_app(
     runtime = build_native_auth_runtime(session_factory)
     return create_app(
         session_factory=session_factory,
-        actor_resolver=DelegatedAgentActorResolver(
-            runtime.actor_resolver,
-            PostgresDelegationReader(session_factory),
+        actor_resolver=AgentPolicyActorResolver(
+            DelegatedAgentActorResolver(
+                runtime.actor_resolver,
+                PostgresDelegationReader(session_factory),
+            ),
+            PostgresAgentPolicyReader(session_factory),
+            PostgresAgentBudgetEnforcer(session_factory),
         ),
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=appointment_option_signing_key,

@@ -5,6 +5,7 @@ from request_engine.platform.security.capability_types import (
     command_capability,
     query_capability,
 )
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 REQUEST_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     command_capability(
@@ -13,6 +14,7 @@ REQUEST_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "Submit durable business demand.",
         party_scope="requests.submit",
         override_capability="requests.party_override",
+        risk_class=OperationRiskClass.REVERSIBLE_WRITE,
     ),
     query_capability(
         "requests.read",
