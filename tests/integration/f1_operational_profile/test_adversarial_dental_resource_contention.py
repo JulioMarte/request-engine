@@ -200,7 +200,10 @@ async def test_two_dentists_cannot_double_book_one_chair_and_one_assistant(
     admin_conn: PgConnection,
     session_factory: SessionFactory,
 ) -> None:
-    """A dental visit needs dentist + chair + assistant; auxiliary capacity must be authoritative."""
+    """A dental visit needs dentist + chair + assistant; auxiliary capacity must be authoritative.
+
+    The auxiliary capacity must remain authoritative for the complete visit.
+    """
     fixture = create_contextual_cardiology_scenario(admin_conn)
     dentist_capability_id = _capability_for_requirement(admin_conn, fixture.requirement_id)
     second_dentist_id, _ = _add_resource_for_capability(

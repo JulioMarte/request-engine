@@ -223,7 +223,8 @@ async def test_same_resource_can_be_assigned_to_two_locations_but_cannot_be_over
     assert reservations == (1,)
     claims = admin_conn.execute(
         """
-        SELECT count(*), count(DISTINCT resource_id), count(DISTINCT resource_location_assignment_id)
+        SELECT count(*), count(DISTINCT resource_id),
+               count(DISTINCT resource_location_assignment_id)
         FROM request_engine.capacity_claims
         WHERE organization_id = %s
           AND resource_id = %s

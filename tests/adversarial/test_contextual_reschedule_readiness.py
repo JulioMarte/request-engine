@@ -12,7 +12,7 @@ from fastapi.routing import APIRoute
 from request_engine.modules.booking.adapters.appointment_options import (
     SignedAppointmentOptionCodec,
 )
-from request_engine.modules.booking.api.models import ReservationView, RescheduleReservationBody
+from request_engine.modules.booking.api.models import RescheduleReservationBody, ReservationView
 from request_engine.modules.booking.api.router import create_router
 from request_engine.modules.booking.application.commands.reschedule_reservation import (
     RescheduleReservationCommand,
