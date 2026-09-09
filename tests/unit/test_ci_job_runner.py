@@ -120,3 +120,24 @@ def test_windows_resolver_finds_git_bash_without_git_on_path(
     resolved = runner._resolve_bash()
 
     assert Path(resolved) == bash_exe.resolve()
+
+
+def test_windows_resolver_derives_bash_from_hook_git_exec_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _load_runner_module()
+    bash_exe = tmp_path / "Git" / "bin" / "bash.exe"
+    bash_exe.parent.mkdir(parents=True)
+    bash_exe.write_bytes(b"")
+    exec_path = tmp_path / "Git" / "mingw64" / "libexec" / "git-core"
+    exec_path.mkdir(parents=True)
+    wsl_bash = tmp_path / "Windows" / "System32" / "bash.exe"
+    wsl_bash.parent.mkdir(parents=True)
+    wsl_bash.write_bytes(b"")
+    _patch_windows_resolver_env(tmp_path, monkeypatch)
+    monkeypatch.setenv("REQUEST_ENGINE_GIT_EXEC_PATH", str(exec_path))
+    monkeypatch.setattr(shutil, "which", _fake_which({"git": None, "bash": str(wsl_bash)}))
+
+    resolved = runner._resolve_bash()
+
+    assert Path(resolved) == bash_exe.resolve()

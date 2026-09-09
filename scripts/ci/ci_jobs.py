@@ -20,6 +20,12 @@ from typing import TextIO
 
 def _windows_bash_candidates() -> list[Path]:
     candidates: list[Path] = []
+    exec_path = os.environ.get("REQUEST_ENGINE_GIT_EXEC_PATH")
+    if exec_path:
+        exec_root = Path(exec_path).resolve()
+        for level in exec_root.parents[:3]:
+            candidates.append(level / "bin" / "bash.exe")
+            candidates.append(level / "usr" / "bin" / "bash.exe")
     git_exe = shutil.which("git")
     if git_exe:
         git_root = Path(git_exe).resolve().parent.parent
