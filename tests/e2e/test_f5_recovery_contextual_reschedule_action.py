@@ -44,7 +44,7 @@ async def test_f5_contextual_reschedule_action_commits_authorized_target(
         _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
         restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=6)
         proposal = await create_proposal(client, sandbox)
-        item = _contextual_reschedule_item(proposal)
+        item = _reschedule_item(proposal)
         target = cast(dict[str, Any], item["target"])
         reservation_id = UUID(cast(str, item["reservation_id"]))
         before_state = reservation_state(e2e_admin_conn, reservation_id)
@@ -69,12 +69,12 @@ async def test_f5_contextual_reschedule_action_commits_authorized_target(
     _assert_target_claim(e2e_admin_conn, reservation_id, target)
 
 
-def _contextual_reschedule_item(proposal: dict[str, Any]) -> dict[str, Any]:
+def _reschedule_item(proposal: dict[str, Any]) -> dict[str, Any]:
     for item in cast(list[dict[str, Any]], proposal["affected"]):
         target = item.get("target")
-        if item["contextual_commitment"] and target and target["actionable"]:
+        if target is not None and target.get("configuration_fingerprint"):
             return item
-    raise AssertionError("proposal did not expose an actionable contextual reschedule target")
+    raise AssertionError("proposal did not expose a contextual reschedule target")
 
 
 async def _reschedule(

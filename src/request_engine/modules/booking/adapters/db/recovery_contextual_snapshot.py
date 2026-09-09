@@ -33,7 +33,7 @@ from request_engine.modules.booking.domain.contextual_supply import BaseBookingT
 @dataclass(frozen=True, slots=True)
 class ContextualRecoverySnapshot:
     ordered_requirement_ids: tuple[UUID, ...]
-    selected_assignments: Mapping[UUID, AssignmentObservation | None]
+    selected_assignments: Mapping[UUID, AssignmentObservation]
     resource_revisions: Mapping[UUID, int]
     location: LocationObservation | None
     availability: ContextualRecoveryAvailability
@@ -63,36 +63,23 @@ async def load_contextual_recovery_snapshot(
         session, organization_id=request.organization_id, resource_ids=resource_ids
     )
     require_expected_resource_revisions(choices, resource_revisions)
-    contextualized, assignments = await load_contextualization(
+    _, assignments = await load_contextualization(
         session, request.organization_id, resource_ids, start_at, end_at
     )
     selected = resolve_selected_assignments(
         choices=choices,
         requirements=requirements,
-        resources=resources,
-        contextualized=contextualized,
         assignments_by_resource=assignments,
         location_id=location_id,
         start_at=start_at,
         end_at=end_at,
     )
-    assignment_ids = tuple(sorted({a.id for a in selected.values() if a is not None}, key=str))
-    legacy_ids = tuple(
-        sorted(
-            {
-                choices[rid].resource_id
-                for rid, assignment in selected.items()
-                if assignment is None
-            },
-            key=str,
-        )
-    )
+    assignment_ids = tuple(sorted({assignment.id for assignment in selected.values()}, key=str))
     availability = await load_contextual_recovery_availability(
         session,
         request=request,
         resource_ids=resource_ids,
         assignment_ids=assignment_ids,
-        legacy_ids=legacy_ids,
         start_at=start_at,
         end_at=end_at,
     )

@@ -65,7 +65,7 @@ async def test_stale_contextual_option_is_http_409_without_partial_effects(
 @pytest.mark.postgres
 @pytest.mark.contract
 @pytest.mark.adversarial
-async def test_contextual_reschedule_fails_closed_without_mutation(
+async def test_contextual_reschedule_rejects_stale_revision_without_mutation(
     e2e_admin_conn: PgConnection,
     e2e_session_factory: SessionFactory,
 ) -> None:
@@ -78,13 +78,12 @@ async def test_contextual_reschedule_fails_closed_without_mutation(
             f"/v1/appointments/{reservation['id']}/reschedule",
             json={
                 "option_id": replacement["option_id"],
-                "expected_revision": reservation["revision"],
+                "expected_revision": cast(int, reservation["revision"]) + 1,
             },
             headers=auth(sandbox, idempotency_key=f"reschedule-{uuid4().hex}"),
         )
-    assert response.status_code == 422
+    assert response.status_code == 409
     error = response.json()["error"]
-    assert error["code"] == "contextual_commitment_unsupported"
-    assert error["resolution"] == "fix_request"
-    assert error["details"] == {"operation": "reschedule"}
+    assert error["code"] == "revision_conflict"
+    assert error["resolution"] == "refresh_and_retry"
     assert durable_snapshot(e2e_admin_conn) == before

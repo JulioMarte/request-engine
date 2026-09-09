@@ -49,9 +49,9 @@ async def test_f5_contextual_reschedule_preserves_assignment_and_commercial_comm
         proposal = await create_proposal(client, sandbox)
         affected = proposal["affected"]
         assert affected
-        item = next(value for value in affected if value["contextual_commitment"])
+        item = next(value for value in affected if value["target"] is not None)
         target = item["target"]
-        assert target["actionable"] is True
+        assert target["configuration_fingerprint"]
         assert target["resources"][0]["resource_location_assignment_id"] == str(
             supply.assignment_id
         )

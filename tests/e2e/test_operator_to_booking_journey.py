@@ -10,6 +10,21 @@ from .operator_journey_support import grant_operational_scopes, operator_client,
 from .tenant_sandbox import auth, client_for, first_slot, seed_tenant_sandbox
 
 
+def _remove_baseline_supply(conn: PgConnection, organization_id: UUID) -> None:
+    conn.execute(
+        "DELETE FROM request_engine.resource_location_availability WHERE organization_id = %s",
+        (organization_id,),
+    )
+    conn.execute(
+        "DELETE FROM request_engine.resource_location_assignments WHERE organization_id = %s",
+        (organization_id,),
+    )
+    conn.execute(
+        "DELETE FROM request_engine.location_operational_hours WHERE organization_id = %s",
+        (organization_id,),
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 @pytest.mark.postgres
@@ -20,6 +35,7 @@ async def test_operator_supply_configuration_drives_customer_slot_and_booking(
     e2e_session_factory: SessionFactory,
 ) -> None:
     sandbox = seed_tenant_sandbox(e2e_admin_conn, "operator-booking")
+    _remove_baseline_supply(e2e_admin_conn, sandbox.organization_id)
     grant_operational_scopes(e2e_admin_conn, sandbox)
     location_revision = revision(
         e2e_admin_conn,

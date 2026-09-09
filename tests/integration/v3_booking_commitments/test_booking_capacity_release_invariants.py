@@ -5,8 +5,8 @@ from uuid import uuid4
 import pytest
 from psycopg import Connection, Error
 
-from request_engine.modules.booking.adapters.db.reservation_commands import (
-    PostgresReservationCommands,
+from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
+    CapacitySafeReservationCommands,
 )
 from request_engine.modules.booking.application.commands.book_appointment import book_appointment
 from request_engine.modules.booking.application.commands.cancel_reservation import (
@@ -15,7 +15,7 @@ from request_engine.modules.booking.application.commands.cancel_reservation impo
 )
 from request_engine.platform.db.session import SessionFactory
 
-from .booking_revalidation_fixture import book_command, create_fixture
+from .booking_revalidation_fixture import contextual_book_command, create_fixture
 
 PgConnection = Connection[Any]
 
@@ -149,10 +149,13 @@ async def test_i23_i28_cancel_releases_capacity_atomically_and_db_rejects_termin
     session_factory: SessionFactory,
 ) -> None:
     fixture = create_fixture(admin_conn)
-    commands = PostgresReservationCommands(session_factory)
+    commands = CapacitySafeReservationCommands(session_factory)
     start_at = datetime(2026, 8, 17, 13, 0, tzinfo=UTC)
 
-    reservation = await book_appointment(commands, book_command(fixture, start_at=start_at))
+    reservation = await book_appointment(
+        commands,
+        await contextual_book_command(fixture, session_factory, start_at=start_at),
+    )
     cancelled = await cancel_reservation(
         commands,
         CancelReservationCommand(
@@ -177,7 +180,10 @@ async def test_i23_i28_cancel_releases_capacity_atomically_and_db_rejects_termin
     ).fetchall() == [("released", 1)]
 
     second_start = datetime(2026, 8, 17, 13, 30, tzinfo=UTC)
-    second = await book_appointment(commands, book_command(fixture, start_at=second_start))
+    second = await book_appointment(
+        commands,
+        await contextual_book_command(fixture, session_factory, start_at=second_start),
+    )
     with pytest.raises(Error) as terminal_with_live_claim, admin_conn.transaction():
         admin_conn.execute(
             """

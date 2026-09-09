@@ -10,10 +10,8 @@ from request_engine.modules.booking.domain.availability import CapacityModel
 
 @dataclass(frozen=True, slots=True)
 class ProjectionResource:
-    location_id: UUID | None
     capacity_model: CapacityModel
     capacity_units: int
-    timezone: str
 
     @property
     def supports_sequential_projection(self) -> bool:
@@ -31,14 +29,11 @@ async def load_projection_resource(
             await session.execute(
                 text(
                     """
-                    SELECT r.location_id, r.capacity_model, r.capacity_units,
-                           COALESCE(l.timezone, 'UTC') AS timezone
-                    FROM request_engine.resources r
-                    LEFT JOIN request_engine.locations l
-                      ON l.organization_id = r.organization_id AND l.id = r.location_id
-                    WHERE r.organization_id = :organization_id
-                      AND r.id = :resource_id
-                      AND r.active
+                    SELECT capacity_model, capacity_units
+                    FROM request_engine.resources
+                    WHERE organization_id = :organization_id
+                      AND id = :resource_id
+                      AND active
                     """
                 ),
                 {"organization_id": organization_id, "resource_id": resource_id},
@@ -50,8 +45,6 @@ async def load_projection_resource(
     if row is None:
         return None
     return ProjectionResource(
-        location_id=cast(UUID | None, row["location_id"]),
         capacity_model=CapacityModel(cast(str, row["capacity_model"])),
         capacity_units=cast(int, row["capacity_units"]),
-        timezone=cast(str, row["timezone"]),
     )

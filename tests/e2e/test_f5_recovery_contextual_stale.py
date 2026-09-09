@@ -43,7 +43,7 @@ async def test_f5_contextual_proposal_fails_closed_after_material_configuration_
         _, slots = await book_commitments(client, e2e_admin_conn, sandbox)
         restrict_contextual_capacity(e2e_admin_conn, sandbox, supply, slots, count=6)
         proposal = await create_proposal(client, sandbox)
-        item = next(value for value in proposal["affected"] if value["contextual_commitment"])
+        item = next(value for value in proposal["affected"] if value["target"] is not None)
         reservation_id = UUID(cast(str, item["reservation_id"]))
         target = cast(Mapping[str, object], item["target"])
         before = _reservation_state(e2e_admin_conn, reservation_id)

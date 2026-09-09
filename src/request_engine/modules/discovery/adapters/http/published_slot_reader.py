@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Literal, cast
 from uuid import UUID
 
@@ -79,16 +79,16 @@ def _slot(raw: object) -> AppointmentSlot:
         raise RuntimeError("discovery availability resources are malformed")
     resources = cast(list[object], resources_raw)
     return AppointmentSlot(
-        offering_version_id=UUID(str(data["offering_version_id"])),
-        start_at=datetime.fromisoformat(str(data["start_at"])),
-        end_at=datetime.fromisoformat(str(data["end_at"])),
-        location_id=_uuid_or_none(data.get("location_id")),
+        offering_version_id=_uuid(data, "offering_version_id"),
+        start_at=_datetime(data, "start_at"),
+        end_at=_datetime(data, "end_at"),
+        location_id=_uuid(data, "location_id"),
         resources=tuple(_resource(item) for item in resources),
-        planned_duration_minutes=_int_or_none(data.get("planned_duration_minutes")),
-        amount=_decimal_or_none(data.get("amount")),
-        currency=_str_or_none(data.get("currency")),
-        location_operational_revision=_int_or_none(data.get("location_operational_revision")),
-        configuration_fingerprint=_str_or_none(data.get("configuration_fingerprint")),
+        planned_duration_minutes=_positive_int(data, "planned_duration_minutes"),
+        amount=_non_negative_decimal(data, "amount"),
+        currency=_required_str(data, "currency"),
+        location_operational_revision=_positive_int(data, "location_operational_revision"),
+        configuration_fingerprint=_required_str(data, "configuration_fingerprint"),
     )
 
 
@@ -97,25 +97,59 @@ def _resource(raw: object) -> ResourceChoice:
         raise RuntimeError("discovery availability resource is malformed")
     data = cast(dict[str, object], raw)
     return ResourceChoice(
-        requirement_id=UUID(str(data["requirement_id"])),
-        resource_id=UUID(str(data["resource_id"])),
-        resource_location_assignment_id=_uuid_or_none(data.get("resource_location_assignment_id")),
-        assignment_revision=_int_or_none(data.get("assignment_revision")),
-        availability_revision=_int_or_none(data.get("availability_revision")),
+        requirement_id=_uuid(data, "requirement_id"),
+        resource_id=_uuid(data, "resource_id"),
+        resource_location_assignment_id=_uuid(data, "resource_location_assignment_id"),
+        assignment_revision=_positive_int(data, "assignment_revision"),
+        availability_revision=_positive_int(data, "availability_revision"),
     )
 
 
-def _uuid_or_none(value: object) -> UUID | None:
-    return None if value is None else UUID(str(value))
+def _uuid(data: dict[str, object], key: str) -> UUID:
+    value = data.get(key)
+    if not isinstance(value, str):
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise RuntimeError(f"discovery availability {key} is malformed") from exc
 
 
-def _int_or_none(value: object) -> int | None:
-    return None if value is None else int(str(value))
+def _datetime(data: dict[str, object], key: str) -> datetime:
+    value = data.get(key)
+    if not isinstance(value, str):
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise RuntimeError(f"discovery availability {key} is malformed") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise RuntimeError(f"discovery availability {key} must be timezone-aware")
+    return parsed
 
 
-def _decimal_or_none(value: object) -> Decimal | None:
-    return None if value is None else Decimal(str(value))
+def _positive_int(data: dict[str, object], key: str) -> int:
+    value = data.get(key)
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    return value
 
 
-def _str_or_none(value: object) -> str | None:
-    return None if value is None else str(value)
+def _non_negative_decimal(data: dict[str, object], key: str) -> Decimal:
+    value = data.get(key)
+    if value is None:
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    try:
+        parsed = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise RuntimeError(f"discovery availability {key} is malformed") from exc
+    if not parsed.is_finite() or parsed < 0:
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    return parsed
+
+
+def _required_str(data: dict[str, object], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"discovery availability {key} is malformed")
+    return value

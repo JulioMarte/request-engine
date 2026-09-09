@@ -21,6 +21,14 @@ def five_minute_sandbox(conn: PgConnection, sandbox: TenantSandbox) -> TenantSan
         (sandbox.organization_id, sandbox.offering_id, '{"slot_step_minutes":5}'),
     ).fetchone()
     assert version is not None
+    conn.execute(
+        """
+        INSERT INTO request_engine.offering_version_booking_terms (
+            organization_id, offering_version_id, amount, currency
+        ) VALUES (%s, %s, 3500, 'DOP')
+        """,
+        (sandbox.organization_id, version[0]),
+    )
     requirement = conn.execute(
         "INSERT INTO request_engine.offering_resource_requirements "
         "(organization_id,offering_version_id,capability_id,ordinal,quantity) "

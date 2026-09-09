@@ -22,20 +22,32 @@ def contextualize_recovery_supply(
     sandbox: TenantSandbox,
 ) -> F5ContextualSupply:
     weekday = world_weekday(conn, sandbox)
+    assignment = conn.execute(
+        "SELECT id FROM request_engine.resource_location_assignments "
+        "WHERE organization_id=%s AND resource_id=%s AND location_id=%s "
+        "AND status='active' AND effective_during @> clock_timestamp() "
+        "ORDER BY lower(effective_during) DESC LIMIT 1",
+        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
+    ).fetchone()
+    assert assignment is not None, "TenantSandbox must provide contextual Resource supply"
+    assignment_id = cast(UUID, assignment[0])
+
+    conn.execute(
+        "DELETE FROM request_engine.location_operational_hours "
+        "WHERE organization_id=%s AND location_id=%s AND weekday=%s",
+        (sandbox.organization_id, sandbox.location_id, weekday),
+    )
     conn.execute(
         "INSERT INTO request_engine.location_operational_hours "
         "(organization_id,location_id,weekday,local_start,local_end) "
         "VALUES (%s,%s,%s,'00:00','23:59')",
         (sandbox.organization_id, sandbox.location_id, weekday),
     )
-    assignment = conn.execute(
-        "INSERT INTO request_engine.resource_location_assignments "
-        "(organization_id,resource_id,location_id,effective_during) "
-        "VALUES (%s,%s,%s,tstzrange('2026-01-01T00:00:00Z',NULL,'[)')) RETURNING id",
-        (sandbox.organization_id, sandbox.resource_id, sandbox.location_id),
-    ).fetchone()
-    assert assignment is not None
-    assignment_id = cast(UUID, assignment[0])
+    conn.execute(
+        "DELETE FROM request_engine.resource_location_availability "
+        "WHERE organization_id=%s AND resource_location_assignment_id=%s AND weekday=%s",
+        (sandbox.organization_id, assignment_id, weekday),
+    )
     conn.execute(
         "INSERT INTO request_engine.resource_location_availability "
         "(organization_id,resource_location_assignment_id,weekday,local_start,local_end) "

@@ -10,10 +10,9 @@ mkdir -p "$ARTIFACT_DIR"
 python scripts/ci/normalize_ci_line_endings.py
 uv sync --all-groups
 
-# Current-product proof follows the repository's accepted migration head. A
-# feature/rebaseline may intentionally change that head; the safety condition is
-# one unambiguous repository head and a database actually upgraded to it, not a
-# permanent equality to the revision that happened to introduce F1.
+# Current-product proof follows the repository's accepted migration head. Future
+# schema changes append 0002+ revisions; the accepted 0001 is verified
+# independently below and must never be rewritten merely to match a later head.
 mapfile -t repository_heads < <(uv run alembic heads | awk 'NF {print $1}')
 if [[ ${#repository_heads[@]} -ne 1 ]]; then
   printf 'expected exactly one Alembic head, found %s: %s\n' \
@@ -29,10 +28,28 @@ if [[ "$actual_head" != "$expected_head" ]]; then
   exit 1
 fi
 
+# Audit the effective PostgreSQL model at current HEAD. This catalog is current
+# product evidence and may legitimately diverge from the immutable 0001 after a
+# reviewed 0002+ migration is introduced.
+uv run python scripts/db/export_schema_catalog.py \
+  --output "$ARTIFACT_DIR/schema-catalog.json"
+uv run python scripts/db/analyze_schema_cohesion.py \
+  --catalog "$ARTIFACT_DIR/schema-catalog.json" \
+  --output "$ARTIFACT_DIR/schema-cohesion-analysis.json"
+
+# Separately prove that the accepted 0001 baseline remains installable and
+# internally coherent in a clean PostgreSQL 18 cluster. This protects the root
+# migration without imposing a permanent equality between 0001 and current HEAD.
+bash scripts/db/prove_baseline_integrity.sh "$ARTIFACT_DIR"
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
   tests/integration/f1_operational_profile/test_runtime_privileges.py \
+  tests/db/test_runtime_immutable_table_privileges.py \
+  tests/db/test_runtime_role_topology.py \
+  tests/db/test_runtime_privilege_boundary.py \
+  tests/db/test_schema_index_cohesion.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/schema.xml"
 
@@ -94,6 +111,15 @@ uv run pytest \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/f4-live-capacity-db.xml"
 
+# The deterministic F4 workload/deduplication rules are current contracts even
+# though they do not require PostgreSQL themselves. Their JUnit evidence belongs
+# in the same current guarantee packet as the DB-backed F4 proofs.
+uv run pytest \
+  tests/modules/live_capacity/test_planned_duration_fallback.py \
+  tests/modules/live_capacity/test_deduplication.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/live-capacity-contract.xml"
+
 # Tenant RLS catalog isolation is current-product truth. Run the adversarial
 # catalog enumeration against the accepted Alembic head so post-baseline tenant
 # tables cannot silently ship without FORCE RLS and a tenant-bound policy.
@@ -117,6 +143,31 @@ uv run pytest \
   tests/db/test_v3_app_function_privilege_inventory.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/app-function-inventory.xml"
+
+# HTTP idempotency is a current externally-retryable command guarantee. These
+# proofs carry the invariant evidence that the broader E2E idempotency coverage
+# alone does not label explicitly.
+uv run pytest \
+  tests/integration/v3_first_vertical/test_http_idempotency_failure.py \
+  tests/integration/v3_first_vertical/test_http_request_idempotency_failure.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/idempotency.xml"
+
+# Worker crash/retry, lease fencing, notification escalation and provider-outcome
+# interpretation are current product guarantees. Their paths are historical V3
+# names only; execution here is based on the invariants they prove.
+uv run pytest \
+  tests/integration/v3_worker_runtime/test_process_crash_recovery.py \
+  tests/integration/v3_worker_runtime/test_worker_fencing_release_matrix.py \
+  tests/integration/v3_worker_runtime/test_escalation_step_race.py \
+  tests/integration/v3_worker_runtime/test_escalation_schema.py \
+  tests/integration/v3_worker_runtime/test_escalation_replay_and_window.py \
+  tests/integration/v3_worker_runtime/test_escalation_step.py \
+  tests/integration/v3_worker_runtime/test_escalation_terminals.py \
+  tests/integration/v3_worker_runtime/test_delivery_outcome_event_fencing.py \
+  tests/integration/v3_worker_runtime/test_delivery_outcome_events.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/worker-runtime.xml"
 
 # Current Queue selection/read truth must stay coherent end-to-end: CallNext
 # serialization, staff recall gates, customer position and Day Board projection
@@ -156,3 +207,9 @@ uv run pytest \
   tests/integration/v3_booking_commitments \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/booking-capacity-regression.xml"
+
+# A proof-map entry counts only when its test actually ran in this gate. This
+# prevents dormant legacy files from silently satisfying current guarantees.
+uv run python scripts/ci/validate_current_proof_execution.py \
+  --junit-dir "$ARTIFACT_DIR" \
+  --output "$ARTIFACT_DIR/proof-execution.json"

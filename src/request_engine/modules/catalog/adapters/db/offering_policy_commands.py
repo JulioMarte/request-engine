@@ -88,7 +88,7 @@ class PostgresOfferingBookingPolicyCommands:
                                 WHERE ov.organization_id = :organization_id
                                   AND ov.id = :offering_version_id
                                   AND o.active
-                                FOR UPDATE OF ov
+                                FOR UPDATE OF o
                                 """
                             ),
                             {
@@ -104,11 +104,6 @@ class PostgresOfferingBookingPolicyCommands:
                     raise CatalogConfigurationConflict(
                         "OfferingVersion is missing, inactive, or belongs to another Organization"
                     )
-                await _lock_latest_policy_revision(
-                    session,
-                    organization_id=command.organization_id,
-                    offering_version_id=command.offering_version_id,
-                )
                 current_revision = await _current_policy_revision(
                     session,
                     organization_id=command.organization_id,
@@ -185,33 +180,6 @@ class PostgresOfferingBookingPolicyCommands:
                     "OfferingVersion booking policy revision already exists"
                 ) from None
             raise
-
-
-async def _lock_latest_policy_revision(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    offering_version_id: UUID,
-) -> None:
-    """Serialize concurrent revisions on the current latest row, when one exists."""
-
-    await session.execute(
-        text(
-            """
-            SELECT id
-            FROM request_engine.offering_version_booking_policies
-            WHERE organization_id = :organization_id
-              AND offering_version_id = :offering_version_id
-            ORDER BY revision DESC
-            LIMIT 1
-            FOR UPDATE
-            """
-        ),
-        {
-            "organization_id": organization_id,
-            "offering_version_id": offering_version_id,
-        },
-    )
 
 
 async def _current_policy_revision(

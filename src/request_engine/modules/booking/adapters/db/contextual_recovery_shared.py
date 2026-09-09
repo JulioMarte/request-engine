@@ -12,6 +12,7 @@ from request_engine.modules.booking.adapters.db.contextual_reservation_commands 
     _require_expected_resource_revisions,
     _resolve_selected_assignments,
 )
+from request_engine.modules.booking.domain.availability import ResourceAvailability
 
 
 class RequirementLike(Protocol):
@@ -21,8 +22,11 @@ class RequirementLike(Protocol):
     @property
     def ordinal(self) -> int: ...
 
+    @property
+    def quantity(self) -> int: ...
 
-def build_authoritative_profiles(*args: Any, **kwargs: Any) -> Any:
+
+def build_authoritative_profiles(*args: Any, **kwargs: Any) -> dict[UUID, ResourceAvailability]:
     return _build_authoritative_profiles(*args, **kwargs)
 
 

@@ -86,10 +86,8 @@ async def complete_service(
         result = session_from_row(result_row.mappings().one())
         await session.execute(
             text(
-                "UPDATE request_engine.queue_entries SET status='completed', "
-                "completed_at=:completed_at, revision=revision+1, "
-                "updated_at=clock_timestamp() "
-                "WHERE organization_id=:organization_id AND id=:entry_id"
+                "SELECT request_cmd.mark_queue_entry_service_completed("
+                ":organization_id, :entry_id, :completed_at)"
             ),
             {
                 "organization_id": command.organization_id,

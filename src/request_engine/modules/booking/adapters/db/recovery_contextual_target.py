@@ -91,7 +91,6 @@ async def validate_contextual_recovery_target(
         assignment_schedules=availability.assignment_schedules,
         assignment_exceptions=availability.assignment_exceptions,
         broad_exceptions=availability.broad_exceptions,
-        legacy_schedules=availability.legacy_schedules,
         live_claims=availability.live_claims,
     )
     revalidate_exact_slot(

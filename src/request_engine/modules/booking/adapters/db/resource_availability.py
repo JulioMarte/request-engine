@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, datetime, time
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
@@ -10,53 +10,7 @@ from request_engine.modules.booking.domain.availability import (
     AvailabilityException,
     ExceptionKind,
     LiveCapacityClaim,
-    RecurringAvailability,
 )
-
-
-async def load_resource_schedules(
-    session: AsyncSession,
-    organization_id: UUID,
-    resource_ids: tuple[UUID, ...],
-) -> dict[UUID, tuple[RecurringAvailability, ...]]:
-    if not resource_ids:
-        return {}
-    rows = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT resource_id, weekday, local_start, local_end, timezone,
-                           valid_from, valid_until
-                    FROM request_engine.availability_schedules
-                    WHERE organization_id = :organization_id
-                      AND resource_id = ANY(CAST(:resource_ids AS uuid[]))
-                      AND active
-                    ORDER BY resource_id, weekday, local_start, id
-                    """
-                ),
-                {
-                    "organization_id": organization_id,
-                    "resource_ids": [str(value) for value in resource_ids],
-                },
-            )
-        )
-        .mappings()
-        .all()
-    )
-    grouped: dict[UUID, list[RecurringAvailability]] = defaultdict(list)
-    for row in rows:
-        grouped[cast(UUID, row["resource_id"])].append(
-            RecurringAvailability(
-                weekday=cast(int, row["weekday"]),
-                local_start=cast(time, row["local_start"]),
-                local_end=cast(time, row["local_end"]),
-                timezone=cast(str, row["timezone"]),
-                valid_from=cast(date | None, row["valid_from"]),
-                valid_until=cast(date | None, row["valid_until"]),
-            )
-        )
-    return {key: tuple(value) for key, value in grouped.items()}
 
 
 async def load_resource_exceptions(

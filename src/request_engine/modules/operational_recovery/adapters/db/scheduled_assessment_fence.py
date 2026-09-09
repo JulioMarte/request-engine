@@ -15,9 +15,7 @@ async def read_recovery_source_revision(
     return (
         await session.execute(
             text(
-                "SELECT revision FROM request_engine.recovery_source_revisions "
-                "WHERE organization_id=:organization_id "
-                "AND service_queue_id=:service_queue_id"
+                "SELECT request_read.recovery_source_revision(:organization_id, :service_queue_id)"
             ),
             {"organization_id": organization_id, "service_queue_id": service_queue_id},
         )
@@ -33,9 +31,8 @@ async def lock_recovery_source_revision(
     return (
         await session.execute(
             text(
-                "SELECT revision FROM request_engine.recovery_source_revisions "
-                "WHERE organization_id=:organization_id "
-                "AND service_queue_id=:service_queue_id FOR UPDATE"
+                "SELECT request_cmd.lock_recovery_source_revision("
+                ":organization_id, :service_queue_id)"
             ),
             {"organization_id": organization_id, "service_queue_id": service_queue_id},
         )

@@ -1,7 +1,5 @@
-import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import cast
 from uuid import UUID
 
@@ -13,19 +11,8 @@ from request_engine.modules.booking.adapters.db.effective_booking_policy import 
     EFFECTIVE_BOOKING_POLICY_SELECT,
 )
 from request_engine.modules.booking.adapters.db.reservation_reader import reservation_from_row
-from request_engine.modules.booking.adapters.db.resource_availability import (
-    load_live_capacity_claims,
-    load_resource_exceptions,
-    load_resource_schedules,
-)
 from request_engine.modules.booking.adapters.db.subject_authority import require_subject_authority
-from request_engine.modules.booking.application.authority import (
-    BOOK_APPOINTMENT_SCOPE,
-    MANAGE_APPOINTMENT_SCOPE,
-)
-from request_engine.modules.booking.application.commands.book_appointment import (
-    BookAppointmentCommand,
-)
+from request_engine.modules.booking.application.authority import MANAGE_APPOINTMENT_SCOPE
 from request_engine.modules.booking.application.commands.cancel_reservation import (
     CancelReservationCommand,
 )
@@ -45,9 +32,7 @@ from request_engine.modules.booking.domain.availability import (
     ResourceAvailability,
     find_resource_intervals,
     interval_has_resource_capacity,
-    require_aware_utc,
 )
-from request_engine.modules.booking.domain.policy import slot_step_minutes
 from request_engine.platform.audit.postgres import append_audit
 from request_engine.platform.db.session import SessionFactory, tenant_transaction
 from request_engine.platform.idempotency.postgres import (
@@ -69,230 +54,15 @@ class _Requirement:
 @dataclass(frozen=True, slots=True)
 class LockedResource:
     id: UUID
-    location_id: UUID | None
     capacity_model: CapacityModel
     capacity_units: int
-    default_timezone: str
 
 
 class PostgresReservationCommands:
-    """Authoritative reservation mutations using the V3 lock/claim protocol."""
+    """Reservation lifecycle mutations shared by the contextual booking surface."""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
-
-    async def book_appointment(self, command: BookAppointmentCommand) -> Reservation:
-        start_at = require_aware_utc(command.start_at, "start_at")
-        fingerprint = command_fingerprint(
-            "booking.book_appointment",
-            {
-                "offering_version_id": command.offering_version_id,
-                "subject_party_id": command.subject_party_id,
-                "start_at": start_at,
-                "location_id": command.location_id,
-                "origin_request_id": command.origin_request_id,
-                "resources": [
-                    {
-                        "requirement_id": str(choice.requirement_id),
-                        "resource_id": str(choice.resource_id),
-                    }
-                    for choice in sorted(
-                        command.resources,
-                        key=lambda item: (str(item.requirement_id), str(item.resource_id)),
-                    )
-                ],
-            },
-        )
-
-        async with tenant_transaction(self._session_factory, command.organization_id) as session:
-            idempotency_id, replay = await acquire_idempotency(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                capability="booking.book_appointment",
-                idempotency_key=command.idempotency_key,
-                fingerprint=fingerprint,
-            )
-            if replay is not None:
-                return reservation_from_json(cast(dict[str, object], replay["reservation"]))
-
-            offering = await load_bookable_offering(
-                session,
-                command.organization_id,
-                command.offering_version_id,
-            )
-            duration_minutes = cast(int, offering["duration_minutes"])
-            policy = cast(dict[str, object], offering["booking_policy"])
-            step_minutes = slot_step_minutes(policy, duration_minutes)
-            end_at = start_at + timedelta(minutes=duration_minutes)
-
-            await validate_subject_location_and_origin(
-                session,
-                organization_id=command.organization_id,
-                subject_party_id=command.subject_party_id,
-                location_id=command.location_id,
-                origin_request_id=command.origin_request_id,
-            )
-            authority = await require_subject_authority(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                subject_party_id=command.subject_party_id,
-                scope_key=BOOK_APPOINTMENT_SCOPE,
-                allow_operator_override=command.allow_subject_override,
-            )
-            requirements = await load_requirements(
-                session,
-                command.organization_id,
-                command.offering_version_id,
-            )
-            choices = validate_choice_cardinality(requirements, command.resources)
-            resources = await lock_resources(
-                session,
-                organization_id=command.organization_id,
-                resource_ids=tuple(choice.resource_id for choice in choices.values()),
-            )
-            await validate_resource_capabilities(
-                session,
-                organization_id=command.organization_id,
-                requirements=requirements,
-                choices=choices,
-                resources=resources,
-                location_id=command.location_id,
-            )
-            profiles = await load_locked_profiles(
-                session,
-                organization_id=command.organization_id,
-                resources=resources,
-                start_at=start_at,
-                end_at=end_at,
-            )
-            revalidate_exact_slot(
-                requirements=requirements,
-                choices=choices,
-                profiles=profiles,
-                start_at=start_at,
-                end_at=end_at,
-                duration_minutes=duration_minutes,
-                step_minutes=step_minutes,
-            )
-
-            reservation_id = cast(
-                UUID,
-                (
-                    await session.execute(
-                        text(
-                            """
-                            INSERT INTO request_engine.reservations (
-                                organization_id,
-                                offering_version_id,
-                                subject_party_id,
-                                location_id,
-                                origin_request_id,
-                                during,
-                                booking_policy_snapshot
-                            ) VALUES (
-                                :organization_id,
-                                :offering_version_id,
-                                :subject_party_id,
-                                :location_id,
-                                :origin_request_id,
-                                tstzrange(:start_at, :end_at, '[)'),
-                                CAST(:booking_policy AS jsonb)
-                            )
-                            RETURNING id
-                            """
-                        ),
-                        {
-                            "organization_id": command.organization_id,
-                            "offering_version_id": command.offering_version_id,
-                            "subject_party_id": command.subject_party_id,
-                            "location_id": command.location_id,
-                            "origin_request_id": command.origin_request_id,
-                            "start_at": start_at,
-                            "end_at": end_at,
-                            "booking_policy": json.dumps(policy, separators=(",", ":")),
-                        },
-                    )
-                ).scalar_one(),
-            )
-
-            for requirement in sorted(requirements.values(), key=lambda item: item.ordinal):
-                choice = choices[requirement.id]
-                await session.execute(
-                    text(
-                        """
-                        INSERT INTO request_engine.capacity_claims (
-                            organization_id,
-                            resource_id,
-                            requirement_id,
-                            reservation_id,
-                            during,
-                            quantity
-                        ) VALUES (
-                            :organization_id,
-                            :resource_id,
-                            :requirement_id,
-                            :reservation_id,
-                            tstzrange(:start_at, :end_at, '[)'),
-                            :quantity
-                        )
-                        """
-                    ),
-                    {
-                        "organization_id": command.organization_id,
-                        "resource_id": choice.resource_id,
-                        "requirement_id": requirement.id,
-                        "reservation_id": reservation_id,
-                        "start_at": start_at,
-                        "end_at": end_at,
-                        "quantity": requirement.quantity,
-                    },
-                )
-
-            await append_audit(
-                session,
-                organization_id=command.organization_id,
-                principal_id=command.principal_id,
-                command_name="booking.book_appointment",
-                aggregate_kind="Reservation",
-                aggregate_id=reservation_id,
-                idempotency_id=idempotency_id,
-                details={
-                    "offering_version_id": str(command.offering_version_id),
-                    "subject_party_id": str(command.subject_party_id),
-                    "subject_authority": authority.audit_details(),
-                    "start_at": start_at.isoformat(),
-                    "end_at": end_at.isoformat(),
-                    "resource_ids": [str(choice.resource_id) for choice in choices.values()],
-                },
-            )
-            await append_outbox(
-                session,
-                organization_id=command.organization_id,
-                event_type="reservation.created.v1",
-                aggregate_kind="Reservation",
-                aggregate_id=reservation_id,
-                payload={
-                    "reservation_id": str(reservation_id),
-                    "offering_version_id": str(command.offering_version_id),
-                    "subject_party_id": str(command.subject_party_id),
-                    "location_id": str(command.location_id) if command.location_id else None,
-                    "start_at": start_at.isoformat(),
-                    "end_at": end_at.isoformat(),
-                },
-            )
-            reservation = await read_reservation(
-                session,
-                command.organization_id,
-                reservation_id,
-            )
-            await complete_idempotency(
-                session,
-                idempotency_id,
-                {"reservation": reservation_to_json(reservation)},
-            )
-            return reservation
 
     async def cancel_reservation(self, command: CancelReservationCommand) -> Reservation:
         fingerprint = command_fingerprint(
@@ -626,16 +396,12 @@ async def lock_resources(
             await session.execute(
                 text(
                     """
-                    SELECT r.id, r.location_id, r.capacity_model, r.capacity_units,
-                           r.active, COALESCE(l.timezone, 'UTC') AS default_timezone
-                    FROM request_engine.resources r
-                    LEFT JOIN request_engine.locations l
-                      ON l.organization_id = r.organization_id
-                     AND l.id = r.location_id
-                    WHERE r.organization_id = :organization_id
-                      AND r.id = ANY(CAST(:resource_ids AS uuid[]))
-                    ORDER BY r.id
-                    FOR UPDATE OF r
+                    SELECT id, capacity_model, capacity_units, active
+                    FROM request_engine.resources
+                    WHERE organization_id = :organization_id
+                      AND id = ANY(CAST(:resource_ids AS uuid[]))
+                    ORDER BY id
+                    FOR UPDATE
                     """
                 ),
                 {
@@ -658,10 +424,8 @@ async def lock_resources(
             raise AppointmentUnavailable(f"Resource {row['id']} is inactive")
         resource = LockedResource(
             id=cast(UUID, row["id"]),
-            location_id=cast(UUID | None, row["location_id"]),
             capacity_model=CapacityModel(cast(str, row["capacity_model"])),
             capacity_units=cast(int, row["capacity_units"]),
-            default_timezone=cast(str, row["default_timezone"]),
         )
         result[resource.id] = resource
     return result
@@ -729,6 +493,7 @@ async def validate_resource_capabilities(
     resources: dict[UUID, LockedResource],
     location_id: UUID | None,
 ) -> None:
+    del location_id
     assignment_rows = (
         await session.execute(
             text(
@@ -754,55 +519,6 @@ async def validate_resource_capabilities(
             raise InvalidResourceSelection(
                 f"Resource {resource.id} does not satisfy requirement {requirement.id}"
             )
-        if (
-            location_id is not None
-            and resource.location_id is not None
-            and resource.location_id != location_id
-        ):
-            raise InvalidResourceSelection(
-                f"Resource {resource.id} belongs to a different Location"
-            )
-
-
-async def load_locked_profiles(
-    session: AsyncSession,
-    *,
-    organization_id: UUID,
-    resources: dict[UUID, LockedResource],
-    start_at: object,
-    end_at: object,
-) -> dict[UUID, ResourceAvailability]:
-    from datetime import datetime
-
-    if not isinstance(start_at, datetime) or not isinstance(end_at, datetime):
-        raise TypeError("start_at/end_at must be datetime")
-    resource_ids = tuple(sorted(resources, key=str))
-    schedules = await load_resource_schedules(session, organization_id, resource_ids)
-    exceptions = await load_resource_exceptions(
-        session,
-        organization_id,
-        resource_ids,
-        start_at,
-        end_at,
-    )
-    claims = await load_live_capacity_claims(
-        session,
-        organization_id,
-        resource_ids,
-        start_at,
-        end_at,
-    )
-    return {
-        resource_id: ResourceAvailability(
-            capacity_model=resource.capacity_model,
-            capacity_units=resource.capacity_units,
-            default_timezone=resource.default_timezone,
-            schedules=schedules.get(resource_id, ()),
-            exceptions=exceptions.get(resource_id, ()),
-            live_claims=claims.get(resource_id, ()),
-        )
-        for resource_id, resource in resources.items()
-    }
 
 
 def revalidate_exact_slot(
