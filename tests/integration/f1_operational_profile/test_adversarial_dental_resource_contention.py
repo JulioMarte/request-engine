@@ -253,15 +253,14 @@ async def test_two_dentists_cannot_double_book_one_chair_and_one_assistant(
     same_start = [slot for slot in slots if slot.start_at == _WINDOW_START]
     assert len(same_start) >= 2
     assert all(len(slot.resources) == 3 for slot in same_start)
-    assert {
-        _choice_by_requirement(slot, fixture.requirement_id) for slot in same_start
-    } >= {fixture.resource_id, second_dentist_id}
-    assert {
-        _choice_by_requirement(slot, chair_requirement_id) for slot in same_start
-    } == {chair_id}
-    assert {
-        _choice_by_requirement(slot, assistant_requirement_id) for slot in same_start
-    } == {assistant_id}
+    assert {_choice_by_requirement(slot, fixture.requirement_id) for slot in same_start} >= {
+        fixture.resource_id,
+        second_dentist_id,
+    }
+    assert {_choice_by_requirement(slot, chair_requirement_id) for slot in same_start} == {chair_id}
+    assert {_choice_by_requirement(slot, assistant_requirement_id) for slot in same_start} == {
+        assistant_id
+    }
 
     first_slot = next(
         slot
