@@ -85,6 +85,7 @@ def _fake_which(mapping: dict[str, str | None]) -> Any:
 def _patch_windows_resolver_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("SYSTEMROOT", str(tmp_path / "Windows"))
+    monkeypatch.delenv("REQUEST_ENGINE_GIT_EXEC_PATH", raising=False)
     for variable in ("ProgramFiles", "ProgramFiles(x86)", "LocalAppData"):
         monkeypatch.delenv(variable, raising=False)
 
