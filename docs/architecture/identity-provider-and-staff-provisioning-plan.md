@@ -760,7 +760,48 @@ AuthorityRevisionConflict
 
 Do not silently apply last-write-wins to security authority administration.
 
+### Current authority-replacement boundary
+
+`PUT /v1/staff/members/{membership_id}/authority` (`staff_manage_authority`,
+Tenancy owner, `staff.manage_authority` capability) accepts canonical operational
+and tenant-control capabilities. Platform capabilities and aliases are rejected.
+This implements the constrained operational-staff use case below; accepting an
+operational key does not grant it automatically.
+
+The command retains the existing required idempotency key, expected Principal
+authority revision and provenance reference. Inside the actor transaction,
+PostgreSQL locks/revalidates the active HUMAN manager, target membership and
+Principal and requires every desired capability to be in the manager's current
+active **delegable** ceiling. Newly created grants are non-delegable. Self-replacement,
+foreign membership access and removal of the last controller remain prohibited.
+Capability assignment does not create Party Representations or widen their scopes;
+each business operation still enforces its owner-specific relationship rules.
+No provider calls, new database grants, tool projection or schema migration are
+introduced by this transport/application correction.
+
+Evidence: `tests/e2e/test_platform_provisioning_journey.py` assigns the employee's
+operational authority through HTTP, verifies durable non-delegable grants and
+rejects a capability outside the manager's ceiling without changing the revision.
+Its platform provisioning and initial manager grants still use explicit SQL setup;
+this is **not** proof of the complete fixture-free acceptance journey in section 31.
+
 ---
+
+### Native private provisioning continuation (2026-09-11)
+
+The private native control API now creates a bounded platform provisioner and
+an organization with its first native controller without manually inserting
+bindings or roots. `tests/e2e/test_native_platform_provisioner_http.py` exercises
+the supported one-time deployment bootstrap, HTTP enrollment/login and both
+owner commands under distinct least-privilege connections. It verifies complete
+intent conflicts on replay and that provisioning grants no tenant access to the
+provisioner. Revision 0036 extends this journey with the explicitly versioned
+initial controller policy in `initial-controller-policy.md`: configuration,
+patient booking and bounded integration administration no longer require SQL
+manager-grant setup. The workload identity authority remains installation setup;
+this does not yet certify every fixture-free acceptance journey in section 31.
+See `http-runtime-deployment.md` for the accepted operation/transaction contract
+and `auth-implementation-status.md` for executed evidence and remaining gaps.
 
 ## 20. Policy bundles are convenience, not core roles
 
@@ -803,6 +844,64 @@ Runtime authorization should continue to evaluate materialized RE authority, not
 Final operation names must follow the repository's canonical operation naming rules, but the semantic surface must cover at least:
 
 ### Queries
+
+Current staff inspection uses `GET /v1/staff/members` (`staff_list`) and
+`GET /v1/staff/members/{membership_id}` (`staff_get`), owned by Tenancy and guarded
+by the explicit tenant-control query capability `staff.read`. Pages use UUID
+ordering/cursors and a 1–100 limit; a full final page may yield an empty next page.
+Unknown filters are rejected. Responses are `no-store` and include membership and
+Principal authority revisions, lifecycle state and active standing grants with
+their delegability. Standing grants are not advertised as effective Party/resource
+permissions; suspended membership, credentials and owner relationship checks still
+limit execution. Foreign and nonexistent membership IDs are the same 404.
+
+The read adapter validates current HUMAN/membership/grant authority and selects
+the page in one PostgreSQL statement snapshot under the real app role and tenant
+RLS. It does not acquire authoritative row locks, mutate facts or read credentials.
+Reads require no idempotency key or expected revision and introduce no tool projection.
+Protected guarantees: INV-TENANT-001, INV-AUTHORITY-001 and INV-PRIVILEGE-001.
+
+Migration `0031_staff_read_authority` explicitly adds the read facet to newly
+provisioned roots. Its backfill is limited to active original controllers retaining
+all three controller capabilities and an active staff membership; any historical
+`staff.read` grant prevents regranting, including a revoked grant. It grants no new
+mutation permission and leaves applied migration history unchanged. Run the migration
+as a deployment step with control-plane writers quiesced; its DDL lock timeout is
+bounded and a timeout requires a deliberate retry. Ordinary staff receive read
+authority only through the existing bounded authority-replacement command.
+
+Migration `0033_staff_terminal_revocation` repairs the command's mismatch with
+the accepted membership state machine: `invited -> revoked` cancels an invitation,
+and `suspended -> revoked` permanently ends suspended membership. `revoked` remains
+terminal; suspension still requires active membership. The existing Tenancy-owned
+`PUT /v1/staff/members/{membership_id}/status` operation and
+`staff.manage_membership` capability are unchanged. No new capability or provider
+authority is introduced. Null/nonpositive expected revisions and null/blank
+provenance now also fail at the database boundary, not just at HTTP validation.
+
+The command retains current-manager validation, self-transition prohibition,
+explicit tenant predicates, current locking order, expected-revision comparison,
+last-controller protection and atomic Principal/binding/membership/session changes.
+There is no new backfill or network I/O. Existing HTTP idempotency remains owned by
+the command adapter. Apply the additive migration before relying on invitation or
+suspended-member revocation; no applied migration is rewritten. Real PostgreSQL
+and HTTP proofs cover terminal state, stale sessions, reactivation requiring a new
+login, unchanged state on rejected resurrection, and rejection without an expected
+revision/provenance. This preserves INV-TENANT-001, INV-AUTHORITY-001 and
+INV-PRIVILEGE-001 and repairs lifecycle behavior, not the guarantee itself.
+
+The competing-transition proof in
+`tests/db/test_staff_membership_lifecycle.py` exercises both orders of revocation
+versus reactivation from a suspended membership. Two independent transactions
+execute the real app-role command. The first holds its uncommitted lifecycle
+change; `pg_blocking_pids` proves the second waits on that transaction before the
+first commits. The loser must return SQLSTATE `40001` for its stale revision.
+The independent durable oracle checks membership and binding state/revisions,
+Principal activity and the native session epoch, including absence of a second
+transition's effects. This protects INV-AUTHORITY-001 and INV-ATOMICITY-001;
+removing the revision check must not turn the proof green. The current-product
+principal-authority lane already selects this file. This is not a substitute for
+the separate still-required concurrent last-controller-removal acceptance proof.
 
 ```text
 staff_membership_list

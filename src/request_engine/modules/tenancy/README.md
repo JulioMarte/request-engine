@@ -6,6 +6,31 @@ Primary concerns: hard tenant boundary, authority snapshots/revocation coordinat
 
 Other modules consume only public tenancy contracts; participant roles or external correlations never become authorization by implication.
 
+## Private platform provisioning
+
+`api/native_platform_provisioning.py` owns native provisioner and organization-root
+creation transport; its typed application commands execute through the dedicated
+platform-control DB connection. The separate HTTP entrypoint only composes that
+supported API. See `docs/architecture/http-runtime-deployment.md` for operation
+IDs, authentication, idempotency, privilege and transaction contracts. Native
+enrollment alone still grants no Principal or tenant authority, and a provisioner
+does not become a member of the tenant it creates.
+
+Native organization creation selects the versioned initial controller policy
+documented in `docs/architecture/initial-controller-policy.md`. Its explicit
+grants and policy provenance are atomic with the root; replay never upgrades
+legacy roots or restores revoked authority. New capabilities are not inherited
+automatically from the runtime registry.
+
+Agent provisioning returns separate profile and authority revision snapshots,
+allowing initial authority assignment without database access. Idempotent replay
+preserves the original revisions and omits the one-time credential; historical
+responses without an authority revision return null. This is not a current-state
+inspection API. Separate `agent_list` / `agent_get` reads expose current profile
+and authority revisions plus standing capabilities under current HUMAN
+`agent.read` authority. They do not expose credentials or claim effective access
+to every Party/resource. See `docs/architecture/agent-governance-inspection.md`.
+
 ## Party registry (S0b)
 
 Owns `parties.register`, `parties.add_contact_point`, `parties.confirm_contact_point`,

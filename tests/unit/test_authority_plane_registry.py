@@ -76,10 +76,20 @@ def test_agent_lifecycle_capabilities_are_runtime_operator_surfaces() -> None:
 def test_unimplemented_control_capabilities_remain_internal_and_nonruntime() -> None:
     for key in (
         "platform.principal.provision",
-        "organization.provision",
         "identity.bind",
     ):
         definition = capability_definition(key)
         assert definition is not None
         assert definition.runtime_available is False
         assert definition.discoverable is False
+
+
+def test_native_platform_provisioning_is_runtime_but_stays_platform_authority() -> None:
+    for key in ("platform.tenant_provisioner.provision", "organization.provision"):
+        definition = capability_definition(key)
+        assert definition is not None
+        assert definition.runtime_available is True
+        assert definition.exposure is CapabilityExposure.OPERATOR
+        assert definition.authority_plane is AuthorityPlane.PLATFORM
+        assert definition.revision is RevisionPolicy.SERVER_SELECTED
+        assert not grant_satisfies("staff.manage_authority", definition.key)

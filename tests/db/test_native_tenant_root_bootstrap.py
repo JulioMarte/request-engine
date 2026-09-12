@@ -15,6 +15,7 @@ _CONTROL_CAPABILITIES = (
     "staff.invite",
     "staff.manage_authority",
     "staff.manage_membership",
+    "staff.read",
 )
 _OPERATIONAL_SCOPES = (
     "operations.manage_discovery",
@@ -233,6 +234,11 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
         (organization_id, controller_id),
     ).fetchall()
     assert grants == [(key, True, provisioner) for key in _CONTROL_CAPABILITIES]
+    assert admin_conn.execute(
+        "SELECT initial_controller_policy_key "
+        "FROM request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
+        (organization_id,),
+    ).fetchone() == (None,)
     scopes = admin_conn.execute(
         """
         SELECT scope_key
@@ -286,6 +292,40 @@ def test_platform_provisioner_creates_complete_tenant_root_without_joining_tenan
         provenance=provenance,
     )
     assert replay == created
+
+    # A newer application selecting a policy cannot silently upgrade an old root.
+    with admin_conn.transaction():
+        admin_conn.execute("SET LOCAL ROLE request_platform_control")
+        admin_conn.execute(
+            "SELECT request_platform.select_initial_controller_policy('tenant-controller-v1')"
+        )
+        admin_conn.execute("RESET ROLE")
+        upgraded_replay = _provision(
+            admin_conn,
+            provisioner=provisioner,
+            organization_id=organization_id,
+            party_id=party_id,
+            controller_id=controller_id,
+            authority_id=authority_id,
+            native_identity_id=native_identity_id,
+            provenance=provenance,
+        )
+    assert upgraded_replay == created
+    assert admin_conn.execute(
+        "SELECT initial_controller_policy_key "
+        "FROM request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
+        (organization_id,),
+    ).fetchone() == (None,)
+    assert (
+        admin_conn.execute(
+            "SELECT capability_key, delegable, granted_by_principal_id "
+            "FROM request_engine.principal_authority_grants "
+            "WHERE organization_id=%s AND principal_id=%s AND status='active' "
+            "ORDER BY capability_key",
+            (organization_id, controller_id),
+        ).fetchall()
+        == grants
+    )
 
     with pytest.raises(Error) as conflict:
         _provision(

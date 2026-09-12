@@ -28,12 +28,12 @@ def _writer() -> PostgresStaffMembershipCommands:
 
 
 @pytest.mark.asyncio
-async def test_staff_authority_rejects_non_tenant_control_and_noncanonical_keys() -> None:
+async def test_staff_authority_rejects_platform_and_noncanonical_keys() -> None:
     writer = _writer()
     actor = _actor()
 
     for capabilities, match in (
-        (("appointments.cancel",), "not tenant-control"),
+        (("organization.provision",), "not tenant authority"),
         (("future.staff.superuser",), "unknown or non-canonical"),
         (("staff.invite", "staff.invite"), "duplicates"),
     ):

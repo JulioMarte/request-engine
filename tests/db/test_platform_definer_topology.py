@@ -14,12 +14,21 @@ pytestmark = [
 _ROLE = "request_platform_definer"
 _APPLICATION_SCHEMAS = [
     "request_admin",
+    "request_auth",
     "request_cmd",
     "request_engine",
     "request_platform",
     "request_read",
 ]
 _EXPECTED_COLUMN_PRIVILEGES = {
+    ("identity_bindings", "id", "SELECT"),
+    ("identity_bindings", "identity_authority_id", "SELECT"),
+    ("identity_bindings", "subject_id", "SELECT"),
+    ("identity_bindings", "principal_id", "SELECT"),
+    ("identity_bindings", "principal_plane", "SELECT"),
+    ("identity_bindings", "organization_id", "SELECT"),
+    ("identity_bindings", "status", "SELECT"),
+    ("identity_bindings", "revision", "SELECT"),
     ("principal_authority_grants", "authority_plane", "SELECT"),
     ("principal_authority_grants", "capability_key", "SELECT"),
     ("principal_authority_grants", "delegable", "SELECT"),
@@ -84,6 +93,7 @@ def test_platform_definer_has_exact_schema_authority(admin_conn: PgConnection) -
     actual = {cast(str, name): (bool(usage), bool(create)) for name, usage, create in rows}
     assert actual == {
         "request_admin": (False, False),
+        "request_auth": (True, False),
         "request_cmd": (False, False),
         "request_engine": (True, False),
         "request_platform": (True, False),
@@ -156,10 +166,17 @@ def test_platform_definer_owns_only_platform_read_boundary(admin_conn: PgConnect
     ).fetchall()
     assert routines == [
         (
+            "request_auth",
+            "read_platform_identity_bindings",
+            "p_identity_authority_id uuid, p_subject_id text",
+            True,
+            ["search_path=pg_catalog, request_engine, pg_temp"],
+        ),
+        (
             "request_platform",
             "read_principal_authority",
             "p_principal_id uuid",
             True,
             ["search_path=pg_catalog, request_engine, pg_temp"],
-        )
+        ),
     ]

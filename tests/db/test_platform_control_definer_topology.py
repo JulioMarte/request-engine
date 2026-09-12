@@ -9,13 +9,27 @@ pytestmark = [pytest.mark.postgres, pytest.mark.invariant, pytest.mark.security]
 _RUNTIME = "request_platform_control"
 _DEFINER = "request_platform_control_definer"
 _PROVISIONER_FUNCTION = "request_platform.provision_tenant_provisioner(uuid, text, text)"
+_NATIVE_PROVISIONER_FUNCTION = (
+    "request_platform.provision_native_tenant_provisioner(uuid, uuid, uuid, uuid, text)"
+)
 _ROOT_FUNCTION = (
     "request_platform.provision_native_organization_root(uuid, text, text, uuid, uuid, "
     "uuid, uuid, text)"
 )
 _AUTH_LOCK_FUNCTION = "request_auth.lock_credentialed_native_identity(uuid, uuid)"
+_POLICY_FUNCTION = "request_platform.select_initial_controller_policy(text)"
 _OLD_ORGANIZATION_FUNCTION = "request_platform.provision_organization(uuid, text, text, text)"
 _EXPECTED_COLUMNS = {
+    ("initial_controller_policies", "policy_key", "SELECT"),
+    ("identity_bindings", "id", "SELECT"),
+    ("identity_bindings", "organization_id", "SELECT"),
+    ("identity_bindings", "principal_id", "SELECT"),
+    ("identity_bindings", "principal_plane", "SELECT"),
+    ("identity_bindings", "identity_authority_id", "SELECT"),
+    ("identity_bindings", "subject_id", "SELECT"),
+    ("principal_authority_grants", "granted_by_principal_id", "SELECT"),
+    ("principal_authority_grants", "provenance_kind", "SELECT"),
+    ("principal_authority_grants", "provenance_reference", "SELECT"),
     ("identity_authorities", "id", "SELECT"),
     ("identity_authorities", "kind", "SELECT"),
     ("identity_authorities", "status", "SELECT"),
@@ -172,7 +186,12 @@ def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(
 def test_only_platform_control_runtime_can_execute_commands(
     admin_conn: PgConnection,
 ) -> None:
-    for function in (_PROVISIONER_FUNCTION, _ROOT_FUNCTION):
+    for function in (
+        _PROVISIONER_FUNCTION,
+        _NATIVE_PROVISIONER_FUNCTION,
+        _ROOT_FUNCTION,
+        _POLICY_FUNCTION,
+    ):
         assert admin_conn.execute(
             "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
             (_RUNTIME, function),

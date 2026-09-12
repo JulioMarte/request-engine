@@ -18,6 +18,14 @@ _TRUSTED_DEFINER_OWNERS = {
 _EXACT_DEFINER_OWNERS = {
     (
         "request_platform",
+        "select_initial_controller_policy",
+        "p_policy_key text",
+    ): "request_platform_control_definer",
+    # 0029 must inspect platform provenance as well as tenant subjects.
+    # Pin this one trigger; do not authorize this owner for arbitrary functions.
+    ("request_engine", "guard_authority_reference_tenant", ""): "request_platform_control_definer",
+    (
+        "request_platform",
         "read_principal_authority",
         "p_principal_id uuid",
     ): "request_platform_definer",
@@ -32,6 +40,12 @@ _EXACT_DEFINER_OWNERS = {
         "request_platform",
         "provision_tenant_provisioner",
         "p_new_principal_id uuid, p_external_subject text, p_provenance_reference text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_native_tenant_provisioner",
+        "p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_provenance_reference text",
     ): "request_platform_control_definer",
     (
         "request_platform",

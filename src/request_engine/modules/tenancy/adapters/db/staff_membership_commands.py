@@ -51,15 +51,18 @@ def _validate_idempotency_key(value: str) -> str:
     return normalized
 
 
-def _validate_tenant_control_capabilities(capabilities: tuple[str, ...]) -> tuple[str, ...]:
+def _validate_staff_capabilities(capabilities: tuple[str, ...]) -> tuple[str, ...]:
     if len(set(capabilities)) != len(capabilities):
         raise ValueError("desired_capabilities must not contain duplicates")
     for capability in capabilities:
         definition = capability_definition(capability)
         if definition is None or definition.key != capability:
             raise ValueError(f"unknown or non-canonical capability: {capability}")
-        if definition.authority_plane is not AuthorityPlane.TENANT_CONTROL:
-            raise ValueError(f"capability is not tenant-control authority: {capability}")
+        if definition.authority_plane not in {
+            AuthorityPlane.TENANT_CONTROL,
+            AuthorityPlane.OPERATIONAL,
+        }:
+            raise ValueError(f"capability is not tenant authority: {capability}")
     return capabilities
 
 
@@ -195,7 +198,7 @@ class PostgresStaffMembershipCommands:
         _require_human_actor(actor)
         if command.expected_authority_revision <= 0:
             raise ValueError("expected_authority_revision must be positive")
-        desired = _validate_tenant_control_capabilities(command.desired_capabilities)
+        desired = _validate_staff_capabilities(command.desired_capabilities)
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         fingerprint = command_fingerprint(
