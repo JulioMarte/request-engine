@@ -114,6 +114,10 @@ def foreign_request(
             },
             403,
         )
+    if operation.name == "staff.list":
+        return ("/v1/staff/members", {}, None, 403)
+    if operation.name == "staff.get":
+        return (f"/v1/staff/members/{PROBE_UUID}", {}, None, 403)
     if operation.name == "staff.authority.replace":
         return (
             f"/v1/staff/members/{foreign.principal_id}/authority",

@@ -8,6 +8,26 @@ from .http_surface import (
 
 STAFF_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "staff.list",
+        "GET",
+        "/v1/staff/members",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe("/v1/staff/members"),
+    ),
+    PublicHttpOperation(
+        "staff.get",
+        "GET",
+        "/v1/staff/members/{membership_id}",
+        "staff.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(f"/v1/staff/members/{PROBE_UUID}"),
+    ),
+    PublicHttpOperation(
         "staff.invite.native",
         "POST",
         "/v1/staff/members/native",

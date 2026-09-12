@@ -27,6 +27,7 @@ ISOLATION_ACTOR_GRANTS = frozenset(
         "staff.manage_own_admin_contact",
         "staff.confirm_own_admin_contact",
         "staff.invite",
+        "staff.read",
         "staff.manage_authority",
         "staff.manage_membership",
     }
