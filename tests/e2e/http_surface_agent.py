@@ -8,6 +8,26 @@ from .http_surface import (
 
 AGENT_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "agent.list",
+        "GET",
+        "/v1/agents",
+        "agent.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe("/v1/agents"),
+    ),
+    PublicHttpOperation(
+        "agent.get",
+        "GET",
+        "/v1/agents/{agent_principal_id}",
+        "agent.read",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe(f"/v1/agents/{PROBE_UUID}"),
+    ),
+    PublicHttpOperation(
         "agent.provision",
         "POST",
         "/v1/agents",

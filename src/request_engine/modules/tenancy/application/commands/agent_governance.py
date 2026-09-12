@@ -29,6 +29,7 @@ class ProvisionAgentResult:
     credential_id: UUID
     binding_id: UUID
     profile_revision: int
+    authority_revision: int | None = None
     workload_token: str | None = field(default=None, repr=False)
 
 

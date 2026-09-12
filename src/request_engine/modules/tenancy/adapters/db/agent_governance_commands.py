@@ -149,6 +149,11 @@ class PostgresAgentGovernanceCommands:
                     credential_id=_replay_uuid(replay, "credential_id"),
                     binding_id=_replay_uuid(replay, "binding_id"),
                     profile_revision=_replay_revision(replay, "profile_revision"),
+                    authority_revision=(
+                        _replay_revision(replay, "authority_revision")
+                        if "authority_revision" in replay
+                        else None
+                    ),
                     workload_token=None,
                 )
 
@@ -199,6 +204,17 @@ class PostgresAgentGovernanceCommands:
             except DBAPIError as exc:
                 _raise_agent_db_error(exc)
             profile_revision = int(result.scalar_one())
+            authority_revision = int(
+                (
+                    await session.execute(
+                        text(
+                            "SELECT authority_revision FROM request_engine.principals "
+                            "WHERE organization_id=:organization_id AND id=:principal_id"
+                        ),
+                        {"organization_id": actor.organization_id, "principal_id": principal_id},
+                    )
+                ).scalar_one()
+            )
             await complete_idempotency(
                 session,
                 idempotency_id,
@@ -208,6 +224,7 @@ class PostgresAgentGovernanceCommands:
                     "credential_id": str(credential_id),
                     "binding_id": str(binding_id),
                     "profile_revision": profile_revision,
+                    "authority_revision": authority_revision,
                 },
             )
             return ProvisionAgentResult(
@@ -216,6 +233,7 @@ class PostgresAgentGovernanceCommands:
                 credential_id=credential_id,
                 binding_id=binding_id,
                 profile_revision=profile_revision,
+                authority_revision=authority_revision,
                 workload_token=f"{credential_id}.{secret}",
             )
 

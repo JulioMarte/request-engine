@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from request_engine.modules.tenancy.api.agent_governance_models import (
     AgentAuthorityReplaceBody,
@@ -42,10 +42,12 @@ def add_agent_governance_routes(
 
     async def provision_agent(
         body: AgentProvisionBody,
+        response: Response,
         actor: Annotated[ActorContext, Depends(authenticated_actor)],
         idempotency_key: IdempotencyKey,
     ) -> AgentProvisionView:
         authorize(actor, "agent.provision")
+        response.headers["Cache-Control"] = "no-store"
         try:
             result = await commands.provision_agent(
                 actor,
@@ -68,6 +70,7 @@ def add_agent_governance_routes(
             credential_id=result.credential_id,
             binding_id=result.binding_id,
             profile_revision=result.profile_revision,
+            authority_revision=result.authority_revision,
             workload_token=result.workload_token,
         )
 

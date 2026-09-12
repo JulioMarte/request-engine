@@ -25,6 +25,10 @@ class AgentProvisionView(BaseModel):
     credential_id: UUID
     binding_id: UUID
     profile_revision: int
+    authority_revision: int | None = Field(
+        default=None,
+        description="Authority revision at creation; null only for legacy idempotency records.",
+    )
     status: str = "pending"
     workload_token: str | None
 
