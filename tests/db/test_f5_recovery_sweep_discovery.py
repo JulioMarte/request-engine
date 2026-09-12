@@ -31,6 +31,7 @@ async def test_sweep_discovery_is_worker_only_cross_tenant_and_converges(
     admin_conn: PgConnection,
     command_session_factory: SessionFactory,
     worker_session_factory: SessionFactory,
+    pg_conninfo: str,
 ) -> None:
     first = await sweep_world(admin_conn, command_session_factory, "f5-sweep-tenant-a")
     second = await sweep_world(admin_conn, command_session_factory, "f5-sweep-tenant-b")
@@ -41,7 +42,8 @@ async def test_sweep_discovery_is_worker_only_cross_tenant_and_converges(
         second.organization_id,
     }
 
-    app_conn: PgConnection = psycopg.connect(admin_conn.info.dsn, autocommit=True)
+    # Connection.info.dsn redacts the password; use the test environment DSN.
+    app_conn: PgConnection = psycopg.connect(pg_conninfo, autocommit=True)
     try:
         app_conn.execute("SET ROLE request_engine_app")
         with pytest.raises(psycopg.Error) as denied:

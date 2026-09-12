@@ -12,12 +12,12 @@ def test_i01_every_tenant_owned_foreign_key_is_organization_bound(
 ) -> None:
     """Reject any FK between tenant-owned tables that can omit Organization.
 
-    A relation is tenant-owned for this catalog proof when it carries an
-    `organization_id` column.  For every FK whose source and target are both
-    tenant-owned, the FK must include source.organization_id mapped to
-    target.organization_id in the same composite key.  This is the database
-    backstop that prevents a globally unique UUID from becoming a cross-tenant
-    reference capability.
+    ADAPT: nullable platform identities retain their existence FK alongside a
+    composite tenant FK. A redundant ID-only FK is safe only if every one of
+    its column pairs is covered by a validated composite companion. Five
+    provenance edges intentionally refer to platform actors; their replacement
+    proof is the structural guard plus adversarial writes in the Party suite.
+    No entire table or nullable-organization relation is exempted.
     """
 
     violations = admin_conn.execute(
@@ -76,10 +76,66 @@ def test_i01_every_tenant_owned_foreign_key_is_organization_bound(
         SELECT source_table, conname, target_table
         FROM fk_summary
         WHERE NOT maps_organization
+          AND NOT EXISTS (
+              SELECT 1 FROM fk_summary companion
+              WHERE companion.source_table = fk_summary.source_table
+                AND companion.target_table = fk_summary.target_table
+                AND companion.maps_organization
+                AND EXISTS (
+                    SELECT 1 FROM pg_constraint valid
+                    WHERE valid.oid = companion.constraint_oid AND valid.convalidated
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM fk_columns original
+                    WHERE original.constraint_oid = fk_summary.constraint_oid
+                      AND NOT EXISTS (
+                          SELECT 1 FROM fk_columns covered
+                          WHERE covered.constraint_oid = companion.constraint_oid
+                            AND covered.source_column = original.source_column
+                            AND covered.target_column = original.target_column
+                      )
+                )
+          )
         ORDER BY source_table, conname
         """
     ).fetchall()
 
+    # Exact semantic exceptions, never a blanket exemption for security tables.
+    # Each edge is exercised with foreign-tenant writes in the adjacent suite.
+    provenance = {
+        (
+            "organization_provisioning_facts",
+            "organization_provisioning_fact_provisioned_by_principal_id_fkey",
+            "principals",
+        ),
+        (
+            "organization_root_provisioning_facts",
+            "organization_root_provisioning_provisioned_by_principal_id_fkey",
+            "principals",
+        ),
+        ("staff_memberships", "staff_memberships_established_by_principal_id_fkey", "principals"),
+        (
+            "principal_authority_grants",
+            "principal_authority_grants_granted_by_principal_id_fkey",
+            "principals",
+        ),
+        (
+            "principal_authority_grants",
+            "principal_authority_grants_revoked_by_principal_id_fkey",
+            "principals",
+        ),
+    }
+    guarded = admin_conn.execute(
+        """
+        SELECT c.relname FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE t.tgfoid = 'request_engine.guard_authority_reference_tenant()'::regprocedure
+          AND t.tgenabled IN ('O', 'A')
+          AND (t.tgtype & 23) = 23
+        """
+    ).fetchall()
+    assert {row[0] for row in guarded} >= {edge[0] for edge in provenance}
+    violations = [edge for edge in violations if edge not in provenance]
     assert violations == [], (
         "Tenant-owned FK(s) omit the composite Organization boundary: "
         + ", ".join(f"{source}.{constraint}->{target}" for source, constraint, target in violations)

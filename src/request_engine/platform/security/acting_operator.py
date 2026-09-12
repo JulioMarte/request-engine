@@ -1,18 +1,16 @@
 """Acting-operator relay admission for trusted integration callers (§9.1).
 
 An integration/system principal (bot platform) may execute operator-directed
-mutations only when it presents the `X-RE-Acting-Operator` header and holds the
-`platform.acting_for_operator` admission permission. The referenced principal
-must resolve, through the deployment operator port, to an active human
-principal of the same organization; the resolved effective actor carries the
-operator's capabilities and principal identity (authorization and idempotency)
-while `technical_principal_id` preserves the caller for attribution. The bot
-cannot launder authority the operator does not have. A composition without
-the deployment operator port raises `OperatorResolutionUnavailable` —
-deployment misconfiguration, not a permission denial.
+mutations only when it presents the ``X-RE-Acting-Operator`` header and holds
+``platform.acting_for_operator``. The referenced Principal must resolve to an
+active HUMAN of the same Organization. The effective context intentionally
+uses the human's authority while ``technical_principal_id`` preserves the
+trusted relay identity.
 
-`X-RE-Platform` records the executing surface verbatim (<= 64 chars); it is
-never an authorization input. A HUMAN caller's relay header is ignored.
+First-class AGENT Principals are deliberately excluded from this legacy relay.
+An AGENT must act under its own standing authority or an explicit bounded
+DelegationGrant; it may not select a human and become that human through this
+header. This keeps actor-vs-subject attribution intact for agentic execution.
 """
 
 from dataclasses import replace
@@ -32,22 +30,15 @@ _MAX_PLATFORM_LENGTH = 64
 
 
 class OperatorResolutionUnavailable(Exception):
-    """The deployment provides no operator resolution for the relay port.
+    """The deployment provides no operator resolution for the relay port."""
 
-    This is deployment misconfiguration, not a permission denial: a caller
-    that presents an acting-operator reference to a composition without a
-    usable operator resolver must not receive a 403 that looks like a
-    capability failure (§9.1). Mapped at the transport edge to 503.
-    """
+
+class AgentActingOperatorRelayForbidden(Exception):
+    """A first-class agent attempted to use the legacy human-impersonating relay."""
 
 
 class OperatorActorResolver(Protocol):
-    """Deployment port resolving one admitted acting-operator principal.
-
-    Implementations authenticate against authoritative principal truth and
-    return the operator's ActorContext only when the principal exists and is
-    active; anything else returns None and the relay fails closed.
-    """
+    """Deployment port resolving one admitted acting-operator principal."""
 
     async def resolve_operator_actor(
         self, organization_id: UUID, principal_id: UUID
@@ -89,7 +80,7 @@ def validated_acting_operator(request: Request) -> UUID | None:
 
 
 class ActingOperatorActorResolver:
-    """Resolve the effective actor behind an acting-operator relay request."""
+    """Resolve the effective actor behind an admitted legacy relay request."""
 
     def __init__(
         self, delegate: ActorResolver, operator_actors: OperatorActorResolver | None
@@ -103,6 +94,8 @@ class ActingOperatorActorResolver:
         acting_operator = validated_acting_operator(request)
         if actor.principal_kind is PrincipalKind.HUMAN or acting_operator is None:
             return replace(actor, platform=platform)
+        if actor.principal_kind is PrincipalKind.AGENT:
+            raise AgentActingOperatorRelayForbidden()
         if not actor.allows(ACTING_FOR_OPERATOR_PERMISSION):
             raise CapabilityRequired(ACTING_FOR_OPERATOR_PERMISSION)
         operator = await self._admitted_operator(actor.organization_id, acting_operator)

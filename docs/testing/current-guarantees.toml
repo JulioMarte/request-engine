@@ -243,3 +243,52 @@ statement = "Party and staff contact points are created unverified and become ve
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-WORKLOAD-AUTH-001"
+statement = "A workload bearer credential authenticates identity only and resolves exclusively to workload-class Principals; subject-class gating prevents HUMAN credentials from activating workload Principals and workload credentials from activating HUMAN Principals, and authentication never confers business authority by itself."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-AUTHORITY-001"
+statement = "An AGENT Principal's standing authority is bounded by the intersection of the provisioner's current active delegable authority and the operational authority plane; possessing a capability never implies delegability and agent-derived grants are never delegable."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-LIFECYCLE-001"
+statement = "Agent suspension or revocation removes effective authorization immediately (fail-closed on identity-binding/principal state, without relying on token expiry), and revocation additionally revokes active workload credentials and disables the workload identity so the bearer token stops authenticating."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-PROVENANCE-001"
+statement = "Agent provisioning provenance (sponsor, established_by, provenance reference) is immutable and append-preserving: lifecycle transitions and authority changes cannot rewrite who created the agent, under whose authority, or from which provisioning operation."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["provenance"]
+
+[[guarantees]]
+id = "INV-AGENT-POLICY-001"
+statement = "An AGENT Principal without an explicit tool policy is denied every operation (fail closed, including routes without capability metadata), and effective agent authority is the granted ∩ allowed − denied intersection read fresh from the tenant-scoped policy on every request; policy rows remain tenant-isolated."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-RISK-001"
+statement = "Agent execution is bounded by the policy risk ceiling: unclassified command capabilities deny agents, and AUTHORITY_CHANGE operations are unconditionally denied for agent actors regardless of grants, delegation or ceiling."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-AGENT-BUDGET-001"
+statement = "Per-minute agent mutation budgets are enforced through a race-safe conditional upsert so concurrent requests cannot exceed the configured limit within one window; exhausted budgets deny further mutations with 429 while read operations and other agents' budgets remain unaffected."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]

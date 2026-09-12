@@ -161,30 +161,32 @@ class PostgresResourceCreationCommands:
                         },
                     )
 
-                assignment_id = cast(
-                    UUID,
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                INSERT INTO request_engine.resource_location_assignments (
-                                    organization_id, resource_id, location_id,
-                                    effective_during
-                                ) VALUES (
-                                    :organization_id, :resource_id, :location_id,
-                                    tstzrange(clock_timestamp(), NULL, '[)')
-                                )
-                                RETURNING id
-                                """
-                            ),
-                            {
-                                "organization_id": command.organization_id,
-                                "resource_id": resource_id,
-                                "location_id": command.location_id,
-                            },
-                        )
-                    ).scalar_one(),
-                )
+                assignment_id: UUID | None = None
+                if windows:
+                    assignment_id = cast(
+                        UUID,
+                        (
+                            await session.execute(
+                                text(
+                                    """
+                                    INSERT INTO request_engine.resource_location_assignments (
+                                        organization_id, resource_id, location_id,
+                                        effective_during
+                                    ) VALUES (
+                                        :organization_id, :resource_id, :location_id,
+                                        tstzrange(clock_timestamp(), NULL, '[)')
+                                    )
+                                    RETURNING id
+                                    """
+                                ),
+                                {
+                                    "organization_id": command.organization_id,
+                                    "resource_id": resource_id,
+                                    "location_id": command.location_id,
+                                },
+                            )
+                        ).scalar_one(),
+                    )
                 for window in windows:
                     await session.execute(
                         text(
@@ -261,7 +263,9 @@ class PostgresResourceCreationCommands:
                         "location_id": str(command.location_id),
                         "capability_count": len(command.capability_ids),
                         "weekly_availability_window_count": len(windows),
-                        "resource_location_assignment_id": str(assignment_id),
+                        "resource_location_assignment_id": (
+                            str(assignment_id) if assignment_id is not None else None
+                        ),
                     },
                 )
                 await complete_idempotency(session, idem, {"resource": _state_to_json(state)})

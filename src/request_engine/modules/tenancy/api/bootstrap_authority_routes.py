@@ -76,5 +76,6 @@ def create_bootstrap_authority_router(
         bootstrap,
         capability="organization.bootstrap",
         methods=["POST"],
+        operation_id="tenancy_operational_authority_bootstrap",
     )
     return router

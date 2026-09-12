@@ -1,0 +1,149 @@
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+
+from request_engine.entrypoints.http.errors import render_error_response
+from request_engine.platform.http.errors import ErrorBody, ErrorResolution
+from request_engine.platform.security.delegation import DelegationResolutionError
+from request_engine.platform.security.identity_resolution import (
+    IdentityBindingPending,
+    IdentityBindingRevoked,
+    IdentityBindingSuspended,
+    IdentityNotBound,
+    IdentitySubjectClassMismatch,
+    PrincipalProvisioningRequired,
+    TenantContextAmbiguous,
+    TenantContextRequired,
+)
+from request_engine.platform.security.native_auth import (
+    NativeAuthenticationError,
+    PasswordPolicyViolation,
+)
+from request_engine.platform.security.native_http import TenantContextInvalid
+from request_engine.platform.security.native_human_auth import NativeIdentityAlreadyExists
+from request_engine.platform.security.oidc_auth import OidcAuthenticationRequired
+from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
+
+
+def native_identity_input_error_response(
+    exc: NativeIdentityAlreadyExists | PasswordPolicyViolation,
+) -> JSONResponse:
+    duplicate = isinstance(exc, NativeIdentityAlreadyExists)
+    return render_error_response(
+        status.HTTP_409_CONFLICT if duplicate else status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ErrorBody(
+            code="native_identity_already_exists" if duplicate else "password_policy_violation",
+            message=(
+                "the native login handle is already enrolled"
+                if duplicate
+                else (
+                    "password must be valid UTF-8 with at least 12 characters "
+                    "and at most 1024 bytes"
+                )
+            ),
+            resolution=ErrorResolution.REAUTHENTICATE if duplicate else ErrorResolution.FIX_REQUEST,
+            retryable=False,
+        ),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+async def native_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, NativeAuthenticationError):
+        raise exc
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="credential_invalid",
+            message="the native authentication credential is invalid or no longer usable",
+            resolution=ErrorResolution.REAUTHENTICATE,
+            retryable=False,
+        ),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def workload_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, WorkloadAuthenticationError):
+        raise exc
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="credential_invalid",
+            message="the workload credential is invalid or no longer usable",
+            resolution=ErrorResolution.REAUTHENTICATE,
+            retryable=False,
+        ),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def oidc_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, OidcAuthenticationRequired):
+        raise exc
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="credential_invalid",
+            message="the OIDC bearer token is invalid or not federated",
+            resolution=ErrorResolution.REAUTHENTICATE,
+            retryable=False,
+        ),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def delegation_resolution_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, DelegationResolutionError):
+        raise exc
+    return render_error_response(
+        status.HTTP_403_FORBIDDEN,
+        ErrorBody(
+            code="delegation_invalid",
+            message=str(exc),
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+            retryable=False,
+        ),
+    )
+
+
+async def tenant_context_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, (TenantContextRequired, TenantContextInvalid)):
+        raise exc
+    code = (
+        "tenant_context_required"
+        if isinstance(exc, TenantContextRequired)
+        else "tenant_context_invalid"
+    )
+    return render_error_response(
+        status.HTTP_400_BAD_REQUEST,
+        ErrorBody(
+            code=code,
+            message=str(exc),
+            resolution=ErrorResolution.FIX_REQUEST,
+            retryable=False,
+        ),
+    )
+
+
+async def identity_resolution_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    mapping: tuple[tuple[type[Exception], str], ...] = (
+        (IdentityNotBound, "identity_not_bound"),
+        (IdentityBindingPending, "identity_binding_pending"),
+        (IdentityBindingSuspended, "identity_binding_suspended"),
+        (IdentityBindingRevoked, "identity_binding_revoked"),
+        (TenantContextAmbiguous, "tenant_context_ambiguous"),
+        (PrincipalProvisioningRequired, "principal_provisioning_required"),
+        (IdentitySubjectClassMismatch, "identity_subject_class_mismatch"),
+    )
+    for error_type, code in mapping:
+        if isinstance(exc, error_type):
+            return render_error_response(
+                status.HTTP_403_FORBIDDEN,
+                ErrorBody(
+                    code=code,
+                    message=str(exc),
+                    resolution=ErrorResolution.REQUEST_AUTHORITY,
+                    retryable=False,
+                ),
+            )
+    raise exc

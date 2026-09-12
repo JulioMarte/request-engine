@@ -18,13 +18,33 @@ Applies to `docs/**`; `docs/legacy/AGENTS.md` is stricter for the historical arc
 - Module ownership belongs in `10-module-ownership-map.md`.
 - Connection surfaces belong in `13-connection-surfaces.md`.
 - Executable architecture dependency rules belong in `14-architecture-fitness-functions.md`.
-- API usability/design rules belong in `15-api-design-and-usability-standards.md`.
-- Pre-production contract/test evolution belongs in `architecture/pre-production-evolution-policy.md`; system-optimization/rebaseline authority for the current phase belongs in `architecture/system-optimization-mode.md`.
+- HTTP/OpenAPI usability/design rules belong in `15-api-design-and-usability-standards.md`.
+- Owner/capability/operation/tool-projection rules for UX, integrations and agents belong in `16-canonical-operation-and-tool-projection-pattern.md`.
+- Pre-production contract/test evolution belongs in `architecture/pre-production-evolution-policy.md`; system-optimization authority for the current phase belongs in `architecture/system-optimization-mode.md`.
 - Repository/test/DTO/naming/LLM rigidity-versus-flexibility rules belong in `testing/repository-governance-contract.md`.
 - Current guarantee inventory and representative proof mapping belong under `testing/`.
 - Schema-evolution/current executable migration truth belongs under `migrations/`, especially `migrations/README.md`; do not copy a fixed Alembic head into docs as timeless current truth.
 - Hard-to-reverse rationale belongs in `adr/`.
 - Release provenance belongs under `release/` or Git history/releases/tags and is HISTORICAL unless explicitly reactivated by a current compatibility obligation.
+
+## API / tool documentation gate
+
+For any new or changed machine-facing operation, docs must preserve the distinctions in docs 15/16:
+
+```text
+business owner
+capability authorization policy
+OpenAPI operationId
+optional agent-tool name/audiences
+```
+
+Do not document those as interchangeable identifiers.
+
+Do not introduce a second hand-maintained operation/tool registry that copies `CapabilityDefinition` policy. Agent/MCP surfaces project existing owner operations; they do not become business owners or bypass owner authorization.
+
+Public/operator/admin are discovery/trust profiles, not sufficient authorization by themselves. Documentation must not imply that hiding a tool or placing it on a private route grants or denies business authority.
+
+When documenting a new agent tool, identify the owner operation and capability it delegates to. If that delegation cannot be stated clearly, the tool design is incomplete.
 
 ## Integrity rules
 

@@ -1,0 +1,188 @@
+from request_engine.platform.security.capability_types import (
+    AuthorityPlane,
+    CapabilityDefinition,
+    CapabilityExposure,
+    RevisionPolicy,
+    command_capability,
+    query_capability,
+)
+from request_engine.platform.security.operation_risk import OperationRiskClass
+
+
+def _authority_capability(
+    key: str,
+    plane: AuthorityPlane,
+    description: str,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.INTERNAL,
+        description,
+        authority_plane=plane,
+        runtime_available=False,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
+def _staff_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
+def _agent_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
+def _agent_query_capability(key: str, description: str) -> CapabilityDefinition:
+    return query_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    )
+
+
+def _integration_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
+IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+    _authority_capability(
+        "platform.principal.provision",
+        AuthorityPlane.PLATFORM,
+        "Provision a platform-scoped Principal within a bounded authority ceiling.",
+    ),
+    command_capability(
+        "platform.tenant_provisioner.provision",
+        CapabilityExposure.OPERATOR,
+        "Provision a Principal that may create organizations without inheriting tenant control.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    command_capability(
+        "organization.provision",
+        CapabilityExposure.OPERATOR,
+        "Create a new organization through the zero-to-one provisioning boundary.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    _authority_capability(
+        "platform.identity.recover",
+        AuthorityPlane.PLATFORM,
+        "Execute the narrowly governed platform identity recovery workflow.",
+    ),
+    _staff_capability(
+        "staff.invite",
+        "Invite a credentialed Native human identity into the current tenant.",
+    ),
+    query_capability(
+        "staff.read",
+        CapabilityExposure.OPERATOR,
+        "Inspect tenant staff membership, standing grants and current revisions.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    ),
+    _staff_capability(
+        "staff.manage_membership",
+        "Activate, suspend, or revoke human staff membership in the current tenant.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    _staff_capability(
+        "staff.manage_authority",
+        "Replace bounded operational and tenant-control authority for human staff.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    _agent_capability(
+        "agent.provision",
+        "Provision an Agent Principal and its workload identity in the current tenant.",
+    ),
+    _agent_capability(
+        "agent.manage_authority",
+        "Assign or revoke bounded standing authority for an Agent Principal.",
+    ),
+    _agent_capability(
+        "agent.suspend",
+        "Suspend, reactivate, or revoke an Agent Principal in the current tenant.",
+    ),
+    _agent_query_capability(
+        "agent.read",
+        "Inspect tenant agent profiles, standing capabilities and current revisions.",
+    ),
+    _agent_query_capability(
+        "agent.policy.read",
+        "Read the tool/risk policy ceiling of an Agent Principal in the current tenant.",
+    ),
+    _agent_capability(
+        "agent.manage_policy",
+        "Replace the tool/risk policy ceiling of an Agent Principal in the current tenant.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    _agent_capability(
+        "delegation.create",
+        "Delegate bounded temporary authority the delegator may itself delegate.",
+    ),
+    _agent_capability(
+        "delegation.revoke",
+        "Revoke a bounded temporary delegation in the current tenant.",
+    ),
+    _integration_capability(
+        "integration.provision",
+        "Provision an INTEGRATION Principal and its workload identity in the current tenant.",
+    ),
+    query_capability(
+        "integration.read",
+        CapabilityExposure.OPERATOR,
+        "Read integration status, authority revisions and credential metadata in this tenant.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    ),
+    _integration_capability(
+        "integration.manage_authority",
+        "Assign or revoke bounded standing authority for an INTEGRATION Principal.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    _integration_capability(
+        "integration.suspend",
+        "Suspend, reactivate, or revoke an INTEGRATION Principal in the current tenant.",
+    ),
+    _authority_capability(
+        "identity.bind",
+        AuthorityPlane.TENANT_CONTROL,
+        "Bind an authenticated external or native subject to an existing Principal.",
+    ),
+)

@@ -1,12 +1,21 @@
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
 import psycopg
 import pytest
+import pytest_asyncio
 from psycopg import Connection, sql
-from psycopg.conninfo import make_conninfo
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
+from sqlalchemy.engine import URL
+
+from request_engine.platform.db.session import (
+    SessionFactory,
+    create_postgres_engine,
+    create_session_factory,
+)
 
 os.environ.setdefault("REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY", "x" * 64)
 
@@ -57,6 +66,73 @@ def postgres_test_conninfo() -> str:
     )
 
 
+def _platform_test_url(role_name: str, password: str) -> str:
+    config = conninfo_to_dict(postgres_test_conninfo())
+    return URL.create(
+        "postgresql+asyncpg",
+        username=role_name,
+        password=password,
+        host=str(config["host"]),
+        port=int(str(config["port"])),
+        database=str(config["dbname"]),
+    ).render_as_string(hide_password=False)
+
+
+@pytest_asyncio.fixture
+async def platform_read_session_factory() -> AsyncIterator[SessionFactory]:
+    """Separate LOGIN can execute the platform projection, not read/write tables."""
+    role_name = f"re_platform_read_{uuid4().hex[:16]}"
+    role_password = uuid4().hex
+    admin = psycopg.connect(postgres_test_conninfo(), autocommit=True)
+    engine = None
+    try:
+        admin.execute(
+            sql.SQL(
+                "CREATE ROLE {} LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER "
+                "NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD {}"
+            ).format(sql.Identifier(role_name), sql.Literal(role_password))
+        )
+        admin.execute(
+            sql.SQL("GRANT USAGE ON SCHEMA request_platform TO {}").format(
+                sql.Identifier(role_name)
+            )
+        )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
+        engine = create_postgres_engine(_platform_test_url(role_name, role_password))
+        yield create_session_factory(engine)
+    finally:
+        if engine is not None:
+            await engine.dispose()
+        admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+        admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+        admin.close()
+
+
+@pytest_asyncio.fixture
+async def platform_control_session_factory() -> AsyncIterator[SessionFactory]:
+    """Write commands use a separate non-superuser platform-control LOGIN."""
+    role_name = f"re_platform_control_{uuid4().hex[:16]}"
+    role_password = uuid4().hex
+    admin = psycopg.connect(postgres_test_conninfo(), autocommit=True)
+    admin.execute(
+        sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE request_platform_control").format(
+            sql.Identifier(role_name), sql.Literal(role_password)
+        )
+    )
+    engine = create_postgres_engine(_platform_test_url(role_name, role_password))
+    try:
+        yield create_session_factory(engine)
+    finally:
+        await engine.dispose()
+        admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+        admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+        admin.close()
+
+
 @pytest.fixture(autouse=True)
 def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
     """Give every PostgreSQL proof a clean data state and fail fast on leaked locks."""
@@ -78,6 +154,10 @@ def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
                 WHERE n.nspname::text = ANY (%s)
                   AND c.relkind IN ('r', 'p')
                   AND NOT c.relispartition
+                  -- Migration-defined immutable policy is configuration, not
+                  -- test-created business state or a seeded command result.
+                  AND NOT (n.nspname = 'request_engine'
+                           AND c.relname = 'initial_controller_policies')
                 ORDER BY n.nspname, c.relname
                 """,
                 (list(APPLICATION_SCHEMAS),),

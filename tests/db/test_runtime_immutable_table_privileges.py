@@ -8,11 +8,52 @@ _TRUSTED_SCHEMAS = {
     "request_admin",
     "request_cmd",
     "request_engine",
+    "request_platform",
     "request_read",
 }
 _TRUSTED_DEFINER_OWNERS = {
     "request_engine_discovery_definer",
     "request_engine_schema_owner",
+}
+_EXACT_DEFINER_OWNERS = {
+    (
+        "request_platform",
+        "select_initial_controller_policy",
+        "p_policy_key text",
+    ): "request_platform_control_definer",
+    # 0029 must inspect platform provenance as well as tenant subjects.
+    # Pin this one trigger; do not authorize this owner for arbitrary functions.
+    ("request_engine", "guard_authority_reference_tenant", ""): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_principal_authority",
+        "p_principal_id uuid",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "establish_root",
+        "p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, "
+        "p_password_verifier text, p_principal_id uuid, p_binding_id uuid",
+    ): "request_bootstrap_definer",
+    (
+        "request_platform",
+        "provision_tenant_provisioner",
+        "p_new_principal_id uuid, p_external_subject text, p_provenance_reference text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_native_tenant_provisioner",
+        "p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_provenance_reference text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_native_organization_root",
+        "p_organization_id uuid, p_organization_key text, p_display_name text, "
+        "p_organization_party_id uuid, p_controller_principal_id uuid, "
+        "p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
@@ -123,8 +164,12 @@ def test_security_definers_are_closed_across_all_runtime_schemas(
         configuration = cast(list[str] | None, config_value)
         public_execute = bool(public_value)
         function_name = f"{schema}.{name}({arguments})"
+        exact_owner = _EXACT_DEFINER_OWNERS.get((schema, name, arguments))
 
-        if owner not in _TRUSTED_DEFINER_OWNERS:
+        if exact_owner is not None:
+            if owner != exact_owner:
+                violations.append(f"{function_name}: owner={owner}, expected={exact_owner}")
+        elif owner not in _TRUSTED_DEFINER_OWNERS:
             violations.append(f"{function_name}: owner={owner}")
         if public_execute:
             violations.append(f"{function_name}: PUBLIC EXECUTE")

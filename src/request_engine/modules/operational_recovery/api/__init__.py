@@ -4,21 +4,24 @@ from request_engine.modules.booking.contracts.recovery import RecoveryBookingPor
 from request_engine.modules.booking.contracts.recovery_schedule import (
     RecoveryAssignmentSchedulePort,
 )
-from request_engine.modules.communications.contracts.recovery import (
-    RecoveryCommunicationPort,
-)
+from request_engine.modules.catalog.contracts.recovery_schedule import RecoveryLocationSchedulePort
+from request_engine.modules.communications.contracts.recovery import RecoveryCommunicationPort
 from request_engine.modules.live_capacity.contracts.recovery import RecoveryCapacitySource
+from request_engine.modules.operational_recovery.adapters.catalog_schedule import (
+    CatalogRecoveryLocationAdapter,
+)
 from request_engine.modules.operational_recovery.adapters.db.copilot_reader import (
     PostgresCopilotRecoveryIncidentReader,
 )
 from request_engine.modules.operational_recovery.adapters.db.recovery_autonomy_policy_store import (
     PostgresRecoveryAutonomyPolicyStore,
 )
-from request_engine.modules.operational_recovery.adapters.db.store import (
-    PostgresRecoveryRepository,
-)
+from request_engine.modules.operational_recovery.adapters.db.store import PostgresRecoveryRepository
 from request_engine.modules.operational_recovery.adapters.db.workflow_repository import (
     PostgresRecoveryWorkflowRepository,
+)
+from request_engine.modules.operational_recovery.adapters.queue_intake import (
+    QueueRecoveryIntakeAdapter,
 )
 from request_engine.modules.operational_recovery.api.errors import (
     operational_recovery_error_handler,
@@ -37,12 +40,8 @@ from request_engine.modules.operational_recovery.api.workflow_errors import (
 from request_engine.modules.operational_recovery.api.workflow_reschedule_router import (
     create_reschedule_router,
 )
-from request_engine.modules.operational_recovery.api.workflow_router import (
-    create_workflow_router,
-)
-from request_engine.modules.operational_recovery.application.errors import (
-    OperationalRecoveryError,
-)
+from request_engine.modules.operational_recovery.api.workflow_router import create_workflow_router
+from request_engine.modules.operational_recovery.application.errors import OperationalRecoveryError
 from request_engine.modules.operational_recovery.application.service import (
     OperationalRecoveryService,
 )
@@ -61,10 +60,30 @@ from request_engine.modules.operational_recovery.contracts.workflow import (
     RecoveryIncidentStale,
     RecoveryOwnerRevisionConflict,
 )
+from request_engine.modules.queue.contracts.intake import QueueIntakeControlPort
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
 
-__all__ = ["OperationalRecoveryRuntime", "install_http"]
+__all__ = [
+    "OperationalRecoveryRuntime",
+    "adapt_location_schedule",
+    "adapt_queue_intake",
+    "install_http",
+]
+
+
+def adapt_location_schedule(
+    schedule: RecoveryLocationSchedulePort,
+) -> RecoveryLocationExtensionPort:
+    """Expose Recovery's adapter without making composition roots import module internals."""
+
+    return CatalogRecoveryLocationAdapter(schedule)
+
+
+def adapt_queue_intake(queue_intake: QueueIntakeControlPort) -> RecoveryIntakeControlPort:
+    """Expose Recovery's adapter without making composition roots import module internals."""
+
+    return QueueRecoveryIntakeAdapter(queue_intake)
 
 
 def install_http(

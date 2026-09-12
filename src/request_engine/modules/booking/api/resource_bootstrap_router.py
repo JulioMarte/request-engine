@@ -86,6 +86,7 @@ def create_resource_bootstrap_router(
         create,
         capability="booking.manage_supply",
         methods=["POST"],
+        operation_id="booking_resource_create",
         status_code=status.HTTP_201_CREATED,
     )
     return router

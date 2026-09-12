@@ -42,6 +42,12 @@ uv run python scripts/db/analyze_schema_cohesion.py \
 # migration without imposing a permanent equality between 0001 and current HEAD.
 bash scripts/db/prove_baseline_integrity.sh "$ARTIFACT_DIR"
 
+# PostgreSQL roles are cluster-global while Alembic state is database-local.
+# Prove that post-baseline control-plane roles do not poison a second Request
+# Engine database in the same cluster: 0001 must still install and that database
+# must then reach the exact current HEAD by safely reusing verified shared roles.
+uv run python scripts/db/prove_multidatabase_migration_compatibility.py
+
 # Current schema/runtime and operational-profile guarantees.
 uv run pytest \
   tests/integration/f1_operational_profile/test_schema.py \
@@ -85,6 +91,39 @@ uv run pytest \
   tests/integration/f1_operational_profile/test_capability_flow.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/contextual-booking.xml"
+
+# Principal trust-root, standing authority, identity bindings, platform-control,
+# one-time bootstrap intents, atomic root establishment, bounded A->B provisioning,
+# atomic B->tenant-root provisioning and tenant staff lifecycle are current
+# product truth after baseline.
+uv run pytest \
+  tests/db/test_principal_trust_root.py \
+  tests/db/test_principal_authority_grants.py \
+  tests/db/test_identity_bindings.py \
+  tests/db/test_platform_control_read_boundary.py \
+  tests/db/test_platform_definer_topology.py \
+  tests/db/test_platform_root_bootstrap_intents.py \
+  tests/db/test_platform_root_bootstrap_consume.py \
+  tests/db/test_platform_root_bootstrap_definer_topology.py \
+  tests/db/test_platform_tenant_provisioner.py \
+  tests/db/test_native_platform_provisioning.py \
+  tests/db/test_initial_controller_policy.py \
+  tests/db/test_native_tenant_root_bootstrap.py \
+  tests/db/test_native_identity_actor_runtime.py \
+  tests/db/test_native_human_auth_runtime.py \
+  tests/db/test_native_authority_probe.py \
+  tests/db/test_workload_authentication.py \
+  tests/db/test_agent_governance.py \
+  tests/db/test_agent_governance_reader.py \
+  tests/db/test_agent_policy.py \
+  tests/db/test_delegation_concurrency.py \
+  tests/db/test_integration_governance.py \
+  tests/db/test_v3_tenant_reference_integrity.py \
+  tests/db/test_staff_membership_lifecycle.py \
+  tests/db/test_staff_invitation_anchor_authority.py \
+  tests/db/test_platform_control_definer_topology.py \
+  -q -m postgres --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 
 # F2 is part of current product truth, not a detached feature-local proof. Run the
 # complete F2 PostgreSQL proof set so the exact-head gate covers candidate and

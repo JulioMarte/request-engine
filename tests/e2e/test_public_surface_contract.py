@@ -17,9 +17,16 @@ from .http_surface_contract_support import (
     operation_contract,
 )
 from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
+from .operational_http_surface import operational_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _SIGNING_KEY = b"request-engine-e2e-contract-signing-key"
+_DISCOVERY_OPERATIONS = frozenset(
+    {
+        "capabilities.list",
+        "operation_catalog.list_authorized",
+    }
+)
 
 
 class RejectAllResolver:
@@ -58,7 +65,11 @@ def _app(e2e_session_factory: SessionFactory):
 async def test_public_http_surface_cannot_grow_without_e2e_classification(
     e2e_session_factory: SessionFactory,
 ) -> None:
-    assert _public_operations(_app(e2e_session_factory).openapi()) == operation_keys()
+    # The single-app composition mounts the business surface and the operational
+    # configuration surface; each is classified by its own registry.
+    assert _public_operations(_app(e2e_session_factory).openapi()) == (
+        operation_keys() | operational_keys()
+    )
 
 
 @pytest.mark.asyncio
@@ -86,19 +97,30 @@ async def test_public_openapi_metadata_matches_frozen_capability_contract(
     e2e_session_factory: SessionFactory,
 ) -> None:
     openapi = cast(dict[str, object], _app(e2e_session_factory).openapi())
+    operation_ids: set[str] = set()
     for operation in PUBLIC_HTTP_OPERATIONS:
+        contract = operation_contract(
+            openapi, path=operation.path_template, method=operation.method
+        )
+        operation_id = contract["operationId"]
+        assert isinstance(operation_id, str)
+        assert operation_id not in operation_ids, operation_id
+        operation_ids.add(operation_id)
+
         if operation.capability is None:
-            assert operation.name == "capabilities.list"
+            assert operation.name in _DISCOVERY_OPERATIONS
+            assert contract["x-request-engine-discovery"] is True
             continue
 
         definition = capability_definition(operation.capability)
         assert definition is not None
-        contract = operation_contract(
-            openapi, path=operation.path_template, method=operation.method
-        )
-        assert contract["operationId"] == expected_operation_id(operation.name, definition)
+        assert operation_id == expected_operation_id(operation.name, definition)
+        assert contract["x-request-engine-operation-id"] == operation_id
+        owner = contract["x-request-engine-owner"]
+        assert isinstance(owner, str) and owner
         assert contract["x-request-engine-capability"] == definition.key
         assert contract["x-request-engine-schema-version"] == definition.schema_version
+        assert contract["x-request-engine-kind"] == definition.kind.value
         assert contract["x-request-engine-idempotency"] == definition.idempotency.value
         assert contract["x-request-engine-expected-revision"] == definition.revision.value
         assert contract["x-request-engine-exposure"] == definition.exposure.value
@@ -121,8 +143,10 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     keys = [operation.operation_key for operation in PUBLIC_HTTP_OPERATIONS]
     assert len(names) == len(set(names))
     assert len(keys) == len(set(keys))
-    discovery = [operation for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None]
-    assert [operation.name for operation in discovery] == ["capabilities.list"]
+    discovery = {
+        operation.name for operation in PUBLIC_HTTP_OPERATIONS if operation.capability is None
+    }
+    assert discovery == _DISCOVERY_OPERATIONS
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
         if operation.method in {"POST", "PUT"}:

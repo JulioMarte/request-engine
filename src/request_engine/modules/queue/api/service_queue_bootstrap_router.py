@@ -65,6 +65,7 @@ def create_service_queue_bootstrap_router(
         create,
         capability="queue.configure",
         methods=["POST"],
+        operation_id="queue_service_queue_create",
         status_code=status.HTTP_201_CREATED,
     )
     return router

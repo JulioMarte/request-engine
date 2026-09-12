@@ -18,16 +18,53 @@ from pathlib import Path
 from typing import TextIO
 
 
+def _windows_bash_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    exec_path = os.environ.get("REQUEST_ENGINE_GIT_EXEC_PATH")
+    if exec_path:
+        exec_root = Path(exec_path).resolve()
+        for level in exec_root.parents[:3]:
+            candidates.append(level / "bin" / "bash.exe")
+            candidates.append(level / "usr" / "bin" / "bash.exe")
+    git_exe = shutil.which("git")
+    if git_exe:
+        git_root = Path(git_exe).resolve().parent.parent
+        for level in (git_root, git_root.parent):
+            candidates.append(level / "bin" / "bash.exe")
+            candidates.append(level / "usr" / "bin" / "bash.exe")
+    for variable in ("ProgramFiles", "ProgramFiles(x86)", "LocalAppData"):
+        prefix = os.environ.get(variable)
+        if not prefix:
+            continue
+        install_root = Path(prefix) / "Git"
+        candidates.append(install_root / "bin" / "bash.exe")
+        candidates.append(install_root / "usr" / "bin" / "bash.exe")
+    return list(dict.fromkeys(candidates))
+
+
+def _is_windows_bash_launcher(candidate: Path, windows_dir: Path) -> bool:
+    try:
+        candidate.relative_to(windows_dir)
+    except ValueError:
+        return False
+    return True
+
+
 def _resolve_bash() -> str:
     if sys.platform != "win32":
         return "bash"
-    git_exe = shutil.which("git")
-    if git_exe:
-        candidate = Path(git_exe).resolve().parent.parent / "bin" / "bash.exe"
-        if candidate.is_file():
+    windows_dir = Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
+    for candidate in _windows_bash_candidates():
+        if candidate.is_file() and not _is_windows_bash_launcher(candidate, windows_dir):
             return str(candidate)
     found = shutil.which("bash")
-    return found or "bash"
+    if found and not _is_windows_bash_launcher(Path(found).resolve(), windows_dir):
+        return str(Path(found).resolve())
+    raise RuntimeError(
+        "bash is required to run local CI steps on Windows; "
+        "install Git for Windows and retry. "
+        "The WSL bash.exe launcher is not usable without a WSL distribution."
+    )
 
 
 _BASH = _resolve_bash()

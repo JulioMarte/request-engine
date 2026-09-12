@@ -2,7 +2,7 @@
 
 > **Estado:** normativo para cualquier cambio que cruce límites entre transport, módulos, PostgreSQL, workers o providers.
 >
-> Complementa `09-python-module-architecture.md`, `10-module-ownership-map.md`, `07-database-access-contract.md`, `14-architecture-fitness-functions.md` y `architecture/system-optimization-mode.md`.
+> Complementa `09-python-module-architecture.md`, `10-module-ownership-map.md`, `07-database-access-contract.md`, `14-architecture-fitness-functions.md` y `architecture/continuous-evolution-policy.md`.
 
 ## 1. Principle
 
@@ -24,7 +24,7 @@ BOX B
 
 The `|-|` is a first-class architecture element. It needs explicit semantics, ownership and failure guarantees.
 
-Historical V3/Fx labels may describe when a surface entered the system. They do not define a separate current boundary taxonomy.
+Historical V2/V3/Fx labels may describe when a surface entered the system. They do not define a separate current boundary taxonomy.
 
 ## 2. What counts as a connection surface
 
@@ -171,7 +171,9 @@ The boundary is semantic rather than generic CRUD.
 
 Do not create a universal repository/UoW abstraction merely to hide correctness-sensitive SQL.
 
-During system optimization, concrete schema/function shape is CONTROLLED and may be redesigned through the dedicated schema-audit/rebaseline process. The tenant/authority/atomicity/capacity/provenance/concurrency guarantees those database structures protect remain HARD.
+The accepted `0001_initial` + `migrations/baseline/` is immutable history. Current schema shape remains CONTROLLED and evolves through appended `0002+` Alembic revisions under `continuous-evolution-policy.md`; ordinary feature/cleanup work must not rewrite the accepted baseline. A future destructive pre-production rebaseline, if ever justified, is a separate architecture operation with a fresh effective-schema audit and independent reproduction proof.
+
+Tenant isolation, authority, atomicity, capacity ownership, provenance, concurrency and least-privilege guarantees remain HARD regardless of concrete schema shape.
 
 ## 8. Transactional surface checklist
 
@@ -272,6 +274,8 @@ A capability should have the smallest practical change radius inside its owner w
 
 Likewise, do not move cross-domain orchestration into entrypoints/platform simply to avoid a visible business-module edge. Explicit coupling is healthier than hidden coupling.
 
+Do not create empty future modules as architecture placeholders. A new module exists only when current product scope gives it real ownership; future domains remain design knowledge until then.
+
 ## 12. Review rule
 
 A code review for a new/changed capability reviews the boxes **and** every `|-|` it introduces or changes.
@@ -287,4 +291,4 @@ Ask:
 7. Can CI enforce that this connection is not bypassed?
 8. Does this edge make ownership clearer, or only hide/repackage existing coupling?
 
-Architecture tests should make high-value connection rules executable whenever practical. Intentional evolution is allowed under `architecture/system-optimization-mode.md`; mechanical boundary weakening is not.
+Architecture tests should make high-value connection rules executable whenever practical. Intentional evolution is allowed under `architecture/continuous-evolution-policy.md`; mechanical boundary weakening is not.

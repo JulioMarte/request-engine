@@ -7,7 +7,7 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 
-ROLE_PREFIX = "request_engine_%"
+ROLE_PATTERNS = ("request_engine_%", "request_platform_%", "request_bootstrap_%")
 
 # pg_roles deliberately masks rolpassword as ******** for every role. This proof
 # runs as the PostgreSQL bootstrap superuser, so use pg_authid for the actual
@@ -26,7 +26,7 @@ ROLE_QUERY = """
            rolvaliduntil::text AS valid_until,
            rolpassword IS NOT NULL AS has_password
     FROM pg_authid
-    WHERE rolname LIKE %s
+    WHERE rolname LIKE ANY(%s)
     ORDER BY rolname
 """
 
@@ -39,7 +39,7 @@ MEMBERSHIP_QUERY = """
     FROM pg_auth_members membership
     JOIN pg_roles parent ON parent.oid = membership.roleid
     JOIN pg_roles member ON member.oid = membership.member
-    WHERE parent.rolname LIKE %s OR member.rolname LIKE %s
+    WHERE parent.rolname LIKE ANY(%s) OR member.rolname LIKE ANY(%s)
     ORDER BY parent.rolname, member.rolname
 """
 
@@ -50,7 +50,7 @@ SETTING_QUERY = """
     FROM pg_db_role_setting setting
     JOIN pg_roles role ON role.oid = setting.setrole
     LEFT JOIN pg_database database ON database.oid = setting.setdatabase
-    WHERE role.rolname LIKE %s
+    WHERE role.rolname LIKE ANY(%s)
     ORDER BY role.rolname, database_name
 """
 
@@ -62,13 +62,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
+    patterns = list(ROLE_PATTERNS)
     with psycopg.connect("", row_factory=dict_row) as conn:
-        roles = conn.execute(ROLE_QUERY, (ROLE_PREFIX,)).fetchall()
+        roles = conn.execute(ROLE_QUERY, (patterns,)).fetchall()
         memberships = conn.execute(
             MEMBERSHIP_QUERY,
-            (ROLE_PREFIX, ROLE_PREFIX),
+            (patterns, patterns),
         ).fetchall()
-        settings = conn.execute(SETTING_QUERY, (ROLE_PREFIX,)).fetchall()
+        settings = conn.execute(SETTING_QUERY, (patterns,)).fetchall()
 
     payload = {
         "schema_version": 1,

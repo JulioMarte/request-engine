@@ -2,6 +2,9 @@
 
 These instructions apply repository-wide. A nearer `AGENTS.md` may add path-specific rules but must not contradict current repository policy.
 
+# nota :
+1-tenemos una instancia local de postgresql corriendo en el puerto 5432 en un contenedor de docker asegurate de que esta este actualizada porque si no te fijas bien todo puede funcionar localmente pero cuando hagas el ci en github el resultado se desbiara.
+2-tambien has el uso correcto de sub agentes para dividir tu trabajo de manera logica.
 ## Reporting discipline — mandatory
 
 When reporting changes:
@@ -13,13 +16,13 @@ When reporting changes:
 
 ## Current repository mode
 
-Request Engine is pre-production and currently operating under the explicit cohesion/rebaseline policy in:
+Request Engine is pre-production and currently operating under the explicit cohesion policy in:
 
 `docs/architecture/system-optimization-mode.md`
 
-The current objective is to converge the repository on one coherent present-day architecture before the next production freeze.
+The current objective is to converge the repository on one coherent present-day architecture before production compatibility obligations harden additional surfaces.
 
-During this phase, repository/schema/module/test shape is CONTROLLED but mutable when an explicit change improves the current system. Semantic guarantees are not casually mutable. `docs/testing/current-guarantees.toml` is the canonical guarantee inventory.
+During this phase, repository/module/test shape is CONTROLLED but mutable when an explicit change improves the current system. Semantic guarantees are not casually mutable. `docs/testing/current-guarantees.toml` is the canonical guarantee inventory.
 
 Do not preserve V2/V3/F1-F7 release archaeology merely because it once existed. Do not remove it merely because it looks old either: classify it by current guarantee, compatibility and provenance value first.
 
@@ -65,7 +68,7 @@ Agents working directly through GitHub do not have a local certificate and must 
 
 Read only the canonical material needed for the change, in this order where relevant:
 
-1. `docs/architecture/system-optimization-mode.md` — current cohesion/rebaseline mode;
+1. `docs/architecture/system-optimization-mode.md` — current cohesion mode;
 2. `docs/README.md` — documentation map and current contracts;
 3. `docs/testing/current-guarantees.toml` — current semantic guarantees;
 4. `docs/10-module-ownership-map.md` — business ownership;
@@ -79,7 +82,8 @@ Read only the canonical material needed for the change, in this order where rele
 12. `docs/testing/evidence-authoring-guide.md` when changing tests;
 13. `migrations/README.md` and `migrations/AGENTS.md` when touching schema;
 14. `docs/adr/README.md` for hard-to-reverse design decisions;
-15. `docs/15-api-design-and-usability-standards.md` for public API changes.
+15. `docs/15-api-design-and-usability-standards.md` for HTTP/OpenAPI changes;
+16. `docs/16-canonical-operation-and-tool-projection-pattern.md` for any machine-facing operation, agent-tool, admin UX or MCP work.
 
 Historical V2/V3/F1-F7 plans, release evidence and transition documents are sources of provenance and proven patterns, not automatic current authority. A current accepted capability contract may explicitly retain one of their guarantees.
 
@@ -97,13 +101,48 @@ Historical V2/V3/F1-F7 plans, release evidence and transition documents are sour
 - Domain code does not import FastAPI, SQLAlchemy, provider SDKs or runtime/bootstrap configuration.
 - Public operations are explicit Query, semantic Command, durable business Request or ScheduledAction; do not collapse them behind a generic workflow/service abstraction.
 - Authoritative state changes are semantic commands, not generic CRUD.
+- Canonical machine-facing HTTP is resource-oriented: standard resource methods when truthful, semantic custom methods when business intent does not fit CRUD.
+- Business owner, capability key, OpenAPI `operationId` and optional agent-tool name are distinct concepts; do not collapse them into one namespace/registry.
+- Agent/MCP surfaces project owner operations. They do not own business truth, copy capability policy or introduce a second execution path.
+- Public/operator/admin tool visibility is not authorization. Every invocation still passes trusted ActorContext, capability/relationship checks and owner validation.
 - PostgreSQL owns structural truth, locks, atomic consistency backstops and durable facts. Python owns command semantics, policy orchestration and transaction framing.
 - One authoritative command normally uses one Session/AsyncSession and one explicit DB transaction.
 - Never perform external network I/O while holding authoritative DB locks.
 - n8n/providers are adapters/extensions, not owners of business authority.
 - `request_read.*` is a read contract. `request_cmd.*` contains narrow consistency/worker/idempotency primitives, not workflow-sized stored procedures.
 
-`payments` and `dispatch` remain deferred/incubating until a concrete accepted capability gives them real ownership.
+`payments` and `dispatch` remain future product areas until a concrete accepted capability gives them real ownership.
+
+## API / operation / tool design gate
+
+Before adding or changing a machine-facing operation, answer:
+
+```text
+Business owner
+Resource or semantic custom method
+HTTP path/method
+Stable operationId
+Capability
+Query or command
+Idempotency policy
+Revision/concurrency policy
+Party/resource authority rule
+Tool projection needed? why?
+Tool audiences
+Input/output schemas
+Failure semantics
+Current guarantees affected
+```
+
+For tool projection specifically:
+
+- use `add_capability_route`/current operation metadata rather than a hand-maintained second policy registry;
+- a tool-exposed operation requires explicit stable `operationId` and owner;
+- tool discovery may be filtered by public/operator/admin/system audience but execution authority remains independent;
+- MCP `tools/call` must resolve to the same typed owner operation, never a generic business payload handler;
+- model arguments never manufacture organization, principal, authority Party, capability or trusted revision identity.
+
+If an agent tool cannot name the owner operation/capability it delegates to, the design is incomplete.
 
 ## Repository governance classification
 
@@ -204,7 +243,9 @@ Preserve current distinctions unless an explicit newer contract replaces them:
 - ServiceQueue is current service flow; Waitlist is future-capacity interest.
 - Reservation confirmation and attendance confirmation remain distinct.
 - Communications owns transactional communication intent/delivery semantics; providers are adapters.
-- Discovery, Live Capacity, Operational Recovery and agent tooling may compose owner capabilities but do not gain shadow authority over owner facts.
+- Discovery, Live Capacity, Operational Recovery, Onboarding and agent tooling may compose owner capabilities but do not gain shadow authority over owner facts.
+- Onboarding owns readiness/blocker composition, not provisioning facts.
+- The historical `operational_copilot` surface is migration input toward a generic authorized operation/tool gateway, not a conversational-runtime bounded context.
 - Prefer stable capabilities such as `appointments.book`, `queue.join`, `waitlist.accept_offer`, `requests.submit` over table-shaped endpoints/tools.
 
 Historical V3 language is evidence, not a permanent naming constraint.
@@ -227,7 +268,7 @@ For capacity, queue selection, scheduling, communications, authority, idempotenc
 - use real PostgreSQL evidence for constraints, ranges, locks, isolation, RLS/privileges, leases/fencing and races;
 - add regression proof for fixed invariant/race bugs.
 
-During system optimization, `migrations/versions/0001_initial.py` and the historical V3 candidate are not permanent product-shape ceilings. However, do not casually rewrite them during unrelated work. Schema rebaseline is a dedicated controlled operation governed by `docs/architecture/system-optimization-mode.md` and `migrations/README.md` after the complete schema audit.
+The accepted `migrations/versions/0001_initial.py` plus `migrations/baseline/` payload is immutable migration history for ordinary work. Current schema evolution appends `0002+` migrations under `docs/architecture/continuous-evolution-policy.md`; do not rewrite the baseline during unrelated product work.
 
 ## Validation before completion
 
