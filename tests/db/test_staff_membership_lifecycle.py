@@ -1,8 +1,21 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from time import monotonic
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
 import pytest
 from psycopg import Connection, Error
+
+from request_engine.modules.tenancy.adapters.db.staff_membership_reader import (
+    PostgresStaffMembershipReader,
+)
+from request_engine.modules.tenancy.application.errors import StaffMembershipForbidden
+from request_engine.modules.tenancy.application.queries.staff_membership import (
+    ListStaffMembershipsQuery,
+)
+from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.security.context import ActorContext
 
 PgConnection = Connection[Any]
 pytestmark = [
@@ -20,6 +33,7 @@ _CONTROL_CAPABILITIES = {
     "staff.invite",
     "staff.manage_authority",
     "staff.manage_membership",
+    "staff.read",
 }
 
 
@@ -464,3 +478,233 @@ def test_last_recovery_capable_controller_cannot_be_removed(
         assert self_removal.value.sqlstate == "42501"
     finally:
         admin_conn.execute("RESET ROLE")
+
+
+@pytest.mark.asyncio
+async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_actor(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+) -> None:
+    """A cached trusted actor must not preserve revoked directory visibility."""
+    organization_id, _, root_id, _, _ = _provision_root(admin_conn)
+    actor = ActorContext(
+        organization_id=organization_id,
+        principal_id=root_id,
+        capabilities=frozenset({"staff.read"}),
+        authority_revision=_principal_revision(admin_conn, root_id),
+    )
+    reader = PostgresStaffMembershipReader(command_session_factory)
+    members = await reader.list_memberships(actor, ListStaffMembershipsQuery())
+    assert len(members) == 1
+    assert members[0].principal_id == root_id
+    assert await reader.read_membership(actor, members[0].membership_id) == members[0]
+
+    # This committed change occurs after authentication, before the next read.
+    # The operation under test still uses the least-privilege application role.
+    revoked = admin_conn.execute(
+        """
+        UPDATE request_engine.principal_authority_grants
+           SET status = 'revoked', revision = revision + 1,
+               revoked_at = clock_timestamp(), revoked_by_principal_id = %s
+         WHERE organization_id = %s AND principal_id = %s
+           AND capability_key = 'staff.read' AND status = 'active'
+        RETURNING id
+        """,
+        (root_id, organization_id, root_id),
+    ).fetchall()
+    assert len(revoked) == 1
+    assert actor.allows("staff.read")  # Deliberately retain the stale snapshot.
+    with pytest.raises(StaffMembershipForbidden):
+        await reader.list_memberships(actor, ListStaffMembershipsQuery())
+    with pytest.raises(StaffMembershipForbidden):
+        await reader.read_membership(actor, members[0].membership_id)
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.principal_authority_grants WHERE id = %s",
+        (revoked[0][0],),
+    ).fetchone() == ("revoked",)
+    assert admin_conn.execute(
+        "SELECT status, revision FROM request_engine.staff_memberships WHERE id = %s",
+        (members[0].membership_id,),
+    ).fetchone() == ("active", 1)
+
+
+def test_suspended_staff_can_be_revoked_without_temporary_reactivation(
+    admin_conn: PgConnection,
+) -> None:
+    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
+    authority_id, native_id, _ = _native_identity(admin_conn)
+    membership_id, staff_id, binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_id,
+    )
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        for target, revision in (("suspended", 2), ("revoked", 3)):
+            assert admin_conn.execute(
+                "SELECT request_engine.transition_staff_membership(%s, %s, %s, %s)",
+                (membership_id, revision, target, f"staff-terminal-{target}"),
+            ).fetchone() == (revision + 1,)
+        with pytest.raises(Error) as resurrection:
+            admin_conn.execute(
+                "SELECT request_engine.transition_staff_membership(%s, 4, 'active', %s)",
+                (membership_id, "staff-terminal-resurrection"),
+            )
+        assert resurrection.value.sqlstate == "55000"
+    finally:
+        admin_conn.execute("RESET ROLE")
+    assert admin_conn.execute(
+        "SELECT status, revision FROM request_engine.staff_memberships WHERE id = %s",
+        (membership_id,),
+    ).fetchone() == ("revoked", 4)
+    assert admin_conn.execute(
+        "SELECT active FROM request_engine.principals WHERE id = %s",
+        (staff_id,),
+    ).fetchone() == (False,)
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.identity_bindings WHERE id = %s",
+        (binding_id,),
+    ).fetchone() == ("revoked",)
+
+
+@pytest.mark.parametrize(
+    ("revision", "reference"), [(None, "proof"), (0, "proof"), (2, None), (2, " ")]
+)
+def test_staff_transition_requires_revision_and_provenance_at_database_boundary(
+    admin_conn: PgConnection,
+    revision: int | None,
+    reference: str | None,
+) -> None:
+    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
+    authority_id, native_id, _ = _native_identity(admin_conn)
+    membership_id, staff_id, binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_id,
+    )
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        with pytest.raises(Error) as rejected:
+            admin_conn.execute(
+                "SELECT request_engine.transition_staff_membership(%s, %s, 'revoked', %s)",
+                (membership_id, revision, reference),
+            )
+        assert rejected.value.sqlstate == "22023"
+    finally:
+        admin_conn.execute("RESET ROLE")
+    assert admin_conn.execute(
+        "SELECT status, revision FROM request_engine.staff_memberships WHERE id = %s",
+        (membership_id,),
+    ).fetchone() == ("active", 2)
+    assert admin_conn.execute(
+        "SELECT active FROM request_engine.principals WHERE id = %s",
+        (staff_id,),
+    ).fetchone() == (True,)
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.identity_bindings WHERE id = %s",
+        (binding_id,),
+    ).fetchone() == ("active",)
+
+
+@pytest.mark.concurrency
+@pytest.mark.parametrize("winner_status", ["active", "revoked"])
+def test_suspended_staff_competing_transitions_reject_stale_loser(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+    winner_status: str,
+) -> None:
+    """A waiting operator cannot overwrite the committed lifecycle decision."""
+    organization_id, party_id, root_id, _, _ = _provision_root(admin_conn)
+    authority_id, native_id, _ = _native_identity(admin_conn)
+    membership_id, staff_id, binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_id,
+    )
+    _set_tenant_actor(admin_conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        assert admin_conn.execute(
+            "SELECT request_engine.transition_staff_membership(%s, 2, 'suspended', %s)",
+            (membership_id, "race-precondition-suspension"),
+        ).fetchone() == (3,)
+    finally:
+        admin_conn.execute("RESET ROLE")
+    before = admin_conn.execute(
+        """
+        SELECT b.revision, i.session_epoch
+          FROM request_engine.identity_bindings b
+          JOIN request_engine.native_identities i ON i.id = %s
+         WHERE b.id = %s
+        """,
+        (native_id, binding_id),
+    ).fetchone()
+    assert before is not None
+    loser_status = "revoked" if winner_status == "active" else "active"
+
+    with (
+        PgConnection.connect(pg_conninfo) as winner,
+        PgConnection.connect(pg_conninfo, autocommit=True) as loser,
+    ):
+        for conn in (winner, loser):
+            conn.execute("SET statement_timeout = '10s'")
+            _set_tenant_actor(conn, organization_id=organization_id, principal_id=root_id)
+        assert winner.execute(
+            "SELECT request_engine.transition_staff_membership(%s, 3, %s, %s)",
+            (membership_id, winner_status, "race-winner"),
+        ).fetchone() == (4,)
+
+        def contend() -> None:
+            loser.execute(
+                "SELECT request_engine.transition_staff_membership(%s, 3, %s, %s)",
+                (membership_id, loser_status, "race-stale-loser"),
+            ).fetchone()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(contend)
+            try:
+                deadline = monotonic() + 5
+                while True:
+                    blocked = admin_conn.execute(
+                        "SELECT %s = ANY(pg_blocking_pids(%s))",
+                        (winner.info.backend_pid, loser.info.backend_pid),
+                    ).fetchone()
+                    if blocked == (True,):
+                        break
+                    assert not pending.done(), "contender bypassed the held lifecycle lock"
+                    assert monotonic() < deadline, "contender never waited on the winner"
+                    Event().wait(0.01)
+                winner.commit()
+                with pytest.raises(Error) as stale:
+                    pending.result(timeout=10)
+                assert stale.value.sqlstate == "40001"
+            finally:
+                # Release the lock even if the synchronization assertion fails.
+                winner.rollback()
+
+    assert admin_conn.execute(
+        """
+        SELECT m.status, m.revision, b.status, b.revision, p.active, i.session_epoch
+          FROM request_engine.staff_memberships m
+          JOIN request_engine.identity_bindings b ON b.id = m.identity_binding_id
+          JOIN request_engine.principals p ON p.id = m.principal_id
+          JOIN request_engine.native_identities i ON i.id = %s
+         WHERE m.id = %s AND m.principal_id = %s
+        """,
+        (native_id, membership_id, staff_id),
+    ).fetchone() == (
+        winner_status,
+        4,
+        winner_status,
+        int(before[0]) + 1,
+        winner_status == "active",
+        int(before[1]) + int(winner_status == "revoked"),
+    )

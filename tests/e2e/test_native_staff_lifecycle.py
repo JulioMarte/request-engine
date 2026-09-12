@@ -170,6 +170,17 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
         identity_authority_id=authority_id,
         native_identity_id=root_identity.native_identity_id,
     )
+    foreign_organization_id, foreign_controller_id = _provision_tenant_root(
+        e2e_admin_conn,
+        identity_authority_id=authority_id,
+        native_identity_id=third_identity.native_identity_id,
+    )
+    foreign_membership_id = _uuid_row(
+        e2e_admin_conn,
+        "SELECT id FROM request_engine.staff_memberships "
+        "WHERE organization_id = %s AND principal_id = %s",
+        (foreign_organization_id, foreign_controller_id),
+    )
 
     app = create_native_app(
         session_factory=e2e_session_factory,
@@ -209,6 +220,43 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
         membership_id = UUID(invited.json()["membership_id"])
         staff_principal_id = UUID(invited.json()["principal_id"])
 
+        inspection_headers = _tenant_headers(token=root_token, organization_id=organization_id)
+        detail = await client.get(f"/v1/staff/members/{membership_id}", headers=inspection_headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.headers["cache-control"] == "no-store"
+        assert detail.json()["status"] == "invited"
+        assert detail.json()["membership_revision"] == 1
+        assert detail.json()["standing_grants"] == []
+        page = await client.get(
+            "/v1/staff/members", headers=inspection_headers, params={"limit": 1}
+        )
+        assert page.status_code == 200, page.text
+        assert len(page.json()["items"]) == 1
+        second_page = await client.get(
+            "/v1/staff/members",
+            headers=inspection_headers,
+            params={"after": page.json()["next_cursor"], "limit": 1},
+        )
+        assert second_page.status_code == 200, second_page.text
+        assert len(second_page.json()["items"]) == 1
+        assert (
+            page.json()["items"][0]["membership_id"]
+            != (second_page.json()["items"][0]["membership_id"])
+        )
+        assert {
+            item["principal_id"] for item in page.json()["items"] + second_page.json()["items"]
+        } == {str(_root_principal_id), str(staff_principal_id)}
+        absent = await client.get(f"/v1/staff/members/{uuid4()}", headers=inspection_headers)
+        foreign = await client.get(
+            f"/v1/staff/members/{foreign_membership_id}", headers=inspection_headers
+        )
+        assert absent.status_code == foreign.status_code == 404
+        assert absent.json() == foreign.json()
+        invalid_filter = await client.get(
+            "/v1/staff/members", headers=inspection_headers, params={"principal_id": str(uuid4())}
+        )
+        assert invalid_filter.status_code == 422
+
         activated = await client.put(
             f"/v1/staff/members/{membership_id}/status",
             headers=_tenant_headers(
@@ -225,11 +273,10 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
         assert activated.status_code == 200, activated.text
         assert activated.json()["membership_revision"] == 2
 
-        authority_revision_row = e2e_admin_conn.execute(
-            "SELECT authority_revision FROM request_engine.principals WHERE id = %s",
-            (staff_principal_id,),
-        ).fetchone()
-        assert authority_revision_row is not None
+        current_member = await client.get(
+            f"/v1/staff/members/{membership_id}", headers=inspection_headers
+        )
+        assert current_member.status_code == 200, current_member.text
         replaced = await client.put(
             f"/v1/staff/members/{membership_id}/authority",
             headers=_tenant_headers(
@@ -238,7 +285,7 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
                 idempotency_key=f"staff-authority-{uuid4().hex}",
             ),
             json={
-                "expected_authority_revision": int(authority_revision_row[0]),
+                "expected_authority_revision": current_member.json()["authority_revision"],
                 "desired_capabilities": ["staff.invite"],
                 "provenance_reference": "native-staff-e2e-authority",
             },
@@ -250,6 +297,11 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
             login_handle=staff_identity.login_handle,
             password=staff_password,
         )
+        unauthorized_read = await client.get(
+            "/v1/staff/members",
+            headers=_tenant_headers(token=staff_token, organization_id=organization_id),
+        )
+        assert unauthorized_read.status_code == 403, unauthorized_read.text
         delegated_invite = await client.post(
             "/v1/staff/members/native",
             headers=_tenant_headers(
@@ -296,3 +348,112 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
         )
         assert after_suspend.status_code == 401
         assert after_suspend.json()["error"]["code"] == "credential_invalid"
+
+        suspended_view = await client.get(
+            f"/v1/staff/members/{membership_id}", headers=inspection_headers
+        )
+        assert suspended_view.json()["status"] == "suspended"
+        assert suspended_view.json()["principal_active"] is False
+        reactivated = await client.put(
+            f"/v1/staff/members/{membership_id}/status",
+            headers=_tenant_headers(
+                token=root_token,
+                organization_id=organization_id,
+                idempotency_key=f"staff-reactivate-{uuid4().hex}",
+            ),
+            json={
+                "expected_revision": suspended_view.json()["membership_revision"],
+                "target_status": "active",
+                "provenance_reference": "native-staff-e2e-reactivate",
+            },
+        )
+        assert reactivated.status_code == 200, reactivated.text
+        assert reactivated.json()["membership_revision"] == 4
+        stale_session = await client.delete(
+            "/auth/native/sessions/current", headers={"Authorization": f"Bearer {staff_token}"}
+        )
+        assert stale_session.status_code == 401, stale_session.text
+        fresh_staff_token = await _login(
+            client, login_handle=staff_identity.login_handle, password=staff_password
+        )
+        current_view = await client.get(
+            f"/v1/staff/members/{membership_id}", headers=inspection_headers
+        )
+        assert current_view.json()["status"] == "active"
+        assert current_view.json()["principal_active"] is True
+        revoked_member = await client.put(
+            f"/v1/staff/members/{membership_id}/status",
+            headers=_tenant_headers(
+                token=root_token,
+                organization_id=organization_id,
+                idempotency_key=f"staff-revoke-{uuid4().hex}",
+            ),
+            json={
+                "expected_revision": current_view.json()["membership_revision"],
+                "target_status": "revoked",
+                "provenance_reference": "native-staff-e2e-revoke",
+            },
+        )
+        assert revoked_member.status_code == 200, revoked_member.text
+        assert revoked_member.json()["membership_revision"] == 5
+        rejected_session = await client.delete(
+            "/auth/native/sessions/current",
+            headers={"Authorization": f"Bearer {fresh_staff_token}"},
+        )
+        assert rejected_session.status_code == 401, rejected_session.text
+
+        # A pending invitation can be revoked without ever activating its Principal.
+        pending = await client.post(
+            "/v1/staff/members/native",
+            headers=_tenant_headers(
+                token=root_token,
+                organization_id=organization_id,
+                idempotency_key=f"staff-pending-{uuid4().hex}",
+            ),
+            json={
+                "identity_authority_id": str(authority_id),
+                "native_identity_id": str(fourth_identity.native_identity_id),
+                "provenance_reference": "native-staff-e2e-pending",
+            },
+        )
+        assert pending.status_code == 201, pending.text
+        pending_id = pending.json()["membership_id"]
+        for member_id, expected_revision in ((pending_id, 1), (str(membership_id), 5)):
+            if member_id == pending_id:
+                cancelled = await client.put(
+                    f"/v1/staff/members/{member_id}/status",
+                    headers=_tenant_headers(
+                        token=root_token,
+                        organization_id=organization_id,
+                        idempotency_key=f"staff-cancel-invitation-{uuid4().hex}",
+                    ),
+                    json={
+                        "expected_revision": expected_revision,
+                        "target_status": "revoked",
+                        "provenance_reference": "native-staff-e2e-cancel-invitation",
+                    },
+                )
+                assert cancelled.status_code == 200, cancelled.text
+            revoked_view = await client.get(
+                f"/v1/staff/members/{member_id}", headers=inspection_headers
+            )
+            assert revoked_view.json()["status"] == "revoked"
+            assert revoked_view.json()["principal_active"] is False
+            resurrection = await client.put(
+                f"/v1/staff/members/{member_id}/status",
+                headers=_tenant_headers(
+                    token=root_token,
+                    organization_id=organization_id,
+                    idempotency_key=f"staff-resurrect-{uuid4().hex}",
+                ),
+                json={
+                    "expected_revision": revoked_view.json()["membership_revision"],
+                    "target_status": "active",
+                    "provenance_reference": "native-staff-e2e-resurrection",
+                },
+            )
+            assert resurrection.status_code == 409, resurrection.text
+            after_rejection = await client.get(
+                f"/v1/staff/members/{member_id}", headers=inspection_headers
+            )
+            assert after_rejection.json() == revoked_view.json()
