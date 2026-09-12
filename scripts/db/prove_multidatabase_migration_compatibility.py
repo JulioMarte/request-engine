@@ -6,7 +6,12 @@ from urllib.parse import quote_plus
 from uuid import uuid4
 
 import psycopg
+from initial_controller_upgrade_evidence import (
+    establish_pre_policy_root,
+    verify_pre_policy_root_unchanged,
+)
 from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
 
 def _database_url(database: str) -> str:
@@ -33,7 +38,7 @@ def _run_alembic(database: str, target: str) -> None:
 def main() -> None:
     source_database = os.environ.get("PGDATABASE", "request_engine_v3")
     proof_database = f"re_multidb_proof_{uuid4().hex}"
-    admin_conninfo = psycopg.conninfo.make_conninfo(
+    admin_conninfo = make_conninfo(
         host=os.environ.get("PGHOST", "127.0.0.1"),
         port=os.environ.get("PGPORT", "5432"),
         dbname="postgres",
@@ -49,12 +54,24 @@ def main() -> None:
     try:
         # 0001 must remain installable after post-baseline cluster-global roles exist.
         _run_alembic(proof_database, "0001_initial")
+        # Historical checkpoint is deliberate migration provenance, not a pin
+        # on current HEAD: old customer authority must survive future upgrades.
+        _run_alembic(proof_database, "0035_native_platform_provisioner")
+        proof_conninfo = make_conninfo(admin_conninfo, dbname=proof_database)
+        with psycopg.connect(proof_conninfo, autocommit=True) as legacy:
+            pre_policy_root = establish_pre_policy_root(legacy)
+        _run_alembic(proof_database, "0036_initial_controller_policy")
+        with psycopg.connect(proof_conninfo, autocommit=True) as versioned:
+            v1_root = establish_pre_policy_root(versioned, policy="tenant-controller-v1")
         # The same database must then reach current HEAD while reusing exact
         # cluster-global control-plane roles rather than duplicating them unsafely.
         _run_alembic(proof_database, "head")
+        with psycopg.connect(proof_conninfo, autocommit=True) as upgraded:
+            verify_pre_policy_root_unchanged(upgraded, pre_policy_root)
+            verify_pre_policy_root_unchanged(upgraded, v1_root)
 
         with psycopg.connect(
-            psycopg.conninfo.make_conninfo(
+            make_conninfo(
                 host=os.environ.get("PGHOST", "127.0.0.1"),
                 port=os.environ.get("PGPORT", "5432"),
                 dbname=proof_database,

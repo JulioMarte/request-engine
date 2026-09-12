@@ -106,7 +106,19 @@ uv run pytest \
   tests/db/test_platform_root_bootstrap_consume.py \
   tests/db/test_platform_root_bootstrap_definer_topology.py \
   tests/db/test_platform_tenant_provisioner.py \
+  tests/db/test_native_platform_provisioning.py \
+  tests/db/test_initial_controller_policy.py \
   tests/db/test_native_tenant_root_bootstrap.py \
+  tests/db/test_native_identity_actor_runtime.py \
+  tests/db/test_native_human_auth_runtime.py \
+  tests/db/test_native_authority_probe.py \
+  tests/db/test_workload_authentication.py \
+  tests/db/test_agent_governance.py \
+  tests/db/test_agent_governance_reader.py \
+  tests/db/test_agent_policy.py \
+  tests/db/test_delegation_concurrency.py \
+  tests/db/test_integration_governance.py \
+  tests/db/test_v3_tenant_reference_integrity.py \
   tests/db/test_staff_membership_lifecycle.py \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
