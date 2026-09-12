@@ -65,21 +65,43 @@ def _agent_query_capability(key: str, description: str) -> CapabilityDefinition:
     )
 
 
+def _integration_capability(
+    key: str,
+    description: str,
+    *,
+    revision: RevisionPolicy = RevisionPolicy.NONE,
+) -> CapabilityDefinition:
+    return command_capability(
+        key,
+        CapabilityExposure.OPERATOR,
+        description,
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=revision,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    )
+
+
 IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _authority_capability(
         "platform.principal.provision",
         AuthorityPlane.PLATFORM,
         "Provision a platform-scoped Principal within a bounded authority ceiling.",
     ),
-    _authority_capability(
+    command_capability(
         "platform.tenant_provisioner.provision",
-        AuthorityPlane.PLATFORM,
+        CapabilityExposure.OPERATOR,
         "Provision a Principal that may create organizations without inheriting tenant control.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
-    _authority_capability(
+    command_capability(
         "organization.provision",
-        AuthorityPlane.PLATFORM,
+        CapabilityExposure.OPERATOR,
         "Create a new organization through the zero-to-one provisioning boundary.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
     _authority_capability(
         "platform.identity.recover",
@@ -90,6 +112,12 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "staff.invite",
         "Invite a credentialed Native human identity into the current tenant.",
     ),
+    query_capability(
+        "staff.read",
+        CapabilityExposure.OPERATOR,
+        "Inspect tenant staff membership, standing grants and current revisions.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    ),
     _staff_capability(
         "staff.manage_membership",
         "Activate, suspend, or revoke human staff membership in the current tenant.",
@@ -97,7 +125,7 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     ),
     _staff_capability(
         "staff.manage_authority",
-        "Replace bounded tenant-control authority for human staff.",
+        "Replace bounded operational and tenant-control authority for human staff.",
         revision=RevisionPolicy.REQUIRED,
     ),
     _agent_capability(
@@ -111,6 +139,10 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _agent_capability(
         "agent.suspend",
         "Suspend, reactivate, or revoke an Agent Principal in the current tenant.",
+    ),
+    _agent_query_capability(
+        "agent.read",
+        "Inspect tenant agent profiles, standing capabilities and current revisions.",
     ),
     _agent_query_capability(
         "agent.policy.read",
@@ -128,6 +160,25 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     _agent_capability(
         "delegation.revoke",
         "Revoke a bounded temporary delegation in the current tenant.",
+    ),
+    _integration_capability(
+        "integration.provision",
+        "Provision an INTEGRATION Principal and its workload identity in the current tenant.",
+    ),
+    query_capability(
+        "integration.read",
+        CapabilityExposure.OPERATOR,
+        "Read integration status, authority revisions and credential metadata in this tenant.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    ),
+    _integration_capability(
+        "integration.manage_authority",
+        "Assign or revoke bounded standing authority for an INTEGRATION Principal.",
+        revision=RevisionPolicy.REQUIRED,
+    ),
+    _integration_capability(
+        "integration.suspend",
+        "Suspend, reactivate, or revoke an INTEGRATION Principal in the current tenant.",
     ),
     _authority_capability(
         "identity.bind",

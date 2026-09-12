@@ -8,8 +8,12 @@ from request_engine.entrypoints.http.capabilities import create_capability_route
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.module_composition import install_business_modules
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
-from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
+from request_engine.entrypoints.http.native_runtime import (
+    OidcAuthRuntime,
+    build_native_auth_runtime,
+)
 from request_engine.entrypoints.http.operation_catalog import create_operation_catalog_router
+from request_engine.entrypoints.http.operational_composition import install_operational_modules
 from request_engine.entrypoints.http.operator_resolution import (
     DeploymentOperatorActorResolver,
     OperatorCapabilitySource,
@@ -40,6 +44,7 @@ from request_engine.platform.security.http import (
 )
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
+from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
 from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
@@ -77,7 +82,16 @@ def create_app(
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
 ) -> FastAPI:
-    """Low-level composition seam around an already materialized actor resolver.
+    """Compose the full single-app HTTP surface (business + operational configuration).
+
+    This is the canonical composition root of Request Engine: business module
+    surfaces, the operational configuration surfaces (/v1/operations/*, tenancy
+    operational profile/contacts, discovery operational) and the operation
+    catalog are all mounted on one app. Authorization is unchanged: capability
+    metadata plus granular Representation grant/revoke decide who reaches what.
+    The operational installers share the same execution actor resolver chain as
+    the business modules, so acting-operator relay, tenant capability filtering
+    and correlation binding apply identically.
 
     Production deployments should prefer create_native_app or
     create_authenticated_app so authentication evidence must pass through
@@ -156,6 +170,11 @@ def create_app(
         appointment_option_signing_key=signing_key,
         identity_exchange_fingerprint_key=identity_key,
     )
+    install_operational_modules(
+        app,
+        session_factory=session_factory,
+        actor_resolver=execution_actor_resolver,
+    )
     app.include_router(create_operation_catalog_router(actor_resolver=execution_actor_resolver))
     return app
 
@@ -199,6 +218,7 @@ def create_native_app(
     tenant_capability_policy: TenantCapabilityPolicy | None = None,
     operator_actor_resolver: OperatorActorResolver | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
+    oidc_subject_resolver: OidcHttpSubjectResolver | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -206,9 +226,21 @@ def create_native_app(
     first-party workload credentials prove credential possession only; the
     resulting HTTP actor resolver still performs a fresh IdentityBinding and
     Principal-authority lookup on every protected request.
+
+    When ``oidc_subject_resolver`` is provided, JWT-shaped bearers are
+    additionally dispatched to the optional federated OIDC arm. Without it the
+    deployment behaves exactly as before: a JWT-shaped bearer fails closed as
+    unauthenticated and no OIDC configuration is required.
     """
 
-    runtime = build_native_auth_runtime(session_factory)
+    runtime = build_native_auth_runtime(
+        session_factory,
+        oidc_runtime=(
+            None
+            if oidc_subject_resolver is None
+            else OidcAuthRuntime(subject_resolver=oidc_subject_resolver)
+        ),
+    )
     return create_app(
         session_factory=session_factory,
         actor_resolver=AgentPolicyActorResolver(

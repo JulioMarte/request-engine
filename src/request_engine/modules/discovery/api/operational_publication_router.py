@@ -15,6 +15,7 @@ from request_engine.modules.discovery.application.commands.publication import (
     publish_discovery_supply,
     revoke_discovery_publication,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
@@ -65,6 +66,22 @@ def create_publication_router(
             ),
         )
 
-    router.add_api_route("", publish, methods=["POST"])
-    router.add_api_route("/{publication_id}/revoke", revoke, methods=["POST"])
+    add_capability_route(
+        router,
+        "",
+        publish,
+        methods=["POST"],
+        capability="discovery.manage",
+        operation_id="discovery_supply_publish",
+        owner="discovery",
+    )
+    add_capability_route(
+        router,
+        "/{publication_id}/revoke",
+        revoke,
+        methods=["POST"],
+        capability="discovery.manage",
+        operation_id="discovery_publication_revoke",
+        owner="discovery",
+    )
     return router

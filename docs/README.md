@@ -24,6 +24,12 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
+Native initial provisioning authority is specified in
+`architecture/initial-controller-policy.md`; executed validation and remaining
+production gaps are tracked in `architecture/auth-implementation-status.md`.
+Current agent lifecycle/revision inspection and its explicit read authority are
+specified in `architecture/agent-governance-inspection.md`.
+
 For present-day ownership and boundaries, start here:
 
 1. `10-module-ownership-map.md` — current business-module ownership;
@@ -54,6 +60,13 @@ business owner
 Do not create a second business implementation for agents. `CapabilityDefinition` remains authorization-policy authority; OpenAPI `operationId` identifies one HTTP operation; an optional tool name identifies an agent-facing projection. These identities are related but not interchangeable.
 
 The historical `operational_copilot` package is not a separate source of business truth. Its structured tools are migration input toward the generic authorized operation/tool gateway described by doc 16.
+
+Identity/authentication and deployment references:
+
+- `architecture/identity-provider-and-staff-provisioning-plan.md` — providerless trust root, staff lifecycle and required acceptance journeys;
+- `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
+- `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits.
+- `architecture/auth-implementation-status.md` — dated local verification evidence and remaining identity-plan acceptance gaps; not a production certification.
 
 ## 4. Current capability/domain contracts
 

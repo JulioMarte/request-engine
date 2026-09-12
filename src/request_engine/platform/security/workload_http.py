@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from request_engine.platform.security.http import AuthenticationRequired
 from request_engine.platform.security.native_http import bearer_token
 from request_engine.platform.security.subject_http import (
     AuthenticatedHttpSubject,
@@ -36,13 +37,18 @@ class WorkloadHttpSubjectResolver:
 
 
 class DispatchedBearerSubjectResolver:
-    """Dispatch one bearer token between human sessions and workload credentials.
+    """Dispatch one bearer token between OIDC, human sessions and workload credentials.
 
     Native human sessions and workload credentials share the ``id.secret`` token
     shape, so dispatch is decided by RE-owned state: a token id that resolves to
     a persisted workload credential is authenticated as a workload and must
     never fall back to a human session. Unknown token ids take the native
     session path. Wrong secrets fail closed on their own path.
+
+    A JWT-shaped token (exactly two dot separators) is never a native session or
+    workload credential: when an optional OIDC arm is composed, it is dispatched
+    there and fails closed on its own; when no OIDC arm is composed, it fails
+    closed immediately with no fallthrough to the native path.
     """
 
     def __init__(
@@ -51,13 +57,19 @@ class DispatchedBearerSubjectResolver:
         native_subject_resolver: HttpSubjectResolver,
         workload_authenticator: WorkloadCredentialAuthenticator,
         workload_credential_reader: WorkloadCredentialReader,
+        oidc_subject_resolver: HttpSubjectResolver | None = None,
     ) -> None:
         self._native = native_subject_resolver
         self._workload_authenticator = workload_authenticator
         self._workload_credential_reader = workload_credential_reader
+        self._oidc = oidc_subject_resolver
 
     async def resolve_subject(self, request: Request) -> AuthenticatedHttpSubject:
         raw_token = bearer_token(request)
+        if raw_token.count(".") == 2:
+            if self._oidc is None:
+                raise AuthenticationRequired("Bearer authentication is required")
+            return await self._oidc.resolve_subject(request)
         try:
             parsed = parse_workload_token(raw_token)
         except WorkloadCredentialInvalid:

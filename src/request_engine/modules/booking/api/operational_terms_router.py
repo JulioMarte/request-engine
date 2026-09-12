@@ -12,6 +12,7 @@ from request_engine.modules.booking.application.commands import (
 from request_engine.modules.booking.application.commands import (
     supersede_booking_context_terms as supersede_command,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
@@ -102,6 +103,22 @@ def create_operational_terms_router(
             command,
         )
 
-    router.add_api_route("", configure, methods=["POST"])
-    router.add_api_route("/{current_context_terms_id}/supersede", supersede, methods=["POST"])
+    add_capability_route(
+        router,
+        "",
+        configure,
+        methods=["POST"],
+        capability="catalog.manage",
+        operation_id="booking_context_terms_configure",
+        owner="booking",
+    )
+    add_capability_route(
+        router,
+        "/{current_context_terms_id}/supersede",
+        supersede,
+        methods=["POST"],
+        capability="catalog.manage",
+        operation_id="booking_context_terms_supersede",
+        owner="booking",
+    )
     return router

@@ -17,6 +17,7 @@ from .http_surface_contract_support import (
     operation_contract,
 )
 from .http_surface_current import PUBLIC_HTTP_OPERATIONS, operation_keys
+from .operational_http_surface import operational_keys
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _SIGNING_KEY = b"request-engine-e2e-contract-signing-key"
@@ -64,7 +65,11 @@ def _app(e2e_session_factory: SessionFactory):
 async def test_public_http_surface_cannot_grow_without_e2e_classification(
     e2e_session_factory: SessionFactory,
 ) -> None:
-    assert _public_operations(_app(e2e_session_factory).openapi()) == operation_keys()
+    # The single-app composition mounts the business surface and the operational
+    # configuration surface; each is classified by its own registry.
+    assert _public_operations(_app(e2e_session_factory).openapi()) == (
+        operation_keys() | operational_keys()
+    )
 
 
 @pytest.mark.asyncio

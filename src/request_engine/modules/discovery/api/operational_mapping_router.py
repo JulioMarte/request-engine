@@ -17,6 +17,7 @@ from request_engine.modules.discovery.application.commands.revoke_mapping import
     RevokeOfferingServiceClassificationCommand,
     revoke_offering_service_classification,
 )
+from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
 
@@ -71,14 +72,22 @@ def create_mapping_router(
             ),
         )
 
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{offering_id}/classification",
         map_offering,
+        capability="discovery.manage",
+        operation_id="discovery_offering_classification_set",
+        owner="discovery",
         methods=["PUT"],
     )
-    router.add_api_route(
+    add_capability_route(
+        router,
         "/{offering_id}/classification/revoke",
         revoke_mapping,
+        capability="discovery.manage",
+        operation_id="discovery_offering_classification_revoke",
+        owner="discovery",
         methods=["POST"],
     )
     return router

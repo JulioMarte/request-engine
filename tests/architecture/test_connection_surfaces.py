@@ -28,6 +28,8 @@ ENTRYPOINT_ALLOWED_PYTHON = {
     "operational_composition.py",
     "operational_errors.py",
     "operator_resolution.py",
+    # Private platform-plane composition only; Tenancy owns its DTOs and commands.
+    "platform_control_app.py",
     "security.py",
 }
 
@@ -101,8 +103,14 @@ def test_operational_http_module_installers_are_connection_surfaces() -> None:
         assert "actor_resolver: ActorResolver" in source
 
 
-def test_public_and_operational_composition_roots_are_separate() -> None:
+def test_single_app_composition_is_the_only_business_plus_operational_root() -> None:
+    # Accepted single-app composition (owner decision): create_app mounts the
+    # business modules AND the operational configuration modules on one app.
+    # create_operational_app remains the operator-only subset composition and
+    # must never grow business module composition of its own.
     public_source = (HTTP_ENTRYPOINT / "app.py").read_text(encoding="utf-8")
     operational_source = (HTTP_ENTRYPOINT / "operational_app.py").read_text(encoding="utf-8")
-    assert "operational_composition" not in public_source
+    assert "module_composition" in public_source
+    assert "operational_composition" in public_source
+    assert "operational_composition" in operational_source
     assert "module_composition" not in operational_source

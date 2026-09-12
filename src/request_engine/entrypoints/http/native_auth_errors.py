@@ -14,9 +14,37 @@ from request_engine.platform.security.identity_resolution import (
     TenantContextAmbiguous,
     TenantContextRequired,
 )
-from request_engine.platform.security.native_auth import NativeAuthenticationError
+from request_engine.platform.security.native_auth import (
+    NativeAuthenticationError,
+    PasswordPolicyViolation,
+)
 from request_engine.platform.security.native_http import TenantContextInvalid
+from request_engine.platform.security.native_human_auth import NativeIdentityAlreadyExists
+from request_engine.platform.security.oidc_auth import OidcAuthenticationRequired
 from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
+
+
+def native_identity_input_error_response(
+    exc: NativeIdentityAlreadyExists | PasswordPolicyViolation,
+) -> JSONResponse:
+    duplicate = isinstance(exc, NativeIdentityAlreadyExists)
+    return render_error_response(
+        status.HTTP_409_CONFLICT if duplicate else status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ErrorBody(
+            code="native_identity_already_exists" if duplicate else "password_policy_violation",
+            message=(
+                "the native login handle is already enrolled"
+                if duplicate
+                else (
+                    "password must be valid UTF-8 with at least 12 characters "
+                    "and at most 1024 bytes"
+                )
+            ),
+            resolution=ErrorResolution.REAUTHENTICATE if duplicate else ErrorResolution.FIX_REQUEST,
+            retryable=False,
+        ),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
 
 
 async def native_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -42,6 +70,21 @@ async def workload_authentication_error_handler(_: Request, exc: Exception) -> J
         ErrorBody(
             code="credential_invalid",
             message="the workload credential is invalid or no longer usable",
+            resolution=ErrorResolution.REAUTHENTICATE,
+            retryable=False,
+        ),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def oidc_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, OidcAuthenticationRequired):
+        raise exc
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="credential_invalid",
+            message="the OIDC bearer token is invalid or not federated",
             resolution=ErrorResolution.REAUTHENTICATE,
             retryable=False,
         ),

@@ -10,6 +10,9 @@ from request_engine.platform.security.capability_registry_catalog_supply import 
 from request_engine.platform.security.capability_registry_delivery_live import (
     LIVE_DELIVERY_CAPABILITIES,
 )
+from request_engine.platform.security.capability_registry_discovery_operations import (
+    DISCOVERY_OPERATIONAL_CAPABILITIES,
+)
 from request_engine.platform.security.capability_registry_live_capacity import (
     LIVE_CAPACITY_CAPABILITIES,
 )
@@ -40,6 +43,7 @@ LIVE_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
     + LIVE_DELIVERY_CAPABILITIES
     + LIVE_CAPACITY_CAPABILITIES
     + BOOKING_OPERATIONAL_CAPABILITIES
+    + DISCOVERY_OPERATIONAL_CAPABILITIES
     + CATALOG_SUPPLY_CAPABILITIES
     + BOOKING_DAY_BOARD_CAPABILITIES
     + OPERATIONAL_RECOVERY_CAPABILITIES

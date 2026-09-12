@@ -52,7 +52,13 @@ def create_operational_app(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
 ) -> FastAPI:
-    """Compose the authenticated operator/control-plane HTTP process."""
+    """Operator-only subset composition retained for legacy/e2e compositions.
+
+    The canonical single-app composition is create_native_app (via create_app),
+    which mounts the same operational configuration surfaces alongside the
+    business modules. This subset composition exists for operator-only test
+    worlds and legacy compositions that materialize an actor resolver directly.
+    """
 
     request_actor_resolver = RequestExecutionActorResolver(actor_resolver)
     app = FastAPI(

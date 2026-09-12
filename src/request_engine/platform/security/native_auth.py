@@ -170,7 +170,10 @@ def _validate_password(password: str) -> bytes:
         raise PasswordPolicyViolation(
             f"password must contain at least {_MIN_PASSWORD_LENGTH} characters"
         )
-    password_bytes = password.encode("utf-8")
+    try:
+        password_bytes = password.encode("utf-8")
+    except UnicodeError as exc:
+        raise PasswordPolicyViolation("password must be valid UTF-8") from exc
     if len(password_bytes) > _MAX_PASSWORD_BYTES:
         raise PasswordPolicyViolation("password is too large")
     return password_bytes

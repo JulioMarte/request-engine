@@ -6,7 +6,12 @@ from fastapi import Request
 
 from request_engine.platform.security.authentication import AuthenticatedSubject
 from request_engine.platform.security.context import ActorContext
-from request_engine.platform.security.tenant_http import tenant_context
+from request_engine.platform.security.platform_context import PlatformActorContext
+from request_engine.platform.security.tenant_http import (
+    ORGANIZATION_HEADER,
+    TenantContextInvalid,
+    tenant_context,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +75,48 @@ class ProviderNeutralHttpActorResolver:
         return await self._principal_resolver.resolve_tenant_actor(
             subject=authenticated.subject,
             organization_id=tenant_context(request),
+            authentication_method=authenticated.authentication_method,
+            credential_id=authenticated.credential_id,
+            technical_principal_id=authenticated.technical_principal_id,
+            interaction_id=authenticated.interaction_id,
+        )
+
+
+class PlatformPrincipalMaterializer(Protocol):
+    async def resolve_platform_actor(
+        self,
+        *,
+        subject: AuthenticatedSubject,
+        authentication_method: str,
+        credential_id: str | None = None,
+        technical_principal_id: UUID | None = None,
+        interaction_id: str | None = None,
+    ) -> PlatformActorContext: ...
+
+
+class ProviderNeutralPlatformHttpActorResolver:
+    """Authenticate a platform caller without a client-selected authority plane.
+
+    Composition selects this boundary explicitly. Tenant selectors are rejected;
+    identity and standing authority still come from the same provider-neutral
+    authentication and current RE binding/materialization contracts.
+    """
+
+    def __init__(
+        self,
+        *,
+        subject_resolver: HttpSubjectResolver,
+        principal_resolver: PlatformPrincipalMaterializer,
+    ) -> None:
+        self._subject_resolver = subject_resolver
+        self._principal_resolver = principal_resolver
+
+    async def resolve_platform_actor(self, request: Request) -> PlatformActorContext:
+        if ORGANIZATION_HEADER in request.headers:
+            raise TenantContextInvalid("Platform control does not accept a tenant selector")
+        authenticated = await self._subject_resolver.resolve_subject(request)
+        return await self._principal_resolver.resolve_platform_actor(
+            subject=authenticated.subject,
             authentication_method=authenticated.authentication_method,
             credential_id=authenticated.credential_id,
             technical_principal_id=authenticated.technical_principal_id,

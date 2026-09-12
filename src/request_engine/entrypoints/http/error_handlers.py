@@ -18,14 +18,17 @@ from request_engine.entrypoints.http.native_auth_errors import (
     delegation_resolution_error_handler,
     identity_resolution_error_handler,
     native_authentication_error_handler,
+    oidc_authentication_error_handler,
     tenant_context_error_handler,
     workload_authentication_error_handler,
 )
 from request_engine.entrypoints.http.operational_errors import (
     operational_authority_required_handler,
+    public_contact_validation_error_handler,
 )
 from request_engine.platform.http.errors import ErrorBody, ErrorResolution
 from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.public_contacts import PublicContactValidationError
 from request_engine.platform.security.acting_operator import (
     AgentActingOperatorRelayForbidden,
     OperatorResolutionUnavailable,
@@ -49,6 +52,7 @@ from request_engine.platform.security.identity_resolution import (
 )
 from request_engine.platform.security.native_auth import NativeAuthenticationError
 from request_engine.platform.security.native_http import TenantContextInvalid
+from request_engine.platform.security.oidc_auth import OidcAuthenticationRequired
 from request_engine.platform.security.operational_authority import OperationalAuthorityRequired
 from request_engine.platform.security.workload_auth import WorkloadAuthenticationError
 
@@ -123,6 +127,7 @@ def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
     app.add_exception_handler(NativeAuthenticationError, native_authentication_error_handler)
     app.add_exception_handler(WorkloadAuthenticationError, workload_authentication_error_handler)
+    app.add_exception_handler(OidcAuthenticationRequired, oidc_authentication_error_handler)
     app.add_exception_handler(DelegationResolutionError, delegation_resolution_error_handler)
     app.add_exception_handler(TenantContextRequired, tenant_context_error_handler)
     app.add_exception_handler(TenantContextInvalid, tenant_context_error_handler)
@@ -147,6 +152,7 @@ def add_global_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AgentPolicyDenied, agent_policy_denied_handler)
     app.add_exception_handler(AgentRiskDenied, agent_risk_denied_handler)
     app.add_exception_handler(AgentBudgetExceeded, agent_budget_exceeded_handler)
+    app.add_exception_handler(PublicContactValidationError, public_contact_validation_error_handler)
     app.add_exception_handler(IdempotencyConflict, idempotency_conflict_handler)
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)

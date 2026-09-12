@@ -3,6 +3,10 @@ from typing import cast
 from request_engine.platform.security.capabilities import CapabilityDefinition
 
 _OPERATION_ID_OVERRIDES = {
+    "agent.list": "agent_list",
+    "agent.get": "agent_get",
+    "staff.list": "staff_list",
+    "staff.get": "staff_get",
     "live_capacity.scope.update": "live_capacity_configure_scope_update",
     "agent.policy.replace": "agent_policy_replace",
     "live_capacity.estimate.update": "live_capacity_configure_estimate_update",
@@ -70,4 +74,13 @@ def header_parameters(operation: dict[str, object]) -> dict[str, bool]:
 
 
 def expected_operation_id(name: str, definition: CapabilityDefinition) -> str:
+    if name in {
+        "integration.list",
+        "integration.read",
+        "integration.credential.rotate",
+        "integration.activate.command",
+        "integration.suspend.command",
+        "integration.revoke.command",
+    }:
+        return name.replace(".", "_")
     return _OPERATION_ID_OVERRIDES.get(name, definition.key.replace(".", "_"))
