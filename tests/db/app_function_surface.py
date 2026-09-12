@@ -5,6 +5,15 @@
 # Trigger functions carry no caller-facing EXECUTE grant by design.
 
 REVIEWED_APP_EXECUTE_ALLOWLIST = {
+    # 0030: current HUMAN manager revalidation, bounded credential replacement,
+    # and tenant-local inspection. Private state mutators remain owner-only.
+    "request_cmd.assert_integration_manager(p_capability text)",
+    (
+        "request_cmd.rotate_integration_credential(p_principal_id uuid, "
+        "p_expected_revision bigint, p_credential_id uuid, p_digest bytea, "
+        "p_fingerprint text, p_expires_at timestamp with time zone, p_reference text)"
+    ),
+    "request_read.integrations(p_principal_id uuid, p_after uuid, p_limit integer)",
     (
         "request_cmd.acquire_idempotency(p_organization_id uuid, p_principal_id uuid, "
         "p_capability text, p_idempotency_key text, p_request_fingerprint text)"
@@ -79,7 +88,18 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     ),
     "request_engine.read_discovery_booking_handoff(p_token_hash text)",
     (
+        "request_engine.provision_integration(p_principal_id uuid, p_binding_id uuid, "
+        "p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, "
+        "p_token_digest bytea, p_token_fingerprint text, p_credential_expires_at "
+        "timestamp with time zone, p_provenance_reference text)"
+    ),
+    (
         "request_engine.replace_agent_authority(p_principal_id uuid, "
+        "p_expected_authority_revision bigint, p_desired_capabilities text[], "
+        "p_provenance_reference text)"
+    ),
+    (
+        "request_engine.replace_integration_authority(p_principal_id uuid, "
         "p_expected_authority_revision bigint, p_desired_capabilities text[], "
         "p_provenance_reference text)"
     ),
@@ -95,6 +115,10 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     (
         "request_engine.revoke_delegation(p_id uuid, p_expected_revision bigint, "
         "p_provenance_reference text)"
+    ),
+    (
+        "request_engine.set_integration_status(p_principal_id uuid, "
+        "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),
     (
         "request_engine.transition_agent_profile(p_principal_id uuid, "

@@ -185,6 +185,30 @@ class AgentGovernanceInputInvalid(AgentGovernanceError):
     """The requested Agent governance mutation violates an input contract."""
 
 
+class IntegrationGovernanceError(Exception):
+    """Base class for stable INTEGRATION governance failures."""
+
+
+class IntegrationGovernanceForbidden(IntegrationGovernanceError):
+    """The current actor may not perform the requested INTEGRATION governance operation."""
+
+
+class IntegrationGovernanceNotFound(IntegrationGovernanceError):
+    """No INTEGRATION Principal is visible in the current tenant for the supplied identifier."""
+
+
+class IntegrationGovernanceRevisionConflict(IntegrationGovernanceError):
+    """The requested INTEGRATION Principal or authority revision is stale."""
+
+
+class IntegrationGovernanceConflict(IntegrationGovernanceError):
+    """The requested INTEGRATION governance mutation conflicts with current persisted state."""
+
+
+class IntegrationGovernanceInputInvalid(IntegrationGovernanceError):
+    """The requested INTEGRATION governance mutation violates an input contract."""
+
+
 class AgentPolicyError(Exception):
     """Base class for stable Agent policy failures."""
 

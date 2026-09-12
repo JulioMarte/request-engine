@@ -10,6 +10,7 @@ from .http_surface_f5_workflow import F5_WORKFLOW_HTTP_OPERATIONS
 from .http_surface_f6 import F6_HTTP_OPERATIONS
 from .http_surface_f6_tools import F6_TOOL_HTTP_OPERATIONS
 from .http_surface_f7 import F7_HTTP_OPERATIONS
+from .http_surface_integration import INTEGRATION_HTTP_OPERATIONS
 from .http_surface_onboarding import ONBOARDING_HTTP_OPERATIONS
 from .http_surface_operation_catalog import OPERATION_CATALOG_HTTP_OPERATIONS
 from .http_surface_s0b import S0B_HTTP_OPERATIONS
@@ -37,6 +38,7 @@ PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     + ONBOARDING_HTTP_OPERATIONS
     + STAFF_HTTP_OPERATIONS
     + AGENT_HTTP_OPERATIONS
+    + INTEGRATION_HTTP_OPERATIONS
     + DELEGATION_HTTP_OPERATIONS
     + OPERATION_CATALOG_HTTP_OPERATIONS
 )
