@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -76,7 +77,7 @@ def test_sigkill_after_claim_is_recoverable_and_stale_worker_is_fenced(
     admin_conn: PgConnection,
     tmp_path: Path,
 ) -> None:
-    """Kill a real worker after claim COMMIT, then prove lease recovery and fencing."""
+    """Hard-kill after COMMIT (SIGKILL/POSIX, TerminateProcess/Windows), then recover."""
 
     organization_id, action_id = _fixture(admin_conn)
     result_path = tmp_path / "claimed.json"
@@ -106,15 +107,19 @@ with open(result_path, "w", encoding="utf-8") as handle:
     )
     handle.flush()
     os.fsync(handle.fileno())
-os.kill(os.getpid(), signal.SIGKILL)
+# Windows os.kill maps non-console signals to unconditional TerminateProcess;
+# SIGKILL does not exist there. Neither branch performs Python/DB cleanup.
+os.kill(os.getpid(), signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
 '''
     process = subprocess.run(
         [sys.executable, "-c", child, _conninfo(), str(action_id), str(result_path)],
         check=False,
         capture_output=True,
         text=True,
+        timeout=15,
     )
-    assert process.returncode < 0
+    expected_exit = int(signal.SIGTERM) if os.name == "nt" else -int(signal.SIGKILL)
+    assert process.returncode == expected_exit, process.stderr
     assert result_path.exists(), process.stderr
     first_claim = json.loads(result_path.read_text(encoding="utf-8"))
     first_token = UUID(first_claim["claim_token"])

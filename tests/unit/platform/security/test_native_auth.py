@@ -41,9 +41,10 @@ def test_password_hash_uses_fresh_salt() -> None:
     assert verify_password(password, second)
 
 
-def test_password_policy_rejects_short_password() -> None:
+@pytest.mark.parametrize("password", ["too-short", "\U0001f512" * 300, "invalid-utf8-\ud800"])
+def test_password_policy_rejects_invalid_password(password: str) -> None:
     with pytest.raises(PasswordPolicyViolation):
-        hash_password("too-short")
+        hash_password(password)
 
 
 def test_malformed_password_verifier_fails_closed() -> None:

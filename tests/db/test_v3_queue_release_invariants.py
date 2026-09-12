@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, LiteralString, cast
 from uuid import UUID, uuid4
 
@@ -131,9 +130,7 @@ def test_i35_queue_position_is_derived_and_has_no_authoritative_counter(
     }
     assert columns.isdisjoint(forbidden_authoritative_position_columns)
 
-    reader_source = Path(
-        "src/request_engine/modules/queue/adapters/db/service_queue_reader.py"
-    ).read_text(encoding="utf-8")
-    assert "SELECT count(*)" in reader_source
-    assert "AND status = 'waiting'" in reader_source
-    assert "AND (admitted_at, id) < (:admitted_at, :entry_id)" in reader_source
+    # ADAPT: SQL spelling is not an independent behavioral oracle. Current
+    # waiting/recall/skip ordering is executed through the real reader in
+    # integration/v3_first_vertical/test_customer_queue_position_triage.py,
+    # owned by the current-product queue-current-read-truth lane.
