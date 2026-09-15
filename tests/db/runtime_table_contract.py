@@ -5,6 +5,7 @@
 PRIVATE_GLOBAL_TABLES = {
     "initial_controller_policies",
     "global_identities",
+    "platform_authority_lifecycle_facts",
     "shared_capacity_authority_events",
     "shared_capacity_bindings",
     "shared_capacity_claim_links",
@@ -66,6 +67,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
         (
             "identity_authorities",
             "identity_exchange_candidates",
+            "identity_recovery_cases",
+            "identity_recovery_delivery_tickets",
             "integration_governance_facts",
             "native_credentials",
             "native_identities",
@@ -75,6 +78,7 @@ EXPECTED_TABLE_EXCEPTIONS = {
             "organization_provisioning_facts",
             "organization_root_provisioning_facts",
             "platform_bootstrap_intents",
+            "platform_identity_recovery_facts",
             "portable_party_identifiers",
             "portable_party_identities",
             "portable_party_profiles",

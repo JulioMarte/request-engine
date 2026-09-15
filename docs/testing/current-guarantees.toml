@@ -21,6 +21,20 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-CONTROLLER-CONTINUITY-001"
+statement = "A tenant or platform plane cannot lose every effective controller: a controller needs an active Principal, an active membership where the plane is tenant, the current control grants and at least one active binding to an active authority, with an active native identity and password credential where the subject is native."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-PLATFORM-LIFECYCLE-001"
+statement = "Platform provisioner lifecycle transitions are revisioned, idempotent, append-only audited and terminal on revoke; reactivation requires an authenticatable native path and never restores revoked authority."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-ATOMICITY-001"
 statement = "A failed transactional command cannot leave a partially committed business outcome or partially consumed commitment."
 severity = "critical"
@@ -290,5 +304,33 @@ risk = ["security"]
 id = "INV-AGENT-BUDGET-001"
 statement = "Per-minute agent mutation budgets are enforced through a race-safe conditional upsert so concurrent requests cannot exceed the configured limit within one window; exhausted budgets deny further mutations with 429 while read operations and other agents' budgets remain unaffected."
 severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-TOPOLOGY-GATE-001"
+statement = "Every command that can alter identity bindings, control grants, staff memberships or the reachability they express acquires the transaction-scoped identity-topology advisory gate as its first statement, before any row lock; global disable or global authority modification takes it exclusively, ordinary reads and native login never acquire it, and any unclassified topology writer fails a deterministic inventory proof."
+severity = "critical"
+required_evidence = ["invariant", "adversarial", "concurrency"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-RECOVERY-001"
+statement = "Governed native identity recovery requires a distinct HUMAN platform approver, stages the raw proof outside authoritative locks in a dedicated secret-delivery boundary, issues through one authoritative transaction that links case, recovery intent and delivery ticket, revokes intent and ticket atomically, and links consumption to the case in the same transaction; no raw proof reaches tables, audit facts, ordinary outbox or administrative responses."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-IDENTITY-BINDING-READ-001"
+statement = "Tenant identity-binding inspection requires an explicit current identity.binding.read grant held by a HUMAN actor; the projection is tenant-opaque, so a foreign or absent binding is indistinguishable and never addressable, it never exposes the binding subject or verifier, and a read performs no authoritative mutation."
+severity = "high"
+required_evidence = ["invariant", "contract"]
+risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+statement = "A tenant identity-binding suspend/reactivate/revoke command requires an explicit current identity.bind grant held by a HUMAN actor, acquires the identity-topology gate and the ordered active-staff-membership lock root before any specific binding row, increments the binding revision exactly once under idempotency, rejects a stale revision, keeps revoke terminal, never resurrects a revoked binding, cannot remove the tenant's last authenticatable controller, and treats a foreign or absent binding as indistinguishable."
+severity = "high"
 required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["security"]

@@ -5,6 +5,8 @@ from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.native_human_auth import (
+    NativeEnrollmentOutcome,
+    NativeEnrollmentOutcomeInvalid,
     NativeHumanAuthStore,
     NativePasswordCredentialSnapshot,
 )
@@ -73,25 +75,37 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
         login_handle: str,
         credential_id: UUID,
         verifier: str,
-    ) -> bool:
-        return await self._call_boolean(
-            """
-            SELECT request_auth.create_native_identity(
-                :identity_authority_id,
-                :native_identity_id,
-                :login_handle,
-                :credential_id,
-                :verifier
-            )
-            """,
-            {
-                "identity_authority_id": identity_authority_id,
-                "native_identity_id": native_identity_id,
-                "login_handle": login_handle,
-                "credential_id": credential_id,
-                "verifier": verifier,
-            },
-        )
+    ) -> NativeEnrollmentOutcome:
+        async with self._session_factory() as session, session.begin():
+            value = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT request_auth.create_native_identity(
+                            :identity_authority_id,
+                            :native_identity_id,
+                            :login_handle,
+                            :credential_id,
+                            :verifier
+                        )
+                        """
+                    ),
+                    {
+                        "identity_authority_id": identity_authority_id,
+                        "native_identity_id": native_identity_id,
+                        "login_handle": login_handle,
+                        "credential_id": credential_id,
+                        "verifier": verifier,
+                    },
+                )
+            ).scalar_one()
+        if value is True:
+            return NativeEnrollmentOutcome.CREATED
+        if value is False:
+            return NativeEnrollmentOutcome.DUPLICATE
+        if value is None:
+            return NativeEnrollmentOutcome.AUTHORITY_UNAVAILABLE
+        raise NativeEnrollmentOutcomeInvalid(f"unexpected create_native_identity result: {value!r}")
 
     async def create_session(
         self,

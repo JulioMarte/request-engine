@@ -69,6 +69,12 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
         controller_principal_id=controller_principal_id,
         capability_key="appointments.book",
     )
+    grant_controller_delegable_operational_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+        capability_key="authority.read_self",
+    )
     grant_agent_policy_authority(
         e2e_admin_conn,
         organization_id=organization_id,
@@ -222,6 +228,14 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
         )
         assert still_allowed_read.status_code == 200, still_allowed_read.text
 
+        catalog_headers = tenant_headers(token=workload_token, organization_id=organization_id)
+        narrow_catalog = await client.get("/v1/operation-catalog", headers=catalog_headers)
+        assert narrow_catalog.status_code == 200, narrow_catalog.text
+        assert {item["capability"] for item in narrow_catalog.json()["operations"]} == {
+            "parties.lookup"
+        }
+        assert narrow_catalog.json()["agent_policy_revision"] == 1
+
         widened = await provision_agent_policy(
             client,
             controller_headers=controller_headers,
@@ -264,8 +278,173 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
             (agent_principal_id,),
         ).fetchone() == (2, "active")
 
+        budget_before = e2e_admin_conn.execute(
+            "SELECT sum(mutation_count) FROM request_engine.agent_budget_windows "
+            "WHERE agent_principal_id = %s",
+            (agent_principal_id,),
+        ).fetchone()
+        catalog = await client.get("/v1/operation-catalog", headers=catalog_headers)
+        assert catalog.status_code == 200, catalog.text
+        assert catalog.headers["cache-control"] == "no-store"
+        assert catalog.json()["requires_owner_validation"] is True
+        assert catalog.json()["agent_policy_revision"] == 2
+        assert {item["capability"] for item in catalog.json()["operations"]} == {
+            "parties.lookup",
+            "parties.register",
+        }
+        schema_response = await client.get(catalog.json()["openapi_url"])
+        assert schema_response.status_code == 200
+        for item in catalog.json()["operations"]:
+            resolved = schema_response.json()
+            for segment in item["openapi_pointer"].split("/")[1:]:
+                resolved = resolved[segment.replace("~1", "/").replace("~0", "~")]
+            assert resolved["operationId"] == item["operation_id"]
+        assert (
+            e2e_admin_conn.execute(
+                "SELECT sum(mutation_count) FROM request_engine.agent_budget_windows "
+                "WHERE agent_principal_id = %s",
+                (agent_principal_id,),
+            ).fetchone()
+            == budget_before
+        )
+
+        # AGENT self-inspection requires both a current explicit standing grant
+        # and a current READ policy; neither is implied by another grant.
+        granted_revision = principal_revision(e2e_admin_conn, agent_principal_id)
+        self_authority_granted = await client.put(
+            f"/v1/agents/{agent_principal_id}/authority",
+            headers=tenant_headers(
+                token=root_token,
+                organization_id=organization_id,
+                idempotency_key=f"agent-self-authority-{uuid4().hex}",
+            ),
+            json={
+                "expected_authority_revision": granted_revision,
+                "desired_capabilities": [
+                    "parties.register",
+                    "parties.lookup",
+                    "appointments.book",
+                    "authority.read_self",
+                ],
+                "provenance_reference": "native-agent-e2e-self-authority",
+            },
+        )
+        assert self_authority_granted.status_code == 200, self_authority_granted.text
+        with_self_policy = await provision_agent_policy(
+            client,
+            controller_headers=controller_headers,
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=[
+                "parties.register",
+                "parties.lookup",
+                "appointments.book",
+                "authority.read_self",
+            ],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=10,
+        )
+        assert with_self_policy["policy_revision"] == 3
+
+        budget_before_self_read = e2e_admin_conn.execute(
+            "SELECT sum(mutation_count) FROM request_engine.agent_budget_windows "
+            "WHERE agent_principal_id = %s",
+            (agent_principal_id,),
+        ).fetchone()
+        self_authority = await client.get(
+            "/v1/me/authority",
+            headers=tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+        )
+        assert self_authority.status_code == 200, self_authority.text
+        assert self_authority.headers["cache-control"] == "no-store"
+        assert self_authority.json()["principal_id"] == str(agent_principal_id)
+        assert self_authority.json()["representations"] == []
+        assert self_authority.json()["next_after"] is None
+        assert self_authority.json()["requires_owner_validation"] is True
+        assert (
+            e2e_admin_conn.execute(
+                "SELECT sum(mutation_count) FROM request_engine.agent_budget_windows "
+                "WHERE agent_principal_id = %s",
+                (agent_principal_id,),
+            ).fetchone()
+            == budget_before_self_read
+        )
+
+        policy_without_self = await provision_agent_policy(
+            client,
+            controller_headers=controller_headers,
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=["parties.register", "parties.lookup", "appointments.book"],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=10,
+        )
+        assert policy_without_self["policy_revision"] == 4
+        denied_by_policy = await client.get(
+            "/v1/me/authority",
+            headers=tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+        )
+        assert denied_by_policy.status_code == 403, denied_by_policy.text
+        assert denied_by_policy.json()["error"]["code"] == "capability_required"
+
+        policy_with_self_again = await provision_agent_policy(
+            client,
+            controller_headers=controller_headers,
+            agent_principal_id=agent_principal_id,
+            allowed_capabilities=[
+                "parties.register",
+                "parties.lookup",
+                "appointments.book",
+                "authority.read_self",
+            ],
+            risk_ceiling="low_impact_write",
+            max_mutations_per_minute=10,
+        )
+        assert policy_with_self_again["policy_revision"] == 5
+        allowed_again = await client.get(
+            "/v1/me/authority",
+            headers=tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+        )
+        assert allowed_again.status_code == 200, allowed_again.text
+
+        revoked_revision = principal_revision(e2e_admin_conn, agent_principal_id)
+        self_authority_revoked = await client.put(
+            f"/v1/agents/{agent_principal_id}/authority",
+            headers=tenant_headers(
+                token=root_token,
+                organization_id=organization_id,
+                idempotency_key=f"agent-self-revoke-{uuid4().hex}",
+            ),
+            json={
+                "expected_authority_revision": revoked_revision,
+                "desired_capabilities": [
+                    "parties.register",
+                    "parties.lookup",
+                    "appointments.book",
+                ],
+                "provenance_reference": "native-agent-e2e-self-revoke",
+            },
+        )
+        assert self_authority_revoked.status_code == 200, self_authority_revoked.text
+        denied_by_grant = await client.get(
+            "/v1/me/authority",
+            headers=tenant_headers(
+                token=workload_token,
+                organization_id=organization_id,
+            ),
+        )
+        assert denied_by_grant.status_code == 403, denied_by_grant.text
+        assert denied_by_grant.json()["error"]["code"] == "capability_required"
+
         unmarked_route = await client.get(
-            "/v1/operation-catalog",
+            "/v1/capabilities",
             headers=tenant_headers(
                 token=workload_token,
                 organization_id=organization_id,

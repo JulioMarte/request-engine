@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Protocol, TypeGuard
 from uuid import UUID, uuid4
 
@@ -31,6 +32,22 @@ class NativeHumanAuthError(RuntimeError):
 
 class NativeIdentityAlreadyExists(NativeHumanAuthError):
     pass
+
+
+class NativeEnrollmentUnavailable(NativeHumanAuthError):
+    """The configured native identity authority cannot accept new enrollments."""
+
+
+class NativeEnrollmentOutcomeInvalid(NativeHumanAuthError):
+    """The store returned a value outside the documented enrollment contract."""
+
+
+class NativeEnrollmentOutcome(StrEnum):
+    """Result of request_auth.create_native_identity: true/false/NULL."""
+
+    CREATED = "created"
+    DUPLICATE = "duplicate"
+    AUTHORITY_UNAVAILABLE = "authority_unavailable"
 
 
 class NativeIdentityNotFound(NativeHumanAuthError):
@@ -96,7 +113,7 @@ class NativeHumanAuthStore(Protocol):
         login_handle: str,
         credential_id: UUID,
         verifier: str,
-    ) -> bool: ...
+    ) -> NativeEnrollmentOutcome: ...
 
     async def create_session(
         self,
@@ -183,15 +200,17 @@ class NativeHumanAuthService:
         native_identity_id = uuid4()
         credential_id = uuid4()
         verifier = await asyncio.to_thread(hash_password, password)
-        created = await self._store.create_identity(
+        outcome = await self._store.create_identity(
             identity_authority_id=identity_authority_id,
             native_identity_id=native_identity_id,
             login_handle=normalized,
             credential_id=credential_id,
             verifier=verifier,
         )
-        if not created:
+        if outcome is NativeEnrollmentOutcome.DUPLICATE:
             raise NativeIdentityAlreadyExists("native login handle is already enrolled")
+        if outcome is NativeEnrollmentOutcome.AUTHORITY_UNAVAILABLE:
+            raise NativeEnrollmentUnavailable("native identity authority is unavailable")
         return NativeIdentityEnrollment(
             native_identity_id=native_identity_id,
             credential_id=credential_id,

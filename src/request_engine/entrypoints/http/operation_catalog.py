@@ -1,10 +1,12 @@
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.capabilities import capability_definition
+from request_engine.platform.security.context import ActorContext, PrincipalKind
 from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.operation_risk import agent_risk_permitted
 
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
 
@@ -23,6 +25,9 @@ class AuthorizedOperationView(BaseModel):
     expected_revision: str
     method: str
     path_template: str
+    openapi_pointer: str
+    party_scope: str | None = None
+    override_capability: str | None = None
     tool_name: str | None = None
     tool_audiences: tuple[str, ...] = ()
 
@@ -31,13 +36,16 @@ class AuthorizedOperationCatalogView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     operations: tuple[AuthorizedOperationView, ...]
+    openapi_url: str | None = None
+    requires_owner_validation: Literal[True] = True
+    agent_policy_revision: int | None = None
 
 
 def authorized_operations(
     openapi: dict[str, object],
     actor: ActorContext,
 ) -> tuple[AuthorizedOperationView, ...]:
-    """Project canonical OpenAPI operations that the current actor may invoke."""
+    """Prefilter mounted operations; owner/Party/resource checks still apply."""
 
     paths_value = openapi.get("paths", {})
     if not isinstance(paths_value, dict):
@@ -74,6 +82,20 @@ def authorized_operations(
                 continue
             if not actor.allows(cast(str, capability)):
                 continue
+            definition = capability_definition(cast(str, capability))
+            if definition is None or not definition.runtime_available:
+                continue
+            if actor.principal_kind is PrincipalKind.AGENT:
+                policy = actor.agent_policy
+                if (
+                    policy is None
+                    or definition.key not in policy.allowed_capabilities
+                    or definition.key in policy.denied_capabilities
+                    or not agent_risk_permitted(
+                        definition.effective_risk_class, policy.risk_ceiling
+                    )
+                ):
+                    continue
 
             tool_name = operation.get("x-request-engine-tool-name")
             audiences_value = operation.get("x-request-engine-tool-audiences", [])
@@ -93,6 +115,14 @@ def authorized_operations(
                     expected_revision=cast(str, revision),
                     method=method.upper(),
                     path_template=path_template,
+                    openapi_pointer=(
+                        "/paths/"
+                        + path_template.replace("~", "~0").replace("/", "~1")
+                        + "/"
+                        + method
+                    ),
+                    party_scope=definition.party_scope,
+                    override_capability=definition.override_capability,
                     tool_name=tool_name if isinstance(tool_name, str) else None,
                     tool_audiences=audiences,
                 )
@@ -109,11 +139,17 @@ def create_operation_catalog_router(*, actor_resolver: ActorResolver) -> APIRout
 
     async def catalog(
         request: Request,
+        response: Response,
         current: Annotated[ActorContext, Depends(actor)],
     ) -> AuthorizedOperationCatalogView:
         openapi = cast(dict[str, object], request.app.openapi())
+        response.headers["Cache-Control"] = "no-store"
         return AuthorizedOperationCatalogView(
             operations=authorized_operations(openapi, current),
+            openapi_url=request.app.openapi_url,
+            agent_policy_revision=(
+                current.agent_policy.policy_revision if current.agent_policy is not None else None
+            ),
         )
 
     router.add_api_route(

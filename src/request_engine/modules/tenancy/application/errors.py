@@ -161,6 +161,30 @@ class StaffMembershipInputInvalid(StaffMembershipError):
     """The requested Staff lifecycle mutation violates an input contract."""
 
 
+class IdentityBindingLifecycleError(Exception):
+    """Base class for stable tenant identity-binding lifecycle failures."""
+
+
+class IdentityBindingLifecycleForbidden(IdentityBindingLifecycleError):
+    """The current actor may not perform the requested identity binding operation."""
+
+
+class IdentityBindingLifecycleNotFound(IdentityBindingLifecycleError):
+    """No identity binding is visible in the current tenant for the supplied identifier."""
+
+
+class IdentityBindingLifecycleRevisionConflict(IdentityBindingLifecycleError):
+    """The requested identity binding revision is stale."""
+
+
+class IdentityBindingLifecycleConflict(IdentityBindingLifecycleError):
+    """The requested identity binding mutation conflicts with current persisted state."""
+
+
+class IdentityBindingLifecycleInputInvalid(IdentityBindingLifecycleError):
+    """The requested identity binding mutation violates an input contract."""
+
+
 class AgentGovernanceError(Exception):
     """Base class for stable Agent governance failures."""
 

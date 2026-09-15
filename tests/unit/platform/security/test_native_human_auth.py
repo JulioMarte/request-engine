@@ -10,6 +10,8 @@ from request_engine.platform.security.native_auth import (
     verify_password,
 )
 from request_engine.platform.security.native_human_auth import (
+    NativeEnrollmentOutcome,
+    NativeEnrollmentUnavailable,
     NativeHumanAuthService,
     NativeIdentityAlreadyExists,
     NativePasswordCredentialSnapshot,
@@ -29,7 +31,7 @@ NEW_PASSWORD = "new correct horse battery staple"
 class FakeNativeHumanAuthStore:
     def __init__(self, snapshot: NativePasswordCredentialSnapshot | None = None) -> None:
         self.snapshot = snapshot
-        self.identity_created = True
+        self.identity_outcome = NativeEnrollmentOutcome.CREATED
         self.session_created = True
         self.recovery_created = True
         self.recovery_result: UUID | None = None
@@ -44,9 +46,9 @@ class FakeNativeHumanAuthStore:
     ) -> NativePasswordCredentialSnapshot | None:
         return self.snapshot
 
-    async def create_identity(self, **kwargs: object) -> bool:
+    async def create_identity(self, **kwargs: object) -> NativeEnrollmentOutcome:
         self.created_identity = kwargs
-        return self.identity_created
+        return self.identity_outcome
 
     async def create_session(self, **kwargs: object) -> bool:
         self.created_session = kwargs
@@ -110,10 +112,22 @@ async def test_enrollment_normalizes_handle_and_persists_only_verifier() -> None
 @pytest.mark.asyncio
 async def test_duplicate_enrollment_has_typed_failure() -> None:
     store = FakeNativeHumanAuthStore()
-    store.identity_created = False
+    store.identity_outcome = NativeEnrollmentOutcome.DUPLICATE
     service = NativeHumanAuthService(store=store, clock=lambda: NOW)
 
     with pytest.raises(NativeIdentityAlreadyExists):
+        await service.enroll_password_identity(
+            identity_authority_id=uuid4(), login_handle="j@example.com", password=PASSWORD
+        )
+
+
+@pytest.mark.asyncio
+async def test_unavailable_authority_enrollment_is_not_reported_as_duplicate() -> None:
+    store = FakeNativeHumanAuthStore()
+    store.identity_outcome = NativeEnrollmentOutcome.AUTHORITY_UNAVAILABLE
+    service = NativeHumanAuthService(store=store, clock=lambda: NOW)
+
+    with pytest.raises(NativeEnrollmentUnavailable):
         await service.enroll_password_identity(
             identity_authority_id=uuid4(), login_handle="j@example.com", password=PASSWORD
         )

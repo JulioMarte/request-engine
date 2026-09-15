@@ -233,6 +233,24 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
             "Authorization": f"Bearer {controller_login.json()['access_token']}",
             "X-RE-Organization-ID": str(organization_id),
         }
+        self_authority = await tenant_client.get("/v1/me/authority", headers=tenant_headers)
+        assert self_authority.status_code == 200, self_authority.text
+        assert self_authority.headers["cache-control"] == "no-store"
+        assert self_authority.json()["principal_id"] == str(controller_id)
+        assert self_authority.json()["requires_owner_validation"] is True
+        assert {item["scope_key"] for item in self_authority.json()["representations"]} == {
+            "operations.manage_profile",
+            "operations.manage_terms",
+            "operations.manage_supply",
+            "operations.manage_discovery",
+        }
+        assert self_authority.json()["next_after"] is None
+        injected = await tenant_client.get(
+            "/v1/me/authority",
+            headers=tenant_headers,
+            params={"principal_id": str(provisioner_id)},
+        )
+        assert injected.status_code == 422
         staff = await tenant_client.get("/v1/staff/members", headers=tenant_headers)
         assert staff.status_code == 200, staff.text
         denied_staff = await tenant_client.get(
@@ -462,7 +480,7 @@ async def test_bootstrapped_controller_provisions_native_human_without_sql_bindi
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts WHERE organization_id=%s",
         (organization_id,),
-    ).fetchone() == ("tenant-controller-v2",)
+    ).fetchone() == ("tenant-controller-v3",)
     # A replay must not undo a later explicit revocation.
     e2e_admin_conn.execute(
         "UPDATE request_engine.principal_authority_grants SET status='revoked', "

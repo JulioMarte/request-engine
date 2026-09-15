@@ -82,6 +82,11 @@ def _integration_capability(
 
 
 IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
+    query_capability(
+        "authority.read_self",
+        CapabilityExposure.OPERATOR,
+        "Inspect the current Principal's active tenant Party relationships and revisions.",
+    ),
     _authority_capability(
         "platform.principal.provision",
         AuthorityPlane.PLATFORM,
@@ -103,10 +108,41 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.SERVER_SELECTED,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
-    _authority_capability(
+    command_capability(
         "platform.identity.recover",
-        AuthorityPlane.PLATFORM,
-        "Execute the narrowly governed platform identity recovery workflow.",
+        CapabilityExposure.OPERATOR,
+        "Request, issue, or revoke a governed native identity recovery case.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    query_capability(
+        "platform.identity.read",
+        CapabilityExposure.OPERATOR,
+        "List and inspect governed identity recovery cases without exposing secrets.",
+        authority_plane=AuthorityPlane.PLATFORM,
+    ),
+    command_capability(
+        "platform.identity.recovery_approve",
+        CapabilityExposure.OPERATOR,
+        "Approve a governed native identity recovery case as a distinct HUMAN operator.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    query_capability(
+        "platform.provisioner.read",
+        CapabilityExposure.OPERATOR,
+        "List and inspect platform provisioners without exposing credentials.",
+        authority_plane=AuthorityPlane.PLATFORM,
+    ),
+    command_capability(
+        "platform.provisioner.manage_lifecycle",
+        CapabilityExposure.OPERATOR,
+        "Suspend, reactivate, or terminally revoke a platform provisioner.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
     _staff_capability(
         "staff.invite",
@@ -180,9 +216,18 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         "integration.suspend",
         "Suspend, reactivate, or revoke an INTEGRATION Principal in the current tenant.",
     ),
-    _authority_capability(
+    query_capability(
+        "identity.binding.read",
+        CapabilityExposure.OPERATOR,
+        "Inspect tenant identity bindings without exposing subjects, tokens or verifiers.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+    ),
+    command_capability(
         "identity.bind",
-        AuthorityPlane.TENANT_CONTROL,
-        "Bind an authenticated external or native subject to an existing Principal.",
+        CapabilityExposure.OPERATOR,
+        "Suspend, reactivate, or revoke a tenant identity binding.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
 )

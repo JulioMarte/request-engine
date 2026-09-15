@@ -23,6 +23,31 @@ path = "tests/e2e/test_discovery_operational_authority_opacity.py"
 evidence = ["contract", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-AUTHORITY-001"
+path = "tests/db/test_native_enrollment_outcomes.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-CONTINUITY-001"
+path = "tests/db/test_staff_membership_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-CONTINUITY-001"
+path = "tests/db/test_platform_provisioner_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-LIFECYCLE-001"
+path = "tests/db/test_platform_provisioner_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-PLATFORM-LIFECYCLE-001"
+path = "tests/e2e/test_native_platform_provisioner_lifecycle_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-ATOMICITY-001"
 path = "tests/integration/v3_booking_commitments/test_reservation_races.py"
 evidence = ["invariant", "adversarial", "concurrency"]
@@ -270,4 +295,54 @@ evidence = ["invariant", "adversarial", "concurrency", "security"]
 [[proofs]]
 guarantee = "INV-AGENT-BUDGET-001"
 path = "tests/e2e/test_native_agent_safety_enforcement.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/db/test_identity_topology_gate.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/e2e/test_identity_topology_gate_login.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-TOPOLOGY-GATE-001"
+path = "tests/db/test_identity_topology_races.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-RECOVERY-001"
+path = "tests/db/test_identity_recovery_governance.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-RECOVERY-001"
+path = "tests/e2e/test_native_identity_recovery_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-READ-001"
+path = "tests/db/test_identity_binding_reads.py"
+evidence = ["invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-READ-001"
+path = "tests/e2e/test_identity_binding_reads_http.py"
+evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/db/test_identity_binding_lifecycle.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/db/test_identity_topology_races.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
+path = "tests/e2e/test_identity_binding_lifecycle_http.py"
 evidence = ["contract", "invariant", "security"]

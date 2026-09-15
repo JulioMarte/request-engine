@@ -125,6 +125,10 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),
     (
+        "request_engine.transition_identity_binding(p_binding_id uuid, "
+        "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
+    ),
+    (
         "request_engine.transition_staff_membership(p_membership_id uuid, "
         "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),

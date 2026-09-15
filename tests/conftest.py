@@ -102,6 +102,18 @@ async def platform_read_session_factory() -> AsyncIterator[SessionFactory]:
                 "GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO {}"
             ).format(sql.Identifier(role_name))
         )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION "
+                "request_platform.read_platform_provisioners(uuid,uuid,integer) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
+        admin.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION "
+                "request_platform.read_identity_recovery_cases(uuid,uuid,integer) TO {}"
+            ).format(sql.Identifier(role_name))
+        )
         engine = create_postgres_engine(_platform_test_url(role_name, role_password))
         yield create_session_factory(engine)
     finally:

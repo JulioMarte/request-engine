@@ -15,11 +15,26 @@ from request_engine.entrypoints.http.platform_control_app import create_platform
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
 from request_engine.platform.db.session import create_postgres_engine, create_session_factory
 
-_READ = "request_platform.read_principal_authority(uuid)"
+_READ = (
+    "request_platform.read_principal_authority(uuid)",
+    "request_platform.read_platform_provisioners(uuid,uuid,integer)",
+    "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
+)
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
 _POLICY = "request_platform.select_initial_controller_policy(text)"
 _ORGANIZATION = (
     "request_platform.provision_native_organization_root(uuid,text,text,uuid,uuid,uuid,uuid,text)"
+)
+_LIFECYCLE = (
+    "request_platform.transition_native_platform_provisioner(uuid,text,bigint,text,text,text,text)"
+)
+_RECOVERY = (
+    "request_platform.create_identity_recovery_case(uuid,uuid,text,text,text,text,text)",
+    "request_platform.approve_identity_recovery_case(uuid,bigint,text,text,text)",
+    "request_platform.prepare_identity_recovery_issue(uuid,bigint,text,text)",
+    "request_platform.issue_identity_recovery_case("
+    "uuid,bigint,integer,uuid,bytea,text,timestamp with time zone,uuid,text,text,text,text)",
+    "request_platform.revoke_identity_recovery_case(uuid,bigint,text,text,text)",
 )
 
 
@@ -73,7 +88,11 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         )
         if direct_authority is not False:
             raise RuntimeError("Platform HTTP connections must use private functions, not tables")
-        required = (_READ,) if group is None else (_PROVISIONER, _ORGANIZATION, _POLICY)
+        required = (
+            _READ
+            if group is None
+            else (_PROVISIONER, _ORGANIZATION, _POLICY, _LIFECYCLE, *_RECOVERY)
+        )
         for function in required:
             if not await connection.scalar(
                 text("SELECT has_function_privilege(current_user, :function, 'EXECUTE')"),
@@ -81,7 +100,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
             ):
                 raise RuntimeError("Platform HTTP connection lacks its required command surface")
         permitted = (
-            [_READ]
+            [*_READ]
             if group is None
             else [*required, "request_platform.provision_tenant_provisioner(uuid,text,text)"]
         )

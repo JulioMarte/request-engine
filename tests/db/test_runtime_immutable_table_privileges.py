@@ -31,6 +31,11 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_definer",
     (
         "request_platform",
+        "read_platform_provisioners",
+        "p_principal_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_definer",
+    (
+        "request_platform",
         "establish_root",
         "p_intent_id uuid, p_token_digest bytea, p_identity_authority_id uuid, "
         "p_native_identity_id uuid, p_login_handle text, p_credential_id uuid, "
@@ -53,6 +58,87 @@ _EXACT_DEFINER_OWNERS = {
         "p_organization_id uuid, p_organization_key text, p_display_name text, "
         "p_organization_party_id uuid, p_controller_principal_id uuid, "
         "p_identity_authority_id uuid, p_native_identity_id uuid, p_provenance_reference text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "transition_native_platform_provisioner",
+        "p_principal_id uuid, p_action text, p_expected_revision bigint, "
+        "p_reason_code text, p_external_case_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "principal_is_effective_platform_controller",
+        "p_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_other_platform_controller",
+        "p_excluded_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_identity_actor",
+        "p_capability text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "create_identity_recovery_case",
+        "p_case_id uuid, p_target_native_identity_id uuid, p_reason_code text, "
+        "p_evidence_reference text, p_delivery_destination_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "approve_identity_recovery_case",
+        "p_case_id uuid, p_expected_revision bigint, p_reason_code text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "prepare_identity_recovery_issue",
+        "p_case_id uuid, p_expected_revision bigint, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "issue_identity_recovery_case",
+        "p_case_id uuid, p_expected_revision bigint, p_generation integer, "
+        "p_recovery_id uuid, p_token_digest bytea, p_token_fingerprint text, "
+        "p_proof_expires_at timestamp with time zone, p_ticket_id uuid, "
+        "p_secret_reference text, p_secret_digest text, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_identity_recovery_case",
+        "p_case_id uuid, p_expected_revision bigint, p_reason_code text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_identity_recovery_cases",
+        "p_case_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "claim_identity_recovery_delivery_tickets",
+        "p_limit integer, p_lease_seconds integer",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "complete_identity_recovery_delivery_ticket",
+        "p_ticket_id uuid, p_claim_token uuid, p_outcome text, p_error_class text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "retry_identity_recovery_delivery_ticket",
+        "p_ticket_id uuid, p_claim_token uuid, p_delay_seconds integer, p_error_class text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "renew_identity_recovery_delivery_ticket_lease",
+        "p_ticket_id uuid, p_claim_token uuid, p_extension_seconds integer",
     ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {

@@ -575,3 +575,33 @@ Research basis for this pattern:
 - Model Context Protocol 2025-11-25 — Tools: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
 These references inform the house pattern. Request Engine remains authoritative for its own tenant, capability, idempotency, concurrency and ownership semantics.
+
+## Agent self-discovery contract (current)
+
+`GET /v1/operation-catalog` (`operation_catalog_list_authorized`) is a technical
+read-only projection owned by HTTP composition, not a new business capability or
+tool execution path. AGENT callers must authenticate normally and have a fresh
+tenant-scoped tool policy. Only this server-marked GET discovery operation is
+admitted without capability-route metadata; all other unmarked agent routes remain
+fail closed. Missing policies still deny every operation.
+
+The projection intersects current grants with allowed minus denied capabilities,
+requires a mounted, registered runtime capability, and applies the same risk rule
+as execution: unclassified risks, above-ceiling operations and authority changes
+are excluded. It consumes no mutation budget and performs no business writes.
+Party/resource authority and owner validation remain mandatory on invocation;
+`requires_owner_validation: true` makes this limitation machine-readable.
+
+The response is `Cache-Control: no-store`, includes the current agent policy
+revision, and identifies the canonical schema using `openapi_url` and each
+operation's JSON `openapi_pointer`. Request/response/error schemas are not copied
+into a second registry. Party scope and override capability describe requirements,
+not proof that the caller satisfies them. Idempotency/revision policy continues
+to come from canonical operation metadata; discovery itself needs neither.
+
+Evidence disposition: ADAPT the native agent journey's catalog rejection into
+fresh-policy/risk-filtered discovery, retaining rejection of the other unmarked
+capability discovery route. Unit proofs reject method/identity/marker spoofing and
+missing policy; PostgreSQL HTTP proof verifies policy changes, canonical schema
+resolution, excluded-command execution denial and unchanged mutation budget.
+Canonical lanes: Python quality and PostgreSQL current product proof.

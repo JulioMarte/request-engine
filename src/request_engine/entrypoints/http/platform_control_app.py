@@ -6,10 +6,15 @@ from fastapi import FastAPI, Request, Response
 from request_engine.entrypoints.http.error_handlers import add_global_error_handlers
 from request_engine.entrypoints.http.native_auth import create_native_auth_router
 from request_engine.entrypoints.http.native_runtime import build_native_auth_runtime
+from request_engine.modules.tenancy.api.identity_recovery import install_identity_recovery_http
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
 )
+from request_engine.modules.tenancy.api.platform_provisioner_management import (
+    install_native_platform_provisioner_management_http,
+)
 from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.secrets.delivery import RecoverySecretDelivery
 
 
 def create_platform_control_app(
@@ -18,6 +23,7 @@ def create_platform_control_app(
     platform_read_session_factory: SessionFactory,
     platform_write_session_factory: SessionFactory,
     native_authority_id: UUID,
+    recovery_delivery: RecoverySecretDelivery | None = None,
 ) -> FastAPI:
     """Explicit private control-plane composition; caller owns pool lifecycles.
 
@@ -52,5 +58,18 @@ def create_platform_control_app(
         session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
         native_authority_id=native_authority_id,
+    )
+    install_native_platform_provisioner_management_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_write_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+    )
+    install_identity_recovery_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_write_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
+        delivery=recovery_delivery,
     )
     return app

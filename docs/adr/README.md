@@ -32,3 +32,4 @@ Current records:
 - `0010-reservation-access-delivery-boundary.md` — proposed boundary to be accepted only after the ReservationAccess implementation and evidence prove it.
 - `0011-cross-tenant-identity-and-shared-capacity.md` — proposed post-freeze direction; not part of the V3 baseline.
 - `0012-contextual-resource-location-supply.md` — accepted post-V3 Resource-at-Location/contextual booking-supply architecture, proven by PR #75 exact-head CI and integrated into `development` on 2026-08-22.
+- `0013-identity-security-decision-gates.md` — accepted D1–D6 security decision gates for identity recovery, secret delivery, linking, continuity, topology serialization and operational acceptance.

@@ -185,6 +185,10 @@ async def test_native_platform_http_actor_uses_current_binding_and_authority(
             "organization.provision",
             "platform.principal.provision",
             "platform.identity.recover",
+            "platform.identity.read",
+            "platform.identity.recovery_approve",
+            "platform.provisioner.read",
+            "platform.provisioner.manage_lifecycle",
         }
     )
     revision = admin_conn.execute(

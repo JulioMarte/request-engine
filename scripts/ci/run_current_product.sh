@@ -100,6 +100,8 @@ uv run pytest \
   tests/db/test_principal_trust_root.py \
   tests/db/test_principal_authority_grants.py \
   tests/db/test_identity_bindings.py \
+  tests/db/test_identity_binding_reads.py \
+  tests/db/test_identity_binding_lifecycle.py \
   tests/db/test_platform_control_read_boundary.py \
   tests/db/test_platform_definer_topology.py \
   tests/db/test_platform_root_bootstrap_intents.py \
@@ -111,10 +113,15 @@ uv run pytest \
   tests/db/test_native_tenant_root_bootstrap.py \
   tests/db/test_native_identity_actor_runtime.py \
   tests/db/test_native_human_auth_runtime.py \
+  tests/db/test_native_recovery_lock_order.py \
+  tests/db/test_native_authority_suspension.py \
+  tests/db/test_native_authority_suspension_locks.py \
+  tests/db/test_native_enrollment_outcomes.py \
   tests/db/test_native_authority_probe.py \
   tests/db/test_workload_authentication.py \
   tests/db/test_agent_governance.py \
   tests/db/test_agent_governance_reader.py \
+  tests/db/test_self_authority_reader.py \
   tests/db/test_agent_policy.py \
   tests/db/test_delegation_concurrency.py \
   tests/db/test_integration_governance.py \
@@ -122,6 +129,10 @@ uv run pytest \
   tests/db/test_staff_membership_lifecycle.py \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
+  tests/db/test_platform_provisioner_lifecycle.py \
+  tests/db/test_identity_topology_gate.py \
+  tests/db/test_identity_topology_races.py \
+  tests/db/test_identity_recovery_governance.py \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/principal-authority.xml"
 

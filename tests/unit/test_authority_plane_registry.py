@@ -6,6 +6,8 @@ from request_engine.platform.security.capabilities import (
     capability_definition,
     grant_satisfies,
 )
+from request_engine.platform.security.capability_types import IdempotencyPolicy
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 
 def _plane(key: str) -> AuthorityPlane:
@@ -20,6 +22,8 @@ def test_normative_identity_authority_capabilities_are_registered_by_plane() -> 
         "platform.tenant_provisioner.provision",
         "organization.provision",
         "platform.identity.recover",
+        "platform.provisioner.read",
+        "platform.provisioner.manage_lifecycle",
     }
     tenant_control = {
         "staff.invite",
@@ -73,11 +77,18 @@ def test_agent_lifecycle_capabilities_are_runtime_operator_surfaces() -> None:
         assert definition.exposure is CapabilityExposure.OPERATOR
 
 
+def test_identity_binding_lifecycle_capability_is_a_runtime_operator_surface() -> None:
+    definition = capability_definition("identity.bind")
+    assert definition is not None
+    assert definition.runtime_available is True
+    assert definition.discoverable is True
+    assert definition.exposure is CapabilityExposure.OPERATOR
+    assert definition.revision is RevisionPolicy.REQUIRED
+    assert definition.authority_plane is AuthorityPlane.TENANT_CONTROL
+
+
 def test_unimplemented_control_capabilities_remain_internal_and_nonruntime() -> None:
-    for key in (
-        "platform.principal.provision",
-        "identity.bind",
-    ):
+    for key in ("platform.principal.provision",):
         definition = capability_definition(key)
         assert definition is not None
         assert definition.runtime_available is False
@@ -93,3 +104,23 @@ def test_native_platform_provisioning_is_runtime_but_stays_platform_authority() 
         assert definition.authority_plane is AuthorityPlane.PLATFORM
         assert definition.revision is RevisionPolicy.SERVER_SELECTED
         assert not grant_satisfies("staff.manage_authority", definition.key)
+
+
+def test_platform_provisioner_lifecycle_is_platform_authority() -> None:
+    read = capability_definition("platform.provisioner.read")
+    assert read is not None
+    assert read.runtime_available is True
+    assert read.exposure is CapabilityExposure.OPERATOR
+    assert read.authority_plane is AuthorityPlane.PLATFORM
+    assert read.idempotency is IdempotencyPolicy.NONE
+    assert read.revision is RevisionPolicy.NONE
+
+    lifecycle = capability_definition("platform.provisioner.manage_lifecycle")
+    assert lifecycle is not None
+    assert lifecycle.runtime_available is True
+    assert lifecycle.exposure is CapabilityExposure.OPERATOR
+    assert lifecycle.authority_plane is AuthorityPlane.PLATFORM
+    assert lifecycle.idempotency is IdempotencyPolicy.REQUIRED
+    assert lifecycle.revision is RevisionPolicy.REQUIRED
+    assert lifecycle.effective_risk_class is OperationRiskClass.AUTHORITY_CHANGE
+    assert not grant_satisfies("staff.manage_authority", lifecycle.key)

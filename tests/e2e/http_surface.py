@@ -40,6 +40,16 @@ class PublicHttpOperation:
 
 PUBLIC_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
     PublicHttpOperation(
+        "authority.read_self",
+        "GET",
+        "/v1/me/authority",
+        "authority.read_self",
+        False,
+        False,
+        TenantIsolationMode.CONTEXTUAL,
+        HttpProbe("/v1/me/authority"),
+    ),
+    PublicHttpOperation(
         "capabilities.list",
         "GET",
         "/v1/capabilities",

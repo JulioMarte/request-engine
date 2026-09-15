@@ -480,6 +480,197 @@ def test_last_recovery_capable_controller_cannot_be_removed(
         admin_conn.execute("RESET ROLE")
 
 
+def _promote_to_controller(
+    conn: PgConnection,
+    *,
+    organization_id: UUID,
+    root_id: UUID,
+    membership_id: UUID,
+    staff_id: UUID,
+) -> None:
+    revision = _principal_revision(conn, staff_id)
+    _set_tenant_actor(conn, organization_id=organization_id, principal_id=root_id)
+    try:
+        replaced = conn.execute(
+            """
+            SELECT request_engine.replace_staff_authority(
+                %s, %s,
+                ARRAY[
+                    'staff.manage_membership',
+                    'staff.manage_authority',
+                    'identity.bind'
+                ]::text[],
+                %s
+            )
+            """,
+            (membership_id, revision, f"staff-controller:{uuid4().hex}"),
+        ).fetchone()
+        assert replaced is not None
+    finally:
+        conn.execute("RESET ROLE")
+
+
+def _root_membership(conn: PgConnection, root_id: UUID) -> tuple[UUID, int]:
+    row = conn.execute(
+        "SELECT id, revision FROM request_engine.staff_memberships WHERE principal_id = %s",
+        (root_id,),
+    ).fetchone()
+    assert row is not None
+    return cast(UUID, row[0]), int(row[1])
+
+
+def _suspend_membership_as(
+    conn: PgConnection,
+    *,
+    organization_id: UUID,
+    actor_id: UUID,
+    membership_id: UUID,
+    revision: int,
+) -> tuple[object, ...]:
+    _set_tenant_actor(conn, organization_id=organization_id, principal_id=actor_id)
+    try:
+        row = conn.execute(
+            """
+            SELECT request_engine.transition_staff_membership(
+                %s, %s, 'suspended', %s
+            )
+            """,
+            (membership_id, revision, f"suspend:{uuid4().hex}"),
+        ).fetchone()
+        assert row is not None
+        return row
+    finally:
+        conn.execute("RESET ROLE")
+
+
+@pytest.mark.parametrize(
+    "path_break",
+    ["binding_revoked", "credential_revoked", "identity_disabled", "authority_disabled"],
+)
+def test_grant_only_controller_does_not_preserve_continuity(
+    admin_conn: PgConnection, path_break: str
+) -> None:
+    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = _provision_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    membership_id, staff_id, staff_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    _promote_to_controller(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        membership_id=membership_id,
+        staff_id=staff_id,
+    )
+
+    if path_break == "binding_revoked":
+        admin_conn.execute(
+            "UPDATE request_engine.identity_bindings SET status = 'revoked', "
+            "revision = revision + 1, revoked_at = clock_timestamp() WHERE id = %s",
+            (staff_binding_id,),
+        )
+    elif path_break == "credential_revoked":
+        admin_conn.execute(
+            "UPDATE request_engine.native_credentials SET status = 'revoked', "
+            "revoked_at = clock_timestamp(), revision = revision + 1 "
+            "WHERE native_identity_id = %s AND status = 'active'",
+            (native_identity_id,),
+        )
+    elif path_break == "identity_disabled":
+        admin_conn.execute(
+            "UPDATE request_engine.native_identities SET status = 'disabled', "
+            "disabled_at = clock_timestamp(), session_epoch = session_epoch + 1, "
+            "revision = revision + 1 WHERE id = %s",
+            (native_identity_id,),
+        )
+    else:
+        admin_conn.execute(
+            "UPDATE request_engine.identity_authorities SET status = 'disabled', "
+            "revision = revision + 1 WHERE id = %s",
+            (authority_id,),
+        )
+
+    root_membership_id, root_revision = _root_membership(admin_conn, root_id)
+    with pytest.raises(Error) as denied:
+        _suspend_membership_as(
+            admin_conn,
+            organization_id=organization_id,
+            actor_id=staff_id,
+            membership_id=root_membership_id,
+            revision=root_revision,
+        )
+    assert denied.value.sqlstate == "23514"
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.staff_memberships WHERE id = %s",
+        (root_membership_id,),
+    ).fetchone() == ("active",)
+
+
+def test_configured_external_authority_preserves_continuity(admin_conn: PgConnection) -> None:
+    organization_id, party_id, root_id, _root_binding_id, _provisioner_id = _provision_root(
+        admin_conn
+    )
+    authority_id, native_identity_id, _credential_id = _native_identity(admin_conn)
+    membership_id, staff_id, staff_binding_id = _invite_and_activate(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        party_id=party_id,
+        authority_id=authority_id,
+        native_identity_id=native_identity_id,
+    )
+    _promote_to_controller(
+        admin_conn,
+        organization_id=organization_id,
+        root_id=root_id,
+        membership_id=membership_id,
+        staff_id=staff_id,
+    )
+    admin_conn.execute(
+        "UPDATE request_engine.identity_bindings SET status = 'revoked', "
+        "revision = revision + 1, revoked_at = clock_timestamp() WHERE id = %s",
+        (staff_binding_id,),
+    )
+    oidc_authority_id = _uuid_row(
+        admin_conn,
+        """
+        INSERT INTO request_engine.identity_authorities (kind, issuer_or_environment)
+        VALUES ('oidc', %s) RETURNING id
+        """,
+        (f"staff-oidc-{uuid4().hex}",),
+    )
+    admin_conn.execute(
+        """
+        INSERT INTO request_engine.identity_bindings (
+            id, organization_id, principal_id, principal_plane,
+            identity_authority_id, subject_id, status
+        ) VALUES (%s, %s, %s, 'tenant', %s, %s, 'active')
+        """,
+        (uuid4(), organization_id, staff_id, oidc_authority_id, f"oidc-{uuid4().hex}"),
+    )
+
+    root_membership_id, root_revision = _root_membership(admin_conn, root_id)
+    removed = _suspend_membership_as(
+        admin_conn,
+        organization_id=organization_id,
+        actor_id=staff_id,
+        membership_id=root_membership_id,
+        revision=root_revision,
+    )
+    assert removed == (root_revision + 1,)
+    assert admin_conn.execute(
+        "SELECT status FROM request_engine.staff_memberships WHERE id = %s",
+        (root_membership_id,),
+    ).fetchone() == ("suspended",)
+
+
 @pytest.mark.asyncio
 async def test_staff_reads_recheck_revoked_authority_with_a_previously_valid_actor(
     admin_conn: PgConnection,

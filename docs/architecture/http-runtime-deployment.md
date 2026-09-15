@@ -88,6 +88,129 @@ guarantees; it changes no password policy, DB credential protocol or provider tr
 
 ## Acceptance boundary
 
+### Recovery consumption HTTP
+
+`POST /auth/native/password:recover` (`nativePasswordRecover`) accepts a closed
+body containing `recovery_token` and `new_password`. This is a native credential
+command owned by the existing security subsystem, not a tenant capability or
+agent tool. The opaque one-time proof selects its already-bound native identity;
+request input cannot choose another identity, tenant, Principal or authority.
+
+The existing store transaction consumes the intent, replaces the credential and
+invalidates old sessions. Hashing remains outside DB locks. Success returns204
+without a token/session/identity body. Malformed, unknown, expired, previously
+consumed or disabled-target proof returns401 `recovery_intent_invalid`; password
+policy failure is422 and must not consume the intent. Secret-bearing bodies are
+excluded from model representations and validation responses. Success and handled
+recovery errors use `no-store`/`no-cache`. Apply ingress rate/body limits as for
+login; password hashing has real cost even on a structurally valid bad proof.
+
+This intentionally has no idempotency receipt that can recover the secret. If a
+successful response is lost, attempt login with the new password to reconcile;
+do not blindly retry recovery or create another password. Recovery never creates
+business grants/bindings or reactivates a disabled identity. Existing auth state
+and provenance/transaction boundaries remain unchanged.
+
+Migration0039 replaces only the recovery consumption function, preserving its
+signature, owner and EXECUTE grants. READ candidate proof without locking it;
+LOCK identity as the shared credential serialization root; LOCK/VALIDATE proof
+again, including expiry; WRITE the same credential/session/intent transitions.
+It removes the intent-before-identity inversion against issuance, rotation and
+disable (which already lock identity before invalidating intents). Issuance
+revokes older pending proofs; two normal simultaneously valid tokens are not the
+regression world. This lock-order fix is now backed by an executed PostgreSQL race
+proof: the new test passes against0039 and fails with `DeadlockDetectedError` when
+the pre-0039 function body is temporarily restored. No privilege or RLS changes,
+table rewrite, new network I/O or authority backfill. Apply0039 before exposing
+recovery; drain in-flight native mutations during the function replacement so
+old/new lock orders do not overlap. Roll forward only.
+
+Migration0040 extends native authority suspension to password credential reads,
+identity enrollment, session creation, password rotation, recovery issuance and
+consumption, plus the existing credentialed-identity commitment guard. This is an
+intentional strengthening of the authentication boundary, not a business grant
+change. PostgreSQL18.6 DB/HTTP and lock-order validation was executed on2026-09-14;
+the current evidence and remaining acceptance limits are recorded in
+`auth-implementation-status.md`.
+
+Positive native mutations lock the active, native authority row `FOR SHARE`
+before identity and credential/intent locks. Unlike `FOR KEY SHARE`, this blocks
+ordinary status updates. The identity-to-authority link is immutable; recovery's
+first proof lookup remains advisory and its proof is rechecked under the identity
+lock as in0039. Credential reads filter inactive/wrong-kind authorities but are
+not a substitute for the write-side gate. A committed suspension winning the
+authority lock rejects the mutation without changing auth or business facts.
+An authentication transaction winning first may commit before suspension; later
+session resolution still rejects the disabled authority. Higher-isolation
+serialization failures must roll back, never bypass the gate.
+
+Suspension is reversible provider availability, not bulk credential revocation:
+reenabling an authority allows otherwise valid, unexpired, non-revoked sessions
+and recovery proofs again. It never restores revoked identities, credentials,
+bindings, grants or proofs. Restrictive revoke/disable primitives remain usable
+while the authority is disabled. No new administration or public issuance route
+is introduced. Administrative transactions changing authority status must acquire
+that authority before native identity/credential locks; do not acquire identity
+first and then upgrade to an authority write lock.
+
+Drain native authentication and credentialed provisioning/membership mutations
+before applying0040 so old/new lock orders do not overlap. The migration replaces
+seven existing functions without changing signatures, owners, ACLs or tables;
+there is no backfill. Roll forward only. Existing readiness does not prove0040
+is installed: verify Alembic head and function catalog before restoring traffic.
+See `../testing/native-authority-suspension-validation-handoff.md` for the
+acceptance matrix and deployment checks.
+
+Migration0041 replaces only `request_auth.create_native_identity`, preserving its
+signature, owner, `SECURITY DEFINER` boundary, pinned `search_path`, EXECUTE ACL
+and the authority `FOR SHARE` gate from0040. Its outcome is now explicitly
+trivalent: `true` creates the identity, `false` means the login handle is already
+enrolled, and `NULL` means the configured native authority is absent, disabled or
+of another kind. Rejection happens before any identity/credential write. The
+adapter maps the exact scalar into a typed outcome and fails closed on an
+unexpected value instead of converting it to a boolean. Enrollment against an
+unavailable authority returns503 `native_enrollment_unavailable` with
+`resolution=operator_intervention`, `retryable=false`, `no-store`/`no-cache` and a
+generic message that does not reveal whether the authority is missing or disabled;
+it creates no rows and is not presented as a duplicate. Apply0041 before running
+the new binary: the previous binary interprets `NULL` as the existing duplicate409
+(fail-closed but misleading). Drain in-flight native mutations during the function
+replacement and roll forward only. The route's 201/409/422 outcomes, operationId,
+schemas and non-tool projection are unchanged.
+
+Migration0042 strengthens tenant controller continuity: the authoritative
+last-controller check now requires an active Principal, an active membership, the
+current control grants and at least one active binding to an active identity
+authority. Native subjects additionally require an active bound identity and an
+active password credential; a configured active `oidc` authority counts without
+promising upstream network availability or token revocation. Grant-only membership
+no longer preserves continuity. The predicate is schema-owner definer, has PUBLIC
+EXECUTE revoked, is not exposed to app/worker roles, runs inside the same command
+transaction and keeps the existing membership lock order. No table, column, route,
+capability or tool changed. Roll forward only; drain staff
+suspend/revoke/authority-replace during the function replacement so old and new
+predicates do not overlap.
+
+Handled native, workload and OIDC bearer authentication failures consistently
+return401 `credential_invalid`, `WWW-Authenticate: Bearer`, `Cache-Control:
+no-store` and `Pragma: no-cache`. Provider/internal exception details never become
+public failure messages. This cache-policy alignment changes no capabilities,
+operation IDs, body schemas, retry policy or tool visibility.
+
+This endpoint **does not implement recovery issuance/delivery**. Internal
+`issue_recovery` is not a public/admin authorization policy. Publishing it based
+on a submitted email, or placing reset secrets in an ordinary outbox, would violate
+the identity contract. A separately governed proof-of-holder or deployment-admin
+issuance process is still required. The HTTP tests use trusted internal issuance
+solely as a prerequisite, not as evidence of a complete recovery journey.
+
+Executed proof: one-time consumption with an independent-connection race and
+closed concurrent loser, password/session invalidation, disabled/expired targets,
+secret redaction, rejected selectors, no new Principal/binding/grant, preserved
+revoked authority, native-only mounting without tool projection, plus current
+PostgreSQL and Python-quality lanes
+(`docs/architecture/auth-implementation-status.md`, 2026-09-13).
+
 This factory supplies deployment composition, not a certification that every
 identity-plan requirement is complete. The required providerless onboarding,
 staff lifecycle, explicit external binding administration, provider portability
@@ -110,10 +233,12 @@ An explicit private control-plane factory is available separately (below).
 The subject authenticator remains provider-neutral and uses the app connection
 for native session and exact identity-binding lookup. The separate connection
 needs only schema USAGE and EXECUTE on
-`request_platform.read_principal_authority(uuid)` for this read boundary; it must
-not inherit app, worker, definer or bootstrap privileges. A future command
-composition must separately name its authorized write connection. Never grant
-platform-read/control privileges to `request_engine_app` to reuse its pool.
+`request_platform.read_principal_authority(uuid)` and
+`request_platform.read_platform_provisioners(uuid, uuid, integer)` for this read
+boundary; it must not inherit app, worker, definer or bootstrap privileges. A
+future command composition must separately name its authorized write connection.
+Never grant platform-read/control privileges to `request_engine_app` to reuse its
+pool.
 
 Composition, not request data, chooses the trust plane. Platform resolution rejects
 `X-RE-Organization-ID`, including empty or malformed values. Principal, capabilities
@@ -160,6 +285,11 @@ OIDC is not required. Every response is `Cache-Control: no-store`.
 | --- | --- | --- | --- |
 | Create bounded native provisioner | `POST /v1/platform/provisioners` | `platform.tenant_provisioner.provision` | `platform_native_provisioner_create` |
 | Create organization and first native controller | `POST /v1/platform/organizations` | `organization.provision` | `platform_native_organization_create` |
+| List platform provisioners | `GET /v1/platform/provisioners` | `platform.provisioner.read` | `platform_native_provisioner_list` |
+| Read one platform provisioner | `GET /v1/platform/provisioners/{principal_id}` | `platform.provisioner.read` | `platform_native_provisioner_get` |
+| Suspend a platform provisioner | `POST /v1/platform/provisioners/{principal_id}:suspend` | `platform.provisioner.manage_lifecycle` | `platform_native_provisioner_suspend` |
+| Reactivate a platform provisioner | `POST /v1/platform/provisioners/{principal_id}:reactivate` | `platform.provisioner.manage_lifecycle` | `platform_native_provisioner_reactivate` |
+| Terminally revoke a platform provisioner | `POST /v1/platform/provisioners/{principal_id}:revoke` | `platform.provisioner.manage_lifecycle` | `platform_native_provisioner_revoke` |
 
 Both are Tenancy semantic creation commands, not generic Principal/grant CRUD.
 The operator-visible capabilities remain PLATFORM-plane; neither implies tenant
@@ -196,9 +326,9 @@ Organization input: `organization_key` (1-120), `display_name` (1-200),
 are rejected. Output: `organization_id`, `organization_party_id`,
 `controller_principal_id`, `controller_binding_id`. The existing native root
 function atomically creates the tenant/Party/controller/binding/membership.
-The application selects the immutable `tenant-controller-v1` initial policy;
-revision 0036 records that selection and adds its 25 explicit grants on root
-INSERT only. Provisioner provenance is preserved without making the provisioner
+The application selects the immutable `tenant-controller-v3` initial policy;
+revisions 0036/0037/0038 record v1/v2/v3 and their explicit grants on root INSERT
+only. Provisioner provenance is preserved without making the provisioner
 a tenant member. See `initial-controller-policy.md` for the exact authority,
 legacy-root compatibility and no-regrant replay contract.
 
@@ -219,7 +349,38 @@ The DB proof uses independent command connections and observed lock waits; the
 HTTP proof begins with the supported one-time deployment bootstrap and never
 inserts bindings/tenant roots as test setup. Both run in the current-product lane.
 Apply the current Alembic head before enabling this version of the opt-in surface;
-its selected v2 controller policy requires additive 0037. Recover by rolling forward.
+its selected v3 controller policy requires additive 0038. Recover by rolling forward.
+
+### Platform provisioner lifecycle (revision 0043)
+
+Migration0043 completes the provisioner lifecycle and must land together with the
+control-plane binary: the previous registry cannot materialize the new persisted
+capabilities and the new startup surface check requires the lifecycle function, so
+the private control plane needs one coordinated migrate+restart window. Reads use
+the dedicated read login through `request_platform.read_platform_provisioners`;
+commands use the control login through
+`request_platform.transition_native_platform_provisioner`. Both projections return
+no credentials or subjects beyond the provisioner's own binding, and every
+response is `no-store`.
+
+Lifecycle commands require `Idempotency-Key` and `expected_revision` (the
+provisioner's current `authority_revision` from a read). Replay with the same
+actor/key/intent returns the recorded result; key reuse with a different intent,
+a state transition that does not match the current binding status, or a terminal
+target returns typed 409. Stale actor or target revisions return
+`409 platform_authority_changed` with `refresh_and_retry`. Reactivation requires an
+active authority and, for native subjects, an active identity and password
+credential; it never restores revoked grants. Revoke is terminal, revokes standing
+grants, preserves all rows and never deletes organizations previously provisioned.
+The bootstrap root is not addressable as a provisioner; the database backstop
+`assert_other_platform_controller` still protects the last effective platform
+controller. Append-only audit facts live in
+`request_engine.platform_authority_lifecycle_facts` with no runtime table access.
+
+Protected guarantees: INV-AUTHORITY-001, INV-PRIVILEGE-001,
+INV-CONTROLLER-CONTINUITY-001 (platform plane) and INV-PLATFORM-LIFECYCLE-001.
+D5 identity-topology gating is not implemented; the platform Principal set lock is
+the current serialization root and an explicit input to that design.
 
 ## Private control-plane process configuration
 
@@ -234,7 +395,9 @@ secret manager; do not put real passwords in shell history or committed examples
 
 - `REQUEST_ENGINE_DATABASE_URL`: dedicated app-role login for native authentication.
 - `REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL`: separate login with only schema
-  USAGE and EXECUTE on `request_platform.read_principal_authority(uuid)`.
+  USAGE and EXECUTE on `request_platform.read_principal_authority(uuid)`,
+  `request_platform.read_platform_provisioners(uuid, uuid, integer)` and
+  `request_platform.read_identity_recovery_cases(uuid, uuid, integer)`.
 - `REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL`: separate login inheriting only
   `request_platform_control`, with no extra direct privileges.
 - `REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID`: active native authority UUID.
@@ -253,9 +416,9 @@ without CREATE ROLE/DB or replication authority. `current_user` must equal
 `session_user`. Membership in any unexpected role is rejected even if NOINHERIT.
 The app connection cannot execute private platform functions. Read/write connections
 cannot access application relations directly (including column grants) or create
-objects in application schemas. Read can execute only its one projection; write
-can execute only the three explicit provisioning functions and the private
-`select_initial_controller_policy(text)` selector. Required
+objects in application schemas. Read can execute only its reviewed projections; write
+can execute only the explicit provisioning, lifecycle and governed-recovery commands
+and the private `select_initial_controller_policy(text)` selector. Required
 functions must be present and executable, and the owner-selected controller policy
 must exist. The private selector validates it transaction-locally without creating
 roots or granting authority. This is not an assertion that every

@@ -7,17 +7,24 @@ from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from request_engine.entrypoints.http.native_auth_errors import native_identity_input_error_response
+from request_engine.entrypoints.http.native_auth_errors import (
+    native_enrollment_unavailable_response,
+    native_identity_input_error_response,
+    native_recovery_error_response,
+)
 from request_engine.platform.http.errors import ErrorEnvelope
 from request_engine.platform.security.native_auth import (
+    NativeAuthenticationError,
     PasswordPolicyViolation,
     normalize_login_handle,
     parse_opaque_token,
 )
 from request_engine.platform.security.native_http import bearer_token
 from request_engine.platform.security.native_human_auth import (
+    NativeEnrollmentUnavailable,
     NativeHumanAuthService,
     NativeIdentityAlreadyExists,
+    RecoveryIntentInvalid,
 )
 from request_engine.platform.security.native_session import (
     NativeSessionAuthenticator,
@@ -78,6 +85,13 @@ class NativeCredentialRotationResponse(BaseModel):
     credential_id: UUID
 
 
+class NativePasswordRecoveryBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recovery_token: str = Field(min_length=1, max_length=1024, repr=False)
+    new_password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
 def create_native_auth_router(
     *,
     service: NativeHumanAuthService,
@@ -96,6 +110,8 @@ def create_native_auth_router(
                 login_handle=payload.login_handle,
                 password=payload.password,
             )
+        except NativeEnrollmentUnavailable:
+            return native_enrollment_unavailable_response()
         except (NativeIdentityAlreadyExists, PasswordPolicyViolation) as exc:
             return native_identity_input_error_response(exc)
         _prevent_secret_caching(response)
@@ -152,6 +168,20 @@ def create_native_auth_router(
         _prevent_secret_caching(response)
         return NativeCredentialRotationResponse(credential_id=credential_id)
 
+    async def recover_password(payload: NativePasswordRecoveryBody) -> Response:
+        try:
+            await service.consume_recovery(
+                raw_token=payload.recovery_token,
+                new_password=payload.new_password,
+            )
+        except PasswordPolicyViolation as exc:
+            return native_identity_input_error_response(exc)
+        except (RecoveryIntentInvalid, NativeAuthenticationError):
+            return native_recovery_error_response()
+        response = Response(status_code=status.HTTP_204_NO_CONTENT)
+        _prevent_secret_caching(response)
+        return response
+
     router.add_api_route(
         "/identities",
         enroll_identity,
@@ -167,11 +197,17 @@ def create_native_auth_router(
             "trimmed and case-folded; an already enrolled handle returns 409 and never "
             "replaces credentials. Enrollment is not an idempotency-key operation: "
             "after an uncertain response, attempt login before retrying enrollment. "
+            "If the configured native authority is unavailable, the deployment returns "
+            "503 and an operator must restore it; retrying does not create the identity. "
             "Passwords require at least 12 characters and at most 1024 UTF-8 bytes."
         ),
         responses={
             409: {"model": ErrorEnvelope, "description": "Native login handle already enrolled"},
             422: {"model": ErrorEnvelope, "description": "Invalid enrollment input or password"},
+            503: {
+                "model": ErrorEnvelope,
+                "description": "Native identity authority unavailable",
+            },
         },
     )
     router.add_api_route(
@@ -204,6 +240,27 @@ def create_native_auth_router(
         response_model=NativeCredentialRotationResponse,
         responses={
             401: {"model": ErrorEnvelope, "description": "Current credential is invalid"},
+            422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
+        },
+    )
+    router.add_api_route(
+        "/password:recover",
+        recover_password,
+        methods=["POST"],
+        operation_id="nativePasswordRecover",
+        status_code=status.HTTP_204_NO_CONTENT,
+        response_model=None,
+        summary="Replace a native password using a one-time recovery proof",
+        description=(
+            "Consumes an already issued recovery token, replaces the credential and "
+            "invalidates existing sessions atomically. Does not issue a new session, "
+            "create a binding, restore business grants or reactivate a disabled identity. "
+            "The token determines the identity; identity and tenant selectors are not accepted. "
+            "This endpoint never issues recovery tokens. After an ambiguous response, "
+            "attempt login with the new password instead of blindly retrying the token."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Recovery proof unavailable or invalid"},
             422: {"model": ErrorEnvelope, "description": "Invalid input or password policy"},
         },
     )

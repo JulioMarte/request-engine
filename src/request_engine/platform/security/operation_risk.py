@@ -38,4 +38,13 @@ def risk_severity(risk: OperationRiskClass) -> int:
     return RISK_SEVERITY_ORDER.index(risk)
 
 
-__all__ = ["RISK_SEVERITY_ORDER", "OperationRiskClass", "risk_severity"]
+def agent_risk_permitted(risk: OperationRiskClass | None, ceiling: OperationRiskClass) -> bool:
+    """Share the fail-closed risk rule between execution and discovery."""
+    return (
+        risk is not None
+        and risk is not OperationRiskClass.AUTHORITY_CHANGE
+        and risk_severity(risk) <= risk_severity(ceiling)
+    )
+
+
+__all__ = ["RISK_SEVERITY_ORDER", "OperationRiskClass", "agent_risk_permitted", "risk_severity"]

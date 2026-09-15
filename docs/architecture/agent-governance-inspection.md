@@ -66,7 +66,9 @@ new cross-module business dependency are introduced.
 The already-applied `tenant-controller-v1` manifest is immutable. Revision 0037
 appends `tenant-controller-v2`, retaining all v1 grants and adding only delegable
 tenant-control `agent.read`. New native organizations select v2; their total is
-34 active grants. Existing roots keep their committed policy and grant history,
+34 active grants at that checkpoint. The subsequent self-inspection policy v3
+adds only `authority.read_self` for new roots (see `self-authority-inspection.md`).
+Existing roots keep their committed policy and grant history,
 including revocations; neither migration nor replay upgrades them. A governed
 upgrade command for existing controller policies remains separate work.
 

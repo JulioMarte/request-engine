@@ -127,7 +127,12 @@ def establish_pre_policy_root(
     return PrePolicyRoot(creator, parameters, result, grants, policy)
 
 
-def verify_pre_policy_root_unchanged(conn: Connection[Any], before: PrePolicyRoot) -> None:
+def verify_pre_policy_root_unchanged(
+    conn: Connection[Any],
+    before: PrePolicyRoot,
+    *,
+    replay_policy: str = "tenant-controller-v3",
+) -> None:
     organization, _, _, _, controller, *_ = before.parameters
     with conn.transaction():
         policy = conn.execute(
@@ -137,9 +142,7 @@ def verify_pre_policy_root_unchanged(conn: Connection[Any], before: PrePolicyRoo
         ).fetchone()
         if policy != (before.policy,) or _authority(conn, controller) != before.grants:
             raise RuntimeError("upgrade changed a pre-policy root's authority or policy")
-        result = _create_or_replay(
-            conn, before.creator, before.parameters, policy="tenant-controller-v2"
-        )
+        result = _create_or_replay(conn, before.creator, before.parameters, policy=replay_policy)
         if result != before.result or _authority(conn, controller) != before.grants:
             raise RuntimeError("selected-policy replay changed a legacy root or restored authority")
         if conn.execute(

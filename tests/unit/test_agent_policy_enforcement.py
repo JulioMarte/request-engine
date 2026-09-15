@@ -21,6 +21,57 @@ from request_engine.platform.security.operation_risk import (
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,operation_id,marker,capability,admitted",
+    [
+        ("GET", "operation_catalog_list_authorized", True, None, True),
+        ("POST", "operation_catalog_list_authorized", True, None, False),
+        ("GET", "capabilities_list", True, None, False),
+        ("GET", "operation_catalog_list_authorized", False, None, False),
+        ("GET", "operation_catalog_list_authorized", True, "unknown", False),
+    ],
+)
+async def test_only_server_marked_read_only_self_catalog_is_agent_admissible(
+    method: str,
+    operation_id: str,
+    marker: bool,
+    capability: str | None,
+    admitted: bool,
+) -> None:
+    agent = _agent_actor("parties.lookup", "parties.register")
+    policy = _policy(OperationRiskClass.READ, allowed=frozenset({"parties.lookup"}))
+    reader = _StubPolicyReader(policy)
+    budget = _StubBudgetEnforcer()
+    resolver = AgentPolicyActorResolver(_StaticActorResolver(agent), reader, budget)
+    request = Request(
+        {
+            "type": "http",
+            "method": method,
+            "headers": [],
+            "route": SimpleNamespace(
+                operation_id=operation_id,
+                openapi_extra={"x-request-engine-discovery": marker},
+                request_engine_capability=capability,
+            ),
+        }
+    )
+    if admitted:
+        result = await resolver.resolve_actor(request)
+        assert result.capabilities == frozenset({"parties.lookup"})
+        assert result.agent_policy == policy
+    else:
+        with pytest.raises(AgentPolicyDenied):
+            await resolver.resolve_actor(request)
+    assert reader.calls == 1
+    assert reader.requested_organization_id == agent.organization_id
+    assert reader.requested_principal_id == agent.principal_id
+    assert budget.calls == []
+    reader.policy = None
+    with pytest.raises(AgentPolicyDenied):
+        await resolver.resolve_actor(request)
+
+
 class _StaticActorResolver:
     def __init__(self, actor: ActorContext) -> None:
         self.actor = actor

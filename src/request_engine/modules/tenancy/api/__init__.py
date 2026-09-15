@@ -15,6 +15,12 @@ from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_
 from request_engine.modules.tenancy.adapters.db.delegation_commands import (
     PostgresDelegationCommands,
 )
+from request_engine.modules.tenancy.adapters.db.identity_binding_admin_reader import (
+    PostgresIdentityBindingAdminReader,
+)
+from request_engine.modules.tenancy.adapters.db.identity_binding_commands import (
+    PostgresIdentityBindingCommands,
+)
 from request_engine.modules.tenancy.adapters.db.integration_governance_commands import (
     PostgresIntegrationGovernanceCommands,
 )
@@ -39,6 +45,9 @@ from request_engine.modules.tenancy.adapters.db.principal_authority_reader impor
 from request_engine.modules.tenancy.adapters.db.principal_contact_commands import (
     PostgresPrincipalContactCommands,
 )
+from request_engine.modules.tenancy.adapters.db.self_authority_reader import (
+    PostgresSelfAuthorityReader,
+)
 from request_engine.modules.tenancy.adapters.db.staff_membership_commands import (
     PostgresStaffMembershipCommands,
 )
@@ -62,6 +71,10 @@ from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
 )
 from request_engine.modules.tenancy.api.delegation_errors import add_delegation_error_handlers
 from request_engine.modules.tenancy.api.delegation_routes import add_delegation_routes
+from request_engine.modules.tenancy.api.identity_binding_routes import (
+    add_identity_binding_error_handlers,
+    add_identity_binding_routes,
+)
 from request_engine.modules.tenancy.api.identity_exchange_http import install_identity_exchange_http
 from request_engine.modules.tenancy.api.integration_governance_errors import (
     add_integration_governance_error_handlers,
@@ -71,6 +84,10 @@ from request_engine.modules.tenancy.api.integration_governance_routes import (
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
+from request_engine.modules.tenancy.api.self_authority import (
+    create_self_authority_router,
+    self_authority_error_handler,
+)
 from request_engine.modules.tenancy.api.staff_contact_errors import add_staff_contact_error_handlers
 from request_engine.modules.tenancy.api.staff_contact_routes import add_staff_contact_routes
 from request_engine.modules.tenancy.api.staff_membership_errors import (
@@ -85,6 +102,9 @@ from request_engine.modules.tenancy.application.commands.staff_membership import
     StaffMembershipCommands,
 )
 from request_engine.modules.tenancy.application.errors import BootstrapAuthorityPartyInvalid
+from request_engine.modules.tenancy.application.queries.self_authority import (
+    AuthorityInspectionDenied,
+)
 from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
@@ -138,6 +158,13 @@ def install_http(
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
     app.add_exception_handler(BootstrapAuthorityPartyInvalid, bootstrap_authority_error_handler)
+    app.add_exception_handler(AuthorityInspectionDenied, self_authority_error_handler)
+    app.include_router(
+        create_self_authority_router(
+            reader=PostgresSelfAuthorityReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
     install_party_registry_http(
         app,
         session_factory=session_factory,
@@ -220,6 +247,16 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(delegations_router)
+
+    add_identity_binding_error_handlers(app)
+    identity_bindings_router = APIRouter(tags=["identity bindings"])
+    add_identity_binding_routes(
+        identity_bindings_router,
+        reader=PostgresIdentityBindingAdminReader(session_factory),
+        commands=PostgresIdentityBindingCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(identity_bindings_router)
 
 
 def install_operational_http(

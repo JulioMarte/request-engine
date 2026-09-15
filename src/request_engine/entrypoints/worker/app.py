@@ -18,6 +18,7 @@ class WorkerCycleReport:
     outbox_messages: tuple[WorkerItemOutcome, ...]
     provider_events: tuple[WorkerItemOutcome, ...]
     recovery_sweep: tuple[WorkerItemOutcome, ...] = ()
+    identity_recovery_delivery: tuple[WorkerItemOutcome, ...] = ()
 
 
 class WorkerProcess:
@@ -32,6 +33,7 @@ class WorkerProcess:
         outbox_messages: WorkerRuntime,
         provider_events: WorkerRuntime,
         recovery_sweep: WorkerRuntime | None = None,
+        identity_recovery_delivery: WorkerRuntime | None = None,
     ) -> None:
         self._runtimes: dict[str, WorkerRuntime] = {
             "scheduled_actions": scheduled_actions,
@@ -40,6 +42,8 @@ class WorkerProcess:
         }
         if recovery_sweep is not None:
             self._runtimes["recovery_sweep"] = recovery_sweep
+        if identity_recovery_delivery is not None:
+            self._runtimes["identity_recovery_delivery"] = identity_recovery_delivery
         self._supervisor = WorkerSupervisor(self._runtimes)
 
     @property
@@ -54,6 +58,7 @@ class WorkerProcess:
             outbox_messages=outcomes["outbox_messages"],
             provider_events=outcomes["provider_events"],
             recovery_sweep=outcomes.get("recovery_sweep", ()),
+            identity_recovery_delivery=outcomes.get("identity_recovery_delivery", ()),
         )
 
     async def run(self, stop_event: asyncio.Event) -> None:

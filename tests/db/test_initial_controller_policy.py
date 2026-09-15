@@ -81,7 +81,9 @@ def test_policy_catalog_is_not_runtime_table(admin_conn: Connection[Any], role: 
         ).fetchone() == (False,)
 
 
-@pytest.mark.parametrize("policy", ["tenant-controller-v1", "tenant-controller-v2"])
+@pytest.mark.parametrize(
+    "policy", ["tenant-controller-v1", "tenant-controller-v2", "tenant-controller-v3"]
+)
 def test_policy_is_immutable_and_unknown_selection_fails(
     admin_conn: Connection[Any], policy: str
 ) -> None:
@@ -184,12 +186,12 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     assert admin_conn.execute(
         "SELECT initial_controller_policy_key "
         "FROM request_engine.organization_root_provisioning_facts"
-    ).fetchall() == [("tenant-controller-v2",)]
+    ).fetchall() == [("tenant-controller-v3",)]
     assert admin_conn.execute(
         "SELECT count(*), count(DISTINCT capability_key) "
         "FROM request_engine.principal_authority_grants WHERE principal_id=%s AND status='active'",
         (result.controller_principal_id,),
-    ).fetchone() == (34, 34)
+    ).fetchone() == (35, 35)
     # The older staff-root trigger replaces seven non-delegable grants and
     # retains their revoked provenance; those are not duplicate active grants.
     assert admin_conn.execute(
@@ -199,10 +201,10 @@ async def test_competing_creations_materialize_exactly_one_initial_policy(
     ).fetchone() == (7,)
     assert admin_conn.execute(
         "SELECT count(*) FROM request_engine.principal_authority_grants "
-        "WHERE principal_id=%s AND provenance_reference LIKE 'policy:tenant-controller-v2;root:%%' "
+        "WHERE principal_id=%s AND provenance_reference LIKE 'policy:tenant-controller-v3;root:%%' "
         "AND granted_by_principal_id=%s AND status='active'",
         (result.controller_principal_id, creator),
-    ).fetchone() == (26,)
+    ).fetchone() == (27,)
 
 
 def test_v2_adds_only_explicit_agent_read(admin_conn: Connection[Any]) -> None:
@@ -227,3 +229,25 @@ def test_v2_adds_only_explicit_agent_read(admin_conn: Connection[Any]) -> None:
     ).fetchone() == (2,)
     definition = capability_definition("agent.read")
     assert definition is not None and definition.authority_plane.value == "tenant_control"
+
+
+def test_v3_adds_only_explicit_self_authority_read(admin_conn: Connection[Any]) -> None:
+    policies = dict(
+        admin_conn.execute(
+            "SELECT policy_key, grants FROM request_engine.initial_controller_policies"
+        ).fetchall()
+    )
+    assert policies["tenant-controller-v3"] == [
+        *policies["tenant-controller-v2"],
+        {
+            "capability_key": "authority.read_self",
+            "authority_plane": "operational",
+            "delegable": True,
+        },
+    ]
+    assert admin_conn.execute(
+        "SELECT revision FROM request_engine.initial_controller_policies "
+        "WHERE policy_key='tenant-controller-v3'"
+    ).fetchone() == (3,)
+    definition = capability_definition("authority.read_self")
+    assert definition is not None and definition.authority_plane.value == "operational"

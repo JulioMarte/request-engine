@@ -29,6 +29,22 @@ Native initial provisioning authority is specified in
 production gaps are tracked in `architecture/auth-implementation-status.md`.
 Current agent lifecycle/revision inspection and its explicit read authority are
 specified in `architecture/agent-governance-inspection.md`.
+Self-only current Party relationship inspection and its explicit policy evolution
+are specified in `architecture/self-authority-inspection.md`. The implementation
+was locally validated by the assigned agent; exact-head CI remains pending. The
+execution handoff is `testing/auth-ergonomics-validation-handoff.md`.
+Native recovery consumption is specified in `architecture/http-runtime-deployment.md`;
+executed validation is tracked in `architecture/auth-implementation-status.md` and
+the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
+The proposed implementation sequence for remaining identity/product/operational
+gaps is `architecture/auth-production-completion-plan.md`. It includes explicit
+security decision gates and is not a production certification. Its block A
+(native enrollment outcome, revision0041), the tenant plane of B2 (controller
+continuity with an authenticatable path, revision0042) and B1/B5 (platform
+provisioner capabilities, read projection and revisioned lifecycle with private
+append-only audit, revision0043) are implemented and locally validated; remaining
+blocks are gated by the D1–D6 owner decisions tracked in
+`architecture/auth-implementation-status.md`.
 
 For present-day ownership and boundaries, start here:
 

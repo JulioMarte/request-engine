@@ -1,5 +1,5 @@
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 from uuid import uuid4
 
@@ -44,6 +44,49 @@ def admin_conn(pg_conninfo: str) -> Iterator[PgConnection]:
         yield conn
     finally:
         conn.close()
+
+
+@pytest.fixture
+def app_role_conn_factory(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> Iterator[Callable[[], PgConnection]]:
+    """Factory for release-shaped app LOGINs used by direct runtime proofs."""
+
+    role_name = f"re_native_app_{uuid4().hex[:12]}"
+    password = uuid4().hex
+    admin_conn.execute(
+        sql.SQL("CREATE ROLE {} LOGIN NOBYPASSRLS IN ROLE request_engine_app PASSWORD {}").format(
+            sql.Identifier(role_name), sql.Literal(password)
+        )
+    )
+    parts = dict(part.split("=", 1) for part in pg_conninfo.split())
+    created: list[PgConnection] = []
+
+    def factory() -> PgConnection:
+        conn: PgConnection = psycopg.connect(
+            f"host={parts['host']} port={parts['port']} dbname={parts['dbname']} "
+            f"user={role_name} password={password}"
+        )
+        created.append(conn)
+        return conn
+
+    try:
+        yield factory
+    finally:
+        for conn in created:
+            conn.close()
+        admin_conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+        admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+
+
+@pytest.fixture
+def app_role_conn(
+    app_role_conn_factory: Callable[[], PgConnection],
+) -> Iterator[PgConnection]:
+    """One sync release-shaped app LOGIN for direct function-level proofs."""
+
+    yield app_role_conn_factory()
 
 
 @pytest_asyncio.fixture

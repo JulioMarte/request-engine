@@ -158,3 +158,17 @@ async def e2e_session_factory(
         yield create_session_factory(engine)
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+def e2e_barrier_conn() -> Iterator[PgConnection]:
+    """Independent non-autocommit connection used to hold deterministic lock barriers."""
+
+    host, port, database, user, password = _pg_values()
+    conn: PgConnection = psycopg.connect(
+        f"host={host} port={port} dbname={database} user={user} password={password}"
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()

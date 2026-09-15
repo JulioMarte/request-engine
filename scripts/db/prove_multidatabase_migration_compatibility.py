@@ -63,12 +63,16 @@ def main() -> None:
         _run_alembic(proof_database, "0036_initial_controller_policy")
         with psycopg.connect(proof_conninfo, autocommit=True) as versioned:
             v1_root = establish_pre_policy_root(versioned, policy="tenant-controller-v1")
+        _run_alembic(proof_database, "0037_agent_inspection_policy")
+        with psycopg.connect(proof_conninfo, autocommit=True) as agent_inspection:
+            v2_root = establish_pre_policy_root(agent_inspection, policy="tenant-controller-v2")
         # The same database must then reach current HEAD while reusing exact
         # cluster-global control-plane roles rather than duplicating them unsafely.
         _run_alembic(proof_database, "head")
         with psycopg.connect(proof_conninfo, autocommit=True) as upgraded:
             verify_pre_policy_root_unchanged(upgraded, pre_policy_root)
             verify_pre_policy_root_unchanged(upgraded, v1_root)
+            verify_pre_policy_root_unchanged(upgraded, v2_root)
 
         with psycopg.connect(
             make_conninfo(

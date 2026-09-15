@@ -17,6 +17,7 @@ from request_engine.entrypoints.http.native_auth import (
 )
 from request_engine.platform.security.native_auth import PasswordPolicyViolation
 from request_engine.platform.security.native_human_auth import (
+    NativeEnrollmentUnavailable,
     NativeHumanAuthService,
     NativeIdentityAlreadyExists,
     NativeIdentityEnrollment,
@@ -27,7 +28,9 @@ pytestmark = [pytest.mark.unit, pytest.mark.security]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ["created", "duplicate", "password", "authority", "blank"])
+@pytest.mark.parametrize(
+    "scenario", ["created", "duplicate", "unavailable", "password", "authority", "blank"]
+)
 async def test_native_enrollment_transport(scenario: str) -> None:
     authority_id, identity_id = uuid4(), uuid4()
     enroll = AsyncMock(
@@ -50,6 +53,9 @@ async def test_native_enrollment_transport(scenario: str) -> None:
     if scenario == "duplicate":
         enroll.side_effect = NativeIdentityAlreadyExists(password)
         expected_status = 409
+    elif scenario == "unavailable":
+        enroll.side_effect = NativeEnrollmentUnavailable("native authority unavailable")
+        expected_status = 503
     elif scenario == "password":
         enroll.side_effect = PasswordPolicyViolation(password)
         expected_status = 422
@@ -81,12 +87,15 @@ async def test_native_enrollment_transport(scenario: str) -> None:
                 "login_handle": "reception@example.test",
             }
         else:
-            expected_code = (
-                "native_identity_already_exists"
-                if scenario == "duplicate"
-                else "password_policy_violation"
-            )
-            assert response.json()["error"]["code"] == expected_code
+            expected_code = {
+                "duplicate": "native_identity_already_exists",
+                "unavailable": "native_enrollment_unavailable",
+            }.get(scenario, "password_policy_violation")
+            error = response.json()["error"]
+            assert error["code"] == expected_code
+            if scenario == "unavailable":
+                assert error["resolution"] == "operator_intervention"
+                assert error["retryable"] is False
     service.authenticate_password.assert_not_called()
 
 

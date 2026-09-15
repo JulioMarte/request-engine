@@ -1,12 +1,13 @@
 # Native initial controller policy
 
-Status: implemented by additive revisions 0036/0037; validation is tracked separately.
+Status: revisions 0036/0037 validated; additive 0038 locally validated on
+PostgreSQL 18.6 with populated v2-to-v3 replay proof; exact-head CI pending.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
 ## Decision
 
-The application selects `tenant-controller-v2` only while creating a new native
+The application selects `tenant-controller-v3` only while creating a new native
 organization. A private transaction-local policy selection primitive validates
 that exact approved policy exists before the existing atomic root command runs.
 The root provisioning fact records the selected immutable policy key on INSERT;
@@ -30,6 +31,11 @@ default, not automatic inheritance of capability registry additions.
 
 These grants support configuration, the native booking journey and bounded
 human/agent/integration assignment. They do not imply all Request Engine operations.
+
+Revision 0038 appends v3 = immutable v2 plus delegable operational
+`authority.read_self`, for 35 active grants on new roots. This permits the
+[self-authority relationship read](self-authority-inspection.md), not arbitrary
+Principal or resource administration. No existing grants or root facts change.
 The appointment subject override is explicit and tenant-bound; it is not a bypass
 of capacity, lifecycle, revision, idempotency or owner checks. Workloads still
 receive only the authority their HUMAN sponsor explicitly assigns, and AGENT

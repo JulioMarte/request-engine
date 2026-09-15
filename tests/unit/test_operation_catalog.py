@@ -1,7 +1,10 @@
+from dataclasses import replace
 from uuid import uuid4
 
 from request_engine.entrypoints.http.operation_catalog import authorized_operations
-from request_engine.platform.security.context import ActorContext
+from request_engine.platform.security.agent_policy import AgentPolicySnapshot
+from request_engine.platform.security.context import ActorContext, PrincipalKind
+from request_engine.platform.security.operation_risk import OperationRiskClass
 
 
 def _operation(
@@ -115,3 +118,55 @@ def test_routes_without_canonical_operation_metadata_are_not_advertised() -> Non
     }
 
     assert authorized_operations(openapi, _actor("catalog.manage")) == ()
+
+
+def test_agent_catalog_intersects_policy_and_risk_without_advertising_authority_changes() -> None:
+    capabilities = frozenset(
+        {
+            "parties.lookup",
+            "parties.register",
+            "appointments.book",
+            "agent.suspend",
+            "queue.call_next",
+            "unknown.capability",
+        }
+    )
+    openapi: dict[str, object] = {
+        "paths": {f"/v1/{key}": {"post": _operation(key, key)} for key in capabilities}
+    }
+    actor = replace(_actor(*capabilities), principal_kind=PrincipalKind.AGENT)
+    assert authorized_operations(openapi, actor) == ()
+    policy = AgentPolicySnapshot(
+        allowed_capabilities=capabilities,
+        denied_capabilities=frozenset({"parties.register"}),
+        risk_ceiling=OperationRiskClass.LOW_IMPACT_WRITE,
+        max_mutations_per_minute=10,
+        policy_revision=1,
+    )
+    actor = replace(actor, agent_policy=policy)
+    assert [item.capability for item in authorized_operations(openapi, actor)] == ["parties.lookup"]
+    actor = replace(
+        actor, agent_policy=replace(policy, risk_ceiling=OperationRiskClass.AUTHORITY_CHANGE)
+    )
+    assert {item.capability for item in authorized_operations(openapi, actor)} == {
+        "appointments.book",
+        "parties.lookup",
+    }
+    actor = replace(actor, agent_policy=replace(policy, allowed_capabilities=frozenset()))
+    assert authorized_operations(openapi, actor) == ()
+
+
+def test_catalog_pointer_resolves_canonical_operation_with_escaped_path() -> None:
+    operation = _operation("lookup", "parties.lookup", kind="query")
+    openapi: dict[str, object] = {"paths": {"/v1/~lookup/{party_id}": {"get": operation}}}
+    view = authorized_operations(openapi, _actor("parties.lookup"))[0]
+    assert view.openapi_pointer == "/paths/~1v1~1~0lookup~1{party_id}/get"
+
+
+def test_catalog_describes_party_authority_requirements_without_granting_them() -> None:
+    openapi: dict[str, object] = {
+        "paths": {"/v1/appointments": {"post": _operation("book", "appointments.book")}}
+    }
+    view = authorized_operations(openapi, _actor("appointments.book"))[0]
+    assert view.party_scope == "appointments.book"
+    assert view.override_capability == "appointments.subject_override"

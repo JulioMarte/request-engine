@@ -43,6 +43,7 @@ An operation is returned only when:
 ```text
 operation is mounted
 AND canonical metadata is complete
+AND capability is registered and runtime-available
 AND ActorContext.allows(operation.capability)
 ```
 
@@ -55,6 +56,10 @@ tenant enabled
 ```
 
 Owner/Party/Representation/resource validation still runs when an operation is invoked. Catalog membership is not proof that every object instance is authorized.
+
+Agent self-discovery additionally uses the fresh allowed/denied/risk policy as
+specified in [doc 16's agent self-discovery contract](../16-canonical-operation-and-tool-projection-pattern.md#agent-self-discovery-contract-current).
+The explicit catalog exception does not admit arbitrary unmarked routes.
 
 ### Current operations-process distinction
 
@@ -76,11 +81,42 @@ idempotency
 expected_revision
 method
 path_template
+openapi_pointer          # JSON Pointer within the canonical OpenAPI document
+party_scope              # optional authority requirement, not an authorization result
+override_capability      # optional owner-approved alternative requirement
 tool_name                # optional
 tool_audiences           # optional
 ```
 
 The path/method are discovery information for HTTP clients, not business identity. `operation_id` remains the stable operation identity.
+
+The envelope includes `openapi_url` (null when schema serving is disabled),
+`requires_owner_validation: true`, and `agent_policy_revision` (null for non-agent
+callers). Responses use `Cache-Control: no-store`. Resolve `openapi_pointer`
+against the document at `openapi_url` for request/response/error schemas. The URL
+is application-relative; deployments with a path prefix must resolve it against
+their configured API mount. Discovery never reserves authority for a later call.
+
+### Developer/agent consumption sequence
+
+1. Authenticate and select the tenant through the supported transport boundary;
+   request the catalog with those same credentials.
+2. Select by stable `operation_id`, or match an onboarding blocker's
+   `resolution_capabilities` against catalog capabilities. Do not assume one
+   capability means exactly one endpoint.
+3. Resolve the operation's pointer in canonical OpenAPI. Use its typed path/query/
+   body and response/error schemas; follow local schema references in that same
+   document rather than guessing arguments from the operation name.
+4. Satisfy any Party/representation requirement and obtain required current
+   revisions from the owning read. Preserve the idempotency key for a retry of
+   the same command intent; never substitute discovery for concurrency checks.
+5. Invoke the advertised method/path through the normal API. Handle owner errors
+   and refresh relevant state after conflicts or authority changes. Do not replay
+   a modified command blindly or inject principal/tenant authority in model input.
+
+An empty catalog is not a general service-health verdict: it can mean the current
+grants, tenant policy or agent policy/risk ceiling admit no mounted operations.
+An agent without a policy is rejected rather than receiving an empty success.
 
 ## 5. This is not yet MCP tools/list
 
@@ -143,12 +179,13 @@ This naturally supports the case where one capability authorizes several possibl
 
 ## 8. Current limitations before tool/MCP projection
 
-- not every operations-app route has canonical metadata yet;
-- many administrative response schemas remain untyped (`object`);
-- staff Representation/grant lifecycle is not yet a supported admin API;
-- fresh tenant business-Party provisioning is not yet proven;
+- catalog visibility does not resolve object-specific Party/Representation/resource authority;
+- older controller-policy upgrades and identity recovery remain acceptance gaps;
 - tool projection metadata has not yet been applied systematically to owner operations;
 - no MCP adapter exists;
 - no claim is made that every authorized operation is suitable for an LLM.
 
 These limitations are intentional blockers against prematurely declaring the tool surface complete.
+
+For verified native provisioning/staff/agent implementation and remaining
+production acceptance work, see [the authentication checkpoint](auth-implementation-status.md).

@@ -47,6 +47,20 @@ def native_identity_input_error_response(
     )
 
 
+def native_enrollment_unavailable_response() -> JSONResponse:
+    """Do not reveal whether the configured authority is absent, disabled or of another kind."""
+    return render_error_response(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        ErrorBody(
+            code="native_enrollment_unavailable",
+            message="native enrollment is unavailable in this deployment",
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
+            retryable=False,
+        ),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
 async def native_authentication_error_handler(_: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, NativeAuthenticationError):
         raise exc
@@ -58,7 +72,21 @@ async def native_authentication_error_handler(_: Request, exc: Exception) -> JSO
             resolution=ErrorResolution.REAUTHENTICATE,
             retryable=False,
         ),
-        headers={"WWW-Authenticate": "Bearer"},
+        headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+def native_recovery_error_response() -> JSONResponse:
+    """Do not distinguish unknown, expired, consumed or disabled recovery targets."""
+    return render_error_response(
+        status.HTTP_401_UNAUTHORIZED,
+        ErrorBody(
+            code="recovery_intent_invalid",
+            message="the recovery proof is invalid or no longer usable",
+            resolution=ErrorResolution.REQUEST_AUTHORITY,
+            retryable=False,
+        ),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
     )
 
 
@@ -73,7 +101,7 @@ async def workload_authentication_error_handler(_: Request, exc: Exception) -> J
             resolution=ErrorResolution.REAUTHENTICATE,
             retryable=False,
         ),
-        headers={"WWW-Authenticate": "Bearer"},
+        headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store", "Pragma": "no-cache"},
     )
 
 
@@ -88,7 +116,7 @@ async def oidc_authentication_error_handler(_: Request, exc: Exception) -> JSONR
             resolution=ErrorResolution.REAUTHENTICATE,
             retryable=False,
         ),
-        headers={"WWW-Authenticate": "Bearer"},
+        headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store", "Pragma": "no-cache"},
     )
 
 
