@@ -6,6 +6,7 @@ PRIVATE_GLOBAL_TABLES = {
     "initial_controller_policies",
     "global_identities",
     "platform_authority_lifecycle_facts",
+    "platform_identity_disable_facts",
     "shared_capacity_authority_events",
     "shared_capacity_bindings",
     "shared_capacity_claim_links",

@@ -334,3 +334,10 @@ statement = "A tenant identity-binding suspend/reactivate/revoke command require
 severity = "high"
 required_evidence = ["invariant", "adversarial", "concurrency"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-IDENTITY-DISABLE-001"
+statement = "A global native identity disable requires an explicit current platform.identity.disable grant held by a HUMAN platform operator, acquires the identity-topology gate EXCLUSIVE under a bounded lock timeout, terminally disables the identity and revokes its credentials, sessions and pending recovery intents in one transaction, and fails atomically unless every affected tenant and the platform plane retain an effective controller; bindings, grants and provenance remain historical facts and the identity is never re-enabled."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]

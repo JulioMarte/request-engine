@@ -12,6 +12,48 @@ It specifies implementation order, proposed operations, ownership, security
 decision gates, transactions, proof matrix and operational exit criteria. Its
 proposed recovery/linking policy requires explicit acceptance before activation.
 
+## Governed native identity global disable (2026-09-15, revision 0047)
+
+Block D3 of `auth-production-completion-plan.md` under ADR 0013 D5. Migration
+`0047_native_identity_disable` appends from `0046`. Local/dirty-tree evidence only;
+no exact-head CI.
+
+Production change:
+
+- New private platform reader `GET /v1/platform/native-identities` /
+  `{native_identity_id}` (`platform_native_identity_list` / `_get`) under
+  `platform.identity.read`, and `POST .../{native_identity_id}:disable`
+  (`platform_native_identity_disable`) under new capability
+  `platform.identity.disable`. Mounted only on `create_platform_control_app`.
+- `request_platform.disable_native_identity` takes the identity-topology gate
+  EXCLUSIVE with a bounded `lock_timeout` (10s containment), revalidates the
+  platform actor and grant, disables the native identity terminally and revokes
+  credentials, sessions and pending recovery intents, then proves every affected
+  tenant and the platform plane retain an effective controller. Bindings, grants
+  and provenance are preserved as historical facts; the identity is never
+  re-enabled. A `platform_identity_disable_facts` append-only table records the
+  actor, revisions, reason and idempotency digests.
+- Existing platform controllers receive the bootstrap grant; new roots still need
+  the E1 controller-policy upgrade ceremony.
+
+Executed evidence (real PostgreSQL 18, `request_engine_current` at 0047):
+
+- `tests/db/test_native_identity_global_disable.py` (3 proofs): terminal disable +
+  credential revocation + idempotent replay, refusal to remove the last tenant
+  controller (atomic rollback), platform authority and stale-revision rejection.
+- Deterministic definer-privilege inventories updated coherently
+  (`test_platform_definer_topology.py`, `test_platform_control_definer_topology.py`,
+  `test_runtime_immutable_table_privileges.py`).
+
+Honest limits:
+
+- No private HTTP journey proof yet for the D3 routes; the DB command and route
+  registration are validated, but the end-to-end platform HTTP test is pending.
+- The EXCLUSIVE containment is a fixed 10s `lock_timeout`; production contention
+  limits remain a D6 operational decision.
+- No append-only audit beyond the disable fact table; B4 for tenant staff/agent/
+  integration commands is still absent.
+
 ## Identity binding lifecycle and inversion-free staff lock order (2026-09-15, revision 0046)
 
 Block D1b of `auth-production-completion-plan.md`, under the D4/D5 decisions
@@ -135,8 +177,9 @@ Deliberately NOT changed and honest limits:
   `identity_binding_forbidden`, which only surfaces when the in-memory capability is
   present but the standing grant is absent, or the actor is non-HUMAN.
 
-Next block: D2 self-service dual-proof linking, or the private native-identity read
-plus D3 global disable under the EXCLUSIVE gate (with production contention limits).
+Next block: D2 self-service dual-proof linking (blocked on a reauthentication
+freshness signal and an existing-principal binding primitive), or the D3 private
+HTTP journey proof.
 
 ## Governed identity recovery implementation and validation (2026-09-15, revision 0045)
 
@@ -507,7 +550,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | B4 | Transaction/idempotency/audit for identity commands | owners | validado (provisioner + governed recovery scope) | 0043 platform facts; 0045 recovery case audit, idempotency and revision; tenant staff/agent/integration commands still lack append-only audit facts |
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; production delivery adapter pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; test delivery adapter only |
-| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | parcial | D1 read projection (`identity.binding.read`) and D1b binding lifecycle (`identity.bind`, revision 0046) implemented and locally validated; D2 linking and D3 global disable not implemented |
+| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | parcial | D1 read projection (`identity.binding.read`), D1b binding lifecycle (`identity.bind`, revision 0046) and D3 global native disable (`platform.identity.disable`, revision 0047) implemented and locally validated; the D3 private HTTP journey proof and D2 linking remain |
 | E1 | Existing controller-policy upgrade path | Tenancy | bloqueado | Accepted new grant set + auditable deployment ceremony |
 | E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | bloqueado | Depends on B2 facts and D2 recovery configuration |
 | E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |

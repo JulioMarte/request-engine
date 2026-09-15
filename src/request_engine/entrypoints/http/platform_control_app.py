@@ -10,6 +10,9 @@ from request_engine.modules.tenancy.api.identity_recovery import install_identit
 from request_engine.modules.tenancy.api.native_platform_provisioning import (
     install_native_platform_provisioning_http,
 )
+from request_engine.modules.tenancy.api.platform_native_identity_management import (
+    install_native_identity_management_http,
+)
 from request_engine.modules.tenancy.api.platform_provisioner_management import (
     install_native_platform_provisioner_management_http,
 )
@@ -71,5 +74,11 @@ def create_platform_control_app(
         write_session_factory=platform_write_session_factory,
         actor_resolver=runtime.platform_actor_resolver,
         delivery=recovery_delivery,
+    )
+    install_native_identity_management_http(
+        app,
+        read_session_factory=platform_read_session_factory,
+        write_session_factory=platform_write_session_factory,
+        actor_resolver=runtime.platform_actor_resolver,
     )
     return app

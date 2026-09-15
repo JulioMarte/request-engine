@@ -19,6 +19,7 @@ _READ = (
     "request_platform.read_principal_authority(uuid)",
     "request_platform.read_platform_provisioners(uuid,uuid,integer)",
     "request_platform.read_identity_recovery_cases(uuid,uuid,integer)",
+    "request_platform.read_native_identities(uuid,uuid,integer)",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
 _POLICY = "request_platform.select_initial_controller_policy(text)"
@@ -26,7 +27,8 @@ _ORGANIZATION = (
     "request_platform.provision_native_organization_root(uuid,text,text,uuid,uuid,uuid,uuid,text)"
 )
 _LIFECYCLE = (
-    "request_platform.transition_native_platform_provisioner(uuid,text,bigint,text,text,text,text)"
+    "request_platform.transition_native_platform_provisioner(uuid,text,bigint,text,text,text,text)",
+    "request_platform.disable_native_identity(uuid,bigint,text,text,text,text)",
 )
 _RECOVERY = (
     "request_platform.create_identity_recovery_case(uuid,uuid,text,text,text,text,text)",

@@ -130,6 +130,14 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.REQUIRED,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
+    command_capability(
+        "platform.identity.disable",
+        CapabilityExposure.OPERATOR,
+        "Terminally disable a native identity across every tenant and platform binding.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
     query_capability(
         "platform.provisioner.read",
         CapabilityExposure.OPERATOR,

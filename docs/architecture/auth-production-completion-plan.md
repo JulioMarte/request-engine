@@ -16,9 +16,13 @@ están implementados y validados localmente; su evidencia vive en
 bindings (`identity.binding.read`, `identity_binding_list`/`identity_binding_get`)
 y el ciclo de vida local de binding (`identity_binding_suspend`/`_reactivate`/
 `_revoke` vía `identity.bind`, revisión0046, con orden de locks root-antes-de-fila
-y la prueba de carreras B-02) están implementados y validados localmente; el
-linking self-service D2 y el disable global D3 de identidad nativa siguen
-pendientes y no existen todavía. E3, F y G tampoco existen.
+y la prueba de carreras B-02) están implementados y validados localmente; el disable
+global D3 de identidad nativa (`platform.identity.disable`, revisión0047, gate
+EXCLUSIVE con `lock_timeout` acotado, reader privado y continuidad multi-tenant)
+está implementado y validado a nivel DB, con la prueba HTTP privada pendiente. El
+linking self-service D2 sigue pendiente y bloqueado por la falta de una ventana de
+reautenticación y de una primitiva que cree un binding para un Principal existente.
+E3, F y G tampoco existen.
 Las decisiones D1–D6 fueron ratificadas por ADR 0013; cada bloque todavía necesita
 su contrato propio donde el plan lo exige (por ejemplo, el inventario completo de
 writers y la prueba de inversión de locks de D5).

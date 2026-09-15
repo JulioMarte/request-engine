@@ -346,3 +346,8 @@ evidence = ["invariant", "adversarial", "concurrency", "security"]
 guarantee = "INV-IDENTITY-BINDING-LIFECYCLE-001"
 path = "tests/e2e/test_identity_binding_lifecycle_http.py"
 evidence = ["contract", "invariant", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-IDENTITY-DISABLE-001"
+path = "tests/db/test_native_identity_global_disable.py"
+evidence = ["invariant", "adversarial", "security"]

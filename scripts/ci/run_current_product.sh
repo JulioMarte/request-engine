@@ -130,6 +130,7 @@ uv run pytest \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
   tests/db/test_platform_provisioner_lifecycle.py \
+  tests/db/test_native_identity_global_disable.py \
   tests/db/test_identity_topology_gate.py \
   tests/db/test_identity_topology_races.py \
   tests/db/test_identity_recovery_governance.py \

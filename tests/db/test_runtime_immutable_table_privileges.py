@@ -140,6 +140,22 @@ _EXACT_DEFINER_OWNERS = {
         "renew_identity_recovery_delivery_ticket_lease",
         "p_ticket_id uuid, p_claim_token uuid, p_extension_seconds integer",
     ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_native_identities",
+        "p_identity_id uuid, p_after uuid, p_limit integer",
+    ): "request_platform_definer",
+    (
+        "request_platform",
+        "disable_native_identity",
+        "p_native_identity_id uuid, p_expected_revision bigint, p_reason_code text, "
+        "p_external_case_reference text, p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_platform_has_controller",
+        "",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {
