@@ -13,6 +13,7 @@ from request_engine.platform.security.native_human_auth import NativeHumanAuthSe
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
 from request_engine.platform.security.oidc_auth import JwksFetcher
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
+from request_engine.platform.security.oidc_link import OidcIdentityLinkVerifier
 from request_engine.platform.security.subject_http import (
     ProviderNeutralHttpActorResolver,
     ProviderNeutralPlatformHttpActorResolver,
@@ -121,8 +122,26 @@ async def build_oidc_subject_resolver(
     )
 
 
+def build_identity_link_verifier(
+    session_factory: SessionFactory,
+    *,
+    jwks_fetcher: JwksFetcher | None = None,
+) -> OidcIdentityLinkVerifier:
+    """Compose the OIDC second-proof verifier from persisted active authorities.
+
+    Construction performs no database or provider I/O. Close the returned
+    verifier at shutdown; injected fetchers remain caller-owned.
+    """
+
+    return OidcIdentityLinkVerifier(
+        PostgresOidcAuthorityReader(session_factory),
+        jwks_fetcher=jwks_fetcher,
+    )
+
+
 __all__ = [
     "OidcAuthRuntime",
+    "build_identity_link_verifier",
     "build_native_auth_runtime",
     "build_oidc_subject_resolver",
 ]

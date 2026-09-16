@@ -124,6 +124,7 @@ from request_engine.platform.db.native_human_auth_store import PostgresNativeHum
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.principal_authority import PrincipalAuthorityReader
 
 
@@ -165,6 +166,7 @@ def install_http(
     session_factory: SessionFactory,
     actor_resolver: ActorResolver,
     identity_exchange_fingerprint_key: bytes | None = None,
+    identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
@@ -277,6 +279,7 @@ def install_http(
         proof_reader=PostgresNativeHumanAuthStore(session_factory),
         intent_reader=PostgresIdentityLinkIntentReader(session_factory),
         authenticated_actor=authenticated_actor,
+        oidc_verifier=identity_link_verifier,
     )
     app.include_router(identity_link_router)
 

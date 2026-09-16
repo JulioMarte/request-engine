@@ -1,15 +1,15 @@
 import asyncio
 import hashlib
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from request_engine.modules.tenancy.api.party_registry_dependencies import IdempotencyKey
 from request_engine.modules.tenancy.application.commands.identity_link import (
@@ -23,6 +23,7 @@ from request_engine.modules.tenancy.application.errors import (
     IdentityLinkError,
     IdentityLinkForbidden,
     IdentityLinkInputInvalid,
+    IdentityLinkNotConfigured,
     IdentityLinkNotFound,
     IdentityLinkRevisionConflict,
 )
@@ -40,6 +41,7 @@ from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
     NativeIdentityStatus,
 )
+from request_engine.platform.security.oidc_link import OidcLinkVerifier
 
 _IDENTITY_LINK_TTL_SECONDS = 300
 
@@ -57,23 +59,53 @@ class IdentityLinkIntentView(BaseModel):
 
 
 class NativeIdentityLinkProofBody(BaseModel):
-    """Closed, bounded secret proof DTO for the second identity.
+    """Closed, bounded secret proof DTO for a second native identity.
 
     The target authority is never supplied by the caller: it is derived from the
     persisted intent inside the authoritative transaction.
     """
 
     model_config = ConfigDict(extra="forbid")
+    kind: Literal["native"] = "native"
     native_identity_id: UUID
     login_handle: str = Field(min_length=1, max_length=320)
     password: str = Field(min_length=1, max_length=1024, repr=False)
 
 
+class OidcIdentityLinkProofBody(BaseModel):
+    """Closed, bounded second-proof DTO for a federated OIDC identity.
+
+    The access token is verified against the authority persisted on the intent;
+    it is never logged or echoed. The target authority is not caller-supplied.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["oidc"] = "oidc"
+    access_token: str = Field(min_length=1, max_length=16384, repr=False)
+
+
 class IdentityLinkIntentConfirmBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    proof: NativeIdentityLinkProofBody
+    proof: Annotated[
+        NativeIdentityLinkProofBody | OidcIdentityLinkProofBody,
+        Field(discriminator="kind"),
+    ]
     expected_actor_binding_revision: int = Field(ge=1)
     provenance_reference: str = Field(min_length=1, max_length=400)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_native_proof_kind(cls, data: object) -> object:
+        """Keep the pre-existing native proof body (without ``kind``) valid."""
+
+        if not isinstance(data, dict):
+            return data
+        values = cast(Mapping[str, object], data)
+        proof = values.get("proof")
+        if isinstance(proof, dict) and "kind" not in proof:
+            proof_values = cast(Mapping[str, object], proof)
+            return {**values, "proof": {**proof_values, "kind": "native"}}
+        return values
 
 
 class IdentityLinkBindingView(BaseModel):
@@ -119,6 +151,7 @@ def add_identity_link_routes(
     proof_reader: NativeHumanAuthStore,
     intent_reader: IdentityLinkIntentReader,
     authenticated_actor: Callable[[Request], Awaitable[ActorContext]],
+    oidc_verifier: OidcLinkVerifier | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> None:
     async def create_intent(
@@ -173,23 +206,40 @@ def add_identity_link_routes(
             raise IdentityLinkConflict("identity link intent is no longer pending")
         if intent.status == "pending" and intent.expires_at <= clock():
             raise IdentityLinkConflict("identity link intent has expired")
-        if intent.target_authority_kind != "native":
-            raise IdentityLinkInputInvalid("only native identity linking is supported")
-        await _verify_native_proof(
-            proof_reader,
-            body.proof,
-            target_authority_id=intent.target_authority_id,
-        )
+        native_identity_id: UUID | None = None
+        subject_id: str | None = None
+        if intent.target_authority_kind == "native":
+            if not isinstance(body.proof, NativeIdentityLinkProofBody):
+                raise IdentityLinkInputInvalid("the intent requires a native identity proof")
+            await _verify_native_proof(
+                proof_reader,
+                body.proof,
+                target_authority_id=intent.target_authority_id,
+            )
+            native_identity_id = body.proof.native_identity_id
+        elif intent.target_authority_kind == "oidc":
+            if not isinstance(body.proof, OidcIdentityLinkProofBody):
+                raise IdentityLinkInputInvalid("the intent requires an OIDC access token")
+            if oidc_verifier is None:
+                raise IdentityLinkNotConfigured(
+                    "OIDC identity linking is not configured in this deployment"
+                )
+            subject_id = await oidc_verifier.verify(
+                intent.target_authority_id, body.proof.access_token
+            )
+        else:
+            raise IdentityLinkInputInvalid("the intent targets an unsupported authority kind")
         try:
             receipt = await commands.confirm_identity_link_intent(
                 actor,
                 ConfirmIdentityLinkIntentCommand(
                     intent_id=intent_id,
                     expected_actor_binding_revision=body.expected_actor_binding_revision,
-                    native_identity_id=body.proof.native_identity_id,
                     binding_id=uuid4(),
                     provenance_reference=body.provenance_reference,
                     idempotency_key=idempotency_key,
+                    native_identity_id=native_identity_id,
+                    subject_id=subject_id,
                 ),
             )
         except ValueError as exc:
@@ -270,6 +320,12 @@ def _identity_link_error(exc: IdentityLinkError) -> tuple[int, ErrorBody]:
             code="identity_link_invalid",
             message="the identity link request is invalid",
             resolution=ErrorResolution.FIX_REQUEST,
+        )
+    if isinstance(exc, IdentityLinkNotConfigured):
+        return http_status.HTTP_403_FORBIDDEN, ErrorBody(
+            code="identity_link_not_configured",
+            message="OIDC identity linking is not configured in this deployment",
+            resolution=ErrorResolution.OPERATOR_INTERVENTION,
         )
     return http_status.HTTP_500_INTERNAL_SERVER_ERROR, ErrorBody(
         code="identity_link_error",

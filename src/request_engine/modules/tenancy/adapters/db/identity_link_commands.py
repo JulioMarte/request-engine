@@ -31,6 +31,32 @@ from request_engine.platform.security.context import ActorContext, PrincipalKind
 _NONCE_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 _MIN_TTL_SECONDS = 60
 _MAX_TTL_SECONDS = 900
+_MAX_SUBJECT_LENGTH = 320
+
+_CONFIRM_NATIVE_SQL = text(
+    """
+    SELECT binding_id, principal_id, binding_revision
+      FROM request_engine.confirm_identity_link_intent(
+          :intent_id,
+          :expected_actor_binding_revision,
+          :native_identity_id,
+          :binding_id,
+          :provenance_reference
+      )
+    """
+)
+_CONFIRM_SUBJECT_SQL = text(
+    """
+    SELECT binding_id, principal_id, binding_revision
+      FROM request_engine.confirm_identity_link_subject(
+          :intent_id,
+          :expected_actor_binding_revision,
+          :subject_id,
+          :binding_id,
+          :provenance_reference
+      )
+    """
+)
 
 
 @runtime_checkable
@@ -63,6 +89,13 @@ def _validate_ttl_seconds(value: int) -> int:
     if value < _MIN_TTL_SECONDS or value > _MAX_TTL_SECONDS:
         raise ValueError("ttl_seconds must be between 60 and 900")
     return value
+
+
+def _validate_subject_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized or len(normalized) > _MAX_SUBJECT_LENGTH:
+        raise ValueError("subject_id must contain between 1 and 320 characters")
+    return normalized
 
 
 def _require_human_actor(actor: ActorContext) -> None:
@@ -204,17 +237,47 @@ class PostgresIdentityLinkCommands:
         _require_human_actor(actor)
         if command.expected_actor_binding_revision <= 0:
             raise ValueError("expected_actor_binding_revision must be positive")
+        if (command.native_identity_id is None) == (command.subject_id is None):
+            raise ValueError("exactly one identity proof must be supplied")
         provenance = _validate_provenance_reference(command.provenance_reference)
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
-        fingerprint = command_fingerprint(
-            IDENTITY_LINK_CAPABILITY,
-            {
+        if command.subject_id is not None:
+            subject_id = _validate_subject_id(command.subject_id)
+            statement = _CONFIRM_SUBJECT_SQL
+            fingerprint = command_fingerprint(
+                IDENTITY_LINK_CAPABILITY,
+                {
+                    "intent_id": command.intent_id,
+                    "expected_actor_binding_revision": (command.expected_actor_binding_revision),
+                    "subject_id": subject_id,
+                    "provenance_reference": provenance,
+                },
+            )
+            params: dict[str, object] = {
                 "intent_id": command.intent_id,
-                "expected_actor_binding_revision": command.expected_actor_binding_revision,
-                "native_identity_id": command.native_identity_id,
+                "expected_actor_binding_revision": (command.expected_actor_binding_revision),
+                "subject_id": subject_id,
+                "binding_id": command.binding_id,
                 "provenance_reference": provenance,
-            },
-        )
+            }
+        else:
+            statement = _CONFIRM_NATIVE_SQL
+            fingerprint = command_fingerprint(
+                IDENTITY_LINK_CAPABILITY,
+                {
+                    "intent_id": command.intent_id,
+                    "expected_actor_binding_revision": (command.expected_actor_binding_revision),
+                    "native_identity_id": command.native_identity_id,
+                    "provenance_reference": provenance,
+                },
+            )
+            params = {
+                "intent_id": command.intent_id,
+                "expected_actor_binding_revision": (command.expected_actor_binding_revision),
+                "native_identity_id": command.native_identity_id,
+                "binding_id": command.binding_id,
+                "provenance_reference": provenance,
+            }
         async with actor_transaction(self._session_factory, actor) as session:
             idempotency_id, replay = await acquire_idempotency(
                 session,
@@ -231,35 +294,7 @@ class PostgresIdentityLinkCommands:
                     binding_revision=_replay_positive_int(replay, "binding_revision"),
                 )
             try:
-                result = (
-                    (
-                        await session.execute(
-                            text(
-                                """
-                                SELECT binding_id, principal_id, binding_revision
-                                  FROM request_engine.confirm_identity_link_intent(
-                                      :intent_id,
-                                      :expected_actor_binding_revision,
-                                      :native_identity_id,
-                                      :binding_id,
-                                      :provenance_reference
-                                  )
-                                """
-                            ),
-                            {
-                                "intent_id": command.intent_id,
-                                "expected_actor_binding_revision": (
-                                    command.expected_actor_binding_revision
-                                ),
-                                "native_identity_id": command.native_identity_id,
-                                "binding_id": command.binding_id,
-                                "provenance_reference": provenance,
-                            },
-                        )
-                    )
-                    .mappings()
-                    .one()
-                )
+                result = (await session.execute(statement, params)).mappings().one()
             except DBAPIError as exc:
                 _raise_identity_link_db_error(exc)
             receipt = IdentityLinkBindingReceipt(

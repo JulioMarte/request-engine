@@ -23,10 +23,11 @@ class CreateIdentityLinkIntentCommand:
 class ConfirmIdentityLinkIntentCommand:
     intent_id: UUID
     expected_actor_binding_revision: int
-    native_identity_id: UUID
     binding_id: UUID
     provenance_reference: str
     idempotency_key: str
+    native_identity_id: UUID | None = None
+    subject_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

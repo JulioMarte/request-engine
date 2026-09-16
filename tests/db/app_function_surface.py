@@ -67,6 +67,11 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "p_binding_id uuid, p_provenance_reference text)"
     ),
     (
+        "request_engine.confirm_identity_link_subject(p_intent_id uuid, "
+        "p_expected_actor_binding_revision bigint, p_subject_id text, "
+        "p_binding_id uuid, p_provenance_reference text)"
+    ),
+    (
         "request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, "
         "p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid)"
     ),

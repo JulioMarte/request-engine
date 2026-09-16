@@ -43,6 +43,7 @@ _GATE_EXCLUSIVE = "request_engine.acquire_identity_topology_exclusive()"
 # before delegating to their gated ``*_state`` implementation.
 _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_engine", "confirm_identity_link_intent"): _GATE_SHARE,
+    ("request_engine", "confirm_identity_link_subject"): _GATE_SHARE,
     ("request_engine", "invite_native_staff"): _GATE_SHARE,
     ("request_engine", "provision_agent"): _GATE_SHARE,
     ("request_engine", "provision_integration_state"): _GATE_SHARE,
@@ -99,6 +100,7 @@ _BEGIN_LINE = re.compile(r"^[ \t]*BEGIN[ \t]*$", re.MULTILINE)
 
 _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_engine.confirm_identity_link_intent", 5),
+    ("request_engine.confirm_identity_link_subject", 5),
     ("request_engine.invite_native_staff", 7),
     ("request_engine.provision_agent", 13),
     ("request_engine.provision_integration", 9),

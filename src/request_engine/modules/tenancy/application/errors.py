@@ -209,6 +209,10 @@ class IdentityLinkInputInvalid(IdentityLinkError):
     """The requested identity-link command violates an input contract."""
 
 
+class IdentityLinkNotConfigured(IdentityLinkError):
+    """The deployment does not compose the proof method required by this intent."""
+
+
 class AgentGovernanceError(Exception):
     """Base class for stable Agent governance failures."""
 

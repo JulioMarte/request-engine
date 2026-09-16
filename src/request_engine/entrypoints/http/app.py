@@ -45,6 +45,7 @@ from request_engine.platform.security.http import (
 from request_engine.platform.security.native_human_auth import NativeHumanAuthService
 from request_engine.platform.security.native_session import NativeSessionAuthenticator
 from request_engine.platform.security.oidc_http import OidcHttpSubjectResolver
+from request_engine.platform.security.oidc_link import OidcLinkVerifier
 from request_engine.platform.security.subject_http import (
     HttpSubjectResolver,
     ProviderNeutralHttpActorResolver,
@@ -81,6 +82,7 @@ def create_app(
     native_auth_service: NativeHumanAuthService | None = None,
     native_session_authenticator: NativeSessionAuthenticator | None = None,
     native_identity_authority_id: UUID | None = None,
+    identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> FastAPI:
     """Compose the full single-app HTTP surface (business + operational configuration).
 
@@ -169,6 +171,7 @@ def create_app(
         slot_offer_ports=slot_offer_ports,
         appointment_option_signing_key=signing_key,
         identity_exchange_fingerprint_key=identity_key,
+        identity_link_verifier=identity_link_verifier,
     )
     install_operational_modules(
         app,
@@ -219,6 +222,7 @@ def create_native_app(
     operator_actor_resolver: OperatorActorResolver | None = None,
     operator_capability_source: OperatorCapabilitySource | None = None,
     oidc_subject_resolver: OidcHttpSubjectResolver | None = None,
+    identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> FastAPI:
     """Compose a providerless deployment whose protected routes trust Native evidence.
 
@@ -260,4 +264,5 @@ def create_native_app(
         native_auth_service=runtime.service,
         native_session_authenticator=runtime.authenticator,
         native_identity_authority_id=native_identity_authority_id,
+        identity_link_verifier=identity_link_verifier,
     )

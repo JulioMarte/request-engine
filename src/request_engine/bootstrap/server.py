@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from request_engine.bootstrap.settings import HttpSettings
 from request_engine.entrypoints.http.app import create_native_app
+from request_engine.entrypoints.http.native_runtime import build_identity_link_verifier
 from request_engine.modules.booking.adapters.db.capacity_error_boundary import (
     CapacitySafeSlotOfferCapacity,
 )
@@ -33,12 +34,16 @@ def create_app() -> FastAPI:
         if settings.oidc_enabled
         else None
     )
+    identity_link_verifier = (
+        build_identity_link_verifier(sessions) if settings.oidc_enabled else None
+    )
     app = create_native_app(
         session_factory=sessions,
         native_identity_authority_id=settings.native_identity_authority_id,
         appointment_option_signing_key=settings.appointment_option_signing_key.get_secret_value().encode(),
         identity_exchange_fingerprint_key=settings.identity_exchange_fingerprint_key.get_secret_value().encode(),
         oidc_subject_resolver=oidc,
+        identity_link_verifier=identity_link_verifier,
         slot_offer_ports=QueueSlotOfferHttpPorts(
             capacity=CapacitySafeSlotOfferCapacity(),
             notification=PostgresSlotOfferNotificationIntent(),
@@ -87,6 +92,8 @@ def create_app() -> FastAPI:
                 yield
         finally:
             try:
+                if identity_link_verifier is not None:
+                    await identity_link_verifier.aclose()
                 if oidc is not None:
                     await oidc.aclose()
             finally:

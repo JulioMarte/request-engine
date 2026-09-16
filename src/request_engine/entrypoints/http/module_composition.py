@@ -36,6 +36,7 @@ from request_engine.modules.queue.api.live_capacity import (
 from request_engine.modules.requests.api import install_http as install_requests_http
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.http import ActorResolver
+from request_engine.platform.security.oidc_link import OidcLinkVerifier
 
 
 def install_business_modules(
@@ -46,12 +47,14 @@ def install_business_modules(
     slot_offer_ports: queue_api.QueueSlotOfferHttpPorts | None,
     appointment_option_signing_key: bytes,
     identity_exchange_fingerprint_key: bytes | None = None,
+    identity_link_verifier: OidcLinkVerifier | None = None,
 ) -> None:
     tenancy_api.install_http(
         app,
         session_factory=session_factory,
         actor_resolver=actor_resolver,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
+        identity_link_verifier=identity_link_verifier,
     )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
