@@ -31,6 +31,18 @@ class FakeSessionReader:
         return self.session
 
 
+class FakeSessionToucher:
+    def __init__(self, *, raises: bool = False) -> None:
+        self.calls: list[tuple[UUID, int]] = []
+        self._raises = raises
+
+    async def touch_native_session(self, *, session_id: UUID, min_interval_seconds: int) -> bool:
+        self.calls.append((session_id, min_interval_seconds))
+        if self._raises:
+            raise RuntimeError("activity recording is unavailable")
+        return True
+
+
 def _snapshot(
     *,
     token_digest: bytes,
@@ -41,6 +53,7 @@ def _snapshot(
     identity_status: NativeIdentityStatus = NativeIdentityStatus.ACTIVE,
     credential_status: NativeCredentialStatus = NativeCredentialStatus.ACTIVE,
     expires_at: datetime = NOW + timedelta(hours=1),
+    last_seen_at: datetime | None = None,
 ) -> NativeSessionSnapshot:
     return NativeSessionSnapshot(
         session_id=session_id,
@@ -55,7 +68,7 @@ def _snapshot(
         credential_status=credential_status,
         expires_at=expires_at,
         created_at=NOW,
-        last_seen_at=None,
+        last_seen_at=last_seen_at,
         authenticated_at=NOW,
     )
 
@@ -140,3 +153,75 @@ async def test_expired_session_fails_closed() -> None:
 
     with pytest.raises(SessionExpired):
         await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+
+@pytest.mark.asyncio
+async def test_idle_timeout_rejects_a_stale_session_when_configured() -> None:
+    material = issue_opaque_token()
+    session = _snapshot(
+        token_digest=material.digest,
+        session_id=material.token_id,
+        last_seen_at=NOW - timedelta(minutes=30),
+    )
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        idle_timeout=timedelta(minutes=15),
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(SessionExpired):
+        await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+
+@pytest.mark.asyncio
+async def test_idle_timeout_accepts_a_fresh_session_when_configured() -> None:
+    material = issue_opaque_token()
+    session = _snapshot(
+        token_digest=material.digest,
+        session_id=material.token_id,
+        last_seen_at=NOW - timedelta(minutes=1),
+    )
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        idle_timeout=timedelta(minutes=15),
+        clock=lambda: NOW,
+    )
+
+    subject = await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+    assert subject.subject_id == str(session.native_identity_id)
+
+
+@pytest.mark.asyncio
+async def test_idle_timeout_defaults_to_disabled() -> None:
+    material = issue_opaque_token()
+    session = _snapshot(
+        token_digest=material.digest,
+        session_id=material.token_id,
+        last_seen_at=NOW - timedelta(days=2),
+    )
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        clock=lambda: NOW,
+    )
+
+    subject = await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+    assert subject.subject_id == str(session.native_identity_id)
+
+
+@pytest.mark.asyncio
+async def test_activity_touch_is_best_effort_and_never_breaks_authentication() -> None:
+    material = issue_opaque_token()
+    session = _snapshot(token_digest=material.digest, session_id=material.token_id)
+    toucher = FakeSessionToucher(raises=True)
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        session_toucher=toucher,
+        clock=lambda: NOW,
+    )
+
+    subject = await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+    assert subject.subject_id == str(session.native_identity_id)
+    assert toucher.calls == [(session.session_id, 60)]

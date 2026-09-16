@@ -294,7 +294,6 @@ async def test_self_service_identity_link_over_http(
             headers={**headers, "Idempotency-Key": "link-confirm-1"},
             json={
                 "proof": {
-                    "target_authority_id": str(authority_id),
                     "native_identity_id": str(second_identity.native_identity_id),
                     "login_handle": second_identity.login_handle,
                     "password": second_password,
@@ -331,7 +330,6 @@ async def test_self_service_identity_link_over_http(
             headers={**headers, "Idempotency-Key": "link-confirm-1"},
             json={
                 "proof": {
-                    "target_authority_id": str(authority_id),
                     "native_identity_id": str(second_identity.native_identity_id),
                     "login_handle": second_identity.login_handle,
                     "password": second_password,
@@ -350,7 +348,6 @@ async def test_self_service_identity_link_over_http(
             headers={**headers, "Idempotency-Key": "link-confirm-1"},
             json={
                 "proof": {
-                    "target_authority_id": str(authority_id),
                     "native_identity_id": str(other_identity.native_identity_id),
                     "login_handle": other_identity.login_handle,
                     "password": other_password,
@@ -374,7 +371,6 @@ async def test_self_service_identity_link_over_http(
             headers={**headers, "Idempotency-Key": "link-confirm-bad"},
             json={
                 "proof": {
-                    "target_authority_id": str(authority_id),
                     "native_identity_id": str(second_identity.native_identity_id),
                     "login_handle": second_identity.login_handle,
                     "password": "not the right password at all",
@@ -400,7 +396,6 @@ async def test_self_service_identity_link_over_http(
             headers={**foreign_headers, "Idempotency-Key": "link-confirm-foreign"},
             json={
                 "proof": {
-                    "target_authority_id": str(authority_id),
                     "native_identity_id": str(second_identity.native_identity_id),
                     "login_handle": second_identity.login_handle,
                     "password": second_password,

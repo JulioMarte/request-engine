@@ -26,10 +26,13 @@ from request_engine.modules.tenancy.application.errors import (
     IdentityLinkNotFound,
     IdentityLinkRevisionConflict,
 )
+from request_engine.modules.tenancy.application.queries.identity_link import (
+    IdentityLinkIntentReader,
+)
 from request_engine.platform.http.capability_routes import add_capability_route
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.security.context import ActorContext, PrincipalKind
-from request_engine.platform.security.freshness import require_recent_authentication
+from request_engine.platform.security.freshness import enforce_step_up
 from request_engine.platform.security.http import require_capability
 from request_engine.platform.security.native_auth import CredentialInvalid, verify_password
 from request_engine.platform.security.native_human_auth import NativeHumanAuthStore
@@ -56,14 +59,11 @@ class IdentityLinkIntentView(BaseModel):
 class NativeIdentityLinkProofBody(BaseModel):
     """Closed, bounded secret proof DTO for the second identity.
 
-    ``target_authority_id`` selects the configured authenticator whose
-    credential is verified; it is an untrusted lookup hint, never the authority
-    the binding is created under. That authority is fixed by the persisted
-    intent inside the authoritative transaction.
+    The target authority is never supplied by the caller: it is derived from the
+    persisted intent inside the authoritative transaction.
     """
 
     model_config = ConfigDict(extra="forbid")
-    target_authority_id: UUID
     native_identity_id: UUID
     login_handle: str = Field(min_length=1, max_length=320)
     password: str = Field(min_length=1, max_length=1024, repr=False)
@@ -92,11 +92,13 @@ def _require_self_service_actor(actor: ActorContext) -> None:
 async def _verify_native_proof(
     proof_reader: NativeHumanAuthStore,
     proof: NativeIdentityLinkProofBody,
+    *,
+    target_authority_id: UUID,
 ) -> None:
     """Verify the second identity's password outside any authoritative lock."""
 
     snapshot = await proof_reader.read_password_credential(
-        identity_authority_id=proof.target_authority_id,
+        identity_authority_id=target_authority_id,
         login_handle=proof.login_handle,
     )
     if (
@@ -115,6 +117,7 @@ def add_identity_link_routes(
     *,
     commands: IdentityLinkCommands,
     proof_reader: NativeHumanAuthStore,
+    intent_reader: IdentityLinkIntentReader,
     authenticated_actor: Callable[[Request], Awaitable[ActorContext]],
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> None:
@@ -126,7 +129,7 @@ def add_identity_link_routes(
     ) -> IdentityLinkIntentView:
         require_capability(actor, IDENTITY_LINK_CAPABILITY)
         _require_self_service_actor(actor)
-        require_recent_authentication(actor, now=clock())
+        enforce_step_up(actor, IDENTITY_LINK_CAPABILITY, now=clock())
         actor_binding_id = actor.identity_binding_id
         if actor_binding_id is None:
             raise IdentityLinkForbidden("the current actor has no active tenant identity binding")
@@ -162,8 +165,21 @@ def add_identity_link_routes(
     ) -> IdentityLinkBindingView:
         require_capability(actor, IDENTITY_LINK_CAPABILITY)
         _require_self_service_actor(actor)
-        require_recent_authentication(actor, now=clock())
-        await _verify_native_proof(proof_reader, body.proof)
+        enforce_step_up(actor, IDENTITY_LINK_CAPABILITY, now=clock())
+        intent = await intent_reader.read_intent(actor, intent_id=intent_id)
+        if intent is None or intent.actor_principal_id != actor.principal_id:
+            raise IdentityLinkNotFound("identity link intent is not visible in this tenant")
+        if intent.status not in {"pending", "consumed"}:
+            raise IdentityLinkConflict("identity link intent is no longer pending")
+        if intent.status == "pending" and intent.expires_at <= clock():
+            raise IdentityLinkConflict("identity link intent has expired")
+        if intent.target_authority_kind != "native":
+            raise IdentityLinkInputInvalid("only native identity linking is supported")
+        await _verify_native_proof(
+            proof_reader,
+            body.proof,
+            target_authority_id=intent.target_authority_id,
+        )
         try:
             receipt = await commands.confirm_identity_link_intent(
                 actor,

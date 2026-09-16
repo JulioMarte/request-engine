@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from request_engine.entrypoints.http.security import build_identity_principal_resolver
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.native_session_reader import PostgresNativeSessionReader
+from request_engine.platform.db.native_session_toucher import PostgresNativeSessionToucher
 from request_engine.platform.db.oidc_authority_reader import PostgresOidcAuthorityReader
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.db.workload_credential_reader import PostgresWorkloadCredentialReader
@@ -66,7 +67,8 @@ def build_native_auth_runtime(
 
     store = PostgresNativeHumanAuthStore(session_factory)
     authenticator = NativeSessionAuthenticator(
-        session_reader=PostgresNativeSessionReader(session_factory)
+        session_reader=PostgresNativeSessionReader(session_factory),
+        session_toucher=PostgresNativeSessionToucher(session_factory),
     )
     workload_authenticator = WorkloadCredentialAuthenticator(
         reader=PostgresWorkloadCredentialReader(session_factory)

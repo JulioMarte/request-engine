@@ -359,5 +359,15 @@ evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
 guarantee = "INV-IDENTITY-LINK-SELF-001"
+path = "tests/db/test_identity_link_hardening.py"
+evidence = ["invariant", "adversarial", "concurrency", "security"]
+
+[[proofs]]
+guarantee = "INV-IDENTITY-LINK-SELF-001"
 path = "tests/e2e/test_identity_link_self_http.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-MULTI-SESSION-001"
+path = "tests/db/test_native_multi_session.py"
 evidence = ["invariant", "adversarial", "security"]

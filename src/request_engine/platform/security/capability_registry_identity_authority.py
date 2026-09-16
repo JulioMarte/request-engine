@@ -246,5 +246,6 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         authority_plane=AuthorityPlane.TENANT_CONTROL,
         revision=RevisionPolicy.NONE,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+        requires_recent_authentication=True,
     ),
 )

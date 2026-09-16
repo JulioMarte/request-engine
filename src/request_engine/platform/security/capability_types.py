@@ -49,6 +49,7 @@ class CapabilityDefinition:
     legacy_aliases: frozenset[str] = frozenset()
     runtime_available: bool = True
     risk_class: OperationRiskClass | None = None
+    requires_recent_authentication: bool = False
 
     @property
     def discoverable(self) -> bool:
@@ -74,6 +75,7 @@ def query_capability(
     legacy_aliases: frozenset[str] = frozenset(),
     runtime_available: bool = True,
     risk_class: OperationRiskClass | None = None,
+    requires_recent_authentication: bool = False,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -88,6 +90,7 @@ def query_capability(
         legacy_aliases=legacy_aliases,
         runtime_available=runtime_available,
         risk_class=risk_class,
+        requires_recent_authentication=requires_recent_authentication,
     )
 
 
@@ -103,6 +106,7 @@ def command_capability(
     legacy_aliases: frozenset[str] = frozenset(),
     runtime_available: bool = True,
     risk_class: OperationRiskClass | None = None,
+    requires_recent_authentication: bool = False,
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         key=key,
@@ -117,4 +121,5 @@ def command_capability(
         legacy_aliases=legacy_aliases,
         runtime_available=runtime_available,
         risk_class=risk_class,
+        requires_recent_authentication=requires_recent_authentication,
     )

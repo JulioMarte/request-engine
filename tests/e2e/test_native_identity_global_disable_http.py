@@ -268,8 +268,8 @@ async def test_native_identity_global_disable_http_journey_is_governed_and_audit
                 "reason_code": "operator_revocation",
             },
         )
-        assert continuity.status_code == 422
-        assert continuity.json()["error"]["code"] == "native_identity_disable_invalid"
+        assert continuity.status_code == 409
+        assert continuity.json()["error"]["code"] == "native_identity_disable_conflict"
         assert (await client.get(_IDENTITIES_PATH, headers=root_headers)).status_code == 200
         await _login(client, root_handle, root_password)
 

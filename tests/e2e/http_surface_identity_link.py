@@ -32,7 +32,6 @@ IDENTITY_LINK_HTTP_OPERATIONS: tuple[PublicHttpOperation, ...] = (
             f"/v1/me/identity-link-intents/{PROBE_UUID}:confirm",
             body={
                 "proof": {
-                    "target_authority_id": PROBE_UUID,
                     "native_identity_id": PROBE_UUID_2,
                     "login_handle": "probe@example.test",
                     "password": "probe-password-value",

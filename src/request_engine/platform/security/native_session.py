@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -15,6 +15,8 @@ from request_engine.platform.security.native_auth import (
     parse_opaque_token,
     verify_opaque_secret,
 )
+
+_ACTIVITY_TOUCH_INTERVAL_SECONDS = 60
 
 
 class NativeSessionStatus(StrEnum):
@@ -95,16 +97,34 @@ class NativeSessionReader(Protocol):
     async def read_native_session(self, *, session_id: UUID) -> NativeSessionSnapshot | None: ...
 
 
+class NativeSessionToucher(Protocol):
+    async def touch_native_session(
+        self, *, session_id: UUID, min_interval_seconds: int
+    ) -> bool: ...
+
+
 class NativeSessionAuthenticator:
-    """Provider-neutral authenticator for opaque RE Native session credentials."""
+    """Provider-neutral authenticator for opaque RE Native session credentials.
+
+    An optional ``session_toucher`` records bounded activity after a successful
+    authentication; it is best-effort and never changes the authentication
+    outcome. An optional ``idle_timeout`` additionally rejects a session whose
+    recorded activity is too old; it is disabled unless a deployment enables it.
+    """
 
     def __init__(
         self,
         *,
         session_reader: NativeSessionReader,
+        session_toucher: NativeSessionToucher | None = None,
+        idle_timeout: timedelta | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        if idle_timeout is not None and idle_timeout <= timedelta(0):
+            raise ValueError("idle_timeout must be positive")
         self._session_reader = session_reader
+        self._session_toucher = session_toucher
+        self._idle_timeout = idle_timeout
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def authenticate(self, evidence: NativeSessionEvidence) -> AuthenticatedSubject:
@@ -122,8 +142,16 @@ class NativeSessionAuthenticator:
             raise NativeCredentialRevoked("native credential is revoked")
         if session.session_epoch != session.current_session_epoch:
             raise SessionRevoked("native session was globally invalidated")
-        if self._clock() >= session.expires_at:
+        now = self._clock()
+        if now >= session.expires_at:
             raise SessionExpired("native session is expired")
+        if (
+            self._idle_timeout is not None
+            and session.last_seen_at is not None
+            and now - session.last_seen_at > self._idle_timeout
+        ):
+            raise SessionExpired("native session is idle")
+        await self._touch_activity(session.session_id)
         subject = native_authenticated_subject(
             identity_authority_id=session.identity_authority_id,
             native_identity_id=session.native_identity_id,
@@ -136,3 +164,14 @@ class NativeSessionAuthenticator:
                 "credential_id": str(session.credential_id),
             },
         )
+
+    async def _touch_activity(self, session_id: UUID) -> None:
+        if self._session_toucher is None:
+            return
+        try:
+            await self._session_toucher.touch_native_session(
+                session_id=session_id,
+                min_interval_seconds=_ACTIVITY_TOUCH_INTERVAL_SECONDS,
+            )
+        except Exception:
+            return

@@ -24,6 +24,9 @@ from request_engine.modules.tenancy.adapters.db.identity_binding_commands import
 from request_engine.modules.tenancy.adapters.db.identity_link_commands import (
     PostgresIdentityLinkCommands,
 )
+from request_engine.modules.tenancy.adapters.db.identity_link_intent_reader import (
+    PostgresIdentityLinkIntentReader,
+)
 from request_engine.modules.tenancy.adapters.db.integration_governance_commands import (
     PostgresIntegrationGovernanceCommands,
 )
@@ -272,6 +275,7 @@ def install_http(
         identity_link_router,
         commands=PostgresIdentityLinkCommands(session_factory),
         proof_reader=PostgresNativeHumanAuthStore(session_factory),
+        intent_reader=PostgresIdentityLinkIntentReader(session_factory),
         authenticated_actor=authenticated_actor,
     )
     app.include_router(identity_link_router)

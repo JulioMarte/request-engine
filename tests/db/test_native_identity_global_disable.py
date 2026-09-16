@@ -204,7 +204,7 @@ def test_disable_cannot_remove_the_last_tenant_controller(
             key_digest=_digest(),
             intent_digest=_digest(),
         )
-    assert denied.value.sqlstate == "23514"
+    assert denied.value.sqlstate == "55000"
     # The whole transaction rolled back: the identity remains active.
     assert admin_conn.execute(
         "SELECT status FROM request_engine.native_identities WHERE id = %s",
