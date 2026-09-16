@@ -93,7 +93,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         required = (
             _READ
             if group is None
-            else (_PROVISIONER, _ORGANIZATION, _POLICY, _LIFECYCLE, *_RECOVERY)
+            else (_PROVISIONER, _ORGANIZATION, _POLICY, *_LIFECYCLE, *_RECOVERY)
         )
         for function in required:
             if not await connection.scalar(
