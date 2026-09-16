@@ -11,6 +11,7 @@ from request_engine.entrypoints.http.errors import (
     http_exception_handler,
     idempotency_conflict_handler,
     integrity_error_handler,
+    reauthentication_required_handler,
     render_error_response,
     request_validation_error_handler,
 )
@@ -39,6 +40,7 @@ from request_engine.platform.security.agent_policy import (
     AgentRiskDenied,
 )
 from request_engine.platform.security.delegation import DelegationResolutionError
+from request_engine.platform.security.freshness import ReauthenticationRequired
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 from request_engine.platform.security.identity_resolution import (
     IdentityBindingPending,
@@ -142,6 +144,7 @@ def add_global_error_handlers(app: FastAPI) -> None:
     ):
         app.add_exception_handler(error_type, identity_resolution_error_handler)
     app.add_exception_handler(CapabilityRequired, capability_required_handler)
+    app.add_exception_handler(ReauthenticationRequired, reauthentication_required_handler)
     app.add_exception_handler(OperationalAuthorityRequired, operational_authority_required_handler)
     app.add_exception_handler(
         OperatorResolutionUnavailable, operator_resolution_unavailable_handler

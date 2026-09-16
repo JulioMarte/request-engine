@@ -185,6 +185,30 @@ class IdentityBindingLifecycleInputInvalid(IdentityBindingLifecycleError):
     """The requested identity binding mutation violates an input contract."""
 
 
+class IdentityLinkError(Exception):
+    """Base class for stable self-service identity-link failures."""
+
+
+class IdentityLinkForbidden(IdentityLinkError):
+    """The current actor may not self-link a second identity."""
+
+
+class IdentityLinkNotFound(IdentityLinkError):
+    """No identity-link intent is visible in the current tenant for the supplied identifier."""
+
+
+class IdentityLinkRevisionConflict(IdentityLinkError):
+    """The actor binding revision captured by the intent is stale."""
+
+
+class IdentityLinkConflict(IdentityLinkError):
+    """The identity-link intent or subject conflicts with current persisted state."""
+
+
+class IdentityLinkInputInvalid(IdentityLinkError):
+    """The requested identity-link command violates an input contract."""
+
+
 class AgentGovernanceError(Exception):
     """Base class for stable Agent governance failures."""
 

@@ -21,6 +21,9 @@ from request_engine.modules.tenancy.adapters.db.identity_binding_admin_reader im
 from request_engine.modules.tenancy.adapters.db.identity_binding_commands import (
     PostgresIdentityBindingCommands,
 )
+from request_engine.modules.tenancy.adapters.db.identity_link_commands import (
+    PostgresIdentityLinkCommands,
+)
 from request_engine.modules.tenancy.adapters.db.integration_governance_commands import (
     PostgresIntegrationGovernanceCommands,
 )
@@ -76,6 +79,10 @@ from request_engine.modules.tenancy.api.identity_binding_routes import (
     add_identity_binding_routes,
 )
 from request_engine.modules.tenancy.api.identity_exchange_http import install_identity_exchange_http
+from request_engine.modules.tenancy.api.identity_link_routes import (
+    add_identity_link_error_handlers,
+    add_identity_link_routes,
+)
 from request_engine.modules.tenancy.api.integration_governance_errors import (
     add_integration_governance_error_handlers,
 )
@@ -110,6 +117,7 @@ from request_engine.modules.tenancy.contracts.authority import (
     PartyAuthorityReader,
 )
 from request_engine.modules.tenancy.contracts.onboarding_readiness import BusinessPartyReader
+from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
 from request_engine.platform.security.http import ActorResolver
@@ -257,6 +265,16 @@ def install_http(
         authenticated_actor=authenticated_actor,
     )
     app.include_router(identity_bindings_router)
+
+    add_identity_link_error_handlers(app)
+    identity_link_router = APIRouter(tags=["identity linking"])
+    add_identity_link_routes(
+        identity_link_router,
+        commands=PostgresIdentityLinkCommands(session_factory),
+        proof_reader=PostgresNativeHumanAuthStore(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(identity_link_router)
 
 
 def install_operational_http(

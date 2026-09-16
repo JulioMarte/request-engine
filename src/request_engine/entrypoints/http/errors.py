@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.idempotency.errors import IdempotencyConflict
+from request_engine.platform.security.freshness import ReauthenticationRequired
 from request_engine.platform.security.http import AuthenticationRequired, CapabilityRequired
 
 
@@ -53,6 +54,20 @@ async def capability_required_handler(_: Request, exc: Exception) -> JSONRespons
             resolution=ErrorResolution.REQUEST_AUTHORITY,
             details={"capability": exc.capability},
         ),
+    )
+
+
+async def reauthentication_required_handler(_: Request, exc: Exception) -> JSONResponse:
+    if not isinstance(exc, ReauthenticationRequired):
+        raise exc
+    return render_error_response(
+        status.HTTP_403_FORBIDDEN,
+        ErrorBody(
+            code="reauthentication_required",
+            message="a recent reauthentication of the current identity is required",
+            resolution=ErrorResolution.REAUTHENTICATE,
+        ),
+        headers={"Cache-Control": "no-store"},
     )
 
 

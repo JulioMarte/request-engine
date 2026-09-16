@@ -53,9 +53,19 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "request_engine.create_identity_exchange_candidate_v1(p_kind text, p_authority text, "
         "p_fingerprint text, p_principal_id uuid)"
     ),
+    (
+        "request_engine.create_identity_link_intent(p_intent_id uuid, "
+        "p_actor_binding_id uuid, p_target_authority_id uuid, p_nonce_digest text, "
+        "p_ttl_seconds integer, p_provenance_reference text)"
+    ),
     "request_engine.current_authenticated_principal_id()",
     "request_engine.current_correlation_id()",
     "request_engine.current_organization_id()",
+    (
+        "request_engine.confirm_identity_link_intent(p_intent_id uuid, "
+        "p_expected_actor_binding_revision bigint, p_native_identity_id uuid, "
+        "p_binding_id uuid, p_provenance_reference text)"
+    ),
     (
         "request_engine.consume_identity_exchange_candidate_v1(p_candidate_id uuid, "
         "p_kind text, p_authority text, p_fingerprint text, p_principal_id uuid)"

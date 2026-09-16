@@ -45,6 +45,7 @@ class ActorContext:
     interaction_id: str | None = None
     agent_policy: AgentPolicySnapshot | None = None
     authenticated_at: datetime | None = None
+    identity_binding_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():

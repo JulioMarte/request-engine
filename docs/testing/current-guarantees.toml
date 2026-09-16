@@ -341,3 +341,10 @@ statement = "A global native identity disable requires an explicit current platf
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-IDENTITY-LINK-SELF-001"
+statement = "Self-service identity linking is HUMAN-only without delegation and requires a recent reauthentication of the actor's current identity on both the intent-create and intent-confirm operations; the second identity's proof is verified outside authoritative locks and the binding is created for the SAME tenant Principal, never an administrative or cross-Principal link. The short-TTL intent is consumed exactly once, a subject already linked in the tenant conflicts instead of being taken over, a foreign or absent intent is opaque, an invalid proof is an opaque 401, and no Principal, Party, staff membership or authority grant is merged, created or modified by linking."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]

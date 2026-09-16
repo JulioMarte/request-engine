@@ -238,4 +238,13 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.REQUIRED,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
+    command_capability(
+        "identity.link_self",
+        CapabilityExposure.OPERATOR,
+        "Self-service linking of a second proven identity to the caller's existing "
+        "tenant Principal; never administrative linking.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=RevisionPolicy.NONE,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
 )

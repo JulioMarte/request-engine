@@ -68,6 +68,8 @@ EXPECTED_TABLE_EXCEPTIONS = {
         (
             "identity_authorities",
             "identity_exchange_candidates",
+            "identity_link_facts",
+            "identity_link_intents",
             "identity_recovery_cases",
             "identity_recovery_delivery_tickets",
             "integration_governance_facts",

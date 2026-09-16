@@ -165,6 +165,7 @@ class IdentityPrincipalResolver:
             authority_revision=authority.authority_revision,
             interaction_id=interaction_id,
             authenticated_at=_authenticated_at(subject),
+            identity_binding_id=binding.binding_id,
         )
 
     async def resolve_platform_actor(

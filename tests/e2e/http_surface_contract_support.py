@@ -12,6 +12,8 @@ _OPERATION_ID_OVERRIDES = {
     "identity_binding.suspend": "identity_binding_suspend",
     "identity_binding.reactivate": "identity_binding_reactivate",
     "identity_binding.revoke": "identity_binding_revoke",
+    "identity_link.intent_create": "identity_link_intent_create",
+    "identity_link.intent_confirm": "identity_link_intent_confirm",
     "live_capacity.scope.update": "live_capacity_configure_scope_update",
     "agent.policy.replace": "agent_policy_replace",
     "live_capacity.estimate.update": "live_capacity_configure_estimate_update",
