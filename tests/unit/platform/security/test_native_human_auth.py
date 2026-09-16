@@ -40,6 +40,9 @@ class FakeNativeHumanAuthStore:
         self.created_recovery: dict[str, object] | None = None
         self.consumed_recovery: dict[str, object] | None = None
         self.rotated_password: dict[str, object] | None = None
+        self.credential_verifier: str | None = None
+        self.reauthenticated_at: datetime | None = None
+        self.reauthenticated: dict[str, object] | None = None
 
     async def read_password_credential(
         self, *, identity_authority_id: UUID, login_handle: str
@@ -74,6 +77,13 @@ class FakeNativeHumanAuthStore:
     async def consume_recovery_intent(self, **kwargs: object) -> UUID | None:
         self.consumed_recovery = kwargs
         return self.recovery_result
+
+    async def read_credential_verifier(self, **kwargs: object) -> str | None:
+        return self.credential_verifier
+
+    async def reauthenticate_session(self, **kwargs: object) -> datetime | None:
+        self.reauthenticated = kwargs
+        return self.reauthenticated_at
 
 
 def _snapshot() -> NativePasswordCredentialSnapshot:
@@ -242,3 +252,44 @@ async def test_consumed_or_invalid_recovery_has_typed_failure() -> None:
 
     assert store.consumed_recovery is not None
     assert token.raw_token not in repr(store.consumed_recovery)
+
+
+@pytest.mark.asyncio
+async def test_reauth_verifies_password_before_refreshing_freshness() -> None:
+    store = FakeNativeHumanAuthStore()
+    store.credential_verifier = _snapshot().verifier
+    store.reauthenticated_at = NOW
+    service = NativeHumanAuthService(store=store, clock=lambda: NOW)
+    credential_id = uuid4()
+
+    authenticated_at = await service.reauthenticate_session(
+        session_id=uuid4(),
+        credential_id=credential_id,
+        password=PASSWORD,
+    )
+
+    assert authenticated_at == NOW
+    assert store.reauthenticated is not None
+    assert store.reauthenticated["credential_id"] == credential_id
+
+
+@pytest.mark.asyncio
+async def test_reauth_rejects_wrong_password_and_unusable_session() -> None:
+    store = FakeNativeHumanAuthStore()
+    store.credential_verifier = _snapshot().verifier
+    service = NativeHumanAuthService(store=store, clock=lambda: NOW)
+
+    with pytest.raises(CredentialInvalid):
+        await service.reauthenticate_session(
+            session_id=uuid4(),
+            credential_id=uuid4(),
+            password="definitely the wrong password",
+        )
+    assert store.reauthenticated is None
+
+    with pytest.raises(CredentialInvalid):
+        await service.reauthenticate_session(
+            session_id=uuid4(),
+            credential_id=uuid4(),
+            password=PASSWORD,
+        )

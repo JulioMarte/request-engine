@@ -168,6 +168,9 @@ async def test_http_native_resolver_reloads_current_authority_for_selected_tenan
         identity_status=NativeIdentityStatus.ACTIVE,
         credential_status=NativeCredentialStatus.ACTIVE,
         expires_at=NOW + timedelta(hours=1),
+        created_at=NOW,
+        last_seen_at=None,
+        authenticated_at=NOW,
     )
     principal_resolver = IdentityPrincipalResolver(
         binding_reader=BindingReader(

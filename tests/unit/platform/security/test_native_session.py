@@ -54,6 +54,9 @@ def _snapshot(
         identity_status=identity_status,
         credential_status=credential_status,
         expires_at=expires_at,
+        created_at=NOW,
+        last_seen_at=None,
+        authenticated_at=NOW,
     )
 
 

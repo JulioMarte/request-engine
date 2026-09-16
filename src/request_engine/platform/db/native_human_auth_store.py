@@ -251,6 +251,44 @@ class PostgresNativeHumanAuthStore(NativeHumanAuthStore):
             return None
         return UUID(str(value))
 
+    async def read_credential_verifier(self, *, credential_id: UUID) -> str | None:
+        async with self._session_factory() as session, session.begin():
+            value = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT request_auth.read_native_credential_verifier(:credential_id)
+                        """
+                    ),
+                    {"credential_id": credential_id},
+                )
+            ).scalar_one_or_none()
+        if value is None:
+            return None
+        return str(value)
+
+    async def reauthenticate_session(
+        self, *, session_id: UUID, credential_id: UUID
+    ) -> datetime | None:
+        async with self._session_factory() as session, session.begin():
+            value = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT request_auth.reauthenticate_native_session(
+                            :session_id, :credential_id
+                        )
+                        """
+                    ),
+                    {"session_id": session_id, "credential_id": credential_id},
+                )
+            ).scalar_one_or_none()
+        if value is None:
+            return None
+        if not isinstance(value, datetime):
+            raise RuntimeError("native session reauthentication did not return a timestamp")
+        return value
+
     async def _call_boolean(self, statement: str, parameters: dict[str, object]) -> bool:
         async with self._session_factory() as session, session.begin():
             value = (await session.execute(text(statement), parameters)).scalar_one()

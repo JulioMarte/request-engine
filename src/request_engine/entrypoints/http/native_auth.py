@@ -13,7 +13,10 @@ from request_engine.entrypoints.http.native_auth_errors import (
     native_recovery_error_response,
 )
 from request_engine.platform.http.errors import ErrorEnvelope
+from request_engine.platform.security.authentication import AuthenticatedSubject
+from request_engine.platform.security.freshness import REAUTHENTICATION_WINDOW
 from request_engine.platform.security.native_auth import (
+    CredentialInvalid,
     NativeAuthenticationError,
     PasswordPolicyViolation,
     normalize_login_handle,
@@ -90,6 +93,17 @@ class NativePasswordRecoveryBody(BaseModel):
 
     recovery_token: str = Field(min_length=1, max_length=1024, repr=False)
     new_password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class NativeSessionReauthBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1, max_length=1024, repr=False)
+
+
+class NativeSessionReauthView(BaseModel):
+    authenticated_at: datetime
+    reauth_expires_at: datetime
 
 
 def create_native_auth_router(
@@ -182,6 +196,25 @@ def create_native_auth_router(
         _prevent_secret_caching(response)
         return response
 
+    async def reauthenticate_current_session(
+        payload: NativeSessionReauthBody,
+        request: Request,
+        response: Response,
+    ) -> NativeSessionReauthView:
+        raw_token = bearer_token(request)
+        parsed = parse_opaque_token(raw_token)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        authenticated_at = await service.reauthenticate_session(
+            session_id=parsed.token_id,
+            credential_id=_session_credential_id(subject),
+            password=payload.password,
+        )
+        _prevent_secret_caching(response)
+        return NativeSessionReauthView(
+            authenticated_at=authenticated_at,
+            reauth_expires_at=authenticated_at + REAUTHENTICATION_WINDOW,
+        )
+
     router.add_api_route(
         "/identities",
         enroll_identity,
@@ -233,6 +266,26 @@ def create_native_auth_router(
         status_code=status.HTTP_204_NO_CONTENT,
     )
     router.add_api_route(
+        "/sessions:reauth",
+        reauthenticate_current_session,
+        methods=["POST"],
+        operation_id="nativeSessionReauthenticate",
+        response_model=NativeSessionReauthView,
+        status_code=status.HTTP_200_OK,
+        summary="Refresh the reauthentication freshness of the current native session",
+        description=(
+            "Verifies the current session's password again and advances its "
+            "last_authenticated_at freshness basis. The session, identity, "
+            "credential and authority must all still be active. An invalid "
+            "password or unusable session returns the same opaque 401 as the "
+            "other native authentication routes."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Session or password is invalid"},
+            422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
+    router.add_api_route(
         "/password",
         rotate_password,
         methods=["PUT"],
@@ -270,3 +323,13 @@ def create_native_auth_router(
 def _prevent_secret_caching(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
+
+
+def _session_credential_id(subject: AuthenticatedSubject) -> UUID:
+    value = subject.metadata.get("credential_id")
+    if value is None:
+        raise CredentialInvalid("native session credential is invalid")
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise CredentialInvalid("native session credential is invalid") from exc

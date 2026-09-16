@@ -37,7 +37,10 @@ class PostgresNativeSessionReader:
                                    identity_status,
                                    credential_status,
                                    authority_status,
-                                   expires_at
+                                   expires_at,
+                                   created_at,
+                                   last_seen_at,
+                                   last_authenticated_at
                               FROM request_auth.read_native_session(:session_id)
                             """
                         ),
@@ -50,8 +53,17 @@ class PostgresNativeSessionReader:
         if row is None:
             return None
         expires_at = row["expires_at"]
-        if not isinstance(expires_at, datetime):
-            raise RuntimeError("native session expiry could not be materialized")
+        created_at = row["created_at"]
+        authenticated_at = row["last_authenticated_at"]
+        last_seen_at = row["last_seen_at"]
+        if (
+            not isinstance(expires_at, datetime)
+            or not isinstance(created_at, datetime)
+            or not isinstance(authenticated_at, datetime)
+        ):
+            raise RuntimeError("native session timestamps could not be materialized")
+        if last_seen_at is not None and not isinstance(last_seen_at, datetime):
+            raise RuntimeError("native session last_seen_at could not be materialized")
         return NativeSessionSnapshot(
             session_id=UUID(str(row["session_id"])),
             native_identity_id=UUID(str(row["native_identity_id"])),
@@ -65,4 +77,7 @@ class PostgresNativeSessionReader:
             credential_status=NativeCredentialStatus(str(row["credential_status"])),
             authority_status=NativeIdentityAuthorityStatus(str(row["authority_status"])),
             expires_at=expires_at,
+            created_at=created_at,
+            last_seen_at=last_seen_at,
+            authenticated_at=authenticated_at,
         )

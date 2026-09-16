@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
@@ -79,6 +79,9 @@ class NativeSessionSnapshot:
     identity_status: NativeIdentityStatus
     credential_status: NativeCredentialStatus
     expires_at: datetime
+    created_at: datetime
+    last_seen_at: datetime | None
+    authenticated_at: datetime
     authority_status: NativeIdentityAuthorityStatus = NativeIdentityAuthorityStatus.ACTIVE
 
     def __post_init__(self) -> None:
@@ -121,7 +124,15 @@ class NativeSessionAuthenticator:
             raise SessionRevoked("native session was globally invalidated")
         if self._clock() >= session.expires_at:
             raise SessionExpired("native session is expired")
-        return native_authenticated_subject(
+        subject = native_authenticated_subject(
             identity_authority_id=session.identity_authority_id,
             native_identity_id=session.native_identity_id,
+        )
+        return replace(
+            subject,
+            metadata={
+                **subject.metadata,
+                "authenticated_at": session.authenticated_at.isoformat(),
+                "credential_id": str(session.credential_id),
+            },
         )

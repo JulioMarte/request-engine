@@ -163,6 +163,12 @@ class NativeHumanAuthStore(Protocol):
         new_verifier: str,
     ) -> UUID | None: ...
 
+    async def read_credential_verifier(self, *, credential_id: UUID) -> str | None: ...
+
+    async def reauthenticate_session(
+        self, *, session_id: UUID, credential_id: UUID
+    ) -> datetime | None: ...
+
 
 class NativeHumanAuthService:
     """Own providerless HUMAN credential/session semantics without business authority.
@@ -354,6 +360,26 @@ class NativeHumanAuthService:
         if native_identity_id is None:
             raise RecoveryIntentInvalid("recovery intent is invalid, expired, or already consumed")
         return native_identity_id
+
+    async def reauthenticate_session(
+        self,
+        *,
+        session_id: UUID,
+        credential_id: UUID,
+        password: str,
+    ) -> datetime:
+        verifier = await self._store.read_credential_verifier(credential_id=credential_id)
+        if verifier is None:
+            raise CredentialInvalid("native credential is invalid")
+        if not await asyncio.to_thread(verify_password, password, verifier):
+            raise CredentialInvalid("native credential is invalid")
+        authenticated_at = await self._store.reauthenticate_session(
+            session_id=session_id,
+            credential_id=credential_id,
+        )
+        if authenticated_at is None:
+            raise CredentialInvalid("native session is no longer usable")
+        return authenticated_at
 
     def _now(self) -> datetime:
         value = self._clock()

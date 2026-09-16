@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -43,6 +44,7 @@ class ActorContext:
     authority_revision: int | None = None
     interaction_id: str | None = None
     agent_policy: AgentPolicySnapshot | None = None
+    authenticated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():

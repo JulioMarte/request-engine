@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
@@ -163,6 +164,7 @@ class IdentityPrincipalResolver:
             technical_principal_id=technical_principal_id,
             authority_revision=authority.authority_revision,
             interaction_id=interaction_id,
+            authenticated_at=_authenticated_at(subject),
         )
 
     async def resolve_platform_actor(
@@ -204,6 +206,19 @@ def _authority_id(subject: AuthenticatedSubject) -> UUID:
         return UUID(subject.authority_id)
     except ValueError as exc:
         raise IdentityNotBound("authentication authority is not RE-addressable") from exc
+
+
+def _authenticated_at(subject: AuthenticatedSubject) -> datetime | None:
+    value = subject.metadata.get("authenticated_at")
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
 
 
 def _select_binding(bindings: tuple[IdentityBindingSnapshot, ...]) -> IdentityBindingSnapshot:
