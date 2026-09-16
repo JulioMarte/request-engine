@@ -406,3 +406,13 @@ evidence = ["contract", "invariant"]
 guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
 path = "tests/e2e/test_native_integration_lifecycle.py"
 evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-UPGRADE-001"
+path = "tests/db/test_controller_policy_upgrade.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-CONTROLLER-POLICY-UPGRADE-001"
+path = "tests/e2e/test_controller_policy_upgrade_http.py"
+evidence = ["contract", "invariant", "security"]

@@ -149,6 +149,11 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
         "p_expected_revision bigint, p_target_status text, p_provenance_reference text)"
     ),
     (
+        "request_engine.upgrade_controller_policy(p_target_principal_id uuid, "
+        "p_source_policy_key text, p_target_policy_key text, "
+        "p_expected_authority_revision bigint, p_provenance_reference text)"
+    ),
+    (
         "request_engine.upsert_agent_policy(p_agent_principal_id uuid, "
         "p_allowed_capabilities text[], p_denied_capabilities text[], "
         "p_risk_ceiling text, p_max_mutations_per_minute integer, "

@@ -239,6 +239,15 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
     command_capability(
+        "controller_policy_upgrade",
+        CapabilityExposure.OPERATOR,
+        "Upgrade a tenant Principal's standing authority to an approved immutable "
+        "controller policy within the actor's current delegable ceiling.",
+        authority_plane=AuthorityPlane.TENANT_CONTROL,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    command_capability(
         "identity.link_self",
         CapabilityExposure.OPERATOR,
         "Self-service linking of a second proven identity to the caller's existing "

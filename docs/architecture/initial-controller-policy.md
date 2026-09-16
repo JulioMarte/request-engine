@@ -1,7 +1,9 @@
 # Native initial controller policy
 
 Status: revisions 0036/0037 validated; additive 0038 locally validated on
-PostgreSQL 18.6 with populated v2-to-v3 replay proof; exact-head CI pending.
+PostgreSQL 18.6 with populated v2-to-v3 replay proof; additive 0053 (v4 plus the
+governed upgrade command) locally validated on PostgreSQL 18.6. Exact-head CI
+pending for 0053.
 Owner: Tenancy. Scope: new native organizations created by the private owner command.
 This does not define a core administrator role or make platform authority tenant authority.
 
@@ -41,6 +43,20 @@ of capacity, lifecycle, revision, idempotency or owner checks. Workloads still
 receive only the authority their HUMAN sponsor explicitly assigns, and AGENT
 policy/risk checks remain separate. No platform-plane grant is included.
 
+Revision 0053 appends v4 = immutable v3 plus delegable tenant-control
+`controller_policy_upgrade`, the dedicated capability for the governed
+[controller-policy upgrade](auth-production-completion-plan.md) command. It is an
+explicit engineering decision made while the product is pre-production: without a
+policy that grants the capability, the command is unreachable because the command
+requires an active `controller_policy_upgrade` grant (`assert_staff_manager`).
+v4 grants only that one operational capability; it adds no product capability and
+does not widen the earlier manifest. It exists so a legitimately authorized tenant
+operator can run the E1 upgrade ceremony; it is not an automatic backfill. Existing
+roots keep their original selected policy and receive no new grant, and no platform
+ceremony is performed by the migration. This is a deliberate, documented deviation
+from the "no new policy version" default of the E1 plan section; the reason is that
+the command would otherwise be dead code for every current root.
+
 ## Replay, compatibility and rollout
 
 Previously created roots retain their original policy, including the absence of
@@ -52,12 +68,16 @@ creation always selects the approved manifest. The HTTP body cannot select
 capabilities, a policy manifest, a Principal, an authority plane or a grantor.
 
 Policy manifests and the root's selected policy are immutable provenance. A policy
-change appends another version; it does not edit v1. Recovery/upgrading an existing
-root requires a separate governed command and is not silently authorized here.
-Deploy the additive migration before the new application. The private process
-must check the selection function is callable and the owner-selected version
-exists at startup and readiness, failing closed on an older schema. Roll forward;
-do not rewrite or downgrade applied history.
+change appends another version; it does not edit v1. Upgrading an existing root or
+staff Principal now has a separate governed command
+(`POST /v1/controller-policy-upgrades`, revision 0053) that adds only the target
+policy's missing capabilities within the actor's current delegable ceiling; it is
+never a silent authorization and it never restores a revoked grant. A root with no
+recorded policy selection must still be brought into the catalog by an explicit
+platform ceremony. Deploy the additive migration before the new application. The
+private process must check the selection function is callable and the owner-selected
+version exists at startup and readiness, failing closed on an older schema. Roll
+forward; do not rewrite or downgrade applied history.
 
 This private-process rollout requires a controlled maintenance window: the older
 0035 process intentionally rejects the selector as an unexpected callable

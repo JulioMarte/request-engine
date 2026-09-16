@@ -362,3 +362,10 @@ statement = "Every tenant staff, agent and integration identity command commits 
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-CONTROLLER-POLICY-UPGRADE-001"
+statement = "A controller-policy upgrade requires an explicit current controller_policy_upgrade grant held by a HUMAN actor, acquires the identity-topology gate and the ordered active-staff-membership lock root before any specific row, resolves both policy keys against the immutable initial-controller-policies catalog, and upgrades a target tenant Principal only by adding the target policy's currently missing capabilities within the actor's current delegable ceiling; it never restores a revoked grant, never upgrades the actor itself, rejects a stale authority revision, is idempotent, treats a foreign or absent target as indistinguishable, and commits exactly one append-only audit row with the source/target policy keys and real before/after revisions and no secret material."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]

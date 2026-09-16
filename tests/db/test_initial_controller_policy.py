@@ -82,7 +82,13 @@ def test_policy_catalog_is_not_runtime_table(admin_conn: Connection[Any], role: 
 
 
 @pytest.mark.parametrize(
-    "policy", ["tenant-controller-v1", "tenant-controller-v2", "tenant-controller-v3"]
+    "policy",
+    [
+        "tenant-controller-v1",
+        "tenant-controller-v2",
+        "tenant-controller-v3",
+        "tenant-controller-v4",
+    ],
 )
 def test_policy_is_immutable_and_unknown_selection_fails(
     admin_conn: Connection[Any], policy: str
@@ -251,3 +257,25 @@ def test_v3_adds_only_explicit_self_authority_read(admin_conn: Connection[Any]) 
     ).fetchone() == (3,)
     definition = capability_definition("authority.read_self")
     assert definition is not None and definition.authority_plane.value == "operational"
+
+
+def test_v4_adds_only_explicit_controller_policy_upgrade(admin_conn: Connection[Any]) -> None:
+    policies = dict(
+        admin_conn.execute(
+            "SELECT policy_key, grants FROM request_engine.initial_controller_policies"
+        ).fetchall()
+    )
+    assert policies["tenant-controller-v4"] == [
+        *policies["tenant-controller-v3"],
+        {
+            "capability_key": "controller_policy_upgrade",
+            "authority_plane": "tenant_control",
+            "delegable": True,
+        },
+    ]
+    assert admin_conn.execute(
+        "SELECT revision FROM request_engine.initial_controller_policies "
+        "WHERE policy_key='tenant-controller-v4'"
+    ).fetchone() == (4,)
+    definition = capability_definition("controller_policy_upgrade")
+    assert definition is not None and definition.authority_plane.value == "tenant_control"

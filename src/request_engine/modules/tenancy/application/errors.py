@@ -299,3 +299,27 @@ class DelegationConflict(DelegationError):
 
 class DelegationInputInvalid(DelegationError):
     """The requested delegation mutation violates an input contract."""
+
+
+class ControllerPolicyUpgradeError(Exception):
+    """Base class for stable tenant controller-policy upgrade failures."""
+
+
+class ControllerPolicyUpgradeForbidden(ControllerPolicyUpgradeError):
+    """The current actor may not perform the requested controller-policy upgrade."""
+
+
+class ControllerPolicyUpgradeNotFound(ControllerPolicyUpgradeError):
+    """No upgradeable Principal is visible in the current tenant for the identifier."""
+
+
+class ControllerPolicyUpgradeRevisionConflict(ControllerPolicyUpgradeError):
+    """The requested Principal authority revision is stale."""
+
+
+class ControllerPolicyUpgradeConflict(ControllerPolicyUpgradeError):
+    """The requested upgrade conflicts with persisted authority state."""
+
+
+class ControllerPolicyUpgradeInputInvalid(ControllerPolicyUpgradeError):
+    """The requested upgrade violates an input contract or names an unknown policy."""

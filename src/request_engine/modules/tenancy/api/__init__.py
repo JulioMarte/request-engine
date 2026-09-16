@@ -12,6 +12,9 @@ from request_engine.modules.tenancy.adapters.db.agent_policy_commands import (
 from request_engine.modules.tenancy.adapters.db.bootstrap_operational_authority_commands import (
     PostgresBootstrapOperationalAuthorityCommands,
 )
+from request_engine.modules.tenancy.adapters.db.controller_policy_commands import (
+    PostgresControllerPolicyCommands,
+)
 from request_engine.modules.tenancy.adapters.db.delegation_commands import (
     PostgresDelegationCommands,
 )
@@ -74,6 +77,10 @@ from request_engine.modules.tenancy.api.agent_policy_routes import add_agent_pol
 from request_engine.modules.tenancy.api.bootstrap_authority_routes import (
     bootstrap_authority_error_handler,
     create_bootstrap_authority_router,
+)
+from request_engine.modules.tenancy.api.controller_policy_routes import (
+    add_controller_policy_error_handlers,
+    add_controller_policy_routes,
 )
 from request_engine.modules.tenancy.api.delegation_errors import add_delegation_error_handlers
 from request_engine.modules.tenancy.api.delegation_routes import add_delegation_routes
@@ -282,6 +289,15 @@ def install_http(
         oidc_verifier=identity_link_verifier,
     )
     app.include_router(identity_link_router)
+
+    add_controller_policy_error_handlers(app)
+    controller_policy_router = APIRouter(tags=["controller policy"])
+    add_controller_policy_routes(
+        controller_policy_router,
+        commands=PostgresControllerPolicyCommands(session_factory),
+        authenticated_actor=authenticated_actor,
+    )
+    app.include_router(controller_policy_router)
 
 
 def install_operational_http(

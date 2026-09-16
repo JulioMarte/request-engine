@@ -3,6 +3,7 @@ from enum import StrEnum
 
 _MAX_REASON_CODE = 80
 _MAX_EXTERNAL_CASE_REFERENCE = 400
+_MAX_POLICY_KEY = 200
 
 
 class IdentitySubjectKind(StrEnum):
@@ -10,6 +11,7 @@ class IdentitySubjectKind(StrEnum):
     AGENT_PRINCIPAL = "AgentPrincipal"
     INTEGRATION_PRINCIPAL = "IntegrationPrincipal"
     INTEGRATION_CREDENTIAL = "IntegrationCredential"
+    TENANT_CONTROLLER = "TenantController"
 
 
 class IdentityAuditAction(StrEnum):
@@ -18,6 +20,7 @@ class IdentityAuditAction(StrEnum):
     AUTHORITY_REPLACE = "authority_replace"
     STATUS_TRANSITION = "status_transition"
     CREDENTIAL_ROTATE = "credential_rotate"
+    POLICY_UPGRADE = "policy_upgrade"
 
 
 class IdentityAuditReason(StrEnum):
@@ -35,6 +38,7 @@ class IdentityAuditReason(StrEnum):
     INTEGRATION_SUSPENDED = "integration_suspended"
     INTEGRATION_REVOKED = "integration_revoked"
     CREDENTIAL_ROTATED = "credential_rotated"
+    CONTROLLER_POLICY_UPGRADED = "controller_policy_upgraded"
 
 
 _STATUS_REASONS: dict[IdentitySubjectKind, dict[str, IdentityAuditReason]] = {
@@ -76,6 +80,8 @@ class IdentityAuditDetails:
     revision_before: int
     revision_after: int
     external_case_reference: str | None = None
+    source_policy_key: str | None = None
+    target_policy_key: str | None = None
 
     def __post_init__(self) -> None:
         if self.revision_before < 0:
@@ -90,6 +96,12 @@ class IdentityAuditDetails:
                 raise ValueError(
                     "external_case_reference must contain between 1 and 400 characters"
                 )
+        for policy_key in (self.source_policy_key, self.target_policy_key):
+            if policy_key is None:
+                continue
+            normalized_policy = policy_key.strip()
+            if not normalized_policy or len(normalized_policy) > _MAX_POLICY_KEY:
+                raise ValueError("policy_key must contain between 1 and 200 characters")
 
     def to_details(self) -> dict[str, object]:
         details: dict[str, object] = {
@@ -101,4 +113,8 @@ class IdentityAuditDetails:
         }
         if self.external_case_reference is not None:
             details["external_case_reference"] = self.external_case_reference.strip()
+        if self.source_policy_key is not None:
+            details["source_policy_key"] = self.source_policy_key.strip()
+        if self.target_policy_key is not None:
+            details["target_policy_key"] = self.target_policy_key.strip()
         return details

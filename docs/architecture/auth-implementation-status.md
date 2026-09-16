@@ -15,6 +15,102 @@ revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
 implemented and production-wired; operational acceptance of the chosen environment
 and secret manager remains under D6.
 
+## Governed controller-policy upgrade (E1) (2026-09-16, revision 0053)
+
+Block E1 of `auth-production-completion-plan.md`, on branch
+`cohesion/system-optimization`. Migration `0053_controller_policy_upgrade` appends
+from `0052`; `alembic heads` is one. Local/dirty-tree evidence only; no exact-head
+GitHub CI.
+
+Production change:
+
+- New tenant-control capability `controller_policy_upgrade` (command, OPERATOR,
+  `AuthorityPlane.TENANT_CONTROL`, `RevisionPolicy.REQUIRED`,
+  `OperationRiskClass.AUTHORITY_CHANGE`, `runtime_available=True`, no tool
+  projection) in `capability_registry_identity_authority.py`.
+- New immutable catalog row `tenant-controller-v4` = v3 plus delegable tenant-control
+  `controller_policy_upgrade`; the v1/v2/v3 manifests and every existing root fact
+  are unchanged.
+- `request_engine.upgrade_controller_policy(target_principal_id, source_policy_key,
+  target_policy_key, expected_authority_revision, provenance_reference)` (SECURITY
+  DEFINER, `search_path` `pg_catalog, request_engine, pg_temp`, owner
+  `request_engine_schema_owner`, PUBLIC revoked, EXECUTE to `request_engine_app`).
+  It mirrors `replace_staff_authority`: topology gate SHARE, ordered active-staff
+  root lock, `assert_staff_manager('controller_policy_upgrade')`, target active
+  tenant Principal `FOR UPDATE`, stale revision `40001`, self-upgrade `42501`.
+  `target_policy_key` resolves against the immutable catalog (`22023` if unknown);
+  `source_policy_key` is an optional echo/assertion validated only against the root
+  fact's recorded policy when present, never authority. The delta is the target
+  policy's capabilities the target does not currently hold active; a capability
+  with revoked history is refused (`23514`, no resurrection); every delta capability
+  must be active, delegable and non-platform for the actor (`42501`); only the
+  missing rows are inserted with `provenance_kind='controller_policy_upgrade'`,
+  `delegable=false` and `provenance_reference='policy:<target>;source:<source>'`.
+- New HTTP surface `POST /v1/controller-policy-upgrades`
+  (`controller_policy_upgrade`, owner tenancy, HUMAN, `Idempotency-Key`, `no-store`)
+  via `add_capability_route`; typed adapter
+  `adapters/db/controller_policy_commands.py` uses `actor_transaction`,
+  `acquire_idempotency`/`complete_idempotency` and `command_fingerprint`, and appends
+  exactly one B4 audit row in the same transaction
+  (`IdentityAuditAction.POLICY_UPGRADE`,
+  `IdentityAuditReason.CONTROLLER_POLICY_UPGRADED`,
+  `IdentitySubjectKind.TENANT_CONTROLLER`, bounded optional `source_policy_key` /
+  `target_policy_key`). Replay and rejected/rolled-back commands audit nothing.
+- Error mapping: 403 ceiling/self, 409 stale revision or revoked-delta, 422 unknown
+  policy/input, 404 foreign or absent target (indistinguishable).
+
+Documented deviation (engineering decision): the E1 plan section says "no new policy
+version". The migration nevertheless appends `tenant-controller-v4` because without
+a policy that grants `controller_policy_upgrade`, `assert_staff_manager` makes the
+command unreachable for every current root; v4 grants only the command's own
+capability and adds no product authority. No existing root is backfilled, and the
+platform ceremony for legacy roots remains an operational step outside the command.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0053):
+
+- `tests/db/test_controller_policy_upgrade.py` (9 proofs): self-upgrade `42501` with
+  zero new grants and zero audit rows; actor-ceiling `42501`; revoked delta `23514`
+  with the row still `revoked`; idempotent replay yielding one grant set and one
+  audit row; populated v1->v3 upgrade gaining exactly `{agent.read,
+  authority.read_self}` with policy plane, `delegable=false` and provenance
+  `policy:tenant-controller-v3;source:tenant-controller-v1`; unknown policy `22023`,
+  foreign and absent target `P0002` with no foreign mutation; one secret-free
+  `TenantController` audit row with real before/after revisions; stale revision
+  `40001`. Independent oracle is a direct admin SELECT over
+  `principal_authority_grants` / `initial_controller_policies`.
+- `tests/db/test_initial_controller_policy.py`: new v4 manifest proof plus v4 in the
+  immutability/unknown-selection parametrization.
+- `tests/db/test_identity_topology_gate.py`: the new writer is classified as a gated
+  SHARE writer in the complete inventory and blocks on the gate before any row lock.
+- `tests/e2e/test_controller_policy_upgrade_http.py`: real native login, staff
+  invite/activate, populated HTTP upgrade with replay and `no-store`, durable grant
+  provenance and one audit row, self-upgrade 403, ceiling 403 with no mutation,
+  unknown policy 422, foreign/absent target identical 404, missing Idempotency-Key
+  422, and OpenAPI operationId/capability/owner with no tool projection.
+- `tests/unit/test_identity_audit_details.py`: policy-upgrade details are optional,
+  normalized and bounded.
+- `tests/db/app_function_surface.py` records the new reviewed app EXECUTE grant.
+- New guarantee `INV-CONTROLLER-POLICY-UPGRADE-001` with proof-map entries; the new
+  DB suite was added to `scripts/ci/run_current_product.sh`.
+
+Mutation check (manual, on the local DB): removing the ceiling loop turned the
+ceiling proof red (`ControllerPolicyUpgradeForbidden` not raised); removing the
+self-upgrade guard turned the self proof red; restoring both turned the suite green
+(9 passed).
+
+Decisions and honest limits:
+
+- The command is tenant-control only. A `PlatformActorContext` cannot invoke it
+  (no tenant scope); the platform ceremony for roots with no recorded policy is
+  documented as operational and is not implemented here.
+- `source_policy_key` is transport-required but never authority: for a non-root
+  target, or a root with no recorded policy, it is only an echo. The recorded
+  provenance uses the caller-supplied reference the adapter composes.
+- The delta is computed from the immutable policy manifest, not from the actor's
+  desired list, so the actor cannot add a capability the policy does not declare.
+- No migration `0001`-`0052` was edited; no commit, push, PR or deployment was
+  performed; evidence is local/dirty-tree only.
+
 ## Tenant staff/agent/integration append-only audit (B4) (2026-09-16, no new revision)
 
 Block B4 of `auth-production-completion-plan.md`, under the frozen decision to reuse
@@ -859,7 +955,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; real Vault+SMTP adapter wired; operational acceptance pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; C-02 real Vault KV v2 store and SMTP channel wired into the control plane and worker, proven against boundary doubles; 0052 per-attempt issuance generation reservation closes the concurrent-issuance discard hole |
 | D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |
-| E1 | Existing controller-policy upgrade path | Tenancy | bloqueado | Accepted new grant set + auditable deployment ceremony |
+| E1 | Existing controller-policy upgrade path | Tenancy | validado (local; exact-head CI pending) | 0053 adds immutable `tenant-controller-v4` and the governed `controller_policy_upgrade` command (POST `/v1/controller-policy-upgrades`): immutable catalog resolution, delegable ceiling, no self-elevation, no revoked-grant resurrection, idempotency and one append-only audit row; DB + HTTP proofs and mutation check green; legacy-root platform ceremony remains operational |
 | E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | bloqueado | Depends on B2 facts and D2 recovery configuration |
 | E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |
 | F | Adversarial journeys and fixture-free acceptance | repo | pendiente | After A–E; F-01 requires a clean native-only instance |
