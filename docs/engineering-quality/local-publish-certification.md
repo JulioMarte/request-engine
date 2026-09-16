@@ -385,3 +385,37 @@ GitHub-only edit
     -> no local certificate
     -> full remote CI still runs
 ```
+
+## Agent commit and push cadence
+
+Keeping a workstream local is not the default. A local-only branch hides progress
+from remote CI, from the integration lane and from other contributors, and it
+accumulates an unbounded unpushed stack that is harder to certify and reconcile.
+
+The expected cadence for local agents is:
+
+```text
+coherent, locally-verified checkpoint
+    -> commit
+    -> push the lane branch tip through the managed pre-push certification
+    -> let exact-head GitHub CI run
+```
+
+Rules:
+
+- Commit in coherent, reviewable checkpoints rather than one large final blob.
+  WIP/red intermediate commits are allowed; the certifier certifies the pushed
+  **tip**, not every ancestor.
+- Push the lane branch after each checkpoint whose tree is locally green
+  (`python-quality`, plus the owning PostgreSQL/behavior lane where applicable).
+  Do not wait for the whole block to be finished before publishing progress.
+- Never use `git push --no-verify`, never disable the managed hook to make
+  progress, and never claim an uncertified SHA is certified.
+- A certified push is publication permission, not merge evidence. Exact-head
+  GitHub CI remains authoritative, and the branch still integrates through a PR
+  against `development`.
+- When `origin/development` moves, reconcile the lane branch and reclaim the lane
+  before continuing. One ordinary integration lane at a time.
+- Push does not authorize merge. Merging `development` remains a separate,
+  explicitly requested action after exact-head evidence.
+

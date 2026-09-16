@@ -12,6 +12,41 @@ It specifies implementation order, proposed operations, ownership, security
 decision gates, transactions, proof matrix and operational exit criteria. Its
 proposed recovery/linking policy requires explicit acceptance before activation.
 
+## Self-service identity linking and reauthentication freshness (2026-09-16, revisions 0048-0049)
+
+Block D2 of `auth-production-completion-plan.md` (native-only) under ADR 0013 D3/D4.
+Migrations `0048_native_reauth_freshness` and `0049_identity_link_self` append from
+`0047`. Local/dirty-tree evidence only; no exact-head CI.
+
+Production change:
+
+- 0048 adds `native_sessions.last_authenticated_at` as the auth_time freshness basis
+  (backfilled from `created_at`), re-emits the session guard for monotonic updates,
+  extends `request_auth.read_native_session` and the trusted `NativeSessionSnapshot`
+  with `created_at`/`last_seen_at`/`last_authenticated_at`, threads `authenticated_at`
+  through `ActorContext`, and adds the private `POST /auth/native/sessions:reauth`
+  step-up plus the ADR-0013 five-minute `require_recent_authentication` guard.
+- 0049 adds the `identity.link_self` capability, short-TTL nonce-bound
+  `identity_link_intents`, and an exactly-once confirm that creates a tenant identity
+  binding for the caller's existing Principal after proving a second native identity
+  outside authoritative locks. Both endpoints require a recent reauthentication and
+  refuse delegation, administrative linking, grants, membership changes and Principal
+  merges. A subject already linked to any Principal conflicts, foreign intents are
+  opaque, and `identity_link_facts` audits intent creation and linkage.
+- OIDC linking is intentionally out of scope: no OIDC connection exists, so the
+  dual-proof scheme is native-only for now.
+
+Executed evidence (real PostgreSQL 18, `request_engine_current` at 0049):
+
+- `tests/db/test_native_reauth_freshness.py`, `tests/e2e/test_native_session_reauth_http.py`,
+  `tests/db/test_identity_link_self.py`, `tests/e2e/test_identity_link_self_http.py` and
+  `tests/e2e/test_native_identity_global_disable_http.py` pass.
+- `python-quality` 12/12; `tests/db -m postgres` 443 passed; `tests/e2e -m postgres`
+  421 passed with 2 pre-existing order-dependent failures (`test_live_queue_privacy`,
+  `test_world_business_timezone`) that pass in isolation.
+- Found and fixed a regression introduced by revision 0047: `_verify_login` embedded
+  the now-tuple `_LIFECYCLE` as a single entry; corrected to spread it.
+
 ## Governed native identity global disable (2026-09-15, revision 0047)
 
 Block D3 of `auth-production-completion-plan.md` under ADR 0013 D5. Migration
@@ -177,9 +212,10 @@ Deliberately NOT changed and honest limits:
   `identity_binding_forbidden`, which only surfaces when the in-memory capability is
   present but the standing grant is absent, or the actor is non-HUMAN.
 
-Next block: D2 self-service dual-proof linking (blocked on a reauthentication
-freshness signal and an existing-principal binding primitive), or the D3 private
-HTTP journey proof.
+Next block: B4 append-only audit for tenant staff/agent/integration commands, then
+the E blocks (E1 controller-policy upgrade, E2 onboarding readiness, E3
+resource-effective authority inspection), followed by F adversarial journeys and G
+operational acceptance.
 
 ## Governed identity recovery implementation and validation (2026-09-15, revision 0045)
 
@@ -550,7 +586,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | B4 | Transaction/idempotency/audit for identity commands | owners | validado (provisioner + governed recovery scope) | 0043 platform facts; 0045 recovery case audit, idempotency and revision; tenant staff/agent/integration commands still lack append-only audit facts |
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; production delivery adapter pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; test delivery adapter only |
-| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | parcial | D1 read projection (`identity.binding.read`), D1b binding lifecycle (`identity.bind`, revision 0046) and D3 global native disable (`platform.identity.disable`, revision 0047) implemented and locally validated; the D3 private HTTP journey proof and D2 linking remain |
+| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native-only; OIDC pending) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey) and D2 self-service native linking with reauthentication freshness (0048/0049) implemented and locally validated; OIDC dual-proof remains out of scope while no OIDC connection exists |
 | E1 | Existing controller-policy upgrade path | Tenancy | bloqueado | Accepted new grant set + auditable deployment ceremony |
 | E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | bloqueado | Depends on B2 facts and D2 recovery configuration |
 | E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |
@@ -563,7 +599,7 @@ Decision gates ratified by ADR 0013 (2026-09-14); operational detail remains for
 | --- | --- | --- |
 | D1 | Private control plane; explicit HUMAN security authority; requester and approver distinct; provisioner of tenants is not enough | Accepted: double control with a distinct approver; initial authorities come from an explicit auditable ceremony |
 | D2 | Pre-verified channel plus dedicated secret store with staging/TTL; no reset secret in audit, ordinary outbox or admin response | Accepted; the real secret store and delivery adapter are still named in D6 |
-| D3 | Self-link only with fresh proof of both identities; no email merge or arbitrary administrative linking | Accepted: proof scheme, freshness window and admitted providers/facets |
+| D3 | Self-link only with fresh proof of both identities; no email merge or arbitrary administrative linking | Accepted and implemented native-only by 0049 (freshness from 0048); OIDC proof remains unimplemented while no OIDC connection exists |
 | D4 | Always keep at least one effective controller with an authenticatable path; platform exceptions explicit | Accepted and implemented by 0042 (tenant) and 0043 (platform) continuity predicates |
 | D5 | Transactional identity-topology advisory gate before existing locks; SHARE for local changes, EXCLUSIVE for global operations | Accepted and implemented by 0044 (complete writer inventory, inversion and containment proofs); set production containment limits/timeouts before global disable ships |
 | D6 | Native-only first, separate private control plane, fail-closed configuration | Partially open: name environment, DNS/TLS/ingress, RPO/RTO/SLO, secret manager, delivery channel, operators and deployment approval |

@@ -19,10 +19,11 @@ y el ciclo de vida local de binding (`identity_binding_suspend`/`_reactivate`/
 y la prueba de carreras B-02) están implementados y validados localmente; el disable
 global D3 de identidad nativa (`platform.identity.disable`, revisión0047, gate
 EXCLUSIVE con `lock_timeout` acotado, reader privado y continuidad multi-tenant)
-está implementado y validado a nivel DB, con la prueba HTTP privada pendiente. El
-linking self-service D2 sigue pendiente y bloqueado por la falta de una ventana de
-reautenticación y de una primitiva que cree un binding para un Principal existente.
-E3, F y G tampoco existen.
+está implementado y validado, incluida su prueba HTTP privada. El linking
+self-service D2 está implementado en modo native-only (revisión0048 de frescura de
+reautenticación y revisión0049 de intents y binding para el Principal existente);
+la prueba OIDC de doble posesión queda fuera de alcance mientras no exista una
+conexión OIDC. E3, F y G tampoco existen.
 Las decisiones D1–D6 fueron ratificadas por ADR 0013; cada bloque todavía necesita
 su contrato propio donde el plan lo exige (por ejemplo, el inventario completo de
 writers y la prueba de inversión de locks de D5).
