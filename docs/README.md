@@ -44,7 +44,9 @@ lifecycle, self-service linking including its opt-in OIDC second proof, and glob
 native disable) are implemented and locally validated through revision0051. The
 remaining gaps are the real delivery adapter (C-02/D6), the B4 append-only audit for
 tenant staff/agent/integration commands, E1-E3, the F journeys and G/D6 operational
-acceptance, tracked in `architecture/auth-implementation-status.md`.
+acceptance, tracked in `architecture/auth-implementation-status.md`. The execution
+method for those remaining blocks — single integration lane, serialized migrations,
+context-isolated sub-agent roles — is `architecture/sequential-completion-plan.md`.
 
 For present-day ownership and boundaries, start here:
 
