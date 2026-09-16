@@ -7,6 +7,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from request_engine.modules.tenancy.adapters.db.identity_audit import append_identity_audit
+from request_engine.modules.tenancy.application.commands.identity_audit import (
+    IdentityAuditAction,
+    IdentityAuditDetails,
+    IdentityAuditReason,
+    IdentitySubjectKind,
+    status_transition_reason,
+)
 from request_engine.modules.tenancy.application.commands.integration_governance import (
     ProvisionIntegrationCommand,
     ProvisionIntegrationResult,
@@ -38,6 +46,8 @@ from request_engine.platform.security.context import ActorContext, PrincipalKind
 
 _PROVISION_CAPABILITY = "integration.provision"
 _AUTHORITY_CAPABILITY = "integration.manage_authority"
+_TRANSITION_COMMAND = "integration.transition_status"
+_CREDENTIAL_ROTATE_COMMAND = "integration_credential_rotate"
 
 
 @runtime_checkable
@@ -225,6 +235,20 @@ class PostgresIntegrationGovernanceCommands:
                     "authority_revision": authority_revision,
                 },
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_PROVISION_CAPABILITY,
+                aggregate_id=principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.PROVISION,
+                    reason_code=IdentityAuditReason.INTEGRATION_PROVISIONED,
+                    subject_kind=IdentitySubjectKind.INTEGRATION_PRINCIPAL,
+                    revision_before=0,
+                    revision_after=authority_revision,
+                ),
+            )
             return ProvisionIntegrationResult(
                 principal_id=principal_id,
                 workload_identity_id=workload_identity_id,
@@ -293,6 +317,20 @@ class PostgresIntegrationGovernanceCommands:
                 idempotency_id,
                 {"authority_revision": authority_revision},
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_AUTHORITY_CAPABILITY,
+                aggregate_id=command.integration_principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.AUTHORITY_REPLACE,
+                    reason_code=IdentityAuditReason.AUTHORITY_REPLACED,
+                    subject_kind=IdentitySubjectKind.INTEGRATION_PRINCIPAL,
+                    revision_before=command.expected_authority_revision,
+                    revision_after=authority_revision,
+                ),
+            )
             return authority_revision
 
     async def transition_integration_status(
@@ -354,6 +392,23 @@ class PostgresIntegrationGovernanceCommands:
                 idempotency_id,
                 {"authority_revision": authority_revision},
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_TRANSITION_COMMAND,
+                aggregate_id=command.integration_principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.STATUS_TRANSITION,
+                    reason_code=status_transition_reason(
+                        IdentitySubjectKind.INTEGRATION_PRINCIPAL,
+                        command.target_status.value,
+                    ),
+                    subject_kind=IdentitySubjectKind.INTEGRATION_PRINCIPAL,
+                    revision_before=command.expected_revision,
+                    revision_after=authority_revision,
+                ),
+            )
             return authority_revision
 
     async def rotate_integration_credential(
@@ -368,7 +423,7 @@ class PostgresIntegrationGovernanceCommands:
         idempotency_key = _validate_idempotency_key(command.idempotency_key)
         expires_at = integration_credential_expiry(command.credential_expires_at)
         fingerprint = command_fingerprint(
-            "integration_credential_rotate",
+            _CREDENTIAL_ROTATE_COMMAND,
             {
                 "integration_principal_id": command.integration_principal_id,
                 "expected_revision": command.expected_revision,
@@ -419,6 +474,20 @@ class PostgresIntegrationGovernanceCommands:
                 session,
                 idempotency_id,
                 {"credential_id": str(credential_id), "authority_revision": revision},
+            )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_CREDENTIAL_ROTATE_COMMAND,
+                aggregate_id=credential_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.CREDENTIAL_ROTATE,
+                    reason_code=IdentityAuditReason.CREDENTIAL_ROTATED,
+                    subject_kind=IdentitySubjectKind.INTEGRATION_CREDENTIAL,
+                    revision_before=command.expected_revision,
+                    revision_after=revision,
+                ),
             )
             return RotateIntegrationCredentialResult(
                 credential_id=credential_id,

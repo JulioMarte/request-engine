@@ -355,3 +355,10 @@ statement = "A native identity may hold multiple concurrent active sessions; eac
 severity = "high"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-TENANT-IDENTITY-AUDIT-001"
+statement = "Every tenant staff, agent and integration identity command commits exactly one append-only audit row in request_engine.audit_records in the same transaction as its authoritative effect, carrying the acting Principal, the target subject kind/id, the action, a closed reason code, and the real before/after aggregate revisions; an idempotent replay commits no second row, a rejected or rolled-back command commits none, the runtime application role can neither update nor delete audit history, tenant RLS hides another tenant's rows, and no token, verifier, login handle or raw secret ever enters the audit details."
+severity = "critical"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security", "provenance"]

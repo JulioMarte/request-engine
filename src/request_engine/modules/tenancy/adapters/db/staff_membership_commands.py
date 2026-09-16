@@ -4,6 +4,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from request_engine.modules.tenancy.adapters.db.identity_audit import append_identity_audit
+from request_engine.modules.tenancy.application.commands.identity_audit import (
+    IdentityAuditAction,
+    IdentityAuditDetails,
+    IdentityAuditReason,
+    IdentitySubjectKind,
+    status_transition_reason,
+)
 from request_engine.modules.tenancy.application.commands.staff_membership import (
     InviteNativeStaffCommand,
     InviteNativeStaffResult,
@@ -188,6 +196,20 @@ class PostgresStaffMembershipCommands:
                     "binding_id": str(invitation.binding_id),
                 },
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_INVITE_CAPABILITY,
+                aggregate_id=invitation.membership_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.INVITE,
+                    reason_code=IdentityAuditReason.STAFF_INVITED,
+                    subject_kind=IdentitySubjectKind.STAFF_MEMBERSHIP,
+                    revision_before=0,
+                    revision_after=1,
+                ),
+            )
             return invitation
 
     async def replace_staff_authority(
@@ -248,6 +270,20 @@ class PostgresStaffMembershipCommands:
                 idempotency_id,
                 {"authority_revision": authority_revision},
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_AUTHORITY_CAPABILITY,
+                aggregate_id=command.membership_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.AUTHORITY_REPLACE,
+                    reason_code=IdentityAuditReason.AUTHORITY_REPLACED,
+                    subject_kind=IdentitySubjectKind.STAFF_MEMBERSHIP,
+                    revision_before=command.expected_authority_revision,
+                    revision_after=authority_revision,
+                ),
+            )
             return authority_revision
 
     async def transition_staff_membership(
@@ -306,5 +342,22 @@ class PostgresStaffMembershipCommands:
                 session,
                 idempotency_id,
                 {"membership_revision": membership_revision},
+            )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_MEMBERSHIP_CAPABILITY,
+                aggregate_id=command.membership_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.STATUS_TRANSITION,
+                    reason_code=status_transition_reason(
+                        IdentitySubjectKind.STAFF_MEMBERSHIP,
+                        command.target_status.value,
+                    ),
+                    subject_kind=IdentitySubjectKind.STAFF_MEMBERSHIP,
+                    revision_before=command.expected_revision,
+                    revision_after=membership_revision,
+                ),
             )
             return membership_revision

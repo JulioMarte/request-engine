@@ -15,6 +15,81 @@ revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
 implemented and production-wired; operational acceptance of the chosen environment
 and secret manager remains under D6.
 
+## Tenant staff/agent/integration append-only audit (B4) (2026-09-16, no new revision)
+
+Block B4 of `auth-production-completion-plan.md`, under the frozen decision to reuse
+the existing append-only `request_engine.audit_records` boundary rather than add a
+new table or migration. Source-only change on branch `cohesion/system-optimization`;
+head remains `0052_issuance_reservation` and `alembic heads` is one. Local
+dirty-tree evidence only; no exact-head GitHub CI.
+
+Production change:
+
+- Each tenant staff, agent and integration identity command now commits exactly one
+  append-only `request_engine.audit_records` row inside its existing
+  `actor_transaction`, after the authoritative SQL mutation and the idempotency
+  close, via `request_engine.platform.audit.postgres.append_audit`. No new lock, no
+  network I/O and no privilege/topology change: the app role already holds
+  `SELECT,INSERT`, the tenant RLS `WITH CHECK` and the append-only trigger.
+- Typed, secret-free detail schema in
+  `modules/tenancy/application/commands/identity_audit.py`
+  (`IdentityAuditAction`, `IdentityAuditReason`, `IdentitySubjectKind`, and the
+  bounded `IdentityAuditDetails` dataclass). Adapters write it through the thin
+  tenancy-local `modules/tenancy/adapters/db/identity_audit.py` helper, which keeps
+  `aggregate_kind` equal to `subject_kind`.
+- `command_name` is the stable capability/operation identifier (`staff.invite`,
+  `staff.manage_authority`, `staff.manage_membership`, `agent.provision`,
+  `agent.manage_authority`, `agent.suspend`, `integration.provision`,
+  `integration.manage_authority`, `integration.transition_status`,
+  `integration_credential_rotate`). `aggregate_kind` is `StaffMembership`,
+  `AgentPrincipal`, `IntegrationPrincipal` or `IntegrationCredential`.
+- Replay never audits: the early replay branch returns before the audit append, so
+  one effect yields one row. A rejected command or any rollback leaves zero rows.
+- `integration_governance_facts` is preserved byte-for-byte as the integration
+  provenance snapshot; the new `audit_records` row is the uniform cross-family audit
+  record. Both are written in the same transaction for integration commands.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0052):
+
+- `tests/db/test_identity_governance_audit.py` (5 proofs): for each family, exactly
+  one audit row per command with actor, aggregate kind/id, action, reason and real
+  before/after revisions, checked against the independently read aggregate state;
+  replay leaves one row; rejected stale commands leave none; a foreign tenant cannot
+  see the row (RLS); the runtime app role gets `42501` on `UPDATE`/`DELETE`; the
+  rotate details contain no token, digest or secret.
+- `tests/unit/test_identity_audit_details.py` (8 proofs): typed detail schema,
+  optional/normalized `external_case_reference`, bounded revisions and closed
+  reason codes.
+- Mutation check: deleting the `staff.invite` audit append turned the DB proof red
+  (`got 0`); auditing the replay path instead turned it red (`got 2`); restoring the
+  code restored green.
+- Extended e2e journeys `tests/e2e/test_native_staff_lifecycle.py`,
+  `test_native_agent_lifecycle.py` and `test_native_integration_lifecycle.py` now
+  assert a durable audit row after a real HTTP command plus replay, and the rotate
+  journey additionally asserts the uniform audit row is secret-free.
+- New guarantee `INV-TENANT-IDENTITY-AUDIT-001` with proof-map entries; the new DB
+  suite was added to `scripts/ci/run_current_product.sh`.
+
+Decisions and honest limits:
+
+- `reason_code` is operation-derived (a closed enum), because the current tenant
+  command contracts do not carry an operator-supplied reason. Adding an operator
+  reason field would change the HTTP/application contracts and is not part of B4.
+- `external_case_reference` is part of the typed schema but is always absent today
+  for the same reason; it is unit-tested at the schema boundary.
+- For creation commands (`invite`/`provision`) `revision_before` is `0` and
+  `revision_after` is the new aggregate revision (`1` for a fresh staff membership
+  or agent profile, the returned authority revision for integration). For
+  transitions and rotations `revision_before` is the caller's expected revision and
+  `revision_after` is the revision PostgreSQL returned.
+- For `integration_credential_rotate` the aggregate is the new
+  `IntegrationCredential` and the before/after revisions describe the parent
+  integration Principal's authority revision that the rotation bumped.
+- Platform-plane commands, binding lifecycle, and `identity_exchange`/party commands
+  (which already audited) are out of B4 scope and unchanged.
+- No commit, push, PR, deployment or application-database migration; evidence is
+  local/dirty-tree only.
+
 ## Real recovery secret delivery adapter (C-02) and issuance-discard fix (2026-09-16)
 
 Block C-02 of `auth-production-completion-plan.md` under the D2/D6 owner decisions
@@ -780,7 +855,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | B1 | Split global vs local identity administration | Tenancy | validado (platform provisioner scope) | 0043 registers read/lifecycle capabilities; global recovery/linking remain in C/D |
 | B2 | Authentication-capable continuity predicate | Tenancy | validado (tenant + platform planes) | 0042 tenant proofs; 0043 platform predicate + last-controller guard |
 | B3 | Identity topology serialization gate | platform/DB | validado | 0044 gate + complete writer inventory + inversion/containment proofs; production contention limits pending C/D |
-| B4 | Transaction/idempotency/audit for identity commands | owners | validado (provisioner + governed recovery scope) | 0043 platform facts; 0045 recovery case audit, idempotency and revision; tenant staff/agent/integration commands still lack append-only audit facts |
+| B4 | Transaction/idempotency/audit for identity commands | owners | validado (provisioner + governed recovery + tenant identity commands) | 0043 platform facts; 0045 recovery case audit, idempotency and revision; tenant staff/agent/integration commands now append `audit_records` rows (one per effect, replay-safe, secret-free) via the B4 typed schema; `integration_governance_facts` preserved as provenance |
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; real Vault+SMTP adapter wired; operational acceptance pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; C-02 real Vault KV v2 store and SMTP channel wired into the control plane and worker, proven against boundary doubles; 0052 per-attempt issuance generation reservation closes the concurrent-issuance discard hole |
 | D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |

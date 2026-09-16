@@ -181,6 +181,18 @@ async def test_integration_is_provisioned_books_for_customers_and_revocation_des
         assert replayed.json()["principal_id"] == str(integration_principal_id)
         assert replayed.json()["workload_token"] is None
 
+        provision_audit = e2e_admin_conn.execute(
+            """
+            SELECT count(*), bool_and(actor_principal_id = %s)
+              FROM request_engine.audit_records
+             WHERE organization_id = %s
+               AND command_name = 'integration.provision'
+               AND aggregate_id = %s
+            """,
+            (controller_principal_id, organization_id, integration_principal_id),
+        ).fetchone()
+        assert provision_audit == (1, True)
+
         read_headers = tenant_headers(token=controller_token, organization_id=organization_id)
         detail = await client.get(
             f"/v1/integrations/{integration_principal_id}", headers=read_headers
@@ -291,6 +303,20 @@ async def test_integration_is_provisioned_books_for_customers_and_revocation_des
         assert len(facts) == 1
         assert workload_token not in facts[0][0]
         assert "token_digest" not in facts[0][0]
+        rotate_audit = e2e_admin_conn.execute(
+            """
+            SELECT details
+              FROM request_engine.audit_records
+             WHERE organization_id = %s
+               AND command_name = 'integration_credential_rotate'
+               AND aggregate_id = %s
+            """,
+            (organization_id, UUID(rotated.json()["credential_id"])),
+        ).fetchall()
+        assert len(rotate_audit) == 1
+        assert rotate_audit[0][0]["action"] == "credential_rotate"
+        assert "token_digest" not in str(rotate_audit[0][0])
+        assert workload_token not in str(rotate_audit[0][0])
 
         customer_name = f"B2B Customer {uuid4().hex[:8]}"
         active_lookup = await client.get(

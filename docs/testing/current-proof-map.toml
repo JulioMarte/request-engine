@@ -381,3 +381,28 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-NATIVE-MULTI-SESSION-001"
 path = "tests/db/test_native_multi_session.py"
 evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/db/test_identity_governance_audit.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/unit/test_identity_audit_details.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_staff_lifecycle.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_agent_lifecycle.py"
+evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-TENANT-IDENTITY-AUDIT-001"
+path = "tests/e2e/test_native_integration_lifecycle.py"
+evidence = ["contract", "invariant"]

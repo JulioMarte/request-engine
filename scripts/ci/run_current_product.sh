@@ -127,6 +127,7 @@ uv run pytest \
   tests/db/test_integration_governance.py \
   tests/db/test_v3_tenant_reference_integrity.py \
   tests/db/test_staff_membership_lifecycle.py \
+  tests/db/test_identity_governance_audit.py \
   tests/db/test_staff_invitation_anchor_authority.py \
   tests/db/test_platform_control_definer_topology.py \
   tests/db/test_platform_provisioner_lifecycle.py \

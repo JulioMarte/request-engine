@@ -132,6 +132,18 @@ async def test_first_class_agent_is_provisioned_executes_work_and_is_revocable(
         assert replayed.json()["principal_id"] == str(agent_principal_id)
         assert replayed.json()["workload_token"] is None
 
+        provision_audit = e2e_admin_conn.execute(
+            """
+            SELECT count(*), bool_and(actor_principal_id = %s)
+              FROM request_engine.audit_records
+             WHERE organization_id = %s
+               AND command_name = 'agent.provision'
+               AND aggregate_id = %s
+            """,
+            (controller_principal_id, organization_id, agent_principal_id),
+        ).fetchone()
+        assert provision_audit == (1, True)
+
         pending_lookup = await client.get(
             "/v1/parties/lookup",
             headers=tenant_headers(

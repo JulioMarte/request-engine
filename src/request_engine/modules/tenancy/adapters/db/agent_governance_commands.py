@@ -6,11 +6,19 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from request_engine.modules.tenancy.adapters.db.identity_audit import append_identity_audit
 from request_engine.modules.tenancy.application.commands.agent_governance import (
     ProvisionAgentCommand,
     ProvisionAgentResult,
     ReplaceAgentAuthorityCommand,
     TransitionAgentProfileCommand,
+)
+from request_engine.modules.tenancy.application.commands.identity_audit import (
+    IdentityAuditAction,
+    IdentityAuditDetails,
+    IdentityAuditReason,
+    IdentitySubjectKind,
+    status_transition_reason,
 )
 from request_engine.modules.tenancy.application.errors import (
     AgentGovernanceConflict,
@@ -227,6 +235,20 @@ class PostgresAgentGovernanceCommands:
                     "authority_revision": authority_revision,
                 },
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_PROVISION_CAPABILITY,
+                aggregate_id=principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.PROVISION,
+                    reason_code=IdentityAuditReason.AGENT_PROVISIONED,
+                    subject_kind=IdentitySubjectKind.AGENT_PRINCIPAL,
+                    revision_before=0,
+                    revision_after=profile_revision,
+                ),
+            )
             return ProvisionAgentResult(
                 principal_id=principal_id,
                 workload_identity_id=workload_identity_id,
@@ -295,6 +317,20 @@ class PostgresAgentGovernanceCommands:
                 idempotency_id,
                 {"authority_revision": authority_revision},
             )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_AUTHORITY_CAPABILITY,
+                aggregate_id=command.agent_principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.AUTHORITY_REPLACE,
+                    reason_code=IdentityAuditReason.AUTHORITY_REPLACED,
+                    subject_kind=IdentitySubjectKind.AGENT_PRINCIPAL,
+                    revision_before=command.expected_authority_revision,
+                    revision_after=authority_revision,
+                ),
+            )
             return authority_revision
 
     async def transition_agent_profile(
@@ -355,5 +391,22 @@ class PostgresAgentGovernanceCommands:
                 session,
                 idempotency_id,
                 {"profile_revision": profile_revision},
+            )
+            await append_identity_audit(
+                session,
+                actor=actor,
+                command_name=_LIFECYCLE_CAPABILITY,
+                aggregate_id=command.agent_principal_id,
+                idempotency_id=idempotency_id,
+                details=IdentityAuditDetails(
+                    action=IdentityAuditAction.STATUS_TRANSITION,
+                    reason_code=status_transition_reason(
+                        IdentitySubjectKind.AGENT_PRINCIPAL,
+                        command.target_status.value,
+                    ),
+                    subject_kind=IdentitySubjectKind.AGENT_PRINCIPAL,
+                    revision_before=command.expected_revision,
+                    revision_after=profile_revision,
+                ),
             )
             return profile_revision

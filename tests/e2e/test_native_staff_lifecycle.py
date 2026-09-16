@@ -220,6 +220,18 @@ async def test_native_staff_lifecycle_is_re_owned_and_revocation_is_immediate(
         membership_id = UUID(invited.json()["membership_id"])
         staff_principal_id = UUID(invited.json()["principal_id"])
 
+        invite_audit = e2e_admin_conn.execute(
+            """
+            SELECT count(*), bool_and(actor_principal_id = %s)
+              FROM request_engine.audit_records
+             WHERE organization_id = %s
+               AND command_name = 'staff.invite'
+               AND aggregate_id = %s
+            """,
+            (_root_principal_id, organization_id, membership_id),
+        ).fetchone()
+        assert invite_audit == (1, True)
+
         inspection_headers = _tenant_headers(token=root_token, organization_id=organization_id)
         detail = await client.get(f"/v1/staff/members/{membership_id}", headers=inspection_headers)
         assert detail.status_code == 200, detail.text
