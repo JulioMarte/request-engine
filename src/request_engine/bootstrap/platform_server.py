@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from request_engine.bootstrap.recovery_delivery import build_recovery_secret_delivery
 from request_engine.bootstrap.settings import PlatformControlSettings
 from request_engine.entrypoints.http.platform_control_app import create_platform_control_app
 from request_engine.modules.tenancy.api import NATIVE_INITIAL_CONTROLLER_POLICY
@@ -131,6 +132,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
 
 def create_app() -> FastAPI:
     settings = PlatformControlSettings.model_validate({})
+    delivery = build_recovery_secret_delivery()
     engines = tuple(
         create_postgres_engine(url.get_secret_value())
         for url in (
@@ -151,6 +153,7 @@ def create_app() -> FastAPI:
         platform_read_session_factory=create_session_factory(engines[1]),
         platform_write_session_factory=create_session_factory(engines[2]),
         native_authority_id=settings.native_identity_authority_id,
+        recovery_delivery=delivery,
     )
     original_lifespan = app.router.lifespan_context
 

@@ -10,7 +10,10 @@ Bloque A (outcome de enrollment, revisión0041), el plano tenant de B2
 (continuidad con vía autenticable, revisión0042), B1/B5 (capabilities de
 provisioner, proyección de lectura y ciclo de vida revisionado con auditoría
 privada append-only, revisión0043), B3 (gate de topología, revisión0044) y C
-(recuperación gobernada con entrega segura por puerto técnico, revisión0045)
+(recuperación gobernada con entrega segura por puerto técnico, revisión0045; el
+adaptador real C-02 de secret store Vault KV v2 y canal SMTP ya está implementado y
+cableado en control plane y worker, con evidencia contra dobles de frontera y un
+hueco residual de emisión concurrente que requiere reserva de generación)
 están implementados y validados localmente; su evidencia vive en
 `auth-implementation-status.md`. Dentro de D, la proyección de lectura de
 bindings (`identity.binding.read`, `identity_binding_list`/`identity_binding_get`)
@@ -20,10 +23,12 @@ y la prueba de carreras B-02) están implementados y validados localmente; el di
 global D3 de identidad nativa (`platform.identity.disable`, revisión0047, gate
 EXCLUSIVE con `lock_timeout` acotado, reader privado y continuidad multi-tenant)
 está implementado y validado, incluida su prueba HTTP privada. El linking
-self-service D2 está implementado en modo native-only (revisión0048 de frescura de
-reautenticación y revisión0049 de intents y binding para el Principal existente);
-la prueba OIDC de doble posesión queda fuera de alcance mientras no exista una
-conexión OIDC. E3, F y G tampoco existen.
+self-service D2 está implementado y validado localmente: las revisiones0048/0049
+aportaron el linking nativo (frescura de reautenticación, intents y binding para el
+Principal existente) y las revisiones0050/0051 añadieron el endurecimiento y la
+segunda prueba OIDC (JWKS/RS256 reales, fail-closed sin verificador). OIDC sigue
+siendo opcional y deshabilitado por defecto, sin proveedor configurado. E3, F y G
+tampoco existen.
 Las decisiones D1–D6 fueron ratificadas por ADR 0013; cada bloque todavía necesita
 su contrato propio donde el plan lo exige (por ejemplo, el inventario completo de
 writers y la prueba de inversión de locks de D5).
@@ -126,10 +131,14 @@ habilitar recovery global, linking o break-glass basándose en una suposición.
 | --- | --- | --- |
 | D1 Recuperación global | Control plane privado; HUMAN con autoridad de seguridad explícita; caso y aprobación por otro HUMAN; nunca basta ser provisioner de tenants | Dueño acepta doble control, quién verifica titularidad y cómo se obtienen inicialmente esas autoridades |
 | D2 Entrega del secreto | Canal previamente verificado y secret store separado con staging/TTL; ningún reset secret en audit, outbox ordinario o respuesta administrativa | Elegir secret store y adaptador de entrega reales; política para resultados ambiguos y evidencia de titularidad |
-| D3 Linking v1 | Self-link a su Principal mediante pruebas frescas de ambas identidades; no merge por email ni linking administrativo arbitrario | Aceptar esquema de prueba de posesión, frescura y proveedores/facetas admitidos |
+| D3 Linking v1 | Self-link a su Principal mediante pruebas frescas de ambas identidades; no merge por email ni linking administrativo arbitrario | Aceptado e implementado: nativo en0049 (frescura0048, endurecimiento0050) y OIDC en0051; OIDC es opt-in y está deshabilitado por defecto |
 | D4 Continuidad | Siempre conservar al menos un controlador efectivo con una vía autenticable; excepciones solo en recuperación de plataforma explícita | Ratificar predicado exacto tenant/platform y semántica del kill switch de autoridad |
 | D5 Serialización | Gate transaccional de topología antes de locks actuales, compartido para cambios locales y exclusivo para operaciones globales | ADR, inventario completo de writers y pruebas de ausencia de inversiones; no aplicar solo a endpoints nuevos |
 | D6 Operación | Native-only primero, private control plane separado, configuración fail-closed | Entorno, DNS/TLS/ingress, RPO/RTO/SLO, gestor de secretos, delivery, operadores y aprobación del despliegue |
+
+Nota de numeración: en ADR 0013, D2 = entrega de secretos, D3 = linking y D6 =
+operaciones; el cuerpo de este plan reutiliza "D2"/"D3" para secciones de diseño
+(por ejemplo D2 linking, D3 disable global). No son el mismo identificador.
 
 Defaults propuestos para concretar las pruebas, ajustables solo en el contrato:
 prueba de reautenticación máximo5 minutos; recovery proof máximo30 minutos;
@@ -689,6 +698,9 @@ Revisar sensores semánticos sin split por LOC y sin fabricar human_verdict.
    sustituto válido y repetir según revisión; éxito sin perder provenance.
 9. Journey OIDC en prueba separada: dual-proof link, misma autoridad de negocio,
    disable nativo, retirar externo con fallback nativo correctamente establecido.
+   La parte de dual-proof link OIDC ya está cubierta por
+   `tests/e2e/test_identity_link_self_oidc_http.py` (0051); el journey completo de
+   migración Native->OIDC con disable sigue pendiente.
 10. Crash/restart worker y API en puntos de saga; estado y secreto siguen seguros.
 
 ## 12. G — Aceptación operacional y publicación
@@ -769,8 +781,9 @@ No declarar terminado el branch hasta que:
   lifecycle de provisioners y último controlador de plataforma.
 - [ ] C: recovery completo con aprobación, entrega real, consumo y reconciliación;
   no meras primitivas internas ni reset por email no verificado.
-- [ ] D: reads/lifecycle/dual-proof linking y disable global completos sin
-  retargeting, efectos cruzados ni autoridad resucitada.
+- [x] D: reads/lifecycle/dual-proof linking (nativo0049, OIDC0051, opt-in) y disable
+  global0047 implementados y validados localmente sin retargeting, efectos cruzados
+  ni autoridad resucitada.
 - [ ] E: policies antiguas tienen camino explícito, onboarding identity-aware y
   diagnóstico owner-backed sin prometer permisos futuros.
 - [ ] F: journeys fixture-free y matriz adversarial ejecutados en lanes durables;

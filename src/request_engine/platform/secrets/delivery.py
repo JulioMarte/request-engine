@@ -46,6 +46,7 @@ class StagedRecoverySecret:
     reference: str
     digest: str
     expires_at: datetime
+    created: bool
 
     def __post_init__(self) -> None:
         if not self.reference.strip():

@@ -38,13 +38,13 @@ executed validation is tracked in `architecture/auth-implementation-status.md` a
 the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
 The proposed implementation sequence for remaining identity/product/operational
 gaps is `architecture/auth-production-completion-plan.md`. It includes explicit
-security decision gates and is not a production certification. Its block A
-(native enrollment outcome, revision0041), the tenant plane of B2 (controller
-continuity with an authenticatable path, revision0042) and B1/B5 (platform
-provisioner capabilities, read projection and revisioned lifecycle with private
-append-only audit, revision0043) are implemented and locally validated; remaining
-blocks are gated by the D1–D6 owner decisions tracked in
-`architecture/auth-implementation-status.md`.
+security decision gates and is not a production certification. Blocks A, B, the C
+mechanism (governed recovery with a test delivery port) and D (binding reads and
+lifecycle, self-service linking including its opt-in OIDC second proof, and global
+native disable) are implemented and locally validated through revision0051. The
+remaining gaps are the real delivery adapter (C-02/D6), the B4 append-only audit for
+tenant staff/agent/integration commands, E1-E3, the F journeys and G/D6 operational
+acceptance, tracked in `architecture/auth-implementation-status.md`.
 
 For present-day ownership and boundaries, start here:
 

@@ -147,6 +147,12 @@ _EXPECTED_COLUMNS = {
     ("representations", "scope_key", "INSERT"),
     ("identity_recovery_cases", "delivery_destination_reference", "INSERT"),
     ("identity_recovery_cases", "evidence_reference", "INSERT"),
+    ("identity_recovery_issuance_reservations", "case_id", "SELECT"),
+    ("identity_recovery_issuance_reservations", "generation", "SELECT"),
+    ("identity_recovery_issuance_reservations", "idempotency_key_digest", "SELECT"),
+    ("identity_recovery_issuance_reservations", "case_id", "INSERT"),
+    ("identity_recovery_issuance_reservations", "generation", "INSERT"),
+    ("identity_recovery_issuance_reservations", "idempotency_key_digest", "INSERT"),
     ("identity_recovery_cases", "id", "INSERT"),
     ("identity_recovery_cases", "reason_code", "INSERT"),
     ("identity_recovery_cases", "requester_principal_id", "INSERT"),
@@ -332,17 +338,14 @@ def test_platform_control_definer_has_only_reviewed_columns(
         for table, column, privilege in rows
     }
     assert actual == _EXPECTED_COLUMNS
-    assert (
-        admin_conn.execute(
-            """
+    assert admin_conn.execute(
+        """
             SELECT table_name, privilege_type
               FROM information_schema.role_table_grants
              WHERE grantee = %s AND table_schema = 'request_engine'
             """,
-            (_DEFINER,),
-        ).fetchall()
-        == []
-    )
+        (_DEFINER,),
+    ).fetchall() == [("identity_recovery_issuance_reservations", "DELETE")]
 
 
 def test_platform_control_definer_uses_native_auth_only_through_lock_boundary(

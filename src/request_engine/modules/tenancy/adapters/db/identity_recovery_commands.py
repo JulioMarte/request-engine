@@ -28,7 +28,10 @@ from request_engine.modules.tenancy.application.queries.identity_recovery import
     IdentityRecoveryCaseView,
 )
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
-from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.secrets.delivery import (
+    RecoverySecretDelivery,
+    StagedRecoverySecret,
+)
 from request_engine.platform.security.context import PrincipalKind
 from request_engine.platform.security.native_auth import issue_opaque_token
 from request_engine.platform.security.platform_context import PlatformActorContext
@@ -181,7 +184,7 @@ class PostgresIdentityRecoveryCommands:
         prepared_columns = tuple(prepared)
         if bool(prepared_columns[0]):
             return _materialize(prepared_columns[1:])
-        generation = int(prepared_columns[6]) + 1
+        generation = int(prepared_columns[6])
         token = issue_opaque_token()
         proof_expires_at = datetime.now(UTC) + _PROOF_TTL
         staged = await delivery.stage(
@@ -227,10 +230,10 @@ class PostgresIdentityRecoveryCommands:
                     )
                 ).one()
         except DBAPIError as exc:
-            await _discard_staged(delivery, command.case_id, generation)
+            await _discard_staged(delivery, staged, command.case_id, generation)
             _raise_mapped(exc)
         except Exception:
-            await _discard_staged(delivery, command.case_id, generation)
+            await _discard_staged(delivery, staged, command.case_id, generation)
             raise
         return _materialize(row)
 
@@ -296,9 +299,12 @@ def _raise_mapped(exc: DBAPIError) -> NoReturn:
 
 async def _discard_staged(
     delivery: RecoverySecretDelivery,
+    staged: StagedRecoverySecret,
     case_id: UUID,
     generation: int,
 ) -> None:
+    if not staged.created:
+        return
     with contextlib.suppress(Exception):
         await delivery.discard(case_id=case_id, generation=generation)
 

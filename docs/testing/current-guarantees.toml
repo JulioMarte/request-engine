@@ -316,7 +316,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-IDENTITY-RECOVERY-001"
-statement = "Governed native identity recovery requires a distinct HUMAN platform approver, stages the raw proof outside authoritative locks in a dedicated secret-delivery boundary, issues through one authoritative transaction that links case, recovery intent and delivery ticket, revokes intent and ticket atomically, and links consumption to the case in the same transaction; no raw proof reaches tables, audit facts, ordinary outbox or administrative responses."
+statement = "Governed native identity recovery requires a distinct HUMAN platform approver, stages the raw proof outside authoritative locks in a dedicated secret-delivery boundary, issues through one authoritative transaction that links case, recovery intent and delivery ticket, revokes intent and ticket atomically, and links consumption to the case in the same transaction; no raw proof reaches tables, audit facts, ordinary outbox or administrative responses. Issuance stages the raw proof create-if-absent in a dedicated secret store and the worker publishes it through a configured channel outside authoritative locks: a pre-transmission connection failure is retryable, an ambiguous post-transmission outcome is recorded unknown and never blindly republished, and a definitive refusal is terminal; each issuance attempt reserves its case generation before staging, so two concurrent issuances of one case reserve and stage distinct generations and a losing issuance discards only its own reserved generation, never the retained secret the winner's delivery ticket references."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]

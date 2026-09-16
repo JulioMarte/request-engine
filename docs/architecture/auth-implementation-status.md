@@ -10,11 +10,207 @@ tests is necessary but does not prove the unimplemented acceptance journeys.
 Detailed continuation plan: `auth-production-completion-plan.md` (2026-09-14).
 It specifies implementation order, proposed operations, ownership, security
 decision gates, transactions, proof matrix and operational exit criteria. Its
-proposed recovery/linking policy requires explicit acceptance before activation.
+recovery/linking policy was accepted by ADR 0013 (2026-09-14) and activated in
+revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
+implemented and production-wired; operational acceptance of the chosen environment
+and secret manager remains under D6.
+
+## Real recovery secret delivery adapter (C-02) and issuance-discard fix (2026-09-16)
+
+Block C-02 of `auth-production-completion-plan.md` under the D2/D6 owner decisions
+(Vault KV v2 secret store; SMTP delivery channel, Mailu-compatible, with a
+`module:factory` seam for a future WhatsApp channel). No new migration; source-only
+composition change on branch `cohesion/system-optimization`. Local evidence only;
+exact-head CI for this change has not yet run.
+
+Production change:
+
+- `platform/secrets/vault_secret_store.py` (`VaultRecoverySecretStore`) stages the
+  raw proof in Vault KV v2 create-if-absent (`options.cas=0`), reads it back only
+  for publication, and treats a CAS conflict by returning the retained secret with
+  `created=False` instead of overwriting. `platform/secrets/smtp_delivery_channel.py`
+  (`SmtpRecoveryDeliveryChannel`) publishes over SMTP with a deterministic
+  hashed `Message-ID`; `platform/secrets/composed_delivery.py`
+  (`ComposedRecoverySecretDelivery`) composes store + channel and satisfies the
+  existing `RecoverySecretDelivery` port. `StagedRecoverySecret` gained a required
+  `created` flag.
+- `bootstrap/recovery_delivery.py` resolves the adapter from explicit
+  `REQUEST_ENGINE_VAULT_*` / `REQUEST_ENGINE_SMTP_*` / `REQUEST_ENGINE_RECOVERY_*`
+  configuration or a `REQUEST_ENGINE_RECOVERY_DELIVERY_FACTORY=module:factory`
+  override. A partial configuration fails startup; an absent configuration returns
+  `None` and keeps issuance fail-closed (`503 recovery_delivery_unconfigured`).
+  `bootstrap/platform_server.py` passes the adapter to the private control plane and
+  `bootstrap/reference_worker_factory.py` composes the fenced delivery stream into
+  the production worker.
+- Two defects fixed: (1) `_discard_staged` in `identity_recovery_commands.py` now
+  no-ops when the staged secret was not created by this call, so a concurrent
+  issuance that lost create-if-absent no longer deletes the retained secret; (2) the
+  SMTP `Message-ID` was derived from the raw `case:generation` key, which stdlib
+  `email` truncated at the colon; it is now a sha256 hash of the key.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0051):
+
+- `tests/unit/platform/secrets/` (31 unit proofs): Vault CAS/conflict/discard/read/
+  expiry/error mapping; SMTP outcome mapping and hashed `Message-ID`; composite
+  delegation.
+- `tests/modules/platform/test_recovery_delivery_assembly.py` +
+  `test_worker_production_assembly.py`: fail-closed config resolution and worker
+  stream wiring.
+- `tests/e2e/test_native_identity_recovery_http.py`: now 8 proofs, including 4
+  real-adapter journeys (`test_identity_recovery_delivery`,
+  `_ambiguous_delivery_is_not_blindly_retried`,
+  `_connection_failure_is_safely_retried`, `_invalid_destination_is_permanent`)
+  against a Vault KV v2 HTTP double and an SMTP transport double, with real
+  DB/worker/HTTP.
+- `tests/db/test_identity_recovery_governance.py`: now 10 proofs, including
+  `test_concurrent_issuance_keeps_the_retained_secret`, whose mutation check (guard
+  removed) turned red and restored green.
+- `python-quality`: 12/12 PASS.
+
+Honest limits:
+
+- Real Vault and real SMTP servers were not exercised; the evidence uses boundary
+  doubles at the external Vault/SMTP boundary. Provider/delivery certification
+  remains G/D6.
+- **Residual concurrency hole (closed by revision 0052):** the C-02 fix covered
+  only the issuance that lost create-if-absent. A concurrent issuance that
+  *created* the staged secret but lost the authoritative transaction could still
+  discard the secret the winner's ticket references. The plan's remedy —
+  generation reservation before staging — is implemented by
+  `0052_issuance_reservation`; see the next section.
+- SMTP has no reconciliation query surface, so an ambiguous post-transmission
+  outcome is recorded `unknown` and not republished; only a pre-transmission
+  connection failure is retried.
+- No WhatsApp/OIDC delivery channel is implemented; the factory seam is the only
+  extension point. No OIDC or app-database migration, commit, push, PR or deployment
+  was performed for this block.
+
+## Recovery issuance generation reservation (2026-09-16, revision 0052)
+
+Revision `0052_issuance_reservation` (file
+`migrations/versions/0052_identity_recovery_issuance_reservation.py`) appends from
+`0051` and implements the section C2 remedy: the issuance generation is reserved
+per attempt before the raw proof is staged.
+
+Production change:
+
+- New private table `request_engine.identity_recovery_issuance_reservations`
+  (`PRIMARY KEY (case_id, generation)`, `UNIQUE (case_id, idempotency_key_digest)`,
+  generation and digest checks). Owner `request_engine_schema_owner`; no runtime
+  role access. The control definer receives column `SELECT`/`INSERT` on
+  `(case_id, generation, idempotency_key_digest)` and a table-level `DELETE`.
+- `request_platform.prepare_identity_recovery_issue` reuses the reservation for an
+  already-reserved idempotency key or inserts `max(live reservation, committed
+  generation) + 1` under the existing `FOR UPDATE` case lock, then returns that
+  reserved generation in the `issuance_generation` column. The idempotency replay
+  path still returns the committed case view.
+- `request_platform.issue_identity_recovery_case` accepts only the exact
+  `(case_id, generation, idempotency_key_digest)` reservation at both generation
+  gates, and deletes the reservation in the same transaction that marks the case
+  `issued`.
+- `identity_recovery_commands.issue_case` stages the generation `prepare`
+  returned instead of adding one.
+
+Consequence: two concurrent issuances of one case reserve and stage distinct
+generations, so the authoritative loser discards only its own staged generation;
+the retained secret the winner's delivery ticket references is never deleted. The
+previous create-if-absent guard remains necessary but is no longer the only
+protection.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0052):
+
+- `tests/db/test_identity_recovery_governance.py` (11 proofs): direct flows thread
+  one idempotency key and the reserved generation from prepare into issue; the
+  happy path asserts the reserved generation 1; a new proof asserts two keys
+  reserve generations 1 and 2, re-preparing a key reuses its reservation, and an
+  unreserved generation is rejected `40001`; the concurrency proof is rewritten so
+  the two issuances reserve distinct generations and the loser discards only its
+  own. Mutation check: reverting both functions to the pre-0052 bodies turned the
+  concurrency proof red at "the winning staged secret was deleted by the losing
+  issuance"; restoring turned it green.
+- `tests/db/test_platform_control_definer_topology.py`,
+  `tests/db/test_platform_definer_topology.py`,
+  `tests/db/test_runtime_immutable_table_privileges.py`,
+  `tests/db/test_v3_runtime_privilege_contract.py` and
+  `tests/db/runtime_table_contract.py` updated for the new private table and the
+  definer's reviewed `SELECT`/`INSERT` columns plus the table-level `DELETE`.
+- `tests/e2e/test_native_identity_recovery_http.py`: 8 proofs pass; a first
+  issuance is still generation 1.
+- `python-quality`: 12/12 PASS.
+
+Honest limits: local evidence only; GitHub exact-head CI for 0052 has not run.
+The reservation table-level `DELETE` is a deliberate widening of the control
+definer's reviewed surface (PostgreSQL has no column-level `DELETE`).
+
+## OIDC identity linking and link hardening (2026-09-16, revisions 0050-0051)
+
+Revisions `0050_identity_link_hardening` and `0051_oidc_identity_link` append from
+`0049` (chain `...0047 -> 0048 -> 0049 -> 0050 -> 0051`; current Alembic head is
+`0051`). GitHub exact-head CI is green for this chain at branch head `4d873ec7`
+(run [35121436765](https://github.com/JulioMarte/request-engine/actions/runs/35121436765),
+5/5 required jobs, 13m37s); the branch is not merged or deployed. This section
+extends and supersedes the "native-only / OIDC out of scope" statement in the
+0048-0049 section below.
+
+Production change:
+
+- 0050 hardens self-service linking and native session activity. Continuity refusal
+  now surfaces as SQLSTATE `55000` (a mapped conflict) instead of `23514` (a mapped
+  input error). A partial unique index `identity_link_intents_live_uq` permits at
+  most one live pending intent per organization+actor+authority;
+  `create_identity_link_intent` expires stale pending intents before its existence
+  check, and a tenant-scoped `request_engine.read_identity_link_intent` reader lets
+  the confirm boundary derive the target authority from trusted persisted state
+  rather than a body-supplied hint. `request_auth.touch_native_session` records
+  bounded session activity without exposing native session tables to the app role.
+- 0051 adds the OIDC second-proof path. `request_engine.confirm_identity_link_subject`
+  mirrors the native confirmation exactly (same identity-topology gate, ordered
+  staff root, actor/intent revalidation, consume-once semantics) but locks the
+  intent's authority `FOR SHARE`, rejects a `native` authority, conflicts when the
+  subject is already linked in the tenant, and creates the binding for the SAME
+  tenant Principal. Native confirmation keeps its own primitive; the two are
+  distinct.
+- `platform/security/oidc_link.py` composes `OidcIdentityLinkVerifier`/`OidcLinkVerifier`
+  over live persisted authority configuration; the target authority is always the
+  intent's, never a request-body hint. `modules/tenancy/api/identity_link_routes.py`
+  adds `OidcIdentityLinkProofBody` and calls `oidc_verifier.verify`; a deployment
+  without a composed verifier fails closed with 403 `identity_link_not_configured`.
+  `adapters/db/identity_link_commands.py` dispatches to `_CONFIRM_SUBJECT_SQL`.
+
+Real versus mocked OIDC verification:
+
+- Verification is real: `platform/security/oidc_auth.py` implements RFC 9068
+  (`typ=at+jwt`) resource-server tokens signed with RS256 against the authority's
+  JWKS (`HttpxJwksFetcher`, `OidcTokenAuthenticator`). There is no token
+  introspection endpoint. Only the JWKS HTTP transport is mocked in tests.
+
+Executed evidence (real PostgreSQL 18, `request_engine_current` at 0051):
+
+- `tests/db/test_identity_link_hardening.py` (0050) and
+  `tests/db/test_identity_link_subject.py` (0051).
+- `tests/e2e/test_identity_link_self_oidc_http.py` (real RSA/RS256-minted tokens;
+  only the JWKS HTTP transport is mocked).
+- `tests/db/test_native_multi_session.py`, `tests/unit/platform/security/test_native_session.py`
+  and `tests/unit/platform/security/test_step_up_enforcement.py`.
+
+Honest limits:
+
+- OIDC remains OPTIONAL and disabled by default: `oidc_enabled=False`
+  (`REQUEST_ENGINE_OIDC_ENABLED`), and no OIDC identity_authorities row is seeded.
+  A deployment without a composed verifier fails closed.
+- No introspection means external revocation cannot be observed instantly; the
+  verifier re-reads the live authority config before and after the network call,
+  but upstream token revocation is not polled.
+- `deploy/authentik/` is a manual/opt-in real-provider stack; CI never starts it,
+  so CI does not exercise a live external IdP.
+- `INV-IDENTITY-LINK-SELF-001` (including its OIDC clause) and
+  `INV-NATIVE-MULTI-SESSION-001` in `testing/current-guarantees.toml`, and the
+  matching entries in `testing/current-proof-map.toml`, already reflect this state.
 
 ## Self-service identity linking and reauthentication freshness (2026-09-16, revisions 0048-0049)
 
-Block D2 of `auth-production-completion-plan.md` (native-only) under ADR 0013 D3/D4.
+Block D2 of `auth-production-completion-plan.md` (native-only at the time; superseded
+by revisions 0050-0051, see the newest section) under ADR 0013 D3/D4.
 Migrations `0048_native_reauth_freshness` and `0049_identity_link_self` append from
 `0047`. Local/dirty-tree evidence only; no exact-head CI.
 
@@ -34,7 +230,8 @@ Production change:
   merges. A subject already linked to any Principal conflicts, foreign intents are
   opaque, and `identity_link_facts` audits intent creation and linkage.
 - OIDC linking is intentionally out of scope: no OIDC connection exists, so the
-  dual-proof scheme is native-only for now.
+  dual-proof scheme is native-only for now. (Superseded by revisions 0050-0051: see
+  the OIDC identity linking and link hardening section.)
 
 Executed evidence (real PostgreSQL 18, `request_engine_current` at 0049):
 
@@ -578,15 +775,15 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 
 | ID | Block | Owner | Status | Evidence / blocker |
 | --- | --- | --- | --- | --- |
-| P0 | Inventory and closure contract | repo | validado | Head0041, lane match, DB revisions, route/function inventory verified |
+| P0 | Inventory and closure contract | repo | validado | Head0051, lane match, DB revisions, route/function inventory verified |
 | A | Honest enrollment outcome | platform/security | validado | 0041 + typed outcome +503; unit/DB/E2E + mutant + full lane |
 | B1 | Split global vs local identity administration | Tenancy | validado (platform provisioner scope) | 0043 registers read/lifecycle capabilities; global recovery/linking remain in C/D |
 | B2 | Authentication-capable continuity predicate | Tenancy | validado (tenant + platform planes) | 0042 tenant proofs; 0043 platform predicate + last-controller guard |
 | B3 | Identity topology serialization gate | platform/DB | validado | 0044 gate + complete writer inventory + inversion/containment proofs; production contention limits pending C/D |
 | B4 | Transaction/idempotency/audit for identity commands | owners | validado (provisioner + governed recovery scope) | 0043 platform facts; 0045 recovery case audit, idempotency and revision; tenant staff/agent/integration commands still lack append-only audit facts |
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
-| C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; production delivery adapter pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; test delivery adapter only |
-| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native-only; OIDC pending) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey) and D2 self-service native linking with reauthentication freshness (0048/0049) implemented and locally validated; OIDC dual-proof remains out of scope while no OIDC connection exists |
+| C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; real Vault+SMTP adapter wired; operational acceptance pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; C-02 real Vault KV v2 store and SMTP channel wired into the control plane and worker, proven against boundary doubles; 0052 per-attempt issuance generation reservation closes the concurrent-issuance discard hole |
+| D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |
 | E1 | Existing controller-policy upgrade path | Tenancy | bloqueado | Accepted new grant set + auditable deployment ceremony |
 | E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | bloqueado | Depends on B2 facts and D2 recovery configuration |
 | E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |
@@ -599,7 +796,7 @@ Decision gates ratified by ADR 0013 (2026-09-14); operational detail remains for
 | --- | --- | --- |
 | D1 | Private control plane; explicit HUMAN security authority; requester and approver distinct; provisioner of tenants is not enough | Accepted: double control with a distinct approver; initial authorities come from an explicit auditable ceremony |
 | D2 | Pre-verified channel plus dedicated secret store with staging/TTL; no reset secret in audit, ordinary outbox or admin response | Accepted; the real secret store and delivery adapter are still named in D6 |
-| D3 | Self-link only with fresh proof of both identities; no email merge or arbitrary administrative linking | Accepted and implemented native-only by 0049 (freshness from 0048); OIDC proof remains unimplemented while no OIDC connection exists |
+| D3 | Self-link only with fresh proof of both identities; no email merge or arbitrary administrative linking | Accepted and implemented: native by 0049 (freshness from 0048, hardening 0050) and OIDC by 0051; OIDC is disabled by default and no provider is configured |
 | D4 | Always keep at least one effective controller with an authenticatable path; platform exceptions explicit | Accepted and implemented by 0042 (tenant) and 0043 (platform) continuity predicates |
 | D5 | Transactional identity-topology advisory gate before existing locks; SHARE for local changes, EXCLUSIVE for global operations | Accepted and implemented by 0044 (complete writer inventory, inversion and containment proofs); set production containment limits/timeouts before global disable ships |
 | D6 | Native-only first, separate private control plane, fail-closed configuration | Partially open: name environment, DNS/TLS/ingress, RPO/RTO/SLO, secret manager, delivery channel, operators and deployment approval |
@@ -1340,20 +1537,26 @@ The habitual port-5432 container remains running.
    have owner-backed HTTP proof. Staff list/detail and client-visible revisions are
    implemented; active standing grants intentionally do not claim effective access
    to every Party/resource.
-4. Governed native recovery/disable, platform provisioner lifecycle and explicit
-   authority/binding administration surfaces. Creating a provisioner is not a full
-   lifecycle API. Internal mechanisms or SQL setup are not an operator-facing product.
+4. Real secret-store/delivery adapter and operational acceptance for the governed
+   recovery/disable, provisioner lifecycle and authority/binding administration
+   surfaces. Those surfaces (provisioner lifecycle 0043, governed recovery 0045,
+   binding lifecycle 0046, global native disable 0047) are implemented and locally
+   validated; the production delivery adapter and D6 operational acceptance remain.
 5. A real external-human B2B identity adapter and conformance/portability evidence,
    including signed events, replay/out-of-order handling and reconciliation where
-   that provider facet is supported. Generic OIDC verification does not supply it.
+   that provider facet is supported. Generic OIDC verification now also backs
+   self-service linking (0051), but it does not supply that B2B adapter.
 6. Onboarding identity/controller/staff prerequisites and actionable machine-readable
    blockers. Business supply readiness currently does not prove identity readiness.
 7. The complete fixture-free acceptance journeys and their adversarial closure,
    including production deployment, credentials/TLS/ingress limits, worker/provider
    delivery, backup/recovery and operational acceptance in the intended environment.
 
-The next implementation priority is Party/resource-effective authority inspection and
-identity administration. The providerless creation and initial authority journeys
+The next implementation priorities are the C-02 real delivery adapter (D6), the B4
+append-only audit for tenant staff/agent/integration commands, the E blocks (E1
+controller-policy upgrade, E2 identity-aware onboarding readiness, E3
+resource-effective authority inspection), the F adversarial journeys and G/D6
+operational acceptance. The providerless creation and initial authority journeys
 now exist; their production operational acceptance remains separate. External
 identity must remain optional throughout that work.
 

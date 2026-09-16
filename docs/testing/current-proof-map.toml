@@ -315,7 +315,7 @@ evidence = ["invariant", "adversarial", "concurrency", "security"]
 [[proofs]]
 guarantee = "INV-IDENTITY-RECOVERY-001"
 path = "tests/db/test_identity_recovery_governance.py"
-evidence = ["invariant", "adversarial", "security"]
+evidence = ["invariant", "adversarial", "concurrency", "security"]
 
 [[proofs]]
 guarantee = "INV-IDENTITY-RECOVERY-001"

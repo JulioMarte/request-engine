@@ -1,0 +1,139 @@
+"""Deployment composition for the governed identity-recovery delivery adapter.
+
+The control plane and the delivery worker must agree on one real adapter. A
+deployment either configures both the secret store and the delivery channel,
+supplies a ``module:factory`` override, or recovery issuance stays fail-closed
+(``503 recovery_delivery_unconfigured``). Secret values are never echoed in
+configuration errors.
+"""
+
+import importlib
+from typing import Any, cast
+
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
+from request_engine.platform.secrets.delivery import RecoverySecretDelivery
+from request_engine.platform.secrets.smtp_delivery_channel import SmtpRecoveryDeliveryChannel
+from request_engine.platform.secrets.vault_secret_store import VaultRecoverySecretStore
+
+_FACTORY_ENV = "REQUEST_ENGINE_RECOVERY_DELIVERY_FACTORY"
+_DELIVERY_ATTRIBUTES = ("stage", "discard", "publish", "reconcile")
+
+
+class RecoveryDeliverySettings(BaseSettings):
+    """Optional governed delivery configuration; absence keeps issuance fail-closed."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="REQUEST_ENGINE_", extra="ignore", hide_input_in_errors=True
+    )
+    recovery_delivery_factory: str | None = None
+    recovery_reset_url: str | None = None
+    vault_addr: str | None = None
+    vault_token: SecretStr | None = None
+    vault_namespace: str | None = None
+    vault_mount: str = "secret"
+    vault_path_prefix: str = "request-engine/identity-recovery"
+    vault_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_sender: str | None = None
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+
+def build_recovery_secret_delivery(
+    settings: RecoveryDeliverySettings | None = None,
+) -> RecoverySecretDelivery | None:
+    """Resolve the deployment's delivery adapter, or ``None`` when unconfigured."""
+
+    resolved = settings or RecoveryDeliverySettings()
+    if resolved.recovery_delivery_factory is not None:
+        return _factory_delivery(resolved.recovery_delivery_factory)
+
+    vault_configured = resolved.vault_addr is not None or resolved.vault_token is not None
+    smtp_configured = (
+        resolved.smtp_host is not None
+        or resolved.smtp_sender is not None
+        or resolved.smtp_password is not None
+    )
+    if not vault_configured and not smtp_configured:
+        return None
+    if not (vault_configured and smtp_configured):
+        raise RuntimeError(
+            "identity recovery delivery requires both Vault and SMTP configuration; missing: "
+            + ", ".join(_missing_configuration(vault_configured, smtp_configured))
+        )
+
+    store = VaultRecoverySecretStore(
+        address=_required_text("REQUEST_ENGINE_VAULT_ADDR", resolved.vault_addr),
+        token=_required_secret("REQUEST_ENGINE_VAULT_TOKEN", resolved.vault_token),
+        mount=resolved.vault_mount,
+        path_prefix=resolved.vault_path_prefix,
+        timeout_seconds=resolved.vault_timeout_seconds,
+        namespace=resolved.vault_namespace,
+    )
+    channel = SmtpRecoveryDeliveryChannel(
+        host=_required_text("REQUEST_ENGINE_SMTP_HOST", resolved.smtp_host),
+        port=resolved.smtp_port,
+        sender=_required_text("REQUEST_ENGINE_SMTP_SENDER", resolved.smtp_sender),
+        username=resolved.smtp_username,
+        password=(
+            resolved.smtp_password.get_secret_value()
+            if resolved.smtp_password is not None
+            else None
+        ),
+        starttls=resolved.smtp_starttls,
+        use_ssl=resolved.smtp_ssl,
+        timeout_seconds=resolved.smtp_timeout_seconds,
+        reset_url=resolved.recovery_reset_url,
+    )
+    return ComposedRecoverySecretDelivery(store=store, channel=channel)
+
+
+def _missing_configuration(vault_configured: bool, smtp_configured: bool) -> tuple[str, ...]:
+    missing: list[str] = []
+    if not vault_configured:
+        missing.extend(("REQUEST_ENGINE_VAULT_ADDR", "REQUEST_ENGINE_VAULT_TOKEN"))
+    if not smtp_configured:
+        missing.extend(
+            (
+                "REQUEST_ENGINE_SMTP_HOST",
+                "REQUEST_ENGINE_SMTP_SENDER",
+                "REQUEST_ENGINE_SMTP_PASSWORD",
+            )
+        )
+    return tuple(missing)
+
+
+def _required_text(name: str, value: str | None) -> str:
+    if value is None or not value.strip():
+        raise RuntimeError(f"{name} is required when identity recovery delivery is configured")
+    return value
+
+
+def _required_secret(name: str, value: SecretStr | None) -> str:
+    if value is None or not value.get_secret_value().strip():
+        raise RuntimeError(f"{name} is required when identity recovery delivery is configured")
+    return value.get_secret_value()
+
+
+def _factory_delivery(factory_path: str) -> RecoverySecretDelivery:
+    module_name, separator, attribute_name = factory_path.partition(":")
+    if not separator or not module_name or not attribute_name:
+        raise RuntimeError(f"{_FACTORY_ENV} must use the form module:factory")
+    factory: Any = getattr(importlib.import_module(module_name), attribute_name, None)
+    if not callable(factory):
+        raise RuntimeError(f"{_FACTORY_ENV} {factory_path!r} is not callable")
+    delivery: Any = factory()
+    for attribute in _DELIVERY_ATTRIBUTES:
+        if not callable(getattr(delivery, attribute, None)):
+            raise RuntimeError(
+                f"{_FACTORY_ENV} result must implement callable "
+                "stage, discard, publish and reconcile"
+            )
+    return cast(RecoverySecretDelivery, delivery)

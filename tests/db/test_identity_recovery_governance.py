@@ -1,5 +1,6 @@
 """Governed native identity recovery: double control, issuance, delivery, revoke."""
 
+import asyncio
 import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any, LiteralString
@@ -10,7 +11,21 @@ from native_authority_gate_support import insert_authority
 from platform_provisioning_support import platform_grant, platform_principal, principal_revision
 from psycopg import Connection, Error
 
+from request_engine.modules.tenancy.adapters.db.identity_recovery_commands import (
+    PostgresIdentityRecoveryCommands,
+)
+from request_engine.modules.tenancy.application.commands.identity_recovery import (
+    IdentityRecoveryConflict,
+    IdentityRecoveryRevisionConflict,
+    IssueIdentityRecoveryCaseCommand,
+)
+from request_engine.modules.tenancy.application.queries.identity_recovery import (
+    IdentityRecoveryCaseView,
+)
+from request_engine.platform.db.session import SessionFactory
+from request_engine.platform.secrets.delivery import DeliveryOutcome, StagedRecoverySecret
 from request_engine.platform.security.native_auth import hash_password, issue_opaque_token
+from request_engine.platform.security.platform_context import PlatformActorContext
 
 PgConnection = Connection[Any]
 pytestmark = [
@@ -215,6 +230,34 @@ def _issue_case(
     return row
 
 
+def _prepare_issue(
+    conn: PgConnection,
+    *,
+    actor: UUID,
+    case_id: UUID,
+    revision: int,
+    token: Any,
+    key_digest: str | None = None,
+    intent_digest: str | None = None,
+) -> tuple[Any, ...]:
+    key = key_digest or _digest()
+    intent = intent_digest or _digest()
+    _set_actor(conn, actor)
+    prepared = _call(conn, _PREPARE, (case_id, revision, key, intent))
+    assert prepared is not None
+    assert prepared[0] is False
+    return _issue_case(
+        conn,
+        actor=actor,
+        case_id=case_id,
+        revision=revision,
+        generation=int(prepared[6]),
+        token=token,
+        key_digest=key,
+        intent_digest=intent,
+    )
+
+
 def _case_status(conn: PgConnection, case_id: UUID) -> tuple[Any, ...]:
     row = conn.execute(
         "SELECT status, delivery_status, revision, recovery_intent_id, revoke_reason_code "
@@ -239,20 +282,20 @@ def test_governed_recovery_happy_path_links_delivery_and_consumption(
     assert approved[6] is not None
 
     _set_actor(admin_conn, requester)
-    prepared = _call(admin_conn, _PREPARE, (case_id, 2, _digest(), _digest()))
-    assert prepared is not None
-    assert prepared[0] is False
-    assert prepared[6] == 0
-
     token = issue_opaque_token()
     issue_key = _digest()
     issue_intent = _digest()
+    prepared = _call(admin_conn, _PREPARE, (case_id, 2, issue_key, issue_intent))
+    assert prepared is not None
+    assert prepared[0] is False
+    assert prepared[6] == 1
+
     issued = _issue_case(
         admin_conn,
         actor=requester,
         case_id=case_id,
         revision=2,
-        generation=1,
+        generation=int(prepared[6]),
         token=token,
         key_digest=issue_key,
         intent_digest=issue_intent,
@@ -270,7 +313,7 @@ def test_governed_recovery_happy_path_links_delivery_and_consumption(
         actor=requester,
         case_id=case_id,
         revision=3,
-        generation=1,
+        generation=int(replay[6]),
         token=issue_opaque_token(),
         key_digest=issue_key,
         intent_digest=issue_intent,
@@ -419,14 +462,7 @@ def test_revoke_kills_intent_ticket_and_consumption(admin_conn: PgConnection) ->
     case_id = UUID(str(created[0]))
     _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
     token = issue_opaque_token()
-    _issue_case(
-        admin_conn,
-        actor=requester,
-        case_id=case_id,
-        revision=2,
-        generation=1,
-        token=token,
-    )
+    _prepare_issue(admin_conn, actor=requester, case_id=case_id, revision=2, token=token)
 
     _set_actor(admin_conn, requester)
     revoked = _call(
@@ -466,27 +502,13 @@ def test_new_issuance_supersedes_prior_live_proof(admin_conn: PgConnection) -> N
     first_case = UUID(str(first[0]))
     _approve_case(admin_conn, actor=approver, case_id=first_case, revision=1)
     first_token = issue_opaque_token()
-    _issue_case(
-        admin_conn,
-        actor=requester,
-        case_id=first_case,
-        revision=2,
-        generation=1,
-        token=first_token,
-    )
+    _prepare_issue(admin_conn, actor=requester, case_id=first_case, revision=2, token=first_token)
 
     second = _create_case(admin_conn, actor=requester, identity_id=identity_id)
     second_case = UUID(str(second[0]))
     _approve_case(admin_conn, actor=approver, case_id=second_case, revision=1)
     second_token = issue_opaque_token()
-    _issue_case(
-        admin_conn,
-        actor=requester,
-        case_id=second_case,
-        revision=2,
-        generation=1,
-        token=second_token,
-    )
+    _prepare_issue(admin_conn, actor=requester, case_id=second_case, revision=2, token=second_token)
 
     status, _delivery, revision, _intent, reason = _case_status(admin_conn, first_case)
     assert (status, reason) == ("revoked", "superseded_by_new_issuance")
@@ -522,14 +544,7 @@ def test_delivery_lease_fencing_retry_and_terminal_failure(admin_conn: PgConnect
     case_id = UUID(str(created[0]))
     _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
     token = issue_opaque_token()
-    _issue_case(
-        admin_conn,
-        actor=requester,
-        case_id=case_id,
-        revision=2,
-        generation=1,
-        token=token,
-    )
+    _prepare_issue(admin_conn, actor=requester, case_id=case_id, revision=2, token=token)
 
     claimed = _call(admin_conn, _CLAIM, (10, 60), role="request_engine_worker")
     assert claimed is not None
@@ -651,3 +666,215 @@ def test_recovery_commands_acquire_the_topology_gate_first(admin_conn: PgConnect
         assert first_statement.startswith(
             "PERFORM request_engine.acquire_identity_topology_share();"
         ), f"{name} does not acquire the topology gate first"
+
+
+def test_prepare_reserves_distinct_generations_and_rejects_unreserved_issue(
+    admin_conn: PgConnection,
+) -> None:
+    _, identity_id, _, requester, approver = _world(admin_conn)
+    created = _create_case(admin_conn, actor=requester, identity_id=identity_id)
+    case_id = UUID(str(created[0]))
+    _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
+
+    first_key = _digest()
+    first_intent = _digest()
+    second_key = _digest()
+    second_intent = _digest()
+
+    _set_actor(admin_conn, requester)
+    first = _call(admin_conn, _PREPARE, (case_id, 2, first_key, first_intent))
+    assert first is not None
+    assert first[0] is False
+    assert first[6] == 1
+
+    _set_actor(admin_conn, requester)
+    second = _call(admin_conn, _PREPARE, (case_id, 2, second_key, second_intent))
+    assert second is not None
+    assert second[0] is False
+    assert second[6] == 2
+
+    # Re-preparing the same attempt key reuses its reservation instead of
+    # allocating another generation.
+    _set_actor(admin_conn, requester)
+    reused = _call(admin_conn, _PREPARE, (case_id, 2, first_key, first_intent))
+    assert reused is not None
+    assert reused[6] == 1
+
+    # The case is approved and the revision is current, but generation 3 was
+    # never reserved, so the authoritative issuance is rejected.
+    with pytest.raises(Error) as unreserved:
+        _issue_case(
+            admin_conn,
+            actor=requester,
+            case_id=case_id,
+            revision=2,
+            generation=3,
+            token=issue_opaque_token(),
+            key_digest=second_key,
+            intent_digest=second_intent,
+        )
+    assert unreserved.value.sqlstate == "40001"
+    assert _case_status(admin_conn, case_id)[0] == "approved"
+
+
+class _RacingRecoveryDelivery:
+    """Create-if-absent staging double with a deterministic first-stager hold.
+
+    The real command path and real PostgreSQL transactions are exercised by the
+    race proof; only the external secret store is doubled. The first issuance to
+    reach ``stage`` (the one that started first and therefore reserved the lower
+    generation) creates its key and is parked until the second issuance has
+    staged and committed its authoritative transaction. Under the reservation
+    contract the two issuances reserve distinct generations, so each creates its
+    own key and the losing first issuance discards only its own generation.
+    Without the reservation both compute the same generation: the first creates
+    the key, the second observes it retained (``created=False``), and the first
+    then discards the retained key the winner's ticket references.
+    ``discard`` also removes the retained secret, mirroring the real delete, so a
+    stray discard is observable as a missing retained secret.
+    """
+
+    def __init__(self) -> None:
+        self._staged: dict[tuple[UUID, int], tuple[str, str, datetime]] = {}
+        self.discarded: list[tuple[UUID, int]] = []
+        self._stage_calls = 0
+        self.first_staged = asyncio.Event()
+        self.second_staged = asyncio.Event()
+        self.release_first = asyncio.Event()
+
+    async def stage(
+        self,
+        *,
+        case_id: UUID,
+        generation: int,
+        secret: str,
+        expires_at: datetime,
+    ) -> StagedRecoverySecret:
+        key = (case_id, generation)
+        reference = f"vault://recovery/{case_id}/{generation}"
+        retained = self._staged.get(key)
+        if retained is None:
+            self._staged[key] = (secret, reference, expires_at)
+            created = True
+        else:
+            secret, reference, expires_at = retained
+            created = False
+        self._stage_calls += 1
+        if self._stage_calls == 1:
+            self.first_staged.set()
+            await self.release_first.wait()
+        else:
+            self.second_staged.set()
+        return StagedRecoverySecret(
+            reference=reference,
+            digest=hashlib.sha256(secret.encode("utf-8")).hexdigest(),
+            expires_at=expires_at,
+            created=created,
+        )
+
+    async def discard(self, *, case_id: UUID, generation: int) -> None:
+        self.discarded.append((case_id, generation))
+        self._staged.pop((case_id, generation), None)
+
+    async def publish(
+        self, *, reference: str, destination_reference: str, idempotency_key: str
+    ) -> DeliveryOutcome:
+        return DeliveryOutcome.DELIVERED
+
+    async def reconcile(self, *, reference: str, idempotency_key: str) -> DeliveryOutcome | None:
+        return None
+
+    def retained(self, case_id: UUID, generation: int) -> str | None:
+        entry = self._staged.get((case_id, generation))
+        return None if entry is None else entry[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.concurrency
+async def test_concurrent_issuance_keeps_the_retained_secret(
+    admin_conn: PgConnection,
+    platform_control_session_factory: SessionFactory,
+) -> None:
+    """Two concurrent issuances reserve distinct generations and stage distinct keys.
+
+    The first issuance reserves generation 1 and stages its own key, then parks
+    inside staging. The second reserves generation 2, stages its own key and
+    commits the authoritative issuance. The first then loses the revision race
+    and discards only its own generation, so the winner's retained secret
+    survives and matches the delivery ticket. Without the reservation both
+    issuances would compute generation 1 and the losing first issuance would
+    delete the retained key the winner's ticket references.
+    """
+
+    _, identity_id, _, requester, approver = _world(admin_conn)
+    created = _create_case(admin_conn, actor=requester, identity_id=identity_id)
+    case_id = UUID(str(created[0]))
+    _approve_case(admin_conn, actor=approver, case_id=case_id, revision=1)
+    expected_revision = int(_case_status(admin_conn, case_id)[2])
+    assert expected_revision == 2
+
+    delivery = _RacingRecoveryDelivery()
+    commands = PostgresIdentityRecoveryCommands(platform_control_session_factory, delivery)
+    actor = PlatformActorContext(
+        principal_id=requester,
+        capabilities=frozenset({"platform.identity.recover"}),
+        authority_revision=principal_revision(admin_conn, requester),
+    )
+    first_command = IssueIdentityRecoveryCaseCommand(
+        case_id=case_id,
+        expected_revision=expected_revision,
+        idempotency_key=f"race-issue-{uuid4().hex}",
+    )
+    second_command = IssueIdentityRecoveryCaseCommand(
+        case_id=case_id,
+        expected_revision=expected_revision,
+        idempotency_key=f"race-issue-{uuid4().hex}",
+    )
+
+    # The first issuance reserves the lower generation and is parked inside
+    # ``stage`` before the second starts, so both reserve before either issues.
+    first = asyncio.create_task(commands.issue_case(actor, first_command))
+    await asyncio.wait_for(delivery.first_staged.wait(), timeout=30)
+    second = asyncio.create_task(commands.issue_case(actor, second_command))
+    await asyncio.wait_for(delivery.second_staged.wait(), timeout=30)
+
+    winner = await asyncio.wait_for(second, timeout=60)
+    delivery.release_first.set()
+    with pytest.raises((IdentityRecoveryConflict, IdentityRecoveryRevisionConflict)):
+        await asyncio.wait_for(first, timeout=60)
+
+    assert isinstance(winner, IdentityRecoveryCaseView)
+    generation = winner.issuance_generation
+    retained = delivery.retained(case_id, generation)
+    assert retained is not None, "the winning staged secret was deleted by the losing issuance"
+    assert generation == 2, f"expected generation 2 from the second issuance, got {generation}"
+    assert set(delivery.discarded) == {(case_id, 1)}, (
+        f"the losing issuance must discard only its own generation, got {delivery.discarded!r}"
+    )
+    retained_digest = hashlib.sha256(retained.encode("utf-8")).hexdigest()
+
+    tickets = admin_conn.execute(
+        "SELECT generation, status, secret_reference, secret_digest "
+        "FROM request_engine.identity_recovery_delivery_tickets WHERE case_id = %s",
+        (case_id,),
+    ).fetchall()
+    assert len(tickets) == 1, f"expected exactly one delivery ticket, got {tickets!r}"
+    ticket_generation, ticket_status, ticket_reference, ticket_digest = tickets[0]
+    assert (ticket_generation, ticket_status) == (generation, "pending")
+    assert ticket_reference == f"vault://recovery/{case_id}/{generation}"
+    assert ticket_digest == retained_digest, (
+        "PostgreSQL retained a different secret than the staged winner"
+    )
+
+    status, delivery_status, revision, _intent_id, revoke_reason = _case_status(admin_conn, case_id)
+    assert (status, delivery_status, revision, revoke_reason) == ("issued", "pending", 3, None)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.native_recovery_intents "
+        "WHERE native_identity_id = %s AND status = 'pending'",
+        (identity_id,),
+    ).fetchone() == (1,)
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.platform_identity_recovery_facts "
+        "WHERE case_id = %s AND action = 'issue'",
+        (case_id,),
+    ).fetchone() == (1,)
