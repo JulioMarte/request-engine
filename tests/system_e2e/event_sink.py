@@ -10,7 +10,7 @@ from typing import cast
 EVENT_FILE = Path(os.environ.get("E2E_EVENT_FILE", "/sink/events.jsonl"))
 ATTEMPT_FILE = Path(os.environ.get("E2E_EVENT_ATTEMPT_FILE", "/sink/attempts.jsonl"))
 _STATE_LOCK = threading.Lock()
-_BLOCKED = False
+_blocked_state = False
 
 
 def _append_json(path: Path, payload: dict[str, object]) -> None:
@@ -32,13 +32,13 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
 
 def _blocked() -> bool:
     with _STATE_LOCK:
-        return _BLOCKED
+        return _blocked_state
 
 
 def _set_blocked(value: bool) -> None:
-    global _BLOCKED
+    global _blocked_state
     with _STATE_LOCK:
-        _BLOCKED = value
+        _blocked_state = value
 
 
 class Handler(BaseHTTPRequestHandler):
