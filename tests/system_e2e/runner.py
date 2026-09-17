@@ -425,6 +425,15 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         },
     )
     checkpoints.append(_checkpoint("f01-05-integration-principal", "passed"))
+    if phase == "main":
+        _exercise_integration_revocation(
+            checkpoints,
+            api_url=api_url,
+            tenant_token=tenant_token,
+            organization_id=organization_id,
+            workload_authority_id=workload_authority_id,
+            expires_at=expires_at,
+        )
     foundation = {
         "organization_id": organization_id,
         "organization_party_id": organization_party_id,
@@ -437,6 +446,113 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
     )
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
+
+
+def _exercise_integration_revocation(
+    checkpoints: list[dict[str, str]],
+    *,
+    api_url: str,
+    tenant_token: str,
+    organization_id: str,
+    workload_authority_id: str,
+    expires_at: str,
+) -> None:
+    provisioned = _http_json(
+        "POST",
+        f"{api_url}/v1/integrations",
+        bearer=tenant_token,
+        idempotency_key="f01-revocable-integration-v1",
+        organization_id=organization_id,
+        payload={
+            "identity_authority_id": workload_authority_id,
+            "credential_expires_at": expires_at,
+            "provenance_reference": "e2e:f01:revocable-integration",
+        },
+        expected_statuses=(201,),
+    )
+    principal_id = _required_string(
+        provisioned, "principal_id", "revocable integration provision response"
+    )
+    workload_token = _required_string(
+        provisioned, "workload_token", "revocable integration provision response"
+    )
+    authority_revision = provisioned.get("authority_revision")
+    if not isinstance(authority_revision, int) or authority_revision < 1:
+        raise RuntimeError("revocable integration has invalid authority revision")
+
+    assigned = _http_json(
+        "PUT",
+        f"{api_url}/v1/integrations/{principal_id}/authority",
+        bearer=tenant_token,
+        idempotency_key="f01-revocable-integration-authority-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_authority_revision": authority_revision,
+            "desired_capabilities": ["parties.lookup"],
+            "provenance_reference": "e2e:f01:revocable-integration-authority",
+        },
+    )
+    assigned_revision = assigned.get("authority_revision")
+    if not isinstance(assigned_revision, int) or assigned_revision <= authority_revision:
+        raise RuntimeError("integration authority assignment did not advance revision")
+
+    _http_json(
+        "PUT",
+        f"{api_url}/v1/integrations/{principal_id}/status",
+        bearer=tenant_token,
+        idempotency_key="f01-revocable-integration-activate-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_revision": assigned_revision,
+            "target_status": "active",
+            "provenance_reference": "e2e:f01:revocable-integration-activate",
+        },
+    )
+    lookup_url = f"{api_url}/v1/parties/lookup?{urlencode({'mode': 'name', 'value': 'nobody'})}"
+    _http_request(
+        "GET",
+        lookup_url,
+        bearer=workload_token,
+        organization_id=organization_id,
+        expected_statuses=(200,),
+    )
+
+    current = _http_json(
+        "GET",
+        f"{api_url}/v1/integrations/{principal_id}",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    current_revision = current.get("authority_revision")
+    if not isinstance(current_revision, int) or current_revision < assigned_revision:
+        raise RuntimeError("integration read returned invalid authority revision")
+
+    _http_json(
+        "PUT",
+        f"{api_url}/v1/integrations/{principal_id}/status",
+        bearer=tenant_token,
+        idempotency_key="f01-revocable-integration-revoke-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_revision": current_revision,
+            "target_status": "revoked",
+            "provenance_reference": "e2e:f01:revocable-integration-revoke",
+        },
+    )
+    _http_request(
+        "GET",
+        lookup_url,
+        bearer=workload_token,
+        organization_id=organization_id,
+        expected_statuses=(401,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "f01-10-integration-revocation",
+            "passed",
+            "revoked workload bearer is rejected immediately through the public API",
+        )
+    )
 
 
 def _tenant_session_from_foundation() -> tuple[dict[str, object], str]:
