@@ -10,19 +10,10 @@ build_images() {
   docker compose -f "$compose_file" --profile runner build api e2e-runner
 }
 
-if [[ "$requested" == "all" ]]; then
-  if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then
-    build_images
-  fi
-  mapfile -t suites < <(python "$registry" list)
-  ((${#suites[@]} > 0)) || { echo "no enabled E2E suites are registered" >&2; exit 1; }
-  for suite in "${suites[@]}"; do
-    echo "::group::E2E suite: $suite"
-    E2E_IMAGES_READY=1 bash "$0" "$suite"
-    echo "::endgroup::"
-  done
-  exit 0
-fi
+[[ "$requested" != "all" ]] || {
+  echo "run_e2e_suite.sh executes exactly one suite; use run_e2e_platform.sh all" >&2
+  exit 2
+}
 
 spec_json="$(python "$registry" resolve "$requested")"
 readarray -t resolved < <(python - "$spec_json" <<'PY'
@@ -32,14 +23,24 @@ print(spec["selector"])
 print(spec["artifact_namespace"])
 for profile in spec.get("profiles", []):
     print(f"profile:{profile}")
+for service in spec.get("services", []):
+    print(f"service:{service}")
 PY
 )
 selector="${resolved[0]}"
 namespace="${resolved[1]}"
 profiles=()
+runtime_services=()
 for item in "${resolved[@]:2}"; do
-  [[ "$item" == profile:* ]] && profiles+=("${item#profile:}")
+  case "$item" in
+    profile:*) profiles+=("${item#profile:}") ;;
+    service:*) runtime_services+=("${item#service:}") ;;
+  esac
 done
+((${#runtime_services[@]} > 0)) || {
+  echo "suite '$requested' declares no runtime services" >&2
+  exit 2
+}
 
 safe_suite="$(printf '%s' "$requested" | tr -c 'a-zA-Z0-9_.-' '-')"
 run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
@@ -97,13 +98,10 @@ printf '%s\n%s\n%s\n' "$token" "$password" "$password" | \
 export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
 echo 'bootstrap completed; sensitive material intentionally omitted'
 
-"${compose[@]}" up -d --no-build --wait --wait-timeout "${STACK_READY_TIMEOUT_SECONDS:-180}" api control-plane \
-  2>&1 | tee "$suite_artifacts/phases/runtime-start.log"
+"${compose[@]}" up -d --no-build --wait --wait-timeout "${STACK_READY_TIMEOUT_SECONDS:-180}" \
+  "${runtime_services[@]}" 2>&1 | tee "$suite_artifacts/phases/runtime-start.log"
 
-if printf '%s\n' "${profiles[@]}" | grep -qx worker; then
-  "${compose[@]}" up -d --no-build worker 2>&1 | tee "$suite_artifacts/phases/worker-start.log"
-fi
-
+export E2E_RUNTIME_SERVICES="${runtime_services[*]}"
 bash scripts/ci/assert_reference_image_identity.sh 2>&1 | tee "$suite_artifacts/phases/image-identity.log"
 
 artifact_abs="$(cd "$suite_artifacts" && pwd)"
