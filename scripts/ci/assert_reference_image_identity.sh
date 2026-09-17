@@ -4,11 +4,19 @@ set -euo pipefail
 compose=(docker compose -f deploy/reference/compose.e2e.yaml)
 expected="request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}"
 expected_id="$(docker image inspect "$expected" --format '{{.Id}}')"
+runtime_services=( ${E2E_RUNTIME_SERVICES:-api control-plane} )
 
 printf 'expected_image=%s\nexpected_id=%s\n' "$expected" "$expected_id"
 
-for service in api control-plane; do
-  cid="$(${compose[@]} ps -q "$service")"
+for service in "${runtime_services[@]}"; do
+  case "$service" in
+    api|control-plane|worker) ;;
+    *)
+      echo "unsupported Request Engine runtime service in identity proof: $service" >&2
+      exit 2
+      ;;
+  esac
+  cid="$(${compose[@]} --profile worker ps -q "$service")"
   if [[ -z "$cid" ]]; then
     echo "$service is not running" >&2
     exit 1
