@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 FORBIDDEN_ENV_FRAGMENTS = (
     "DATABASE_URL",
@@ -52,12 +53,12 @@ def _http_get(url: str) -> str:
 def _http_get_json(url: str) -> dict[str, object]:
     body = _http_get(url)
     try:
-        payload = json.loads(body)
+        decoded: object = json.loads(body)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"{url} did not return valid JSON") from exc
-    if not isinstance(payload, dict):
+    if not isinstance(decoded, dict):
         raise RuntimeError(f"{url} returned a non-object JSON document")
-    return payload
+    return cast(dict[str, object], decoded)
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -126,11 +127,12 @@ def _run_surface_contract(checkpoints: list[dict[str, str]]) -> None:
     for name, url in targets.items():
         document = _http_get_json(url)
         version = document.get("openapi")
-        paths = document.get("paths")
+        paths_value = document.get("paths")
         if not isinstance(version, str) or not version:
             raise RuntimeError(f"{url} is missing an OpenAPI version")
-        if not isinstance(paths, dict) or not paths:
+        if not isinstance(paths_value, dict) or not paths_value:
             raise RuntimeError(f"{url} exposes no OpenAPI paths")
+        paths = cast(dict[str, object], paths_value)
         checkpoints.append(
             _checkpoint(
                 name,
