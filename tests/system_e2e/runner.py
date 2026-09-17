@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Callable
 
 FORBIDDEN_ENV_FRAGMENTS = (
     "DATABASE_URL",
@@ -46,6 +47,17 @@ def _http_get(url: str) -> str:
         if response.status != 200:
             raise RuntimeError(f"{url} returned HTTP {response.status}: {body[:200]}")
         return body
+
+
+def _http_get_json(url: str) -> dict[str, object]:
+    body = _http_get(url)
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{url} did not return valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{url} returned a non-object JSON document")
+    return payload
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -106,6 +118,34 @@ def _run_smoke(checkpoints: list[dict[str, str]]) -> None:
         checkpoints.append(_checkpoint(name, "passed", body[:200]))
 
 
+def _run_surface_contract(checkpoints: list[dict[str, str]]) -> None:
+    targets = {
+        "api-openapi": "http://api:8000/openapi.json",
+        "control-openapi": "http://control-plane:8001/openapi.json",
+    }
+    for name, url in targets.items():
+        document = _http_get_json(url)
+        version = document.get("openapi")
+        paths = document.get("paths")
+        if not isinstance(version, str) or not version:
+            raise RuntimeError(f"{url} is missing an OpenAPI version")
+        if not isinstance(paths, dict) or not paths:
+            raise RuntimeError(f"{url} exposes no OpenAPI paths")
+        checkpoints.append(
+            _checkpoint(
+                name,
+                "passed",
+                f"openapi={version}; paths={len(paths)}",
+            )
+        )
+
+
+SUITES: dict[str, Callable[[list[dict[str, str]]], None]] = {
+    "smoke": _run_smoke,
+    "surface-contract": _run_surface_contract,
+}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Request Engine generic black-box E2E runner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -120,10 +160,10 @@ def main() -> int:
 
     try:
         _assert_runner_isolation(checkpoints)
-        if args.suite == "smoke":
-            _run_smoke(checkpoints)
-        else:
+        suite = SUITES.get(args.suite)
+        if suite is None:
             raise RuntimeError(f"runner does not implement suite selector {args.suite!r}")
+        suite(checkpoints)
     except (OSError, RuntimeError, urllib.error.URLError) as exc:
         checkpoints.append(_checkpoint("suite", "failed", str(exc)))
         _write_checkpoints(artifact_dir, checkpoints)
