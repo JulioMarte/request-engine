@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 
 REGISTRY = Path("tests/system_e2e/suites.toml")
+POLICIES = frozenset({"pr", "merge", "nightly", "manual"})
 
 
 def load_registry() -> dict[str, dict[str, object]]:
@@ -19,6 +20,16 @@ def load_registry() -> dict[str, dict[str, object]]:
 
 def enabled_suites() -> list[str]:
     return [name for name, spec in load_registry().items() if bool(spec.get("enabled", True))]
+
+
+def selected_suites(policy: str) -> list[str]:
+    if policy not in POLICIES:
+        raise SystemExit(f"unknown E2E selection policy {policy!r}; available: {', '.join(sorted(POLICIES))}")
+    return [
+        name
+        for name, spec in load_registry().items()
+        if bool(spec.get("enabled", True)) and bool(spec.get(policy, False))
+    ]
 
 
 def resolve(name: str) -> dict[str, object]:
@@ -38,10 +49,16 @@ def main() -> int:
     sub.add_parser("list")
     resolve_parser = sub.add_parser("resolve")
     resolve_parser.add_argument("suite")
+    select_parser = sub.add_parser("select")
+    select_parser.add_argument("policy", choices=sorted(POLICIES))
     args = parser.parse_args()
 
     if args.command == "list":
         for name in enabled_suites():
+            print(name)
+        return 0
+    if args.command == "select":
+        for name in selected_suites(args.policy):
             print(name)
         return 0
 
