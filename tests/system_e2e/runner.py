@@ -508,7 +508,8 @@ def _exercise_integration_revocation(
             "provenance_reference": "e2e:f01:revocable-integration-activate",
         },
     )
-    lookup_url = f"{api_url}/v1/parties/lookup?{urlencode({'mode': 'name', 'value': 'nobody'})}"
+    lookup_query = urlencode({"mode": "name", "value": "nobody"})
+    lookup_url = f"{api_url}/v1/parties/lookup?{lookup_query}"
     _http_request(
         "GET",
         lookup_url,
