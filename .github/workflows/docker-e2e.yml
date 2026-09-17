@@ -1,0 +1,39 @@
+name: Docker E2E
+on:
+  pull_request:
+    branches: [development]
+  workflow_dispatch:
+concurrency:
+  group: docker-e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  docker-reference-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build reference image
+        run: docker compose -f deploy/reference/compose.e2e.yaml build
+      - name: Start reference stack
+        run: docker compose -f deploy/reference/compose.e2e.yaml up -d
+      - name: Wait for readiness
+        run: scripts/ci/wait_for_stack.sh
+      - name: Verify TCP health surfaces
+        run: |
+          curl --fail --show-error http://127.0.0.1:58000/health/live
+          curl --fail --show-error http://127.0.0.1:58000/health/ready
+          curl --fail --show-error http://127.0.0.1:58001/health/live
+          curl --fail --show-error http://127.0.0.1:58001/health/ready
+      - name: Collect container evidence
+        if: always()
+        run: scripts/ci/collect_stack_logs.sh .ci/docker-e2e/logs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-e2e-logs-${{ github.run_id }}
+          path: .ci/docker-e2e/
+          if-no-files-found: error
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/reference/compose.e2e.yaml down -v --remove-orphans
