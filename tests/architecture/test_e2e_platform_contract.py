@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import tomllib
 from pathlib import Path
 from typing import cast
@@ -53,6 +54,8 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         "selector",
         "profiles",
         "services",
+        "deferred_services",
+        "runtime_env_from_state",
         "faults",
         "fresh_world",
         "fault_injection",
@@ -96,15 +99,25 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
     allowed_services = {"api", "control-plane", "worker"}
     allowed_profiles = {"worker", "secrets", "delivery", "oidc"}
     allowed_fault_actions = {"kill-restart"}
+    mapping_pattern = re.compile(r"^[A-Z][A-Z0-9_]*=[^/:]+\.json:[A-Za-z0-9_.-]+$")
     for name, spec in _enabled_suites().items():
         services = set(_string_list(spec, "services", name))
         profiles = set(_string_list(spec, "profiles", name))
+        deferred = set(_string_list(spec, "deferred_services", name))
+        mappings = _string_list(spec, "runtime_env_from_state", name)
         faults = _string_list(spec, "faults", name)
         assert services, f"{name} must declare at least one runtime service"
         assert services <= allowed_services, f"{name} declares unsupported services: {services}"
         assert profiles <= allowed_profiles, f"{name} declares unsupported profiles: {profiles}"
+        assert deferred <= services, f"{name} defers services it does not declare: {deferred}"
+        assert bool(deferred) is bool(mappings), (
+            f"{name} deferred services and runtime state mappings must be paired"
+        )
+        for mapping in mappings:
+            assert mapping_pattern.fullmatch(mapping), f"{name} has invalid state mapping: {mapping}"
         if "worker" in services:
             assert "worker" in profiles, f"{name} must enable the worker profile"
+            assert "worker" in deferred, f"{name} must provision worker identity before start"
         assert bool(faults) is bool(spec["fault_injection"]), (
             f"{name} fault_injection must match whether faults are declared"
         )
@@ -150,3 +163,5 @@ def test_reference_compose_keeps_database_credentials_need_to_know() -> None:
     assert "PLATFORM_CONTROL_DATABASE_URL" not in worker
     assert "APPOINTMENT_OPTION_SIGNING_KEY" not in worker
     assert "REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000" not in worker
+    assert "http_outbox_publisher:create_publisher" in worker
+    assert "REQUEST_ENGINE_OUTBOX_PUBLISH_URL" in worker
