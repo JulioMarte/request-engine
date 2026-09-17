@@ -9,9 +9,10 @@ import socket
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time as datetime_time, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -118,6 +119,28 @@ def _http_json(
     if not isinstance(decoded, dict):
         raise RuntimeError(f"{method} {url} returned a non-object JSON document")
     return cast(dict[str, object], decoded)
+
+
+def _http_json_array(
+    method: str,
+    url: str,
+    *,
+    bearer: str | None = None,
+    expected_statuses: tuple[int, ...] = (200,),
+) -> list[dict[str, object]]:
+    _, body = _http_request(method, url, bearer=bearer, expected_statuses=expected_statuses)
+    try:
+        decoded: object = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{method} {url} did not return valid JSON") from exc
+    if not isinstance(decoded, list):
+        raise RuntimeError(f"{method} {url} returned a non-array JSON document")
+    result: list[dict[str, object]] = []
+    for item in cast(list[object], decoded):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"{method} {url} returned a non-object array item")
+        result.append(cast(dict[str, object], item))
+    return result
 
 
 def _http_get(url: str) -> str:
@@ -312,6 +335,9 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         expected_statuses=(201,),
     )
     organization_id = _required_string(organization, "organization_id", "organization response")
+    organization_party_id = _required_string(
+        organization, "organization_party_id", "organization response"
+    )
     controller_principal_id = _required_string(
         organization, "controller_principal_id", "organization response"
     )
@@ -356,9 +382,11 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-05-integration-principal", "passed"))
     foundation = {
         "organization_id": organization_id,
+        "organization_party_id": organization_party_id,
         "tenant_controller_principal_id": controller_principal_id,
         "platform_provisioner_principal_id": provisioner_principal_id,
         "worker_principal_id": integration_principal_id,
+        "tenant_login": tenant_login,
     }
     (state_dir / "f01-foundation.json").write_text(
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
@@ -366,9 +394,228 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
 
 
+def _tenant_session_from_foundation() -> tuple[dict[str, object], str]:
+    state_dir, _, controller = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    platform_password = _required_string(controller, "password", "platform-controller secret")
+    tenant_login = _required_string(foundation, "tenant_login", "F01 foundation state")
+    tenant_password = _derived_password(platform_password, "f01-tenant-controller")
+    return foundation, _native_session("http://api:8000", tenant_login, tenant_password)
+
+
+def _availability_windows() -> list[dict[str, object]]:
+    return [
+        {"weekday": weekday, "local_start": "08:00:00", "local_end": "18:00:00"}
+        for weekday in range(7)
+    ]
+
+
+def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
+    state_dir, _, _ = _handoff()
+    foundation, tenant_token = _tenant_session_from_foundation()
+    authority_party_id = _required_string(
+        foundation, "organization_party_id", "F01 foundation state"
+    )
+    api_url = "http://api:8000"
+
+    location = _http_json(
+        "POST",
+        f"{api_url}/v1/operations/locations",
+        bearer=tenant_token,
+        idempotency_key="f01-location-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "location_key": "f01-main-office",
+            "display_name": "F01 Main Office",
+            "timezone": "UTC",
+            "active": True,
+        },
+        expected_statuses=(200, 201),
+    )
+    location_id = _required_string(location, "location_id", "location create response")
+    revision = location.get("operational_revision")
+    if not isinstance(revision, int) or revision < 1:
+        raise RuntimeError("location create response has invalid operational revision")
+    _http_json(
+        "PUT",
+        f"{api_url}/v1/operations/locations/{location_id}/hours",
+        bearer=tenant_token,
+        idempotency_key="f01-location-hours-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "expected_operational_revision": revision,
+            "windows": _availability_windows(),
+        },
+    )
+
+    capability = _http_json(
+        "POST",
+        f"{api_url}/v1/catalog/resource-capabilities",
+        bearer=tenant_token,
+        idempotency_key="f01-capability-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "capability_key": "f01-consultation",
+            "display_name": "F01 Consultation",
+        },
+        expected_statuses=(201,),
+    )
+    capability_id = _required_string(capability, "capability_id", "capability create response")
+    offering = _http_json(
+        "POST",
+        f"{api_url}/v1/catalog/offerings",
+        bearer=tenant_token,
+        idempotency_key="f01-offering-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "offering_key": "f01-appointment",
+            "display_name": "F01 Appointment",
+            "duration_minutes": 30,
+            "slot_step_minutes": 30,
+            "requirements": [{"capability_id": capability_id, "quantity": 1}],
+            "reservation_policy": {},
+        },
+        expected_statuses=(201,),
+    )
+    offering_version_id = _required_string(
+        offering, "offering_version_id", "offering create response"
+    )
+    resource = _http_json(
+        "POST",
+        f"{api_url}/v1/booking/resources",
+        bearer=tenant_token,
+        idempotency_key="f01-resource-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "location_id": location_id,
+            "resource_key": "f01-provider",
+            "display_name": "F01 Provider",
+            "capacity_model": "exclusive",
+            "capacity_units": 1,
+            "capability_ids": [capability_id],
+            "weekly_availability": _availability_windows(),
+        },
+        expected_statuses=(201,),
+    )
+    resource_id = _required_string(resource, "resource_id", "resource create response")
+    assignment_id = _required_string(
+        resource, "resource_location_assignment_id", "resource create response"
+    )
+    effective_from = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    _http_json(
+        "POST",
+        f"{api_url}/v1/operations/context-terms",
+        bearer=tenant_token,
+        idempotency_key="f01-context-terms-v1",
+        payload={
+            "authority_party_id": authority_party_id,
+            "resource_location_assignment_id": assignment_id,
+            "offering_version_id": offering_version_id,
+            "effective_from": effective_from,
+            "amount": "50.00",
+            "currency": "USD",
+            "planned_duration_minutes": 30,
+            "bookable": True,
+        },
+    )
+    checkpoints.append(_checkpoint("f01-07-supply-capacity", "passed"))
+
+    target_date = (datetime.now(UTC) + timedelta(days=1)).date()
+    window_start = datetime.combine(target_date, datetime_time(8, 0), tzinfo=UTC)
+    window_end = datetime.combine(target_date, datetime_time(18, 0), tzinfo=UTC)
+    query = urllib.parse.urlencode(
+        {
+            "offering_version_id": offering_version_id,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "location_id": location_id,
+            "resource_id": resource_id,
+            "limit": 20,
+        }
+    )
+    slots = _http_json_array(
+        "GET",
+        f"{api_url}/v1/appointments/slots?{query}",
+        bearer=tenant_token,
+    )
+    if not slots:
+        raise RuntimeError("configured F01 supply produced no appointment slots")
+    option_id = _required_string(slots[0], "option_id", "appointment slot")
+
+    _http_json("POST", "http://event-sink:8090/control/block")
+    booking = _http_json(
+        "POST",
+        f"{api_url}/v1/appointments",
+        bearer=tenant_token,
+        idempotency_key="f01-reservation-v1",
+        payload={"option_id": option_id, "subject_party_id": authority_party_id},
+        expected_statuses=(201,),
+    )
+    reservation_id = _required_string(booking, "id", "reservation response")
+    (state_dir / "worker-booking.json").write_text(
+        json.dumps(
+            {
+                "reservation_id": reservation_id,
+                "event_type": "reservation.created.v1",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    checkpoints.append(_checkpoint("f01-08-booking-durable-work", "passed", reservation_id))
+
+
+def _sink_events(path: str) -> list[dict[str, object]]:
+    document = _http_get_json(f"http://event-sink:8090/{path}")
+    value = document.get(path)
+    if not isinstance(value, list):
+        raise RuntimeError(f"event sink /{path} response is invalid")
+    result: list[dict[str, object]] = []
+    for item in cast(list[object], value):
+        if isinstance(item, dict):
+            result.append(cast(dict[str, object], item))
+    return result
+
+
+def _matching_sink_event(items: list[dict[str, object]], reservation_id: str) -> bool:
+    for item in items:
+        event_value = item.get("event") if "event" in item else item
+        if not isinstance(event_value, dict):
+            continue
+        event = cast(dict[str, object], event_value)
+        if (
+            event.get("event_type") == "reservation.created.v1"
+            and event.get("aggregate_id") == reservation_id
+        ):
+            return True
+    return False
+
+
+def _wait_for_sink_attempt(reservation_id: str, timeout_seconds: int = 45) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        status = _http_get_json("http://event-sink:8090/status")
+        attempts = _sink_events("attempts")
+        if status.get("blocked") is True and _matching_sink_event(attempts, reservation_id):
+            return
+        time.sleep(1)
+    raise RuntimeError("worker never attempted the blocked durable reservation event")
+
+
+def _wait_for_sink_delivery(reservation_id: str, timeout_seconds: int = 60) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if _matching_sink_event(_sink_events("events"), reservation_id):
+            return
+        time.sleep(1)
+    raise RuntimeError("durable reservation event was not delivered after worker restart")
+
+
 def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase == "prepare-worker":
         _run_f01_foundation(checkpoints, phase)
+        _prepare_durable_booking(checkpoints)
         return
     if phase not in {"before-fault", "after-fault"}:
         raise RuntimeError("worker-runtime requires prepare-worker/before-fault/after-fault")
@@ -376,11 +623,43 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     state_dir, _, _ = _handoff()
     foundation = _json_object(state_dir / "f01-foundation.json")
     _required_string(foundation, "worker_principal_id", "F01 foundation state")
+    booking = _json_object(state_dir / "worker-booking.json")
+    reservation_id = _required_string(booking, "reservation_id", "worker booking state")
     sink = _http_get_json("http://event-sink:8090/health")
     if sink.get("status") != "ok":
         raise RuntimeError("reference event sink is not healthy")
+
+    if phase == "before-fault":
+        _wait_for_sink_attempt(reservation_id)
+        status = _http_get_json("http://event-sink:8090/status")
+        if status.get("accepted_count") != 0:
+            raise RuntimeError("event sink accepted durable work before the worker fault boundary")
+        checkpoints.append(
+            _checkpoint(
+                "f01-13-durable-work-blocked",
+                "passed",
+                "worker attempted reservation.created.v1 while sink barrier was closed",
+            )
+        )
+        return
+
+    _http_json("POST", "http://event-sink:8090/control/release")
+    _wait_for_sink_delivery(reservation_id)
+    foundation, tenant_token = _tenant_session_from_foundation()
+    del foundation
+    reservation = _http_json(
+        "GET",
+        f"http://api:8000/v1/appointments/{reservation_id}",
+        bearer=tenant_token,
+    )
+    if _required_string(reservation, "id", "reservation read response") != reservation_id:
+        raise RuntimeError("reservation identity changed across worker restart")
     checkpoints.append(
-        _checkpoint(f"{phase}:worker-runtime", "passed", "worker topology observable")
+        _checkpoint(
+            "f01-15-worker-durable-recovery",
+            "passed",
+            "reservation event delivered after host-owned worker restart",
+        )
     )
 
 
