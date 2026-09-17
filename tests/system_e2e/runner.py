@@ -42,6 +42,16 @@ def _write_checkpoints(artifact_dir: Path, checkpoints: list[dict[str, str]]) ->
     )
 
 
+def _json_object(path: Path) -> dict[str, object]:
+    try:
+        decoded: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"invalid E2E handoff file: {path.name}") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError(f"E2E handoff file is not an object: {path.name}")
+    return cast(dict[str, object], decoded)
+
+
 def _http_get(url: str) -> str:
     with urllib.request.urlopen(url, timeout=5) as response:
         body = response.read().decode("utf-8", errors="replace")
@@ -107,7 +117,42 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
         raise RuntimeError("postgres unexpectedly resolves from the black-box runner")
 
 
-def _run_smoke(checkpoints: list[dict[str, str]]) -> None:
+def _assert_handoff_contract(checkpoints: list[dict[str, str]], phase: str) -> None:
+    state_dir = Path(os.environ.get("E2E_STATE_DIR", "/state"))
+    secret_dir = Path(os.environ.get("E2E_SECRET_DIR", "/secrets"))
+    bootstrap = _json_object(state_dir / "bootstrap.json")
+    credentials = _json_object(secret_dir / "platform-controller.json")
+
+    authority_id = bootstrap.get("native_authority_id")
+    login_handle = credentials.get("login_handle")
+    password = credentials.get("password")
+    if not isinstance(authority_id, str) or not authority_id:
+        raise RuntimeError("bootstrap state is missing native_authority_id")
+    if not isinstance(login_handle, str) or not login_handle:
+        raise RuntimeError("platform-controller secret is missing login_handle")
+    if not isinstance(password, str) or len(password) < 12:
+        raise RuntimeError("platform-controller secret is invalid")
+
+    probe = state_dir / "runner-state-probe.json"
+    if phase == "after-fault":
+        previous = _json_object(probe)
+        if previous.get("phase") != "before-fault":
+            raise RuntimeError("runner state did not survive the fault boundary")
+    else:
+        probe.write_text(
+            json.dumps({"phase": phase, "written_at": time.time()}, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    checkpoints.append(
+        _checkpoint(
+            f"{phase}:handoff",
+            "passed",
+            "bootstrap state and separated controller secret are available",
+        )
+    )
+
+
+def _health_targets(checkpoints: list[dict[str, str]], phase: str) -> None:
     targets = {
         "api-live": "http://api:8000/health/live",
         "api-ready": "http://api:8000/health/ready",
@@ -116,10 +161,18 @@ def _run_smoke(checkpoints: list[dict[str, str]]) -> None:
     }
     for name, url in targets.items():
         body = _http_get(url)
-        checkpoints.append(_checkpoint(name, "passed", body[:200]))
+        checkpoints.append(_checkpoint(f"{phase}:{name}", "passed", body[:200]))
 
 
-def _run_surface_contract(checkpoints: list[dict[str, str]]) -> None:
+def _run_smoke(checkpoints: list[dict[str, str]], phase: str) -> None:
+    _health_targets(checkpoints, phase)
+
+
+def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
+    _health_targets(checkpoints, phase)
+
+
+def _run_surface_contract(checkpoints: list[dict[str, str]], phase: str) -> None:
     targets = {
         "api-openapi": "http://api:8000/openapi.json",
         "control-openapi": "http://control-plane:8001/openapi.json",
@@ -135,16 +188,18 @@ def _run_surface_contract(checkpoints: list[dict[str, str]]) -> None:
         paths = cast(dict[str, object], paths_value)
         checkpoints.append(
             _checkpoint(
-                name,
+                f"{phase}:{name}",
                 "passed",
                 f"openapi={version}; paths={len(paths)}",
             )
         )
 
 
-SUITES: dict[str, Callable[[list[dict[str, str]]], None]] = {
+Suite = Callable[[list[dict[str, str]], str], None]
+SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
     "surface-contract": _run_surface_contract,
+    "api-restart": _run_api_restart,
 }
 
 
@@ -153,6 +208,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
     run.add_argument("suite")
+    run.add_argument("--phase", default="main")
     run.add_argument("--artifact-dir", default="/artifacts")
     args = parser.parse_args()
 
@@ -162,16 +218,17 @@ def main() -> int:
 
     try:
         _assert_runner_isolation(checkpoints)
+        _assert_handoff_contract(checkpoints, args.phase)
         suite = SUITES.get(args.suite)
         if suite is None:
             raise RuntimeError(f"runner does not implement suite selector {args.suite!r}")
-        suite(checkpoints)
+        suite(checkpoints, args.phase)
     except (OSError, RuntimeError, urllib.error.URLError) as exc:
         checkpoints.append(_checkpoint("suite", "failed", str(exc)))
         _write_checkpoints(artifact_dir, checkpoints)
         return 1
 
-    checkpoints.append(_checkpoint("suite", "passed", args.suite))
+    checkpoints.append(_checkpoint("suite", "passed", f"{args.suite}:{args.phase}"))
     _write_checkpoints(artifact_dir, checkpoints)
     return 0
 
