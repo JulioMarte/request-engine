@@ -28,20 +28,22 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
-    ports: ["127.0.0.1:55432:5432"]
+    networks: [backend]
 
   vault:
     image: hashicorp/vault:1.20
+    profiles: [secrets]
     cap_add: [IPC_LOCK]
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: ci-root-token
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
     command: server -dev
-    ports: ["127.0.0.1:58200:8200"]
+    networks: [backend]
 
   mailpit:
     image: axllent/mailpit:v1.27
-    ports: ["127.0.0.1:58025:8025"]
+    profiles: [delivery]
+    networks: [edge, backend]
 
   migrate:
     <<: *request-engine
@@ -52,6 +54,7 @@ services:
       MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:ci-postgres-only@postgres:5432/request_engine
     command: [alembic, upgrade, head]
     restart: "no"
+    networks: [backend]
 
   api:
     <<: *request-engine
@@ -65,7 +68,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
-    ports: ["127.0.0.1:58000:8000"]
+    networks: [edge, backend]
 
   control-plane:
     <<: *request-engine
@@ -79,7 +82,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
-    ports: ["127.0.0.1:58001:8001"]
+    networks: [edge, backend]
 
   worker:
     <<: *request-engine
@@ -95,3 +98,22 @@ services:
       REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: ${REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY:-}
     command: [request-engine-worker]
     restart: unless-stopped
+    networks: [backend]
+
+  e2e-runner:
+    build:
+      context: ../..
+      dockerfile: deploy/reference/e2e-runner.Dockerfile
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [runner]
+    depends_on:
+      api:
+        condition: service_healthy
+      control-plane:
+        condition: service_healthy
+    networks: [edge]
+
+networks:
+  edge: {}
+  backend:
+    internal: true
