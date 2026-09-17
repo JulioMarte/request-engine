@@ -103,8 +103,9 @@ login_handle="ci-platform-controller-$safe_suite"
 issue="$("${compose[@]}" run --rm --no-deps -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api \
   request-engine-platform-bootstrap issue --provenance "e2e:${GITHUB_RUN_ID:-local}:$requested")"
 authority="$(printf '%s\n' "$issue" | sed -n 's/^Native authority: //p')"
+workload_authority="$(printf '%s\n' "$issue" | sed -n 's/^Workload authority: //p')"
 token="$(printf '%s\n' "$issue" | sed -n 's/^ONE-TIME BOOTSTRAP TOKEN: //p')"
-test -n "$authority" && test -n "$token"
+test -n "$authority" && test -n "$workload_authority" && test -n "$token"
 password="$(openssl rand -base64 36)Aa1!"
 if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then echo "::add-mask::$token"; echo "::add-mask::$password"; fi
 {
@@ -115,9 +116,9 @@ if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then echo "::add-mask::$token"; e
 } 2>&1 | tee "$suite_artifacts/phases/bootstrap.log"
 export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
 
-python - "$state_dir/bootstrap.json" "$authority" "$requested" <<'PY'
+python - "$state_dir/bootstrap.json" "$authority" "$workload_authority" "$requested" <<'PY'
 import json, pathlib, sys
-path=pathlib.Path(sys.argv[1]); path.write_text(json.dumps({"native_authority_id":sys.argv[2],"suite":sys.argv[3]},sort_keys=True)+"\n",encoding="utf-8")
+path=pathlib.Path(sys.argv[1]); path.write_text(json.dumps({"native_authority_id":sys.argv[2],"workload_authority_id":sys.argv[3],"suite":sys.argv[4]},sort_keys=True)+"\n",encoding="utf-8")
 PY
 python - "$secret_dir/platform-controller.json" "$login_handle" "$password" <<'PY'
 import json, os, pathlib, sys

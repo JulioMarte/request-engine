@@ -20,6 +20,7 @@ from request_engine.platform.security.platform_bootstrap import (
 
 PgConnection = Connection[Any]
 _NATIVE_ISSUER = "request-engine-native"
+_WORKLOAD_ISSUER = "request-engine-workload"
 _DSN_ENV = "REQUEST_ENGINE_BOOTSTRAP_DSN"
 
 
@@ -38,28 +39,36 @@ def _assert_no_platform_root(conn: PgConnection) -> None:
         raise PlatformRootAlreadyExists("initial Platform root already exists")
 
 
-def _native_authority(conn: PgConnection, *, create: bool) -> UUID:
+def _authority(conn: PgConnection, *, kind: str, issuer: str, create: bool) -> UUID:
     row = conn.execute(
         """
         SELECT id, status
           FROM request_engine.identity_authorities
-         WHERE kind = 'native' AND issuer_or_environment = %s
+         WHERE kind = %s AND issuer_or_environment = %s
         """,
-        (_NATIVE_ISSUER,),
+        (kind, issuer),
     ).fetchone()
     if row is None and create:
         row = conn.execute(
             """
             INSERT INTO request_engine.identity_authorities (
                 kind, issuer_or_environment, status
-            ) VALUES ('native', %s, 'active')
+            ) VALUES (%s, %s, 'active')
             RETURNING id, status
             """,
-            (_NATIVE_ISSUER,),
+            (kind, issuer),
         ).fetchone()
     if row is None or str(row[1]) != "active":
-        raise PlatformBootstrapRejected("active Native identity authority is unavailable")
+        raise PlatformBootstrapRejected(f"active {kind} identity authority is unavailable")
     return cast(UUID, row[0])
+
+
+def _native_authority(conn: PgConnection, *, create: bool) -> UUID:
+    return _authority(conn, kind="native", issuer=_NATIVE_ISSUER, create=create)
+
+
+def _workload_authority(conn: PgConnection, *, create: bool) -> UUID:
+    return _authority(conn, kind="workload", issuer=_WORKLOAD_ISSUER, create=create)
 
 
 def issue_intent(*, ttl_minutes: int, provenance: str) -> str:
@@ -69,6 +78,7 @@ def issue_intent(*, ttl_minutes: int, provenance: str) -> str:
     with _connect() as conn:
         _assert_no_platform_root(conn)
         authority_id = _native_authority(conn, create=True)
+        workload_authority_id = _workload_authority(conn, create=True)
         conn.execute(
             """
             INSERT INTO request_engine.platform_bootstrap_intents (
@@ -85,6 +95,7 @@ def issue_intent(*, ttl_minutes: int, provenance: str) -> str:
         )
     return (
         f"Native authority: {authority_id}\n"
+        f"Workload authority: {workload_authority_id}\n"
         f"Bootstrap expires: {material.expires_at.isoformat()}\n"
         f"ONE-TIME BOOTSTRAP TOKEN: {material.raw_token}"
     )

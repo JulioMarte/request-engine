@@ -11,7 +11,8 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime, time as datetime_time, timedelta
+from datetime import UTC, datetime, timedelta
+from datetime import time as datetime_time
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlencode
@@ -217,6 +218,7 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
 def _assert_handoff_contract(checkpoints: list[dict[str, str]], phase: str) -> None:
     state_dir, bootstrap, credentials = _handoff()
     _required_string(bootstrap, "native_authority_id", "bootstrap state")
+    _required_string(bootstrap, "workload_authority_id", "bootstrap state")
     _required_string(credentials, "login_handle", "platform-controller secret")
     password = _required_string(credentials, "password", "platform-controller secret")
     if len(password) < 12:
@@ -303,7 +305,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
     state_dir, bootstrap, controller = _handoff()
-    native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
+    workload_authority_id = _required_string(bootstrap, "workload_authority_id", "bootstrap state")
     platform_login = _required_string(controller, "login_handle", "platform-controller secret")
     platform_password = _required_string(controller, "password", "platform-controller secret")
     control_url = "http://control-plane:8001"
@@ -375,7 +377,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         idempotency_key="f01-worker-integration-v1",
         organization_id=organization_id,
         payload={
-            "identity_authority_id": native_authority_id,
+            "identity_authority_id": workload_authority_id,
             "credential_expires_at": expires_at,
             "provenance_reference": "e2e:f01:worker-integration",
         },

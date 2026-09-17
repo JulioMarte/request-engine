@@ -334,6 +334,8 @@ Setup privilegiado permitido para crear un mundo nuevo:
 
 Estas acciones usan la misma imagen Request Engine y credenciales de instalación separadas del runner.
 
+`request-engine-platform-bootstrap issue` establece el trust root de identidad de despliegue: registra la autoridad `native` para identidades HUMAN y la autoridad `workload` RE-native que consumen el provisioning de AGENT/INTEGRATION. El id de la autoridad workload viaja por el estado no sensible del handoff (`bootstrap.json`) y nunca por SQL de la suite.
+
 Después del trust root, el estado de negocio de una suite system/E2E debe crearse mediante contratos soportados. No se permite SQL para fabricar el outcome principal del journey.
 
 Una DB proof cuyo riesgo sea precisamente RLS/constraint/lock pertenece a otra taxonomía y puede usar SQL; eso no crea una excepción para journeys black-box.
@@ -478,6 +480,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - artifacts namespaceados por suite;
 - collector estructuralmente sanitizado;
 - isolation checks runtime;
+- bootstrap de despliegue que registra las autoridades `native` y `workload` RE-native, con ambos ids viajando por el estado no sensible del handoff;
 - dos suites habilitadas (`smoke`, `surface-contract`) para proteger reusabilidad;
 - `workflow_dispatch` y `workflow_call` reutilizables;
 - fitness checks registry ↔ runner ↔ topology;
@@ -495,7 +498,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 2. secret/state handoff reusable para journeys multifase autenticados;
 3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
 4. fault-injection protocol genérico con barriers;
-5. provisionar worker Principal/publisher reales para suites worker;
+5. provisionar worker Principal/publisher reales para suites worker: el Principal ya nace por el contrato de integration sobre la autoridad workload de despliegue; el publisher sigue siendo el adapter HTTP de referencia;
 6. F-01 completo como suite black-box;
 7. Vault/Mailpit funcionalmente conectados a journeys, no sólo disponibles como profiles;
 8. Authentik/OIDC lane;
