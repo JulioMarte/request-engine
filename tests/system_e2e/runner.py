@@ -723,6 +723,29 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         expected_statuses=(201,),
     )
     reservation_id = _required_string(booking, "id", "reservation response")
+    conflict = _http_json(
+        "POST",
+        f"{api_url}/v1/appointments",
+        bearer=tenant_token,
+        idempotency_key="f01-reservation-capacity-conflict-v1",
+        organization_id=organization_id,
+        payload={"option_id": option_id, "subject_party_id": authority_party_id},
+        expected_statuses=(409,),
+    )
+    error = conflict.get("error")
+    if not isinstance(error, dict) or error.get("code") not in {
+        "appointment_unavailable",
+        "appointment_option_stale",
+    }:
+        raise RuntimeError("second booking attempt did not fail with a capacity-safe conflict")
+    checkpoints.append(
+        _checkpoint(
+            "f01-09-capacity-conflict",
+            "passed",
+            f"duplicate slot consumption rejected as {error.get('code')}",
+        )
+    )
+
     (state_dir / "worker-booking.json").write_text(
         json.dumps(
             {
