@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/system_e2e/suites.toml"
 RUNNER_DOCKERFILE = ROOT / "deploy/reference/e2e-runner.Dockerfile"
 RUNNER = ROOT / "tests/system_e2e/runner.py"
+COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
 
 
 def _enabled_suites() -> dict[str, dict[str, object]]:
@@ -40,6 +41,7 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         "selector",
         "profiles",
         "services",
+        "faults",
         "fresh_world",
         "fault_injection",
         "cost",
@@ -76,20 +78,26 @@ def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
     )
 
 
-def test_enabled_e2e_suite_dependencies_are_supported() -> None:
-    suites = tomllib.loads(REGISTRY.read_text(encoding="utf-8"))["suites"]
+def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
     allowed_services = {"api", "control-plane", "worker"}
     allowed_profiles = {"worker", "secrets", "delivery", "oidc"}
-    for name, spec in suites.items():
-        if not spec.get("enabled", True):
-            continue
-        services = set(spec["services"])
-        profiles = set(spec["profiles"])
+    allowed_fault_actions = {"kill-restart"}
+    for name, spec in _enabled_suites().items():
+        services = {str(item) for item in spec["services"]}
+        profiles = {str(item) for item in spec["profiles"]}
+        faults = [str(item) for item in spec["faults"]]
         assert services, f"{name} must declare at least one runtime service"
         assert services <= allowed_services, f"{name} declares unsupported services: {services}"
         assert profiles <= allowed_profiles, f"{name} declares unsupported profiles: {profiles}"
         if "worker" in services:
             assert "worker" in profiles, f"{name} must enable the worker profile"
+        assert bool(faults) is bool(spec["fault_injection"]), (
+            f"{name} fault_injection must match whether faults are declared"
+        )
+        for fault in faults:
+            target, separator, action = fault.partition(":")
+            assert separator and target in services, f"{name} has invalid fault target: {fault}"
+            assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
 
 
 def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
@@ -112,3 +120,19 @@ def test_black_box_runner_does_not_import_request_engine() -> None:
     source = RUNNER.read_text(encoding="utf-8")
     assert "import request_engine" not in source
     assert "from request_engine" not in source
+
+
+def test_reference_compose_keeps_database_credentials_need_to_know() -> None:
+    source = COMPOSE.read_text(encoding="utf-8")
+    assert "x-common-env:" not in source
+    public_env = source.split("x-public-env:", 1)[1].split("x-platform-env:", 1)[0]
+    platform_env = source.split("x-platform-env:", 1)[1].split("services:", 1)[0]
+    worker = source.split("\n  worker:\n", 1)[1].split("\n  e2e-runner:\n", 1)[0]
+    assert "WORKER_DATABASE_URL" not in public_env
+    assert "PLATFORM_READ_DATABASE_URL" not in public_env
+    assert "APPOINTMENT_OPTION_SIGNING_KEY" not in platform_env
+    assert "WORKER_DATABASE_URL" not in platform_env
+    assert "PLATFORM_READ_DATABASE_URL" not in worker
+    assert "PLATFORM_CONTROL_DATABASE_URL" not in worker
+    assert "APPOINTMENT_OPTION_SIGNING_KEY" not in worker
+    assert "REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000" not in worker
