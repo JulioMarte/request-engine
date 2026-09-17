@@ -26,25 +26,17 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         "manual",
         "enabled",
     }
-    enabled = {
-        name: spec
-        for name, spec in suites.items()
-        if spec.get("enabled", True)
-    }
+    enabled = {name: spec for name, spec in suites.items() if spec.get("enabled", True)}
     assert enabled, "at least one E2E suite must remain executable"
     namespaces: set[str] = set()
     for name, spec in enabled.items():
         missing = required - set(spec)
-        assert not missing, (
-            f"{name} is missing registry fields: {sorted(missing)}"
-        )
+        assert not missing, f"{name} is missing registry fields: {sorted(missing)}"
         assert spec["fresh_world"] is True, (
             f"{name} must default to an isolated authoritative world"
         )
         namespace = spec["artifact_namespace"]
-        assert namespace not in namespaces, (
-            f"duplicate E2E artifact namespace: {namespace}"
-        )
+        assert namespace not in namespaces, f"duplicate E2E artifact namespace: {namespace}"
         namespaces.add(namespace)
 
 
@@ -60,8 +52,7 @@ def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     )
     found = [token for token in forbidden if token in dockerfile]
     assert not found, (
-        "black-box runner Dockerfile contains forbidden "
-        f"application/database shortcuts: {found}"
+        f"black-box runner Dockerfile contains forbidden application/database shortcuts: {found}"
     )
 
 
