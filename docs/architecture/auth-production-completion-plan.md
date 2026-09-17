@@ -27,8 +27,10 @@ self-service D2 está implementado y validado localmente: las revisiones0048/004
 aportaron el linking nativo (frescura de reautenticación, intents y binding para el
 Principal existente) y las revisiones0050/0051 añadieron el endurecimiento y la
 segunda prueba OIDC (JWKS/RS256 reales, fail-closed sin verificador). OIDC sigue
-siendo opcional y deshabilitado por defecto, sin proveedor configurado. E3, F y G
-tampoco existen.
+siendo opcional y deshabilitado por defecto, sin proveedor configurado. E1, E2,
+E3 y F-02 están implementados y validados localmente con CI exact-head verde; F-01
+y G/D6 siguen pendientes, y la administración/configuración del sistema de
+plataforma (SMTP, referencias a Vault, ajustes) no está modelada.
 Las decisiones D1–D6 fueron ratificadas por ADR 0013; cada bloque todavía necesita
 su contrato propio donde el plan lo exige (por ejemplo, el inventario completo de
 writers y la prueba de inversión de locks de D5).

@@ -1,13 +1,16 @@
 # Plan de implementación secuencial con sub-agentes
 
 Fecha: 2026-09-16. Branch de referencia: `cohesion/system-optimization` (lane de
-integración, PR #132). HEAD de referencia: `9cddd672`, revisión vigente `0052`.
+integración, PR #132). HEAD de referencia: `ba1acb0c`, revisión vigente `0055`.
 
 Estado: **plan de ejecución propuesto, no certificación ni autorización de
 despliegue**. Es el complemento operativo de
 `architecture/auth-production-completion-plan.md` (que define el contenido de cada
 bloque). Este documento define **cómo se ejecutan** los bloques restantes con
 sub-agentes en una sola lane, sin paralelismo real.
+
+Estado de bloques: B4, E1, E2, E3 y F-02 están completados con CI exact-head verde;
+quedan pendientes F-01 y G/D6.
 
 ## 0. Restricciones duras (revisadas)
 

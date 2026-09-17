@@ -15,6 +15,61 @@ revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
 implemented and production-wired; operational acceptance of the chosen environment
 and secret manager remains under D6.
 
+## Current position and remaining work (2026-09-17)
+
+Identity blocks A-E and F-02 are implemented and locally validated with green
+exact-head CI on branch `cohesion/system-optimization` (HEAD `ba1acb0c`, PR #132).
+F-01, the G/D6 operational acceptance and platform system administration remain
+open. Nothing is merged or deployed and the application database is unmigrated.
+
+Completed with green exact-head CI:
+
+| Block | Commit | Exact-head CI run | Result |
+| --- | --- | --- | --- |
+| B4 tenant staff/agent/integration append-only audit | `acadbdef` | [35153876332](https://github.com/JulioMarte/request-engine/actions/runs/35153876332) | success |
+| E1 governed controller-policy upgrade (0053) | `82c19de6` | [35163025154](https://github.com/JulioMarte/request-engine/actions/runs/35163025154) | success |
+| E2 identity-aware onboarding readiness (0054) | `34b8adcc` | [35166775697](https://github.com/JulioMarte/request-engine/actions/runs/35166775697) | success |
+| E3 resource-effective authority inspection (0055) | `36bb65b9` | [35170062589](https://github.com/JulioMarte/request-engine/actions/runs/35170062589) | success |
+| F-02 IdP portability keeps Principal and grants | `ba1acb0c` | [35171896353](https://github.com/JulioMarte/request-engine/actions/runs/35171896353) | success |
+
+Blocks A, B, C and D remain validado as recorded in their dated sections. The
+dated per-block "local/dirty-tree only; no exact-head CI" qualifiers are superseded
+by the runs above.
+
+Still missing:
+
+- **F-01 fixture-free native journey (plan section 11):** a clean native-only
+  instance built only through the accepted bootstrap CLI ceremony and driven over
+  real TCP through enrollment, provisioning, booking, revocation, full recovery and
+  last-controller refusal. Not implemented; current e2e journeys use seeded world
+  helpers.
+- **G/D6 operational acceptance (plan section 12):** named environment, operators
+  and thresholds; separate production entrypoints and pools; TLS/private ingress;
+  budgets; configured secret store/provider with rotation; populated migration
+  rehearsal; backup/restore with a restore-fencing tool; real delivery journey and
+  break-glass drill. Blocked on owner D6 decisions; no deployment profile exists.
+- **Platform system administration (new):** there is no capability, API or UI to
+  administer platform configuration (SMTP, Vault/secret references, settings). They
+  are environment-variable driven in `bootstrap/recovery_delivery.py`; a partial
+  configuration fails startup and an absent one stays fail-closed (`503`). An
+  operator cannot inspect or change these at runtime.
+
+Known limits and deviations:
+
+- E1 appended immutable `tenant-controller-v4` (the plan said "no new policy
+  version") because `assert_staff_manager` otherwise made the command unreachable;
+  v4 grants only the command's own capability. No root is backfilled.
+- E3 appended immutable `tenant-controller-v5` for `authority.inspect_resource`; new
+  native roots still select v3, so v4/v5 are governed upgrade targets.
+- E2 reports `recovery` as `unknown` (private-process readiness is out of tenant scope).
+- Roots with no recorded policy need the platform ceremony for the E1/E3 upgrades;
+  that ceremony is documented as operational and is not implemented.
+- F-02 proves authentication-provider portability (a second provider resolves to the
+  same Principal and grants), not the administrative identity-linking command.
+
+Integration state: not merged, not deployed, application database unmigrated; the
+branch is MERGEABLE/CLEAN against `development` and exact-head CI is green.
+
 ## Governed controller-policy upgrade (E1) (2026-09-16, revision 0053)
 
 Block E1 of `auth-production-completion-plan.md`, on branch
@@ -856,12 +911,12 @@ than retained as a separate artifact.
 
 Honest limits:
 
-- No production secret store or delivery adapter exists yet. The private control
+- [superseded 2026-09-17: see Current position] No production secret store or delivery adapter exists yet. The private control
   plane fails closed (`503 recovery_delivery_unconfigured`) until D6 names one;
   the in-test adapter only proves the port contract, not real delivery.
-- `platform.identity.disable` (global disable), identity linking and the
+- [superseded 2026-09-17: see Current position] `platform.identity.disable` (global disable), identity linking and the
   resource-authority inspection query remain unimplemented (D/E3).
-- Tenant staff/agent/integration identity commands still lack append-only audit
+- [superseded 2026-09-17: see Current position] Tenant staff/agent/integration identity commands still lack append-only audit
   facts; B4 remains partial for those command families. Only the recovery case
   commands carry the B4 audit/idempotency semantics added here.
 - The delivery worker is not wired into a production entrypoint: the bootstrap
@@ -1122,7 +1177,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 
 | ID | Block | Owner | Status | Evidence / blocker |
 | --- | --- | --- | --- | --- |
-| P0 | Inventory and closure contract | repo | validado | Head0051, lane match, DB revisions, route/function inventory verified |
+| P0 | Inventory and closure contract | repo | validado | Head0055, lane match, DB revisions, route/function inventory verified |
 | A | Honest enrollment outcome | platform/security | validado | 0041 + typed outcome +503; unit/DB/E2E + mutant + full lane |
 | B1 | Split global vs local identity administration | Tenancy | validado (platform provisioner scope) | 0043 registers read/lifecycle capabilities; global recovery/linking remain in C/D |
 | B2 | Authentication-capable continuity predicate | Tenancy | validado (tenant + platform planes) | 0042 tenant proofs; 0043 platform predicate + last-controller guard |
@@ -1131,10 +1186,10 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | B5 | Provisioner list/get/suspend/reactivate/revoke | Tenancy platform | validado | 0043 lifecycle command, read projection, terminal revoke, last-controller guard |
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; real Vault+SMTP adapter wired; operational acceptance pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; C-02 real Vault KV v2 store and SMTP channel wired into the control plane and worker, proven against boundary doubles; 0052 per-attempt issuance generation reservation closes the concurrent-issuance discard hole |
 | D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |
-| E1 | Existing controller-policy upgrade path | Tenancy | validado (local; exact-head CI pending) | 0053 adds immutable `tenant-controller-v4` and the governed `controller_policy_upgrade` command (POST `/v1/controller-policy-upgrades`): immutable catalog resolution, delegable ceiling, no self-elevation, no revoked-grant resurrection, idempotency and one append-only audit row; DB + HTTP proofs and mutation check green; legacy-root platform ceremony remains operational |
-| E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | validado (local; exact-head CI pending) | 0054 adds the tenant-guarded `read_onboarding_identity_facts` reader and extends `GET /v1/onboarding/readiness` with `identity`/`tenant_control`/`staff_administration`/`recovery` sections (`no-store`, unknown-never-ready); DB + HTTP + module proofs and mutation check green; `recovery` remains `unknown` (private-process readiness) |
-| E3 | Resource-effective authority inspection | Booking owner + Tenancy endpoint | validado (local; exact-head CI pending) | 0055 appends immutable `tenant-controller-v5`; booking owner inspector reuses `resolve_current_party_authority` read-only for `appointments.book`/`booking.manage_supply`; `POST /v1/me/authority:inspect` (`authority_inspect_resource`, `no-store`, opaque 404, `422` unknown operation) is wired through `tenancy.contracts` and composed in the entrypoint; DB owner-oracle + HTTP proofs and mutation check green |
-| F | Adversarial journeys and fixture-free acceptance | repo | pendiente | After A–E; F-01 requires a clean native-only instance |
+| E1 | Existing controller-policy upgrade path | Tenancy | validado (exact-head CI green) | 0053 adds immutable `tenant-controller-v4` and the governed `controller_policy_upgrade` command (POST `/v1/controller-policy-upgrades`): immutable catalog resolution, delegable ceiling, no self-elevation, no revoked-grant resurrection, idempotency and one append-only audit row; DB + HTTP proofs and mutation check green; legacy-root platform ceremony remains operational |
+| E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | validado (exact-head CI green) | 0054 adds the tenant-guarded `read_onboarding_identity_facts` reader and extends `GET /v1/onboarding/readiness` with `identity`/`tenant_control`/`staff_administration`/`recovery` sections (`no-store`, unknown-never-ready); DB + HTTP + module proofs and mutation check green; `recovery` remains `unknown` (private-process readiness) |
+| E3 | Resource-effective authority inspection | Booking owner + Tenancy endpoint | validado (exact-head CI green) | 0055 appends immutable `tenant-controller-v5`; booking owner inspector reuses `resolve_current_party_authority` read-only for `appointments.book`/`booking.manage_supply`; `POST /v1/me/authority:inspect` (`authority_inspect_resource`, `no-store`, opaque 404, `422` unknown operation) is wired through `tenancy.contracts` and composed in the entrypoint; DB owner-oracle + HTTP proofs and mutation check green |
+| F | Adversarial journeys and fixture-free acceptance | repo | parcial | F-02 (IdP portability) validado con CI exact-head verde; F-01 (journey native-only sin fixtures) pendiente |
 | G | Operational acceptance and publication | operator | bloqueado | D6 environment, ingress/TLS, RPO/RTO, secret store, operators |
 
 Decision gates ratified by ADR 0013 (2026-09-14); operational detail remains for D6:
