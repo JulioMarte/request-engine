@@ -54,6 +54,10 @@ _OIDC_AUDIENCE = "request-engine"
 _OIDC_JWKS_URI = "https://idp.example.test/.well-known/jwks.json"
 _OIDC_KID = "oidc-e2e-key-1"
 _BOUND_SUBJECT = "user-123"
+_OTHER_ISSUER = "https://idp-b.example.test"
+_OTHER_JWKS_URI = "https://idp-b.example.test/.well-known/jwks.json"
+_OTHER_KID = "oidc-e2e-key-2"
+_OTHER_SUBJECT = "user-456"
 
 
 def _generate_signing_key() -> rsa.RSAPrivateKey:
@@ -65,6 +69,8 @@ def _mint_access_token(
     *,
     subject: str = _BOUND_SUBJECT,
     issuer: str = _OIDC_ISSUER,
+    audience: str = _OIDC_AUDIENCE,
+    kid: str = _OIDC_KID,
     expires_at: datetime | None = None,
     email: str | None = None,
 ) -> str:
@@ -74,7 +80,7 @@ def _mint_access_token(
         jwt.encode(
             {
                 "iss": issuer,
-                "aud": _OIDC_AUDIENCE,
+                "aud": audience,
                 "sub": subject,
                 "exp": int(expiry.timestamp()),
                 "iat": int(now.timestamp()),
@@ -88,12 +94,18 @@ def _mint_access_token(
                 encryption_algorithm=serialization.NoEncryption(),
             ),
             algorithm="RS256",
-            headers={"kid": _OIDC_KID, "typ": "at+jwt"},
+            headers={"kid": kid, "typ": "at+jwt"},
         )
     )
 
 
-def _oidc_authority(conn: PgConnection) -> UUID:
+def _oidc_authority(
+    conn: PgConnection,
+    *,
+    issuer: str = _OIDC_ISSUER,
+    jwks_uri: str = _OIDC_JWKS_URI,
+    audience: str = _OIDC_AUDIENCE,
+) -> UUID:
     return uuid_row(
         conn,
         """
@@ -101,10 +113,7 @@ def _oidc_authority(conn: PgConnection) -> UUID:
             kind, issuer_or_environment, status, configuration_ref
         ) VALUES ('oidc', %s, 'active', %s) RETURNING id
         """,
-        (
-            _OIDC_ISSUER,
-            json.dumps({"jwks_uri": _OIDC_JWKS_URI, "audience": _OIDC_AUDIENCE}),
-        ),
+        (issuer, json.dumps({"jwks_uri": jwks_uri, "audience": audience})),
     )
 
 
@@ -127,10 +136,12 @@ def _bind_oidc_subject(
     )
 
 
-def _jwks_fetcher(jwks_document: dict[str, Any]) -> HttpxJwksFetcher:
+def _jwks_fetcher(documents: dict[str, dict[str, Any]]) -> HttpxJwksFetcher:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url == _OIDC_JWKS_URI
-        return httpx.Response(200, json=jwks_document)
+        document = documents.get(str(request.url))
+        if document is None:
+            return httpx.Response(404)
+        return httpx.Response(200, json=document)
 
     return HttpxJwksFetcher(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
 
@@ -206,7 +217,7 @@ async def test_oidc_bearer_acts_through_identity_binding_and_optional_arm_stays_
     configs = await PostgresOidcAuthorityReader(e2e_session_factory).read_active_authorities()
     assert UUID(str(oidc_authority_id)) in {config.authority_id for config in configs}
 
-    fetcher = _jwks_fetcher(jwks_document)
+    fetcher = _jwks_fetcher({_OIDC_JWKS_URI: jwks_document})
     oidc_resolver = await build_oidc_subject_resolver(e2e_session_factory, jwks_fetcher=fetcher)
 
     app = create_native_app(
@@ -454,6 +465,203 @@ async def test_oidc_bearer_acts_through_identity_binding_and_optional_arm_stays_
         )
         assert rejected.status_code == 401, rejected.text
         assert rejected.json()["error"]["code"] == "authentication_required"
+
+
+async def _register_party(client: AsyncClient, *, token: str, organization_id: UUID) -> UUID:
+    name = f"IdP portability patient {uuid4().hex}"
+    response = await client.post(
+        "/v1/parties",
+        headers=tenant_headers(
+            token=token,
+            organization_id=organization_id,
+            idempotency_key=f"idp-portability-{uuid4().hex}",
+        ),
+        json={"party_kind": "person", "display_name": name, "contact_points": []},
+    )
+    assert response.status_code == 201, response.text
+    return UUID(response.json()["party_id"])
+
+
+def _register_actor(conn: PgConnection, *, organization_id: UUID, party_id: UUID) -> Any:
+    row = conn.execute(
+        """
+        SELECT actor_principal_id FROM request_engine.audit_records
+         WHERE organization_id = %s AND aggregate_id = %s
+           AND command_name = 'parties.register'
+         ORDER BY id
+        """,
+        (organization_id, party_id),
+    ).fetchone()
+    assert row is not None
+    return row[0]
+
+
+def _tenant_identity_facts(
+    conn: PgConnection, organization_id: UUID
+) -> tuple[list[Any], list[Any]]:
+    """Independent admin oracle: the durable Principal and grant set of one tenant."""
+    principals = conn.execute(
+        """
+        SELECT id, authority_revision FROM request_engine.principals
+         WHERE organization_id = %s ORDER BY id
+        """,
+        (organization_id,),
+    ).fetchall()
+    grants = conn.execute(
+        """
+        SELECT id, principal_id, authority_plane, capability_key, delegable, status,
+               revision, provenance_kind, provenance_reference
+          FROM request_engine.principal_authority_grants
+         WHERE organization_id = %s ORDER BY id
+        """,
+        (organization_id,),
+    ).fetchall()
+    return list(principals), list(grants)
+
+
+@pytest.mark.invariant
+@pytest.mark.asyncio
+async def test_switching_identity_provider_keeps_the_same_principal_and_grants(
+    e2e_admin_conn: PgConnection,
+    e2e_session_factory: SessionFactory,
+) -> None:
+    """F-02: an external IdP is an authentication route, never an identity authority.
+
+    A native tenant controller binds a subject from provider A and later a
+    different subject from provider B. Both federated tokens must resolve to the
+    SAME Principal with the SAME standing grants, and retiring provider A must
+    neither reconstruct the Principal nor recompute its authority. The only
+    faked boundary is the external provider JWKS; tokens are real RS256 and the
+    database is real PostgreSQL.
+    """
+    key_a = _generate_signing_key()
+    key_b = _generate_signing_key()
+    fetcher = _jwks_fetcher(
+        {
+            _OIDC_JWKS_URI: {"keys": [rsa_jwk(key_a.public_key().public_numbers(), kid=_OIDC_KID)]},
+            _OTHER_JWKS_URI: {
+                "keys": [rsa_jwk(key_b.public_key().public_numbers(), kid=_OTHER_KID)]
+            },
+        }
+    )
+
+    native_authority = _native_authority(e2e_admin_conn)
+    root_identity, root_password = await _enroll_root(e2e_session_factory, native_authority)
+    organization_id, controller_principal_id = provision_tenant_root(
+        e2e_admin_conn,
+        identity_authority_id=native_authority,
+        native_identity_id=root_identity.native_identity_id,
+    )
+    grant_controller_delegable_operational_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+        capability_key="parties.register",
+    )
+    grant_controller_delegable_operational_authority(
+        e2e_admin_conn,
+        organization_id=organization_id,
+        controller_principal_id=controller_principal_id,
+        capability_key="parties.lookup",
+    )
+    authority_a = _oidc_authority(e2e_admin_conn)
+    authority_b = _oidc_authority(e2e_admin_conn, issuer=_OTHER_ISSUER, jwks_uri=_OTHER_JWKS_URI)
+    before_principals, before_grants = _tenant_identity_facts(e2e_admin_conn, organization_id)
+
+    oidc_resolver = await build_oidc_subject_resolver(e2e_session_factory, jwks_fetcher=fetcher)
+    app = create_native_app(
+        session_factory=e2e_session_factory,
+        native_identity_authority_id=native_authority,
+        appointment_option_signing_key=_SIGNING_KEY,
+        oidc_subject_resolver=oidc_resolver,
+    )
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # Provider A becomes a second authentication route for the controller.
+            _bind_oidc_subject(
+                e2e_admin_conn,
+                organization_id=organization_id,
+                principal_id=controller_principal_id,
+                identity_authority_id=authority_a,
+                subject_id=_BOUND_SUBJECT,
+            )
+            token_a = _mint_access_token(
+                key_a, subject=_BOUND_SUBJECT, issuer=_OIDC_ISSUER, kid=_OIDC_KID
+            )
+            party_a = await _register_party(client, token=token_a, organization_id=organization_id)
+            assert (
+                _register_actor(e2e_admin_conn, organization_id=organization_id, party_id=party_a)
+                == controller_principal_id
+            )
+
+            # IdP change: another issuer and subject, still the same Principal.
+            _bind_oidc_subject(
+                e2e_admin_conn,
+                organization_id=organization_id,
+                principal_id=controller_principal_id,
+                identity_authority_id=authority_b,
+                subject_id=_OTHER_SUBJECT,
+            )
+            token_b = _mint_access_token(
+                key_b, subject=_OTHER_SUBJECT, issuer=_OTHER_ISSUER, kid=_OTHER_KID
+            )
+            party_b = await _register_party(client, token=token_b, organization_id=organization_id)
+            assert (
+                _register_actor(e2e_admin_conn, organization_id=organization_id, party_id=party_b)
+                == controller_principal_id
+            )
+
+            # Retiring the previous provider leaves the new route and authority intact.
+            e2e_admin_conn.execute(
+                """UPDATE request_engine.identity_authorities
+                      SET status = 'disabled', revision = revision + 1 WHERE id = %s""",
+                (authority_a,),
+            )
+            retired = await client.get(
+                "/v1/parties/lookup",
+                headers=tenant_headers(token=token_a, organization_id=organization_id),
+                params={"mode": "name", "value": "nobody"},
+            )
+            assert retired.status_code == 401, retired.text
+            surviving = await client.get(
+                "/v1/parties/lookup",
+                headers=tenant_headers(token=token_b, organization_id=organization_id),
+                params={"mode": "name", "value": "nobody"},
+            )
+            assert surviving.status_code == 200, surviving.text
+
+        after_principals, after_grants = _tenant_identity_facts(e2e_admin_conn, organization_id)
+        assert {row[0] for row in after_principals} == {row[0] for row in before_principals}
+        before_revision = {row[0]: row[1] for row in before_principals}
+        for principal_id, revision in ((row[0], row[1]) for row in after_principals):
+            assert revision >= before_revision[principal_id]
+        assert after_grants == before_grants
+
+        # Zero-IdP operation: the same deployment without the OIDC arm keeps the
+        # native path working for the same Principal.
+        plain_app = create_native_app(
+            session_factory=e2e_session_factory,
+            native_identity_authority_id=native_authority,
+            appointment_option_signing_key=_SIGNING_KEY,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=plain_app), base_url="http://test"
+        ) as client:
+            native_token = await login(
+                client, login_handle=root_identity.login_handle, password=root_password
+            )
+            native_party = await _register_party(
+                client, token=native_token, organization_id=organization_id
+            )
+            assert (
+                _register_actor(
+                    e2e_admin_conn, organization_id=organization_id, party_id=native_party
+                )
+                == controller_principal_id
+            )
+    finally:
+        await oidc_resolver.aclose()
+        await fetcher.aclose()
 
 
 def _authority_facts(conn: PgConnection, organization_id: UUID) -> list[Any]:

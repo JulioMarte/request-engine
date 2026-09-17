@@ -350,6 +350,13 @@ required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
 
 [[guarantees]]
+id = "INV-IDENTITY-PROVIDER-PORTABILITY-001"
+statement = "An external identity provider is an authentication route, not a source of RE identity or authority: a verified external subject resolves only through an explicit active IdentityBinding to an existing Principal, so binding a subject from a second provider or retiring a configured provider changes neither the Principal nor its standing authority grants, and the native authentication path keeps operating when no external provider is configured."
+severity = "high"
+required_evidence = ["invariant", "adversarial"]
+risk = ["security"]
+
+[[guarantees]]
 id = "INV-NATIVE-MULTI-SESSION-001"
 statement = "A native identity may hold multiple concurrent active sessions; each authenticates independently and records its own activity and authentication timestamps. Revoking one session leaves the others authenticating, while a global invalidation (revoke_native_sessions or password rotation) bumps the identity session epoch and invalidates every outstanding session."
 severity = "high"

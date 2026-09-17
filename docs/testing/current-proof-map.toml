@@ -378,6 +378,11 @@ path = "tests/e2e/test_identity_link_self_oidc_http.py"
 evidence = ["invariant", "adversarial", "security"]
 
 [[proofs]]
+guarantee = "INV-IDENTITY-PROVIDER-PORTABILITY-001"
+path = "tests/e2e/test_native_oidc_login.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
 guarantee = "INV-NATIVE-MULTI-SESSION-001"
 path = "tests/db/test_native_multi_session.py"
 evidence = ["invariant", "adversarial", "security"]
