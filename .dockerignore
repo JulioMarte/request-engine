@@ -13,3 +13,6 @@
 !scripts/
 !scripts/ci/
 !scripts/ci/Dockerfile.local-ci
+!tests/
+!tests/system_e2e/
+!tests/system_e2e/**
