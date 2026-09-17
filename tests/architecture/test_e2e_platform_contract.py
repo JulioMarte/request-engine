@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import tomllib
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/system_e2e/suites.toml"
@@ -19,8 +20,9 @@ def _enabled_suites() -> dict[str, dict[str, object]]:
 def _string_list(spec: dict[str, object], key: str, suite: str) -> list[str]:
     value = spec[key]
     assert isinstance(value, list), f"{suite}.{key} must be a list"
+    raw_items = cast(list[object], value)
     items: list[str] = []
-    for item in value:
+    for item in raw_items:
         assert isinstance(item, str), f"{suite}.{key} must contain only strings"
         items.append(item)
     return items
