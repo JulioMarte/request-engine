@@ -9,8 +9,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 FORBIDDEN_ENV_FRAGMENTS = (
     "DATABASE_URL",
