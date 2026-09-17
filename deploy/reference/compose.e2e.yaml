@@ -1,52 +1,97 @@
 name: request-engine-e2e
-x-app-image: &app-image
-  build: {context: ../.., dockerfile: deploy/reference/Dockerfile}
-  image: request-engine:e2e
+
+x-request-engine: &request-engine
+  build:
+    context: ../..
+    dockerfile: deploy/reference/Dockerfile
+  image: request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}
+
 x-common-env: &common-env
   REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
+  REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
+  REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker@postgres:5432/request_engine
   REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read@postgres:5432/request_engine
   REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
+
 services:
   postgres:
     image: postgres:18
-    environment: {POSTGRES_DB: request_engine, POSTGRES_USER: postgres, POSTGRES_HOST_AUTH_METHOD: trust}
-    healthcheck: {test: [CMD-SHELL, "pg_isready -U postgres -d request_engine"], interval: 2s, timeout: 3s, retries: 30}
+    environment:
+      POSTGRES_DB: request_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ci-postgres-only
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d request_engine"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     ports: ["127.0.0.1:55432:5432"]
+
   vault:
     image: hashicorp/vault:1.20
     cap_add: [IPC_LOCK]
-    environment: {VAULT_DEV_ROOT_TOKEN_ID: ci-root-token, VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"}
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ci-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
     command: server -dev
     ports: ["127.0.0.1:58200:8200"]
+
   mailpit:
     image: axllent/mailpit:v1.27
     ports: ["127.0.0.1:58025:8025"]
+
   migrate:
-    <<: *app-image
-    depends_on: {postgres: {condition: service_healthy}}
-    environment: {MIGRATION_DATABASE_URL: "postgresql+psycopg://postgres@postgres:5432/request_engine"}
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:ci-postgres-only@postgres:5432/request_engine
     command: [alembic, upgrade, head]
     restart: "no"
-  runtime-roles:
-    image: postgres:18
-    depends_on: {migrate: {condition: service_completed_successfully}}
-    volumes: ["./init-runtime-roles.sql:/init-runtime-roles.sql:ro"]
-    command: [psql, -h, postgres, -U, postgres, -d, request_engine, -f, /init-runtime-roles.sql]
-    restart: "no"
+
   api:
-    <<: *app-image
-    depends_on: {runtime-roles: {condition: service_completed_successfully}}
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment: *common-env
     command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
-    healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"], interval: 3s, timeout: 3s, retries: 40}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
     ports: ["127.0.0.1:58000:8000"]
+
   control-plane:
-    <<: *app-image
-    depends_on: {runtime-roles: {condition: service_completed_successfully}}
+    <<: *request-engine
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment: *common-env
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
-    healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"], interval: 3s, timeout: 3s, retries: 40}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
     ports: ["127.0.0.1:58001:8001"]
+
+  worker:
+    <<: *request-engine
+    profiles: [worker]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
+      REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000-0000-0000-0000-000000000000}
+      REQUEST_ENGINE_WEBHOOK_BASE_URL: http://api:8000
+      REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: ${REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY:-}
+    command: [request-engine-worker]
+    restart: unless-stopped
