@@ -24,31 +24,35 @@ There is no planned blanket architecture freeze. A production release may make p
 
 ## 2. Current architecture map
 
-Native initial provisioning authority is specified in
-`architecture/initial-controller-policy.md`; executed validation and remaining
-production gaps are tracked in `architecture/auth-implementation-status.md`.
-Current agent lifecycle/revision inspection and its explicit read authority are
-specified in `architecture/agent-governance-inspection.md`.
-Self-only current Party relationship inspection and its explicit policy evolution
-are specified in `architecture/self-authority-inspection.md`. The implementation
-was locally validated by the assigned agent; exact-head CI remains pending. The
-execution handoff is `testing/auth-ergonomics-validation-handoff.md`.
-Native recovery consumption is specified in `architecture/http-runtime-deployment.md`;
-executed validation is tracked in `architecture/auth-implementation-status.md` and
-the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
-The proposed implementation sequence for remaining identity/product/operational
-gaps is `architecture/auth-production-completion-plan.md`. It includes explicit
-security decision gates and is not a production certification. Blocks A, B, the C
-mechanism (governed recovery with a test delivery port) and D (binding reads and
-lifecycle, self-service linking including its opt-in OIDC second proof, and global
-native disable) are implemented and locally validated through revision0051. The
-remaining gaps are the real delivery adapter (C-02/D6), the B4 append-only audit for
-tenant staff/agent/integration commands, E1-E3, the F journeys and G/D6 operational
-acceptance, tracked in `architecture/auth-implementation-status.md`. The execution
-method for those remaining blocks — single integration lane, serialized migrations,
-context-isolated sub-agent roles — is `architecture/sequential-completion-plan.md`.
-The proposed Docker-based GitHub CI execution of the remaining end-to-end journeys
-(F-01 and the CI-feasible subset of G) is `architecture/docker-e2e-ci-plan.md`.
+Native initial provisioning authority is specified in `architecture/initial-controller-policy.md`; executed validation and remaining production gaps are tracked in `architecture/auth-implementation-status.md`.
+
+Current agent lifecycle/revision inspection and its explicit read authority are specified in `architecture/agent-governance-inspection.md`.
+
+Self-only current Party relationship inspection and its explicit policy evolution are specified in `architecture/self-authority-inspection.md`.
+
+Native recovery consumption is specified in `architecture/http-runtime-deployment.md`; executed validation is tracked in `architecture/auth-implementation-status.md` and the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
+
+The remaining identity/product/operational acceptance content is defined in `architecture/auth-production-completion-plan.md`. The serialized implementation method is `architecture/sequential-completion-plan.md`.
+
+### Canonical system/E2E CI platform
+
+`architecture/docker-e2e-ci-plan.md` is now the **normative architecture for the reusable Docker system/E2E CI platform**, not a one-off F-01 plan.
+
+Its governing shape is:
+
+```text
+stable deployment definition
+        ×
+swappable black-box suite
+        ↓
+reproducible system/E2E evidence
+```
+
+The platform installs Request Engine from a clean world using one Request Engine image plus separate PostgreSQL/runtime dependencies, then runs an isolated generic `e2e-runner` against public/runtime surfaces. Suites such as `smoke`, `booking`, `authority`, `recovery`, `worker`, `f01`, `oidc` and `all` are selected declaratively. A suite gets a fresh authoritative world by default; Docker images/caches may be reused, business/database state may not be shared implicitly between suites.
+
+F-01 is the first broad acceptance suite consuming this platform. It does **not** define the platform. New ordinary system/E2E suites should be added through the suite registry rather than by copying Compose files or GitHub workflows.
+
+The platform is the default for expensive cross-module black-box journeys. Explicit exceptions are permitted when the risk requires a genuinely different boundary, such as external TLS/ingress, production-shaped backup/restore, specialized load/browser hardware/tooling, or real third-party delivery certification.
 
 For present-day ownership and boundaries, start here:
 
@@ -85,8 +89,9 @@ Identity/authentication and deployment references:
 
 - `architecture/identity-provider-and-staff-provisioning-plan.md` — providerless trust root, staff lifecycle and required acceptance journeys;
 - `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
-- `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits.
-- `architecture/auth-implementation-status.md` — dated local verification evidence and remaining identity-plan acceptance gaps; not a production certification.
+- `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
+- `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
+- `architecture/docker-e2e-ci-plan.md` — reusable clean-install black-box system/E2E execution platform.
 
 ## 4. Current capability/domain contracts
 
@@ -99,7 +104,7 @@ Important current contract families include:
 - live service operations — `v3/26-live-service-operations-contract.md` and its accepted amendments;
 - live capacity — `v3/29-live-capacity-projection-contract.md`;
 - operational recovery — `v3/32-operational-recovery-communications-contract.md`;
-- historical operational agent tooling contract — `v3/35-operational-copilot-contract.md`, now interpreted through current docs 15/16 and the ownership map;
+- historical operational agent tooling contract — `v3/35-operational-copilot-contract.md`, interpreted through current docs 15/16 and the ownership map;
 - front desk / communications / identity / onboarding — later accepted contracts under `v3/` where their current owner/guarantee semantics remain adopted.
 
 Durable business distinctions such as Reservation versus QueueEntry versus ServiceSession remain current where adopted by the guarantee/owner contracts. Historical structural descriptions do not freeze implementation shape.
@@ -110,12 +115,15 @@ Canonical evidence entry points:
 
 - `testing/current-guarantees.toml` — current semantic guarantees;
 - `testing/README.md` — current test architecture and CI evidence model;
+- `architecture/docker-e2e-ci-plan.md` — reusable system/E2E installation + suite execution architecture;
 - `testing/repository-governance-contract.md` — repository/test rigidity classification;
 - `testing/evidence-authoring-guide.md` — falsifiable proof workflow;
 - `testing/current-proof-map.toml` — representative proof mapping;
 - `testing/test-architecture-migration.md` — test-taxonomy/disposition provenance.
 
 Architecture tests should strongly enforce HARD properties, detect CONTROLLED drift and avoid freezing FLEXIBLE implementation details. Historical exact snapshots/fingerprints belong to historical evidence, not current-head ceilings.
+
+For system/E2E, a green result is meaningful only when the runner is constrained to the intended external boundary. A black-box suite must not gain PostgreSQL access or internal application imports simply to become easier to write.
 
 A useful rule for every new durable gate is:
 
@@ -180,7 +188,7 @@ When customer-owned production data or an independently deployed/external suppor
 - high-risk production changes require appropriate rollout/mitigation evidence;
 - rebaseline is no longer a repository-cleanup technique.
 
-See `architecture/continuous-evolution-policy.md` for the normative details.
+See `architecture/continuous-evolution-policy.md` for normative details.
 
 ## 9. Historical provenance
 
@@ -206,7 +214,7 @@ For a current change use this precedence model:
 ```text
 continuous-evolution policy + current guarantee inventory
         ↓
-current phase policy (for example system-optimization mode)
+current phase policy
         ↓
 owning current capability/domain contract
         ↓
@@ -230,6 +238,7 @@ Repository documentation is the source of truth. Agent instruction files are ope
 - durable domain/capability rules belong in the owning current contract;
 - durable evolutionary rules belong under `architecture/`;
 - durable API/operation/tool projection rules belong in docs 15/16;
+- durable system/E2E execution rules belong in `architecture/docker-e2e-ci-plan.md`;
 - durable rationale belongs in `adr/`;
 - testing/repository governance belongs in `testing/`;
 - engineering-quality policy belongs in `engineering-quality/`;
