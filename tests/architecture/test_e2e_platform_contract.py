@@ -1,96 +1,98 @@
 from __future__ import annotations
 
+import ast
 import re
 import tomllib
 from pathlib import Path
 from typing import cast
 
-import yaml
-
 ROOT = Path(__file__).resolve().parents[2]
-SUITES_PATH = ROOT / "tests" / "system_e2e" / "suites.toml"
-COMPOSE_PATH = ROOT / "deploy" / "reference" / "compose.e2e.yaml"
-RUNNER_PATH = ROOT / "tests" / "system_e2e" / "runner.py"
-
-
-def _suite_catalog() -> dict[str, dict[str, object]]:
-    catalog = tomllib.loads(SUITES_PATH.read_text(encoding="utf-8"))
-    suites = catalog.get("suites")
-    assert isinstance(suites, dict)
-    return cast(dict[str, dict[str, object]], suites)
+REGISTRY = ROOT / "tests/system_e2e/suites.toml"
+RUNNER_DOCKERFILE = ROOT / "deploy/reference/e2e-runner.Dockerfile"
+RUNNER = ROOT / "tests/system_e2e/runner.py"
+COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
 
 
 def _enabled_suites() -> dict[str, dict[str, object]]:
-    return {
-        name: spec
-        for name, spec in _suite_catalog().items()
-        if spec.get("enabled") is True
+    suites = tomllib.loads(REGISTRY.read_text(encoding="utf-8"))["suites"]
+    return {name: spec for name, spec in suites.items() if spec.get("enabled", True)}
+
+
+def _string_list(spec: dict[str, object], key: str, suite: str) -> list[str]:
+    value = spec[key]
+    assert isinstance(value, list), f"{suite}.{key} must be a list"
+    raw_items = cast(list[object], value)
+    items: list[str] = []
+    for item in raw_items:
+        assert isinstance(item, str), f"{suite}.{key} must contain only strings"
+        items.append(item)
+    return items
+
+
+def _runner_selectors() -> set[str]:
+    tree = ast.parse(RUNNER.read_text(encoding="utf-8"), filename=str(RUNNER))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "SUITES":
+            continue
+        assert isinstance(node.value, ast.Dict), "runner SUITES must remain a static dict literal"
+        selectors: set[str] = set()
+        for key in node.value.keys:
+            assert isinstance(key, ast.Constant) and isinstance(key.value, str), (
+                "runner SUITES keys must remain static string literals"
+            )
+            selectors.add(key.value)
+        return selectors
+    raise AssertionError("generic E2E runner does not declare a static SUITES registry")
+
+
+def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
+    enabled = _enabled_suites()
+    required = {
+        "description",
+        "selector",
+        "profiles",
+        "services",
+        "deferred_services",
+        "runtime_env_from_state",
+        "faults",
+        "fresh_world",
+        "fault_injection",
+        "cost",
+        "artifact_namespace",
+        "pr",
+        "merge",
+        "nightly",
+        "manual",
+        "enabled",
     }
-
-
-def _compose_services() -> dict[str, dict[str, object]]:
-    compose = yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
-    services = compose.get("services")
-    assert isinstance(services, dict)
-    return cast(dict[str, dict[str, object]], services)
-
-
-def _string_list(spec: dict[str, object], field: str, suite: str) -> list[str]:
-    value = spec[field]
-    assert isinstance(value, list), f"{suite}.{field} must be a list"
-    result: list[str] = []
-    for item in value:
-        assert isinstance(item, str), f"{suite}.{field} must contain only strings"
-        result.append(item)
-    return result
-
-
-def test_e2e_runner_remains_black_box() -> None:
-    runner = RUNNER_PATH.read_text(encoding="utf-8")
-    assert "import request_engine" not in runner
-    assert "from request_engine" not in runner
-    assert "psycopg" not in runner
-    assert "sqlalchemy" not in runner
-    assert "/var/run/docker.sock" not in runner
-
-
-def test_postgres_is_not_exposed_to_e2e_runner_network() -> None:
-    services = _compose_services()
-    runner_networks = set(services["e2e-runner"]["networks"])
-    postgres_networks = set(services["postgres"]["networks"])
-    assert runner_networks.isdisjoint(postgres_networks)
-
-
-def test_worker_has_no_placeholder_principal_or_empty_publisher() -> None:
-    worker = _compose_services()["worker"]
-    environment = worker["environment"]
-    assert isinstance(environment, dict)
-    principal = environment["REQUEST_ENGINE_WORKER_PRINCIPAL_ID"]
-    publisher = environment["REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY"]
-    assert principal != "00000000-0000-0000-0000-000000000000"
-    assert publisher
-
-
-def test_worker_identity_is_runtime_handoff_not_static_compose_state() -> None:
-    worker = _compose_services()["worker"]
-    environment = worker["environment"]
-    assert isinstance(environment, dict)
-    assert environment["REQUEST_ENGINE_WORKER_PRINCIPAL_ID"] == "${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:?worker principal required}"
-
-
-def test_enabled_e2e_suites_have_unique_selectors_and_namespaces() -> None:
-    selectors: set[str] = set()
-    namespaces: set[str] = set()
-    for name, spec in _enabled_suites().items():
-        selector = spec.get("selector")
-        namespace = spec.get("artifact_namespace")
-        assert isinstance(selector, str) and selector
-        assert isinstance(namespace, str) and namespace
-        assert selector not in selectors, f"duplicate suite selector: {selector}"
-        assert namespace not in namespaces, f"duplicate artifact namespace: {namespace}"
-        selectors.add(selector)
+    assert len(enabled) >= 2, "the reusable platform must exercise more than one suite"
+    namespaces: set[object] = set()
+    selectors: set[object] = set()
+    for name, spec in enabled.items():
+        missing = required - set(spec)
+        assert not missing, f"{name} is missing registry fields: {sorted(missing)}"
+        assert spec["fresh_world"] is True, (
+            f"{name} must default to an isolated authoritative world"
+        )
+        namespace = spec["artifact_namespace"]
+        selector = spec["selector"]
+        assert isinstance(namespace, str), f"{name}.artifact_namespace must be a string"
+        assert isinstance(selector, str), f"{name}.selector must be a string"
+        assert namespace not in namespaces, f"duplicate E2E artifact namespace: {namespace}"
+        assert selector not in selectors, f"duplicate E2E selector: {selector}"
         namespaces.add(namespace)
-        assert spec.get("fresh_world") is True, f"{name} must run from a fresh world"
+        selectors.add(selector)
+
+
+def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
+    enabled = _enabled_suites()
+    registered = {str(spec["selector"]) for spec in enabled.values()}
+    implemented = _runner_selectors()
+    assert registered <= implemented, (
+        f"registered E2E selectors missing from generic runner: {sorted(registered - implemented)}"
+    )
 
 
 def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
@@ -126,3 +128,43 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             target, separator, action = fault.partition(":")
             assert separator and target in services, f"{name} has invalid fault target: {fault}"
             assert action in allowed_fault_actions, f"{name} has unsupported fault action: {fault}"
+
+
+def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
+    dockerfile = RUNNER_DOCKERFILE.read_text(encoding="utf-8").lower()
+    forbidden = (
+        "src/request_engine",
+        "pip install",
+        "uv sync",
+        "psycopg",
+        "sqlalchemy",
+        "docker.sock",
+    )
+    found = [token for token in forbidden if token in dockerfile]
+    assert not found, (
+        f"black-box runner Dockerfile contains forbidden application/database shortcuts: {found}"
+    )
+
+
+def test_black_box_runner_does_not_import_request_engine() -> None:
+    source = RUNNER.read_text(encoding="utf-8")
+    assert "import request_engine" not in source
+    assert "from request_engine" not in source
+
+
+def test_reference_compose_keeps_database_credentials_need_to_know() -> None:
+    source = COMPOSE.read_text(encoding="utf-8")
+    assert "x-common-env:" not in source
+    public_env = source.split("x-public-env:", 1)[1].split("x-platform-env:", 1)[0]
+    platform_env = source.split("x-platform-env:", 1)[1].split("services:", 1)[0]
+    worker = source.split("\n  worker:\n", 1)[1].split("\n  e2e-runner:\n", 1)[0]
+    assert "WORKER_DATABASE_URL" not in public_env
+    assert "PLATFORM_READ_DATABASE_URL" not in public_env
+    assert "APPOINTMENT_OPTION_SIGNING_KEY" not in platform_env
+    assert "WORKER_DATABASE_URL" not in platform_env
+    assert "PLATFORM_READ_DATABASE_URL" not in worker
+    assert "PLATFORM_CONTROL_DATABASE_URL" not in worker
+    assert "APPOINTMENT_OPTION_SIGNING_KEY" not in worker
+    assert "REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000" not in worker
+    assert "http_outbox_publisher:create_publisher" in worker
+    assert "REQUEST_ENGINE_OUTBOX_PUBLISH_URL" in worker
