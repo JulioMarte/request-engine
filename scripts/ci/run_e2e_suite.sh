@@ -18,7 +18,7 @@ if [[ "$requested" == "all" ]]; then
   ((${#suites[@]} > 0)) || { echo "no enabled E2E suites are registered" >&2; exit 1; }
   for suite in "${suites[@]}"; do
     echo "::group::E2E suite: $suite"
-    E2E_IMAGES_READY=1 "$0" "$suite"
+    E2E_IMAGES_READY=1 bash "$0" "$suite"
     echo "::endgroup::"
   done
   exit 0
@@ -84,19 +84,18 @@ done
     psql -U postgres -d request_engine < deploy/reference/init-runtime-roles.sql
 } 2>&1 | tee "$suite_artifacts/phases/migrate.log"
 
-{
-  bootstrap_dsn='postgresql://postgres:ci-postgres-only@postgres:5432/request_engine'
-  issue="$("${compose[@]}" run --rm --no-deps -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api request-engine-platform-bootstrap issue --provenance "e2e:${GITHUB_RUN_ID:-local}:$requested")"
-  authority="$(printf '%s\n' "$issue" | sed -n 's/^Native authority: //p')"
-  token="$(printf '%s\n' "$issue" | sed -n 's/^ONE-TIME BOOTSTRAP TOKEN: //p')"
-  test -n "$authority" && test -n "$token"
-  password="$(openssl rand -base64 36)Aa1!"
-  printf '%s\n%s\n%s\n' "$token" "$password" "$password" | \
-    "${compose[@]}" run --rm --no-deps -T -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api \
-      request-engine-platform-bootstrap establish --login "ci-platform-controller-$safe_suite"
-  export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
-  echo 'bootstrap completed; sensitive material intentionally omitted'
-} 2>&1 | tee "$suite_artifacts/phases/bootstrap.log"
+exec > >(tee -a "$suite_artifacts/phases/bootstrap.log") 2>&1
+bootstrap_dsn='postgresql://postgres:ci-postgres-only@postgres:5432/request_engine'
+issue="$("${compose[@]}" run --rm --no-deps -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api request-engine-platform-bootstrap issue --provenance "e2e:${GITHUB_RUN_ID:-local}:$requested")"
+authority="$(printf '%s\n' "$issue" | sed -n 's/^Native authority: //p')"
+token="$(printf '%s\n' "$issue" | sed -n 's/^ONE-TIME BOOTSTRAP TOKEN: //p')"
+test -n "$authority" && test -n "$token"
+password="$(openssl rand -base64 36)Aa1!"
+printf '%s\n%s\n%s\n' "$token" "$password" "$password" | \
+  "${compose[@]}" run --rm --no-deps -T -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api \
+    request-engine-platform-bootstrap establish --login "ci-platform-controller-$safe_suite"
+export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
+echo 'bootstrap completed; sensitive material intentionally omitted'
 
 "${compose[@]}" up -d --no-build --wait --wait-timeout "${STACK_READY_TIMEOUT_SECONDS:-180}" api control-plane \
   2>&1 | tee "$suite_artifacts/phases/runtime-start.log"
