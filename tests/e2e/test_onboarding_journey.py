@@ -91,7 +91,75 @@ def _blocker(code: str, owner: str, *resolution_capabilities: str) -> dict[str, 
         "code": code,
         "owner": owner,
         "resolution_capabilities": list(resolution_capabilities),
+        "requires_operator": False,
+        "operation_id": None,
     }
+
+
+def _identity_blocker(
+    code: str,
+    owner: str,
+    *resolution_capabilities: str,
+    operation_id: str,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "owner": owner,
+        "resolution_capabilities": list(resolution_capabilities),
+        "requires_operator": True,
+        "operation_id": operation_id,
+    }
+
+
+def _identity_sections() -> dict[str, object]:
+    return {
+        "identity": {
+            "status": "blocked",
+            "ready": False,
+            "blockers": [
+                _identity_blocker(
+                    "active_controller_missing",
+                    "tenancy",
+                    "staff.manage_membership",
+                    "staff.manage_authority",
+                    operation_id="staff_manage_membership",
+                )
+            ],
+        },
+        "tenant_control": {
+            "status": "blocked",
+            "ready": False,
+            "blockers": [
+                _identity_blocker(
+                    "controller_policy_upgrade_required",
+                    "tenancy",
+                    "controller_policy_upgrade",
+                    operation_id="controller_policy_upgrade",
+                )
+            ],
+        },
+        "staff_administration": {
+            "status": "blocked",
+            "ready": False,
+            "blockers": [
+                _identity_blocker(
+                    "staff_management_unavailable",
+                    "tenancy",
+                    "staff.manage_authority",
+                    "staff.manage_membership",
+                    operation_id="staff_manage_authority",
+                )
+            ],
+        },
+        "recovery": {"status": "unknown", "ready": False, "blockers": []},
+        "controller_authority_revision": None,
+        "policy_revision": None,
+    }
+
+
+def _without_observed_at(report: dict[str, object]) -> dict[str, object]:
+    report.pop("observed_at", None)
+    return report
 
 
 def _actor(tenant: ProvisionedTenant) -> ActorContext:
@@ -526,17 +594,20 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         _operations_client(e2e_session_factory, tenant) as operations,
     ):
         report = await _readiness(client, tenant)
-        assert report == {
+        assert _without_observed_at(report) == {
             "business_party": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [_blocker("business_party_missing", "tenancy")],
             },
             "locations": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [_blocker("location_missing", "catalog", "catalog.manage")],
                 "count": 0,
             },
             "appointments": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [
                     _blocker("no_bookable_offering", "catalog", "catalog.manage"),
@@ -544,11 +615,13 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
                 ],
             },
             "walk_in_queue": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
                 "count": 0,
             },
-            "communications": {"ready": True, "blockers": []},
+            "communications": {"status": "ready", "ready": True, "blockers": []},
+            **_identity_sections(),
         }
         assert (
             _scalar(
@@ -597,10 +670,11 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         await _declare_holiday(operations, tenant, party_id)
 
         report = await _readiness(client, tenant)
-        assert report == {
-            "business_party": {"ready": True, "blockers": []},
-            "locations": {"ready": True, "blockers": [], "count": 1},
+        assert _without_observed_at(report) == {
+            "business_party": {"status": "ready", "ready": True, "blockers": []},
+            "locations": {"status": "ready", "ready": True, "blockers": [], "count": 1},
             "appointments": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [
                     _blocker("no_bookable_offering", "catalog", "catalog.manage"),
@@ -608,11 +682,13 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
                 ],
             },
             "walk_in_queue": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
                 "count": 0,
             },
-            "communications": {"ready": True, "blockers": []},
+            "communications": {"status": "ready", "ready": True, "blockers": []},
+            **_identity_sections(),
         }
         hours = e2e_admin_conn.execute(
             """
@@ -683,26 +759,29 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         )
 
         report = await _readiness(client, tenant)
-        assert report == {
-            "business_party": {"ready": True, "blockers": []},
-            "locations": {"ready": True, "blockers": [], "count": 1},
-            "appointments": {"ready": True, "blockers": []},
+        assert _without_observed_at(report) == {
+            "business_party": {"status": "ready", "ready": True, "blockers": []},
+            "locations": {"status": "ready", "ready": True, "blockers": [], "count": 1},
+            "appointments": {"status": "ready", "ready": True, "blockers": []},
             "walk_in_queue": {
+                "status": "blocked",
                 "ready": False,
                 "blockers": [_blocker("service_queue_missing", "queue", "queue.configure")],
                 "count": 0,
             },
-            "communications": {"ready": True, "blockers": []},
+            "communications": {"status": "ready", "ready": True, "blockers": []},
+            **_identity_sections(),
         }
 
         queue_id = await _create_queue(client, tenant, party_id, location_id, offering_id)
         report = await _readiness(client, tenant)
-        assert report == {
-            "business_party": {"ready": True, "blockers": []},
-            "locations": {"ready": True, "blockers": [], "count": 1},
-            "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": True, "blockers": [], "count": 1},
-            "communications": {"ready": True, "blockers": []},
+        assert _without_observed_at(report) == {
+            "business_party": {"status": "ready", "ready": True, "blockers": []},
+            "locations": {"status": "ready", "ready": True, "blockers": [], "count": 1},
+            "appointments": {"status": "ready", "ready": True, "blockers": []},
+            "walk_in_queue": {"status": "ready", "ready": True, "blockers": [], "count": 1},
+            "communications": {"status": "ready", "ready": True, "blockers": []},
+            **_identity_sections(),
         }
         assert (
             _scalar(
@@ -759,6 +838,7 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         )
         report = await _readiness(client, tenant)
         assert report["communications"] == {
+            "status": "blocked",
             "ready": False,
             "blockers": [
                 _blocker(
@@ -824,10 +904,11 @@ async def test_newly_provisioned_organization_becomes_operational_through_http(
         assert entry_row[2] is None
 
         report = await _readiness(client, tenant)
-        assert report == {
-            "business_party": {"ready": True, "blockers": []},
-            "locations": {"ready": True, "blockers": [], "count": 1},
-            "appointments": {"ready": True, "blockers": []},
-            "walk_in_queue": {"ready": True, "blockers": [], "count": 1},
-            "communications": {"ready": True, "blockers": []},
+        assert _without_observed_at(report) == {
+            "business_party": {"status": "ready", "ready": True, "blockers": []},
+            "locations": {"status": "ready", "ready": True, "blockers": [], "count": 1},
+            "appointments": {"status": "ready", "ready": True, "blockers": []},
+            "walk_in_queue": {"status": "ready", "ready": True, "blockers": [], "count": 1},
+            "communications": {"status": "ready", "ready": True, "blockers": []},
+            **_identity_sections(),
         }

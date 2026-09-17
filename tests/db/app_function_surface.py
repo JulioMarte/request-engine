@@ -103,6 +103,7 @@ REVIEWED_APP_EXECUTE_ALLOWLIST = {
     ),
     "request_engine.read_discovery_booking_handoff(p_token_hash text)",
     "request_engine.read_identity_link_intent(p_intent_id uuid)",
+    "request_engine.read_onboarding_identity_facts(p_organization_id uuid)",
     (
         "request_engine.provision_integration(p_principal_id uuid, p_binding_id uuid, "
         "p_workload_identity_id uuid, p_credential_id uuid, p_identity_authority_id uuid, "

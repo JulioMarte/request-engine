@@ -8,7 +8,11 @@ from request_engine.modules.communications.contracts.onboarding import (
     CommunicationsOnboardingReadinessReader,
 )
 from request_engine.modules.queue.contracts.onboarding import QueueOnboardingReadinessReader
-from request_engine.modules.tenancy.contracts.onboarding_readiness import BusinessPartyReader
+from request_engine.modules.tenancy.contracts.onboarding_readiness import (
+    BusinessPartyReader,
+    OnboardingIdentityFacts,
+    OnboardingIdentityFactsReader,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +23,7 @@ class OnboardingReadiness:
     resource_supply_count: int
     active_queue_count: int
     disabled_purpose_count: int
+    identity_facts: OnboardingIdentityFacts | None = None
 
 
 class OnboardingReadinessReader(Protocol):
@@ -36,12 +41,14 @@ class OwnerBackedOnboardingReadiness:
         booking_reader: BookingOnboardingReadinessReader,
         queue_reader: QueueOnboardingReadinessReader,
         communications_reader: CommunicationsOnboardingReadinessReader,
+        identity_reader: OnboardingIdentityFactsReader,
     ) -> None:
         self._party_reader = party_reader
         self._catalog_reader = catalog_reader
         self._booking_reader = booking_reader
         self._queue_reader = queue_reader
         self._communications_reader = communications_reader
+        self._identity_reader = identity_reader
 
     async def read(self, *, organization_id: UUID) -> OnboardingReadiness:
         has_business_party = await self._party_reader.has_active_organization_party(
@@ -53,6 +60,12 @@ class OwnerBackedOnboardingReadiness:
         communications = await self._communications_reader.read_communications_supply(
             organization_id=organization_id
         )
+        try:
+            identity_facts = await self._identity_reader.read_identity_facts(
+                organization_id=organization_id
+            )
+        except Exception:
+            identity_facts = None
         return OnboardingReadiness(
             has_business_party=has_business_party,
             location_count=catalog.location_count,
@@ -60,4 +73,5 @@ class OwnerBackedOnboardingReadiness:
             resource_supply_count=booking.resource_supply_count,
             active_queue_count=queue.active_queue_count,
             disabled_purpose_count=communications.disabled_purpose_count,
+            identity_facts=identity_facts,
         )

@@ -111,6 +111,102 @@ Decisions and honest limits:
 - No migration `0001`-`0052` was edited; no commit, push, PR or deployment was
   performed; evidence is local/dirty-tree only.
 
+## Identity-aware onboarding readiness (E2) (2026-09-16, revision 0054)
+
+Block E2 of `auth-production-completion-plan.md`, on branch
+`cohesion/system-optimization`. Migration `0054_onboarding_identity_facts`
+appends from `0053`; `alembic heads` is one. Local/dirty-tree evidence only; no
+exact-head GitHub CI. It extends the EXISTING `GET /v1/onboarding/readiness`
+(`onboarding_read`, `onboarding.read`); no second onboarding surface is created.
+
+Production change:
+
+- New tenancy contract `contracts/onboarding_readiness.py` (Pydantic-free):
+  `IdentityReadinessFacts`, `TenantControlReadinessFacts`,
+  `StaffAdministrationReadinessFacts`, `RecoveryReadinessFacts`,
+  `OnboardingIdentityFacts` and the `OnboardingIdentityFactsReader` Protocol.
+  The reader is tenant-scoped and exposes only aggregate booleans/keys/revisions,
+  never a Principal identity, login handle, binding subject or secret.
+- `request_engine.read_onboarding_identity_facts(p_organization_id uuid)`
+  (SECURITY DEFINER, `search_path` `pg_catalog, request_engine, pg_temp`, owner
+  `request_engine_schema_owner`, PUBLIC revoked, EXECUTE to `request_engine_app`).
+  Because the definer bypasses RLS it first refuses any `p_organization_id` that
+  is `IS DISTINCT FROM request_engine.current_organization_id()` with `42501`.
+  It reuses `principal_is_effective_tenant_controller` for the authenticatable
+  controller, separately derives the active controller (active tenant Principal +
+  active membership + the three control grants), reads the recorded initial
+  controller policy key, evaluates `current_policy_ready` against the immutable
+  `initial_controller_policies` catalog, derives staff-administration
+  availability from active `staff.manage_membership`/`staff.manage_authority`
+  grants and returns `observed_at`, `controller_authority_revision` and
+  `policy_revision`. No new table and no backfill.
+- Adapter `adapters/db/onboarding_identity_reader.py` over `tenant_transaction`,
+  composed by `build_onboarding_identity_facts_reader` in `tenancy/api/__init__.py`.
+- Onboarding `OwnerBackedOnboardingReadiness` composes the reader; the
+  `project_readiness` view preserves `business_party`, `locations`,
+  `appointments`, `walk_in_queue` and `communications` and adds `identity`,
+  `tenant_control`, `staff_administration` and `recovery`, each with an explicit
+  `status` (`ready`/`blocked`/`unknown`), plus top-level `observed_at`,
+  `controller_authority_revision` and `policy_revision`. Blockers gained
+  `requires_operator` and an optional catalog-verified `operation_id`. The route
+  now returns `Cache-Control: no-store`. Wiring is explicit in
+  `onboarding/api/__init__.py` and `entrypoints/http/module_composition.py`;
+  bootstrap is not used as a service locator.
+- Blockers: `active_controller_missing` (`staff_manage_membership`),
+  `authentication_path_missing` (`staff_invite`),
+  `controller_policy_upgrade_required` (`controller_policy_upgrade`),
+  `staff_management_unavailable` (`staff_manage_authority`). A failed identity
+  reader yields `status="unknown"`, `ready=false` and no fabricated blockers,
+  never a default-ready section.
+
+Documented decisions (engineering): `recovery` is always `unknown` in this
+iteration because delivery/operator recovery readiness is private-process
+readiness (plan E2 lines 599-600), so no `recovery_delivery_unconfigured` or
+`recovery_security_operator_missing` blocker is emitted and no global recovery
+configuration is read. Unconfigured OIDC is not a blocker when the native path
+is authenticatable. `authentication_path_missing` is reported as
+`requires_operator=false` because self-service `identity.link_self` can resolve
+it. The projection is advisory and does not promise a global atomic snapshot:
+the readers use separate transactions, so every command it suggests revalidates
+its own authority.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0054):
+
+- `tests/db/test_identity_onboarding_readiness.py` (3 proofs): no effective
+  controller (revoked `identity.bind`) reports `active_controller=false` and
+  `authenticatable_controller=false`, with an independent admin oracle over
+  `principal_is_effective_tenant_controller` and the active control-grant count;
+  a foreign organization is denied `42501` through the definer guard while the
+  own tenant still reads; a recorded `tenant-controller-v3` policy is ready while
+  all its capabilities are active and becomes not-ready after revoking one
+  (`catalog.manage`), verified by an independent admin SELECT over the immutable
+  catalog and active grants.
+- `tests/e2e/test_identity_onboarding_readiness_http.py` (2 journeys): real
+  native login; `no-store`; identity and staff administration ready,
+  tenant-control blocked (`controller_policy_upgrade_required`), recovery
+  `unknown`, and no login handle, Principal id, identity id or recovery blocker
+  leaks; a controller without `onboarding.read` is denied `403`.
+- `tests/modules/onboarding/test_readiness_projection.py` (7 proofs): owner facts
+  project actionable guidance, unknown facts are never ready, a failing identity
+  reader yields an unknown section (not ready), OIDC is not required for the
+  native path, distinct journeys do not block on unused features, and only
+  catalog-verified `operation_id`s appear.
+- `tests/e2e/test_onboarding_readiness.py` and `tests/e2e/test_onboarding_journey.py`
+  were adapted to the extended projection (new sections/status and `no-store`).
+- `tests/db/app_function_surface.py` records the new reviewed app EXECUTE grant.
+- New guarantee `INV-ONBOARDING-READINESS-001` with proof-map entries; the new
+  DB suite was added to `scripts/ci/run_current_product.sh`.
+
+Mutation check (manual, on the local DB): removing the definer tenant guard made
+the cross-tenant proof return data instead of `42501`; making the identity reader
+failure fall back to a ready/default section made the unknown-section proof red;
+restoring both turned the suites green.
+
+Honest limits: `observed_at` comes from the database clock of the identity reader
+transaction, not a cross-reader global snapshot; the identity reader failure is
+caught at the composition boundary (any exception yields `unknown`); no migration
+`0001`-`0053` was edited; no commit, push, PR or deployment was performed.
+
 ## Tenant staff/agent/integration append-only audit (B4) (2026-09-16, no new revision)
 
 Block B4 of `auth-production-completion-plan.md`, under the frozen decision to reuse
@@ -956,7 +1052,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | C | Governed recovery and secure delivery | Tenancy + delivery | validado (local; real Vault+SMTP adapter wired; operational acceptance pending D6) | 0045 case/intent/ticket/append-only audit + fenced worker + private HTTP; C-02 real Vault KV v2 store and SMTP channel wired into the control plane and worker, proven against boundary doubles; 0052 per-attempt issuance generation reservation closes the concurrent-issuance discard hole |
 | D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |
 | E1 | Existing controller-policy upgrade path | Tenancy | validado (local; exact-head CI pending) | 0053 adds immutable `tenant-controller-v4` and the governed `controller_policy_upgrade` command (POST `/v1/controller-policy-upgrades`): immutable catalog resolution, delegable ceiling, no self-elevation, no revoked-grant resurrection, idempotency and one append-only audit row; DB + HTTP proofs and mutation check green; legacy-root platform ceremony remains operational |
-| E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | bloqueado | Depends on B2 facts and D2 recovery configuration |
+| E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | validado (local; exact-head CI pending) | 0054 adds the tenant-guarded `read_onboarding_identity_facts` reader and extends `GET /v1/onboarding/readiness` with `identity`/`tenant_control`/`staff_administration`/`recovery` sections (`no-store`, unknown-never-ready); DB + HTTP + module proofs and mutation check green; `recovery` remains `unknown` (private-process readiness) |
 | E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |
 | F | Adversarial journeys and fixture-free acceptance | repo | pendiente | After A–E; F-01 requires a clean native-only instance |
 | G | Operational acceptance and publication | operator | bloqueado | D6 environment, ingress/TLS, RPO/RTO, secret store, operators |

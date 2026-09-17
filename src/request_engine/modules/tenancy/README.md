@@ -98,10 +98,21 @@ the tenant's root operational authority through
 `operations.manage_*` scopes as delegated Representations on an active
 `organization` Party. It is bootstrap-only (idempotent replay, no general
 Representation administration) and exposes the owner-backed
-`has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`
-(`onboarding.read` composes this fact through `contracts/onboarding_readiness.py`;
-the readiness router is Tenancy-owned HTTP composition over other modules'
-published readers).
+`has_active_organization_party` fact consumed by `GET /v1/onboarding/readiness`.
+
+## Identity-aware onboarding facts (E2)
+
+Tenancy also publishes `contracts/onboarding_readiness.py`:
+`has_active_organization_party` plus a tenant-scoped, PII-free
+`OnboardingIdentityFactsReader`. The reader projects aggregated
+identity/control facts (active controller, authenticatable controller,
+recorded-policy readiness, staff-administration availability, observed time and
+useful revisions) through the read-only SECURITY DEFINER function
+`request_engine.read_onboarding_identity_facts`, which refuses any organization
+other than the transaction's current tenant. The `GET /v1/onboarding/readiness`
+projection itself is Onboarding-owned HTTP composition over the published
+readers of Tenancy, Catalog, Booking, Queue and Communications; Tenancy does not
+own that router.
 
 ## Staff administrative contacts (R2)
 

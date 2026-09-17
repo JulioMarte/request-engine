@@ -9,6 +9,15 @@ It owns:
 - composition of readiness facts published by Tenancy, Catalog, Booking, Queue and Communications;
 - readiness blockers derived from those facts.
 
+The projection is advisory: each owner reader uses its own transaction, so the
+report is not a global atomic snapshot and every suggested command revalidates
+its own authority. The Tenancy reader additionally publishes tenant-scoped
+identity/control facts (active and authenticatable controller, recorded-policy
+readiness, staff-administration availability); when that reader fails its
+section is reported as `unknown` (never ready) without fabricated blockers.
+Recovery readiness is intentionally `unknown` in this iteration because
+delivery/operator configuration is private-process readiness, not a tenant read.
+
 It does **not** own or mutate any source fact:
 
 - Organization/Party/authority -> `tenancy`;

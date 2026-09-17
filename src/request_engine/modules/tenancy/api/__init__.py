@@ -36,6 +36,9 @@ from request_engine.modules.tenancy.adapters.db.integration_governance_commands 
 from request_engine.modules.tenancy.adapters.db.integration_governance_reader import (
     PostgresIntegrationGovernanceReader,
 )
+from request_engine.modules.tenancy.adapters.db.onboarding_identity_reader import (
+    PostgresOnboardingIdentityFactsReader,
+)
 from request_engine.modules.tenancy.adapters.db.onboarding_party_reader import (
     PostgresBusinessPartyReader,
 )
@@ -126,7 +129,10 @@ from request_engine.modules.tenancy.contracts.authority import (
     OperationalAuthorityPartyReader,
     PartyAuthorityReader,
 )
-from request_engine.modules.tenancy.contracts.onboarding_readiness import BusinessPartyReader
+from request_engine.modules.tenancy.contracts.onboarding_readiness import (
+    BusinessPartyReader,
+    OnboardingIdentityFactsReader,
+)
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
@@ -153,6 +159,14 @@ def build_onboarding_business_party_reader(session_factory: SessionFactory) -> B
     """Compose the tenancy-owned business-Party readiness reader for composition roots."""
 
     return PostgresBusinessPartyReader(session_factory)
+
+
+def build_onboarding_identity_facts_reader(
+    session_factory: SessionFactory,
+) -> OnboardingIdentityFactsReader:
+    """Compose the tenancy-owned identity/control readiness reader for composition roots."""
+
+    return PostgresOnboardingIdentityFactsReader(session_factory)
 
 
 def build_principal_authority_reader(session_factory: SessionFactory) -> PrincipalAuthorityReader:

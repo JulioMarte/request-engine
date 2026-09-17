@@ -369,3 +369,10 @@ statement = "A controller-policy upgrade requires an explicit current controller
 severity = "high"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security", "provenance"]
+
+[[guarantees]]
+id = "INV-ONBOARDING-READINESS-001"
+statement = "The onboarding readiness projection is an advisory, tenant-scoped composition of owner-published facts: it exposes identity, tenant_control, staff_administration and recovery sections with an explicit ready/blocked/unknown status, never reports a section ready when its owner reader failed (unknown, ready=false, no fabricated blockers), never derives authority or identity from the response, and never leaks another tenant's or the platform's identities, secrets or global recovery configuration. Identity/control facts are read through a tenant-guarded least-privilege surface that refuses any organization other than the transaction's current tenant, and each command the projection suggests revalidates its own authority."
+severity = "high"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]

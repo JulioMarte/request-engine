@@ -94,6 +94,7 @@ def install_business_modules(
         communications_reader=communications_onboarding.build_onboarding_communications_reader(
             session_factory
         ),
+        identity_reader=tenancy_api.build_onboarding_identity_facts_reader(session_factory),
     )
     recovery_capacity = build_recovery_capacity_source(
         session_factory,
