@@ -27,8 +27,9 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         "enabled",
     }
     enabled = {name: spec for name, spec in suites.items() if spec.get("enabled", True)}
-    assert enabled, "at least one E2E suite must remain executable"
+    assert len(enabled) >= 2, "the reusable platform must exercise more than one suite"
     namespaces: set[str] = set()
+    selectors: set[str] = set()
     for name, spec in enabled.items():
         missing = required - set(spec)
         assert not missing, f"{name} is missing registry fields: {sorted(missing)}"
@@ -36,8 +37,11 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
             f"{name} must default to an isolated authoritative world"
         )
         namespace = spec["artifact_namespace"]
+        selector = spec["selector"]
         assert namespace not in namespaces, f"duplicate E2E artifact namespace: {namespace}"
+        assert selector not in selectors, f"duplicate E2E selector: {selector}"
         namespaces.add(namespace)
+        selectors.add(selector)
 
 
 def test_enabled_e2e_suite_dependencies_are_supported() -> None:
