@@ -633,7 +633,10 @@ def _wait_for_sink_attempt(reservation_id: str, timeout_seconds: int = 45) -> No
     raise RuntimeError("worker never attempted the blocked durable reservation event")
 
 
-def _wait_for_sink_delivery(reservation_id: str, timeout_seconds: int = 60) -> None:
+def _wait_for_sink_delivery(reservation_id: str, timeout_seconds: int = 120) -> None:
+    # The outbox lease is 60s. A worker killed while holding the blocked event's
+    # lease can only be reclaimed after expiry, so the post-restart wait must
+    # exceed one lease plus reclaim/redelivery latency.
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if _matching_sink_event(_sink_events("events"), reservation_id):

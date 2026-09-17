@@ -110,7 +110,12 @@ services:
       REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
       REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
       REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-}
-      REQUEST_ENGINE_WEBHOOK_BASE_URL: http://api:8000
+      # The webhook delivery transport is HTTPS-only by contract. External
+      # TLS/ingress is out of scope for this lane, so the worker points at a
+      # reserved non-resolving placeholder. It is never contacted by the
+      # worker-restart journey, whose durable work is the outbox publisher
+      # below; a send would fail closed as an ambiguous provider result.
+      REQUEST_ENGINE_WEBHOOK_BASE_URL: https://webhook.invalid/handoff
       REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: request_engine.bootstrap.http_outbox_publisher:create_publisher
       REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
     command: [request-engine-worker]
