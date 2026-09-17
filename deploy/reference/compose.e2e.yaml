@@ -7,11 +7,11 @@ x-request-engine: &request-engine
   image: request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}
 
 x-common-env: &common-env
-  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
-  REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
-  REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker@postgres:5432/request_engine
-  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read@postgres:5432/request_engine
-  REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control@postgres:5432/request_engine
+  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+  REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+  REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker:ci-worker-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read:ci-read-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
