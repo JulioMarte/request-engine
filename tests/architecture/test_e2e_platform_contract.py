@@ -61,7 +61,7 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
 def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
     enabled = _enabled_suites()
     runner_module = _load_runner_module()
-    runner_suites = getattr(runner_module, "SUITES")
+    runner_suites = runner_module.SUITES
     assert isinstance(runner_suites, dict)
     registered = {str(spec["selector"]) for spec in enabled.values()}
     implemented = set(runner_suites)
