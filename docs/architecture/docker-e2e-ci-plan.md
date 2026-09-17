@@ -344,7 +344,7 @@ Una DB proof cuyo riesgo sea precisamente RLS/constraint/lock pertenece a otra t
 
 El bootstrap actual genera una contraseña efímera y no entrega al runner el bootstrap DSN/token.
 
-Para suites largas todavía falta formalizar el handoff reusable de credenciales y estado entre fases. El contrato objetivo sigue siendo:
+El handoff reusable ya está implementado para el journey F-01/worker-restart: IDs y revisiones no sensibles viajan por el workspace de estado (`bootstrap.json`, `f01-foundation.json`, `worker-booking.json`) y las credenciales viven en un workspace de secretos separado y efímero. La generalización a otras suites sigue pendiente. El contrato es:
 
 ### Secretos
 
@@ -355,7 +355,7 @@ Para suites largas todavía falta formalizar el handoff reusable de credenciales
 
 ### Estado de suite
 
-Una suite multifase podrá usar un volumen/archivo efímero del runner para IDs/revisions no sensibles y un canal separado para secretos.
+Una suite multifase usa archivos efímeros compartidos con el runner para IDs/revisions no sensibles y un canal separado para secretos; nuevas suites deben reutilizar este patrón en lugar de inventar un state bus alternativo.
 
 No usar PostgreSQL auxiliar como state bus del test.
 
@@ -485,7 +485,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - `workflow_dispatch` y `workflow_call` reutilizables;
 - fitness checks registry ↔ runner ↔ topology;
 - Docker E2E exact-head verde para el lane `smoke`;
-- F-01 black-box parcialmente demostrado en el lane PR: bootstrap → platform login → segundo provisioner → organization/tenant controller → integration principal con autoridad workload real → supply/capacity → booking durable → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
+- F-01 black-box parcialmente demostrado en el lane PR: bootstrap → platform login → segundo provisioner → organization/tenant controller → rechazo de autoridad HUMAN para workload → integration principal con autoridad workload real → revocación de integration con invalidación inmediata del bearer → supply/capacity → slot discovery → booking durable → rechazo de segundo consumo del mismo slot → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
 - fault injection real con barrera observable `block/release` del event sink y kill/restart propiedad del host, no del runner;
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 
@@ -501,7 +501,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
 4. extender el protocolo de fault injection ya demostrado (barrera `block/release` del sink + `worker:kill-restart` del orquestador) a API y otras superficies;
 5. provisionar worker Principal/publisher reales para suites worker: el Principal ya nace por el contrato de integration sobre la autoridad workload de despliegue; el publisher sigue siendo el adapter HTTP de referencia;
-6. F-01 restante como suite black-box: techos staff/AGENT, revocación local, recovery gobernado, continuidad de último controller y fault injection de API;
+6. F-01 restante como suite black-box: techos staff/AGENT, recovery gobernado, continuidad de último controller y fault injection/reconciliation de API; la revocación local de INTEGRATION ya está demostrada;
 7. Vault/Mailpit funcionalmente conectados a journeys, no sólo disponibles como profiles;
 8. Authentik/OIDC lane;
 9. policy automática PR/merge/nightly/all y calibración de coste/flakiness;
@@ -517,7 +517,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 | P2b | evidence/secret hardening estructural | parcial: collector saneado; handoff de estado/secretos implementado para el journey worker-restart |
 | P3a | generic runner + registry + selector + edge/backend + profiles + isolation | **implementado y demostrado** |
 | P3b | fresh-world orchestration + namespaced evidence + `all` semantics + reusable workflow | **implementado; smoke demostrado, `all` dedicado aún por calibrar** |
-| P4 | F-01 + worker/API fault injection | parcial: F-01 foundation + worker durable recovery demostrados; fault injection de API pendiente |
+| P4 | F-01 + worker/API fault injection | parcial: foundation, workload-kind boundary, integration revocation, capacity conflict y worker durable recovery demostrados; staff/AGENT, recovery/last-controller y fault injection de API pendientes |
 | P5 | suites dirigidas booking/authority/recovery/worker | pendiente según valor |
 | P6 | OIDC/Authentik + subset CI-feasible de G | pendiente |
 | P7 | coste/flakiness + selection policy + required checks | pendiente |
@@ -571,7 +571,7 @@ Cada excepción debe explicar por qué la plataforma reusable no puede demostrar
 - aislamiento runner/backend;
 - journeys black-box según suites implementadas;
 - provisioning por contratos públicos cuando la suite lo ejerce;
-- crash/restart cuando una suite futura lo implemente;
+- crash/restart durable del worker con barrera externa, retry y entrega observable del outbox; otras superficies requieren suites específicas;
 - Vault dev/Mailpit plumbing cuando la suite lo ejerza;
 - OpenAPI/discovery/readiness observables.
 
