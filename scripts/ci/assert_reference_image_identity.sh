@@ -7,7 +7,6 @@ expected_id="$(docker image inspect "$expected" --format '{{.Id}}')"
 
 printf 'expected_image=%s\nexpected_id=%s\n' "$expected" "$expected_id"
 
-# Running long-lived Request Engine processes must use the exact image ID built once by CI.
 for service in api control-plane; do
   cid="$(${compose[@]} ps -q "$service")"
   if [[ -z "$cid" ]]; then
@@ -22,20 +21,15 @@ for service in api control-plane; do
   fi
 done
 
-# One-shot and opt-in surfaces must resolve to the same image reference too.
-# --profile worker makes the worker visible to Compose config without starting it.
-config_json="$(${compose[@]} --profile worker config --format json)"
-python - "$expected" "$config_json" <<'PY'
-import json
-import sys
-
-expected = sys.argv[1]
-config = json.loads(sys.argv[2])
+"${compose[@]}" --profile worker config --format json | python -c '
+import json, sys
+expected=sys.argv[1]
+config=json.load(sys.stdin)
 for service in ("migrate", "api", "control-plane", "worker"):
-    configured = config["services"][service]["image"]
+    configured=config["services"][service]["image"]
     print(f"configured.{service}={configured}")
     if configured != expected:
         raise SystemExit(f"{service} resolves to {configured!r}, expected {expected!r}")
-PY
+' "$expected"
 
 echo 'all Request Engine execution surfaces resolve to one immutable local image artifact'
