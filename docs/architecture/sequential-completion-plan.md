@@ -1,148 +1,181 @@
 # Plan de implementación secuencial con sub-agentes
 
-Fecha: 2026-09-16. Branch de referencia: `cohesion/system-optimization` (lane de
-integración, PR #132). HEAD de referencia: `ba1acb0c`, revisión vigente `0055`.
+Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization` (lane de integración, PR #132).
 
-Estado: **plan de ejecución propuesto, no certificación ni autorización de
-despliegue**. Es el complemento operativo de
-`architecture/auth-production-completion-plan.md` (que define el contenido de cada
-bloque). Este documento define **cómo se ejecutan** los bloques restantes con
-sub-agentes en una sola lane, sin paralelismo real.
+Estado: **plan operativo de ejecución, no certificación ni autorización de despliegue**. Complementa `architecture/auth-production-completion-plan.md` y la plataforma E2E oficial definida en `architecture/docker-e2e-ci-plan.md`.
 
-Estado de bloques: B4, E1, E2, E3 y F-02 están completados con CI exact-head verde;
-quedan pendientes F-01 y G/D6.
+Estado de bloques: B4, E1, E2, E3 y F-02 están completados con evidencia previa; quedan F-01, la implementación de la plataforma E2E reusable y G/D6.
 
-## 0. Restricciones duras (revisadas)
+## 0. Restricciones duras
 
-| Restricción | Evidencia | Consecuencia |
-| --- | --- | --- |
-| Una sola lane de integración | `tests/architecture/test_branch_workflow_contract.py` | Todo se commitea en `cohesion/system-optimization`; nada de PRs paralelos |
-| Una sola cadena Alembic | `alembic heads` debe dar 1 | Una migración a la vez, en orden; `0001`–`0052` intactas |
-| Una sola DB de test (`request_engine_current`) | `tests/e2e/conftest.py` | Una verificación DB/e2e a la vez |
-| Recursos del host | Docker/CPU/RAM insuficientes | Sin worktrees ni contenedores de DB por bloque; reutilizar el PostgreSQL 18 existente |
-| Certificación de publicación | `engineering-quality/local-publish-certification.md` | `certify_push` exact-SHA por integración; nunca `--no-verify` |
+| Restricción | Consecuencia |
+| --- | --- |
+| Una sola lane de integración | Todo se integra en `cohesion/system-optimization`; sin PRs paralelos de implementación |
+| Una sola cadena Alembic | Una migración a la vez; un solo current head |
+| Exact-head evidence | Ningún bloque se declara cerrado por evidencia de un SHA anterior |
+| Publicación disciplinada | Nunca `--no-verify`; merge sólo con autorización explícita |
+| Falsificabilidad | Un verde sin oracle real no cuenta como prueba |
 
-**Consecuencia de fondo:** el paralelismo se elimina. El ahorro viene de **aislar
-contexto** con sub-agentes (recon, implementación, verificación, reparación)
-ejecutados en serie, no de correr cosas a la vez.
+### Aclaración sobre bases de datos de test
 
-## 1. Modelo de ejecución secuencial
+Para el bucle local/DB tradicional se puede reutilizar una DB dedicada cuando la suite y los recursos del host lo justifiquen.
+
+Para la **plataforma system/E2E reusable**, la regla es distinta:
 
 ```text
-LANE ÚNICA: cohesion/system-optimization  (PR #132)
-   │
-   ├─ Bloque B4  ──► verificación ──► commit ──► certify ──► push ──► CI exact-head
-   ├─ Bloque E1  ──► verificación ──► commit ──► certify ──► push ──► CI exact-head
-   ├─ Bloque E2  ──► ...
-   ├─ Bloque E3  ──► ...
-   ├─ Bloque F-02 ─► ...
-   ├─ Bloque F-01 ─► ...
-   └─ Bloque G/D6 ─► ... (aceptación operacional, owner externo)
+cada suite obtiene un mundo efímero limpio por defecto
 ```
 
-- Se trabaja directamente en la lane con commits coherentes (checkpoints).
-  `git reset`/`revert` local si un bloque sale mal.
-- `tmp/*` solo si un bloque necesita un experimento arriesgado; se descarta y
-  nunca es head de PR.
-- Cada bloque se cierra con CI exact-head verde antes de empezar el siguiente
-  (evita apilar fallos).
+`all` no significa ejecutar suites sobre una misma DB contaminada. Las imágenes/caches se reutilizan; el estado autoritativo no.
 
-## 2. Backlog ordenado (secuencial)
-
-| # | Bloque | Depende de | Migración | Justificación del orden |
-| --- | --- | --- | --- | --- |
-| 1 | B4 auditoría append-only staff/agent/integration | — | 1 | Fundacional de auditabilidad; toca tenancy y sienta el patrón |
-| 2 | E1 ceremonia upgrade controller-policy | B4 (patrón audit) | 1 | Habilita que roots existentes adquieran capabilities; habilita E2 |
-| 3 | E2 onboarding identity-aware | E1, C-02 (hecho) | 0–1 | Consume hechos de E1 y C; puede requerir G para el blocker de operador |
-| 4 | E3 `authority_inspect_resource` | E1 (registry) | 0–1 | Independiente de E2; cierra el contrato de diagnóstico |
-| 5 | F-02 portabilidad IdP (test) | D2/D3 (hecho) | 0 | Barato y de bajo riesgo; puede adelantarse al puesto 1 |
-| 6 | F-01 journey native-only fixture-free | B4+E1+E2+E3+C+D | 0 | Solo tiene sentido cuando el producto está completo |
-| 7 | G/D6 aceptación operacional | decisiones D6 + todos | 0 | Requiere entorno real del owner; borradores pueden empezar antes |
-
-Nota honesta: E2/E3 podrían intercambiarse; F-02 puede moverse al puesto 1 para un
-cierre rápido sin tocar migraciones.
-
-## 3. Bucle por bloque (uso de sub-agentes en serie)
+## 1. Modelo de ejecución
 
 ```text
-1. RECON/DESIGN   (sub-agente, contexto fresco, solo lectura)
-      -> packet: archivos, capabilities, migración, garantías, tests, riesgos, falsabilidad
-2. ORQUESTADOR    revisa el packet, congela contrato, redacta el prompt de implementación
-3. IMPLEMENTACIÓN (sub-agente, contexto fresco + packet completo)
-      -> código + tests en la lane (sin tocar 0001-0052)
-4. VERIFICACIÓN   (orquestador + sub-agente verificador independiente)
-      -> corre suites, inspecciona diff, mutation check, audita honestidad del reporte
-5. REPARACIÓN     (sub-agente nuevo, si hay defectos) con hallazgos exactos -> volver a 4
-6. CIERRE         commit coherente -> certify exact-SHA -> push -> CI exact-head
-7. DOCS           actualizar status doc + current-guarantees.toml + proof-map; congelar bloque
+LANE ÚNICA: cohesion/system-optimization
+   │
+   ├─ bloque de producto/arquitectura
+   │      ↓
+   │   narrow verification
+   │      ↓
+   │   commit / exact-head CI
+   │
+   ├─ plataforma E2E reusable
+   │      ↓
+   │   generic runner + suite registry + isolation + profiles
+   │
+   ├─ F-01
+   │      ↓
+   │   suite consumidora de la plataforma
+   │
+   └─ G/D6
+          ↓
+       aceptación operacional externa donde CI no basta
+```
+
+La plataforma E2E no es un bloque F-01 privado. Es infraestructura reusable para cualquier future system journey.
+
+## 2. Backlog restante
+
+| # | Bloque | Depende de | Resultado esperado |
+| --- | --- | --- | --- |
+| 1 | E2E platform P2b/P3a | Docker smoke existente | evidence hardening, generic runner, suite registry, edge/backend, profiles, isolation |
+| 2 | E2E platform P3b | P3a | fresh-world orchestration, namespaced evidence, `suite=<name|all>` |
+| 3 | F-01 | plataforma reusable + B4/E1/E2/E3/C/D | suite fixture-free native-only, black-box, fault injection |
+| 4 | suites dirigidas adicionales | plataforma reusable | booking/authority/recovery/worker según valor/riesgo |
+| 5 | OIDC / Authentik | plataforma reusable + D2/D3 | suite/profile opt-in Native→OIDC completa |
+| 6 | G/D6 | todos + decisiones externas | aceptación operacional que no puede certificarse sólo en GitHub CI |
+
+La prioridad inmediata es terminar la plataforma reusable antes de cablear F-01 a infraestructura específica.
+
+## 3. Bucle por bloque
+
+```text
+1. RECON/DESIGN
+      -> contratos, owners, riesgos, suites afectadas, falsabilidad
+2. ORQUESTADOR
+      -> congela alcance y Definition of Done
+3. IMPLEMENTACIÓN
+      -> código/tests/docs en la lane
+4. VERIFICACIÓN INDEPENDIENTE
+      -> narrow proof + owning CI lane + adversarial inspection
+5. REPARACIÓN
+      -> hallazgos concretos; volver a 4
+6. CIERRE
+      -> commit coherente + exact-head CI
+7. DOCS
+      -> status/guarantees/proof map/plataforma E2E cuando aplique
 ```
 
 Reglas:
 
-- Un sub-agente por rol y por vez; nunca dos editando los mismos archivos.
-- El verificador no es el implementador (independencia real).
-- El orquestador nunca acepta un "pasó" sin comando + entorno + artefacto.
+- un agente implementador a la vez sobre archivos mutables compartidos;
+- el verificador no acepta “pasó” sin comando, entorno y artifact;
+- los system/E2E nuevos deben declarar qué suite reusable los posee;
+- no crear Compose/workflow duplicado si el suite registry + profiles resuelven el caso.
 
-## 4. Paquete de contexto por sub-agente (plantilla)
+## 4. Contrato para nuevas suites E2E
+
+Toda suite system/E2E debe declarar:
+
+```text
+name
+risk/guarantee
+selector
+required services/profiles
+fresh-world policy
+fault-injection requirements
+expected artifacts
+PR/merge/nightly/manual eligibility
+```
+
+Una suite normal debe poder añadirse sin:
+
+```text
+nuevo compose completo
+nuevo workflow copiado
+nuevo runner image sólo por convenience
+acceso PostgreSQL desde el black-box runner
+```
+
+Excepciones se documentan en `docker-e2e-ci-plan.md`.
+
+## 5. Paquete de contexto por sub-agente
 
 ```text
 ROL: <recon|implementación|verificación|reparación> del bloque <ID>.
-RAMA: cohesion/system-optimization. No crear PR, no tocar .github/development-integration-lane.
-ESTADO: HEAD <sha>, migración vigente <rev>, DB request_engine_current en <rev>, árbol <limpio/dirty>.
-LECTURAS OBLIGATORIAS: AGENTS.md raíz; src/**/AGENTS.md; docs/architecture/system-optimization-mode.md;
-  docs/README.md; docs/10-module-ownership-map.md; README del módulo dueño; contrato del dominio;
-  docs/testing/current-guarantees.toml; docs/testing/current-proof-map.toml; docs/07..09,13,14,15,16;
-  auth-production-completion-plan.md (sección <ID>); auth-implementation-status.md.
-CONTEXTO DEL BLOQUE: qué existe ya, qué NO cambia, migración permitida (una, append 0002+), capabilities.
-CONTRATO DE EVIDENCIA: prueba falsable, PostgreSQL 18 real, sin seedear el resultado, mutation check si es invariante.
-CONTRATO DE HONESTIDAD: reporta solo lo que corrió (comando+entorno+resultado); distingue
-  implementado/validado/bloqueado/no hecho; expón decisiones, preexistentes y límites; prohibido maquillar.
-DELEGACIÓN: puedes spawnear sub-agentes de recon/test de solo lectura; nunca en paralelo sobre los mismos archivos.
-VERIFICACIÓN OBLIGATORIA: <comandos exactos del bloque> + `uv run python scripts/ci/ci_jobs.py python-quality`.
-REPORTE: archivos; contrato; comandos+resultados; mutation red/green; qué NO se hizo; bloqueos.
+RAMA: cohesion/system-optimization.
+ESTADO: HEAD <sha>, Alembic head, árbol <clean/dirty>.
+LECTURAS: docs/README.md; owner contract; docs 07/09/13/14/15/16;
+  auth-production-completion-plan.md; auth-implementation-status.md;
+  docker-e2e-ci-plan.md cuando el trabajo toque system/E2E/CI.
+CONTRATO DE EVIDENCIA: prueba falsable; boundary real; no seedear outcome.
+CONTRATO DE HONESTIDAD: implementado/validado/bloqueado/no hecho claramente separados.
+VERIFICACIÓN: comandos exactos + owning CI lane.
+REPORTE: archivos, contrato, resultados, failure semantics, qué NO se hizo.
 ```
 
-## 5. Definición de terminado por bloque
+## 6. Definition of Done por bloque
 
-Cada bloque cierra solo si:
+Un bloque cierra sólo si:
 
-1. contrato/capability/operationId documentados y coherentes con docs 15/16;
-2. migración (si aplica) aplicada en `request_engine_current`, `0001`–`0052`
-   intactas, `alembic heads` = 1;
-3. pruebas falsables (DB/HTTP/e2e según el bloque) verdes, con mutation check en
-   invariantes y carreras;
-4. `python-quality` 12/12;
-5. `certify_push` exact-SHA PASS y CI exact-head verde;
-6. status doc + garantías + proof-map actualizados;
-7. reporte honesto con lo que NO se cambió.
+1. contrato/owner/capability/operationId coherentes cuando aplique;
+2. migración correcta y único Alembic head cuando aplique;
+3. prueba falsable en el boundary adecuado;
+4. ausencia de side effects importantes verificada;
+5. quality/architecture lane correspondiente verde;
+6. exact-head CI verde para el alcance requerido;
+7. status/docs/guarantees/proof map actualizados;
+8. si crea system/E2E, la suite está registrada en la plataforma reusable y produce evidence namespaceado;
+9. reporte declara qué no fue probado.
 
-## 6. Protocolo de integración (serial)
+## 7. Protocolo de integración
 
-1. Un bloque termina y pasa CI exact-head antes del siguiente.
-2. Si `origin/development` se mueve, reconciliar la lane y reclamarla antes de
-   continuar.
-3. Nunca `--no-verify`, nunca lane mismatch, nunca PR desde `tmp/*`.
-4. Merge a `development` solo con autorización explícita y exact-head verde
-   (PR #132).
+1. No apilar bloques rojos deliberadamente.
+2. Si `development` cambia, reconciliar antes de cerrar el bloque.
+3. Nunca `--no-verify` para forzar publicación.
+4. Merge sólo con autorización explícita y exact-head evidence.
+5. Checks E2E caros pueden permanecer experimentales hasta calibrar costo/flakiness, según la policy de la plataforma.
 
-## 7. Riesgos (secuenciales)
+## 8. Riesgos
 
 | Riesgo | Mitigación |
 | --- | --- |
-| Apilar bloques rojos | No empezar el siguiente hasta CI exact-head verde del anterior |
-| Deriva de la lane | Reconciliar con `origin/development` al inicio de cada bloque |
-| Migración mal ordenada | Una sola `down_revision` = HEAD vigente; verificar `alembic heads` |
-| Sub-agente que sobreafirma | Verificador independiente + comando/entorno/artefacto obligatorio |
-| Contención del contenedor DB | Una suite a la vez; reutilizar el mismo contenedor; no recrear |
-| Context rot entre bloques | Packet de contexto + handoff escrito al cerrar cada bloque |
+| Infra E2E acoplada a F-01 | generic runner + suite registry |
+| Tests order-dependent | fresh world por suite |
+| Coste excesivo | profiles + selección de suites por riesgo + `all` manual/nightly |
+| Falso aislamiento | isolation proof automatizado |
+| Duplicación de CI | reusable workflow/orchestrator parametrizado |
+| Falso verde | oracle independiente + negative side-effect assertions |
+| Sobreafirmación | exact-head artifacts + verificación independiente |
+| Secrets en evidence | sanitización estructural + secret workspace fuera de artifacts |
 
-## 8. Contrato de honestidad (idéntico en todos los prompts)
+## 9. Contrato de honestidad
 
 ```text
-- Declara branch, HEAD, dirty, migración aplicada y DB real usada.
+- Declara branch/HEAD exactos.
 - No reportes un check como pasado si no corrió contra el entorno previsto.
 - Distingue implementado / validado / bloqueado / no hecho.
-- Expón decisiones y preexistentes; no los ocultes tras un verde.
-- Si no puedes probar algo, dilo y explica por qué.
-- Pide a tus sub-agentes el mismo estándar.
+- Un smoke verde no implica que la plataforma reusable esté terminada.
+- Una suite verde no certifica properties fuera de su scope.
+- Si CI no puede probar algo production-shaped, se registra como G/D6, no se simula como certificado.
 ```
