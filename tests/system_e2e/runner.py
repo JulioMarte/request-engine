@@ -90,7 +90,8 @@ def _http_request(
             return response.status, response_body
     except urllib.error.HTTPError as exc:
         response_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"{method} {url} returned HTTP {exc.code}: {response_body[:300]}") from exc
+        message = f"{method} {url} returned HTTP {exc.code}: {response_body[:300]}"
+        raise RuntimeError(message) from exc
 
 
 def _http_json(
@@ -378,7 +379,9 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     sink = _http_get_json("http://event-sink:8090/health")
     if sink.get("status") != "ok":
         raise RuntimeError("reference event sink is not healthy")
-    checkpoints.append(_checkpoint(f"{phase}:worker-runtime", "passed", "worker topology observable"))
+    checkpoints.append(
+        _checkpoint(f"{phase}:worker-runtime", "passed", "worker topology observable")
+    )
 
 
 Suite = Callable[[list[dict[str, str]], str], None]
