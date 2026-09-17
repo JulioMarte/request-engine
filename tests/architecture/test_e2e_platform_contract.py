@@ -40,6 +40,22 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         namespaces.add(namespace)
 
 
+def test_enabled_e2e_suite_dependencies_are_supported() -> None:
+    suites = tomllib.loads(REGISTRY.read_text(encoding="utf-8"))["suites"]
+    allowed_services = {"api", "control-plane", "worker"}
+    allowed_profiles = {"worker", "secrets", "delivery", "oidc"}
+    for name, spec in suites.items():
+        if not spec.get("enabled", True):
+            continue
+        services = set(spec["services"])
+        profiles = set(spec["profiles"])
+        assert services, f"{name} must declare at least one runtime service"
+        assert services <= allowed_services, f"{name} declares unsupported services: {services}"
+        assert profiles <= allowed_profiles, f"{name} declares unsupported profiles: {profiles}"
+        if "worker" in services:
+            assert "worker" in profiles, f"{name} must enable the worker profile"
+
+
 def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     dockerfile = RUNNER_DOCKERFILE.read_text(encoding="utf-8").lower()
     forbidden = (
