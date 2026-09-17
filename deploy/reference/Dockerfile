@@ -10,4 +10,4 @@ COPY alembic.ini ./
 RUN uv sync --frozen --no-dev && useradd --create-home --uid 10001 request-engine && chown -R request-engine:request-engine /app
 USER request-engine
 ENTRYPOINT []
-CMD ["python", "-m", "request_engine.entrypoints.http_server"]
+CMD ["uvicorn", "request_engine.bootstrap.server:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
