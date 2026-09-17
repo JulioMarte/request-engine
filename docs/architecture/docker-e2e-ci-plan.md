@@ -2,15 +2,15 @@
 
 Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization`.
 
-Estado: **arquitectura objetivo oficial para system/E2E tests; P1/P2 smoke base implementados y demostrados; plataforma reusable P3 en ejecución.** No es certificación ni autorización de despliegue a producción.
+Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01, fault injection completo, worker real y policy final de coste/gating siguen pendientes. No es certificación ni autorización de despliegue a producción.
 
-Este documento ya no define una infraestructura específica para F-01. Define la **plataforma reusable de CI E2E de Request Engine**. F-01 será una suite consumidora de esta plataforma, igual que suites futuras de booking, authority, recovery, worker, OIDC u otras capacidades cross-module.
+Este documento define la **plataforma reusable de CI E2E de Request Engine**. F-01 es una suite consumidora de esta plataforma, igual que suites presentes o futuras de surface contract, booking, authority, recovery, worker, OIDC u otras capacidades cross-module.
 
 El principio rector es:
 
 > **El deployment bajo prueba es estable y reusable; el workload de prueba es intercambiable.**
 
-`architecture/auth-production-completion-plan.md` sigue siendo la fuente normativa del contenido de F-01. Este documento define cómo ejecutar ese journey —y otros journeys futuros— de forma aislada, reproducible, black-box y falsificable.
+`architecture/auth-production-completion-plan.md` sigue siendo la fuente normativa del contenido de F-01. Este documento define cómo ejecutar F-01 —y otros journeys— de forma aislada, reproducible, black-box y falsificable.
 
 ## 0. Decisión arquitectónica oficial
 
@@ -30,16 +30,17 @@ La plataforma se divide en dos planos:
                ▼                             ▼
      request-engine:<git-sha>          e2e-runner:<git-sha>
      PostgreSQL 18                     ├── smoke
-     API                               ├── booking
-     control-plane                     ├── authority
-     worker                            ├── recovery
-     Vault                             ├── worker
-     Mailpit                           ├── f01
-     [Authentik]                       ├── oidc
-                                       └── all
+     API                               ├── surface-contract
+     control-plane                     ├── booking [future]
+     worker [profile]                  ├── recovery [future]
+     Vault [profile]                   ├── f01 [future]
+     Mailpit [profile]                 └── ...
+     [Authentik future]
 ```
 
-La infraestructura no se duplica por suite. Existe **una definición de deployment E2E de referencia** y una definición separada de qué workload ejecutar.
+`all` no es una suite interna del runner. Es una operación del **orquestador de plataforma** que enumera las suites habilitadas y ejecuta cada una en un mundo fresco.
+
+La infraestructura no se duplica por suite. Existe una definición de deployment E2E de referencia y una definición separada del workload.
 
 No queremos:
 
@@ -55,14 +56,14 @@ Queremos:
 ```text
 deploy/reference/compose.e2e.yaml
         ×
-suite registry
+tests/system_e2e/suites.toml
         ×
 e2e-runner intercambiable
 ```
 
-Las excepciones deben justificarse por una diferencia real de topología o dependencia externa, no por comodidad del test.
+Las excepciones requieren una diferencia real de topología o toolchain, no comodidad del test.
 
-## 1. Qué hace reusable a la plataforma
+## 1. Unidad reusable y clean install
 
 La unidad reusable es el stack instalado desde cero:
 
@@ -80,47 +81,40 @@ API + control-plane
 worker/providers opcionales según suite
 ```
 
-Sobre ese stack se puede ejecutar cualquier suite compatible mediante el mismo contrato de runner.
+La misma instalación contractualmente reproducible puede recibir diferentes suites black-box.
 
-Ejemplos conceptuales:
+Invocaciones canónicas actuales:
 
-```text
-run_e2e_suite smoke
-run_e2e_suite booking
-run_e2e_suite authority
-run_e2e_suite recovery
-run_e2e_suite worker
-run_e2e_suite f01
-run_e2e_suite oidc
-run_e2e_suite all
+```bash
+bash scripts/ci/run_e2e_platform.sh smoke
+bash scripts/ci/run_e2e_platform.sh surface-contract
+bash scripts/ci/run_e2e_platform.sh all
 ```
 
-El selector de suite no debe requerir modificar Compose ni el workflow para cada nueva feature normal.
+Una suite nueva ordinaria no debe requerir copiar Compose ni crear un workflow específico.
 
 ## 2. Separación de responsabilidades
 
-### 2.1 GitHub Actions / E2E orchestrator
+### 2.1 GitHub Actions / outer orchestrator
 
-GitHub Actions **orquesta infraestructura**, pero no implementa reglas de negocio del journey.
+GitHub Actions orquesta infraestructura; no contiene reglas de negocio del journey.
 
 Responsabilidades:
 
 - checkout;
-- build de la única imagen de Request Engine;
-- build de la imagen genérica `e2e-runner`;
-- resolver la suite solicitada;
-- activar Compose profiles requeridos por esa suite;
-- levantar infraestructura;
-- ejecutar migrations/bootstrap one-shot;
-- arrancar superficies runtime;
-- ejecutar isolation checks;
-- lanzar el runner con la suite seleccionada;
-- inyectar fallos de infraestructura cuando la suite lo declare;
-- recoger evidencia siempre;
-- publicar summary/JUnit/logs;
-- destruir stack, volúmenes y secretos efímeros.
+- invocar el orquestador repository-local;
+- propagar el selector de suite;
+- conservar artifacts aun en failure;
+- publicar summary;
+- permitir ejecución manual y reutilización desde otros workflows.
 
-No debe crear entidades de negocio mediante SQL.
+`.github/workflows/docker-e2e.yml` ya expone:
+
+- `pull_request` → `smoke` por defecto durante calibración;
+- `workflow_dispatch` con input `suite`;
+- `workflow_call` con input `suite`.
+
+El workflow no debe convertirse en una matriz de `if suite == ...` con lógica de negocio.
 
 ### 2.2 Imagen única de Request Engine
 
@@ -135,140 +129,125 @@ request-engine:<git-sha>
         └── worker
 ```
 
-Son procesos/contenedores distintos cuando sus ciclos de vida lo requieren, pero salen del mismo artefacto inmutable. CI compara image ID/digest efectivo, no sólo tags.
+Son procesos/contenedores distintos cuando sus ciclos de vida lo requieren, pero salen del mismo artefacto inmutable. PostgreSQL permanece separado.
 
-PostgreSQL permanece separado.
+CI comprueba identidad efectiva de imagen para las superficies Request Engine relevantes, no sólo tags nominales.
 
 ### 2.3 Imagen genérica `e2e-runner`
 
-`e2e-runner` es un artefacto de pruebas **genérico**, no “el runner F-01”. Debe contener sólo herramientas de consumidor black-box:
+La imagen actual se construye desde `deploy/reference/e2e-runner.Dockerfile` y copia únicamente el runner black-box de `tests/system_e2e/runner.py`.
 
-- Python/pytest;
-- `httpx`;
-- validadores de contrato;
-- soporte de checkpoints/estado/JUnit;
-- suites E2E registradas.
+Actualmente es intencionalmente mínima y usa la stdlib de Python para HTTP/JSON. No instala Request Engine, `psycopg`, SQLAlchemy, Docker CLI ni dependencias de aplicación. Si suites futuras justifican pytest/httpx u otros validadores, pueden añadirse al **toolchain del runner** sin abrir acceso a internals.
 
-No instala el paquete de aplicación Request Engine sólo por comodidad. No copia `src/request_engine`, no usa `pip/uv install -e .`, no contiene `psycopg`/SQLAlchemy para fixtures, no recibe DSNs de PostgreSQL y no monta el Docker socket.
+El runner ejecuta selectores concretos registrados, por ejemplo:
 
-La imagen puede ejecutar distintas suites sin reconstruirse:
-
-```bash
+```text
 e2e-runner run smoke
-e2e-runner run booking
-e2e-runner run recovery
-e2e-runner run f01
-e2e-runner run all
+e2e-runner run surface-contract
 ```
 
-La implementación concreta puede ser un entrypoint propio o un wrapper de pytest; la propiedad normativa es que la selección sea declarativa y no requiera una imagen distinta por suite ordinaria.
+`all` pertenece a `scripts/ci/run_e2e_platform.sh`, no al runner individual.
 
 ### 2.4 Runners especializados: excepción permitida
 
-Se permite un runner distinto cuando la herramienta cambia de naturaleza, por ejemplo:
+Se permite otro runner cuando cambia realmente la naturaleza de la herramienta:
 
 ```text
 e2e-runner-python      journeys HTTP/system
-load-runner-k6         carga/performance
-browser-runner         UX/browser cuando exista frontend soportado
-contract-runner        protocolo/consumer contract específico
+load-runner-k6         load/performance
+browser-runner         browser/UX
+contract-runner        protocolo especializado
 ```
 
-Cada runner especializado debe respetar el mismo boundary: **no PostgreSQL, no Docker socket, no internals de aplicación, no privilegios de instalación salvo contrato explícito**.
+Cada runner especializado conserva por defecto el mismo boundary:
 
-Una suite nueva no justifica por sí sola un runner nuevo.
+- no PostgreSQL;
+- no Docker socket;
+- no internals de aplicación;
+- no credenciales de instalación.
+
+Una suite nueva por sí sola no justifica un runner nuevo.
 
 ## 3. Suite registry: contrato declarativo
 
-La plataforma tendrá un registro de suites versionado en el repo. El formato exacto puede evolucionar (`toml`, YAML o Python data cerrada), pero debe declarar como mínimo:
+El registro canónico existe en:
+
+`tests/system_e2e/suites.toml`
+
+Cada suite habilitada declara como mínimo:
 
 ```text
-suite name
-human description
-test selector / markers
-required services/profiles
-whether fresh world is required
-whether fault injection is required
-expected maximum class of cost/time
+name / description
+selector
+profiles
+runtime services
+fresh_world
+fault_injection
+cost class
 artifact namespace
-whether suite is eligible for PR / merge / nightly / manual
+PR / merge / nightly / manual eligibility
+enabled
 ```
 
-Ejemplo conceptual:
+El resolver está en:
 
-```toml
-[suites.smoke]
-selector = "smoke"
-requires = ["api", "control-plane"]
-fault_injection = false
-fresh_world = true
+`scripts/ci/e2e_suite_registry.py`
 
-[suites.booking]
-selector = "booking"
-requires = ["api", "control-plane"]
-fault_injection = false
-fresh_world = true
+El ejecutor de una sola suite está en:
 
-[suites.recovery]
-selector = "recovery"
-requires = ["api", "control-plane", "worker", "vault", "mailpit"]
-fault_injection = true
-fresh_world = true
+`scripts/ci/run_e2e_suite.sh <suite>`
 
-[suites.f01]
-selector = "f01"
-requires = ["api", "control-plane", "worker", "vault", "mailpit"]
-fault_injection = true
-fresh_world = true
+El dispatcher de plataforma está en:
 
-[suites.oidc]
-selector = "oidc"
-requires = ["api", "control-plane", "authentik"]
-fresh_world = true
-manual_or_scheduled = true
-```
+`scripts/ci/run_e2e_platform.sh <suite|all>`
 
-El workflow no debe contener un árbol grande de lógica específica de features. Debe consultar/resolver el registry mediante un script repository-local estrecho, por ejemplo:
+Suites actualmente habilitadas:
 
 ```text
-scripts/ci/run_e2e_suite.sh <suite>
+smoke
+surface-contract
 ```
 
-o equivalente Python tipado.
+`tests/architecture/test_e2e_platform_contract.py` protege que:
+
+- existan al menos dos suites habilitadas para demostrar reusabilidad real;
+- cada suite tenga los campos obligatorios;
+- artifact namespaces/selectors no colisionen;
+- sólo se declaren services/profiles soportados;
+- todo selector habilitado tenga implementación estática en el runner;
+- el Dockerfile del runner no adquiera atajos hacia DB/application internals.
 
 ## 4. Semántica de `all`
 
-`all` significa **ejecutar todas las suites seleccionadas**, no compartir una base de datos contaminada entre ellas.
+`all` significa ejecutar todas las suites habilitadas, no ejecutar un test gigante ni compartir DB contaminada.
 
-Por defecto:
+Implementación actual:
 
 ```text
-build application image once
-build runner image once
+build Request Engine image once
+build e2e-runner image once
 
-for each suite:
-    create fresh Compose project/world
-    migrate/bootstrap
-    run suite
+for each enabled suite:
+    unique COMPOSE_PROJECT_NAME
+    fresh PostgreSQL volume/world
+    migrate
+    runtime DB identities
+    bootstrap trust root
+    start declared runtime services
+    execute black-box runner
     collect namespaced evidence
-    destroy volumes/world
+    destroy stack + volumes
 ```
 
-Esta política previene dependencia del orden:
+El dispatcher no se detiene en el primer failure: continúa con las suites restantes para conservar evidencia completa y retorna failure agregado al final.
 
-```text
-suite A leaves state
-suite B accidentally depends on A
-suite C only passes after B
-```
+Las imágenes/layers se reutilizan; el estado autoritativo no.
 
-Compartir mundo entre suites es una optimización excepcional. Requiere una agrupación explícita cuya independencia haya sido demostrada y no puede ser el default de `all`.
-
-Las capas/imágenes Docker sí se reutilizan entre suites; el estado autoritativo no.
+Compartir mundo entre suites sería una optimización excepcional y explícita, nunca el default.
 
 ## 5. Cost model y selección de suites
 
-Los system/E2E son caros. La plataforma debe permitir ejecutar sólo la evidencia proporcional al riesgo sin perder una ruta conservadora.
+Los system/E2E son caros. La plataforma permite seleccionar evidencia proporcional al riesgo.
 
 Modelo objetivo:
 
@@ -282,192 +261,138 @@ merge-sensitive / cambios transversales
 nightly / manual / release candidate
     all
     f01
-    fault/recovery suites
+    fault/recovery
     oidc cuando corresponda
 ```
 
-Path-based selection puede ahorrar costo, pero **no puede ser la única protección** para garantías transversales. Cambios en migrations, auth/authority, tenancy, shared runtime, operation catalog o worker pueden obligar suites adicionales aunque el path local parezca pequeño.
+Durante la calibración actual, PR ejecuta `smoke`; las demás suites pueden pedirse por selector mediante `workflow_dispatch`/`workflow_call`.
 
-El suite registry y/o una policy de selección debe ser explícita y revisable; no esconderla en condiciones dispersas del YAML de Actions.
+Los campos `pr`, `merge`, `nightly` y `manual` ya viven en el registry, pero la policy automática que los consume todavía debe calibrarse antes de convertir lanes caros en required checks.
 
-## 6. GitHub Actions reusable interface
+Path-based selection puede ahorrar costo, pero no puede ser la única protección para garantías transversales.
 
-El workflow debe tender a una interfaz reusable, con `workflow_dispatch` y eventualmente `workflow_call`:
+## 6. Redes y aislamiento
 
-```text
-suite: smoke | booking | authority | recovery | worker | f01 | oidc | all
-fault_mode: default | none | suite-defined
-retain_evidence: normal | extended
-```
-
-No todos estos inputs tienen que exponerse desde el primer commit. La propiedad importante es que el workflow sea un **orquestador parametrizado**, no un script monolítico F-01.
-
-Ejemplo conceptual:
-
-```yaml
-workflow_dispatch:
-  inputs:
-    suite:
-      type: choice
-      options: [smoke, booking, authority, recovery, worker, f01, oidc, all]
-```
-
-Otros workflows pueden invocar la plataforma sin duplicar su implementación.
-
-## 7. Redes, puertos y aislamiento
-
-La plataforma usa al menos dos redes explícitas:
+La topología actual usa redes explícitas:
 
 ```text
-edge/test:
+edge:
     e2e-runner
     api
     control-plane
-    [mailpit HTTP si la suite lo necesita]
+    mailpit [sólo profile delivery]
 
-backend:
+backend (internal):
     api
     control-plane
-    worker
+    worker [profile]
     postgres
-    vault
-    mailpit SMTP
+    vault [profile]
+    mailpit [profile]
 ```
 
-Reglas:
+Propiedades actuales:
 
-- `postgres` no pertenece a `edge/test`;
-- `e2e-runner` no pertenece a `backend`;
-- no depender de la red `default` implícita para servicios protegidos;
-- CI no publica PostgreSQL al host;
-- sin `host.docker.internal`, `network_mode: host` ni `extra_hosts` que puentearían el aislamiento;
-- API/control-plane sólo publican host ports en profiles de debug/smoke que lo justifiquen;
-- journey black-box usa DNS interno;
-- Vault no se expone al runner;
-- Mailpit HTTP sólo se expone al runner cuando una suite de plumbing necesita inspeccionarlo.
+- PostgreSQL sólo está en `backend`;
+- `e2e-runner` sólo está en `edge`;
+- `backend` es `internal: true`;
+- PostgreSQL no publica puerto al host en el Compose canónico;
+- runner no monta Docker socket;
+- runner no recibe DSNs de DB;
+- runner comprueba que `request_engine` no sea importable;
+- runner comprueba negativamente que `postgres:5432` no sea resolvible desde su red.
 
-Antes de cualquier suite black-box, CI prueba negativamente:
+Estas comprobaciones aparecen como checkpoints del runner y están además protegidas por fitness checks estáticos.
 
-1. runner no puede resolver/conectar `postgres:5432`;
-2. runner no recibe `*_DATABASE_URL`, `PG*` ni migration DSNs;
-3. `import request_engine` no está disponible como aplicación instalada;
-4. no existe `/var/run/docker.sock`;
-5. inspect sanitizado confirma que el runner sólo está en redes autorizadas.
+No introducir `host.docker.internal`, `network_mode: host`, `extra_hosts` o bridges equivalentes que invaliden este boundary sin una excepción documentada.
 
-## 8. Compose profiles y dependencias por suite
+## 7. Compose profiles y dependencias por suite
 
-No todas las suites necesitan todo el stack.
-
-La definición Compose puede usar profiles para dependencias opcionales:
+El Compose canónico ya contiene profiles opcionales:
 
 ```text
-base:
-    postgres
-    api
-    control-plane
-
-worker profile:
-    worker
-
-secrets profile:
-    vault
-
-delivery profile:
-    mailpit
-
-oidc profile:
-    authentik
+runner   -> e2e-runner
+worker   -> worker
+secrets  -> Vault dev
+delivery -> Mailpit
 ```
 
-Ejemplos:
+El registry declara `profiles` y `services`; `run_e2e_suite.sh` resuelve esos valores y arranca los runtime services declarados por la suite.
 
-```text
-booking  -> base
-recovery -> base + worker + secrets + delivery
-f01      -> base + worker + secrets + delivery
-oidc     -> base + oidc
-```
+El registry, no el test, debe decidir qué infraestructura opcional necesita una suite.
 
-El suite registry decide qué profiles necesita; el test no manipula infraestructura directamente.
+Authentik/OIDC todavía no está implementado en el Compose de referencia; `oidc` se mantiene como profile permitido/futuro del contrato, no como capability ya demostrada.
 
-## 9. Bootstrap, migrations y estado de negocio
+## 8. Bootstrap, migrations y estado de negocio
 
-Un mundo nuevo necesita setup privilegiado antes de que exista una API autenticable.
-
-Setup de infraestructura permitido:
+Setup privilegiado permitido para crear un mundo nuevo:
 
 - `alembic upgrade head`;
 - creación de logins/roles runtime;
 - `request-engine-platform-bootstrap issue`;
 - `request-engine-platform-bootstrap establish`.
 
-Estas acciones one-shot usan la misma imagen Request Engine y credenciales de instalación separadas.
+Estas acciones usan la misma imagen Request Engine y credenciales de instalación separadas del runner.
 
-Después del trust root, el estado de negocio de una suite system/E2E debe crearse mediante contratos soportados. No se permite usar SQL para fabricar el resultado principal que la suite pretende probar.
+Después del trust root, el estado de negocio de una suite system/E2E debe crearse mediante contratos soportados. No se permite SQL para fabricar el outcome principal del journey.
 
-Una suite de DB cuyo riesgo **es precisamente** un constraint/RLS/lock puede usar SQL porque pertenece a otra clase de evidencia. Esa es una excepción de taxonomía, no una excepción para los journeys black-box.
+Una DB proof cuyo riesgo sea precisamente RLS/constraint/lock pertenece a otra taxonomía y puede usar SQL; eso no crea una excepción para journeys black-box.
 
-## 10. Secret/state handoff
+## 9. Secret/state handoff
+
+El bootstrap actual genera una contraseña efímera y no entrega al runner el bootstrap DSN/token.
+
+Para suites largas todavía falta formalizar el handoff reusable de credenciales y estado entre fases. El contrato objetivo sigue siendo:
 
 ### Secretos
 
-- secretos dinámicos se enmascaran inmediatamente en GitHub;
-- bootstrap token se consume durante `establish` y no llega al runner;
-- passwords/proofs reutilizables usan secrets/files efímeros con permisos estrechos;
+- enmascarar secretos dinámicos en GitHub cuando salgan del proceso que los crea;
 - nunca secretos en argv, URL, labels, container names o artifacts;
-- secret workspace separado de `.ci/docker-e2e/` y destruido siempre.
+- secret workspace separado de `.ci/docker-e2e/`;
+- material reutilizable con permisos estrechos y destrucción garantizada.
 
 ### Estado de suite
 
-Una suite multifase puede usar un volumen efímero `e2e-state` accesible sólo al runner:
+Una suite multifase podrá usar un volumen/archivo efímero del runner para IDs/revisions no sensibles y un canal separado para secretos.
 
-- IDs/revisions no sensibles en `state.json`;
-- material secreto separado con permisos 0600;
-- reautenticación por API preferida a persistir bearer tokens;
-- artifact `checkpoints.json` se genera desde una vista sanitizada;
-- nada de tablas auxiliares de PostgreSQL como state bus del test.
+No usar PostgreSQL auxiliar como state bus del test.
 
-Cada suite obtiene su propio state volume/world salvo excepción explícita.
+## 10. Evidence por suite
 
-## 11. Evidence namespace por suite
-
-Los artifacts se namespacean por suite:
+Cada suite usa su propio namespace:
 
 ```text
-.ci/docker-e2e/
-├── platform/
-│   ├── build/
-│   └── metadata/
-├── smoke/
-│   ├── summary.md
-│   ├── junit.xml
-│   ├── checkpoints.json
-│   ├── isolation-proof.json
-│   ├── services/
-│   └── docker/
-├── booking/
-├── recovery/
-├── f01/
-└── oidc/
+.ci/docker-e2e/<artifact_namespace>/
+    phases/
+    services/
+    docker/
+    checkpoints.json
+    metadata.json
+    EVIDENCE_SCOPE.txt
 ```
 
-Un run `all` no mezcla resultados indistinguibles. Debe ser posible responder:
+El collector actual ya evita persistir:
 
-```text
-qué suite falló
-qué checkpoint falló
-qué servicio estaba implicado
-qué image SHA se probó
-qué pasó antes/después
-```
+- `docker compose config` crudo;
+- `docker inspect` crudo.
 
-No se sube `docker compose config` o `docker inspect` crudo si contiene environment/secret material. Se generan proyecciones sanitizadas antes de persistir artifacts.
+En su lugar conserva:
 
-## 12. Fault injection
+- `compose-ps`;
+- lista de services/images;
+- versión Docker/Compose;
+- proyección sanitizada de state/networks/mount destinations;
+- logs por servicio;
+- metadata acotada;
+- redacción secundaria de Bearer/bootstrap tokens/DSN passwords/Vault token patterns.
 
-El runner nunca recibe Docker socket. La suite declara que necesita fault injection; el orquestador ejecuta la acción.
+JUnit separado e `isolation-proof.json` dedicado siguen siendo mejoras futuras; hoy la evidencia de aislamiento vive en `checkpoints.json` + container-state sanitizado.
 
-Patrón:
+## 11. Fault injection
+
+El runner nunca recibe Docker socket. Fault injection pertenece al orquestador.
+
+Contrato objetivo:
 
 ```text
 runner prepares durable observable state
@@ -481,13 +406,13 @@ orchestrator waits health/readiness
 runner resumes and reconciles via public contract
 ```
 
-Se aplica a worker, API u otros procesos cuando el contrato de la suite lo requiera.
+El registry ya puede declarar `fault_injection`, pero el protocolo genérico de barrera/reanudación todavía no está implementado.
 
-No `sleep` arbitrario como único coordinador de races. Usar condición observable, barrier/test hook acotado o evento durable que no cambie la semántica bajo prueba.
+No usar `sleep` arbitrario como único coordinador de races.
 
-## 13. F-01 como suite consumidora de la plataforma
+## 12. F-01 como suite consumidora
 
-F-01 sigue siendo el journey de aceptación más amplio de auth/authority/booking/recovery. Ya no define la plataforma.
+F-01 sigue siendo el journey de aceptación más amplio de auth/authority/booking/recovery. Ya no define la infraestructura.
 
 Mapeo normativo resumido:
 
@@ -512,11 +437,11 @@ F01-17 API/client reconciliation
 F01-OIDC separate Native→OIDC suite/profile
 ```
 
-El detalle normativo sigue en `auth-production-completion-plan.md`; ninguna simplificación de este documento reduce ese alcance.
+El detalle normativo sigue en `auth-production-completion-plan.md`.
 
 Si F-01 necesita SQL o internals para pasar, encontró un gap real de producto/deployment.
 
-## 14. Taxonomía de pruebas
+## 13. Taxonomía
 
 ```text
 unit
@@ -532,93 +457,104 @@ system/E2E
     reusable Docker E2E platform + swappable black-box suite
 ```
 
-Testcontainers no sustituye a esta plataforma porque aquí la unidad bajo prueba es la instalación/topología completa. Puede seguir siendo la mejor herramienta para integration tests más pequeños.
+Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba es la instalación/topología completa.
 
-## 15. Estado real del branch
+## 14. Estado real del branch
 
-### Ya demostrado
+### Implementado y demostrado
 
-- una imagen Request Engine sirve migrate/API/control-plane y resuelve worker al mismo artifact;
+- imagen única Request Engine para migrate/bootstrap/API/control-plane y misma referencia de artifact para worker;
 - PostgreSQL 18 separado;
-- migrations + runtime logins + bootstrap desde mundo limpio;
+- migrations + runtime roles + bootstrap desde mundo limpio;
 - API/control-plane readiness real;
-- host TCP smoke;
-- evidencia básica/artifacts;
-- check experimental durante calibración.
+- imagen genérica `e2e-runner` separada de la aplicación;
+- runner sin Request Engine package, DB DSN ni Docker socket;
+- redes `edge/backend` con backend interno;
+- suite registry versionado;
+- selector de una suite;
+- dispatcher `suite=<name|all>`;
+- services/profiles resueltos desde el registry;
+- fresh Compose project/world por suite;
+- artifacts namespaceados por suite;
+- collector estructuralmente sanitizado;
+- isolation checks runtime;
+- dos suites habilitadas (`smoke`, `surface-contract`) para proteger reusabilidad;
+- `workflow_dispatch` y `workflow_call` reutilizables;
+- fitness checks registry ↔ runner ↔ topology;
+- Docker E2E exact-head verde para el lane `smoke`;
+- Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 
-### Aún pendiente para declarar la plataforma reusable implementada
+### Implementado pero todavía requiere una demostración dedicada más fuerte
 
-1. imagen genérica `e2e-runner`;
-2. suite registry;
-3. selector/orquestador `suite=<name|all>`;
-4. redes `edge/backend`;
-5. Compose profiles por dependencias opcionales;
-6. minimización de env/credenciales por servicio;
-7. secret/state handoff seguro;
-8. isolation proof automatizado;
-9. artifacts namespaceados por suite;
-10. sanitización estructural de compose/inspect;
-11. fresh-world orchestration por suite;
-12. fault-injection protocol genérico;
-13. F-01 implementado como primera suite amplia;
-14. reusable/manual workflow interface;
-15. policy de selección PR/merge/nightly/all calibrada.
+- `all` recorre todas las suites habilitadas con mundo limpio y failure agregado; la semántica está implementada, pero no se usa como default del PR durante calibración;
+- `surface-contract` está registrado/implementado, pero no corre en cada PR (`pr=false`).
 
-El hecho de que el smoke actual esté verde no significa que estos puntos ya existan.
+### Pendiente
 
-## 16. Fases revisadas
+1. minimizar DSNs/credenciales por proceso; el Compose aún usa un `x-common-env` demasiado amplio para API/control-plane;
+2. secret/state handoff reusable para journeys multifase autenticados;
+3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
+4. fault-injection protocol genérico con barriers;
+5. provisionar worker Principal/publisher reales para suites worker;
+6. F-01 completo como suite black-box;
+7. Vault/Mailpit funcionalmente conectados a journeys, no sólo disponibles como profiles;
+8. Authentik/OIDC lane;
+9. policy automática PR/merge/nightly/all y calibración de coste/flakiness;
+10. promoción eventual del Docker E2E desde `continue-on-error` a required cuando la señal sea estable.
 
-| Fase | Entregable |
-| --- | --- |
-| P0 | alcance/gating inicial: completado |
-| P1 | imagen única RE + PostgreSQL separado + reference compose: baseline implementado |
-| P2a | host smoke/readiness/evidencia básica: demostrado |
-| P2b | evidence + secret hardening |
-| P3a | **plataforma reusable**: generic runner + suite registry + selector + edge/backend + profiles + isolation |
-| P3b | fresh-world orchestration + namespaced evidence + `all` semantics |
-| P4 | F-01 como primera suite amplia + worker/API fault injection |
-| P5 | suites adicionales dirigidas: booking/authority/recovery/worker según valor |
-| P6 | OIDC/Authentik y subconjunto CI-feasible de G |
-| P7 | calibración de coste/flakiness + policy PR/merge/nightly + required checks |
+## 15. Fases revisadas
 
-## 17. Definition of Done de la plataforma
+| Fase | Entregable | Estado |
+| --- | --- | --- |
+| P0 | alcance/gating inicial | completado |
+| P1 | imagen única RE + PostgreSQL separado + reference compose | implementado |
+| P2a | clean install + readiness + evidencia básica | demostrado |
+| P2b | evidence/secret hardening estructural | parcial: collector saneado; handoff reusable pendiente |
+| P3a | generic runner + registry + selector + edge/backend + profiles + isolation | **implementado y demostrado** |
+| P3b | fresh-world orchestration + namespaced evidence + `all` semantics + reusable workflow | **implementado; smoke demostrado, `all` dedicado aún por calibrar** |
+| P4 | F-01 + worker/API fault injection | pendiente |
+| P5 | suites dirigidas booking/authority/recovery/worker | pendiente según valor |
+| P6 | OIDC/Authentik + subset CI-feasible de G | pendiente |
+| P7 | coste/flakiness + selection policy + required checks | pendiente |
 
-La plataforma reusable no está terminada hasta demostrar en exact-head CI:
+## 16. Definition of Done de la plataforma completa
+
+El **core reusable** ya existe, pero la plataforma completa no se considera cerrada hasta demostrar:
 
 1. una única imagen RE sirve migrate/bootstrap/API/control-plane/worker;
 2. PostgreSQL está separado;
-3. `e2e-runner` genérico puede ejecutar al menos dos suites distintas sin reconstrucción específica;
-4. suite registry resuelve dependencias/profiles/selectores de forma declarativa;
-5. `suite=all` crea mundo limpio por suite por defecto;
-6. runner no tiene DB DSN, DB network, internals de aplicación ni Docker socket;
-7. isolation proof automatizado queda como evidencia;
-8. estado de negocio system/E2E nace por contratos soportados;
-9. fault injection queda en el orquestador, no en el runner;
-10. artifacts están namespaceados por suite y sobreviven a failure;
+3. runner genérico ejecuta múltiples suites sin imagen específica por suite;
+4. registry resuelve dependencies/profiles/selectores declarativamente;
+5. `all` crea mundo limpio por suite;
+6. runner no tiene DB DSN, DB network, app internals ni Docker socket;
+7. isolation checks quedan como evidencia consumible;
+8. business state system/E2E nace por contratos soportados;
+9. fault injection queda en el orquestador;
+10. artifacts sobreviven failures y están namespaced;
 11. secretos no aparecen en artifacts/config/inspect crudos;
 12. credenciales runtime se distribuyen need-to-know;
-13. misma invocación de suite funciona localmente y en GitHub CI;
-14. F-01 corre como suite, no como implementación especial del workflow;
-15. una suite nueva normal puede añadirse sin copiar Compose ni duplicar workflow;
-16. `all` no crea dependencia de orden entre suites;
-17. policy de coste/gating está documentada y calibrada antes de hacer checks caros required.
+13. la misma invocación funciona localmente y en GitHub CI;
+14. F-01 corre como suite ordinaria de la plataforma;
+15. una suite normal puede añadirse sin copiar Compose/workflow;
+16. `all` no crea dependencia de orden;
+17. policy de coste/gating se calibra antes de hacer required los lanes caros.
 
-## 18. Excepciones permitidas
+## 17. Excepciones permitidas
 
-La plataforma es el default ideal para system/E2E, no una religión.
+La plataforma es el default para system/E2E, no una regla ciega.
 
 Excepciones válidas pueden incluir:
 
 - browser/load runner con toolchain distinto;
 - prueba production-shaped externa que no cabe en GitHub-hosted runner;
-- restore/backup/fencing que necesita entorno aislado mayor;
+- restore/backup/fencing que requiere entorno mayor;
 - TLS/ingress externo;
 - proveedor externo real cuya certificación no puede simularse;
-- benchmark que necesita hardware especializado.
+- benchmark con hardware especializado.
 
-Cada excepción debe explicar **por qué la plataforma reusable no puede demostrar el riesgo**, qué boundary alternativo usa y qué evidencia produce. No se acepta una excepción sólo para evitar implementar una API pública que el producto necesita.
+Cada excepción debe explicar por qué la plataforma reusable no puede demostrar el riesgo, qué boundary alternativo usa y qué evidencia produce.
 
-## 19. Qué CI puede y no puede certificar
+## 18. Qué CI puede y no puede certificar
 
 ### CI puede demostrar
 
@@ -627,14 +563,14 @@ Cada excepción debe explicar **por qué la plataforma reusable no puede demostr
 - runtime DB roles/surfaces;
 - readiness;
 - TCP real entre contenedores;
-- journeys black-box swappeables;
-- provisioning por contratos públicos;
-- booking/authority/recovery/etc. según suite;
-- worker/API crash/restart cuando la suite lo exige;
-- Vault dev/Mailpit plumbing;
+- aislamiento runner/backend;
+- journeys black-box según suites implementadas;
+- provisioning por contratos públicos cuando la suite lo ejerce;
+- crash/restart cuando una suite futura lo implemente;
+- Vault dev/Mailpit plumbing cuando la suite lo ejerza;
 - OpenAPI/discovery/readiness observables.
 
-### Sigue fuera de CI normal
+### Fuera de CI normal
 
 - TLS/ingress externo real;
 - deliverability real de correo/SPF/DKIM/reputation;
@@ -646,11 +582,11 @@ Cada excepción debe explicar **por qué la plataforma reusable no puede demostr
 
 Un run verde no certifica esas propiedades.
 
-## 20. Criterios de falsificación
+## 19. Criterios de falsificación
 
 La plataforma se considera rota aunque CI esté verde si:
 
-- una suite system/E2E importa internals para crear/verificar el outcome principal;
+- una suite system/E2E importa internals para crear/verificar su outcome principal;
 - runner puede conectar PostgreSQL;
 - suite obtiene IDs/revisions por SELECT por falta de API pública;
 - worker usa principal/publisher inventado para pasar;
@@ -663,7 +599,7 @@ La plataforma se considera rota aunque CI esté verde si:
 - una fase PASS no tiene oracle observable;
 - se presenta Vault dev/Mailpit como producción lista.
 
-## 21. Regla rectora final
+## 20. Regla rectora final
 
 La infraestructura E2E de Request Engine debe comportarse como una **plataforma de instalación + ejecución de suites**, no como un test gigante cableado a un único journey.
 
