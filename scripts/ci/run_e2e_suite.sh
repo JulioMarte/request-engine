@@ -77,7 +77,8 @@ for profile in "${profiles[@]}"; do
     delivery) infra+=(mailpit) ;;
   esac
 done
-"${compose[@]}" up -d "${infra[@]}" 2>&1 | tee "$suite_artifacts/phases/infrastructure.log"
+"${compose[@]}" up -d --wait --wait-timeout "${INFRA_READY_TIMEOUT_SECONDS:-120}" \
+  "${infra[@]}" 2>&1 | tee "$suite_artifacts/phases/infrastructure.log"
 
 {
   "${compose[@]}" run --rm --no-deps migrate
