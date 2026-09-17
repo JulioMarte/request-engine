@@ -47,6 +47,8 @@ tenant staff/agent/integration commands, E1-E3, the F journeys and G/D6 operatio
 acceptance, tracked in `architecture/auth-implementation-status.md`. The execution
 method for those remaining blocks — single integration lane, serialized migrations,
 context-isolated sub-agent roles — is `architecture/sequential-completion-plan.md`.
+The proposed Docker-based GitHub CI execution of the remaining end-to-end journeys
+(F-01 and the CI-feasible subset of G) is `architecture/docker-e2e-ci-plan.md`.
 
 For present-day ownership and boundaries, start here:
 
