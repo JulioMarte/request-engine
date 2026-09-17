@@ -376,3 +376,10 @@ statement = "The onboarding readiness projection is an advisory, tenant-scoped c
 severity = "high"
 required_evidence = ["invariant", "contract", "adversarial"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+statement = "The self resource-authority inspection query returns an advisory allowed/denied/indeterminate decision about the caller's own effective authority for an explicitly supported operation, computed by the owning module's current authority primitive rather than by Tenancy: the decision agrees with the owner authorization for the same revision, a foreign or absent target is indistinguishable from a random identifier and yields the same opaque 404, the actor organization and principal always come from the trusted ActorContext and never from the request body, and the operation never mutates authority, idempotency, audit or outbox state."
+severity = "high"
+required_evidence = ["invariant", "contract", "adversarial"]
+risk = ["security"]

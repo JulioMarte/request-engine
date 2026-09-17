@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from fastapi import APIRouter, FastAPI, Request
 
 from request_engine.modules.tenancy.adapters.db.agent_governance_commands import (
@@ -104,6 +106,10 @@ from request_engine.modules.tenancy.api.integration_governance_routes import (
 )
 from request_engine.modules.tenancy.api.operational_router import create_operational_router
 from request_engine.modules.tenancy.api.party_registry_http import install_party_registry_http
+from request_engine.modules.tenancy.api.resource_authority_inspection import (
+    add_resource_authority_inspection_error_handlers,
+    create_resource_authority_inspection_router,
+)
 from request_engine.modules.tenancy.api.self_authority import (
     create_self_authority_router,
     self_authority_error_handler,
@@ -133,6 +139,7 @@ from request_engine.modules.tenancy.contracts.onboarding_readiness import (
     BusinessPartyReader,
     OnboardingIdentityFactsReader,
 )
+from request_engine.modules.tenancy.contracts.resource_authority import ResourceAuthorityInspector
 from request_engine.platform.db.native_human_auth_store import PostgresNativeHumanAuthStore
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.context import ActorContext
@@ -188,6 +195,7 @@ def install_http(
     actor_resolver: ActorResolver,
     identity_exchange_fingerprint_key: bytes | None = None,
     identity_link_verifier: OidcLinkVerifier | None = None,
+    resource_authority_inspectors: Sequence[ResourceAuthorityInspector] = (),
 ) -> None:
     """Connect tenancy Party, identity-exchange and staff administration HTTP surfaces."""
 
@@ -196,6 +204,13 @@ def install_http(
     app.include_router(
         create_self_authority_router(
             reader=PostgresSelfAuthorityReader(session_factory),
+            actor_resolver=actor_resolver,
+        )
+    )
+    add_resource_authority_inspection_error_handlers(app)
+    app.include_router(
+        create_resource_authority_inspection_router(
+            inspectors=resource_authority_inspectors,
             actor_resolver=actor_resolver,
         )
     )

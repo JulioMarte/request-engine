@@ -207,6 +207,86 @@ transaction, not a cross-reader global snapshot; the identity reader failure is
 caught at the composition boundary (any exception yields `unknown`); no migration
 `0001`-`0053` was edited; no commit, push, PR or deployment was performed.
 
+## Resource-effective authority inspection (E3) (2026-09-16, revision 0055)
+
+Block E3 of `auth-production-completion-plan.md`, on branch
+`cohesion/system-optimization`. Migration `0055_authority_inspect_policy` appends
+from `0054`; `alembic heads` is one. Local/dirty-tree evidence only; no exact-head
+GitHub CI.
+
+Production change:
+
+- Capability `authority.inspect_resource` (operator exposure, operational plane,
+  query, no idempotency/expected revision, no tool projection) registered in
+  `platform/security/capability_registry_identity_authority.py`.
+- Migration `0055_authority_inspect_policy` appends the immutable
+  `tenant-controller-v5` catalog row = v4 plus the delegable operational
+  `authority.inspect_resource` grant. No table, function or backfill; existing
+  roots and revoked grants are neither upgraded nor restored. New native roots
+  still select `tenant-controller-v3`; v5 is a governed upgrade target exactly like
+  v4 (documented decision, consistent with E1).
+- Pydantic-free tenancy contract `contracts/resource_authority.py`:
+  `ResourceAuthorityOperation` (`appointments.book`, `booking.manage_supply`),
+  `ResourceAuthorityQuery` (per-operation shape validation), `ResourceAuthorityDecision`
+  (`allowed`/`denied`/`indeterminate`, reason codes, authority/representation
+  revisions), `ResourceAuthorityInspector` Protocol and the typed
+  `ResourceAuthorityTargetNotFound`.
+- The owner (booking) implements the inspector in
+  `adapters/db/resource_authority_inspector.py`, reusing the same current
+  exact-scope Representation primitive as its commands
+  (`resolve_current_party_authority`, read-only) for `appointments.book` and
+  `operations.manage_supply`, plus the `appointments.subject_override` permission
+  for `appointments.book`. No locks, no writes, no idempotency. Tenancy never
+  reproduces owner rules; the endpoint receives injected
+  `ResourceAuthorityInspector`s.
+- HTTP `POST /v1/me/authority:inspect` (`authority_inspect_resource`, owner
+  tenancy, capability `authority.inspect_resource`) in
+  `tenancy/api/resource_authority_inspection.py`, wired in `tenancy/api/__init__.py`
+  and composed explicitly in `entrypoints/http/module_composition.py`
+  (`booking -> tenancy.contracts`; entrypoints import both `api` surfaces, no
+  bootstrap service locator). Actor organization/principal come only from
+  `ActorContext`; body is a closed typed payload. Unknown/unsupported operation and
+  operation/target mismatch return `422`; foreign/absent/random targets return the
+  same opaque `404`; missing capability returns `403`. Responses are `no-store`
+  and carry `requires_owner_validation: true`.
+
+Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0055):
+
+- `tests/db/test_resource_authority_inspection.py` (7 proofs): the endpoint
+  decision agrees with the real owner authorization (`require_subject_authority`,
+  `require_operational_authority`) for the same revision; override requires a
+  visible target; foreign and random targets raise the same typed not-found;
+  mutation-free fingerprint across representations/grants/authority revision/
+  audit/outbox/idempotency; inactive actor and foreign actor tenant are
+  indeterminate; per-operation query shape validation.
+- `tests/e2e/test_resource_authority_inspection_http.py` (1 journey): real native
+  login, `403` before the v5 grant, override `allowed` without a representation,
+  foreign/random identical `404` with no id leak, unknown operation and
+  operation/target mismatch `422`, supply `denied` then `allowed` after a current
+  representation, book representation path after revoking the override, `no-store`,
+  no Idempotency-Key and no tool projection in OpenAPI.
+- `tests/db/test_initial_controller_policy.py` extended: v5 is immutable and adds
+  only the explicit `authority.inspect_resource` grant.
+- `tests/e2e/http_surface_authority_inspection.py` classifies the new operation in
+  the public HTTP registry; the registry metadata contract now accepts a
+  non-mutating POST query custom method (GET/POST/PUT still never require
+  idempotency when non-mutating, and every mutating operation must be POST/PUT with
+  network idempotency).
+- New guarantee `INV-RESOURCE-AUTHORITY-INSPECTION-001` with proof-map entries; the
+  new DB suite was added to `scripts/ci/run_current_product.sh`.
+
+Mutation check (manual, on the local DB): changing the inspector's
+`appointments.book` scope key from `appointments.book` to `appointments.manage`
+made `test_inspection_agrees_with_owner_authorization_for_book` fail
+(`denied` instead of `allowed`); restoring it turned the suite green.
+
+Honest limits: the inspector reads a single statement snapshot and the decision is
+advisory, so a command that acts on it still revalidates its own authority; the
+first version supports only the two named operations; `booking.manage_supply` has
+no override (there is no supply override capability) while `appointments.book`
+mirrors the command's `appointments.subject_override`; no migration `0001`-`0054`
+was edited; no commit, push, PR or deployment was performed.
+
 ## Tenant staff/agent/integration append-only audit (B4) (2026-09-16, no new revision)
 
 Block B4 of `auth-production-completion-plan.md`, under the frozen decision to reuse
@@ -1053,7 +1133,7 @@ written, evidence not run), `pendiente` (no owner decision required yet),
 | D | Binding lifecycle, dual-proof linking, global disable | Tenancy | validado (native + OIDC, opt-in) | D1 read projection, D1b binding lifecycle (0046), D3 global native disable (0047 + private HTTP journey), D2 self-service native linking with reauthentication freshness (0048/0049), link hardening (0050) and the OIDC second-proof path (0051) implemented and locally validated; OIDC is opt-in and disabled by default |
 | E1 | Existing controller-policy upgrade path | Tenancy | validado (local; exact-head CI pending) | 0053 adds immutable `tenant-controller-v4` and the governed `controller_policy_upgrade` command (POST `/v1/controller-policy-upgrades`): immutable catalog resolution, delegable ceiling, no self-elevation, no revoked-grant resurrection, idempotency and one append-only audit row; DB + HTTP proofs and mutation check green; legacy-root platform ceremony remains operational |
 | E2 | Identity-aware onboarding readiness | Onboarding + Tenancy | validado (local; exact-head CI pending) | 0054 adds the tenant-guarded `read_onboarding_identity_facts` reader and extends `GET /v1/onboarding/readiness` with `identity`/`tenant_control`/`staff_administration`/`recovery` sections (`no-store`, unknown-never-ready); DB + HTTP + module proofs and mutation check green; `recovery` remains `unknown` (private-process readiness) |
-| E3 | Resource-effective authority inspection | owner-backed | pendiente | Needs approved synchronous connection design |
+| E3 | Resource-effective authority inspection | Booking owner + Tenancy endpoint | validado (local; exact-head CI pending) | 0055 appends immutable `tenant-controller-v5`; booking owner inspector reuses `resolve_current_party_authority` read-only for `appointments.book`/`booking.manage_supply`; `POST /v1/me/authority:inspect` (`authority_inspect_resource`, `no-store`, opaque 404, `422` unknown operation) is wired through `tenancy.contracts` and composed in the entrypoint; DB owner-oracle + HTTP proofs and mutation check green |
 | F | Adversarial journeys and fixture-free acceptance | repo | pendiente | After A–E; F-01 requires a clean native-only instance |
 | G | Operational acceptance and publication | operator | bloqueado | D6 environment, ingress/TLS, RPO/RTO, secret store, operators |
 

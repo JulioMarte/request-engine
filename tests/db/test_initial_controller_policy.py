@@ -88,6 +88,7 @@ def test_policy_catalog_is_not_runtime_table(admin_conn: Connection[Any], role: 
         "tenant-controller-v2",
         "tenant-controller-v3",
         "tenant-controller-v4",
+        "tenant-controller-v5",
     ],
 )
 def test_policy_is_immutable_and_unknown_selection_fails(
@@ -279,3 +280,25 @@ def test_v4_adds_only_explicit_controller_policy_upgrade(admin_conn: Connection[
     ).fetchone() == (4,)
     definition = capability_definition("controller_policy_upgrade")
     assert definition is not None and definition.authority_plane.value == "tenant_control"
+
+
+def test_v5_adds_only_explicit_resource_authority_inspection(admin_conn: Connection[Any]) -> None:
+    policies = dict(
+        admin_conn.execute(
+            "SELECT policy_key, grants FROM request_engine.initial_controller_policies"
+        ).fetchall()
+    )
+    assert policies["tenant-controller-v5"] == [
+        *policies["tenant-controller-v4"],
+        {
+            "capability_key": "authority.inspect_resource",
+            "authority_plane": "operational",
+            "delegable": True,
+        },
+    ]
+    assert admin_conn.execute(
+        "SELECT revision FROM request_engine.initial_controller_policies "
+        "WHERE policy_key='tenant-controller-v5'"
+    ).fetchone() == (5,)
+    definition = capability_definition("authority.inspect_resource")
+    assert definition is not None and definition.authority_plane.value == "operational"

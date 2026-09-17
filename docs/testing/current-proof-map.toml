@@ -431,3 +431,13 @@ evidence = ["contract", "invariant", "security"]
 guarantee = "INV-ONBOARDING-READINESS-001"
 path = "tests/modules/onboarding/test_readiness_projection.py"
 evidence = ["contract", "invariant"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+path = "tests/db/test_resource_authority_inspection.py"
+evidence = ["invariant", "adversarial", "security"]
+
+[[proofs]]
+guarantee = "INV-RESOURCE-AUTHORITY-INSPECTION-001"
+path = "tests/e2e/test_resource_authority_inspection_http.py"
+evidence = ["contract", "invariant", "security"]

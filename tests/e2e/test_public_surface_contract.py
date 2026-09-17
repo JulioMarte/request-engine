@@ -149,10 +149,12 @@ def test_public_http_operation_registry_has_complete_test_metadata() -> None:
     assert discovery == _DISCOVERY_OPERATIONS
     for operation in PUBLIC_HTTP_OPERATIONS:
         assert operation.probe.path.startswith("/v1/")
-        if operation.method in {"POST", "PUT"}:
-            assert operation.mutates
+        if operation.mutates:
+            # A mutating operation is a POST/PUT that must carry network idempotency.
+            assert operation.method in {"POST", "PUT"}
             assert operation.idempotency_required
         else:
-            assert operation.method == "GET"
-            assert not operation.mutates
+            # A read-only operation never requires idempotency; a semantic query
+            # custom method may legitimately be a POST (for example :inspect).
             assert not operation.idempotency_required
+            assert operation.method in {"GET", "POST", "PUT"}

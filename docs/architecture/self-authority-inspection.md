@@ -36,6 +36,35 @@ agent risk, delegation, resource state, relationship expiry and concurrency chec
 remain mandatory on invocation. In particular it does not claim to enumerate
 resource ACLs or explain every possible booking/queue rejection.
 
+## Resource-effective authority inspection (E3)
+
+`POST /v1/me/authority:inspect` (`authority_inspect_resource`) is the separate,
+narrow owner-backed Query for "what is my effective authority for this resource
+operation". It is not a broader permission for arbitrary `resource_id`s and it
+does not replace `authority_read_self`.
+
+- Capability `authority.inspect_resource` (operator exposure, operational plane,
+  query, no idempotency or expected revision) is appended to the immutable
+  `tenant-controller-v5` policy by migration `0055`. New roots still select
+  `tenant-controller-v3`; existing roots are not backfilled, matching the E1
+  policy-upgrade posture.
+- Only explicitly supported operations are accepted: `appointments.book` over a
+  `subject_party_id` and `booking.manage_supply` over an `authority_party_id`.
+  Unknown or unsupported operations fail `422`; an operation/target shape mismatch
+  also fails `422`.
+- The owning module implements the inspector. Booking resolves the same current
+  exact-scope Representation its commands use (`appointments.book` and
+  `operations.manage_supply`), in read-only mode via
+  `resolve_current_party_authority`, plus the `appointments.subject_override`
+  permission for `appointments.book`. Tenancy never reproduces the owner rules.
+- The actor organization and principal come from the trusted `ActorContext` only.
+  A foreign or absent target and a random identifier both return the same opaque
+  `404`; decisions are `allowed`/`denied`/`indeterminate` with reason codes and
+  the observed authority/representation revisions. Responses are `no-store`.
+- The operation is mutation-free: no locks, no idempotency receipt, no audit or
+  outbox write. A decision is advisory and revalidated by the command that acts
+  on it.
+
 Connection: owner HTTP DTO -> typed application query/reader port -> app-role
 PostgreSQL transaction. READ/VALIDATE only: one statement snapshot verifies the
 active caller and explicit grant and projects current active relationships to

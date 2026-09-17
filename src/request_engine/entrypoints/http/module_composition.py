@@ -14,6 +14,9 @@ import request_engine.modules.queue.api as queue_api
 import request_engine.modules.queue.api.onboarding as queue_onboarding
 import request_engine.modules.tenancy.api as tenancy_api
 from request_engine.modules.booking.api import install_http as install_booking_http
+from request_engine.modules.booking.api.authority_inspection import (
+    build_resource_authority_inspector,
+)
 from request_engine.modules.booking.api.copilot import build_copilot_booking_reader
 from request_engine.modules.booking.api.recovery import build_recovery_booking_port
 from request_engine.modules.catalog.api import install_http as install_catalog_http
@@ -55,6 +58,7 @@ def install_business_modules(
         actor_resolver=actor_resolver,
         identity_exchange_fingerprint_key=identity_exchange_fingerprint_key,
         identity_link_verifier=identity_link_verifier,
+        resource_authority_inspectors=(build_resource_authority_inspector(session_factory),),
     )
     install_requests_http(app, session_factory=session_factory, actor_resolver=actor_resolver)
     install_catalog_http(app, session_factory=session_factory, actor_resolver=actor_resolver)

@@ -87,6 +87,11 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         CapabilityExposure.OPERATOR,
         "Inspect the current Principal's active tenant Party relationships and revisions.",
     ),
+    query_capability(
+        "authority.inspect_resource",
+        CapabilityExposure.OPERATOR,
+        "Inspect the caller's effective resource authority for an explicitly supported operation.",
+    ),
     _authority_capability(
         "platform.principal.provision",
         AuthorityPlane.PLATFORM,
