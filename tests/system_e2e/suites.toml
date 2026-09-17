@@ -1,0 +1,16 @@
+version = 1
+
+[suites.smoke]
+description = "Clean-install black-box health and isolation smoke for API and control-plane"
+selector = "smoke"
+profiles = []
+services = ["api", "control-plane"]
+fresh_world = true
+fault_injection = false
+cost = "small"
+artifact_namespace = "smoke"
+pr = true
+merge = true
+nightly = true
+manual = true
+enabled = true
