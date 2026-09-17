@@ -9,12 +9,12 @@ import socket
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime, time as datetime_time, timedelta
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlencode
 
 FORBIDDEN_ENV_FRAGMENTS = (
     "DATABASE_URL",
@@ -69,6 +69,7 @@ def _http_request(
     payload: dict[str, object] | None = None,
     bearer: str | None = None,
     idempotency_key: str | None = None,
+    organization_id: str | None = None,
     expected_statuses: tuple[int, ...] = (200,),
 ) -> tuple[int, str]:
     headers = {"Accept": "application/json"}
@@ -80,6 +81,8 @@ def _http_request(
         headers["Authorization"] = f"Bearer {bearer}"
     if idempotency_key is not None:
         headers["Idempotency-Key"] = idempotency_key
+    if organization_id is not None:
+        headers["X-RE-Organization-ID"] = organization_id
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -102,6 +105,7 @@ def _http_json(
     payload: dict[str, object] | None = None,
     bearer: str | None = None,
     idempotency_key: str | None = None,
+    organization_id: str | None = None,
     expected_statuses: tuple[int, ...] = (200,),
 ) -> dict[str, object]:
     _, body = _http_request(
@@ -110,6 +114,7 @@ def _http_json(
         payload=payload,
         bearer=bearer,
         idempotency_key=idempotency_key,
+        organization_id=organization_id,
         expected_statuses=expected_statuses,
     )
     try:
@@ -126,9 +131,16 @@ def _http_json_array(
     url: str,
     *,
     bearer: str | None = None,
+    organization_id: str | None = None,
     expected_statuses: tuple[int, ...] = (200,),
 ) -> list[dict[str, object]]:
-    _, body = _http_request(method, url, bearer=bearer, expected_statuses=expected_statuses)
+    _, body = _http_request(
+        method,
+        url,
+        bearer=bearer,
+        organization_id=organization_id,
+        expected_statuses=expected_statuses,
+    )
     try:
         decoded: object = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -344,7 +356,12 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-03-organization-controller", "passed"))
 
     tenant_token = _native_session(api_url, tenant_login, tenant_password)
-    authority = _http_json("GET", f"{api_url}/v1/me/authority", bearer=tenant_token)
+    authority = _http_json(
+        "GET",
+        f"{api_url}/v1/me/authority",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
     observed_principal_id = _required_string(authority, "principal_id", "self authority response")
     if observed_principal_id != controller_principal_id:
         raise RuntimeError("tenant controller self-authority principal does not match provisioning")
@@ -356,6 +373,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         f"{api_url}/v1/integrations",
         bearer=tenant_token,
         idempotency_key="f01-worker-integration-v1",
+        organization_id=organization_id,
         payload={
             "identity_authority_id": native_authority_id,
             "credential_expires_at": expires_at,
@@ -374,6 +392,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         f"{api_url}/v1/integrations/{integration_principal_id}:activate",
         bearer=tenant_token,
         idempotency_key="f01-worker-integration-activate-v1",
+        organization_id=organization_id,
         payload={
             "expected_revision": revision,
             "provenance_reference": "e2e:f01:worker-integration-activate",
@@ -413,6 +432,7 @@ def _availability_windows() -> list[dict[str, object]]:
 def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
     state_dir, _, _ = _handoff()
     foundation, tenant_token = _tenant_session_from_foundation()
+    organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
     authority_party_id = _required_string(
         foundation, "organization_party_id", "F01 foundation state"
     )
@@ -423,6 +443,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/operations/locations",
         bearer=tenant_token,
         idempotency_key="f01-location-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "location_key": "f01-main-office",
@@ -441,6 +462,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/operations/locations/{location_id}/hours",
         bearer=tenant_token,
         idempotency_key="f01-location-hours-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "expected_operational_revision": revision,
@@ -453,6 +475,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/catalog/resource-capabilities",
         bearer=tenant_token,
         idempotency_key="f01-capability-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "capability_key": "f01-consultation",
@@ -466,6 +489,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/catalog/offerings",
         bearer=tenant_token,
         idempotency_key="f01-offering-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "offering_key": "f01-appointment",
@@ -485,6 +509,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/booking/resources",
         bearer=tenant_token,
         idempotency_key="f01-resource-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "location_id": location_id,
@@ -507,6 +532,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/operations/context-terms",
         bearer=tenant_token,
         idempotency_key="f01-context-terms-v1",
+        organization_id=organization_id,
         payload={
             "authority_party_id": authority_party_id,
             "resource_location_assignment_id": assignment_id,
@@ -523,7 +549,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
     target_date = (datetime.now(UTC) + timedelta(days=1)).date()
     window_start = datetime.combine(target_date, datetime_time(8, 0), tzinfo=UTC)
     window_end = datetime.combine(target_date, datetime_time(18, 0), tzinfo=UTC)
-    query = urllib.parse.urlencode(
+    query = urlencode(
         {
             "offering_version_id": offering_version_id,
             "window_start": window_start.isoformat(),
@@ -537,6 +563,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         "GET",
         f"{api_url}/v1/appointments/slots?{query}",
         bearer=tenant_token,
+        organization_id=organization_id,
     )
     if not slots:
         raise RuntimeError("configured F01 supply produced no appointment slots")
@@ -548,6 +575,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         f"{api_url}/v1/appointments",
         bearer=tenant_token,
         idempotency_key="f01-reservation-v1",
+        organization_id=organization_id,
         payload={"option_id": option_id, "subject_party_id": authority_party_id},
         expected_statuses=(201,),
     )
@@ -623,6 +651,7 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     state_dir, _, _ = _handoff()
     foundation = _json_object(state_dir / "f01-foundation.json")
     _required_string(foundation, "worker_principal_id", "F01 foundation state")
+    organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
     booking = _json_object(state_dir / "worker-booking.json")
     reservation_id = _required_string(booking, "reservation_id", "worker booking state")
     sink = _http_get_json("http://event-sink:8090/health")
@@ -645,12 +674,12 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
 
     _http_json("POST", "http://event-sink:8090/control/release")
     _wait_for_sink_delivery(reservation_id)
-    foundation, tenant_token = _tenant_session_from_foundation()
-    del foundation
+    _, tenant_token = _tenant_session_from_foundation()
     reservation = _http_json(
         "GET",
         f"http://api:8000/v1/appointments/{reservation_id}",
         bearer=tenant_token,
+        organization_id=organization_id,
     )
     if _required_string(reservation, "id", "reservation read response") != reservation_id:
         raise RuntimeError("reservation identity changed across worker restart")
