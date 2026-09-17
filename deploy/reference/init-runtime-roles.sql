@@ -8,6 +8,7 @@ END $$;
 GRANT request_engine_app TO request_e2e_app;
 GRANT request_engine_worker TO request_e2e_worker;
 GRANT request_platform_control TO request_e2e_control;
+GRANT USAGE ON SCHEMA request_platform TO request_e2e_read, request_e2e_control;
 GRANT EXECUTE ON FUNCTION request_platform.read_principal_authority(uuid) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_platform_provisioners(uuid,uuid,integer) TO request_e2e_read;
 GRANT EXECUTE ON FUNCTION request_platform.read_identity_recovery_cases(uuid,uuid,integer) TO request_e2e_read;
