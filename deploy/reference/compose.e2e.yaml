@@ -6,15 +6,17 @@ x-request-engine: &request-engine
     dockerfile: deploy/reference/Dockerfile
   image: request-engine:${REQUEST_ENGINE_IMAGE_TAG:-e2e}
 
-x-common-env: &common-env
+x-public-env: &public-env
   REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
-  REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
-  REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker:ci-worker-only@postgres:5432/request_engine
-  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read:ci-read-only@postgres:5432/request_engine
-  REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
   REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
   REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
   REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
+
+x-platform-env: &platform-env
+  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read:ci-read-only@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control:ci-control-only@postgres:5432/request_engine
+  REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
 
 services:
   postgres:
@@ -61,7 +63,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *common-env
+    environment: *public-env
     command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"]
@@ -75,7 +77,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *common-env
+    environment: *platform-env
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]
@@ -91,9 +93,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      <<: *common-env
+      REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker:ci-worker-only@postgres:5432/request_engine
+      REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app:ci-app-only@postgres:5432/request_engine
       REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
-      REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000-0000-0000-0000-000000000000}
+      REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-}
       REQUEST_ENGINE_WEBHOOK_BASE_URL: http://api:8000
       REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: ${REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY:-}
     command: [request-engine-worker]
