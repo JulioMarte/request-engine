@@ -44,9 +44,7 @@ def _http_get(url: str) -> str:
     with urllib.request.urlopen(url, timeout=5) as response:
         body = response.read().decode("utf-8", errors="replace")
         if response.status != 200:
-            raise RuntimeError(
-                f"{url} returned HTTP {response.status}: {body[:200]}"
-            )
+            raise RuntimeError(f"{url} returned HTTP {response.status}: {body[:200]}")
         return body
 
 
@@ -58,8 +56,7 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
     )
     if forbidden:
         raise RuntimeError(
-            "runner received forbidden database/install environment variables: "
-            f"{forbidden}"
+            f"runner received forbidden database/install environment variables: {forbidden}"
         )
     checkpoints.append(
         _checkpoint(
@@ -81,9 +78,7 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
 
     if Path("/var/run/docker.sock").exists():
         raise RuntimeError("Docker socket is mounted into the black-box runner")
-    checkpoints.append(
-        _checkpoint("runner-docker-isolation", "passed", "Docker socket is absent")
-    )
+    checkpoints.append(_checkpoint("runner-docker-isolation", "passed", "Docker socket is absent"))
 
     try:
         socket.getaddrinfo("postgres", 5432)
@@ -112,9 +107,7 @@ def _run_smoke(checkpoints: list[dict[str, str]]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Request Engine generic black-box E2E runner"
-    )
+    parser = argparse.ArgumentParser(description="Request Engine generic black-box E2E runner")
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
     run.add_argument("suite")
@@ -130,9 +123,7 @@ def main() -> int:
         if args.suite == "smoke":
             _run_smoke(checkpoints)
         else:
-            raise RuntimeError(
-                f"runner does not implement suite selector {args.suite!r}"
-            )
+            raise RuntimeError(f"runner does not implement suite selector {args.suite!r}")
     except (OSError, RuntimeError, urllib.error.URLError) as exc:
         checkpoints.append(_checkpoint("suite", "failed", str(exc)))
         _write_checkpoints(artifact_dir, checkpoints)
