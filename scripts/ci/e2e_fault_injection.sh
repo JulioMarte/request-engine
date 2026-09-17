@@ -29,7 +29,10 @@ case "$action" in
   kill-restart)
     echo "fault.begin target=$target action=$action"
     "${compose[@]}" kill "$target"
-    stopped="$("${compose[@]}" ps -q "$target")"
+    # A service with a restart policy is briefly in "Restarting" state after a
+    # kill, which `ps` (running only) does not list. Check that the container
+    # still exists rather than that it is currently running.
+    stopped="$("${compose[@]}" ps -a -q "$target")"
     [[ -n "$stopped" ]] || {
       echo "fault target '$target' disappeared after kill" >&2
       exit 1
