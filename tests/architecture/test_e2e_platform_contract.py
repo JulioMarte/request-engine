@@ -118,9 +118,7 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
             assert mapping_pattern.fullmatch(mapping), message
         if "worker" in services:
             assert "worker" in profiles, f"{name} must enable the worker profile"
-            assert "worker" in deferred, (
-                f"{name} must provision worker identity before start"
-            )
+            assert "worker" in deferred, f"{name} must provision worker identity before start"
         assert bool(faults) is bool(spec["fault_injection"]), (
             f"{name} fault_injection must match whether faults are declared"
         )
