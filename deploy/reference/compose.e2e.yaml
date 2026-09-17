@@ -106,11 +106,6 @@ services:
       dockerfile: deploy/reference/e2e-runner.Dockerfile
     image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
     profiles: [runner]
-    depends_on:
-      api:
-        condition: service_healthy
-      control-plane:
-        condition: service_healthy
     networks: [edge]
 
 networks:
