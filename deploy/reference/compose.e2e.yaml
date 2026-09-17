@@ -3,13 +3,12 @@ x-app-image: &app-image
   build: {context: ../.., dockerfile: deploy/reference/Dockerfile}
   image: request-engine:e2e
 x-common-env: &common-env
-  REQUEST_ENGINE_APP_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
-  REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker@postgres:5432/request_engine
-  REQUEST_ENGINE_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read@postgres:5432/request_engine
+  REQUEST_ENGINE_DATABASE_URL: postgresql+psycopg://request_e2e_app@postgres:5432/request_engine
+  REQUEST_ENGINE_PLATFORM_READ_DATABASE_URL: postgresql+psycopg://request_e2e_read@postgres:5432/request_engine
   REQUEST_ENGINE_PLATFORM_CONTROL_DATABASE_URL: postgresql+psycopg://request_e2e_control@postgres:5432/request_engine
-  REQUEST_ENGINE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
-  REQUEST_ENGINE_NATIVE_AUTH_PEPPER: ci-only-pepper
-  REQUEST_ENGINE_NATIVE_SESSION_SIGNING_KEY: ci-only-signing-key-at-least-32-bytes
+  REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID: ${REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID:-00000000-0000-0000-0000-000000000001}
+  REQUEST_ENGINE_APPOINTMENT_OPTION_SIGNING_KEY: ci-only-appointment-signing-key-32-bytes-minimum
+  REQUEST_ENGINE_IDENTITY_EXCHANGE_FINGERPRINT_KEY: ci-only-fingerprint-key-32-bytes-minimum
 services:
   postgres:
     image: postgres:18
@@ -48,6 +47,6 @@ services:
     <<: *app-image
     depends_on: {runtime-roles: {condition: service_completed_successfully}}
     environment: *common-env
-    command: [uvicorn, "request_engine.bootstrap.platform_server:create_platform_app", --factory, --host, "0.0.0.0", --port, "8001"]
+    command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"], interval: 3s, timeout: 3s, retries: 40}
     ports: ["127.0.0.1:58001:8001"]
