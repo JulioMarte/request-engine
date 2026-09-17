@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
+import ast
 import tomllib
 from pathlib import Path
-from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/system_e2e/suites.toml"
@@ -16,12 +15,22 @@ def _enabled_suites() -> dict[str, dict[str, object]]:
     return {name: spec for name, spec in suites.items() if spec.get("enabled", True)}
 
 
-def _load_runner_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("request_engine_system_e2e_runner", RUNNER)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _runner_selectors() -> set[str]:
+    tree = ast.parse(RUNNER.read_text(encoding="utf-8"), filename=str(RUNNER))
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "SUITES":
+            continue
+        assert isinstance(node.value, ast.Dict), "runner SUITES must remain a static dict literal"
+        selectors: set[str] = set()
+        for key in node.value.keys:
+            assert isinstance(key, ast.Constant) and isinstance(key.value, str), (
+                "runner SUITES keys must remain static string literals"
+            )
+            selectors.add(key.value)
+        return selectors
+    raise AssertionError("generic E2E runner does not declare a static SUITES registry")
 
 
 def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
@@ -60,11 +69,8 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
 
 def test_enabled_registry_selectors_are_executable_by_generic_runner() -> None:
     enabled = _enabled_suites()
-    runner_module = _load_runner_module()
-    runner_suites = runner_module.SUITES
-    assert isinstance(runner_suites, dict)
     registered = {str(spec["selector"]) for spec in enabled.values()}
-    implemented = set(runner_suites)
+    implemented = _runner_selectors()
     assert registered <= implemented, (
         f"registered E2E selectors missing from generic runner: {sorted(registered - implemented)}"
     )
