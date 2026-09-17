@@ -47,3 +47,19 @@ merge = true
 nightly = true
 manual = true
 enabled = true
+
+[suites.f01-foundation]
+description = "Fixture-free F01 trust-root, second provisioner, tenant controller and integration principal foundation"
+selector = "f01-foundation"
+profiles = []
+services = ["api", "control-plane"]
+faults = []
+fresh_world = true
+fault_injection = false
+cost = "medium"
+artifact_namespace = "f01-foundation"
+pr = false
+merge = false
+nightly = true
+manual = true
+enabled = true
