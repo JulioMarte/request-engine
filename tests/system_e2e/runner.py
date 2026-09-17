@@ -154,27 +154,16 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
             f"runner received forbidden database/install environment variables: {forbidden}"
         )
     checkpoints.append(
-        _checkpoint(
-            "runner-env-isolation",
-            "passed",
-            "no database/install DSNs are present",
-        )
+        _checkpoint("runner-env-isolation", "passed", "no database/install DSNs are present")
     )
-
     if importlib.util.find_spec("request_engine") is not None:
         raise RuntimeError("request_engine is importable inside the black-box runner")
     checkpoints.append(
-        _checkpoint(
-            "runner-package-isolation",
-            "passed",
-            "request_engine is not installed",
-        )
+        _checkpoint("runner-package-isolation", "passed", "request_engine is not installed")
     )
-
     if Path("/var/run/docker.sock").exists():
         raise RuntimeError("Docker socket is mounted into the black-box runner")
     checkpoints.append(_checkpoint("runner-docker-isolation", "passed", "Docker socket is absent"))
-
     try:
         socket.getaddrinfo("postgres", 5432)
     except socket.gaierror:
@@ -196,13 +185,12 @@ def _assert_handoff_contract(checkpoints: list[dict[str, str]], phase: str) -> N
     password = _required_string(credentials, "password", "platform-controller secret")
     if len(password) < 12:
         raise RuntimeError("platform-controller secret is invalid")
-
     probe = state_dir / "runner-state-probe.json"
     if phase == "after-fault":
         previous = _json_object(probe)
         if previous.get("phase") != "before-fault":
             raise RuntimeError("runner state did not survive the fault boundary")
-    else:
+    elif phase != "prepare-worker":
         probe.write_text(
             json.dumps({"phase": phase, "written_at": time.time()}, sort_keys=True) + "\n",
             encoding="utf-8",
@@ -251,11 +239,7 @@ def _run_surface_contract(checkpoints: list[dict[str, str]], phase: str) -> None
             raise RuntimeError(f"{url} exposes no OpenAPI paths")
         paths = cast(dict[str, object], paths_value)
         checkpoints.append(
-            _checkpoint(
-                f"{phase}:{name}",
-                "passed",
-                f"openapi={version}; paths={len(paths)}",
-            )
+            _checkpoint(f"{phase}:{name}", "passed", f"openapi={version}; paths={len(paths)}")
         )
 
 
@@ -280,8 +264,8 @@ def _native_identity(base_url: str, login: str, password: str) -> str:
 
 
 def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
-    if phase != "main":
-        raise RuntimeError("f01-foundation is a single-phase suite")
+    if phase not in {"main", "prepare-worker"}:
+        raise RuntimeError("f01-foundation only supports main or prepare-worker")
     state_dir, bootstrap, controller = _handoff()
     native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
     platform_login = _required_string(controller, "login_handle", "platform-controller secret")
@@ -291,12 +275,9 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
 
     platform_token = _native_session(control_url, platform_login, platform_password)
     checkpoints.append(_checkpoint("f01-01-platform-login", "passed"))
-
     provisioner_login = "f01-security-operator@example.invalid"
     provisioner_password = _derived_password(platform_password, "f01-security-operator")
-    provisioner_identity_id = _native_identity(
-        control_url, provisioner_login, provisioner_password
-    )
+    provisioner_identity_id = _native_identity(control_url, provisioner_login, provisioner_password)
     provisioner = _http_json(
         "POST",
         f"{control_url}/v1/platform/provisioners",
@@ -336,11 +317,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-03-organization-controller", "passed"))
 
     tenant_token = _native_session(api_url, tenant_login, tenant_password)
-    authority = _http_json(
-        "GET",
-        f"{api_url}/v1/me/authority",
-        bearer=tenant_token,
-    )
+    authority = _http_json("GET", f"{api_url}/v1/me/authority", bearer=tenant_token)
     observed_principal_id = _required_string(authority, "principal_id", "self authority response")
     if observed_principal_id != controller_principal_id:
         raise RuntimeError("tenant controller self-authority principal does not match provisioning")
@@ -376,7 +353,6 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         },
     )
     checkpoints.append(_checkpoint("f01-05-integration-principal", "passed"))
-
     foundation = {
         "organization_id": organization_id,
         "tenant_controller_principal_id": controller_principal_id,
@@ -389,12 +365,29 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
 
 
+def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
+    if phase == "prepare-worker":
+        _run_f01_foundation(checkpoints, phase)
+        return
+    if phase not in {"before-fault", "after-fault"}:
+        raise RuntimeError("worker-runtime requires prepare-worker/before-fault/after-fault")
+    _health_targets(checkpoints, phase)
+    state_dir, _, _ = _handoff()
+    foundation = _json_object(state_dir / "f01-foundation.json")
+    _required_string(foundation, "worker_principal_id", "F01 foundation state")
+    sink = _http_get_json("http://event-sink:8090/health")
+    if sink.get("status") != "ok":
+        raise RuntimeError("reference event sink is not healthy")
+    checkpoints.append(_checkpoint(f"{phase}:worker-runtime", "passed", "worker topology observable"))
+
+
 Suite = Callable[[list[dict[str, str]], str], None]
 SUITES: dict[str, Suite] = {
     "smoke": _run_smoke,
     "surface-contract": _run_surface_contract,
     "api-restart": _run_api_restart,
     "f01-foundation": _run_f01_foundation,
+    "worker-runtime": _run_worker_runtime,
 }
 
 
@@ -406,11 +399,9 @@ def main() -> int:
     run.add_argument("--phase", default="main")
     run.add_argument("--artifact-dir", default="/artifacts")
     args = parser.parse_args()
-
     checkpoints: list[dict[str, str]] = []
     artifact_dir = Path(args.artifact_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
-
     try:
         _assert_runner_isolation(checkpoints)
         _assert_handoff_contract(checkpoints, args.phase)
@@ -422,7 +413,6 @@ def main() -> int:
         checkpoints.append(_checkpoint("suite", "failed", str(exc)))
         _write_checkpoints(artifact_dir, checkpoints)
         return 1
-
     checkpoints.append(_checkpoint("suite", "passed", f"{args.suite}:{args.phase}"))
     _write_checkpoints(artifact_dir, checkpoints)
     return 0
