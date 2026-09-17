@@ -14,3 +14,18 @@ merge = true
 nightly = true
 manual = true
 enabled = true
+
+[suites.surface-contract]
+description = "Black-box OpenAPI surface contract for API and control-plane"
+selector = "surface-contract"
+profiles = []
+services = ["api", "control-plane"]
+fresh_world = true
+fault_injection = false
+cost = "small"
+artifact_namespace = "surface-contract"
+pr = false
+merge = true
+nightly = true
+manual = true
+enabled = true
