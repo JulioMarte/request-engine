@@ -95,6 +95,8 @@ def _http_request(
             return response.status, response_body
     except urllib.error.HTTPError as exc:
         response_body = exc.read().decode("utf-8", errors="replace")
+        if exc.code in expected_statuses:
+            return exc.code, response_body
         message = f"{method} {url} returned HTTP {exc.code}: {response_body[:300]}"
         raise RuntimeError(message) from exc
 
@@ -305,6 +307,7 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
     state_dir, bootstrap, controller = _handoff()
+    native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
     workload_authority_id = _required_string(bootstrap, "workload_authority_id", "bootstrap state")
     platform_login = _required_string(controller, "login_handle", "platform-controller secret")
     platform_password = _required_string(controller, "password", "platform-controller secret")
@@ -370,6 +373,27 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     checkpoints.append(_checkpoint("f01-04-tenant-authority", "passed"))
 
     expires_at = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+    _http_request(
+        "POST",
+        f"{api_url}/v1/integrations",
+        bearer=tenant_token,
+        idempotency_key="f01-invalid-human-integration-v1",
+        organization_id=organization_id,
+        payload={
+            "identity_authority_id": native_authority_id,
+            "credential_expires_at": expires_at,
+            "provenance_reference": "e2e:f01:reject-human-authority-for-workload",
+        },
+        expected_statuses=(409,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "f01-05a-workload-authority-boundary",
+            "passed",
+            "native human authority rejected for integration workload identity",
+        )
+    )
+
     integration = _http_json(
         "POST",
         f"{api_url}/v1/integrations",
