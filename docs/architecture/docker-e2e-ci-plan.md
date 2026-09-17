@@ -485,6 +485,8 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - `workflow_dispatch` y `workflow_call` reutilizables;
 - fitness checks registry ↔ runner ↔ topology;
 - Docker E2E exact-head verde para el lane `smoke`;
+- F-01 black-box parcialmente demostrado en el lane PR: bootstrap → platform login → segundo provisioner → organization/tenant controller → integration principal con autoridad workload real → supply/capacity → booking durable → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
+- fault injection real con barrera observable `block/release` del event sink y kill/restart propiedad del host, no del runner;
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 
 ### Implementado pero todavía requiere una demostración dedicada más fuerte
@@ -495,11 +497,11 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 ### Pendiente
 
 1. minimizar DSNs/credenciales por proceso; el Compose aún usa un `x-common-env` demasiado amplio para API/control-plane;
-2. secret/state handoff reusable para journeys multifase autenticados;
+2. generalizar el handoff de estado/secretos más allá del journey worker-restart (ya implementado para F-01: `bootstrap.json`, `f01-foundation.json`, `worker-booking.json` y directorio de secretos separado);
 3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
-4. fault-injection protocol genérico con barriers;
+4. extender el protocolo de fault injection ya demostrado (barrera `block/release` del sink + `worker:kill-restart` del orquestador) a API y otras superficies;
 5. provisionar worker Principal/publisher reales para suites worker: el Principal ya nace por el contrato de integration sobre la autoridad workload de despliegue; el publisher sigue siendo el adapter HTTP de referencia;
-6. F-01 completo como suite black-box;
+6. F-01 restante como suite black-box: techos staff/AGENT, revocación local, recovery gobernado, continuidad de último controller y fault injection de API;
 7. Vault/Mailpit funcionalmente conectados a journeys, no sólo disponibles como profiles;
 8. Authentik/OIDC lane;
 9. policy automática PR/merge/nightly/all y calibración de coste/flakiness;
@@ -512,10 +514,10 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 | P0 | alcance/gating inicial | completado |
 | P1 | imagen única RE + PostgreSQL separado + reference compose | implementado |
 | P2a | clean install + readiness + evidencia básica | demostrado |
-| P2b | evidence/secret hardening estructural | parcial: collector saneado; handoff reusable pendiente |
+| P2b | evidence/secret hardening estructural | parcial: collector saneado; handoff de estado/secretos implementado para el journey worker-restart |
 | P3a | generic runner + registry + selector + edge/backend + profiles + isolation | **implementado y demostrado** |
 | P3b | fresh-world orchestration + namespaced evidence + `all` semantics + reusable workflow | **implementado; smoke demostrado, `all` dedicado aún por calibrar** |
-| P4 | F-01 + worker/API fault injection | pendiente |
+| P4 | F-01 + worker/API fault injection | parcial: F-01 foundation + worker durable recovery demostrados; fault injection de API pendiente |
 | P5 | suites dirigidas booking/authority/recovery/worker | pendiente según valor |
 | P6 | OIDC/Authentik + subset CI-feasible de G | pendiente |
 | P7 | coste/flakiness + selection policy + required checks | pendiente |
