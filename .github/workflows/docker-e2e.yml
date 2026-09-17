@@ -13,18 +13,21 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
+      - name: Prepare evidence workspace
+        run: mkdir -p .ci/docker-e2e/phases
       - name: Build reference image
-        run: docker compose -f deploy/reference/compose.e2e.yaml build
+        run: docker compose -f deploy/reference/compose.e2e.yaml build 2>&1 | tee .ci/docker-e2e/phases/build.log
       - name: Start infrastructure
-        run: docker compose -f deploy/reference/compose.e2e.yaml up -d postgres vault mailpit
+        run: docker compose -f deploy/reference/compose.e2e.yaml up -d postgres vault mailpit 2>&1 | tee .ci/docker-e2e/phases/infrastructure.log
       - name: Migrate and create runtime logins
         run: |
-          docker compose -f deploy/reference/compose.e2e.yaml run --rm migrate
-          docker compose -f deploy/reference/compose.e2e.yaml run --rm runtime-roles
+          set -o pipefail
+          { docker compose -f deploy/reference/compose.e2e.yaml run --rm migrate && docker compose -f deploy/reference/compose.e2e.yaml run --rm runtime-roles; } 2>&1 | tee .ci/docker-e2e/phases/migrate.log
       - name: Bootstrap native trust root through CLI
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee .ci/docker-e2e/phases/bootstrap.log) 2>&1
           compose=(docker compose -f deploy/reference/compose.e2e.yaml)
           bootstrap_dsn='postgresql://postgres@postgres:5432/request_engine'
           issue="$(${compose[@]} run --rm -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api request-engine-platform-bootstrap issue --provenance "github-actions:${GITHUB_RUN_ID}")"
@@ -34,25 +37,44 @@ jobs:
           password="$(openssl rand -base64 36)Aa1!"
           printf '%s\n%s\n%s\n' "$token" "$password" "$password" | ${compose[@]} run --rm -T -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api request-engine-platform-bootstrap establish --login ci-platform-controller
           echo "REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID=$authority" >> "$GITHUB_ENV"
+          echo 'bootstrap completed; sensitive material intentionally omitted'
       - name: Start HTTP surfaces
-        run: docker compose -f deploy/reference/compose.e2e.yaml up -d api control-plane
+        run: docker compose -f deploy/reference/compose.e2e.yaml up -d api control-plane 2>&1 | tee .ci/docker-e2e/phases/http-start.log
       - name: Wait for readiness
-        run: scripts/ci/wait_for_stack.sh
+        run: bash scripts/ci/wait_for_stack.sh 2>&1 | tee .ci/docker-e2e/phases/readiness.log
       - name: Verify TCP health surfaces
         run: |
-          curl --fail --show-error http://127.0.0.1:58000/health/live
-          curl --fail --show-error http://127.0.0.1:58000/health/ready
-          curl --fail --show-error http://127.0.0.1:58001/health/live
-          curl --fail --show-error http://127.0.0.1:58001/health/ready
+          set -o pipefail
+          { curl --fail --show-error http://127.0.0.1:58000/health/live; curl --fail --show-error http://127.0.0.1:58000/health/ready; curl --fail --show-error http://127.0.0.1:58001/health/live; curl --fail --show-error http://127.0.0.1:58001/health/ready; } 2>&1 | tee .ci/docker-e2e/phases/tcp-smoke.log
       - name: Collect container evidence
         if: always()
-        run: scripts/ci/collect_stack_logs.sh .ci/docker-e2e/logs
+        run: bash scripts/ci/collect_stack_logs.sh .ci/docker-e2e
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Docker E2E evidence'
+            echo
+            echo '| Phase | Result |'
+            echo '|---|---|'
+            echo '| Build | ${{ steps.build.outcome || 'see job' }} |'
+            echo '| Migration/runtime roles | ${{ steps.migrate.outcome || 'see job' }} |'
+            echo '| Bootstrap | ${{ steps.bootstrap.outcome || 'see job' }} |'
+            echo '| Readiness | ${{ steps.ready.outcome || 'see job' }} |'
+            echo '| TCP smoke | ${{ steps.tcp.outcome || 'see job' }} |'
+            echo
+            echo "Commit: \`${GITHUB_SHA}\` · Run: \`${GITHUB_RUN_ID}\` attempt \`${GITHUB_RUN_ATTEMPT}\`"
+            echo
+            echo '> Scope: plumbing evidence only; this does not certify production delivery, Vault HA/policies, external TLS, restore-fencing, break-glass, RPO/RTO, or SLOs.'
+          } | tee .ci/docker-e2e/summary.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: docker-e2e-logs-${{ github.run_id }}
+          name: docker-e2e-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: .ci/docker-e2e/
           if-no-files-found: error
+          retention-days: 14
       - name: Tear down
         if: always()
         run: docker compose -f deploy/reference/compose.e2e.yaml down -v --remove-orphans
