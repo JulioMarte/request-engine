@@ -732,8 +732,12 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         payload={"option_id": option_id, "subject_party_id": authority_party_id},
         expected_statuses=(409,),
     )
-    error = conflict.get("error")
-    if not isinstance(error, dict) or error.get("code") not in {
+    error_value = conflict.get("error")
+    if not isinstance(error_value, dict):
+        raise RuntimeError("second booking attempt did not return an error envelope")
+    error = cast(dict[str, object], error_value)
+    error_code = error.get("code")
+    if not isinstance(error_code, str) or error_code not in {
         "appointment_unavailable",
         "appointment_option_stale",
     }:
@@ -742,7 +746,7 @@ def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
         _checkpoint(
             "f01-09-capacity-conflict",
             "passed",
-            f"duplicate slot consumption rejected as {error.get('code')}",
+            f"duplicate slot consumption rejected as {error_code}",
         )
     )
 
