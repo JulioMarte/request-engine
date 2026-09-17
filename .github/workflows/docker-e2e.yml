@@ -10,9 +10,16 @@ on:
         required: false
         default: smoke
         type: string
+  workflow_call:
+    inputs:
+      suite:
+        description: "Registered E2E suite name or all"
+        required: false
+        default: smoke
+        type: string
 
 concurrency:
-  group: docker-e2e-${{ github.ref }}
+  group: docker-e2e-${{ github.ref }}-${{ inputs.suite || 'smoke' }}
   cancel-in-progress: true
 
 jobs:
@@ -34,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          suite='${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'smoke' }}'
+          suite='${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.suite || 'smoke' }}'
           bash scripts/ci/run_e2e_platform.sh "$suite" 2>&1 | tee .ci/docker-e2e/platform.log
 
       - name: Write run summary
