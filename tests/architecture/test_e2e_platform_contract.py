@@ -16,6 +16,16 @@ def _enabled_suites() -> dict[str, dict[str, object]]:
     return {name: spec for name, spec in suites.items() if spec.get("enabled", True)}
 
 
+def _string_list(spec: dict[str, object], key: str, suite: str) -> list[str]:
+    value = spec[key]
+    assert isinstance(value, list), f"{suite}.{key} must be a list"
+    items: list[str] = []
+    for item in value:
+        assert isinstance(item, str), f"{suite}.{key} must contain only strings"
+        items.append(item)
+    return items
+
+
 def _runner_selectors() -> set[str]:
     tree = ast.parse(RUNNER.read_text(encoding="utf-8"), filename=str(RUNNER))
     for node in tree.body:
@@ -53,8 +63,8 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         "enabled",
     }
     assert len(enabled) >= 2, "the reusable platform must exercise more than one suite"
-    namespaces: set[str] = set()
-    selectors: set[str] = set()
+    namespaces: set[object] = set()
+    selectors: set[object] = set()
     for name, spec in enabled.items():
         missing = required - set(spec)
         assert not missing, f"{name} is missing registry fields: {sorted(missing)}"
@@ -63,6 +73,8 @@ def test_enabled_e2e_suites_have_reusable_registry_contract() -> None:
         )
         namespace = spec["artifact_namespace"]
         selector = spec["selector"]
+        assert isinstance(namespace, str), f"{name}.artifact_namespace must be a string"
+        assert isinstance(selector, str), f"{name}.selector must be a string"
         assert namespace not in namespaces, f"duplicate E2E artifact namespace: {namespace}"
         assert selector not in selectors, f"duplicate E2E selector: {selector}"
         namespaces.add(namespace)
@@ -83,9 +95,9 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
     allowed_profiles = {"worker", "secrets", "delivery", "oidc"}
     allowed_fault_actions = {"kill-restart"}
     for name, spec in _enabled_suites().items():
-        services = {str(item) for item in spec["services"]}
-        profiles = {str(item) for item in spec["profiles"]}
-        faults = [str(item) for item in spec["faults"]]
+        services = set(_string_list(spec, "services", name))
+        profiles = set(_string_list(spec, "profiles", name))
+        faults = _string_list(spec, "faults", name)
         assert services, f"{name} must declare at least one runtime service"
         assert services <= allowed_services, f"{name} declares unsupported services: {services}"
         assert profiles <= allowed_profiles, f"{name} declares unsupported profiles: {profiles}"
