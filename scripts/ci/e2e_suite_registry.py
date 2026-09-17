@@ -24,7 +24,8 @@ def enabled_suites() -> list[str]:
 
 def selected_suites(policy: str) -> list[str]:
     if policy not in POLICIES:
-        raise SystemExit(f"unknown E2E selection policy {policy!r}; available: {', '.join(sorted(POLICIES))}")
+        available = ", ".join(sorted(POLICIES))
+        raise SystemExit(f"unknown E2E selection policy {policy!r}; available: {available}")
     return [
         name
         for name, spec in load_registry().items()
