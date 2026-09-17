@@ -40,20 +40,14 @@ services:
   api:
     <<: *app-image
     depends_on: {runtime-roles: {condition: service_completed_successfully}}
-    environment:
-      <<: *common-env
-      REQUEST_ENGINE_HOST: 0.0.0.0
-      REQUEST_ENGINE_PORT: "8000"
-    command: [python, -m, request_engine.entrypoints.http_server]
+    environment: *common-env
+    command: [uvicorn, "request_engine.bootstrap.server:create_app", --factory, --host, "0.0.0.0", --port, "8000"]
     healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=2)"], interval: 3s, timeout: 3s, retries: 40}
     ports: ["127.0.0.1:58000:8000"]
   control-plane:
     <<: *app-image
     depends_on: {runtime-roles: {condition: service_completed_successfully}}
-    environment:
-      <<: *common-env
-      REQUEST_ENGINE_PLATFORM_HOST: 0.0.0.0
-      REQUEST_ENGINE_PLATFORM_PORT: "8001"
-    command: [python, -m, request_engine.bootstrap.platform_server]
+    environment: *common-env
+    command: [uvicorn, "request_engine.bootstrap.platform_server:create_platform_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"], interval: 3s, timeout: 3s, retries: 40}
     ports: ["127.0.0.1:58001:8001"]
