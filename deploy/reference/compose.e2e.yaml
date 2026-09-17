@@ -86,11 +86,24 @@ services:
       retries: 40
     networks: [edge, backend]
 
+  event-sink:
+    image: request-engine-e2e-runner:${E2E_RUNNER_IMAGE_TAG:-e2e}
+    profiles: [worker]
+    entrypoint: [python, /e2e/event_sink.py]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [edge, backend]
+
   worker:
     <<: *request-engine
     profiles: [worker]
     depends_on:
       postgres:
+        condition: service_healthy
+      event-sink:
         condition: service_healthy
     environment:
       REQUEST_ENGINE_WORKER_DATABASE_URL: postgresql+psycopg://request_e2e_worker:ci-worker-only@postgres:5432/request_engine
@@ -98,7 +111,8 @@ services:
       REQUEST_ENGINE_WORKER_FACTORY: request_engine.bootstrap.reference_worker_factory:create_worker
       REQUEST_ENGINE_WORKER_PRINCIPAL_ID: ${REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-}
       REQUEST_ENGINE_WEBHOOK_BASE_URL: http://api:8000
-      REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: ${REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY:-}
+      REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: request_engine.bootstrap.http_outbox_publisher:create_publisher
+      REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
     command: [request-engine-worker]
     restart: unless-stopped
     networks: [backend]
