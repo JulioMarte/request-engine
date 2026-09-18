@@ -343,7 +343,7 @@ def test_staff_suspension_disables_principal_and_revokes_native_session(
     admin_conn.execute(
         """
         INSERT INTO request_engine.native_sessions (
-            id, native_identity_id, credential_id, token_digest,
+            id, native_identity_id, password_credential_id, token_digest,
             token_fingerprint, session_epoch, expires_at
         ) VALUES (
             %s, %s, %s, %s, %s, %s, clock_timestamp() + interval '1 hour'

@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.authentication import (
     AuthenticatedSubject,
     AuthenticatedSubjectClass,
@@ -166,6 +167,9 @@ class IdentityPrincipalResolver:
             interaction_id=interaction_id,
             authenticated_at=_authenticated_at(subject),
             identity_binding_id=binding.binding_id,
+            authentication_assurance=_authentication_assurance(subject),
+            user_verified=_metadata_flag(subject, "user_verified"),
+            recovery_derived=_metadata_flag(subject, "recovery_derived"),
         )
 
     async def resolve_platform_actor(
@@ -199,6 +203,9 @@ class IdentityPrincipalResolver:
             credential_id=credential_id,
             technical_principal_id=technical_principal_id,
             interaction_id=interaction_id,
+            authentication_assurance=_authentication_assurance(subject),
+            user_verified=_metadata_flag(subject, "user_verified"),
+            recovery_derived=_metadata_flag(subject, "recovery_derived"),
         )
 
 
@@ -220,6 +227,22 @@ def _authenticated_at(subject: AuthenticatedSubject) -> datetime | None:
     if parsed.tzinfo is None:
         return None
     return parsed
+
+
+def _authentication_assurance(
+    subject: AuthenticatedSubject,
+) -> AuthenticationAssurance | None:
+    value = subject.metadata.get("authentication_assurance")
+    if value is None:
+        return None
+    try:
+        return AuthenticationAssurance(value)
+    except ValueError:
+        return None
+
+
+def _metadata_flag(subject: AuthenticatedSubject, key: str) -> bool:
+    return subject.metadata.get(key) == "true"
 
 
 def _select_binding(bindings: tuple[IdentityBindingSnapshot, ...]) -> IdentityBindingSnapshot:

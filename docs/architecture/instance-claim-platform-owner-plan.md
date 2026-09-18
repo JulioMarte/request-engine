@@ -4,17 +4,18 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
-Implementation status (2026-09-18, migration head `0059_webauthn_credentials`):
+Implementation status (2026-09-18, migration head `0060_webauthn_sessions`):
 
 ```text
 P0  contract reconciliation                    delivered (reconnaissance)
 P1  Instance + setup-session persistence       delivered (0057; no owner creation yet)
-P2  WebAuthn + assurance primitives            partial (assurance model, real fido2
-                                                verification + sign-count policy,
-                                                credential/challenge persistence 0059,
-                                                real software test authenticator;
-                                                session-issuance assurance propagation
-                                                and HTTP wiring pending)
+P2  WebAuthn + assurance primitives            delivered internally (assurance,
+                                                real fido2 verification, atomic
+                                                challenge finalization 0060,
+                                                method-neutral sessions,
+                                                sign-count high-water policy,
+                                                step_up purpose, real-crypto
+                                                tests; HTTP surface pending P4)
 P3  recovery codes + password modernization    pending
 P4  atomic HTTP Instance claim                 pending
 P5  additional Platform Owner/admin lifecycle  pending
@@ -26,13 +27,69 @@ P1 delivers the structural `platform_instance` singleton, bounded digest-only
 `setup_sessions`, built-in native/workload authority facts and legacy-CLI
 adoption. It deliberately creates no Principal, binding, grant or owner.
 
-P2 delivers `platform/security/assurance.py` (method/assurance classification and
-step-up satisfaction), `platform/security/webauthn.py` (Request Engine-owned
-registration/authentication options and verification wrapping Yubico `fido2`,
-with an explicit single-device sign-count regression policy), the
-`webauthn_credentials`/`webauthn_challenges` durable surface and narrow
-`request_auth` boundary, and a real-crypto software authenticator used by tests.
-Passkey login session issuance with assurance propagation remains to be wired.
+P2 delivers an internal, complete passkey ceremony ready for P4 to consume:
+
+- `platform/security/assurance.py` — fail-closed trusted-evidence classification
+  (empty evidence is invalid; any recovery-derived ceremony is `RECOVERY` and
+  never satisfies MFA/phishing-resistant; WebAuthn is `PHISHING_RESISTANT` only
+  when accepted user verification is present);
+- `platform/security/webauthn.py` — Request Engine-owned options/verification
+  wrapping Yubico `fido2`, with exact origin/RP checks, digest-only challenges
+  and a version-pinned compatibility test for the reconstructed fido2 state;
+- `platform/security/native_webauthn_auth.py` — begin/complete registration,
+  authentication (issuing a native session) and step-up, with cryptographic
+  verification performed in Python outside authoritative locks;
+- migration `0060` — method-neutral `native_sessions` (exactly one initial
+  authenticator, proven methods, derived assurance, user-verification and
+  recovery-derived flags), race-safe challenge finalization coupled to its
+  authoritative consequence, the `step_up` purpose, and a high-water sign-count
+  policy with regression telemetry.
+
+Passkey sessions now resolve through the native session authenticator as
+`PHISHING_RESISTANT` with user verification; password sessions remain
+`SINGLE_FACTOR`. The HTTP/setup surface (P4) and recovery codes (P3) remain
+pending.
+
+### P2 decisions
+
+- **fido2 ceremony state**: `register_begin`/`authenticate_begin` return an
+  untyped, private data bag documented as "passed as is". Request Engine
+  reconstructs exactly the two keys the library reads (`challenge`,
+  `user_verification`) so raw challenges never reach durable storage. A
+  version-pinned unit test asserts the installed library's returned state keys,
+  so a 2.x minor that changes the shape fails loudly rather than silently
+  dropping a security-relevant key. Replaying the full state was rejected because
+  it would require persisting the raw challenge.
+- **Sign counter**: the stored value is a high-water mark
+  (`GREATEST(stored, new)`), never a blind caller write. A regression on a
+  non-backup-eligible, non-zero counter records telemetry
+  (`last_regression_at`) but does not reject: WebAuthn Level 3 makes the failure
+  action relying-party-specific and explicitly names out-of-order processing and
+  malfunction as benign causes. The single-use challenge is the primary replay
+  defense; the counter is clone-detection telemetry, not authorization.
+- **Session model**: `native_sessions` records exactly one initial authenticator
+  (password *or* WebAuthn), the methods actually proven, the derived assurance,
+  whether user verification was accepted and whether the session is
+  recovery-derived. Existing password sessions were backfilled. The immutability
+  guard freezes the initial authenticator and only allows methods to grow,
+  user verification to become true and assurance to rise; recovery-derived
+  sessions cannot escape `RECOVERY` by step-up (a fresh session is required).
+- **Finalization protocol**: verification is performed in Python outside
+  authoritative locks; a single `request_auth.finalize_*` transaction locks the
+  challenge, re-validates pending/unexpired/scope, writes the credential, session
+  or step-up fact and consumes the challenge. A failed verification cannot
+  consume the challenge, and concurrent replays yield exactly one winner. All
+  finalizers use the canonical authority -> identity -> credential -> session
+  lock order.
+- **Credential revocation**: revoking a WebAuthn credential invalidates active
+  sessions whose proven methods include WebAuthn, so a password session that
+  stepped up cannot retain phishing-resistant assurance after the proving
+  credential is revoked.
+- **Deferred, explicitly**: recovery-code sessions (`RECOVERY` assurance) are not
+  yet issued because recovery codes are P3; the model, checks and guard already
+  support them and prevent step-up from escaping `RECOVERY`. Enforcing assurance
+  in capability/step-up policy is P5; the trusted value is already carried on
+  `ActorContext`/`PlatformActorContext` for that consumer.
 
 ADR 0014 is the decision authority for the trust-root change. This document is
 the executable design/handoff. It deliberately separates accepted semantics from

@@ -4,6 +4,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from request_engine.platform.security.agent_policy import AgentPolicySnapshot
+from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.capabilities import grant_satisfies
 
 
@@ -46,6 +47,9 @@ class ActorContext:
     agent_policy: AgentPolicySnapshot | None = None
     authenticated_at: datetime | None = None
     identity_binding_id: UUID | None = None
+    authentication_assurance: AuthenticationAssurance | None = None
+    user_verified: bool = False
+    recovery_derived: bool = False
 
     def __post_init__(self) -> None:
         if not self.authentication_method.strip():

@@ -3,9 +3,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.native_auth import CredentialInvalid, issue_opaque_token
 from request_engine.platform.security.native_session import (
+    NativeCredentialRevoked,
     NativeCredentialStatus,
+    NativeIdentityAuthorityStatus,
     NativeIdentityDisabled,
     NativeIdentityStatus,
     NativeSessionAuthenticator,
@@ -51,24 +54,68 @@ def _snapshot(
     current_session_epoch: int = 3,
     session_status: NativeSessionStatus = NativeSessionStatus.ACTIVE,
     identity_status: NativeIdentityStatus = NativeIdentityStatus.ACTIVE,
-    credential_status: NativeCredentialStatus = NativeCredentialStatus.ACTIVE,
+    credential_status: NativeCredentialStatus | None = NativeCredentialStatus.ACTIVE,
+    webauthn_credential_status: NativeCredentialStatus | None = None,
     expires_at: datetime = NOW + timedelta(hours=1),
     last_seen_at: datetime | None = None,
+    authentication_assurance: AuthenticationAssurance = AuthenticationAssurance.SINGLE_FACTOR,
+    user_verified: bool = False,
+    recovery_derived: bool = False,
 ) -> NativeSessionSnapshot:
     return NativeSessionSnapshot(
         session_id=session_id,
         native_identity_id=uuid4(),
         identity_authority_id=uuid4(),
-        credential_id=uuid4(),
+        password_credential_id=uuid4(),
+        password_credential_status=credential_status,
+        webauthn_credential_id=None,
+        webauthn_credential_status=webauthn_credential_status,
         token_digest=token_digest,
         session_epoch=session_epoch,
         current_session_epoch=current_session_epoch,
         session_status=session_status,
         identity_status=identity_status,
-        credential_status=credential_status,
+        authority_status=NativeIdentityAuthorityStatus.ACTIVE,
+        authentication_methods=("password",),
+        authentication_assurance=authentication_assurance,
+        user_verified=user_verified,
+        recovery_derived=recovery_derived,
         expires_at=expires_at,
         created_at=NOW,
         last_seen_at=last_seen_at,
+        authenticated_at=NOW,
+    )
+
+
+def _webauthn_snapshot(
+    *,
+    token_digest: bytes,
+    session_id: UUID,
+    webauthn_credential_status: NativeCredentialStatus | None = NativeCredentialStatus.ACTIVE,
+    authentication_assurance: AuthenticationAssurance = AuthenticationAssurance.PHISHING_RESISTANT,
+    user_verified: bool = True,
+) -> NativeSessionSnapshot:
+    return NativeSessionSnapshot(
+        session_id=session_id,
+        native_identity_id=uuid4(),
+        identity_authority_id=uuid4(),
+        password_credential_id=None,
+        password_credential_status=None,
+        webauthn_credential_id=uuid4(),
+        webauthn_credential_status=webauthn_credential_status,
+        token_digest=token_digest,
+        session_epoch=1,
+        current_session_epoch=1,
+        session_status=NativeSessionStatus.ACTIVE,
+        identity_status=NativeIdentityStatus.ACTIVE,
+        authority_status=NativeIdentityAuthorityStatus.ACTIVE,
+        authentication_methods=("webauthn",),
+        authentication_assurance=authentication_assurance,
+        user_verified=user_verified,
+        recovery_derived=False,
+        expires_at=NOW + timedelta(hours=1),
+        created_at=NOW,
+        last_seen_at=None,
         authenticated_at=NOW,
     )
 
@@ -225,3 +272,37 @@ async def test_activity_touch_is_best_effort_and_never_breaks_authentication() -
 
     assert subject.subject_id == str(session.native_identity_id)
     assert toucher.calls == [(session.session_id, 60)]
+
+
+@pytest.mark.asyncio
+async def test_revoked_webauthn_credential_invalidates_passkey_session() -> None:
+    material = issue_opaque_token()
+    session = _webauthn_snapshot(
+        token_digest=material.digest,
+        session_id=material.token_id,
+        webauthn_credential_status=NativeCredentialStatus.REVOKED,
+    )
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(NativeCredentialRevoked):
+        await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+
+@pytest.mark.asyncio
+async def test_passkey_session_propagates_phishing_resistant_evidence() -> None:
+    material = issue_opaque_token()
+    session = _webauthn_snapshot(token_digest=material.digest, session_id=material.token_id)
+    authenticator = NativeSessionAuthenticator(
+        session_reader=FakeSessionReader(session),
+        clock=lambda: NOW,
+    )
+
+    subject = await authenticator.authenticate(NativeSessionEvidence(material.raw_token))
+
+    assert subject.metadata["authentication_assurance"] == "phishing_resistant"
+    assert subject.metadata["authentication_methods"] == "webauthn"
+    assert subject.metadata["user_verified"] == "true"
+    assert subject.metadata["recovery_derived"] == "false"

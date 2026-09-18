@@ -7,6 +7,11 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from request_engine.platform.security.assurance import (
+    AuthenticationAssurance,
+    classify_assurance,
+    evidence_from_values,
+)
 from request_engine.platform.security.authentication import AuthenticatedSubject
 from request_engine.platform.security.native_auth import (
     CredentialInvalid,
@@ -70,27 +75,65 @@ class NativeSessionEvidence:
 
 @dataclass(frozen=True, slots=True)
 class NativeSessionSnapshot:
+    """Method-neutral durable session facts read through the auth boundary.
+
+    Exactly one initial authenticator is present (password or WebAuthn) and its
+    current status is exposed so the authenticator can fail closed if it is
+    revoked. Assurance is the assurance actually achieved by the ceremony, not a
+    value derived from the mere presence of a credential row.
+    """
+
     session_id: UUID
     native_identity_id: UUID
     identity_authority_id: UUID
-    credential_id: UUID
+    password_credential_id: UUID | None
+    password_credential_status: NativeCredentialStatus | None
+    webauthn_credential_id: UUID | None
+    webauthn_credential_status: NativeCredentialStatus | None
     token_digest: bytes
     session_epoch: int
     current_session_epoch: int
     session_status: NativeSessionStatus
     identity_status: NativeIdentityStatus
-    credential_status: NativeCredentialStatus
+    authority_status: NativeIdentityAuthorityStatus
+    authentication_methods: tuple[str, ...]
+    authentication_assurance: AuthenticationAssurance
+    user_verified: bool
+    recovery_derived: bool
     expires_at: datetime
     created_at: datetime
     last_seen_at: datetime | None
     authenticated_at: datetime
-    authority_status: NativeIdentityAuthorityStatus = NativeIdentityAuthorityStatus.ACTIVE
 
     def __post_init__(self) -> None:
         if self.session_epoch <= 0 or self.current_session_epoch <= 0:
             raise ValueError("session epochs must be positive")
         if self.expires_at.tzinfo is None:
             raise ValueError("expires_at must be timezone-aware")
+        if (self.password_credential_id is None) == (self.webauthn_credential_id is None):
+            raise ValueError("exactly one initial authenticator is required")
+        if not self.authentication_methods:
+            raise ValueError("authentication_methods cannot be empty")
+        if self.password_credential_id is not None and self.password_credential_status is None:
+            raise ValueError("password credential status is required when a credential is bound")
+        if self.webauthn_credential_id is not None and self.webauthn_credential_status is None:
+            raise ValueError("webauthn credential status is required when a credential is bound")
+        # The snapshot is the declared trust boundary; persisted evidence must be
+        # internally consistent rather than trusted column-by-column.
+        evidence = evidence_from_values(
+            self.authentication_methods,
+            user_verified=self.user_verified,
+            recovery_derived=self.recovery_derived,
+        )
+        if classify_assurance(evidence) is not self.authentication_assurance:
+            raise ValueError("session assurance does not match its proven methods")
+
+    @property
+    def initial_credential_id(self) -> UUID:
+        if self.password_credential_id is not None:
+            return self.password_credential_id
+        assert self.webauthn_credential_id is not None
+        return self.webauthn_credential_id
 
 
 class NativeSessionReader(Protocol):
@@ -138,8 +181,11 @@ class NativeSessionAuthenticator:
             raise SessionRevoked("native session is revoked")
         if session.identity_status is NativeIdentityStatus.DISABLED:
             raise NativeIdentityDisabled("native identity is disabled")
-        if session.credential_status is NativeCredentialStatus.REVOKED:
-            raise NativeCredentialRevoked("native credential is revoked")
+        if (
+            session.password_credential_status is NativeCredentialStatus.REVOKED
+            or session.webauthn_credential_status is NativeCredentialStatus.REVOKED
+        ):
+            raise NativeCredentialRevoked("native session authenticator is revoked")
         if session.session_epoch != session.current_session_epoch:
             raise SessionRevoked("native session was globally invalidated")
         now = self._clock()
@@ -161,7 +207,11 @@ class NativeSessionAuthenticator:
             metadata={
                 **subject.metadata,
                 "authenticated_at": session.authenticated_at.isoformat(),
-                "credential_id": str(session.credential_id),
+                "credential_id": str(session.initial_credential_id),
+                "authentication_methods": ",".join(session.authentication_methods),
+                "authentication_assurance": session.authentication_assurance.value,
+                "user_verified": "true" if session.user_verified else "false",
+                "recovery_derived": "true" if session.recovery_derived else "false",
             },
         )
 

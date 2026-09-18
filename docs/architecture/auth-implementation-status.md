@@ -29,18 +29,22 @@ administration remain open. Nothing is merged or deployed and the application
 database is unmigrated.
 
 Instance-claim trust-root progress (ADR 0014, migration head
-`0059_webauthn_credentials`): P0 contract reconciliation, P1 persistence and part
-of P2 are delivered locally. P1 adds the structural `platform_instance` singleton,
-bounded digest-only `setup_sessions` with a race-safe active cap, built-in
-native/workload identity-authority facts, and legacy-CLI adoption that fails
-closed on ambiguous historical root provenance. P2 adds an authentication
-method/assurance model, Request Engine-owned WebAuthn registration/authentication
-verification wrapping Yubico `fido2` (with an explicit sign-count policy), the
-`webauthn_credentials`/`webauthn_challenges` durable surface behind narrow
-`request_auth` functions, and a real-crypto software authenticator for tests.
-No Principal, binding, grant or owner is created, no HTTP setup surface exists,
-and passkey login session issuance with assurance propagation is not yet wired;
-P2's session propagation plus P3-P6 remain pending.
+`0060_webauthn_sessions`): P0 contract reconciliation, P1 persistence and the
+internal P2 passkey ceremony are delivered locally. P1 adds the structural
+`platform_instance` singleton, bounded digest-only `setup_sessions` with a
+race-safe active cap, built-in native/workload identity-authority facts, and
+legacy-CLI adoption that fails closed on ambiguous historical root provenance.
+P2 adds a fail-closed authentication-evidence/assurance model, Request
+Engine-owned WebAuthn registration/authentication/step-up orchestration wrapping
+Yubico `fido2`, a race-safe high-water sign-count policy, atomic challenge
+finalization coupled to its authoritative consequence, and method-neutral
+`native_sessions` (exactly one initial authenticator, proven methods, derived
+assurance, user-verification and recovery-derived flags). A passkey assertion now
+issues a real native session that resolves as `PHISHING_RESISTANT` with user
+verification, while password sessions remain `SINGLE_FACTOR`; a WebAuthn
+credential revocation invalidates its sessions. No Principal, binding, grant or
+owner is created and no HTTP setup surface exists yet; P3-P6 plus the P4 HTTP
+assembly remain pending.
 
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)

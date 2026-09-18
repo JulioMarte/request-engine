@@ -110,7 +110,7 @@ async def test_native_session_reauth_advances_freshness_and_is_fail_closed(
 
     initial = await reader.read_native_session(session_id=session_id)
     assert initial is not None
-    assert initial.credential_id == credential_id
+    assert initial.password_credential_id == credential_id
     assert initial.authenticated_at == initial.created_at
     assert initial.last_seen_at is None
 

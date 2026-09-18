@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.capabilities import capability_definition
 from request_engine.platform.security.capability_types import AuthorityPlane
 from request_engine.platform.security.context import PrincipalKind
@@ -26,6 +27,9 @@ class PlatformActorContext:
     credential_id: str | None = None
     technical_principal_id: UUID | None = None
     interaction_id: str | None = None
+    authentication_assurance: AuthenticationAssurance | None = None
+    user_verified: bool = False
+    recovery_derived: bool = False
 
     def __post_init__(self) -> None:
         if self.authority_revision <= 0:

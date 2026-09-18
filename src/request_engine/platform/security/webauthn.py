@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import struct
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
@@ -112,6 +113,10 @@ class WebAuthnPolicy:
             raise ValueError("WebAuthn challenge_ttl_seconds must be positive")
         if self.attestation not in {"none", "indirect", "direct", "enterprise"}:
             raise ValueError("Unsupported WebAuthn attestation preference")
+        if self.attestation != "none":
+            # No attestation verifier is wired yet; accepting a non-``none``
+            # preference would silently trust an unverified attestation.
+            raise ValueError("WebAuthn attestation must be 'none' until a verifier is configured")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +145,7 @@ class AuthenticationOptions:
 @dataclass(frozen=True, slots=True)
 class VerifiedAuthentication:
     credential_id: bytes
-    new_sign_count: int
+    sign_count: int
     user_verified: bool
     backup_eligible: bool
     backup_state: bool
@@ -160,6 +165,23 @@ _decode_cbor: Callable[[bytes], object] = cast(
     cbor.decode,  # pyright: ignore[reportUnknownMemberType]
 )
 
+# Failures raised by fido2/COSE/CBOR for client input or stored credential material.
+# ``NotImplementedError`` covers an unsupported-but-parseable COSE algorithm and
+# ``IndexError``/``OverflowError``/``RecursionError`` cover malformed/over-nested
+# CBOR that the bundled decoder does not bound.
+_VERIFICATION_ERRORS = (
+    KeyError,
+    TypeError,
+    ValueError,
+    AttributeError,
+    UnicodeError,
+    NotImplementedError,
+    IndexError,
+    OverflowError,
+    RecursionError,
+    struct.error,
+)
+
 
 def _jsonable(value: object) -> object:
     if isinstance(value, Mapping):
@@ -177,10 +199,27 @@ def _user_verification(policy: WebAuthnPolicy) -> UserVerificationRequirement:
     return UserVerificationRequirement.PREFERRED
 
 
+# The fido2 ceremony state returned by ``register_begin``/``authenticate_begin``
+# is an untyped, private data bag the library documents as "passed as is". Request
+# Engine deliberately reconstructs exactly the two keys the library actually reads
+# (verified against fido2 2.2.1) so raw challenges never reach durable storage.
+# ``test_webauthn.py`` pins this contract against the installed library so a 2.x
+# minor that changes the state shape fails loudly instead of silently weakening a
+# check.
+CEREMONY_STATE_KEYS = ("challenge", "user_verification")
+
+
+def _ceremony_state(challenge: bytes, policy: WebAuthnPolicy) -> dict[str, object]:
+    return {
+        "challenge": websafe_encode(challenge),
+        "user_verification": _user_verification(policy),
+    }
+
+
 def extract_registration_challenge(credential: Mapping[str, Any]) -> bytes:
     try:
         return RegistrationResponse.from_dict(credential).response.client_data.challenge
-    except (KeyError, TypeError, ValueError) as exc:
+    except _VERIFICATION_ERRORS as exc:
         raise WebAuthnInputError(
             "webauthn_challenge_invalid", "Malformed registration credential"
         ) from exc
@@ -189,9 +228,18 @@ def extract_registration_challenge(credential: Mapping[str, Any]) -> bytes:
 def extract_authentication_challenge(credential: Mapping[str, Any]) -> bytes:
     try:
         return AuthenticationResponse.from_dict(credential).response.client_data.challenge
-    except (KeyError, TypeError, ValueError) as exc:
+    except _VERIFICATION_ERRORS as exc:
         raise WebAuthnInputError(
             "webauthn_challenge_invalid", "Malformed authentication credential"
+        ) from exc
+
+
+def extract_authentication_credential_id(credential: Mapping[str, Any]) -> bytes:
+    try:
+        return bytes(AuthenticationResponse.from_dict(credential).raw_id)
+    except _VERIFICATION_ERRORS as exc:
+        raise WebAuthnInputError(
+            "webauthn_credential_invalid", "Malformed authentication credential"
         ) from exc
 
 
@@ -251,13 +299,10 @@ class WebAuthnService:
         credential: Mapping[str, Any],
         expected_challenge: bytes,
     ) -> VerifiedRegistration:
-        state = {
-            "challenge": websafe_encode(expected_challenge),
-            "user_verification": _user_verification(self._policy),
-        }
+        state = _ceremony_state(expected_challenge, self._policy)
         try:
             auth_data = self._server.register_complete(state, credential)
-        except (KeyError, TypeError, ValueError) as exc:
+        except _VERIFICATION_ERRORS as exc:
             raise WebAuthnVerificationError(
                 "webauthn_verification_failed", "Registration verification failed"
             ) from exc
@@ -265,6 +310,11 @@ class WebAuthnService:
         if credential_data is None:
             raise WebAuthnVerificationError(
                 "webauthn_verification_failed", "Registration lacks credential data"
+            )
+        if credential_data.public_key.ALGORITHM not in CoseKey.supported_algorithms():
+            raise WebAuthnVerificationError(
+                "webauthn_unsupported_algorithm",
+                "Registration used an unsupported COSE algorithm",
             )
         return VerifiedRegistration(
             credential_id=bytes(credential_data.credential_id),
@@ -305,12 +355,8 @@ class WebAuthnService:
         credential_id: bytes,
         public_key: bytes,
         aaguid: str,
-        current_sign_count: int,
     ) -> VerifiedAuthentication:
-        state = {
-            "challenge": websafe_encode(expected_challenge),
-            "user_verification": _user_verification(self._policy),
-        }
+        state = _ceremony_state(expected_challenge, self._policy)
         try:
             stored = AttestedCredentialData.create(
                 bytes.fromhex(aaguid),
@@ -319,39 +365,15 @@ class WebAuthnService:
             )
             self._server.authenticate_complete(state, [stored], credential)
             auth_data = AuthenticationResponse.from_dict(credential).response.authenticator_data
-        except (KeyError, TypeError, ValueError) as exc:
+        except _VERIFICATION_ERRORS as exc:
             raise WebAuthnVerificationError(
                 "webauthn_verification_failed", "Authentication verification failed"
             ) from exc
 
-        backup_eligible = bool(auth_data.is_backup_eligible())
-        new_sign_count = self._advance_sign_count(
-            current=current_sign_count,
-            new=int(auth_data.counter),
-            backup_eligible=backup_eligible,
-        )
         return VerifiedAuthentication(
             credential_id=credential_id,
-            new_sign_count=new_sign_count,
+            sign_count=int(auth_data.counter),
             user_verified=bool(auth_data.is_user_verified()),
-            backup_eligible=backup_eligible,
+            backup_eligible=bool(auth_data.is_backup_eligible()),
             backup_state=bool(auth_data.is_backed_up()),
         )
-
-    @staticmethod
-    def _advance_sign_count(*, current: int, new: int, backup_eligible: bool) -> int:
-        """Return the sign count to persist, rejecting a real regression.
-
-        WebAuthn sign counters are optional and are not global for multi-device
-        (backed-up) credentials. A regression is only meaningful for a
-        single-device credential whose counter is non-zero.
-        """
-
-        if backup_eligible or new == 0 or current == 0:
-            return new
-        if new <= current:
-            raise WebAuthnVerificationError(
-                "webauthn_sign_count_regression",
-                "WebAuthn sign count regressed for a single-device credential",
-            )
-        return new

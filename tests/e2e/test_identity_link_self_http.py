@@ -167,7 +167,7 @@ def _backdated_session_token(conn: PgConnection, *, native_identity_id: UUID) ->
     conn.execute(
         """
         INSERT INTO request_engine.native_sessions (
-            id, native_identity_id, credential_id, token_digest, token_fingerprint,
+            id, native_identity_id, password_credential_id, token_digest, token_fingerprint,
             session_epoch, created_at, expires_at
         )
         SELECT %s, identity.id, credential.id, %s, %s, identity.session_epoch,

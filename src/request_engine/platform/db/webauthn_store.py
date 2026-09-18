@@ -3,38 +3,27 @@
 The runtime app login reaches WebAuthn state only through the narrow
 ``request_auth`` functions; it has no direct table authority. Public credential
 material crosses this boundary, never an authenticator private key.
+
+Challenge finalization is coupled to its authoritative consequence in a single
+``request_auth`` transaction: verification happens in Python outside any lock and
+only the trusted finalization consumes the challenge while writing the credential,
+session or step-up fact.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
 
 from request_engine.platform.db.session import SessionFactory
-
-
-@dataclass(frozen=True, slots=True)
-class WebAuthnChallengeScope:
-    native_identity_id: UUID | None
-    session_id: UUID | None
-    setup_session_id: UUID | None
-    expires_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class WebAuthnCredentialRecord:
-    id: UUID
-    credential_id: bytes
-    public_key: bytes
-    sign_count: int
-    aaguid: str
-    backup_eligible: bool
-    backup_state: bool
-    user_verified: bool
-    status: str
+from request_engine.platform.security.native_webauthn_auth import (
+    WebAuthnChallengeScope,
+    WebAuthnCredentialRecord,
+)
 
 
 class PostgresWebAuthnStore:
@@ -76,7 +65,7 @@ class PostgresWebAuthnStore:
             )
         return created is True
 
-    async def consume_challenge(
+    async def read_challenge(
         self, *, challenge_digest: bytes, purpose: str
     ) -> WebAuthnChallengeScope | None:
         async with self._session_factory() as session, session.begin():
@@ -86,7 +75,7 @@ class PostgresWebAuthnStore:
                         text(
                             """
                             SELECT native_identity_id, session_id, setup_session_id, expires_at
-                              FROM request_auth.consume_webauthn_challenge(
+                              FROM request_auth.read_webauthn_challenge(
                                   :challenge_digest, :purpose
                               )
                             """
@@ -99,53 +88,35 @@ class PostgresWebAuthnStore:
             )
         if row is None:
             return None
-        expires_at = row["expires_at"]
-        if not isinstance(expires_at, datetime):
-            raise RuntimeError("WebAuthn challenge expiry could not be materialized")
         return WebAuthnChallengeScope(
             native_identity_id=_uuid_or_none(row["native_identity_id"]),
             session_id=_uuid_or_none(row["session_id"]),
             setup_session_id=_uuid_or_none(row["setup_session_id"]),
-            expires_at=expires_at,
+            expires_at=_timestamp(row["expires_at"], "challenge expiry"),
         )
 
-    async def register_credential(
-        self,
-        *,
-        credential_row_id: UUID,
-        native_identity_id: UUID,
-        credential_id: bytes,
-        public_key: bytes,
-        sign_count: int,
-        aaguid: str,
-        backup_eligible: bool,
-        backup_state: bool,
-        user_verified: bool,
-    ) -> bool:
+    async def read_credential(self, *, credential_id: bytes) -> WebAuthnCredentialRecord | None:
         async with self._session_factory() as session, session.begin():
-            registered = await session.scalar(
-                text(
-                    """
-                    SELECT request_auth.register_webauthn_credential(
-                        :credential_row_id, :native_identity_id, :credential_id,
-                        :public_key, :sign_count, :aaguid, :backup_eligible,
-                        :backup_state, :user_verified
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT id, native_identity_id, credential_id, public_key,
+                                   sign_count, aaguid, backup_eligible, backup_state,
+                                   user_verified, status
+                              FROM request_auth.read_webauthn_credential(:credential_id)
+                            """
+                        ),
+                        {"credential_id": credential_id},
                     )
-                    """
-                ),
-                {
-                    "credential_row_id": credential_row_id,
-                    "native_identity_id": native_identity_id,
-                    "credential_id": credential_id,
-                    "public_key": public_key,
-                    "sign_count": sign_count,
-                    "aaguid": aaguid,
-                    "backup_eligible": backup_eligible,
-                    "backup_state": backup_state,
-                    "user_verified": user_verified,
-                },
+                )
+                .mappings()
+                .one_or_none()
             )
-        return registered is True
+        if row is None:
+            return None
+        return _record(dict(row))
 
     async def read_credentials(
         self, *, native_identity_id: UUID
@@ -170,43 +141,122 @@ class PostgresWebAuthnStore:
                 .all()
             )
         return tuple(
-            WebAuthnCredentialRecord(
-                id=UUID(str(row["id"])),
-                credential_id=bytes(row["credential_id"]),
-                public_key=bytes(row["public_key"]),
-                sign_count=int(row["sign_count"]),
-                aaguid=str(row["aaguid"]),
-                backup_eligible=bool(row["backup_eligible"]),
-                backup_state=bool(row["backup_state"]),
-                user_verified=bool(row["user_verified"]),
-                status=str(row["status"]),
-            )
-            for row in rows
+            _record({**dict(row), "native_identity_id": native_identity_id}) for row in rows
         )
 
-    async def update_sign_count(
+    async def finalize_registration(
         self,
         *,
+        challenge_digest: bytes,
         credential_row_id: UUID,
-        native_identity_id: UUID,
-        new_sign_count: int,
+        credential_id: bytes,
+        public_key: bytes,
+        sign_count: int,
+        aaguid: str,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
     ) -> bool:
         async with self._session_factory() as session, session.begin():
-            updated = await session.scalar(
+            value = await session.scalar(
                 text(
                     """
-                    SELECT request_auth.update_webauthn_credential_sign_count(
-                        :credential_row_id, :native_identity_id, :new_sign_count
+                    SELECT request_auth.finalize_webauthn_registration(
+                        :challenge_digest, :credential_row_id, :credential_id,
+                        :public_key, :sign_count, :aaguid, :backup_eligible,
+                        :backup_state, :user_verified
                     )
                     """
                 ),
                 {
+                    "challenge_digest": challenge_digest,
                     "credential_row_id": credential_row_id,
-                    "native_identity_id": native_identity_id,
-                    "new_sign_count": new_sign_count,
+                    "credential_id": credential_id,
+                    "public_key": public_key,
+                    "sign_count": sign_count,
+                    "aaguid": aaguid,
+                    "backup_eligible": backup_eligible,
+                    "backup_state": backup_state,
+                    "user_verified": user_verified,
                 },
             )
-        return updated is True
+        return value is True
+
+    async def finalize_authentication(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        native_identity_id: UUID,
+        sign_count: int,
+        backup_eligible: bool,
+        backup_state: bool,
+        user_verified: bool,
+        session_id: UUID,
+        token_digest: bytes,
+        token_fingerprint: str,
+        expires_at: datetime,
+    ) -> bool:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_auth.finalize_webauthn_authentication(
+                        :challenge_digest, :credential_row_id, :native_identity_id,
+                        :sign_count, :backup_eligible, :backup_state, :user_verified,
+                        :session_id, :token_digest, :token_fingerprint, :expires_at
+                    )
+                    """
+                ),
+                {
+                    "challenge_digest": challenge_digest,
+                    "credential_row_id": credential_row_id,
+                    "native_identity_id": native_identity_id,
+                    "sign_count": sign_count,
+                    "backup_eligible": backup_eligible,
+                    "backup_state": backup_state,
+                    "user_verified": user_verified,
+                    "session_id": session_id,
+                    "token_digest": token_digest,
+                    "token_fingerprint": token_fingerprint,
+                    "expires_at": expires_at,
+                },
+            )
+        return value is True
+
+    async def finalize_step_up(
+        self,
+        *,
+        challenge_digest: bytes,
+        credential_row_id: UUID,
+        session_id: UUID,
+        native_identity_id: UUID,
+        sign_count: int,
+        backup_eligible: bool,
+        user_verified: bool,
+    ) -> bool:
+        async with self._session_factory() as session, session.begin():
+            value = await session.scalar(
+                text(
+                    """
+                    SELECT request_auth.finalize_webauthn_step_up(
+                        :challenge_digest, :credential_row_id, :session_id,
+                        :native_identity_id, :sign_count, :backup_eligible,
+                        :user_verified
+                    )
+                    """
+                ),
+                {
+                    "challenge_digest": challenge_digest,
+                    "credential_row_id": credential_row_id,
+                    "session_id": session_id,
+                    "native_identity_id": native_identity_id,
+                    "sign_count": sign_count,
+                    "backup_eligible": backup_eligible,
+                    "user_verified": user_verified,
+                },
+            )
+        return value is True
 
     async def revoke_credential(
         self,
@@ -231,6 +281,27 @@ class PostgresWebAuthnStore:
                 },
             )
         return revoked is True
+
+
+def _record(row: Mapping[str, Any]) -> WebAuthnCredentialRecord:
+    return WebAuthnCredentialRecord(
+        id=UUID(str(row["id"])),
+        native_identity_id=UUID(str(row["native_identity_id"])),
+        credential_id=bytes(row["credential_id"]),  # type: ignore[arg-type]
+        public_key=bytes(row["public_key"]),  # type: ignore[arg-type]
+        sign_count=int(row["sign_count"]),  # type: ignore[arg-type]
+        aaguid=str(row["aaguid"]),
+        backup_eligible=bool(row["backup_eligible"]),
+        backup_state=bool(row["backup_state"]),
+        user_verified=bool(row["user_verified"]),
+        status=str(row["status"]),
+    )
+
+
+def _timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, datetime):
+        raise RuntimeError(f"WebAuthn {label} could not be materialized")
+    return value
 
 
 def _uuid_or_none(value: object) -> UUID | None:

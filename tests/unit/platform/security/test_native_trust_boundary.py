@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 from starlette.requests import Request
 
+from request_engine.platform.security.assurance import AuthenticationAssurance
 from request_engine.platform.security.authentication import (
     AuthenticatedSubject,
     AuthenticatedSubjectClass,
@@ -19,6 +20,7 @@ from request_engine.platform.security.native_auth import issue_opaque_token
 from request_engine.platform.security.native_http import NativeSessionHttpActorResolver
 from request_engine.platform.security.native_session import (
     NativeCredentialStatus,
+    NativeIdentityAuthorityStatus,
     NativeIdentityStatus,
     NativeSessionAuthenticator,
     NativeSessionEvidence,
@@ -160,13 +162,20 @@ async def test_http_native_resolver_reloads_current_authority_for_selected_tenan
         session_id=token.token_id,
         native_identity_id=native_identity_id,
         identity_authority_id=authority_id,
-        credential_id=uuid4(),
+        password_credential_id=uuid4(),
+        password_credential_status=NativeCredentialStatus.ACTIVE,
+        webauthn_credential_id=None,
+        webauthn_credential_status=None,
         token_digest=token.digest,
         session_epoch=1,
         current_session_epoch=1,
         session_status=NativeSessionStatus.ACTIVE,
         identity_status=NativeIdentityStatus.ACTIVE,
-        credential_status=NativeCredentialStatus.ACTIVE,
+        authority_status=NativeIdentityAuthorityStatus.ACTIVE,
+        authentication_methods=("password",),
+        authentication_assurance=AuthenticationAssurance.SINGLE_FACTOR,
+        user_verified=False,
+        recovery_derived=False,
         expires_at=NOW + timedelta(hours=1),
         created_at=NOW,
         last_seen_at=None,
