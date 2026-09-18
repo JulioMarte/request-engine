@@ -10,6 +10,8 @@ PRIVATE_GLOBAL_TABLES = {
     "platform_identity_disable_facts",
     "platform_instance",
     "setup_sessions",
+    "webauthn_challenges",
+    "webauthn_credentials",
     "shared_capacity_authority_events",
     "shared_capacity_bindings",
     "shared_capacity_claim_links",

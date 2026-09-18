@@ -29,14 +29,18 @@ administration remain open. Nothing is merged or deployed and the application
 database is unmigrated.
 
 Instance-claim trust-root progress (ADR 0014, migration head
-`0057_platform_instance_setup`): P0 contract reconciliation and P1 persistence are
-delivered locally. P1 adds the structural `platform_instance` singleton, bounded
-digest-only `setup_sessions` with a race-safe active cap, built-in native/workload
-identity-authority facts, and legacy-CLI adoption that fails closed on ambiguous
-historical root provenance. P1 creates no Principal, binding, grant or owner and
-mounts no HTTP setup surface; P2-P6 (WebAuthn/assurance, recovery codes/password
-modernization, atomic HTTP claim, owner lifecycle, instance recovery) remain
-pending.
+`0059_webauthn_credentials`): P0 contract reconciliation, P1 persistence and part
+of P2 are delivered locally. P1 adds the structural `platform_instance` singleton,
+bounded digest-only `setup_sessions` with a race-safe active cap, built-in
+native/workload identity-authority facts, and legacy-CLI adoption that fails
+closed on ambiguous historical root provenance. P2 adds an authentication
+method/assurance model, Request Engine-owned WebAuthn registration/authentication
+verification wrapping Yubico `fido2` (with an explicit sign-count policy), the
+`webauthn_credentials`/`webauthn_challenges` durable surface behind narrow
+`request_auth` functions, and a real-crypto software authenticator for tests.
+No Principal, binding, grant or owner is created, no HTTP setup surface exists,
+and passkey login session issuance with assurance propagation is not yet wired;
+P2's session propagation plus P3-P6 remain pending.
 
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)

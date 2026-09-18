@@ -4,12 +4,17 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
-Implementation status (2026-09-18, migration head `0057_platform_instance_setup`):
+Implementation status (2026-09-18, migration head `0059_webauthn_credentials`):
 
 ```text
 P0  contract reconciliation                    delivered (reconnaissance)
 P1  Instance + setup-session persistence       delivered (0057; no owner creation yet)
-P2  WebAuthn + assurance primitives            pending
+P2  WebAuthn + assurance primitives            partial (assurance model, real fido2
+                                                verification + sign-count policy,
+                                                credential/challenge persistence 0059,
+                                                real software test authenticator;
+                                                session-issuance assurance propagation
+                                                and HTTP wiring pending)
 P3  recovery codes + password modernization    pending
 P4  atomic HTTP Instance claim                 pending
 P5  additional Platform Owner/admin lifecycle  pending
@@ -20,6 +25,14 @@ P7  configuration/secrets admin APIs           deferred (follow-on)
 P1 delivers the structural `platform_instance` singleton, bounded digest-only
 `setup_sessions`, built-in native/workload authority facts and legacy-CLI
 adoption. It deliberately creates no Principal, binding, grant or owner.
+
+P2 delivers `platform/security/assurance.py` (method/assurance classification and
+step-up satisfaction), `platform/security/webauthn.py` (Request Engine-owned
+registration/authentication options and verification wrapping Yubico `fido2`,
+with an explicit single-device sign-count regression policy), the
+`webauthn_credentials`/`webauthn_challenges` durable surface and narrow
+`request_auth` boundary, and a real-crypto software authenticator used by tests.
+Passkey login session issuance with assurance propagation remains to be wired.
 
 ADR 0014 is the decision authority for the trust-root change. This document is
 the executable design/handoff. It deliberately separates accepted semantics from

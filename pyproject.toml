@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.18.5,<1.19",
     "asyncpg>=0.31.0,<1",
     "fastapi[standard]>=0.141.1,<0.142",
+    "fido2>=2.2.1,<3",
     "httpx>=0.28.1,<0.29",
     "psycopg[binary]>=3.3.4,<4",
     "pydantic-settings>=2.14.2,<3",
@@ -65,11 +66,13 @@ max-complexity = 10
 include = ["src", "tests"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
+extraPaths = ["src", "tests/fixtures"]
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests/fixtures"]
 addopts = "-ra --strict-markers --strict-config"
 xfail_strict = true
 markers = [
