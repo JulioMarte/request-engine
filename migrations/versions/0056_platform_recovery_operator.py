@@ -4,7 +4,7 @@ Revision ID: 0056_platform_recovery_operator
 Revises: 0055_authority_inspect_policy
 
 Adds one deliberately narrow platform ceremony. A HUMAN platform controller
-holding the existing delegable platform.principal.provision capability may bind
+holding the existing delegable platform.recovery_operator.provision capability may bind
 a credentialed Native identity to a platform Principal whose fixed profile
 contains only platform.identity.read and platform.identity.recovery_approve.
 
@@ -125,7 +125,7 @@ BEGIN
          WHERE grant_row.principal_id = v_creator_id
            AND grant_row.principal_plane = 'platform'
            AND grant_row.authority_plane = 'platform'
-           AND grant_row.capability_key = 'platform.principal.provision'
+           AND grant_row.capability_key = 'platform.recovery_operator.provision'
            AND grant_row.status = 'active'
            AND grant_row.delegable
     ) THEN
@@ -253,6 +253,162 @@ BEGIN
     RETURN p_principal_id;
 END
 $function$;
+        """
+    )
+    op.execute(
+        r"""
+CREATE OR REPLACE FUNCTION request_platform.establish_root(
+    p_intent_id uuid,
+    p_token_digest bytea,
+    p_identity_authority_id uuid,
+    p_native_identity_id uuid,
+    p_login_handle text,
+    p_credential_id uuid,
+    p_password_verifier text,
+    p_principal_id uuid,
+    p_binding_id uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+AS $function$
+DECLARE
+    v_provenance text;
+    v_authority_kind text;
+    v_authority_status text;
+BEGIN
+    PERFORM request_engine.acquire_identity_topology_exclusive();
+    PERFORM pg_catalog.pg_advisory_xact_lock(1380274257, 1902476356);
+
+    SELECT provenance_reference
+      INTO v_provenance
+      FROM request_engine.platform_bootstrap_intents
+     WHERE id = p_intent_id
+       AND token_digest = p_token_digest
+       AND permitted_action = 'platform.root.establish'
+       AND status = 'pending'
+       AND expires_at > clock_timestamp()
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    PERFORM 1 FROM request_engine.principals
+     WHERE principal_plane = 'platform'
+     LIMIT 1;
+    IF FOUND THEN
+        RAISE EXCEPTION 'Platform root already exists' USING ERRCODE = '55000';
+    END IF;
+
+    SELECT kind, status
+      INTO v_authority_kind, v_authority_status
+      FROM request_engine.identity_authorities
+     WHERE id = p_identity_authority_id;
+    IF NOT FOUND OR v_authority_kind <> 'native'
+       OR v_authority_status <> 'active' THEN
+        RAISE EXCEPTION 'Platform root requires an active Native identity authority'
+            USING ERRCODE = '23514';
+    END IF;
+
+    INSERT INTO request_engine.native_identities (
+        id, identity_authority_id, login_handle
+    ) VALUES (p_native_identity_id, p_identity_authority_id, p_login_handle);
+    INSERT INTO request_engine.native_credentials (
+        id, native_identity_id, verifier
+    ) VALUES (p_credential_id, p_native_identity_id, p_password_verifier);
+    INSERT INTO request_engine.principals (
+        id, principal_plane, principal_kind, external_subject
+    ) VALUES (
+        p_principal_id,
+        'platform',
+        'human',
+        'native-bootstrap:' || p_native_identity_id::text
+    );
+    INSERT INTO request_engine.identity_bindings (
+        id, principal_id, principal_plane, identity_authority_id,
+        subject_id, status
+    ) VALUES (
+        p_binding_id,
+        p_principal_id,
+        'platform',
+        p_identity_authority_id,
+        p_native_identity_id::text,
+        'active'
+    );
+
+    INSERT INTO request_engine.principal_authority_grants (
+        principal_id, principal_plane, authority_plane, capability_key,
+        delegable, provenance_kind, provenance_reference
+    )
+    SELECT p_principal_id,
+           'platform',
+           'platform',
+           capability_key,
+           delegable,
+           'trust_bootstrap',
+           'platform-bootstrap:' || p_intent_id::text || ':' || v_provenance
+      FROM (VALUES
+          ('platform.principal.provision', true),
+          ('platform.tenant_provisioner.provision', true),
+          ('platform.recovery_operator.provision', false),
+          ('organization.provision', true),
+          ('platform.identity.recover', false),
+          ('platform.identity.read', false),
+          ('platform.identity.recovery_approve', false),
+          ('platform.provisioner.read', false),
+          ('platform.provisioner.manage_lifecycle', false)
+      ) AS initial_grant(capability_key, delegable);
+
+    UPDATE request_engine.platform_bootstrap_intents
+       SET status = 'consumed',
+           revision = revision + 1,
+           consumed_at = clock_timestamp()
+     WHERE id = p_intent_id;
+    RETURN p_principal_id;
+END
+$function$;
+        """
+    )
+    op.execute(
+        """
+        ALTER FUNCTION request_platform.establish_root(
+            uuid, bytea, uuid, uuid, text, uuid, text, uuid, uuid
+        ) OWNER TO request_bootstrap_definer
+        """
+    )
+    op.execute(
+        """
+        INSERT INTO request_engine.principal_authority_grants (
+            principal_id, principal_plane, authority_plane, capability_key,
+            delegable, provenance_kind, provenance_reference
+        )
+        SELECT controller.id,
+               'platform',
+               'platform',
+               'platform.recovery_operator.provision',
+               false,
+               'trust_bootstrap',
+               'platform-controller-policy-v2-recovery-operator:' || controller.id::text
+          FROM request_engine.principals AS controller
+         WHERE controller.principal_plane = 'platform'
+           AND controller.active
+           AND EXISTS (
+               SELECT 1
+                 FROM request_engine.principal_authority_grants AS control_grant
+                WHERE control_grant.principal_id = controller.id
+                  AND control_grant.principal_plane = 'platform'
+                  AND control_grant.authority_plane = 'platform'
+                  AND control_grant.capability_key = 'platform.tenant_provisioner.provision'
+                  AND control_grant.status = 'active'
+           )
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM request_engine.principal_authority_grants AS existing
+                WHERE existing.principal_id = controller.id
+                  AND existing.capability_key = 'platform.recovery_operator.provision'
+                  AND existing.status = 'active'
+           )
         """
     )
     op.execute(f"ALTER FUNCTION {_FUNCTION} OWNER TO {_CONTROL_DEFINER}")
