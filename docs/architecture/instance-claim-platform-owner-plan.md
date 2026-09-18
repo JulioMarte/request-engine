@@ -222,24 +222,85 @@ Do not make SetupSession a normal `native_session`.
 
 Do **not** create an effective platform Principal early.
 
-Two acceptable implementation strategies:
+The preferred design is explicit **SetupSession-owned pending enrollment
+material**, promoted atomically during finalization. This avoids allowing
+unauthenticated abandoned setup attempts to reserve the permanent native-login
+namespace, create durable credential litter or force cleanup semantics onto the
+ordinary identity lifecycle.
 
-A. persist bounded pending identity/authenticator material owned by SetupSession,
-then promote atomically on finalize; or
+Conceptually the pending material may contain:
 
-B. create the native identity earlier but keep it unbound/unprivileged until
-finalize.
+```text
+setup_pending_identity
+  setup_session_id
+  normalized_login_handle
+  password_verifier/version when password is used
+  stable non-PII WebAuthn user_handle
+  timestamps/revision
 
-Preferred: **B if it reuses current identity integrity safely**, because an
-identity without Principal/binding/grants has no business authority. However,
-the implementation must prove abandoned identities are bounded/cleanable and
-cannot be used to spam durable identity state indefinitely.
+setup_pending_webauthn_credential
+  setup_session_id
+  credential_id
+  public credential material
+  verified registration facts
+```
 
-If that proof is awkward, use explicit pending setup tables instead.
+Pending rows are not Principals, bindings, grants or normal native identities and
+cannot authenticate on ordinary native login endpoints.
+
+On successful finalization, one transaction creates/promotes the permanent
+native identity/credentials/authenticators and the platform authority facts. On
+expiry/revocation, pending material is safely garbage-collectable without
+rewriting identity history.
+
+Creating an ordinary native identity before finalization is permitted only if an
+implementation review proves all of the following: abandoned setup cannot
+permanently squat login handles, cleanup has explicit safe semantics, rate limits
+bound durable-row creation, and no ordinary authentication path becomes usable
+before claim. This is no longer the preferred path.
 
 Do not invent a third hidden authority type.
 
-### 5.4 WebAuthn credentials
+### 5.4 Built-in identity authorities and the fresh-install chicken-and-egg
+
+The current CLI silently performs another bootstrap responsibility: it discovers
+or creates the canonical native and workload identity-authority rows. ADR 0014
+cannot remove the CLI while leaving that responsibility implicit.
+
+A clean Request Engine database therefore needs **built-in authority identity
+facts established independently of the human claim**.
+
+Recommended target:
+
+```text
+Platform Instance
+  ├── built_in_native_authority_id
+  └── built_in_workload_authority_id
+```
+
+The migration/instance-initialization path should:
+
+1. find an existing canonical `native / request-engine-native` authority and
+   `workload / request-engine-workload` authority when upgrading a database that
+   already used the old bootstrap;
+2. fail closed on ambiguous/conflicting canonical rows rather than guessing;
+3. create the missing built-in authority rows on a truly fresh database;
+4. bind their IDs to the Instance durable state;
+5. preserve those IDs on backup/restore;
+6. never derive authority identity from caller input.
+
+The control-plane/runtime should read the built-in native authority from this
+trusted durable installation state rather than requiring a human to copy the UUID
+printed by a bootstrap CLI into environment configuration.
+
+This change needs an explicit migration and startup-compatibility plan. Do not
+delete `REQUEST_ENGINE_*_IDENTITY_AUTHORITY_ID` configuration until all callers,
+tests and upgrade paths have been inventoried and migrated.
+
+The built-in workload authority is not permission to create workloads; it is only
+the authentication authority used later by governed workload provisioning.
+
+### 5.5 WebAuthn credentials
 
 Conceptual durable fields:
 
@@ -276,7 +337,7 @@ Rules:
 
 Use WebAuthn Level 3 semantics, not ad-hoc "passkey JSON".
 
-### 5.5 TOTP
+### 5.6 TOTP
 
 TOTP is fallback/secondary, not phishing-resistant assurance.
 
@@ -292,7 +353,7 @@ Never store raw seed in ordinary PostgreSQL columns or logs.
 
 Enrollment requires proof of one valid TOTP after seed issuance.
 
-### 5.6 Recovery codes
+### 5.7 Recovery codes
 
 Conceptual fields:
 
@@ -319,7 +380,10 @@ Rules:
 - rotating/regenerating codes invalidates remaining prior codes;
 - use of a code emits a security audit event and should force security review /
   re-enrollment before high-risk authority changes;
-- a recovery code alone does not satisfy phishing-resistant step-up.
+- a recovery code alone does not satisfy phishing-resistant step-up;
+- a UI acknowledgement that codes were displayed/saved is UX state, not proof
+  that the human actually stored them safely; security must not depend on such an
+  acknowledgement.
 
 ## 6. Setup state machine
 
@@ -390,8 +454,20 @@ Requirements:
 
 ### 7.3 Automated
 
-Automation drives the same HTTP operations and finalize command. It may use the
-protected setup proof.
+Automation may create the SetupSession, preconfigure non-secret installation
+inputs and drive every machine-safe HTTP step, but **automation does not get to
+fabricate a human Platform Owner's phishing-resistant authenticator**.
+
+For the normal HUMAN-owner model, final activation still requires a human to
+complete a real WebAuthn ceremony. A deployment can therefore automate up to the
+point where the owner opens the one-time setup flow and registers a passkey.
+
+A fully unattended deployment that needs immediate machine administration must
+use a separately designed bounded Platform INTEGRATION/service Principal after
+the trust root exists; it must not create a fake HUMAN with a CI-owned passkey.
+
+Importing pre-created human WebAuthn private keys is not an accepted automation
+mechanism.
 
 No Terraform/Helm/CI path may call a different SQL owner-creation procedure that
 bypasses the canonical semantics.
