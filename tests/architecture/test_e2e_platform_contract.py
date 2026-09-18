@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import cast
@@ -178,3 +180,46 @@ def test_docker_retry_is_bounded_and_transient_only() -> None:
     assert 'TLS handshake timeout' in source
     assert 'failed to fetch anonymous token' in source
     assert 'toomanyrequests' in source
+
+
+def test_docker_retry_retries_transient_failure_then_succeeds(tmp_path: Path) -> None:
+    log = tmp_path / "retry.log"
+    counter = tmp_path / "counter"
+    command = (
+        'count=0; [[ -f "$1" ]] && count=$(cat "$1"); count=$((count + 1)); '
+        'echo "$count" > "$1"; if ((count < 2)); then '
+        'echo "TLS handshake timeout" >&2; exit 1; fi'
+    )
+    result = subprocess.run(
+        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        check=False,
+        env={
+            **os.environ,
+            "E2E_DOCKER_RETRY_ATTEMPTS": "3",
+            "E2E_DOCKER_RETRY_DELAY_SECONDS": "0",
+        },
+    )
+    assert result.returncode == 0
+    assert counter.read_text(encoding="utf-8").strip() == "2"
+    assert "docker-retry=scheduled" in log.read_text(encoding="utf-8")
+
+
+def test_docker_retry_does_not_repeat_deterministic_failure(tmp_path: Path) -> None:
+    log = tmp_path / "retry.log"
+    counter = tmp_path / "counter"
+    command = (
+        'count=0; [[ -f "$1" ]] && count=$(cat "$1"); count=$((count + 1)); '
+        'echo "$count" > "$1"; echo "Dockerfile syntax error" >&2; exit 17'
+    )
+    result = subprocess.run(
+        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        check=False,
+        env={
+            **os.environ,
+            "E2E_DOCKER_RETRY_ATTEMPTS": "3",
+            "E2E_DOCKER_RETRY_DELAY_SECONDS": "0",
+        },
+    )
+    assert result.returncode == 17
+    assert counter.read_text(encoding="utf-8").strip() == "1"
+    assert "reason=non-transient" in log.read_text(encoding="utf-8")
