@@ -180,6 +180,7 @@ def test_docker_retry_is_bounded_and_transient_only() -> None:
     assert "TLS handshake timeout" in source
     assert "failed to fetch anonymous token" in source
     assert "toomanyrequests" in source
+    assert "command=$*" not in source
 
 
 def test_docker_retry_retries_transient_failure_then_succeeds(tmp_path: Path) -> None:
@@ -221,5 +222,26 @@ def test_docker_retry_does_not_repeat_deterministic_failure(tmp_path: Path) -> N
         },
     )
     assert result.returncode == 17
+    assert counter.read_text(encoding="utf-8").strip() == "1"
+    assert "reason=non-transient" in log.read_text(encoding="utf-8")
+
+
+def test_docker_retry_does_not_treat_plain_500_as_transient(tmp_path: Path) -> None:
+    log = tmp_path / "retry.log"
+    counter = tmp_path / "counter"
+    command = (
+        'count=0; [[ -f "$1" ]] && count=$(cat "$1"); count=$((count + 1)); '
+        'echo "$count" > "$1"; echo "image layer is 500 MB" >&2; exit 19'
+    )
+    result = subprocess.run(
+        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        check=False,
+        env={
+            **os.environ,
+            "E2E_DOCKER_RETRY_ATTEMPTS": "3",
+            "E2E_DOCKER_RETRY_DELAY_SECONDS": "0",
+        },
+    )
+    assert result.returncode == 19
     assert counter.read_text(encoding="utf-8").strip() == "1"
     assert "reason=non-transient" in log.read_text(encoding="utf-8")
