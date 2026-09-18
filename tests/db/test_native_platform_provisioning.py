@@ -163,7 +163,6 @@ async def test_native_provisioner_is_atomic_replay_safe_and_never_regrants(
         )
 
 
-
 @pytest.mark.asyncio
 async def test_native_recovery_operator_is_bounded_and_replay_safe(
     admin_conn: PgConnection,
