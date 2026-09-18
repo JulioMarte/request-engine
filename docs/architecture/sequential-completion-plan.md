@@ -1,5 +1,12 @@
 # Plan de implementación secuencial con sub-agentes
 
+> **Trust-root amendment (2026-09-18):** this plan remains useful for the
+> already-running E2E/F-01/G work, but the next platform trust-root implementation
+> sequence is P0-P7 in `instance-claim-platform-owner-plan.md`. In particular,
+> F-01's current CLI bootstrap is transitional evidence and must eventually be
+> replaced by the HTTP Instance-claim journey without changing the reusable E2E
+> platform boundary.
+
 Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization` (lane de integración, PR #132).
 
 Estado: **plan operativo de ejecución, no certificación ni autorización de despliegue**. Complementa `architecture/auth-production-completion-plan.md` y la plataforma E2E oficial definida en `architecture/docker-e2e-ci-plan.md`.
