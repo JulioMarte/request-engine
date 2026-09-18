@@ -58,6 +58,7 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_platform", "establish_root"): _GATE_EXCLUSIVE,
     ("request_platform", "provision_native_organization_root"): _GATE_SHARE,
     ("request_platform", "provision_native_tenant_provisioner"): _GATE_SHARE,
+    ("request_platform", "provision_native_recovery_operator"): _GATE_SHARE,
     ("request_platform", "provision_tenant_provisioner"): _GATE_SHARE,
     ("request_platform", "transition_native_platform_provisioner"): _GATE_SHARE,
 }
@@ -119,6 +120,7 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_platform.establish_root", 9),
     ("request_platform.provision_native_organization_root", 8),
     ("request_platform.provision_native_tenant_provisioner", 5),
+    ("request_platform.provision_native_recovery_operator", 5),
     ("request_platform.provision_tenant_provisioner", 3),
     ("request_platform.transition_native_platform_provisioner", 7),
 )

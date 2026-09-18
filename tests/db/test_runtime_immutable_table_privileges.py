@@ -162,6 +162,22 @@ _EXACT_DEFINER_OWNERS = {
         "assert_platform_has_controller",
         "",
     ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_platform_instance",
+        "",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "create_setup_session",
+        "p_session_id uuid, p_token_digest bytea, p_token_fingerprint text, "
+        "p_mode text, p_ttl_seconds integer",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_setup_session",
+        "p_token_digest bytea",
+    ): "request_platform_control_definer",
 }
 _COLUMN_UPDATE_AUTHORITY = {
     "operational_recovery_executions": {

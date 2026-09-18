@@ -28,6 +28,16 @@ of current product contracts; the G/D6 operational acceptance and platform syste
 administration remain open. Nothing is merged or deployed and the application
 database is unmigrated.
 
+Instance-claim trust-root progress (ADR 0014, migration head
+`0057_platform_instance_setup`): P0 contract reconciliation and P1 persistence are
+delivered locally. P1 adds the structural `platform_instance` singleton, bounded
+digest-only `setup_sessions` with a race-safe active cap, built-in native/workload
+identity-authority facts, and legacy-CLI adoption that fails closed on ambiguous
+historical root provenance. P1 creates no Principal, binding, grant or owner and
+mounts no HTTP setup surface; P2-P6 (WebAuthn/assurance, recovery codes/password
+modernization, atomic HTTP claim, owner lifecycle, instance recovery) remain
+pending.
+
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)
 for `policy:pr` and run

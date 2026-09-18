@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import os
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/system_e2e/suites.toml"
@@ -15,6 +19,35 @@ RUNNER = ROOT / "tests/system_e2e/runner.py"
 COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
 DOCKER_RETRY = ROOT / "scripts/ci/retry_transient_docker.sh"
 DOCKER_E2E_WORKFLOW = ROOT / ".github/workflows/docker-e2e.yml"
+
+
+def _resolve_bash() -> str | None:
+    """Reuse the canonical Windows-aware bash resolver instead of a bare name.
+
+    A bare ``bash`` resolves to the unusable WSL launcher on some Windows hosts;
+    the canonical resolver rejects that and finds Git Bash. When no usable shell
+    exists the shell-out proofs are skipped rather than failing spuriously.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "ci_jobs_bash_resolution", ROOT / "scripts" / "ci" / "ci_jobs.py"
+    )
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except RuntimeError:
+        return None
+    resolved = getattr(module, "_BASH", None)
+    return resolved if isinstance(resolved, str) else None
+
+
+_RESOLVED_BASH = _resolve_bash()
+_BASH = _RESOLVED_BASH or "bash"
+pytestmark = pytest.mark.skipif(
+    _RESOLVED_BASH is None, reason="a usable POSIX bash is required for shell-out proofs"
+)
 
 
 def _enabled_suites() -> dict[str, dict[str, object]]:
@@ -193,7 +226,7 @@ def test_docker_retry_retries_transient_failure_then_succeeds(tmp_path: Path) ->
         'echo "TLS handshake timeout" >&2; exit 1; fi'
     )
     result = subprocess.run(
-        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        [_BASH, str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
         check=False,
         env={
             **os.environ,
@@ -214,7 +247,7 @@ def test_docker_retry_does_not_repeat_deterministic_failure(tmp_path: Path) -> N
         'echo "$count" > "$1"; echo "Dockerfile syntax error" >&2; exit 17'
     )
     result = subprocess.run(
-        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        [_BASH, str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
         check=False,
         env={
             **os.environ,
@@ -235,7 +268,7 @@ def test_docker_retry_does_not_treat_plain_500_as_transient(tmp_path: Path) -> N
         'echo "$count" > "$1"; echo "image layer is 500 MB" >&2; exit 19'
     )
     result = subprocess.run(
-        ["bash", str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
+        [_BASH, str(DOCKER_RETRY), str(log), "bash", "-c", command, "bash", str(counter)],
         check=False,
         env={
             **os.environ,

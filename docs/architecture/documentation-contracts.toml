@@ -37,3 +37,28 @@ triggers = [
 ]
 required_docs = ["docs/v3/12-cross-tenant-shared-capacity-design.md"]
 required_docs_mode = "all"
+
+[[rules]]
+id = "instance-claim-trust-root"
+description = "Instance claim, SetupSession, WebAuthn, authentication assurance and Platform Owner trust-root semantics"
+triggers = [
+  "migrations/versions/0057_platform_instance_setup.py",
+  "migrations/versions/00*instance_claim*.py",
+  "migrations/versions/00*platform_owner*.py",
+  "migrations/versions/00*webauthn*.py",
+  "src/request_engine/modules/tenancy/**/instance_claim*.py",
+  "src/request_engine/modules/tenancy/**/platform_owner*.py",
+  "src/request_engine/modules/tenancy/**/setup_*.py",
+  "src/request_engine/platform/security/webauthn*.py",
+  "src/request_engine/platform/security/assurance*.py",
+  "src/request_engine/platform/security/setup*.py",
+  "src/request_engine/platform/db/webauthn*.py",
+  "src/request_engine/platform/db/setup*.py",
+  "src/request_engine/entrypoints/http/setup*.py",
+  "tests/db/test_platform_instance_setup.py",
+  "tests/db/test_webauthn*.py",
+  "tests/db/test_setup*.py",
+  "tests/system_e2e/**/instance_claim*",
+]
+required_docs = ["docs/architecture/instance-claim-platform-owner-plan.md"]
+required_docs_mode = "all"
