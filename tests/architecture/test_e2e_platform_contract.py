@@ -173,13 +173,13 @@ def test_reference_compose_keeps_database_credentials_need_to_know() -> None:
 
 def test_docker_retry_is_bounded_and_transient_only() -> None:
     source = DOCKER_RETRY.read_text(encoding="utf-8")
-    assert 'E2E_DOCKER_RETRY_ATTEMPTS:-3' in source
-    assert 'E2E_DOCKER_RETRY_DELAY_SECONDS:-3' in source
-    assert 'reason=non-transient' in source
-    assert 'docker-retry=exhausted' in source
-    assert 'TLS handshake timeout' in source
-    assert 'failed to fetch anonymous token' in source
-    assert 'toomanyrequests' in source
+    assert "E2E_DOCKER_RETRY_ATTEMPTS:-3" in source
+    assert "E2E_DOCKER_RETRY_DELAY_SECONDS:-3" in source
+    assert "reason=non-transient" in source
+    assert "docker-retry=exhausted" in source
+    assert "TLS handshake timeout" in source
+    assert "failed to fetch anonymous token" in source
+    assert "toomanyrequests" in source
 
 
 def test_docker_retry_retries_transient_failure_then_succeeds(tmp_path: Path) -> None:
