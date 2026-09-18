@@ -22,7 +22,7 @@ risk = ["security"]
 
 [[guarantees]]
 id = "INV-CONTROLLER-CONTINUITY-001"
-statement = "A tenant or platform plane cannot lose every effective controller: a controller needs an active Principal, an active membership where the plane is tenant, the current control grants and at least one active binding to an active authority, with an active native identity and password credential where the subject is native."
+statement = "A tenant or platform plane cannot lose every effective controller: a controller needs an active Principal, an active membership where the plane is tenant, the current control grants and at least one active binding to an active authority, with an active native identity and at least one currently accepted authentication path where the subject is native. Password credentials are one supported path, not the architectural definition of native reachability."
 severity = "critical"
 required_evidence = ["invariant", "adversarial"]
 risk = ["security"]
