@@ -87,7 +87,7 @@ class PostgresNativePlatformProvisioningCommands:
         actor: PlatformActorContext,
         command: ProvisionNativeRecoveryOperatorCommand,
     ) -> NativePlatformRecoveryOperatorResult:
-        capability = "platform.principal.provision"
+        capability = "platform.recovery_operator.provision"
         if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(capability):
             raise NativePlatformProvisioningForbidden(capability)
         operation_id = uuid5(
