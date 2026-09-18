@@ -1,5 +1,11 @@
 # Administrative setup capability audit
 
+> **Scope clarification (2026-09-18):** "administrative setup" in this document
+> means tenant/business operational configuration after platform trust exists. It
+> does not own first-run Instance claim, Platform Owner creation, platform secret
+> administration or break-glass recovery; those are governed by ADR 0014 and
+> `instance-claim-platform-owner-plan.md`.
+
 Status: **current Stage C/D migration inventory**, subordinate to `docs/16-canonical-operation-and-tool-projection-pattern.md`, `docs/15-api-design-and-usability-standards.md` and the owning module contracts.
 
 ## 1. Product question
