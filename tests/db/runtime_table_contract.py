@@ -8,6 +8,8 @@ PRIVATE_GLOBAL_TABLES = {
     "identity_recovery_issuance_reservations",
     "platform_authority_lifecycle_facts",
     "platform_identity_disable_facts",
+    "platform_instance",
+    "setup_sessions",
     "shared_capacity_authority_events",
     "shared_capacity_bindings",
     "shared_capacity_claim_links",

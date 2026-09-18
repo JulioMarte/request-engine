@@ -227,7 +227,6 @@ def upgrade() -> None:
         DECLARE
             v_native uuid;
             v_workload uuid;
-            v_platform_count integer;
             v_root_count integer;
             v_root uuid;
         BEGIN
@@ -235,13 +234,9 @@ def upgrade() -> None:
               FROM request_engine.identity_authorities
              WHERE kind = 'native' AND issuer_or_environment = 'request-engine-native';
             IF NOT FOUND THEN
-                IF EXISTS (
-                    SELECT 1 FROM request_engine.identity_authorities WHERE kind = 'native'
-                ) THEN
-                    RAISE EXCEPTION
-                        'Ambiguous Native identity authority provenance'
-                        USING ERRCODE = '55000';
-                END IF;
+                -- Other native authorities may legitimately exist (tenant or
+                -- migration-proof identities); they do not conflict with the
+                -- built-in installation authority.
                 INSERT INTO request_engine.identity_authorities (kind, issuer_or_environment)
                 VALUES ('native', 'request-engine-native')
                 RETURNING id INTO v_native;
@@ -251,57 +246,43 @@ def upgrade() -> None:
               FROM request_engine.identity_authorities
              WHERE kind = 'workload' AND issuer_or_environment = 'request-engine-workload';
             IF NOT FOUND THEN
-                IF EXISTS (
-                    SELECT 1 FROM request_engine.identity_authorities WHERE kind = 'workload'
-                ) THEN
-                    RAISE EXCEPTION
-                        'Ambiguous workload identity authority provenance'
-                        USING ERRCODE = '55000';
-                END IF;
                 INSERT INTO request_engine.identity_authorities (kind, issuer_or_environment)
                 VALUES ('workload', 'request-engine-workload')
                 RETURNING id INTO v_workload;
             END IF;
 
-            SELECT count(*) INTO v_platform_count
-              FROM request_engine.principals
-             WHERE principal_plane = 'platform';
+            -- The historical CLI root is the only principal shape that carries
+            -- ``native-bootstrap:`` provenance. A platform actor without a
+            -- platform identity binding (for example an isolated migration
+            -- proof) is not a controller and must not make the Instance claimed.
+            SELECT count(*) INTO v_root_count
+              FROM request_engine.principals AS principal
+             WHERE principal.principal_plane = 'platform'
+               AND principal.external_subject LIKE 'native-bootstrap:%';
 
-            IF v_platform_count = 0 THEN
+            IF v_root_count = 0 THEN
+                IF EXISTS (
+                    SELECT 1
+                      FROM request_engine.identity_bindings AS binding
+                     WHERE binding.principal_plane = 'platform'
+                       AND binding.status = 'active'
+                ) THEN
+                    RAISE EXCEPTION
+                        'Platform controller exists without historical root provenance; '
+                        'refusing to adopt'
+                        USING ERRCODE = '55000';
+                END IF;
                 INSERT INTO request_engine.platform_instance (
                     singleton_key, id, state,
                     built_in_native_authority_id, built_in_workload_authority_id
                 ) VALUES (
                     1, gen_random_uuid(), 'unclaimed', v_native, v_workload
                 );
-            ELSE
-                SELECT count(*) INTO v_root_count
-                  FROM request_engine.principals AS principal
-                 WHERE principal.principal_plane = 'platform'
-                   AND principal.external_subject LIKE 'native-bootstrap:%'
-                   AND EXISTS (
-                       SELECT 1
-                         FROM request_engine.principal_authority_grants AS grant_row
-                        WHERE grant_row.principal_id = principal.id
-                          AND grant_row.status = 'active'
-                          AND grant_row.provenance_kind = 'trust_bootstrap'
-                   );
-                IF v_root_count <> 1 THEN
-                    RAISE EXCEPTION
-                        'Ambiguous historical platform root provenance; refusing to adopt'
-                        USING ERRCODE = '55000';
-                END IF;
+            ELSIF v_root_count = 1 THEN
                 SELECT principal.id INTO v_root
                   FROM request_engine.principals AS principal
                  WHERE principal.principal_plane = 'platform'
                    AND principal.external_subject LIKE 'native-bootstrap:%'
-                   AND EXISTS (
-                       SELECT 1
-                         FROM request_engine.principal_authority_grants AS grant_row
-                        WHERE grant_row.principal_id = principal.id
-                          AND grant_row.status = 'active'
-                          AND grant_row.provenance_kind = 'trust_bootstrap'
-                   )
                  LIMIT 1;
                 INSERT INTO request_engine.platform_instance (
                     singleton_key, id, state,
@@ -311,6 +292,10 @@ def upgrade() -> None:
                     1, gen_random_uuid(), 'claimed', v_native, v_workload,
                     clock_timestamp(), v_root, 'legacy_cli_adoption'
                 );
+            ELSE
+                RAISE EXCEPTION
+                    'Ambiguous historical platform root provenance; refusing to adopt'
+                    USING ERRCODE = '55000';
             END IF;
         END
         $adopt$;

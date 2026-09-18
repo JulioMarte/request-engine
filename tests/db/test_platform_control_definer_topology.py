@@ -90,6 +90,7 @@ _EXPECTED_COLUMNS = {
     ("principals", "organization_id", "SELECT"),
     ("principals", "principal_plane", "SELECT"),
     ("principals", "principal_kind", "SELECT"),
+    ("principals", "external_subject", "SELECT"),
     ("principals", "active", "SELECT"),
     ("principals", "authority_revision", "SELECT"),
     ("principals", "id", "INSERT"),

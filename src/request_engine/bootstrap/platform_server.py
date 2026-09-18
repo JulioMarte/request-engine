@@ -40,6 +40,11 @@ _RECOVERY = (
     "uuid,bigint,integer,uuid,bytea,text,timestamp with time zone,uuid,text,text,text,text)",
     "request_platform.revoke_identity_recovery_case(uuid,bigint,text,text,text)",
 )
+_SETUP = (
+    "request_platform.read_platform_instance()",
+    "request_platform.create_setup_session(uuid,bytea,text,text,integer)",
+    "request_platform.read_setup_session(bytea)",
+)
 
 
 async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
@@ -102,6 +107,7 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
                 _POLICY,
                 *_LIFECYCLE,
                 *_RECOVERY,
+                *_SETUP,
             )
         )
         for function in required:
