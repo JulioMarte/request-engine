@@ -11,6 +11,7 @@ REGISTRY = ROOT / "tests/system_e2e/suites.toml"
 RUNNER_DOCKERFILE = ROOT / "deploy/reference/e2e-runner.Dockerfile"
 RUNNER = ROOT / "tests/system_e2e/runner.py"
 COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
+DOCKER_RETRY = ROOT / "scripts/ci/retry_transient_docker.sh"
 
 
 def _enabled_suites() -> dict[str, dict[str, object]]:
@@ -166,3 +167,14 @@ def test_reference_compose_keeps_database_credentials_need_to_know() -> None:
     assert "REQUEST_ENGINE_WORKER_PRINCIPAL_ID:-00000000" not in worker
     assert "http_outbox_publisher:create_publisher" in worker
     assert "REQUEST_ENGINE_OUTBOX_PUBLISH_URL" in worker
+
+
+def test_docker_retry_is_bounded_and_transient_only() -> None:
+    source = DOCKER_RETRY.read_text(encoding="utf-8")
+    assert 'E2E_DOCKER_RETRY_ATTEMPTS:-3' in source
+    assert 'E2E_DOCKER_RETRY_DELAY_SECONDS:-3' in source
+    assert 'reason=non-transient' in source
+    assert 'docker-retry=exhausted' in source
+    assert 'TLS handshake timeout' in source
+    assert 'failed to fetch anonymous token' in source
+    assert 'toomanyrequests' in source
