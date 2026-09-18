@@ -734,8 +734,9 @@ def _exercise_agent_zero_authority(
         organization_id=organization_id,
         expected_statuses=(403,),
     )
-    if _error_code(pending, "pending agent lookup") != "identity_binding_pending":
-        raise RuntimeError("pending agent was denied for an unexpected reason")
+    pending_code = _error_code(pending, "pending agent lookup")
+    if pending_code != "identity_binding_pending":
+        raise RuntimeError(f"pending agent was denied for an unexpected reason: {pending_code}")
 
     activated = _http_json(
         "PUT",
@@ -759,8 +760,9 @@ def _exercise_agent_zero_authority(
         organization_id=organization_id,
         expected_statuses=(403,),
     )
-    if _error_code(active, "active zero-authority agent lookup") != "capability_required":
-        raise RuntimeError("active agent received unexpected implicit authority")
+    active_code = _error_code(active, "active zero-authority agent lookup")
+    if active_code != "agent_policy_denied":
+        raise RuntimeError(f"active agent received unexpected authority outcome: {active_code}")
 
     checkpoints.append(
         _checkpoint(
