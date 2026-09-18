@@ -1,5 +1,12 @@
 # Tenant identity, authentication, and staff trust-root plan
 
+> **Platform trust-root supersession (2026-09-18):** this document remains
+> normative for tenant identity/staff semantics, Principal separation and
+> providerless operation, but its older "platform/bootstrap trust" ceremony is
+> superseded by ADR 0014 and `instance-claim-platform-owner-plan.md`. A fresh
+> platform is claimed through the private control-plane HTTP setup flow; do not
+> implement a new CLI/DSN first-owner ceremony from this document.
+
 Status: **normative implementation handoff / architecture contract**.
 
 Branch: `cohesion/system-optimization`
