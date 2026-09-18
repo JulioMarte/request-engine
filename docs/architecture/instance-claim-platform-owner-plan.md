@@ -778,7 +778,7 @@ controls:
 
 Do not use global account lockout as the primary setup DoS defense.
 
-## 21. Network and deployment boundary
+## 21. Network, browser and deployment boundary
 
 The setup API lives in the **control-plane process**, never the tenant/data-plane
 app.
@@ -796,6 +796,47 @@ Cloudflare Access, mTLS or private ingress without changing Request Engine's
 authorization semantics.
 
 Network hiding is defense in depth, not the claim invariant.
+
+### 21.1 TLS, Origin and browser protections
+
+Production setup, WebAuthn and authenticated control-plane traffic require HTTPS.
+Development exceptions must be explicit and limited to local origins allowed by
+the WebAuthn/browser model.
+
+CORS must be an allowlist, never reflective wildcard behavior for administrative
+credentials. WebAuthn registration/authentication validates the exact expected
+origin and RP ID from trusted configuration, not request headers supplied by the
+client.
+
+If the future admin UI uses cookies, use Secure + HttpOnly + appropriate SameSite
+semantics and explicit CSRF protection for state-changing requests. If it uses
+bearer tokens, do not place long-lived administrative tokens in localStorage by
+default. The UI transport decision must not weaken the API's server-side
+authorization checks.
+
+SetupSession bearer material should be sent in an authorization header rather
+than ambient browser cookies unless an explicit CSRF-safe cookie design is
+accepted.
+
+Apply security headers appropriate to the admin UI (at minimum a restrictive CSP,
+frame-ancestor protection and no-sniff behavior) when that UI exists.
+
+### 21.2 WebAuthn RP ID is operational identity
+
+RP ID is not a cosmetic setting. Existing WebAuthn credentials are scoped to it.
+
+Therefore:
+
+- derive RP ID from explicit trusted configuration, not arbitrary Host headers;
+- validate configured origins against the intended administrative URL;
+- changing the administrative domain/RP ID is a credential migration event, not
+  an ordinary runtime toggle;
+- readiness should fail closed for an invalid RP/origin combination;
+- document disaster-recovery DNS expectations so restoring the same Instance can
+  continue using existing authenticators when intended.
+
+Do not silently rewrite RP ID after deployment because a reverse proxy hostname
+changed.
 
 ## 22. Idempotency and ambiguous client outcomes
 
@@ -1128,10 +1169,15 @@ Restore requirements:
 - claimed backup restores as claimed;
 - SetupSession secrets from an old backup should be expired/rejected by TTL and
   cannot create a second claim;
-- Instance ID is preserved on true disaster recovery.
+- Instance ID is preserved on true disaster recovery;
+- WebAuthn credentials remain usable only if the restored deployment preserves a
+  compatible RP ID/origin; restore tooling must not pretend otherwise;
+- recovery-code used/unused state is authoritative data and must restore
+  consistently with the identity database.
 
 Cloning production DB to staging creates an identity problem: two deployments
-would share Instance ID and owner/authenticator material.
+would share Instance ID, owner/authenticator material and potentially valid
+recovery/session state.
 
 Before production acceptance, define a restore/clone fencing procedure that can:
 
