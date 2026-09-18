@@ -2,6 +2,13 @@
 
 Status: Accepted (2026-09-14)
 
+> **Partial supersession notice (2026-09-18):** ADR 0014 changes the initial
+> platform trust-root ceremony from CLI/DSN bootstrap to HTTP Instance claim and
+> makes native controller reachability authenticator-neutral (WebAuthn/passkey is
+> first class). The recovery, continuity, secret-delivery, linking and topology
+> serialization decisions below remain accepted unless ADR 0014 explicitly
+> narrows them.
+
 ## Context
 
 `docs/architecture/auth-production-completion-plan.md` defines six decision gates
