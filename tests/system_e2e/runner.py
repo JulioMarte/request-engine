@@ -594,6 +594,32 @@ def _run_f01_foundation(
             workload_authority_id=workload_authority_id,
             expires_at=expires_at,
         )
+        recovery_login = "f01-recovery-operator@example.invalid"
+        recovery_password = _derived_password(platform_password, "f01-recovery-operator")
+        recovery_identity_id = _native_identity(control_url, recovery_login, recovery_password)
+        recovery_operator = _http_json(
+            "POST",
+            f"{control_url}/v1/platform/recovery-operators",
+            bearer=platform_token,
+            idempotency_key="f01-recovery-operator-v1",
+            payload={
+                "native_identity_id": recovery_identity_id,
+                "provenance_reference": "e2e:f01:recovery-operator",
+            },
+            expected_statuses=(201,),
+        )
+        _required_string(
+            recovery_operator,
+            "principal_id",
+            "platform recovery operator response",
+        )
+        checkpoints.append(
+            _checkpoint(
+                "f01-10b-recovery-operator",
+                "passed",
+                "bounded platform recovery approver provisioned over HTTP",
+            )
+        )
         _exercise_recovery_governance(
             checkpoints,
             control_url=control_url,
@@ -601,6 +627,8 @@ def _run_f01_foundation(
             platform_token=platform_token,
             provisioner_login=provisioner_login,
             provisioner_password=provisioner_password,
+            recovery_login=recovery_login,
+            recovery_password=recovery_password,
             target_native_identity_id=tenant_identity_id,
         )
         if include_continuity:
@@ -889,6 +917,8 @@ def _exercise_recovery_governance(
     platform_token: str,
     provisioner_login: str,
     provisioner_password: str,
+    recovery_login: str,
+    recovery_password: str,
     target_native_identity_id: str,
 ) -> None:
     case = _http_json(
@@ -937,12 +967,57 @@ def _exercise_recovery_governance(
     ):
         raise RuntimeError("a principal without recovery authority approved a case")
 
+    recovery_token = _native_session(control_url, recovery_login, recovery_password)
+    _http_request(
+        "POST",
+        f"{control_url}/v1/platform/organizations",
+        bearer=recovery_token,
+        idempotency_key="f01-recovery-operator-org-denied-v1",
+        payload={
+            "organization_key": "forbidden-recovery-operator-org",
+            "display_name": "Forbidden recovery operator organization",
+            "controller_native_identity_id": target_native_identity_id,
+            "provenance_reference": "e2e:f01:recovery-operator-must-not-provision-org",
+        },
+        expected_statuses=(403,),
+    )
+    _http_request(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=recovery_token,
+        idempotency_key="f01-recovery-operator-request-denied-v1",
+        payload={
+            "target_native_identity_id": target_native_identity_id,
+            "reason_code": "must_not_request",
+            "evidence_reference": "e2e:f01:recovery-operator-no-request",
+            "delivery_destination_reference": "e2e-runner@example.invalid",
+        },
+        expected_statuses=(403,),
+    )
+    approved = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=recovery_token,
+        idempotency_key="f01-recovery-independent-approve-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+        expected_statuses=(200,),
+    )
+    if approved.get("status") != "approved" or approved.get("revision") != 2:
+        raise RuntimeError("bounded recovery operator did not approve the requested case")
+    checkpoints.append(
+        _checkpoint(
+            "f01-11a-independent-recovery-approval",
+            "passed",
+            "distinct bounded recovery operator approved without broader platform authority",
+        )
+    )
+
     fail_closed = _http_json(
         "POST",
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
         bearer=platform_token,
         idempotency_key="f01-recovery-issue-unconfigured-v1",
-        payload={"expected_revision": 1},
+        payload={"expected_revision": 2},
         expected_statuses=(503,),
     )
     if _error_code(fail_closed, "recovery issue fail-closed") != "recovery_delivery_unconfigured":
@@ -953,7 +1028,7 @@ def _exercise_recovery_governance(
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:revoke",
         bearer=platform_token,
         idempotency_key="f01-recovery-revoke-v1",
-        payload={"expected_revision": 1, "reason_code": "request_withdrawn"},
+        payload={"expected_revision": 2, "reason_code": "request_withdrawn"},
     )
     if revoked.get("status") != "revoked":
         raise RuntimeError("recovery case revoke did not reach the revoked state")
@@ -963,7 +1038,7 @@ def _exercise_recovery_governance(
         f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
         bearer=platform_token,
         idempotency_key="f01-recovery-approve-after-revoke-v1",
-        payload={"expected_revision": 2, "reason_code": "ownership_verified"},
+        payload={"expected_revision": 3, "reason_code": "ownership_verified"},
         expected_statuses=(409,),
     )
     if (
