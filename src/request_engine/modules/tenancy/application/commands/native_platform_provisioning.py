@@ -48,6 +48,26 @@ class NativePlatformProvisionerResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ProvisionNativeRecoveryOperatorCommand:
+    identity_authority_id: UUID
+    native_identity_id: UUID
+    provenance_reference: str
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        if not 1 <= len(self.provenance_reference.strip()) <= 500:
+            raise ValueError("provenance_reference must contain 1 to 500 characters")
+        if not 1 <= len(self.idempotency_key.strip()) <= 200:
+            raise ValueError("idempotency_key must contain 1 to 200 characters")
+
+
+@dataclass(frozen=True, slots=True)
+class NativePlatformRecoveryOperatorResult:
+    principal_id: UUID
+    binding_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class ProvisionNativeOrganizationCommand:
     organization_key: str
     display_name: str
@@ -80,6 +100,12 @@ class NativePlatformProvisioningCommands(Protocol):
     async def provision_native_platform_provisioner(
         self, actor: PlatformActorContext, command: ProvisionNativePlatformProvisionerCommand
     ) -> NativePlatformProvisionerResult: ...
+
+    async def provision_native_recovery_operator(
+        self,
+        actor: PlatformActorContext,
+        command: ProvisionNativeRecoveryOperatorCommand,
+    ) -> NativePlatformRecoveryOperatorResult: ...
 
     async def provision_native_organization(
         self, actor: PlatformActorContext, command: ProvisionNativeOrganizationCommand
