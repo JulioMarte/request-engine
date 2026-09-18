@@ -1,5 +1,10 @@
 # Principal, agent, and provisioning authority model
 
+> **Platform trust-root clarification (2026-09-18):** references below to
+> "platform trust exists" are satisfied, in the accepted target architecture, by
+> ADR 0014's HTTP Instance-claim/Platform Owner ceremony. This document continues
+> to govern Principal/agent/provisioning authority after that trust root exists.
+
 Status: **normative architecture contract**.
 
 Branch: `cohesion/system-optimization`.
