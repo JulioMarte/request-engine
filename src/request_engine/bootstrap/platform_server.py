@@ -23,9 +23,7 @@ _READ = (
     "request_platform.read_native_identities(uuid,uuid,integer)",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
-_RECOVERY_OPERATOR = (
-    "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
-)
+_RECOVERY_OPERATOR = "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
 _POLICY = "request_platform.select_initial_controller_policy(text)"
 _ORGANIZATION = (
     "request_platform.provision_native_organization_root(uuid,text,text,uuid,uuid,uuid,uuid,text)"
