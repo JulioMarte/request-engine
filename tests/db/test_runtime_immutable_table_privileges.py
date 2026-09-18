@@ -54,6 +54,12 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "provision_native_recovery_operator",
+        "p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_provenance_reference text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
         "provision_native_organization_root",
         "p_organization_id uuid, p_organization_key text, p_display_name text, "
         "p_organization_party_id uuid, p_controller_principal_id uuid, "
