@@ -214,7 +214,7 @@ def install_native_platform_provisioning_http(
         router,
         "/v1/platform/recovery-operators",
         create_recovery_operator,
-        capability="platform.principal.provision",
+        capability="platform.recovery_operator.provision",
         methods=["POST"],
         operation_id="platform_native_recovery_operator_create",
         owner="tenancy",
