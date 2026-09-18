@@ -23,6 +23,9 @@ _READ = (
     "request_platform.read_native_identities(uuid,uuid,integer)",
 )
 _PROVISIONER = "request_platform.provision_native_tenant_provisioner(uuid,uuid,uuid,uuid,text)"
+_RECOVERY_OPERATOR = (
+    "request_platform.provision_native_recovery_operator(uuid,uuid,uuid,uuid,text)"
+)
 _POLICY = "request_platform.select_initial_controller_policy(text)"
 _ORGANIZATION = (
     "request_platform.provision_native_organization_root(uuid,text,text,uuid,uuid,uuid,uuid,text)"
@@ -94,7 +97,14 @@ async def _verify_login(engine: AsyncEngine, group: str | None) -> None:
         required = (
             _READ
             if group is None
-            else (_PROVISIONER, _ORGANIZATION, _POLICY, *_LIFECYCLE, *_RECOVERY)
+            else (
+                _PROVISIONER,
+                _RECOVERY_OPERATOR,
+                _ORGANIZATION,
+                _POLICY,
+                *_LIFECYCLE,
+                *_RECOVERY,
+            )
         )
         for function in required:
             if not await connection.scalar(
