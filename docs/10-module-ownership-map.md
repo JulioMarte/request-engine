@@ -52,6 +52,12 @@ The table is an ownership map, not a mandate to retain today’s filesystem fore
 ### Tenancy
 Owns identity and authority truth. Caller-supplied tenant, principal, Party or Representation identifiers never manufacture authority. It publishes the minimal business-Party fact used by Onboarding; it does not own aggregate setup readiness.
 
+Accepted target under ADR 0014: Tenancy also owns the business semantics of the
+installation-wide Request Engine Instance claim and Platform Owner lifecycle
+because those commands establish platform Principals/bindings/grants. Technical
+SetupSession token mechanics, WebAuthn verification and session assurance remain
+`platform/security` mechanics. This target is documented but not yet implemented.
+
 ### Catalog
 Owns stable/versioned service vocabulary and operational configuration such as Location, Offering/OfferingVersion, ResourceCapability and OfferingResourceRequirement. Catalog describes what can be configured/offered; it does not own concrete committed capacity.
 
