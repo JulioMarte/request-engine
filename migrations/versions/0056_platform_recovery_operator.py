@@ -4,7 +4,7 @@ Revision ID: 0056_platform_recovery_operator
 Revises: 0055_authority_inspect_policy
 
 Adds one deliberately narrow platform ceremony. A HUMAN platform controller
-holding the existing delegable platform.recovery_operator.provision capability may bind
+holding the explicit platform.recovery_operator.provision capability may bind
 a credentialed Native identity to a platform Principal whose fixed profile
 contains only platform.identity.read and platform.identity.recovery_approve.
 
@@ -127,7 +127,6 @@ BEGIN
            AND grant_row.authority_plane = 'platform'
            AND grant_row.capability_key = 'platform.recovery_operator.provision'
            AND grant_row.status = 'active'
-           AND grant_row.delegable
     ) THEN
         RAISE EXCEPTION 'Platform actor cannot provision bounded Principals'
             USING ERRCODE = '42501';
