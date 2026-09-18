@@ -164,7 +164,8 @@ Conceptual fields:
 
 ```text
 platform_instance
-  id uuid primary key
+  singleton_key smallint primary key CHECK (singleton_key = 1)
+  id uuid unique not null
   state enum/text: unclaimed | claimed
   revision bigint > 0
   created_at timestamptz
@@ -175,7 +176,8 @@ platform_instance
 
 Required constraints:
 
-- exactly one authoritative Instance row per Request Engine database;
+- exactly one authoritative Instance row per Request Engine database, enforced
+  structurally (for example by a constant singleton key/check), not by convention;
 - `UNCLAIMED`: no `claimed_at`, no initial owner;
 - `CLAIMED`: `claimed_at` and owner are present;
 - state transition is one-way;
@@ -211,8 +213,10 @@ Security requirements:
 - constant-time verification;
 - TTL default proposal: 20 minutes;
 - no refresh;
-- bounded number of active sessions; a new session need not invalidate another,
-  because final claim serialization determines the winner;
+- bounded number of active sessions; the bound must be race-safe (serialized in
+  the setup-session creation command), not a racy count-then-insert check;
+- a new session need not invalidate another, because final claim serialization
+  determines the winner;
 - setup session authorizes only setup operations;
 - after Instance is CLAIMED, creation/consumption fails closed.
 
@@ -337,6 +341,55 @@ Rules:
 
 Use WebAuthn Level 3 semantics, not ad-hoc "passkey JSON".
 
+Do not hand-roll CBOR/COSE parsing or signature/attestation verification when a
+maintained, security-reviewed WebAuthn library can own those protocol mechanics.
+Pin and review the chosen dependency, wrap it behind Request Engine types, and
+test malformed/unsupported inputs fail closed.
+
+### 5.5.1 WebAuthn challenge lifecycle
+
+Registration and authentication challenges need durable/bounded replay state,
+separate by ceremony and subject/setup scope.
+
+Conceptually:
+
+```text
+webauthn_challenge
+  id
+  purpose: registration | authentication | step_up
+  setup_session_id/native_identity_id/session_id as applicable
+  challenge_digest
+  created_at
+  expires_at
+  consumed_at nullable
+```
+
+Requirements:
+
+- >=256 bits of CSPRNG challenge entropy;
+- short TTL;
+- single-purpose and single-use;
+- exact expected RP ID/origin/UV policy captured from trusted server policy;
+- successful verification consumes the challenge atomically with the resulting
+  credential/session/step-up fact;
+- expired, wrong-purpose or replayed challenges fail closed;
+- challenge responses never authorize by themselves.
+
+### 5.5.2 WebAuthn user handle and credential uniqueness
+
+The WebAuthn `user.id` / user handle must be a stable opaque random identifier,
+not an email/login handle or other PII. The permanent identity records the
+mapping.
+
+A credential ID can bind to at most one native identity in the authority. The
+same passkey credential cannot be silently attached to two Principals/identities.
+
+The first implementation may use a username/login-handle-first authentication
+flow if that best fits the current native identity model. Any account lookup must
+preserve the existing anti-enumeration failure semantics. Discoverable
+username-less passkey login can be added later without changing the authority
+model.
+
 ### 5.6 TOTP
 
 TOTP is fallback/secondary, not phishing-resistant assurance.
@@ -402,7 +455,7 @@ Establish native identity credential
 Register + verify WebAuthn credential
     |
     v
-Generate/acknowledge recovery codes
+Generate/show recovery codes
     |
     v
 Finalize claim
@@ -421,10 +474,11 @@ The finalize preconditions include at minimum:
 
 - Instance still UNCLAIMED;
 - SetupSession valid and unconsumed;
-- native identity active under configured native authority;
-- at least one active verified WebAuthn credential satisfying Platform Owner
+- valid pending identity enrollment exists for the SetupSession;
+- the Instance-bound built-in native authority is active;
+- at least one verified pending WebAuthn credential satisfies Platform Owner
   policy;
-- required recovery material created/acknowledged according to the chosen UX;
+- a current recovery-code set has been generated for the pending owner;
 - no existing effective platform owner created by another winner;
 - immutable `platform-owner-v1` policy exists.
 
@@ -450,7 +504,11 @@ Requirements:
 - digest/constant-time verification;
 - never persist raw proof in Request Engine DB/logs;
 - after claim it has no power;
-- changing/removing it after claim does not affect owner login.
+- changing/removing it after claim does not affect owner login;
+- reference production guidance SHOULD prefer protected mode whenever the control
+  plane is reachable from an untrusted network before claim;
+- Request Engine must not guess "public vs private" from IP/hostname and silently
+  change modes; exposure policy is explicit deployment configuration.
 
 ### 7.3 Automated
 
@@ -494,13 +552,21 @@ Do not leak owner email/count/IDs or security configuration.
 
 ```http
 POST /v1/setup/sessions
-Idempotency-Key: ...
-[optional deployment setup proof]
+[optional deployment setup proof in a protected authorization header]
 ```
 
-Response returns the raw SetupSession bearer once and expiry.
+Response returns the raw SetupSession bearer once and its expiry.
 
-This operation MUST be rate-limited.
+**This operation is deliberately not replay-idempotent.** The server persists only
+a digest of the SetupSession secret, so it cannot safely reproduce the original
+raw bearer after an ambiguous response. If the response is lost, the client may
+create a new bounded SetupSession; the race-safe active-session cap and final
+Instance claim invariant contain this.
+
+Do not solve this by storing the raw SetupSession token reversibly.
+
+This operation MUST be rate-limited. Setup/deployment proofs must never be placed
+in query parameters and should not be placed in routinely logged request fields.
 
 ### Enrollment operations
 
@@ -511,12 +577,19 @@ POST /v1/setup/native-identity
 POST /v1/setup/webauthn/registration-options
 POST /v1/setup/webauthn/registrations
 POST /v1/setup/recovery-codes
+POST /v1/setup/recovery-codes:regenerate
 POST /v1/setup:finalize
 ```
 
 Exact REST shape must be checked against docs 15/16 during implementation.
 
 Do not expose a generic setup command bus.
+
+Recovery-code issuance is another one-time-secret response and therefore cannot
+promise replay of plaintext. If the response is lost, `:regenerate` creates a
+fresh set and atomically invalidates the prior pending set; only the newest set
+may be promoted on finalize. Never persist plaintext codes merely to make HTTP
+retry convenient.
 
 ### Finalize
 
@@ -533,6 +606,12 @@ Replay with the same idempotency identity returns the same non-secret semantic
 result. Same key with a different request fingerprint fails closed.
 
 A retry must never redisplay one-time recovery codes.
+
+Finalization never upgrades or re-labels the SetupSession bearer into a normal
+platform session. On success the SetupSession is consumed. The owner then performs
+a normal native authentication ceremony (preferably WebAuthn) to obtain a fresh
+normal session. This prevents session fixation and keeps setup authority separate
+from runtime authority.
 
 ### Post-claim behavior
 
@@ -567,6 +646,7 @@ VALIDATE
   no conflicting terminal state
 
 WRITE
+  create permanent native identity/credential/authenticator from pending material
   create/activate Platform Principal
   create active platform identity binding
   grant exact policy capabilities
@@ -690,7 +770,12 @@ Recommended implementation:
   current Argon2id parameters;
 - never downgrade a stronger/current verifier;
 - password remains optional in the future architecture, but initial migration may
-  keep password + passkey for simplicity.
+  keep password + passkey for simplicity;
+- if passwords are accepted, reject known-common/compromised values through a
+  local/privacy-preserving blocklist mechanism appropriate to deployment;
+- do not impose arbitrary composition rules ("must contain symbol/uppercase") or
+  silent truncation;
+- do not require periodic password rotation absent evidence of compromise.
 
 Do not force a mass reset merely to change verifier algorithm.
 
@@ -706,8 +791,13 @@ For platform control:
 - enable bounded idle timeout (proposal 30-60 minutes; choose via measured UX);
 - rotate/invalidate sessions after credential/factor compromise events;
 - normal logout and logout-all remain available;
-- passkey authentication can create a normal native session with explicit
-  assurance evidence;
+- passkey authentication uses its own challenge/assertion ceremony and can create
+  a fresh normal native session with explicit assurance evidence;
+- successful reauthentication/step-up records the new proof on the current
+  session or a narrowly scoped proof without accepting a caller-supplied
+  `authenticated_at`;
+- credential/factor changes and recovery events increment/revoke appropriate
+  session epochs so stolen older sessions cannot retain stale assurance;
 - sensitive actions require fresh step-up rather than forcing full login for every
   request.
 
@@ -845,6 +935,8 @@ Unauthenticated setup exists only while unclaimed, but still requires abuse
 controls:
 
 - rate-limit SetupSession creation by deployment/network-safe signals;
+- trust `Forwarded`/`X-Forwarded-For` only from explicitly configured trusted
+  proxies; never let a caller spoof rate-limit identity by arbitrary headers;
 - cap active setup sessions;
 - strict body limits;
 - cheap structural validation before expensive password hashing/WebAuthn work;
