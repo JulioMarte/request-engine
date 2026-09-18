@@ -106,6 +106,15 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
     command_capability(
+        "platform.recovery_operator.provision",
+        CapabilityExposure.OPERATOR,
+        "Provision a bounded HUMAN platform recovery approver with no organization or "
+        "recovery-issuance authority.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    command_capability(
         "organization.provision",
         CapabilityExposure.OPERATOR,
         "Create a new organization through the zero-to-one provisioning boundary.",
