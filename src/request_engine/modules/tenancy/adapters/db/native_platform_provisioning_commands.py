@@ -8,6 +8,7 @@ from sqlalchemy.exc import DBAPIError
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NativeOrganizationResult,
     NativePlatformProvisionerResult,
+    NativePlatformRecoveryOperatorResult,
     NativePlatformProvisioningConflict,
     NativePlatformProvisioningError,
     NativePlatformProvisioningForbidden,
@@ -15,6 +16,7 @@ from request_engine.modules.tenancy.application.commands.native_platform_provisi
     NativePlatformProvisioningRevisionConflict,
     ProvisionNativeOrganizationCommand,
     ProvisionNativePlatformProvisionerCommand,
+    ProvisionNativeRecoveryOperatorCommand,
 )
 from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
 from request_engine.platform.security.context import PrincipalKind
@@ -79,6 +81,52 @@ class PostgresNativePlatformProvisioningCommands:
                 raise
             raise error_type() from None
         return NativePlatformProvisionerResult(principal_id=principal_id, binding_id=binding_id)
+
+    async def provision_native_recovery_operator(
+        self,
+        actor: PlatformActorContext,
+        command: ProvisionNativeRecoveryOperatorCommand,
+    ) -> NativePlatformRecoveryOperatorResult:
+        capability = "platform.principal.provision"
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(capability):
+            raise NativePlatformProvisioningForbidden(capability)
+        operation_id = uuid5(
+            _IDENTITY_NAMESPACE,
+            f"recovery-operator:{actor.principal_id}:{command.idempotency_key}",
+        )
+        principal_id = uuid5(operation_id, "principal")
+        binding_id = uuid5(operation_id, "binding")
+        try:
+            async with platform_actor_transaction(self._session_factory, actor) as session:
+                created = (
+                    await session.execute(
+                        text("""
+                        SELECT request_platform.provision_native_recovery_operator(
+                            :principal_id, :binding_id, :authority_id, :identity_id, :provenance
+                        )
+                        """),
+                        {
+                            "principal_id": principal_id,
+                            "binding_id": binding_id,
+                            "authority_id": command.identity_authority_id,
+                            "identity_id": command.native_identity_id,
+                            "provenance": command.provenance_reference,
+                        },
+                    )
+                ).scalar_one()
+                if UUID(str(created)) != principal_id:
+                    raise RuntimeError(
+                        "Native recovery operator persistence returned an unexpected identity"
+                    )
+        except DBAPIError as exc:
+            error_type = _DATABASE_ERRORS.get(str(getattr(exc.orig, "sqlstate", "")))
+            if error_type is None:
+                raise
+            raise error_type() from None
+        return NativePlatformRecoveryOperatorResult(
+            principal_id=principal_id,
+            binding_id=binding_id,
+        )
 
     async def provision_native_organization(
         self, actor: PlatformActorContext, command: ProvisionNativeOrganizationCommand
