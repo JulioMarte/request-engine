@@ -222,6 +222,10 @@ Security requirements:
 
 Do not make SetupSession a normal `native_session`.
 
+Expiry is enforced from authoritative timestamps on every use; security must not
+depend on a cleanup worker having already marked/deleted expired rows. Cleanup is
+bounded housekeeping only.
+
 ### 5.3 Pending enrollment material
 
 Do **not** create an effective platform Principal early.
@@ -534,6 +538,20 @@ bypasses the canonical semantics.
 
 Exact spelling is CONTROLLED, but the first implementation should converge near:
 
+### Setup-specific authorization boundary
+
+Setup routes are a deliberate exception to ordinary Principal/capability
+authorization because no Principal exists yet. They must use a dedicated,
+minimal SetupSession/deployment-proof resolver and must never accept tenant
+ActorContext headers or caller-selected Principal/capability claims.
+
+Do **not** register setup operations as agent/MCP tools. They are installation
+ceremonies, not runtime capabilities.
+
+The implementation should keep the setup authorization middleware/dependency
+visibly distinct from normal `PlatformActorResolver` so code review can prove
+that setup authority cannot leak into claimed-instance operations.
+
 ### Setup discovery
 
 ```http
@@ -612,6 +630,25 @@ platform session. On success the SetupSession is consumed. The owner then perfor
 a normal native authentication ceremony (preferably WebAuthn) to obtain a fresh
 normal session. This prevents session fixation and keeps setup authority separate
 from runtime authority.
+
+### Normal WebAuthn login after claim
+
+The same verified WebAuthn credential must support a normal authentication
+ceremony after claim:
+
+```text
+request authentication options
+  -> bounded one-time authentication challenge
+  -> verify assertion + UV + RP/origin + credential status
+  -> issue a fresh native session
+  -> attach PHISHING_RESISTANT assurance evidence
+```
+
+This should be implemented through native authentication mechanics shared by the
+control-plane composition, not a Platform-Owner-only password bypass.
+
+Authentication-option responses and failures must not become a reliable account
+enumeration oracle.
 
 ### Post-claim behavior
 
@@ -946,6 +983,11 @@ controls:
 
 Do not use global account lockout as the primary setup DoS defense.
 
+A process-local limiter alone is insufficient once multiple control-plane replicas
+exist. Reference production deployment should combine ingress/distributed
+rate-limiting where available with the PostgreSQL-enforced active SetupSession
+bound so bypassing one replica cannot create unbounded durable setup state.
+
 ## 21. Network, browser and deployment boundary
 
 The setup API lives in the **control-plane process**, never the tenant/data-plane
@@ -1151,13 +1193,53 @@ Startup verification in `platform_server.py` must be updated so:
 Schema-owner/bootstrap migration credentials remain deployment-only and never
 become front-end credentials.
 
+## 26.1 Upgrade/adoption of an already bootstrapped database
+
+A migration must distinguish a truly fresh database from a database already
+claimed through the historical CLI.
+
+It MUST NOT initialize every upgraded database as `UNCLAIMED`.
+
+Recommended adoption algorithm:
+
+1. inventory platform Principals and trust-bootstrap provenance in one migration/
+   migration-support transaction;
+2. if there is no historical platform root/controller, create Instance as
+   `UNCLAIMED`;
+3. if there is exactly one unambiguous historical trust-bootstrap root, create
+   Instance as `CLAIMED`, bind `initial_owner_principal_id` to that Principal
+   and record migration provenance such as `legacy_cli_adoption`;
+4. if multiple/contradictory candidates make the original root ambiguous, fail
+   the migration closed and require explicit operator reconciliation; never pick
+   an arbitrary UUID/order winner;
+5. adopt/create the built-in native/workload authority IDs according to section
+   5.4;
+6. do not silently widen the adopted Principal's grants merely to make it match a
+   new Owner label.
+
+A legacy claimed controller may initially have only password authentication.
+That does **not** reopen setup. Instead expose a bounded **security-upgrade
+required** condition and allow the already-authenticated legacy controller to
+enroll its first WebAuthn factor through a one-time migration/self-service
+ceremony. After a phishing-resistant factor is enrolled, normal high-risk step-up
+policy applies.
+
+The first-factor migration ceremony cannot itself require an already-existing
+passkey. It should require the strongest pre-existing credential available,
+recent authentication, active controller status and explicit audit provenance.
+
+Production acceptance requires every effective Platform Owner/controller covered
+by the new policy to have an accepted strong authentication path; the migration
+exception is transitional evidence, not a permanent downgrade.
+
 ## 27. Migration strategy from current bootstrap
 
 Existing migration history is immutable.
 
 Implementation sequence:
 
-1. append Instance/setup/authenticator/policy migrations after current head;
+1. append Instance/setup/authenticator/policy migrations after current head,
+   including legacy-CLI adoption and built-in authority adoption/creation;
 2. introduce HTTP setup surface behind the new data model;
 3. make Docker clean-install E2E use HTTP setup;
 4. remove runtime dependency on `platform_bootstrap_cli.py`;
