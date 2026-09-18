@@ -417,7 +417,8 @@ Conceptual fields:
 ```text
 recovery_code_set
   id
-  native_identity_id
+  native_identity_id nullable during setup / required after promotion
+  setup_session_id nullable during normal runtime
   version
   status
   created_at
@@ -438,6 +439,9 @@ Rules:
 - use of a code emits a security audit event and should force security review /
   re-enrollment before high-risk authority changes;
 - a recovery code alone does not satisfy phishing-resistant step-up;
+- during first-run setup, code digests are owned by the SetupSession/pending
+  identity and are promoted to the permanent native identity in the same finalize
+  transaction; there is no need to create the permanent identity early;
 - a UI acknowledgement that codes were displayed/saved is UX state, not proof
   that the human actually stored them safely; security must not depend on such an
   acknowledgement.
@@ -624,6 +628,13 @@ Replay with the same idempotency identity returns the same non-secret semantic
 result. Same key with a different request fingerprint fails closed.
 
 A retry must never redisplay one-time recovery codes.
+
+For exact finalize replay after a successful commit, the setup resolver may
+recognize the **consumed** SetupSession only for lookup of the matching
+idempotency receipt. It must not reactivate setup authority or permit any other
+operation. The idempotency/receipt check must therefore occur in an order that
+can distinguish "exact replay of the winning finalize" from "new claim against a
+closed instance". Receipt retention is bounded and contains no one-time secrets.
 
 Finalization never upgrades or re-labels the SetupSession bearer into a normal
 platform session. On success the SetupSession is consumed. The owner then performs
@@ -857,8 +868,18 @@ CLAIMED
   -> new platform humans arrive through invitations/governed provisioning
 ```
 
-Tenant/public identity enrollment decisions remain separate and must not be
-silently changed by the platform setup work.
+Tenant/public identity enrollment remains a separate product concern **after the
+Instance is claimed**.
+
+While Instance is `UNCLAIMED`, ordinary native enrollment on every other
+composition must fail closed (for example `instance_setup_required`). Otherwise
+an anonymous caller on the data-plane API could reserve the global native login
+handle intended for the first Owner even though it cannot gain platform
+authority. Only SetupSession-owned pending enrollment may create the initial
+login namespace candidate.
+
+After claim, tenant/public enrollment policy can resume according to its owning
+contract.
 
 Do not reuse an anonymous platform enrollment endpoint as the invitation system.
 
@@ -887,6 +908,15 @@ Required protections:
 - post-state must retain an effective controller;
 - owner/admin changes are append-audited;
 - high-risk owner grant/revoke requires recent phishing-resistant HUMAN auth.
+
+Invitation proof delivery must work before SMTP is mandatory. The minimum
+self-hosted mechanism may return a high-entropy one-time invitation link/code
+**once** to the authorized inviter for out-of-band delivery; only its digest is
+stored. When verified SMTP/delivery is configured, the same invitation command
+may project through that channel instead. Never store plaintext invitation proof
+for replay, logs or later admin reads. As with recovery codes, ambiguous loss of
+the one-time response requires revoking/regenerating the invitation rather than
+redisplaying the old proof.
 
 A future dual-control requirement for the highest-risk owner changes remains a
 valid extension. Do not fake dual control when only one human exists.
@@ -982,6 +1012,11 @@ controls:
 - no expensive total-count/database scans in setup discovery.
 
 Do not use global account lockout as the primary setup DoS defense.
+
+Normal password/passkey authentication also requires anti-automation controls:
+bounded per-account and network-aware throttling, generic credential failures,
+and observability for password spraying/credential stuffing. Avoid permanent
+account lockouts that let an attacker deny service to the only Platform Owner.
 
 A process-local limiter alone is insufficient once multiple control-plane replicas
 exist. Reference production deployment should combine ingress/distributed
@@ -1166,7 +1201,8 @@ Required proof layers:
 
 - OpenAPI contracts;
 - error/status semantics;
-- cache-control on secrets/setup;
+- `Cache-Control: no-store` on setup, authentication challenge, session-secret
+  and one-time-code responses;
 - auth boundary separation;
 - setup router not mounted on data plane;
 - post-claim closed behavior.
