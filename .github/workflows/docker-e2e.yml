@@ -30,7 +30,6 @@ jobs:
   docker-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    continue-on-error: true
     env:
       REQUEST_ENGINE_IMAGE_TAG: ci-${{ github.sha }}
       E2E_RUNNER_IMAGE_TAG: ci-${{ github.sha }}
