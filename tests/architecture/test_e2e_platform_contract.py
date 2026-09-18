@@ -14,6 +14,7 @@ RUNNER_DOCKERFILE = ROOT / "deploy/reference/e2e-runner.Dockerfile"
 RUNNER = ROOT / "tests/system_e2e/runner.py"
 COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
 DOCKER_RETRY = ROOT / "scripts/ci/retry_transient_docker.sh"
+DOCKER_E2E_WORKFLOW = ROOT / ".github/workflows/docker-e2e.yml"
 
 
 def _enabled_suites() -> dict[str, dict[str, object]]:
@@ -245,3 +246,8 @@ def test_docker_retry_does_not_treat_plain_500_as_transient(tmp_path: Path) -> N
     assert result.returncode == 19
     assert counter.read_text(encoding="utf-8").strip() == "1"
     assert "reason=non-transient" in log.read_text(encoding="utf-8")
+
+
+def test_docker_e2e_workflow_does_not_mask_suite_failure() -> None:
+    source = DOCKER_E2E_WORKFLOW.read_text(encoding="utf-8")
+    assert "continue-on-error: true" not in source
