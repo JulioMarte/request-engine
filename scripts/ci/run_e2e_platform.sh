@@ -9,7 +9,10 @@ if [[ "$requested" != "all" && "$requested" != policy:* ]]; then
 fi
 
 # Build both immutable test artifacts once; every selected suite still gets a fresh world.
-docker compose -f deploy/reference/compose.e2e.yaml --profile runner build api e2e-runner
+artifact_root="${E2E_ARTIFACT_ROOT:-.ci/docker-e2e}"
+mkdir -p "$artifact_root"
+bash scripts/ci/retry_transient_docker.sh "$artifact_root/platform-build.log" \
+  docker compose -f deploy/reference/compose.e2e.yaml --profile runner build api e2e-runner
 
 if [[ "$requested" == "all" ]]; then
   mapfile -t suites < <(python "$registry" list)
