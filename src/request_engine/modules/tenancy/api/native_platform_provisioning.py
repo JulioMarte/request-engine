@@ -17,6 +17,7 @@ from request_engine.modules.tenancy.application.commands.native_platform_provisi
     NativePlatformProvisioningRevisionConflict,
     ProvisionNativeOrganizationCommand,
     ProvisionNativePlatformProvisionerCommand,
+    ProvisionNativeRecoveryOperatorCommand,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.http.capability_routes import add_capability_route
@@ -32,6 +33,17 @@ class NativePlatformProvisionerBody(BaseModel):
 
 
 class NativePlatformProvisionerView(BaseModel):
+    principal_id: UUID
+    binding_id: UUID
+
+
+class NativeRecoveryOperatorBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    native_identity_id: UUID
+    provenance_reference: str = Field(min_length=1, max_length=500)
+
+
+class NativeRecoveryOperatorView(BaseModel):
     principal_id: UUID
     binding_id: UUID
 
@@ -130,6 +142,33 @@ def install_native_platform_provisioning_http(
             principal_id=result.principal_id, binding_id=result.binding_id
         )
 
+    async def create_recovery_operator(
+        body: NativeRecoveryOperatorBody,
+        response: Response,
+        actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
+        _bearer: Annotated[
+            HTTPAuthorizationCredentials | None,
+            Security(HTTPBearer(scheme_name="NativeSessionBearer", auto_error=False)),
+        ],
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r"\S")
+        ],
+    ) -> NativeRecoveryOperatorView:
+        result = await commands.provision_native_recovery_operator(
+            actor,
+            ProvisionNativeRecoveryOperatorCommand(
+                identity_authority_id=native_authority_id,
+                native_identity_id=body.native_identity_id,
+                provenance_reference=body.provenance_reference,
+                idempotency_key=idempotency_key,
+            ),
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return NativeRecoveryOperatorView(
+            principal_id=result.principal_id,
+            binding_id=result.binding_id,
+        )
+
     async def create_organization(
         body: NativeOrganizationBody,
         actor: Annotated[PlatformActorContext, Depends(authenticated_actor)],
@@ -169,6 +208,18 @@ def install_native_platform_provisioning_http(
         owner="tenancy",
         status_code=201,
         response_model=NativeOrganizationView,
+        responses={status: {"model": ErrorEnvelope} for status in (400, 401, 403, 409, 422)},
+    )
+    add_capability_route(
+        router,
+        "/v1/platform/recovery-operators",
+        create_recovery_operator,
+        capability="platform.principal.provision",
+        methods=["POST"],
+        operation_id="platform_native_recovery_operator_create",
+        owner="tenancy",
+        status_code=201,
+        response_model=NativeRecoveryOperatorView,
         responses={status: {"model": ErrorEnvelope} for status in (400, 401, 403, 409, 422)},
     )
     add_capability_route(
