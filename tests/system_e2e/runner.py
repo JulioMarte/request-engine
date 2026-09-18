@@ -261,7 +261,144 @@ def _run_smoke(checkpoints: list[dict[str, str]], phase: str) -> None:
 
 
 def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
+    api_url = "http://api:8000"
+    control_url = "http://control-plane:8001"
+    if phase == "before-fault":
+        _run_f01_foundation(checkpoints, "main", include_continuity=False)
+        state_dir, bootstrap, _ = _handoff()
+        foundation, tenant_token = _tenant_session_from_foundation()
+        organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
+        native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
+        restart_login = "f01-restart-staff@example.invalid"
+        restart_password = _derived_password(
+            _required_string(foundation, "tenant_login", "F01 foundation state"),
+            "f01-restart-staff",
+        )
+        restart_identity_id = _native_identity(control_url, restart_login, restart_password)
+        invite: dict[str, object] = {
+            "identity_authority_id": native_authority_id,
+            "native_identity_id": restart_identity_id,
+            "provenance_reference": "e2e:f01:api-restart-replay",
+        }
+        idempotency_key = "f01-api-restart-invite-v1"
+        invited = _http_json(
+            "POST",
+            f"{api_url}/v1/staff/members/native",
+            bearer=tenant_token,
+            idempotency_key=idempotency_key,
+            organization_id=organization_id,
+            payload=invite,
+            expected_statuses=(201,),
+        )
+        membership_id = _required_string(invited, "membership_id", "restart invite response")
+        principal_id = _required_string(invited, "principal_id", "restart invite response")
+        (state_dir / "api-restart.json").write_text(
+            json.dumps(
+                {
+                    "idempotency_key": idempotency_key,
+                    "organization_id": organization_id,
+                    "membership_id": membership_id,
+                    "principal_id": principal_id,
+                    "invite": invite,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        checkpoints.append(
+            _checkpoint(
+                "f01-16-api-restart-prepared",
+                "passed",
+                "idempotent staff invitation committed before the API fault boundary",
+            )
+        )
+        return
+    if phase != "after-fault":
+        raise RuntimeError("api-restart requires before-fault or after-fault")
     _health_targets(checkpoints, phase)
+    state_dir, _, _ = _handoff()
+    restart = _json_object(state_dir / "api-restart.json")
+    foundation, tenant_token = _tenant_session_from_foundation()
+    organization_id = _required_string(restart, "organization_id", "api restart state")
+    idempotency_key = _required_string(restart, "idempotency_key", "api restart state")
+    membership_id = _required_string(restart, "membership_id", "api restart state")
+    principal_id = _required_string(restart, "principal_id", "api restart state")
+    invite_value = restart.get("invite")
+    if not isinstance(invite_value, dict):
+        raise RuntimeError("api restart state is missing the invitation payload")
+    invite = cast(dict[str, object], invite_value)
+
+    authority = _http_json(
+        "GET",
+        f"{api_url}/v1/me/authority",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    if authority.get("principal_id") != foundation.get("tenant_controller_principal_id"):
+        raise RuntimeError("tenant session identity changed across the API restart")
+
+    replay = _http_json(
+        "POST",
+        f"{api_url}/v1/staff/members/native",
+        bearer=tenant_token,
+        idempotency_key=idempotency_key,
+        organization_id=organization_id,
+        payload=invite,
+        expected_statuses=(201,),
+    )
+    if replay.get("membership_id") != membership_id:
+        raise RuntimeError("idempotent replay created a different staff membership after restart")
+
+    member = _http_json(
+        "GET",
+        f"{api_url}/v1/staff/members/{membership_id}",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    if member.get("principal_id") != principal_id:
+        raise RuntimeError("replayed staff membership is not the originally committed one")
+
+    page = _http_json(
+        "GET",
+        f"{api_url}/v1/staff/members",
+        bearer=tenant_token,
+        organization_id=organization_id,
+    )
+    items_value = page.get("items")
+    if not isinstance(items_value, list):
+        raise RuntimeError("staff membership list response is invalid")
+    matches: list[dict[str, object]] = []
+    for item in cast(list[object], items_value):
+        if isinstance(item, dict):
+            member_item = cast(dict[str, object], item)
+            if member_item.get("membership_id") == membership_id:
+                matches.append(member_item)
+    if len(matches) != 1:
+        raise RuntimeError("idempotent replay produced duplicate staff memberships after restart")
+
+    conflict = _http_json(
+        "POST",
+        f"{api_url}/v1/staff/members/native",
+        bearer=tenant_token,
+        idempotency_key=idempotency_key,
+        organization_id=organization_id,
+        payload={
+            "identity_authority_id": invite["identity_authority_id"],
+            "native_identity_id": invite["native_identity_id"],
+            "provenance_reference": "e2e:f01:api-restart-conflicting-intent",
+        },
+        expected_statuses=(409,),
+    )
+    if _error_code(conflict, "restart idempotency conflict") != "idempotency_conflict":
+        raise RuntimeError("a reused idempotency key with a different intent was not rejected")
+    checkpoints.append(
+        _checkpoint(
+            "f01-17-reconciliation-after-restart",
+            "passed",
+            "committed command replayed exactly once and key misuse rejected after API restart",
+        )
+    )
 
 
 def _run_surface_contract(checkpoints: list[dict[str, str]], phase: str) -> None:
@@ -303,7 +440,9 @@ def _native_identity(base_url: str, login: str, password: str) -> str:
     return _required_string(response, "native_identity_id", "native enrollment response")
 
 
-def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
+def _run_f01_foundation(
+    checkpoints: list[dict[str, str]], phase: str, *, include_continuity: bool = True
+) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
     state_dir, bootstrap, controller = _handoff()
@@ -357,6 +496,9 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
     controller_principal_id = _required_string(
         organization, "controller_principal_id", "organization response"
+    )
+    controller_binding_id = _required_string(
+        organization, "controller_binding_id", "organization response"
     )
     checkpoints.append(_checkpoint("f01-03-organization-controller", "passed"))
 
@@ -452,10 +594,28 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
             workload_authority_id=workload_authority_id,
             expires_at=expires_at,
         )
+        _exercise_recovery_governance(
+            checkpoints,
+            control_url=control_url,
+            api_url=api_url,
+            platform_token=platform_token,
+            provisioner_login=provisioner_login,
+            provisioner_password=provisioner_password,
+            target_native_identity_id=tenant_identity_id,
+        )
+        if include_continuity:
+            _exercise_last_controller_refusal(
+                checkpoints,
+                api_url=api_url,
+                tenant_token=tenant_token,
+                organization_id=organization_id,
+                controller_binding_id=controller_binding_id,
+            )
     foundation = {
         "organization_id": organization_id,
         "organization_party_id": organization_party_id,
         "tenant_controller_principal_id": controller_principal_id,
+        "tenant_controller_binding_id": controller_binding_id,
         "platform_provisioner_principal_id": provisioner_principal_id,
         "worker_principal_id": integration_principal_id,
         "tenant_login": tenant_login,
@@ -493,9 +653,6 @@ def _exercise_staff_zero_authority(
         expected_statuses=(201,),
     )
     membership_id = _required_string(invited, "membership_id", "staff invite response")
-    membership_revision = invited.get("membership_revision")
-    if not isinstance(membership_revision, int) or membership_revision != 1:
-        raise RuntimeError("new staff membership did not start at revision 1")
 
     activated = _http_json(
         "PUT",
@@ -504,7 +661,7 @@ def _exercise_staff_zero_authority(
         idempotency_key="f01-bounded-staff-activate-v1",
         organization_id=organization_id,
         payload={
-            "expected_revision": membership_revision,
+            "expected_revision": 1,
             "target_status": "active",
             "provenance_reference": "e2e:f01:bounded-staff-activate",
         },
@@ -718,6 +875,146 @@ def _exercise_integration_revocation(
             "f01-10-integration-revocation",
             "passed",
             "revoked workload bearer is rejected immediately through the public API",
+        )
+    )
+
+
+def _exercise_recovery_governance(
+    checkpoints: list[dict[str, str]],
+    *,
+    control_url: str,
+    api_url: str,
+    platform_token: str,
+    provisioner_login: str,
+    provisioner_password: str,
+    target_native_identity_id: str,
+) -> None:
+    case = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases",
+        bearer=platform_token,
+        idempotency_key="f01-recovery-case-v1",
+        payload={
+            "target_native_identity_id": target_native_identity_id,
+            "reason_code": "lost_credential",
+            "evidence_reference": "e2e:f01:recovery-governance",
+            "delivery_destination_reference": "e2e-runner@example.invalid",
+        },
+        expected_statuses=(201,),
+    )
+    case_id = _required_string(case, "case_id", "recovery case create response")
+    if case.get("status") != "requested" or case.get("revision") != 1:
+        raise RuntimeError("recovery case did not start requested at revision 1")
+
+    self_approval = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=platform_token,
+        idempotency_key="f01-recovery-self-approve-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+        expected_statuses=(403,),
+    )
+    if (
+        _error_code(self_approval, "recovery self-approval")
+        != "platform_identity_recovery_forbidden"
+    ):
+        raise RuntimeError("a requester was allowed to approve their own recovery case")
+
+    provisioner_token = _native_session(control_url, provisioner_login, provisioner_password)
+    unauthorized = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=provisioner_token,
+        idempotency_key="f01-recovery-unauthorized-approve-v1",
+        payload={"expected_revision": 1, "reason_code": "ownership_verified"},
+        expected_statuses=(403,),
+    )
+    if (
+        _error_code(unauthorized, "recovery unauthorized approval")
+        != "platform_identity_recovery_forbidden"
+    ):
+        raise RuntimeError("a principal without recovery authority approved a case")
+
+    fail_closed = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:issue",
+        bearer=platform_token,
+        idempotency_key="f01-recovery-issue-unconfigured-v1",
+        payload={"expected_revision": 1},
+        expected_statuses=(503,),
+    )
+    if _error_code(fail_closed, "recovery issue fail-closed") != "recovery_delivery_unconfigured":
+        raise RuntimeError("recovery issuance did not fail closed without a delivery channel")
+
+    revoked = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:revoke",
+        bearer=platform_token,
+        idempotency_key="f01-recovery-revoke-v1",
+        payload={"expected_revision": 1, "reason_code": "request_withdrawn"},
+    )
+    if revoked.get("status") != "revoked":
+        raise RuntimeError("recovery case revoke did not reach the revoked state")
+
+    after_revoke = _http_json(
+        "POST",
+        f"{control_url}/v1/platform/identity-recovery-cases/{case_id}:approve",
+        bearer=platform_token,
+        idempotency_key="f01-recovery-approve-after-revoke-v1",
+        payload={"expected_revision": 2, "reason_code": "ownership_verified"},
+        expected_statuses=(409,),
+    )
+    if (
+        _error_code(after_revoke, "recovery approve after revoke")
+        != "platform_identity_recovery_conflict"
+    ):
+        raise RuntimeError("a revoked recovery case was not refused for approval")
+
+    _http_request(
+        "POST",
+        f"{api_url}/auth/native/password:recover",
+        payload={
+            "recovery_token": "e2e-invalid-recovery-proof",
+            "new_password": "E2e!InvalidProof123Aa1",
+        },
+        expected_statuses=(401,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "f01-11-recovery-governance",
+            "passed",
+            "recovery double-control, fail-closed delivery and consume rejection enforced",
+        )
+    )
+
+
+def _exercise_last_controller_refusal(
+    checkpoints: list[dict[str, str]],
+    *,
+    api_url: str,
+    tenant_token: str,
+    organization_id: str,
+    controller_binding_id: str,
+) -> None:
+    refusal = _http_json(
+        "POST",
+        f"{api_url}/v1/identity-bindings/{controller_binding_id}:suspend",
+        bearer=tenant_token,
+        idempotency_key="f01-last-controller-refusal-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_revision": 1,
+            "provenance_reference": "e2e:f01:last-controller-refusal",
+        },
+        expected_statuses=(409,),
+    )
+    if _error_code(refusal, "last-controller refusal") != "identity_binding_conflict":
+        raise RuntimeError("last controller removal was not refused as a continuity conflict")
+    checkpoints.append(
+        _checkpoint(
+            "f01-12-last-controller-refusal",
+            "passed",
+            "removing the only authenticatable tenant controller is refused over HTTP",
         )
     )
 

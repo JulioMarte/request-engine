@@ -37,7 +37,7 @@ manual = true
 enabled = true
 
 [suites.api-restart]
-description = "Black-box API kill/restart fault protocol with readiness revalidation"
+description = "Black-box API kill/restart: idempotent replay, session survival and key-misuse rejection"
 selector = "api-restart"
 profiles = []
 services = ["api", "control-plane"]
@@ -46,7 +46,7 @@ runtime_env_from_state = []
 faults = ["api:kill-restart"]
 fresh_world = true
 fault_injection = true
-cost = "small"
+cost = "medium"
 artifact_namespace = "api-restart"
 pr = false
 merge = true
