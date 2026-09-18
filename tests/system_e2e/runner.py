@@ -435,6 +435,15 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
             organization_id=organization_id,
             native_authority_id=native_authority_id,
         )
+        _exercise_agent_zero_authority(
+            checkpoints,
+            api_url=api_url,
+            tenant_token=tenant_token,
+            organization_id=organization_id,
+            workload_authority_id=workload_authority_id,
+            sponsor_principal_id=controller_principal_id,
+            expires_at=expires_at,
+        )
         _exercise_integration_revocation(
             checkpoints,
             api_url=api_url,
@@ -516,6 +525,91 @@ def _exercise_staff_zero_authority(
             "f01-05b-staff-zero-authority",
             "passed",
             "active staff authenticates but receives no implicit staff-management authority",
+        )
+    )
+
+
+def _error_code(response: dict[str, object], source: str) -> str:
+    error = response.get("error")
+    if not isinstance(error, dict):
+        raise RuntimeError(f"{source} is missing an error object")
+    return _required_string(cast(dict[str, object], error), "code", source)
+
+
+def _exercise_agent_zero_authority(
+    checkpoints: list[dict[str, str]],
+    *,
+    api_url: str,
+    tenant_token: str,
+    organization_id: str,
+    workload_authority_id: str,
+    sponsor_principal_id: str,
+    expires_at: str,
+) -> None:
+    provisioned = _http_json(
+        "POST",
+        f"{api_url}/v1/agents",
+        bearer=tenant_token,
+        idempotency_key="f01-bounded-agent-provision-v1",
+        organization_id=organization_id,
+        payload={
+            "identity_authority_id": workload_authority_id,
+            "display_name": "F01 Bounded Scheduling Agent",
+            "purpose": "prove workload activation without implicit authority",
+            "sponsor_principal_id": sponsor_principal_id,
+            "operating_mode": "autonomous",
+            "credential_expires_at": expires_at,
+            "provenance_reference": "e2e:f01:bounded-agent",
+        },
+        expected_statuses=(201,),
+    )
+    principal_id = _required_string(provisioned, "principal_id", "agent provision response")
+    workload_token = _required_string(provisioned, "workload_token", "agent provision response")
+    if provisioned.get("status") != "pending":
+        raise RuntimeError("new agent did not start pending")
+
+    lookup_query = urlencode({"mode": "name", "value": "nobody"})
+    lookup_url = f"{api_url}/v1/parties/lookup?{lookup_query}"
+    pending = _http_json(
+        "GET",
+        lookup_url,
+        bearer=workload_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    if _error_code(pending, "pending agent lookup") != "identity_binding_pending":
+        raise RuntimeError("pending agent was denied for an unexpected reason")
+
+    activated = _http_json(
+        "PUT",
+        f"{api_url}/v1/agents/{principal_id}/status",
+        bearer=tenant_token,
+        idempotency_key="f01-bounded-agent-activate-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_revision": 1,
+            "target_status": "active",
+            "provenance_reference": "e2e:f01:bounded-agent-activate",
+        },
+    )
+    if activated.get("profile_revision") != 2:
+        raise RuntimeError("agent activation did not advance profile revision")
+
+    active = _http_json(
+        "GET",
+        lookup_url,
+        bearer=workload_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    if _error_code(active, "active zero-authority agent lookup") != "capability_required":
+        raise RuntimeError("active agent received unexpected implicit authority")
+
+    checkpoints.append(
+        _checkpoint(
+            "f01-06-agent-zero-authority",
+            "passed",
+            "agent workload activates but gains no operational authority implicitly",
         )
     )
 
