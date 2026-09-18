@@ -23,9 +23,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _CONTROL_DEFINER = "request_platform_control_definer"
-_FUNCTION = (
-    "request_platform.provision_native_recovery_operator(uuid, uuid, uuid, uuid, text)"
-)
+_FUNCTION = "request_platform.provision_native_recovery_operator(uuid, uuid, uuid, uuid, text)"
 
 
 def upgrade() -> None:
