@@ -426,6 +426,15 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
     )
     checkpoints.append(_checkpoint("f01-05-integration-principal", "passed"))
     if phase == "main":
+        _exercise_staff_zero_authority(
+            checkpoints,
+            control_url=control_url,
+            api_url=api_url,
+            tenant_token=tenant_token,
+            tenant_password=tenant_password,
+            organization_id=organization_id,
+            native_authority_id=native_authority_id,
+        )
         _exercise_integration_revocation(
             checkpoints,
             api_url=api_url,
@@ -446,6 +455,69 @@ def _run_f01_foundation(checkpoints: list[dict[str, str]], phase: str) -> None:
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
     )
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
+
+
+def _exercise_staff_zero_authority(
+    checkpoints: list[dict[str, str]],
+    *,
+    control_url: str,
+    api_url: str,
+    tenant_token: str,
+    tenant_password: str,
+    organization_id: str,
+    native_authority_id: str,
+) -> None:
+    staff_login = "f01-bounded-staff@example.invalid"
+    staff_password = _derived_password(tenant_password, "f01-bounded-staff")
+    staff_identity_id = _native_identity(control_url, staff_login, staff_password)
+    invited = _http_json(
+        "POST",
+        f"{api_url}/v1/staff/members/native",
+        bearer=tenant_token,
+        idempotency_key="f01-bounded-staff-invite-v1",
+        organization_id=organization_id,
+        payload={
+            "identity_authority_id": native_authority_id,
+            "native_identity_id": staff_identity_id,
+            "provenance_reference": "e2e:f01:bounded-staff",
+        },
+        expected_statuses=(201,),
+    )
+    membership_id = _required_string(invited, "membership_id", "staff invite response")
+    membership_revision = invited.get("membership_revision")
+    if not isinstance(membership_revision, int) or membership_revision != 1:
+        raise RuntimeError("new staff membership did not start at revision 1")
+
+    activated = _http_json(
+        "PUT",
+        f"{api_url}/v1/staff/members/{membership_id}/status",
+        bearer=tenant_token,
+        idempotency_key="f01-bounded-staff-activate-v1",
+        organization_id=organization_id,
+        payload={
+            "expected_revision": membership_revision,
+            "target_status": "active",
+            "provenance_reference": "e2e:f01:bounded-staff-activate",
+        },
+    )
+    if activated.get("membership_revision") != 2:
+        raise RuntimeError("staff activation did not advance membership revision")
+
+    staff_token = _native_session(api_url, staff_login, staff_password)
+    _http_request(
+        "GET",
+        f"{api_url}/v1/staff/members",
+        bearer=staff_token,
+        organization_id=organization_id,
+        expected_statuses=(403,),
+    )
+    checkpoints.append(
+        _checkpoint(
+            "f01-05b-staff-zero-authority",
+            "passed",
+            "active staff authenticates but receives no implicit staff-management authority",
+        )
+    )
 
 
 def _exercise_integration_revocation(
