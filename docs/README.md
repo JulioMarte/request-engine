@@ -32,7 +32,7 @@ Self-only current Party relationship inspection and its explicit policy evolutio
 
 Native recovery consumption is specified in `architecture/http-runtime-deployment.md`; executed validation is tracked in `architecture/auth-implementation-status.md` and the proof matrix in `testing/native-recovery-http-validation-handoff.md`.
 
-The remaining identity/product/operational acceptance content is defined in `architecture/auth-production-completion-plan.md`. The serialized implementation method is `architecture/sequential-completion-plan.md`.
+The remaining identity/product/operational acceptance content is defined in `architecture/auth-production-completion-plan.md`. **For the initial platform trust root, ADR 0014 and `architecture/instance-claim-platform-owner-plan.md` supersede the older CLI-first bootstrap assumptions:** a fresh self-hosted Instance is claimed over the private control-plane HTTP surface, the first effective Platform Owner is a normal capability-governed HUMAN Principal with phishing-resistant authentication, and setup never reopens after claim. The serialized implementation method for the older completion plan remains `architecture/sequential-completion-plan.md`; the new trust-root work follows the slices in the instance-claim plan.
 
 ### Canonical system/E2E CI platform
 
@@ -87,7 +87,9 @@ The historical `operational_copilot` package is not a separate source of busines
 
 Identity/authentication and deployment references:
 
-- `architecture/identity-provider-and-staff-provisioning-plan.md` — providerless trust root, staff lifecycle and required acceptance journeys;
+- `architecture/instance-claim-platform-owner-plan.md` — **current accepted first-run trust-root implementation plan**: Instance state, SetupSession, Platform Owner policy, WebAuthn/assurance, recovery separation and HTTP/TCP acceptance;
+- `adr/0014-instance-claim-platform-owner-trust-root.md` — accepted hard-to-reverse decision replacing the CLI-first initial-owner ceremony;
+- `architecture/identity-provider-and-staff-provisioning-plan.md` — providerless identity/staff lifecycle and earlier bootstrap design; interpret its initial-root ceremony through ADR 0014;
 - `architecture/principal-agent-and-provisioning-authority-model.md` — Principal planes, workload authority and the amended implementation slice order;
 - `architecture/http-runtime-deployment.md` — native-first and separate private provisioning ASGI factories, explicit configuration, least-privilege startup and readiness limits;
 - `architecture/auth-implementation-status.md` — dated validation evidence and remaining identity-plan acceptance gaps;
