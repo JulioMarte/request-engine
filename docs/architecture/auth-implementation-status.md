@@ -8,7 +8,11 @@ amended slices in `principal-agent-and-provisioning-authority-model.md`.
 tests is necessary but does not prove the unimplemented acceptance journeys.
 
 Detailed continuation plan: `auth-production-completion-plan.md` (2026-09-14).
-It specifies implementation order, proposed operations, ownership, security
+For the initial platform trust root specifically, ADR 0014 and
+`instance-claim-platform-owner-plan.md` (2026-09-18) are now the accepted target:
+the existing bootstrap CLI evidence remains valid historical/current-state evidence
+but is a migration target, not the future canonical installation interface.
+The completion plan specifies implementation order, proposed operations, ownership, security
 decision gates, transactions, proof matrix and operational exit criteria. Its
 recovery/linking policy was accepted by ADR 0013 (2026-09-14) and activated in
 revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
@@ -67,11 +71,13 @@ by the runs above.
 
 Still missing:
 
-- **F-01 fixture-free native journey (plan section 11):** a clean native-only
-  instance built only through the accepted bootstrap CLI ceremony and driven over
-  real TCP through enrollment, provisioning, booking, revocation, recovery and
-  last-controller refusal. Partially implemented in the reusable Docker E2E
-  platform (evidence above). The positive recovery path, controller replacement and
+- **F-01 fixture-free native journey (plan section 11):** the currently executed
+  clean native-only journey still establishes trust through the bootstrap CLI and
+  then drives the product over real TCP. ADR 0014 intentionally makes that bootstrap
+  step transitional: the replacement acceptance journey must claim the fresh
+  Instance through the control-plane HTTP setup surface, including real WebAuthn
+  verification, before F-01 can represent the target installation architecture.
+  The existing Docker E2E evidence remains valid for the behavior it actually ran. The positive recovery path, controller replacement and
   the OIDC journey remain blocked on missing product/deployment contracts rather
   than on test scaffolding.
 - **G/D6 operational acceptance (plan section 12):** named environment, operators
