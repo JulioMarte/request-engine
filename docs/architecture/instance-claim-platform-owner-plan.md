@@ -1118,7 +1118,11 @@ At minimum prove with independent DB transactions/connections:
 5. replay after successful claim is idempotent;
 6. old CLI/SQL bootstrap path cannot create a second platform root after new claim;
 7. process restart during unfinished SetupSession does not create authority;
-8. restore/restart of claimed database never reopens setup.
+8. restore/restart of claimed database never reopens setup;
+9. migration of a legacy CLI-claimed database adopts it as CLAIMED and never
+   exposes first-run setup;
+10. migration with ambiguous historical root provenance fails closed instead of
+    selecting an arbitrary owner.
 
 Timing-only sleeps are not sufficient evidence.
 
@@ -1143,7 +1147,7 @@ fresh world
 -> create SetupSession
 -> establish identity
 -> register software WebAuthn authenticator through real ceremony
--> create/acknowledge recovery codes
+-> create/show recovery codes
 -> finalize owner
 -> setup_required=false
 -> normal passkey/password login
@@ -1156,6 +1160,9 @@ fresh world
 
 Adversarial checkpoints:
 
+- ordinary data-plane native enrollment rejected while Instance is UNCLAIMED;
+- built-in native/workload authority IDs are discovered from trusted Instance
+  state rather than caller input;
 - wrong/expired setup token;
 - expired SetupSession;
 - reused challenge;
