@@ -20,11 +20,11 @@ delay_seconds="${E2E_DOCKER_RETRY_DELAY_SECONDS:-3}"
 }
 
 mkdir -p "$(dirname "$log_file")"
-transient_pattern='(TLS handshake timeout|i/o timeout|context deadline exceeded|unexpected EOF|connection reset by peer|temporary failure|network is unreachable|failed to fetch anonymous token|toomanyrequests|too many requests|(^|[^0-9])(429|500|502|503|504)([^0-9]|$))'
+transient_pattern='(TLS handshake timeout|i/o timeout|context deadline exceeded|unexpected EOF|connection reset by peer|temporary failure|network is unreachable|failed to fetch anonymous token|toomanyrequests|too many requests|429 Too Many Requests|500 Internal Server Error|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout|unexpected status[^0-9]*(429|500|502|503|504)|status code[^0-9]*(429|500|502|503|504)|server returned[^0-9]*(429|500|502|503|504))'
 
 for ((attempt = 1; attempt <= attempts; attempt++)); do
   attempt_log="$(mktemp)"
-  echo "docker-attempt=$attempt/$attempts command=$*" | tee -a "$log_file"
+  echo "docker-attempt=$attempt/$attempts" | tee -a "$log_file"
 
   set +e
   "$@" 2>&1 | tee -a "$log_file" "$attempt_log"
