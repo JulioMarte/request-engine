@@ -1,5 +1,12 @@
 # Native initial controller policy
 
+> **Scope note (2026-09-18):** this document governs **tenant** initial-controller
+> policy only. It does not define the new platform-owner policy from ADR 0014.
+> Current application code still selects `tenant-controller-v3` even though v4
+> and v5 catalog rows exist; that mismatch is an explicit implementation debt to
+> resolve during the accepted trust-root/onboarding work, not a reason to infer
+> that v5 is already the default.
+
 Status: revisions 0036/0037 validated; additive 0038 locally validated on
 PostgreSQL 18.6 with populated v2-to-v3 replay proof; additive 0053 (v4 plus the
 governed upgrade command) locally validated on PostgreSQL 18.6. Exact-head CI
