@@ -1,5 +1,12 @@
 # Plan ejecutable de cierre de identidad, ergonomía y producción
 
+> **Trust-root supersession notice (2026-09-18):** ADR 0014 and
+> `instance-claim-platform-owner-plan.md` supersede this document's CLI-first
+> initial Platform root/bootstrap assumptions. The recovery, continuity,
+> topology-serialization, identity-linking and other already accepted guarantees
+> remain authoritative unless ADR 0014 explicitly narrows them. Do not implement
+> a new first-owner flow from the older CLI sections of this plan.
+
 Fecha: 2026-09-14. Branch de referencia: `cohesion/system-optimization`.
 
 Estado: **plan de implementación propuesto, no certificación ni autorización de
