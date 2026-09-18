@@ -1,5 +1,13 @@
 # Native-first HTTP runtime
 
+> **Current-state / target-state notice (2026-09-18):** the runtime/configuration
+> details below accurately describe the implemented pre-ADR-0014 system where the
+> native authority ID is deployment configuration and the platform root is created
+> by `request-engine-platform-bootstrap`. ADR 0014 and
+> `instance-claim-platform-owner-plan.md` supersede that installation mechanism
+> as the target architecture. Until those slices are implemented, do not pretend
+> the environment/CLI dependency has already disappeared.
+
 The supported ASGI composition factory is
 `request_engine.bootstrap.server:create_app`. It composes native human sessions,
 workload credentials, current Principal authority, agent delegation/policy and
