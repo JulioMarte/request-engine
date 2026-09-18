@@ -15,11 +15,13 @@ from request_engine.modules.tenancy.adapters.db.native_platform_provisioning_com
 )
 from request_engine.modules.tenancy.application.commands.native_platform_provisioning import (
     NativePlatformProvisionerResult,
+    NativePlatformRecoveryOperatorResult,
     NativePlatformProvisioningConflict,
     NativePlatformProvisioningForbidden,
     NativePlatformProvisioningInvalid,
     NativePlatformProvisioningRevisionConflict,
     ProvisionNativePlatformProvisionerCommand,
+    ProvisionNativeRecoveryOperatorCommand,
 )
 from request_engine.platform.db.session import SessionFactory
 from request_engine.platform.security.platform_context import PlatformActorContext
@@ -159,3 +161,102 @@ async def test_native_provisioner_is_atomic_replay_safe_and_never_regrants(
         await commands.provision_native_platform_provisioner(
             replace(actor, authority_revision=_revision(admin_conn, creator)), command
         )
+
+
+
+@pytest.mark.asyncio
+async def test_native_recovery_operator_is_bounded_and_replay_safe(
+    admin_conn: PgConnection,
+    command_session_factory: SessionFactory,
+    platform_control_session_factory: SessionFactory,
+) -> None:
+    creator = _platform_principal(admin_conn)
+    capability = "platform.recovery_operator.provision"
+    _platform_grant(admin_conn, principal_id=creator, capability=capability, delegable=False)
+    actor = PlatformActorContext(
+        principal_id=creator,
+        authority_revision=_revision(admin_conn, creator),
+        capabilities=frozenset({capability}),
+    )
+    authority_id = uuid4()
+    admin_conn.execute(
+        "INSERT INTO request_engine.identity_authorities(id, kind, issuer_or_environment) "
+        "VALUES (%s, 'native', %s)",
+        (authority_id, f"native-recovery-operator-{uuid4().hex}"),
+    )
+    enrollment = await build_native_auth_runtime(
+        command_session_factory
+    ).service.enroll_password_identity(
+        identity_authority_id=authority_id,
+        login_handle="recovery-operator@example.test",
+        password="native recovery operator proof password",
+    )
+    command = ProvisionNativeRecoveryOperatorCommand(
+        identity_authority_id=authority_id,
+        native_identity_id=enrollment.native_identity_id,
+        provenance_reference="deployment:recovery-operator-v1",
+        idempotency_key="native-recovery-operator-1",
+    )
+    commands = PostgresNativePlatformProvisioningCommands(platform_control_session_factory)
+
+    result = await commands.provision_native_recovery_operator(actor, command)
+    assert isinstance(result, NativePlatformRecoveryOperatorResult)
+    assert await commands.provision_native_recovery_operator(actor, command) == result
+
+    assert admin_conn.execute(
+        "SELECT principal_id, principal_plane, organization_id, identity_authority_id, "
+        "subject_id, status FROM request_engine.identity_bindings WHERE id = %s",
+        (result.binding_id,),
+    ).fetchone() == (
+        result.principal_id,
+        "platform",
+        None,
+        authority_id,
+        str(enrollment.native_identity_id),
+        "active",
+    )
+    assert admin_conn.execute(
+        "SELECT capability_key, delegable, granted_by_principal_id, provenance_reference "
+        "FROM request_engine.principal_authority_grants "
+        "WHERE principal_id = %s ORDER BY capability_key",
+        (result.principal_id,),
+    ).fetchall() == [
+        (
+            "platform.identity.read",
+            False,
+            creator,
+            "deployment:recovery-operator-v1",
+        ),
+        (
+            "platform.identity.recovery_approve",
+            False,
+            creator,
+            "deployment:recovery-operator-v1",
+        ),
+    ]
+    assert admin_conn.execute(
+        "SELECT count(*) FROM request_engine.principal_authority_grants "
+        "WHERE principal_id=%s AND capability_key IN "
+        "('organization.provision', 'platform.identity.recover', "
+        "'platform.recovery_operator.provision')",
+        (result.principal_id,),
+    ).fetchone() == (0,)
+
+    with pytest.raises(NativePlatformProvisioningConflict):
+        await commands.provision_native_recovery_operator(
+            actor,
+            replace(command, provenance_reference="different-recovery-operator-intent"),
+        )
+    with pytest.raises(NativePlatformProvisioningInvalid):
+        await commands.provision_native_recovery_operator(
+            actor,
+            replace(
+                command,
+                native_identity_id=uuid4(),
+                idempotency_key="missing-recovery-operator-identity",
+            ),
+        )
+
+    denied_actor = replace(actor, capabilities=frozenset())
+    with pytest.raises(NativePlatformProvisioningForbidden):
+        await commands.provision_native_recovery_operator(denied_actor, command)
