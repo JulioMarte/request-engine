@@ -6,8 +6,15 @@ registry="scripts/ci/e2e_suite_registry.py"
 compose_file="deploy/reference/compose.e2e.yaml"
 artifact_root="${E2E_ARTIFACT_ROOT:-.ci/docker-e2e}"
 
+retry_docker() {
+  log_file="$1"
+  shift
+  bash scripts/ci/retry_transient_docker.sh "$log_file" "$@"
+}
+
 build_images() {
-  docker compose -f "$compose_file" --profile runner build api e2e-runner
+  retry_docker "$suite_artifacts/phases/build.log" \
+    docker compose -f "$compose_file" --profile runner build api e2e-runner
 }
 
 [[ "$requested" != "all" ]] || {
@@ -79,7 +86,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images 2>&1 | tee "$suite_artifacts/phases/build.log"; fi
+if [[ "${E2E_IMAGES_READY:-0}" != "1" ]]; then build_images; fi
 
 infra=(postgres)
 for profile in "${profiles[@]}"; do
@@ -89,8 +96,8 @@ for profile in "${profiles[@]}"; do
     worker) infra+=(event-sink) ;;
   esac
 done
-"${compose[@]}" up -d --wait --wait-timeout "${INFRA_READY_TIMEOUT_SECONDS:-120}" "${infra[@]}" \
-  2>&1 | tee "$suite_artifacts/phases/infrastructure.log"
+retry_docker "$suite_artifacts/phases/infrastructure.log" \
+  "${compose[@]}" up -d --wait --wait-timeout "${INFRA_READY_TIMEOUT_SECONDS:-120}" "${infra[@]}"
 
 {
   "${compose[@]}" run --rm --no-deps migrate
