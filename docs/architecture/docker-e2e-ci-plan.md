@@ -4,6 +4,8 @@ Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization`.
 
 Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01 está demostrado black-box hasta donde los contratos actuales lo permiten (foundation, staff/AGENT, recovery governance, last-controller refusal y fault injection worker/API); el recovery positivo y el reemplazo de controller están bloqueados por gaps de producto documentados en la sección 14. Quedan pendientes la policy final de coste/gating y la promoción del lane desde `continue-on-error`. No es certificación ni autorización de despliegue a producción.
 
+**Trust-root transition (2026-09-18):** ADR 0014 y `instance-claim-platform-owner-plan.md` aceptan como arquitectura objetivo que el mundo fresco se reclame por HTTP/TCP en el control plane con SetupSession + WebAuthn + finalize atómico. La plataforma E2E actual todavía usa el bootstrap CLI porque ese reemplazo no está implementado; esa evidencia sigue siendo honesta para el código actual, pero el CLI deja de ser el contrato objetivo. Al implementar ADR 0014, el deployment engine debe conservar su topología reusable y la suite de claim debe reemplazar el paso CLI sin introducir acceso DB al runner.
+
 Este documento define la **plataforma reusable de CI E2E de Request Engine**. F-01 es una suite consumidora de esta plataforma, igual que suites presentes o futuras de surface contract, booking, authority, recovery, worker, OIDC u otras capacidades cross-module.
 
 El principio rector es:
