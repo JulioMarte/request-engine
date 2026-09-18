@@ -116,17 +116,18 @@ Do not build the new design beside these and leave both authoritative.
 Installation claim is platform-level product policy, not a generic security
 utility. Its durable Instance/claim semantics need one explicit owner.
 
-Recommended ownership: **tenancy/platform administration capability within the
-current tenancy owner**, because it creates the platform Principal/binding/grants
-and already owns platform provisioning authority.
+**Ownership decision: Tenancy owns the Instance-claim and Platform Owner business
+semantics.** It already owns Principal, binding, platform/tenant authority and
+platform provisioning truth. The fact that the resource is installation-wide
+does not transfer its business meaning into the technical `platform` package.
 
-Do not put Instance business policy in `platform/security`. That package may own
+Do not put Instance business policy in `platform/security`. That package owns
 cryptographic/authentication mechanics, not "who owns this Request Engine
 installation".
 
-If implementation analysis proves a distinct bounded context is warranted, that
-is an explicit architecture decision; do not create `modules/instance` merely
-for folder symmetry.
+Do not create a new `modules/instance`/IAM module for this work. Changing this
+ownership later would require a new explicit architecture decision and the normal
+ownership-map/dependency-policy migration.
 
 ### 4.2 Authentication
 
@@ -1510,6 +1511,42 @@ When behavior begins changing, update coherently:
 
 Do not leave historical "bootstrap CLI is canonical" statements in current
 authority after P4.
+
+## 34.1 Target guarantee evolution
+
+The accepted target needs explicit durable guarantee IDs once implementation
+starts. Do not add them to `current-guarantees.toml` as "proven current behavior"
+before the corresponding product slice exists; doing so would make the current
+inventory dishonest.
+
+At implementation time converge on guarantees equivalent to:
+
+```text
+INV-INSTANCE-CLAIM-001
+  exactly one atomic first claim; setup never reopens
+
+INV-SETUP-AUTHORITY-001
+  SetupSession is bounded, non-Principal authority usable only for setup
+
+INV-PLATFORM-OWNER-AUTH-001
+  effective Owner requires an accepted authenticatable path and initial claim
+  requires verified phishing-resistant WebAuthn
+
+INV-AUTH-ASSURANCE-001
+  high-risk operations enforce trusted method + freshness + assurance
+
+INV-INSTANCE-RECOVERY-001
+  break-glass recovery is separate from setup and cannot reset Instance state
+```
+
+Exact IDs may be reconciled with the current inventory before merge, but the
+semantic coverage may not be omitted.
+
+When source implementation begins, extend
+`docs/architecture/documentation-contracts.toml` with a narrow rule covering the
+new Instance/setup/WebAuthn/platform-owner contract-sensitive paths and requiring
+this plan (or its eventual promoted normative successor). Documentation and code
+for this trust boundary must then evolve atomically.
 
 ## 35. Definition of Done
 
