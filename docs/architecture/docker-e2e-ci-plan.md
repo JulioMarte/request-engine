@@ -2,7 +2,7 @@
 
 Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization`.
 
-Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01, fault injection completo, worker real y policy final de coste/gating siguen pendientes. No es certificación ni autorización de despliegue a producción.
+Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01 está demostrado black-box hasta donde los contratos actuales lo permiten (foundation, staff/AGENT, recovery governance, last-controller refusal y fault injection worker/API); el recovery positivo y el reemplazo de controller están bloqueados por gaps de producto documentados en la sección 14. Quedan pendientes la policy final de coste/gating y la promoción del lane desde `continue-on-error`. No es certificación ni autorización de despliegue a producción.
 
 Este documento define la **plataforma reusable de CI E2E de Request Engine**. F-01 es una suite consumidora de esta plataforma, igual que suites presentes o futuras de surface contract, booking, authority, recovery, worker, OIDC u otras capacidades cross-module.
 
@@ -485,7 +485,8 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - `workflow_dispatch` y `workflow_call` reutilizables;
 - fitness checks registry ↔ runner ↔ topology;
 - Docker E2E exact-head verde para el lane `smoke`;
-- F-01 black-box parcialmente demostrado en el lane PR: bootstrap → platform login → segundo provisioner → organization/tenant controller → rechazo de autoridad HUMAN para workload → integration principal con autoridad workload real → revocación de integration con invalidación inmediata del bearer → supply/capacity → slot discovery → booking durable → rechazo de segundo consumo del mismo slot → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
+- F-01 black-box demostrado en el lane PR (`policy:pr`, commit `f8c5a6c5`, run `35306586940`): bootstrap → platform login → segundo provisioner → organization/tenant controller → rechazo de autoridad HUMAN para workload → integration principal con autoridad workload real → rechazo de staff activo sin autoridad implícita → rechazo de AGENT activo sin autoridad implícita (`agent_policy_denied`) → revocación de integration con invalidación inmediata del bearer → supply/capacity → slot discovery → booking durable → rechazo de segundo consumo del mismo slot → rechazo de retirar el último controller autenticable (`identity_binding_conflict`) → governance de recovery (doble control, fail-closed y rechazo de consume) → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
+- `api-restart` como journey real F01-16/F01-17 (commit `f8c5a6c5`, run `35306590799`): una invitación de staff idempotente se confirma antes del `api:kill-restart`; tras el reinicio la sesión/credencial se reautentica, el comando se replaya exactamente una vez con el mismo `membership_id`, la lista no contiene duplicados y reutilizar la misma `Idempotency-Key` con otra intención devuelve `idempotency_conflict`;
 - fault injection real con barrera observable `block/release` del event sink y kill/restart propiedad del host, no del runner;
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
 
@@ -499,13 +500,34 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 1. minimizar DSNs/credenciales por proceso; el Compose aún usa un `x-common-env` demasiado amplio para API/control-plane;
 2. generalizar el handoff de estado/secretos más allá del journey worker-restart (ya implementado para F-01: `bootstrap.json`, `f01-foundation.json`, `worker-booking.json` y directorio de secretos separado);
 3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
-4. extender el protocolo de fault injection ya demostrado (barrera `block/release` del sink + `worker:kill-restart` del orquestador) a API y otras superficies;
+4. extender el protocolo de fault injection ya demostrado (barrera `block/release` del sink + kill/restart del orquestador) a barreras in-flight más fuertes: hoy `api-restart` demuestra replay idempotente y supervivencia de sesión tras el reinicio, pero no un crash determinista entre COMMIT y respuesta HTTP;
 5. provisionar worker Principal/publisher reales para suites worker: el Principal ya nace por el contrato de integration sobre la autoridad workload de despliegue; el publisher sigue siendo el adapter HTTP de referencia;
-6. F-01 restante como suite black-box: techos staff/AGENT, recovery gobernado, continuidad de último controller y fault injection/reconciliation de API; la revocación local de INTEGRATION ya está demostrada;
-7. Vault/Mailpit funcionalmente conectados a journeys, no sólo disponibles como profiles;
-8. Authentik/OIDC lane;
+6. F-01 restante como suite black-box: recovery positivo (approve → issue → deliver → consume) y reemplazo del último controller; ambos requieren contratos de producto que hoy no existen (ver hallazgos);
+7. conectar Vault/Mailpit funcionalmente al journey de recovery (hoy `issue` falla cerrado con `recovery_delivery_unconfigured` porque el control-plane no tiene delivery compuesto);
+8. Authentik/OIDC lane (bloqueado por registro de autoridad OIDC sólo-SQL, grants no alcanzables y ausencia de provider en el Compose de referencia);
 9. policy automática PR/merge/nightly/all y calibración de coste/flakiness;
 10. promoción eventual del Docker E2E desde `continue-on-error` a required cuando la señal sea estable.
+
+### Hallazgos de producto y governance (F-01)
+
+Gaps reales de producto/deployment encontrados al llevar F-01 a HTTP black-box. No se maquillaron en el runner; cada uno bloquea un checkpoint concreto.
+
+1. **El job Docker E2E puede reportar `success` con suites fallidas.** El job usa `continue-on-error: true`, de modo que un fallo de suite queda como check verde. Incidente real: el run `35295181350` reportó `success` mientras `f01-foundation` fallaba; el código de staff/AGENT de un agente previo nunca llegó a validarse y contenía dos defectos (ver 8). Mientras el E2E sea advisory, la evidencia exact-head debe leerse del step log/artefacto, no del check.
+2. **No hay contrato HTTP para que un tenant controller designe un sustituto.** Las capabilities de control se provisionan con `delegable=false` (`0044_identity_topology_gate.py`), y tanto `replace_staff_authority` como `upgrade_controller_policy` exigen que el actor tenga esas capabilities como delegables. Resultado: F01-12 sólo puede demostrar el rechazo al último controller, no el reemplazo. El mecanismo existe (policy upgrade) pero no es alcanzable por un root recién provisionado.
+3. **No hay contrato para provisionar un segundo humano de plataforma con recovery.** `platform.identity.recovery_approve` se concede únicamente al root de bootstrap (`0045_identity_recovery_case.py`) y `issue` prohíbe un segundo root; no existe operación HTTP de concesión de capabilities de plataforma. El doble control de F01-11 no es auto-provisionable.
+4. **No hay canal de entrega de recovery legible por el runner.** Sin Vault+SMTP compuestos, `POST .../identity-recovery-cases/{id}:issue` falla cerrado con `503 recovery_delivery_unconfigured`. El camino positivo exige configurar `secrets`/`delivery`/`worker` y leer el secreto por la API HTTP de Mailpit; hoy no está cableado.
+5. **El controller no puede inspeccionar identity bindings.** La capability `identity.binding.read` existe pero ninguna policy la concede; el controller puede mutar bindings (`identity.bind`) pero no listarlos/leerlos. Asimetría de observabilidad.
+6. **OIDC no es alcanzable black-box.** No hay bootstrap/HTTP para registrar una `identity_authorities.kind='oidc'`; `identity.link_self` no está en ninguna policy de controller; `platform.identity.disable` no se concede a roots creados después de `0047`; no hay provider OIDC en el Compose de referencia; y el runner genérico (stdlib) no puede emitir RS256 `at+jwt` ni leer JWKS.
+7. **`_assert_handoff_contract` prueba que el fichero de estado montado sobrevivió, no que un request de negocio sobreviviera.** La supervivencia de negocio se prueba ahora por separado con replay idempotente y read-back.
+8. **Defectos reales del trabajo previo que el masking ocultó:** `_exercise_staff_zero_authority` leía `membership_revision` de una respuesta de invite que no lo devuelve; `_exercise_agent_zero_authority` esperaba `capability_required` cuando la capa de policy de AGENT responde `agent_policy_denied`. Ambos corregidos y ahora verdes.
+
+Remediación propuesta (requiere contrato aceptado; no se implementó un endpoint inseguro para rellenar el hueco):
+
+- **Doble control de recovery:** extender la ceremonia de bootstrap o añadir una operación de plataforma gobernada que conceda `platform.identity.recovery_approve` a un segundo humano, con actor/revisión/provenance auditables. Alternativa: permitir que el bootstrap cree dos operadores de recuperación en una sola ceremonia.
+- **Reemplazo de controller:** exponer una operación semántica de "designar sucesor" (o hacer delegables las capabilities de control con techo explícito) en lugar de depender de `replace_staff_authority`/`upgrade_controller_policy`, que hoy están acotadas por el techo delegable del actor.
+- **Entrega de recovery observable:** componer Vault + SMTP/Mailpit en control-plane/worker para el perfil `delivery` y leer el proof por la API HTTP de Mailpit; el runner ya no necesita SQL ni internals.
+- **Registro de autoridad OIDC:** tratarlo como configuración de despliegue (bootstrap CLI lee la autoridad OIDC declarada), no como INSERT manual; conceder `identity.link_self` y `platform.identity.disable` por contrato y añadir un provider OIDC de test al Compose.
+- **Governance CI:** mantener el lane advisory pero emitir una señal no verde (status/comment) cuando una suite falle, o promoverlo a required (item 10) una vez estabilizado; añadir retry acotado para errores transitorios de registry de imágenes.
 
 ## 15. Fases revisadas
 
@@ -517,7 +539,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 | P2b | evidence/secret hardening estructural | parcial: collector saneado; handoff de estado/secretos implementado para el journey worker-restart |
 | P3a | generic runner + registry + selector + edge/backend + profiles + isolation | **implementado y demostrado** |
 | P3b | fresh-world orchestration + namespaced evidence + `all` semantics + reusable workflow | **implementado; smoke demostrado, `all` dedicado aún por calibrar** |
-| P4 | F-01 + worker/API fault injection | parcial: foundation, workload-kind boundary, integration revocation, capacity conflict y worker durable recovery demostrados; staff/AGENT, recovery/last-controller y fault injection de API pendientes |
+| P4 | F-01 + worker/API fault injection | foundation completo, staff/AGENT, workload-kind boundary, integration revocation, capacity conflict, recovery governance, last-controller refusal y worker/API fault injection demostrados en CI exact-head; recovery positivo y reemplazo de controller bloqueados por gaps de producto |
 | P5 | suites dirigidas booking/authority/recovery/worker | pendiente según valor |
 | P6 | OIDC/Authentik + subset CI-feasible de G | pendiente |
 | P7 | coste/flakiness + selection policy + required checks | pendiente |

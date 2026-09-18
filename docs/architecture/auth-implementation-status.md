@@ -15,12 +15,41 @@ revisions 0045-0051. The real secret store and delivery channel (Block C-02) are
 implemented and production-wired; operational acceptance of the chosen environment
 and secret manager remains under D6.
 
-## Current position and remaining work (2026-09-17)
+## Current position and remaining work (2026-09-18)
 
 Identity blocks A-E and F-02 are implemented and locally validated with green
-exact-head CI on branch `cohesion/system-optimization` (HEAD `ba1acb0c`, PR #132).
-F-01, the G/D6 operational acceptance and platform system administration remain
-open. Nothing is merged or deployed and the application database is unmigrated.
+exact-head CI on branch `cohesion/system-optimization` (PR #132). F-01 is now
+demonstrated black-box through the reusable Docker E2E platform up to the limits
+of current product contracts; the G/D6 operational acceptance and platform system
+administration remain open. Nothing is merged or deployed and the application
+database is unmigrated.
+
+F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
+[35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)
+for `policy:pr` and run
+[35306590799](https://github.com/JulioMarte/request-engine/actions/runs/35306590799)
+for `api-restart`):
+
+- clean bootstrap → platform login → second provisioner → organization/tenant
+  controller → HUMAN-authority-for-workload rejection → integration principal on
+  the deployment workload authority;
+- bounded staff and bounded AGENT activation without implicit authority
+  (`agent_policy_denied` for an active agent with no tool/risk policy);
+- integration revocation invalidating the bearer immediately;
+- supply/capacity, durable booking and capacity-conflict rejection;
+- recovery governance: self-approval and unauthorized approval refused, issuance
+  fail-closed (`503 recovery_delivery_unconfigured`) and invalid consume rejected;
+- last-controller refusal (`409 identity_binding_conflict`);
+- worker kill/restart with post-restart outbox delivery;
+- API kill/restart with idempotent replay exactly once, session reauthentication
+  and `idempotency_conflict` on key misuse.
+
+F-01 remains blocked on real product/deployment gaps (not test shortcuts): the
+positive recovery path needs a second recovery-capable platform human and a
+runner-readable delivery channel; controller replacement needs a supported
+delegable/policy contract; OIDC needs an authority-registration contract, reachable
+grants and a provider in the reference Compose. Details are in
+`docker-e2e-ci-plan.md` section 14 ("Hallazgos de producto y governance").
 
 Completed with green exact-head CI:
 
@@ -40,9 +69,11 @@ Still missing:
 
 - **F-01 fixture-free native journey (plan section 11):** a clean native-only
   instance built only through the accepted bootstrap CLI ceremony and driven over
-  real TCP through enrollment, provisioning, booking, revocation, full recovery and
-  last-controller refusal. Not implemented; current e2e journeys use seeded world
-  helpers.
+  real TCP through enrollment, provisioning, booking, revocation, recovery and
+  last-controller refusal. Partially implemented in the reusable Docker E2E
+  platform (evidence above). The positive recovery path, controller replacement and
+  the OIDC journey remain blocked on missing product/deployment contracts rather
+  than on test scaffolding.
 - **G/D6 operational acceptance (plan section 12):** named environment, operators
   and thresholds; separate production entrypoints and pools; TLS/private ingress;
   budgets; configured secret store/provider with rotation; populated migration
