@@ -988,7 +988,7 @@ def _exercise_recovery_governance(
         idempotency_key="f01-recovery-operator-request-denied-v1",
         payload={
             "target_native_identity_id": target_native_identity_id,
-            "reason_code": "must_not_request",
+            "reason_code": "lost_credential",
             "evidence_reference": "e2e:f01:recovery-operator-no-request",
             "delivery_destination_reference": "e2e-runner@example.invalid",
         },

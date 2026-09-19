@@ -55,11 +55,15 @@ class CreateIdentityRecoveryCaseCommand:
 
     def __post_init__(self) -> None:
         if self.reason_code.strip() not in _CREATE_REASONS:
-            raise ValueError("reason_code is not accepted for a recovery request")
+            raise IdentityRecoveryInvalid("reason_code is not accepted for a recovery request")
         if not 1 <= len(self.evidence_reference.strip()) <= 400:
-            raise ValueError("evidence reference must contain between 1 and 400 characters")
+            raise IdentityRecoveryInvalid(
+                "evidence reference must contain between 1 and 400 characters"
+            )
         if not 1 <= len(self.delivery_destination_reference.strip()) <= 200:
-            raise ValueError("delivery destination must contain between 1 and 200 characters")
+            raise IdentityRecoveryInvalid(
+                "delivery destination must contain between 1 and 200 characters"
+            )
         _validate_idempotency_key(self.idempotency_key)
 
     @property
@@ -84,9 +88,9 @@ class ApproveIdentityRecoveryCaseCommand:
 
     def __post_init__(self) -> None:
         if self.expected_revision < 1:
-            raise ValueError("expected_revision must be at least 1")
+            raise IdentityRecoveryInvalid("expected_revision must be at least 1")
         if self.reason_code.strip() not in _APPROVE_REASONS:
-            raise ValueError("reason_code is not accepted for a recovery approval")
+            raise IdentityRecoveryInvalid("reason_code is not accepted for a recovery approval")
         _validate_idempotency_key(self.idempotency_key)
 
     @property
@@ -102,7 +106,7 @@ class IssueIdentityRecoveryCaseCommand:
 
     def __post_init__(self) -> None:
         if self.expected_revision < 1:
-            raise ValueError("expected_revision must be at least 1")
+            raise IdentityRecoveryInvalid("expected_revision must be at least 1")
         _validate_idempotency_key(self.idempotency_key)
 
 
@@ -115,9 +119,9 @@ class RevokeIdentityRecoveryCaseCommand:
 
     def __post_init__(self) -> None:
         if self.expected_revision < 1:
-            raise ValueError("expected_revision must be at least 1")
+            raise IdentityRecoveryInvalid("expected_revision must be at least 1")
         if self.reason_code.strip() not in _REVOKE_REASONS:
-            raise ValueError("reason_code is not accepted for a recovery revocation")
+            raise IdentityRecoveryInvalid("reason_code is not accepted for a recovery revocation")
         _validate_idempotency_key(self.idempotency_key)
 
     @property
@@ -153,4 +157,4 @@ class IdentityRecoveryCommands(Protocol):
 
 def _validate_idempotency_key(value: str) -> None:
     if not 1 <= len(value.strip()) <= 200:
-        raise ValueError("idempotency key must contain between 1 and 200 characters")
+        raise IdentityRecoveryInvalid("idempotency key must contain between 1 and 200 characters")

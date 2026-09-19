@@ -378,6 +378,15 @@ async def test_governed_identity_recovery_http_journey_issues_delivers_and_consu
             None,
         )
 
+        # An unaccepted reason_code is a bounded input error, never a server fault.
+        invalid_reason = await client.post(
+            _CASES_PATH,
+            headers={**root_headers, "Idempotency-Key": "recovery-create-invalid-reason"},
+            json={**create_body, "reason_code": "not_an_accepted_reason"},
+        )
+        assert invalid_reason.status_code == 422, invalid_reason.text
+        assert invalid_reason.json()["error"]["code"] == "platform_identity_recovery_invalid"
+
         # The requester cannot approve their own case, even with the capability.
         self_approve = await client.post(
             f"{_CASES_PATH}/{case_id}:approve",
