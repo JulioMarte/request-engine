@@ -5,10 +5,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
-pytestmark = [pytest.mark.architecture]
-
 MIGRATIONS = Path("migrations/versions")
 ALEMBIC_VERSION_NUM_MAX_LENGTH = 32
 
