@@ -89,6 +89,40 @@ def app_role_conn(
     yield app_role_conn_factory()
 
 
+@pytest.fixture
+def platform_control_conn_factory(
+    admin_conn: PgConnection,
+    pg_conninfo: str,
+) -> Iterator[Callable[[], PgConnection]]:
+    """Factory for release-shaped ``request_platform_control`` LOGINs."""
+
+    role_name = f"re_platform_control_{uuid4().hex[:12]}"
+    password = uuid4().hex
+    admin_conn.execute(
+        sql.SQL(
+            "CREATE ROLE {} LOGIN NOBYPASSRLS IN ROLE request_platform_control PASSWORD {}"
+        ).format(sql.Identifier(role_name), sql.Literal(password))
+    )
+    parts = dict(part.split("=", 1) for part in pg_conninfo.split())
+    created: list[PgConnection] = []
+
+    def factory() -> PgConnection:
+        conn: PgConnection = psycopg.connect(
+            f"host={parts['host']} port={parts['port']} dbname={parts['dbname']} "
+            f"user={role_name} password={password}"
+        )
+        created.append(conn)
+        return conn
+
+    try:
+        yield factory
+    finally:
+        for conn in created:
+            conn.close()
+        admin_conn.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name)))
+        admin_conn.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+
+
 @pytest_asyncio.fixture
 async def command_session_factory() -> AsyncIterator[SessionFactory]:
     """Execute command races through a release-shaped app LOGIN and RLS."""

@@ -87,6 +87,33 @@ _EXACT_DEFINER_OWNERS = {
         "assert_platform_identity_actor",
         "p_capability text",
     ): "request_platform_control_definer",
+    # 0065 atomic Instance claim surface.
+    (
+        "request_platform",
+        "set_setup_pending_identity",
+        "p_native_identity_id uuid, p_setup_session_id uuid, p_login_handle text, p_verifier text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_setup_pending_identity",
+        "p_setup_session_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_claim_readiness",
+        "p_setup_session_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "read_installation_claim",
+        "p_idempotency_key_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "finalize_instance_claim",
+        "p_setup_session_id uuid, p_idempotency_key_digest text, p_intent_digest text, "
+        "p_claim_provenance text, p_actor_authentication_method text, p_correlation_id uuid",
+    ): "request_platform_control_definer",
     (
         "request_platform",
         "create_identity_recovery_case",

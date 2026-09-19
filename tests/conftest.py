@@ -174,8 +174,10 @@ def isolate_postgres_test_data(request: _FixtureRequest) -> Iterator[None]:
                   AND NOT c.relispartition
                   -- Migration-defined immutable policy is configuration, not
                   -- test-created business state or a seeded command result.
-                  AND NOT (n.nspname = 'request_engine'
-                           AND c.relname = 'initial_controller_policies')
+                  AND NOT (
+                      n.nspname = 'request_engine'
+                      AND c.relname IN ('initial_controller_policies', 'platform_owner_policies')
+                  )
                 ORDER BY n.nspname, c.relname
                 """,
                 (list(APPLICATION_SCHEMAS),),
