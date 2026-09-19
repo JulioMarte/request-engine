@@ -36,7 +36,7 @@ Offline Platform Owner recovery codes
 
 ### 2.1 Offline access recovery
 
-Migration `0068_recovery_code_password_reset` introduces the atomic
+Migration `0068_offline_password_reset` introduces the atomic
 `request_auth.consume_recovery_code_and_rotate_password` primitive.
 
 The control plane exposes:
@@ -138,9 +138,14 @@ Owner authority plus recent phishing-resistant authentication.
 Configuration is typed, not generic KV.
 
 ```text
-DRAFT -> VALIDATING -> VALIDATED -> ACTIVE -> SUPERSEDED
-                             \-> DISABLED
+DRAFT -> VALIDATED -> ACTIVE -> SUPERSEDED
+            \-> DISABLED
 ```
+
+Validation is an operation in the current synchronous provider model, not a
+separate durable VALIDATING state. If a future provider requires asynchronous
+validation, that state must be introduced together with its worker semantics and
+failure/retry contract.
 
 There may be many candidate revisions but at most one ACTIVE revision per
 configuration kind.

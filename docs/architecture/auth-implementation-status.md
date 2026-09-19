@@ -2144,7 +2144,7 @@ Architecture, lint/types and behavior proofs remain required independently;
 
 ## Offline owner access recovery
 
-Migration `0068_recovery_code_password_reset` makes the digest-only recovery
+Migration `0068_offline_password_reset` makes the digest-only recovery
 codes issued during Instance Claim a true offline break-glass credential.
 The private control plane exposes
 `POST /auth/native/password:recover-with-code`: one unused code can replace the

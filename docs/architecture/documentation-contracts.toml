@@ -75,7 +75,7 @@ required_docs_mode = "all"
 id = "platform-configuration-secrets-recovery"
 description = "Self-hosted platform secret storage, OpenBao deployment and offline administrative recovery"
 triggers = [
-  "migrations/versions/0068_recovery_code_password_reset.py",
+  "migrations/versions/0068_offline_password_reset.py",
   "migrations/versions/0069_platform_configuration*.py",
   "src/request_engine/platform/secrets/platform_store.py",
   "src/request_engine/platform/secrets/openbao_*.py",

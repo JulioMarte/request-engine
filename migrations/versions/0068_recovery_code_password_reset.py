@@ -1,6 +1,6 @@
 """Offline recovery-code password reset for native identities.
 
-Revision ID: 0068_recovery_code_password_reset
+Revision ID: 0068_offline_password_reset
 Revises: 0067_webauthn_login
 
 Adds a break-glass path that does not depend on SMTP, OpenBao/Vault, an
@@ -17,7 +17,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0068_recovery_code_password_reset"
+revision: str = "0068_offline_password_reset"
 down_revision: str | Sequence[str] | None = "0067_webauthn_login"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

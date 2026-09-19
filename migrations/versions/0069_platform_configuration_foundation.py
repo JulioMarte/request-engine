@@ -1,7 +1,7 @@
 """Private platform configuration revision and secret-binding foundation.
 
 Revision ID: 0069_platform_configuration
-Revises: 0068_recovery_code_password_reset
+Revises: 0068_offline_password_reset
 
 This migration establishes durable, private platform configuration metadata but
 intentionally exposes no application mutation function yet. P5 must establish
@@ -21,7 +21,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0069_platform_configuration"
-down_revision: str | Sequence[str] | None = "0068_recovery_code_password_reset"
+down_revision: str | Sequence[str] | None = "0068_offline_password_reset"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

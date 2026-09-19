@@ -882,7 +882,8 @@ def _run_f01_foundation(
             _checkpoint(
                 "f01-18-offline-owner-recovery",
                 "passed",
-                "one claim recovery code replaced the owner password over TCP without reopening setup",
+                "one claim recovery code replaced the owner password over TCP "
+                "without reopening setup",
             )
         )
 
