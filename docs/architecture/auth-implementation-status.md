@@ -29,30 +29,36 @@ administration remain open. Nothing is merged or deployed and the application
 database is unmigrated.
 
 Instance-claim trust-root progress (ADR 0014, migration head
-`0064_recovery_codes`): P0 contract reconciliation, P1 persistence, the internal
-P2 passkey ceremony and P3 recovery codes + password modernization are delivered
-locally. P1 adds the structural `platform_instance` singleton, bounded digest-only
-`setup_sessions` with a race-safe active cap, built-in native/workload
-identity-authority facts, and legacy-CLI adoption that fails closed on ambiguous
-historical root provenance. P2 adds a fail-closed authentication-evidence/
-assurance model, Request Engine-owned WebAuthn registration/authentication/step-up
-orchestration wrapping Yubico `fido2`, a race-safe high-water sign-count policy,
-atomic challenge finalization coupled to its authoritative consequence, and
-method-neutral `native_sessions`. P3 adds digest-only recovery code sets (single
-use, rotation invalidates prior codes, setup-scoped promotion, append-only
-security facts) and a versioned Argon2id password verifier that keeps verifying
-legacy scrypt and opportunistically rehashes on successful login. A passkey
-assertion issues a real native session that resolves as `PHISHING_RESISTANT` with
-user verification, while password sessions remain `SINGLE_FACTOR`; a WebAuthn
-credential revocation invalidates its sessions. No Principal, binding, grant or
-owner is created and no HTTP setup surface exists yet; the P4 HTTP assembly,
-P5 lifecycle and P6 instance recovery remain pending.
+`0065_instance_claim`): P0 contract reconciliation, P1 persistence, the internal
+P2 passkey ceremony, P3 recovery codes + password modernization and P4 the atomic
+HTTP Instance claim are delivered locally. P1 adds the structural
+`platform_instance` singleton, bounded digest-only `setup_sessions` with a
+race-safe active cap, built-in native/workload identity-authority facts, and
+legacy-CLI adoption that fails closed on ambiguous historical root provenance.
+P2 adds a fail-closed authentication-evidence/assurance model, Request Engine-owned
+WebAuthn registration/authentication/step-up orchestration wrapping Yubico `fido2`,
+a race-safe high-water sign-count policy, atomic challenge finalization coupled to
+its authoritative consequence, and method-neutral `native_sessions`. P3 adds
+digest-only recovery code sets (single use, rotation invalidates prior codes,
+setup-scoped promotion, append-only security facts) and a versioned Argon2id
+password verifier that keeps verifying legacy scrypt and opportunistically
+rehashes on successful login. A passkey assertion issues a real native session
+that resolves as `PHISHING_RESISTANT` with user verification, while password
+sessions remain `SINGLE_FACTOR`; a WebAuthn credential revocation invalidates its
+sessions. P4 adds the private control-plane `/v1/setup` surface (dedicated
+SetupSession bearer resolver distinct from Principal authorization, pending
+identity, real WebAuthn registration, one-time recovery codes and the atomic
+`finalize_instance_claim` that creates the Platform Owner under the immutable
+`platform-owner-v1` policy and permanently closes setup), proven by a real-crypto
+HTTP journey (`tests/e2e/test_instance_setup_http.py`). The P5 additional-owner
+lifecycle and P6 instance recovery remain pending.
 
 F-01 exact-head evidence (commit `f8c5a6c5`, Docker E2E run
 [35306586940](https://github.com/JulioMarte/request-engine/actions/runs/35306586940)
 for `policy:pr` and run
 [35306590799](https://github.com/JulioMarte/request-engine/actions/runs/35306590799)
-for `api-restart`):
+for `api-restart`; predates the HTTP claim migration, so it still starts from the
+legacy bootstrap):
 
 - clean bootstrap → platform login → second provisioner → organization/tenant
   controller → HUMAN-authority-for-workload rejection → integration principal on
@@ -67,6 +73,15 @@ for `api-restart`):
 - worker kill/restart with post-restart outbox delivery;
 - API kill/restart with idempotent replay exactly once, session reauthentication
   and `idempotency_conflict` on key misuse.
+
+F-01 trust-root migration (commit `270b6163`, Docker E2E run
+[35421929121](https://github.com/JulioMarte/request-engine/actions/runs/35421929121)
+for `policy:pr`): the clean-install journey now establishes the trust root through
+the HTTP Instance Claim surface (`SetupSession` → real WebAuthn registration →
+recovery codes → atomic `finalize` → Platform Owner) and resolves both built-in
+authority ids from the claim receipt; `request-engine-platform-bootstrap
+issue/establish` is no longer invoked. `smoke`, `f01-foundation` and
+`worker-restart` all pass, and F-01 emits the `f01-00-instance-claim` checkpoint.
 
 F-01 remains blocked on real product/deployment gaps (not test shortcuts): the
 positive recovery path needs a second recovery-capable platform human and a
@@ -91,15 +106,12 @@ by the runs above.
 
 Still missing:
 
-- **F-01 fixture-free native journey (plan section 11):** the currently executed
-  clean native-only journey still establishes trust through the bootstrap CLI and
-  then drives the product over real TCP. ADR 0014 intentionally makes that bootstrap
-  step transitional: the replacement acceptance journey must claim the fresh
-  Instance through the control-plane HTTP setup surface, including real WebAuthn
-  verification, before F-01 can represent the target installation architecture.
-  The existing Docker E2E evidence remains valid for the behavior it actually ran. The positive recovery path, controller replacement and
-  the OIDC journey remain blocked on missing product/deployment contracts rather
-  than on test scaffolding.
+- **F-01 fixture-free native journey (plan section 11):** delivered. The clean
+  native-only journey now claims the fresh Instance through the control-plane HTTP
+  setup surface, including real WebAuthn verification, before driving the product
+  over real TCP (commit `270b6163`, Docker E2E run `35421929121`). The positive
+  recovery path, controller replacement and the OIDC journey remain blocked on
+  missing product/deployment contracts rather than on test scaffolding.
 - **G/D6 operational acceptance (plan section 12):** named environment, operators
   and thresholds; separate production entrypoints and pools; TLS/private ingress;
   budgets; configured secret store/provider with rotation; populated migration
