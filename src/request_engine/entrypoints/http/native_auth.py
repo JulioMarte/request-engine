@@ -113,6 +113,14 @@ class NativeSessionReauthView(BaseModel):
     reauth_expires_at: datetime
 
 
+class NativeSessionCurrentView(BaseModel):
+    authenticated_at: datetime
+    authentication_methods: list[str]
+    authentication_assurance: str
+    user_verified: bool
+    recovery_derived: bool
+
+
 class NativeWebAuthnLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -265,6 +273,26 @@ def create_native_auth_router(
             reauth_expires_at=authenticated_at + REAUTHENTICATION_WINDOW,
         )
 
+    async def read_current_session(
+        request: Request,
+        response: Response,
+    ) -> NativeSessionCurrentView:
+        raw_token = bearer_token(request)
+        subject = await authenticator.authenticate(NativeSessionEvidence(raw_token))
+        methods = [
+            method
+            for method in subject.metadata.get("authentication_methods", "").split(",")
+            if method
+        ]
+        _prevent_secret_caching(response)
+        return NativeSessionCurrentView(
+            authenticated_at=datetime.fromisoformat(subject.metadata["authenticated_at"]),
+            authentication_methods=methods,
+            authentication_assurance=subject.metadata["authentication_assurance"],
+            user_verified=subject.metadata["user_verified"] == "true",
+            recovery_derived=subject.metadata["recovery_derived"] == "true",
+        )
+
     async def webauthn_authentication_options(
         payload: NativeWebAuthnLoginRequest,
         response: Response,
@@ -403,6 +431,26 @@ def create_native_auth_router(
         responses={
             401: {"model": ErrorEnvelope, "description": "Session or password is invalid"},
             422: {"model": ErrorEnvelope, "description": "Invalid input"},
+        },
+    )
+    router.add_api_route(
+        "/sessions/current",
+        read_current_session,
+        methods=["GET"],
+        operation_id="nativeSessionReadCurrent",
+        response_model=NativeSessionCurrentView,
+        status_code=status.HTTP_200_OK,
+        summary="Read the current native session's trusted authentication evidence",
+        description=(
+            "Returns the caller's own session evidence: proven methods, derived "
+            "assurance, user verification, recovery-derived flag and the trusted "
+            "authentication time. The session is taken only from the bearer; the "
+            "request cannot select a session, identity, assurance or method. "
+            "Assurance is derived from the verified ceremony that produced or "
+            "refreshed the session, never from the presence of a credential."
+        ),
+        responses={
+            401: {"model": ErrorEnvelope, "description": "Session is invalid or unusable"},
         },
     )
     router.add_api_route(

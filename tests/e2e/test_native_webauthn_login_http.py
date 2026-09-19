@@ -159,6 +159,18 @@ async def test_platform_owner_authenticates_with_passkey_and_steps_up(
         assert "webauthn" in methods
         assert recovery is False
 
+        # The self-inspection read must agree with the independent DB oracle.
+        current = await client.get(
+            "/auth/native/sessions/current",
+            headers={"Authorization": f"Bearer {webauthn_token}"},
+        )
+        assert current.status_code == 200
+        assert current.headers["cache-control"] == "no-store"
+        assert current.json()["authentication_assurance"] == assurance
+        assert current.json()["user_verified"] == user_verified
+        assert current.json()["authentication_methods"] == ["webauthn"]
+        assert current.json()["recovery_derived"] is False
+
         password_login = await client.post(
             "/auth/native/sessions",
             json={"login_handle": LOGIN_HANDLE, "password": PASSWORD},
@@ -166,6 +178,12 @@ async def test_platform_owner_authenticates_with_passkey_and_steps_up(
         assert password_login.status_code == 201
         password_token = password_login.json()["access_token"]
         assert _session_row(e2e_admin_conn, password_token)[0] == "single_factor"
+        password_current = await client.get(
+            "/auth/native/sessions/current",
+            headers={"Authorization": f"Bearer {password_token}"},
+        )
+        assert password_current.json()["authentication_assurance"] == "single_factor"
+        assert password_current.json()["authentication_methods"] == ["password"]
 
         step_options = await client.post(
             "/auth/native/sessions/current/webauthn/step-up-options",

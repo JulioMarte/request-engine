@@ -111,6 +111,13 @@ login/step-up surface are delivered before P5:
   the bearer's session and the credential to the session's native identity; a
   password `SINGLE_FACTOR` session becomes `PHISHING_RESISTANT` only through a
   valid step-up. A recovery-derived session stays `RECOVERY`.
+- **Session self-inspection** `GET /auth/native/sessions/current`
+  (`nativeSessionReadCurrent`) returns the bearer's own trusted evidence (proven
+  methods, derived assurance, user verification, recovery flag, trusted
+  authentication time) and never accepts session/identity/assurance input.
+- **F-01** now authenticates the Platform Owner with the passkey registered during
+  the HTTP claim (same process) and asserts the TCP session evidence through the
+  self-inspection read (`f01-01-platform-webauthn-login`).
 - **Reusable privileged-auth guard**
   (`require_phishing_resistant_authentication`) distinguishes insufficient
   assurance (`phishing_resistant_auth_required`) from stale strong

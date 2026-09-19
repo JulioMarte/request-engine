@@ -446,3 +446,10 @@ statement = "The reusable privileged-authentication guard fails closed on truste
 severity = "high"
 required_evidence = ["contract"]
 risk = ["security"]
+
+[[guarantees]]
+id = "INV-NATIVE-SESSION-INTROSPECTION-001"
+statement = "Reading the current native session returns only the trusted persisted evidence of the bearer's own session (proven methods, derived assurance, user verification, recovery-derived flag and trusted authentication time); the request cannot select a session, identity, assurance or method, and an unusable session fails closed with the same opaque authentication error as other native routes."
+severity = "high"
+required_evidence = ["contract"]
+risk = ["security"]

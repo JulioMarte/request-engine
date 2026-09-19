@@ -47,21 +47,30 @@ Production change:
   `POST /auth/native/sessions/current/webauthn/step-up-options`,
   `POST /auth/native/sessions/current/webauthn/step-up` (operationIds
   `nativeWebAuthnAuthenticationOptions`, `nativeWebAuthnSessionCreate`,
-  `nativeWebAuthnStepUpOptions`, `nativeWebAuthnStepUp`). They are mounted on the
-  platform control plane; the data-plane app is not yet composed with the WebAuthn
-  login policy.
+  `nativeWebAuthnStepUpOptions`, `nativeWebAuthnStepUp`), plus the session
+  self-inspection read `GET /auth/native/sessions/current`
+  (`nativeSessionReadCurrent`). They are mounted on the platform control plane;
+  the data-plane app is not yet composed with the WebAuthn login policy, but the
+  self-inspection read is available on both.
 - `platform/security/freshness.py` adds `require_phishing_resistant_authentication`
   and the distinct errors `PhishingResistantAuthenticationRequired` /
   `RecentAuthenticationRequired`, mapped to `phishing_resistant_auth_required` and
   `recent_authentication_required`. `PlatformActorContext` now carries
   `authenticated_at`. The guard is not yet applied to product operations.
+- F-01 now authenticates the Platform Owner with the passkey registered during the
+  HTTP claim (same process) and emits `f01-01-platform-webauthn-login`; the runner
+  asserts the session evidence over TCP through the self-inspection read. A
+  resumed phase with a cached claim receipt (the in-memory passkey cannot be
+  reconstructed) falls back to the password login.
 
 Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0067):
 
 - `tests/e2e/test_native_webauthn_login_http.py`: claim → passkey login →
-  `PHISHING_RESISTANT` session (DB oracle), password session `SINGLE_FACTOR`,
-  session-bound step-up to `PHISHING_RESISTANT`, single-use challenge replay 401,
-  cross-session step-up 401, and indistinguishable unknown-handle options.
+  `PHISHING_RESISTANT` session (DB oracle), session self-inspection agreeing with
+  the DB oracle for both WebAuthn and password sessions, password session
+  `SINGLE_FACTOR`, session-bound step-up to `PHISHING_RESISTANT`, single-use
+  challenge replay 401, cross-session step-up 401, and indistinguishable
+  unknown-handle options.
 - `tests/e2e/test_instance_setup_http.py`: key misuse now asserts
   `idempotency_conflict`; a new key after claim asserts `instance_setup_closed`.
 - `tests/db/test_webauthn_persistence.py`: recovery-derived session cannot escape
@@ -70,10 +79,14 @@ Executed evidence (real PostgreSQL 18.6, `request_engine_current` at 0067):
   distinguishes insufficient assurance from stale strong authentication.
 - Existing concurrency proof `test_webauthn_concurrency.py` covers one-winner
   challenge finalization; existing revocation proof covers session invalidation.
+- F-01 black-box (`tests/system_e2e/runner.py`) authenticates the Platform Owner
+  with the claim passkey and asserts the TCP session evidence; Docker E2E
+  exact-head is green for commit `1598cd50`.
 
-Honest limits: the public data-plane app does not yet expose WebAuthn login; the
-guard is not yet wired to P5/P7 operations; Docker exact-head E2E and GitHub
-exact-head CI for this block have not been run locally.
+Honest limits: the public data-plane app does not yet expose WebAuthn login (the
+self-inspection read is on both); the guard is not yet wired to P5/P7 operations;
+a resumed F-01 phase with a cached claim receipt falls back to the password login
+because the in-memory software passkey cannot be reconstructed.
 
 ## Current position and remaining work (2026-09-18)
 

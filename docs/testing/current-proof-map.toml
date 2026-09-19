@@ -521,3 +521,8 @@ evidence = ["invariant", "adversarial", "security"]
 guarantee = "INV-PRIVILEGED-AUTH-FRESHNESS-001"
 path = "tests/unit/platform/security/test_privileged_authentication.py"
 evidence = ["contract", "security"]
+
+[[proofs]]
+guarantee = "INV-NATIVE-SESSION-INTROSPECTION-001"
+path = "tests/e2e/test_native_webauthn_login_http.py"
+evidence = ["contract", "security"]

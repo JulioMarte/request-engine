@@ -209,17 +209,22 @@ def _read_instance_receipt(state_dir: Path) -> dict[str, str] | None:
 
 def _claim_instance(
     control_url: str, login_handle: str, password: str, state_dir: Path
-) -> dict[str, str]:
+) -> tuple[dict[str, str], SoftwareAuthenticator | None]:
     """Claim a fresh instance over HTTP and return the built-in authority ids.
 
     The receipt is cached in the ephemeral state workspace so multi-phase suites
     do not attempt a second claim. If the instance was already claimed elsewhere
     and no local receipt exists, the authority ids cannot be rediscovered and the
     runner fails closed instead of guessing.
+
+    The software passkey is returned only when this invocation performed the
+    claim; a resumed phase with a cached receipt returns ``None`` because the
+    in-memory key cannot be reconstructed. Callers use it to prove a real
+    post-claim WebAuthn login in the same process.
     """
     receipt = _read_instance_receipt(state_dir)
     if receipt is not None:
-        return receipt
+        return receipt, None
     discovery = _http_json("GET", f"{control_url}/v1/setup")
     if discovery.get("setup_required") is not True:
         raise RuntimeError(
@@ -292,7 +297,7 @@ def _claim_instance(
     path = state_dir / "instance.json"
     path.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(path, 0o600)
-    return receipt
+    return receipt, authenticator
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -554,6 +559,44 @@ def _native_identity(base_url: str, login: str, password: str) -> str:
     return _required_string(response, "native_identity_id", "native enrollment response")
 
 
+def _webauthn_platform_session(
+    control_url: str, login_handle: str, authenticator: SoftwareAuthenticator
+) -> tuple[str, dict[str, object]]:
+    """Authenticate the Platform Owner with the passkey registered during claim.
+
+    Returns the native session token and the trusted session evidence read back
+    over HTTP, so the caller can assert the session resolved as
+    phishing-resistant with user verification.
+    """
+
+    options = _http_json(
+        "POST",
+        f"{control_url}/auth/native/webauthn/authentication-options",
+        payload={"login_handle": login_handle},
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("WebAuthn authentication options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    challenge = _required_string(public_key, "challenge", "WebAuthn authentication challenge")
+    credential = authenticator.authentication_credential(
+        challenge=websafe_decode(challenge), user_verified=True
+    )
+    created = _http_json(
+        "POST",
+        f"{control_url}/auth/native/webauthn/sessions",
+        payload={"login_handle": login_handle, "credential": credential},
+        expected_statuses=(201,),
+    )
+    token = _required_string(created, "access_token", "WebAuthn native session response")
+    evidence = _http_json(
+        "GET",
+        f"{control_url}/auth/native/sessions/current",
+        bearer=token,
+    )
+    return token, evidence
+
+
 def _run_f01_foundation(
     checkpoints: list[dict[str, str]], phase: str, *, include_continuity: bool = True
 ) -> None:
@@ -565,7 +608,9 @@ def _run_f01_foundation(
     control_url = "http://control-plane:8001"
     api_url = "http://api:8000"
 
-    claim = _claim_instance(control_url, platform_login, platform_password, state_dir)
+    claim, claim_authenticator = _claim_instance(
+        control_url, platform_login, platform_password, state_dir
+    )
     native_authority_id = claim["native_authority_id"]
     workload_authority_id = claim["workload_authority_id"]
     checkpoints.append(
@@ -576,8 +621,28 @@ def _run_f01_foundation(
         )
     )
 
-    platform_token = _native_session(control_url, platform_login, platform_password)
-    checkpoints.append(_checkpoint("f01-01-platform-login", "passed"))
+    if claim_authenticator is not None:
+        platform_token, evidence = _webauthn_platform_session(
+            control_url, platform_login, claim_authenticator
+        )
+        if evidence.get("authentication_assurance") != "phishing_resistant":
+            raise RuntimeError("Platform Owner WebAuthn session is not phishing-resistant")
+        if evidence.get("user_verified") is not True:
+            raise RuntimeError("Platform Owner WebAuthn session lacks user verification")
+        checkpoints.append(
+            _checkpoint(
+                "f01-01-platform-webauthn-login",
+                "passed",
+                "platform owner authenticated over TCP with the claim passkey",
+            )
+        )
+    else:
+        # Resumed phase with a cached receipt: the in-memory passkey cannot be
+        # reconstructed, so reauthenticate through the password path.
+        platform_token = _native_session(control_url, platform_login, platform_password)
+        checkpoints.append(
+            _checkpoint("f01-01-platform-login", "passed", "resumed world password fallback")
+        )
     provisioner_login = "f01-security-operator@example.invalid"
     provisioner_password = _derived_password(platform_password, "f01-security-operator")
     provisioner_identity_id = _native_identity(control_url, provisioner_login, provisioner_password)
