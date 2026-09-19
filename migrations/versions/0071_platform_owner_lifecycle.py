@@ -89,6 +89,58 @@ def upgrade() -> None:
     )
 
     op.execute(
+        """
+        CREATE FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        SET search_path TO 'pg_catalog', 'request_engine', 'pg_temp'
+        AS $
+        BEGIN
+            IF OLD.state = 'unclaimed'
+               AND NEW.state = 'claimed'
+               AND NEW.initial_owner_principal_id IS NOT NULL
+            THEN
+                INSERT INTO request_engine.principal_authority_grants (
+                    principal_id, principal_plane, authority_plane, capability_key,
+                    delegable, provenance_kind, provenance_reference
+                )
+                SELECT NEW.initial_owner_principal_id,
+                       'platform',
+                       'platform',
+                       capability.capability_key,
+                       false,
+                       'trust_bootstrap',
+                       'platform-owner-v2-claim:' || NEW.id::text
+                  FROM (
+                      VALUES ('platform.owner.read'),
+                             ('platform.owner.provision'),
+                             ('platform.owner.manage_lifecycle')
+                  ) AS capability(capability_key)
+                 WHERE NOT EXISTS (
+                     SELECT 1
+                       FROM request_engine.principal_authority_grants AS existing
+                      WHERE existing.principal_id = NEW.initial_owner_principal_id
+                        AND existing.capability_key = capability.capability_key
+                        AND existing.status = 'active'
+                 );
+            END IF;
+            RETURN NEW;
+        END
+        $;
+        ALTER FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim()
+            OWNER TO request_engine_schema_owner;
+        REVOKE ALL ON FUNCTION
+            request_engine.grant_platform_owner_v2_capabilities_on_claim() FROM PUBLIC;
+        CREATE TRIGGER platform_instance_grant_owner_v2_capabilities
+            AFTER UPDATE OF state ON request_engine.platform_instance
+            FOR EACH ROW
+            WHEN (OLD.state IS DISTINCT FROM NEW.state)
+            EXECUTE FUNCTION request_engine.grant_platform_owner_v2_capabilities_on_claim();
+        """
+    )
+
+    op.execute(
         f"""
         GRANT SELECT (id, principal_kind, active, authority_revision),
               INSERT (id, principal_plane, principal_kind, external_subject)
