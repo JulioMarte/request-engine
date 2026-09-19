@@ -343,6 +343,38 @@ async def test_second_platform_owner_requires_prepared_identity_and_preserves_la
         )
         assert closed_enrollment.status_code == 404
 
+        revoked_invite = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={**owner_auth, "Idempotency-Key": "invite-to-revoke"},
+            json={"provenance_reference": "e2e:revoked-owner"},
+        )
+        assert revoked_invite.status_code == 201
+        revoked_invitation_id = revoked_invite.json()["invitation_id"]
+        revoked_invitation_token = revoked_invite.json()["invitation_token"]
+        revoked = await client.post(
+            f"/v1/platform/owner-invitations/{revoked_invitation_id}:revoke",
+            headers={**owner_auth, "Idempotency-Key": "revoke-owner-invite"},
+            json={"reason_code": "invitation_cancelled"},
+        )
+        assert revoked.status_code == 200, revoked.text
+        assert revoked.json()["status"] == "revoked"
+        replayed_revoke = await client.post(
+            f"/v1/platform/owner-invitations/{revoked_invitation_id}:revoke",
+            headers={**owner_auth, "Idempotency-Key": "revoke-owner-invite"},
+            json={"reason_code": "invitation_cancelled"},
+        )
+        assert replayed_revoke.status_code == 200
+        assert replayed_revoke.json() == revoked.json()
+        revoked_enrollment = await client.post(
+            "/v1/platform/owner-invitations:enroll",
+            json={
+                "invitation_token": revoked_invitation_token,
+                "login_handle": "revoked-owner@example.test",
+                "password": "revoked owner password",
+            },
+        )
+        assert revoked_enrollment.status_code == 422
+
         invited = await client.post(
             "/v1/platform/owner-invitations",
             headers={**owner_auth, "Idempotency-Key": "invite-second-owner"},
