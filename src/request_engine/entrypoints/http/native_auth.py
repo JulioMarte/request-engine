@@ -14,8 +14,8 @@ from request_engine.entrypoints.http.native_auth_errors import (
     native_recovery_error_response,
 )
 from request_engine.platform.http.errors import ErrorEnvelope
-from request_engine.platform.security.authentication import AuthenticatedSubject
 from request_engine.platform.security.assurance import AuthenticationAssurance
+from request_engine.platform.security.authentication import AuthenticatedSubject
 from request_engine.platform.security.freshness import (
     REAUTHENTICATION_WINDOW,
     PhishingResistantAuthenticationRequired,
