@@ -177,7 +177,7 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         "WHERE principal_id = %s AND principal_plane = 'platform'",
         (owner_principal_id,),
     ).fetchone()
-    assert grants is not None and grants[0] == 9
+    assert grants is not None and grants[0] == 13
 
 
 @pytest.mark.asyncio

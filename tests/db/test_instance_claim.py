@@ -214,7 +214,8 @@ async def test_finalize_claims_instance_atomically(
         "WHERE principal_id = %s",
         (owner_principal_id,),
     ).fetchone() == ("active", None)
-    # Exact platform-owner-v1 grant set.
+    # Exact platform-owner-v2 grant set: v1 plus the owner-administration
+    # capabilities seeded by the claim-fact trigger (revision 0068).
     grants = {
         row[0]
         for row in admin_conn.execute(
@@ -233,6 +234,10 @@ async def test_finalize_claims_instance_atomically(
         "platform.identity.recovery_approve",
         "platform.provisioner.read",
         "platform.provisioner.manage_lifecycle",
+        "platform.owner.read",
+        "platform.owner.invite",
+        "platform.owner.manage_membership",
+        "platform.owner.manage_authority",
     }
     # Recovery codes promoted to the identity; instance claimed; setup consumed.
     assert admin_conn.execute(
