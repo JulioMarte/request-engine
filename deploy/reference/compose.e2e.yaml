@@ -90,6 +90,15 @@ services:
       # the black-box runner derives its origin as https://<rp_id>.
       REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
       REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: https://localhost
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_SMTP_HOST: ${REQUEST_ENGINE_SMTP_HOST:-}
+      REQUEST_ENGINE_SMTP_PORT: ${REQUEST_ENGINE_SMTP_PORT:-587}
+      REQUEST_ENGINE_SMTP_SENDER: ${REQUEST_ENGINE_SMTP_SENDER:-}
+      REQUEST_ENGINE_SMTP_USERNAME: ${REQUEST_ENGINE_SMTP_USERNAME:-}
+      REQUEST_ENGINE_SMTP_PASSWORD: ${REQUEST_ENGINE_SMTP_PASSWORD:-}
+      REQUEST_ENGINE_SMTP_STARTTLS: ${REQUEST_ENGINE_SMTP_STARTTLS:-true}
+      REQUEST_ENGINE_SMTP_SSL: ${REQUEST_ENGINE_SMTP_SSL:-false}
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]
@@ -130,6 +139,15 @@ services:
       REQUEST_ENGINE_WEBHOOK_BASE_URL: https://webhook.invalid/handoff
       REQUEST_ENGINE_OUTBOX_PUBLISHER_FACTORY: request_engine.bootstrap.http_outbox_publisher:create_publisher
       REQUEST_ENGINE_OUTBOX_PUBLISH_URL: http://event-sink:8090/events
+      REQUEST_ENGINE_OPENBAO_ADDR: ${REQUEST_ENGINE_OPENBAO_ADDR:-}
+      REQUEST_ENGINE_OPENBAO_TOKEN: ${REQUEST_ENGINE_OPENBAO_TOKEN:-}
+      REQUEST_ENGINE_SMTP_HOST: ${REQUEST_ENGINE_SMTP_HOST:-}
+      REQUEST_ENGINE_SMTP_PORT: ${REQUEST_ENGINE_SMTP_PORT:-587}
+      REQUEST_ENGINE_SMTP_SENDER: ${REQUEST_ENGINE_SMTP_SENDER:-}
+      REQUEST_ENGINE_SMTP_USERNAME: ${REQUEST_ENGINE_SMTP_USERNAME:-}
+      REQUEST_ENGINE_SMTP_PASSWORD: ${REQUEST_ENGINE_SMTP_PASSWORD:-}
+      REQUEST_ENGINE_SMTP_STARTTLS: ${REQUEST_ENGINE_SMTP_STARTTLS:-true}
+      REQUEST_ENGINE_SMTP_SSL: ${REQUEST_ENGINE_SMTP_SSL:-false}
     command: [request-engine-worker]
     restart: unless-stopped
     networks: [backend]
