@@ -166,6 +166,28 @@ IDENTITY_AUTHORITY_CAPABILITIES: tuple[CapabilityDefinition, ...] = (
         revision=RevisionPolicy.REQUIRED,
         risk_class=OperationRiskClass.AUTHORITY_CHANGE,
     ),
+    command_capability(
+        "platform.owner.invite",
+        CapabilityExposure.OPERATOR,
+        "Create or revoke a one-time invitation for an additional Platform Owner.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.SERVER_SELECTED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
+    query_capability(
+        "platform.owner.read",
+        CapabilityExposure.OPERATOR,
+        "Inspect Platform Owner authority and invitation metadata without exposing proofs.",
+        authority_plane=AuthorityPlane.PLATFORM,
+    ),
+    command_capability(
+        "platform.owner.manage_lifecycle",
+        CapabilityExposure.OPERATOR,
+        "Suspend, reactivate, or terminally revoke an additional Platform Owner.",
+        authority_plane=AuthorityPlane.PLATFORM,
+        revision=RevisionPolicy.REQUIRED,
+        risk_class=OperationRiskClass.AUTHORITY_CHANGE,
+    ),
     _staff_capability(
         "staff.invite",
         "Invite a credentialed Native human identity into the current tenant.",
