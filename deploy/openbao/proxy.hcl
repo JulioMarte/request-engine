@@ -4,7 +4,8 @@ vault {
 }
 
 auto_auth {
-  method "approle" {
+  method {
+    type = "approle"
     config = {
       role_id_file_path                  = "/run/openbao-auth/role-id"
       secret_id_file_path                = "/run/openbao-auth/secret-id"
