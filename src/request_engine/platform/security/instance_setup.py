@@ -51,6 +51,8 @@ class InstanceSnapshot:
     state: str
     claimed_at: datetime | None
     initial_owner_principal_id: UUID | None
+    built_in_native_authority_id: UUID
+    built_in_workload_authority_id: UUID
 
 
 @dataclass(frozen=True, slots=True)

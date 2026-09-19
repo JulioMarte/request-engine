@@ -41,7 +41,9 @@ class PostgresInstanceSetupStore:
                     await session.execute(
                         text(
                             """
-                            SELECT id, state, claimed_at, initial_owner_principal_id
+                            SELECT id, state, claimed_at, initial_owner_principal_id,
+                                   built_in_native_authority_id,
+                                   built_in_workload_authority_id
                               FROM request_platform.read_platform_instance()
                             """
                         )
@@ -57,6 +59,8 @@ class PostgresInstanceSetupStore:
             state=str(row["state"]),
             claimed_at=_timestamp_or_none(row["claimed_at"]),
             initial_owner_principal_id=_uuid_or_none(row["initial_owner_principal_id"]),
+            built_in_native_authority_id=UUID(str(row["built_in_native_authority_id"])),
+            built_in_workload_authority_id=UUID(str(row["built_in_workload_authority_id"])),
         )
 
     async def create_setup_session(

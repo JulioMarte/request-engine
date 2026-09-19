@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from request_engine.entrypoints.http.errors import render_error_response
 from request_engine.platform.http.errors import ErrorBody, ErrorEnvelope, ErrorResolution
 from request_engine.platform.security.instance_setup import (
+    InstanceClaimResult,
     InstanceSetupService,
     SetupSessionUnusable,
     SetupStepInvalid,
@@ -87,6 +88,8 @@ class InstanceClaimView(BaseModel):
     owner_principal_id: UUID
     native_identity_id: UUID
     policy_key: str
+    built_in_native_authority_id: UUID
+    built_in_workload_authority_id: UUID
 
 
 def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> None:
@@ -182,7 +185,7 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
             receipt = await service.lookup_claim(idempotency_key=idempotency_key)
             if receipt is None:
                 return _setup_closed()
-            return InstanceClaimView(**_claim_view(receipt))
+            return await _claim_view(service, receipt)
         if not session.is_usable:
             return _setup_closed()
         try:
@@ -193,7 +196,7 @@ def install_instance_setup_http(app: Any, *, service: InstanceSetupService) -> N
             )
         except SetupStepInvalid:
             return _setup_closed()
-        return InstanceClaimView(**_claim_view(result))
+        return await _claim_view(service, result)
 
     router.add_api_route(
         "",
@@ -350,13 +353,20 @@ def _idempotency_key(request: Request) -> str | None:
     return value.strip()
 
 
-def _claim_view(result: Any) -> dict[str, Any]:
-    return {
-        "instance_id": result.instance_id,
-        "owner_principal_id": result.owner_principal_id,
-        "native_identity_id": result.native_identity_id,
-        "policy_key": result.policy_key,
-    }
+async def _claim_view(
+    service: InstanceSetupService, result: InstanceClaimResult
+) -> InstanceClaimView:
+    instance = await service.read_instance()
+    if instance is None:
+        raise SetupStepInvalid("instance disappeared during claim")
+    return InstanceClaimView(
+        instance_id=result.instance_id,
+        owner_principal_id=result.owner_principal_id,
+        native_identity_id=result.native_identity_id,
+        policy_key=result.policy_key,
+        built_in_native_authority_id=instance.built_in_native_authority_id,
+        built_in_workload_authority_id=instance.built_in_workload_authority_id,
+    )
 
 
 def _setup_closed() -> JSONResponse:

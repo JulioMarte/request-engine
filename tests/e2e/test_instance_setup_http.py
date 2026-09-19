@@ -57,15 +57,16 @@ def private_runtime_configuration(
     return authority_id
 
 
-def _instance(e2e_admin_conn: PgConnection, *, native_authority_id: UUID) -> UUID:
+def _instance(e2e_admin_conn: PgConnection, *, native_authority_id: UUID) -> tuple[UUID, UUID]:
     instance_id = uuid4()
+    workload_authority_id = uuid4()
     e2e_admin_conn.execute(
         "INSERT INTO request_engine.platform_instance "
         "(id, built_in_native_authority_id, built_in_workload_authority_id) "
         "VALUES (%s, %s, %s)",
-        (instance_id, native_authority_id, uuid4()),
+        (instance_id, native_authority_id, workload_authority_id),
     )
-    return instance_id
+    return instance_id, workload_authority_id
 
 
 @pytest.mark.asyncio
@@ -73,7 +74,9 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
     private_runtime_configuration: UUID,
     e2e_admin_conn: PgConnection,
 ) -> None:
-    instance_id = _instance(e2e_admin_conn, native_authority_id=private_runtime_configuration)
+    instance_id, workload_authority_id = _instance(
+        e2e_admin_conn, native_authority_id=private_runtime_configuration
+    )
     app = create_app()
     async with (
         app.router.lifespan_context(app),
@@ -134,6 +137,8 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
         result = finalized.json()
         assert UUID(result["instance_id"]) == instance_id
         assert result["policy_key"] == "platform-owner-v1"
+        assert UUID(result["built_in_native_authority_id"]) == private_runtime_configuration
+        assert UUID(result["built_in_workload_authority_id"]) == workload_authority_id
         assert "codes" not in result
 
         replayed = await client.post(
