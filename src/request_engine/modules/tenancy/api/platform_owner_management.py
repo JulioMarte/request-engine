@@ -20,7 +20,6 @@ from request_engine.modules.tenancy.application.commands.platform_owner_lifecycl
     PlatformOwnerInvalid,
     PlatformOwnerLifecycleAction,
     PlatformOwnerRevisionConflict,
-    ProvisionPlatformOwnerCommand,
     TransitionPlatformOwnerCommand,
 )
 from request_engine.platform.db.session import SessionFactory

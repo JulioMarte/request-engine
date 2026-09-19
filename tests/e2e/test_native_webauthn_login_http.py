@@ -221,14 +221,30 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
             transport=ASGITransport(app=app), base_url="https://private-control.test"
         ) as client,
     ):
+
+        owner_authenticator = await _claim_owner(client)
+        _, owner_token = await _webauthn_login(client, owner_authenticator)
+        invited = await client.post(
+            "/v1/platform/owner-invitations",
+            headers={
+                "Authorization": f"Bearer {owner_token}",
+                "Idempotency-Key": "candidate-security-material-invite",
+            },
+            json={"provenance_reference": "e2e:candidate-security-material"},
+        )
+        assert invited.status_code == 201, invited.text
+        invitation_token = invited.json()["invitation_token"]
+        assert isinstance(invitation_token, str)
+
         enrollment = await client.post(
-            "/auth/native/identities",
+            "/v1/platform/owner-invitations:enroll",
             json={
+                "invitation_token": invitation_token,
                 "login_handle": "second-owner-candidate@example.test",
                 "password": "second owner candidate password",
             },
         )
-        assert enrollment.status_code == 201
+        assert enrollment.status_code == 201, enrollment.text
         native_identity_id = enrollment.json()["native_identity_id"]
         login = await client.post(
             "/auth/native/sessions",
