@@ -209,7 +209,7 @@ def _read_instance_receipt(state_dir: Path) -> dict[str, str] | None:
 
 def _claim_instance(
     control_url: str, login_handle: str, password: str, state_dir: Path
-) -> tuple[dict[str, str], SoftwareAuthenticator | None]:
+) -> tuple[dict[str, str], SoftwareAuthenticator | None, str | None]:
     """Claim a fresh instance over HTTP and return the built-in authority ids.
 
     The receipt is cached in the ephemeral state workspace so multi-phase suites
@@ -224,7 +224,7 @@ def _claim_instance(
     """
     receipt = _read_instance_receipt(state_dir)
     if receipt is not None:
-        return receipt, None
+        return receipt, None, None
     discovery = _http_json("GET", f"{control_url}/v1/setup")
     if discovery.get("setup_required") is not True:
         raise RuntimeError(
@@ -265,12 +265,16 @@ def _claim_instance(
         payload={"credential": credential},
         expected_statuses=(204,),
     )
-    _http_json(
+    recovery_codes = _http_json(
         "POST",
         f"{control_url}/v1/setup/recovery-codes",
         setup_token=setup_token,
         expected_statuses=(201,),
     )
+    raw_codes = recovery_codes.get("codes")
+    if not isinstance(raw_codes, list) or not raw_codes or not isinstance(raw_codes[0], str):
+        raise RuntimeError("setup recovery-code response did not contain offline codes")
+    offline_recovery_code = raw_codes[0]
     finalized = _http_json(
         "POST",
         f"{control_url}/v1/setup:finalize",
@@ -297,7 +301,7 @@ def _claim_instance(
     path = state_dir / "instance.json"
     path.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(path, 0o600)
-    return receipt, authenticator
+    return receipt, authenticator, offline_recovery_code
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -608,7 +612,7 @@ def _run_f01_foundation(
     control_url = "http://control-plane:8001"
     api_url = "http://api:8000"
 
-    claim, claim_authenticator = _claim_instance(
+    claim, claim_authenticator, offline_recovery_code = _claim_instance(
         control_url, platform_login, platform_password, state_dir
     )
     native_authority_id = claim["native_authority_id"]
@@ -840,6 +844,47 @@ def _run_f01_foundation(
         json.dumps(foundation, sort_keys=True) + "\n", encoding="utf-8"
     )
     checkpoints.append(_checkpoint("f01-foundation-state", "passed"))
+
+    if phase == "main" and offline_recovery_code is not None:
+        recovered_password = _derived_password(platform_password, "f01-offline-recovered-owner")
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/password:recover-with-code",
+            payload={
+                "recovery_code": offline_recovery_code,
+                "new_password": recovered_password,
+            },
+            expected_statuses=(204,),
+        )
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/sessions",
+            payload={"login_handle": platform_login, "password": platform_password},
+            expected_statuses=(401,),
+        )
+        recovered_session = _native_session(
+            control_url,
+            platform_login,
+            recovered_password,
+        )
+        if not recovered_session:
+            raise RuntimeError("offline recovery did not yield a usable replacement password")
+        _http_request(
+            "POST",
+            f"{control_url}/auth/native/password:recover-with-code",
+            payload={
+                "recovery_code": offline_recovery_code,
+                "new_password": _derived_password(recovered_password, "replay"),
+            },
+            expected_statuses=(401,),
+        )
+        checkpoints.append(
+            _checkpoint(
+                "f01-18-offline-owner-recovery",
+                "passed",
+                "one claim recovery code replaced the owner password over TCP without reopening setup",
+            )
+        )
 
 
 def _exercise_staff_zero_authority(
