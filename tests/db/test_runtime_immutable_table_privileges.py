@@ -191,6 +191,60 @@ _EXACT_DEFINER_OWNERS = {
     ): "request_platform_control_definer",
     (
         "request_platform",
+        "native_identity_ready_for_platform_owner",
+        "p_identity_authority_id uuid, p_native_identity_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "principal_is_effective_platform_owner",
+        "p_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "assert_other_platform_owner",
+        "p_excluded_principal_id uuid",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "provision_native_platform_owner",
+        "p_principal_id uuid, p_binding_id uuid, p_identity_authority_id uuid, "
+        "p_native_identity_id uuid, p_provenance_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "transition_native_platform_owner",
+        "p_principal_id uuid, p_action text, p_expected_revision bigint, "
+        "p_reason_code text, p_external_case_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "create_platform_owner_invitation",
+        "p_invitation_id uuid, p_token_digest bytea, p_token_fingerprint text, "
+        "p_expires_at timestamp with time zone, p_provenance_reference text, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "enroll_platform_owner_invitation",
+        "p_token_digest bytea, p_native_identity_id uuid, p_credential_id uuid, "
+        "p_login_handle text, p_password_verifier text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "activate_platform_owner_invitation",
+        "p_invitation_id uuid, p_principal_id uuid, p_binding_id uuid, "
+        "p_idempotency_key_digest text, p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
+        "revoke_platform_owner_invitation",
+        "p_invitation_id uuid, p_reason_code text, p_idempotency_key_digest text, "
+        "p_intent_digest text",
+    ): "request_platform_control_definer",
+    (
+        "request_platform",
         "assert_platform_has_controller",
         "",
     ): "request_platform_control_definer",
