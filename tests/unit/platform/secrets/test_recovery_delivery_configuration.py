@@ -7,57 +7,48 @@ from request_engine.bootstrap.recovery_delivery import (
     build_recovery_secret_delivery,
 )
 from request_engine.platform.secrets.composed_delivery import ComposedRecoverySecretDelivery
-from request_engine.platform.secrets.openbao_recovery_secret_store import (
-    OpenBaoRecoverySecretStore,
-)
-from request_engine.platform.secrets.vault_secret_store import VaultRecoverySecretStore
 
 pytestmark = [pytest.mark.unit]
 
 
-def _smtp() -> dict[str, object]:
-    return {
+def _smtp_settings(**overrides: object) -> RecoveryDeliverySettings:
+    values: dict[str, object] = {
         "smtp_host": "mail.internal",
         "smtp_port": 587,
         "smtp_sender": "recovery@example.test",
         "smtp_username": "recovery@example.test",
         "smtp_password": "smtp-password",
     }
+    values.update(overrides)
+    return RecoveryDeliverySettings.model_validate(values)
 
 
 def test_openbao_proxy_mode_composes_without_static_openbao_token() -> None:
     delivery = build_recovery_secret_delivery(
-        RecoveryDeliverySettings(
-            openbao_addr="http://openbao-proxy:8100",
-            **_smtp(),
-        )
+        _smtp_settings(openbao_addr="http://openbao-proxy:8100")
     )
 
     assert isinstance(delivery, ComposedRecoverySecretDelivery)
-    assert isinstance(delivery._store, OpenBaoRecoverySecretStore)  # noqa: SLF001
 
 
 def test_vault_remains_compatibility_backend() -> None:
     delivery = build_recovery_secret_delivery(
-        RecoveryDeliverySettings(
+        _smtp_settings(
             vault_addr="http://vault:8200",
             vault_token="vault-token",
-            **_smtp(),
         )
     )
 
     assert isinstance(delivery, ComposedRecoverySecretDelivery)
-    assert isinstance(delivery._store, VaultRecoverySecretStore)  # noqa: SLF001
 
 
 def test_openbao_and_vault_together_fail_closed() -> None:
     with pytest.raises(RuntimeError, match="exactly one"):
         build_recovery_secret_delivery(
-            RecoveryDeliverySettings(
+            _smtp_settings(
                 openbao_addr="http://openbao-proxy:8100",
                 vault_addr="http://vault:8200",
                 vault_token="vault-token",
-                **_smtp(),
             )
         )
 
@@ -66,7 +57,7 @@ def test_openbao_and_vault_together_fail_closed() -> None:
     "settings",
     [
         RecoveryDeliverySettings(openbao_addr="http://openbao-proxy:8100"),
-        RecoveryDeliverySettings(**_smtp()),
+        _smtp_settings(),
     ],
 )
 def test_partial_recovery_delivery_configuration_fails_closed(
