@@ -62,6 +62,10 @@ _GATED_DML_WRITERS: dict[tuple[str, str], str] = {
     ("request_platform", "provision_native_recovery_operator"): _GATE_SHARE,
     ("request_platform", "provision_tenant_provisioner"): _GATE_SHARE,
     ("request_platform", "transition_native_platform_provisioner"): _GATE_SHARE,
+    ("request_platform", "invite_platform_owner"): _GATE_SHARE,
+    ("request_platform", "accept_platform_invitation"): _GATE_SHARE,
+    ("request_platform", "transition_platform_membership"): _GATE_SHARE,
+    ("request_platform", "replace_platform_authority"): _GATE_SHARE,
 }
 
 _GATED_WRAPPERS: dict[tuple[str, str], tuple[str, str]] = {
@@ -90,6 +94,7 @@ _TRIGGER_WRITERS = {
     ("request_engine", "seed_initial_controller_policy"),
     ("request_engine", "seed_root_staff_membership"),
     ("request_engine", "seed_root_staff_read_authority"),
+    ("request_engine", "seed_platform_owner_capabilities"),
 }
 
 _DIRECT_DML = re.compile(
@@ -125,6 +130,10 @@ _WRITER_CALLS: tuple[tuple[str, int], ...] = (
     ("request_platform.provision_native_recovery_operator", 5),
     ("request_platform.provision_tenant_provisioner", 3),
     ("request_platform.transition_native_platform_provisioner", 7),
+    ("request_platform.invite_platform_owner", 5),
+    ("request_platform.accept_platform_invitation", 5),
+    ("request_platform.transition_platform_membership", 5),
+    ("request_platform.replace_platform_authority", 5),
 )
 
 _CONTROL_CAPABILITIES = (

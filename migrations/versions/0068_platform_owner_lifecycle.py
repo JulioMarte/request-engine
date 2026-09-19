@@ -420,6 +420,8 @@ def upgrade() -> None:
             v_replay_invitation uuid;
             v_replay_expires timestamptz;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_native_identity_id IS NULL OR p_expires_at IS NULL
                OR p_proof_digest !~ '^[0-9a-f]{64}$'
                OR p_idempotency_key_digest !~ '^[0-9a-f]{64}$'
@@ -626,6 +628,8 @@ def upgrade() -> None:
             v_replay_status text;
             v_replay_revision bigint;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_proof_digest IS NULL OR p_proof_digest !~ '^[0-9a-f]{64}$'
                OR p_native_identity_id IS NULL
                OR p_expected_revision IS NULL OR p_expected_revision < 1
@@ -765,6 +769,8 @@ def upgrade() -> None:
             v_replay_status text;
             v_replay_revision bigint;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_membership_id IS NULL OR p_expected_revision IS NULL
                OR p_expected_revision < 1
                OR p_target_status IS NULL
@@ -1023,6 +1029,8 @@ def upgrade() -> None:
             v_replay_intent text;
             v_replay_revision bigint;
         BEGIN
+            PERFORM request_engine.acquire_identity_topology_share();
+
             IF p_membership_id IS NULL
                OR p_expected_authority_revision IS NULL
                OR p_expected_authority_revision < 1
