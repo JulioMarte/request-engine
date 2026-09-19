@@ -459,7 +459,7 @@ def create_native_auth_router(
         )
 
     if allow_identity_enrollment:
-    router.add_api_route(
+        router.add_api_route(
             "/identities",
             enroll_identity,
             methods=["POST"],
