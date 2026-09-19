@@ -24,6 +24,7 @@ pytestmark = [pytest.mark.postgres, pytest.mark.e2e, pytest.mark.security]
 ORIGIN = "https://localhost"
 LOGIN_HANDLE = "http-owner@example.test"
 PASSWORD = "http claim owner password"
+RECOVERED_PASSWORD = "http owner recovered password"
 
 
 @pytest.fixture
@@ -170,6 +171,35 @@ async def test_fresh_instance_is_claimed_over_http_and_setup_closes(
 
         assert (await client.get("/v1/setup")).json() == {"setup_required": False}
         assert (await client.post("/v1/setup/sessions")).status_code == 409
+
+        # One offline code from the original claim remains sufficient to recover
+        # the owner's native password without SMTP, OpenBao/Vault, the old
+        # password or a live WebAuthn credential. Setup stays permanently closed.
+        recovered = await client.post(
+            "/auth/native/password:recover-with-code",
+            json={"recovery_code": codes[0], "new_password": RECOVERED_PASSWORD},
+        )
+        assert recovered.status_code == 204
+
+        old_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": LOGIN_HANDLE, "password": PASSWORD},
+        )
+        assert old_login.status_code == 401
+
+        new_login = await client.post(
+            "/auth/native/sessions",
+            json={"login_handle": LOGIN_HANDLE, "password": RECOVERED_PASSWORD},
+        )
+        assert new_login.status_code == 201
+        assert new_login.json()["access_token"]
+
+        replay = await client.post(
+            "/auth/native/password:recover-with-code",
+            json={"recovery_code": codes[0], "new_password": "second recovered password"},
+        )
+        assert replay.status_code == 401
+        assert (await client.get("/v1/setup")).json() == {"setup_required": False}
 
     owner_principal_id = UUID(result["owner_principal_id"])
     grants = e2e_admin_conn.execute(
