@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.architecture, pytest.mark.security]
+pytestmark = [pytest.mark.security]
 
 ROOT = Path(__file__).resolve().parents[2]
 
