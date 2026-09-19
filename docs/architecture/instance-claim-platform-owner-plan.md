@@ -27,7 +27,15 @@ P4  atomic HTTP Instance claim                 delivered (0065: HTTP setup surfa
                                                 Docker clean-install E2E now claims
                                                 the instance over HTTP and no longer
                                                 calls platform_bootstrap_cli)
-P5  additional Platform Owner/admin lifecycle  pending
+P5  additional Platform Owner/admin lifecycle  in progress (0068: governed
+                                                membership lifecycle, digest-only
+                                                one-time invitation proof,
+                                                invite/accept/transition/replace
+                                                commands, delegable ceiling,
+                                                last-controller continuity,
+                                                platform-owner-v2; HTTP/step-up
+                                                wiring and second-controller E2E
+                                                pending)
 P6  Instance recovery                          pending
 P7  configuration/secrets admin APIs           deferred (follow-on)
 ```
@@ -1583,6 +1591,35 @@ Deliver:
 - last-controller continuity;
 - recent phishing-resistant step-up for authority changes;
 - second-controller positive E2E path.
+
+Revision `0068_platform_owner_lifecycle` delivers the durable half:
+
+- `platform_memberships` — platform-plane lifecycle aggregate
+  (`invited`/`active`/`suspended`/`revoked`) with an append-preserving guard,
+  one live membership per Principal and binding;
+- `platform_invitation_intents` — digest-only one-time invitation proof
+  (SHA-256, globally unique, single-use, expiring), never returning the plaintext
+  after the invite response;
+- `platform_membership_facts` — append-only provenance for invite/accept/
+  suspend/reactivate/revoke/replace-authority;
+- `invite_platform_owner`, `accept_platform_invitation`,
+  `transition_platform_membership`, `replace_platform_authority` — revisioned,
+  idempotent, serialized on the platform Principal set, refusing self-action and
+  the removal of the last effective platform controller;
+- immutable `platform-owner-v2` catalog (v1 plus `platform.owner.read`,
+  `platform.owner.invite`, `platform.owner.manage_membership`,
+  `platform.owner.manage_authority`), seeded on new claims by a claim-fact
+  trigger and backfilled for existing claim owners.
+
+An invited Principal is active but bound through a `pending` binding and holds
+no authority, so it cannot resolve as a platform actor until it accepts; the
+one-time proof is the acceptance authorization and the invitee must also control
+the bound native identity. `replace_platform_authority` refuses any desired
+capability the actor does not itself hold as active and delegable.
+
+Still pending for P5: the domain/application/HTTP operations, wiring
+`require_phishing_resistant_authentication` into the new operations, and the
+second-controller black-box E2E.
 
 ### P6 — Instance recovery
 
