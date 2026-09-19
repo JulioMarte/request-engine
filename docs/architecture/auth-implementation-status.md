@@ -2140,3 +2140,18 @@ one tenant-scoped query responsibility with a typed application port and HTTP
 DTO mapping. No extraction or authority-rule waiver was made to reduce metrics.
 Architecture, lint/types and behavior proofs remain required independently;
 `human_verdict` is null because no human supplied a review disposition.
+
+
+## Offline owner access recovery
+
+Migration `0068_recovery_code_password_reset` makes the digest-only recovery
+codes issued during Instance Claim a true offline break-glass credential.
+The private control plane exposes
+`POST /auth/native/password:recover-with-code`: one unused code can replace the
+owning native identity's password even when SMTP, OpenBao/Vault, the previous
+password, an existing session and the passkey are unavailable. Consumption,
+password replacement and session invalidation are atomic. Setup remains closed
+and the old password is never replayable.
+
+This is account-access recovery, not Instance recovery and not secret-store
+restore. OpenBao/backup recovery is governed separately by ADR 0015.
