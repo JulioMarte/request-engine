@@ -54,6 +54,16 @@ class FakeRecoveryCodeStore:
         self.consumed.append(code_digest)
         return RecoveryCodeConsumed(native_identity_id=uuid4(), set_id=uuid4(), code_id=uuid4())
 
+    async def consume_and_rotate_password(
+        self,
+        *,
+        code_digest: bytes,
+        new_credential_id: UUID,
+        new_verifier: str,
+    ) -> UUID | None:
+        del code_digest, new_credential_id, new_verifier
+        return uuid4()
+
     async def promote(self, *, set_id: UUID, native_identity_id: UUID) -> bool:
         self.promoted.append((set_id, native_identity_id))
         return True
