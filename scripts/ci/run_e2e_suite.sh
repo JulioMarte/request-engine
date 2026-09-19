@@ -105,33 +105,22 @@ retry_docker "$suite_artifacts/phases/infrastructure.log" \
     psql -U postgres -d request_engine < deploy/reference/init-runtime-roles.sql
 } 2>&1 | tee "$suite_artifacts/phases/migrate.log"
 
-bootstrap_dsn='postgresql://postgres:ci-postgres-only@postgres:5432/request_engine'
 login_handle="ci-platform-controller-$safe_suite"
-issue="$("${compose[@]}" run --rm --no-deps -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api \
-  request-engine-platform-bootstrap issue --provenance "e2e:${GITHUB_RUN_ID:-local}:$requested")"
-authority="$(printf '%s\n' "$issue" | sed -n 's/^Native authority: //p')"
-workload_authority="$(printf '%s\n' "$issue" | sed -n 's/^Workload authority: //p')"
-token="$(printf '%s\n' "$issue" | sed -n 's/^ONE-TIME BOOTSTRAP TOKEN: //p')"
-test -n "$authority" && test -n "$workload_authority" && test -n "$token"
 password="$(openssl rand -base64 36)Aa1!"
-if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then echo "::add-mask::$token"; echo "::add-mask::$password"; fi
-{
-  printf '%s\n%s\n%s\n' "$token" "$password" "$password" | \
-    "${compose[@]}" run --rm --no-deps -T -e REQUEST_ENGINE_BOOTSTRAP_DSN="$bootstrap_dsn" api \
-      request-engine-platform-bootstrap establish --login "$login_handle"
-  echo 'bootstrap completed; sensitive material intentionally omitted'
-} 2>&1 | tee "$suite_artifacts/phases/bootstrap.log"
+if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then echo "::add-mask::$password"; fi
+
+# The clean-install trust root is the built-in native authority bound to the
+# instance by migration. Read it for process startup. The runner learns both
+# built-in authority ids from the HTTP claim receipt, so no bootstrap.json or
+# bootstrap CLI is involved in the clean-install journey.
+authority="$("${compose[@]}" exec -T -e PGPASSWORD=ci-postgres-only postgres psql -tA -U postgres -d request_engine -c 'SELECT built_in_native_authority_id FROM request_engine.platform_instance WHERE singleton_key = 1')"
+test -n "$authority"
 export REQUEST_ENGINE_NATIVE_IDENTITY_AUTHORITY_ID="$authority"
 
-python - "$state_dir/bootstrap.json" "$authority" "$workload_authority" "$requested" <<'PY'
-import json, pathlib, sys
-path=pathlib.Path(sys.argv[1]); path.write_text(json.dumps({"native_authority_id":sys.argv[2],"workload_authority_id":sys.argv[3],"suite":sys.argv[4]},sort_keys=True)+"\n",encoding="utf-8")
-PY
 python - "$secret_dir/platform-controller.json" "$login_handle" "$password" <<'PY'
 import json, os, pathlib, sys
 path=pathlib.Path(sys.argv[1]); path.write_text(json.dumps({"login_handle":sys.argv[2],"password":sys.argv[3]},sort_keys=True)+"\n",encoding="utf-8"); os.chmod(path,0o600)
 PY
-chmod 0600 "$state_dir/bootstrap.json"
 
 if ((${#initial_services[@]} > 0)); then
   "${compose[@]}" up -d --no-build --wait --wait-timeout "${STACK_READY_TIMEOUT_SECONDS:-180}" \

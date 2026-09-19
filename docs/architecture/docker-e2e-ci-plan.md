@@ -4,7 +4,7 @@ Fecha: 2026-09-17. Branch de referencia: `cohesion/system-optimization`.
 
 Estado: **arquitectura oficial de system/E2E; core reusable P3a/P3b implementado y validado en CI para el lane black-box base.** F-01 está demostrado black-box hasta donde los contratos actuales lo permiten (foundation, staff/AGENT, recovery governance, last-controller refusal y fault injection worker/API); el recovery positivo y el reemplazo de controller están bloqueados por gaps de producto documentados en la sección 14. Quedan pendientes la policy final de coste/gating y la promoción del lane desde `continue-on-error`. No es certificación ni autorización de despliegue a producción.
 
-**Trust-root transition (2026-09-18):** ADR 0014 y `instance-claim-platform-owner-plan.md` aceptan como arquitectura objetivo que el mundo fresco se reclame por HTTP/TCP en el control plane con SetupSession + WebAuthn + finalize atómico. La plataforma E2E actual todavía usa el bootstrap CLI porque ese reemplazo no está implementado; esa evidencia sigue siendo honesta para el código actual, pero el CLI deja de ser el contrato objetivo. Al implementar ADR 0014, el deployment engine debe conservar su topología reusable y la suite de claim debe reemplazar el paso CLI sin introducir acceso DB al runner.
+**Trust-root transition (2026-09-19):** ADR 0014 y `instance-claim-platform-owner-plan.md` aceptan que el mundo fresco se reclame por HTTP/TCP en el control plane con SetupSession + WebAuthn + finalize atómico. La plataforma E2E ya consume ese flujo: el orquestador deja de invocar `request-engine-platform-bootstrap issue/establish`, lee el `built_in_native_authority_id` de `request_engine.platform_instance` solo para arrancar procesos, y el runner black-box completa la reclamación por HTTP con un autenticador WebAuthn software de criptografía real, aprendiendo ambos authority ids del recibo del claim. El CLI histórico puede seguir existiendo para otros caminos, pero ya no es el contrato de instalación limpia de esta plataforma.
 
 Este documento define la **plataforma reusable de CI E2E de Request Engine**. F-01 es una suite consumidora de esta plataforma, igual que suites presentes o futuras de surface contract, booking, authority, recovery, worker, OIDC u otras capacidades cross-module.
 
@@ -331,12 +331,11 @@ Setup privilegiado permitido para crear un mundo nuevo:
 
 - `alembic upgrade head`;
 - creación de logins/roles runtime;
-- `request-engine-platform-bootstrap issue`;
-- `request-engine-platform-bootstrap establish`.
+- lectura del `built_in_native_authority_id` desde `request_engine.platform_instance` para arrancar api/control-plane/worker.
 
-Estas acciones usan la misma imagen Request Engine y credenciales de instalación separadas del runner.
+Estas acciones usan la misma imagen Request Engine y credenciales de instalación separadas del runner. La instalación limpia ya **no** usa `request-engine-platform-bootstrap issue/establish`; el CLI histórico puede seguir existiendo para otros caminos, pero no es el contrato de esta plataforma.
 
-`request-engine-platform-bootstrap issue` establece el trust root de identidad de despliegue: registra la autoridad `native` para identidades HUMAN y la autoridad `workload` RE-native que consumen el provisioning de AGENT/INTEGRATION. El id de la autoridad workload viaja por el estado no sensible del handoff (`bootstrap.json`) y nunca por SQL de la suite.
+La reclamación del Instance (SetupSession + WebAuthn + finalize atómico) ocurre después, por HTTP/TCP desde el runner black-box contra el control plane. El runner recibe del recibo de finalize los ids `built_in_native_authority_id` y `built_in_workload_authority_id`; no los obtiene por SQL ni de `bootstrap.json`.
 
 Después del trust root, el estado de negocio de una suite system/E2E debe crearse mediante contratos soportados. No se permite SQL para fabricar el outcome principal del journey.
 
@@ -344,9 +343,9 @@ Una DB proof cuyo riesgo sea precisamente RLS/constraint/lock pertenece a otra t
 
 ## 9. Secret/state handoff
 
-El bootstrap actual genera una contraseña efímera y no entrega al runner el bootstrap DSN/token.
+El orquestador genera la contraseña efímera del owner y la entrega solo por el workspace de secretos; el runner nunca recibe el bootstrap DSN/token.
 
-El handoff reusable ya está implementado para el journey F-01/worker-restart: IDs y revisiones no sensibles viajan por el workspace de estado (`bootstrap.json`, `f01-foundation.json`, `worker-booking.json`) y las credenciales viven en un workspace de secretos separado y efímero. La generalización a otras suites sigue pendiente. El contrato es:
+El handoff reusable ya está implementado para el journey F-01/worker-restart: IDs y revisiones no sensibles viajan por el workspace de estado (`instance.json`, `f01-foundation.json`, `worker-booking.json`) y las credenciales viven en un workspace de secretos separado y efímero. La generalización a otras suites sigue pendiente. El contrato es:
 
 ### Secretos
 
@@ -421,7 +420,7 @@ F-01 sigue siendo el journey de aceptación más amplio de auth/authority/bookin
 Mapeo normativo resumido:
 
 ```text
-F01-01 clean bootstrap + platform login
+F01-01 HTTP instance claim + platform login
 F01-02 second security operator + platform provisioner
 F01-03 organization + tenant controller
 F01-04 tenant login + authority observation
@@ -469,7 +468,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 
 - imagen única Request Engine para migrate/bootstrap/API/control-plane y misma referencia de artifact para worker;
 - PostgreSQL 18 separado;
-- migrations + runtime roles + bootstrap desde mundo limpio;
+- migrations + runtime roles + instalación limpia con claim HTTP del Instance desde mundo limpio;
 - API/control-plane readiness real;
 - imagen genérica `e2e-runner` separada de la aplicación;
 - runner sin Request Engine package, DB DSN ni Docker socket;
@@ -482,12 +481,12 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 - artifacts namespaceados por suite;
 - collector estructuralmente sanitizado;
 - isolation checks runtime;
-- bootstrap de despliegue que registra las autoridades `native` y `workload` RE-native, con ambos ids viajando por el estado no sensible del handoff;
+- instalación limpia que reclama el Instance por HTTP (SetupSession + WebAuthn + finalize atómico); el runner black-box obtiene las autoridades `native` y `workload` RE-native del recibo del claim, nunca por SQL ni por `bootstrap.json` (el orquestador solo lee el `built_in_native_authority_id` para arrancar procesos);
 - dos suites habilitadas (`smoke`, `surface-contract`) para proteger reusabilidad;
 - `workflow_dispatch` y `workflow_call` reutilizables;
 - fitness checks registry ↔ runner ↔ topology;
 - Docker E2E exact-head verde para el lane `smoke`;
-- F-01 black-box demostrado en el lane PR (`policy:pr`, commit `f8c5a6c5`, run `35306586940`): bootstrap → platform login → segundo provisioner → organization/tenant controller → rechazo de autoridad HUMAN para workload → integration principal con autoridad workload real → rechazo de staff activo sin autoridad implícita → rechazo de AGENT activo sin autoridad implícita (`agent_policy_denied`) → revocación de integration con invalidación inmediata del bearer → supply/capacity → slot discovery → booking durable → rechazo de segundo consumo del mismo slot → rechazo de retirar el último controller autenticable (`identity_binding_conflict`) → governance de recovery (doble control, fail-closed y rechazo de consume) → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
+- F-01 black-box demostrado en el lane PR (`policy:pr`, commit `f8c5a6c5`, run `35306586940`, anterior a la migración a claim HTTP): clean bootstrap → platform login → segundo provisioner → organization/tenant controller → rechazo de autoridad HUMAN para workload → integration principal con autoridad workload real → rechazo de staff activo sin autoridad implícita → rechazo de AGENT activo sin autoridad implícita (`agent_policy_denied`) → revocación de integration con invalidación inmediata del bearer → supply/capacity → slot discovery → booking durable → rechazo de segundo consumo del mismo slot → rechazo de retirar el último controller autenticable (`identity_binding_conflict`) → governance de recovery (doble control, fail-closed y rechazo de consume) → `worker:kill-restart` ejecutado por el orquestador → entrega del evento outbox tras el reinicio;
 - `api-restart` como journey real F01-16/F01-17 (commit `f8c5a6c5`, run `35306590799`): una invitación de staff idempotente se confirma antes del `api:kill-restart`; tras el reinicio la sesión/credencial se reautentica, el comando se replaya exactamente una vez con el mismo `membership_id`, la lista no contiene duplicados y reutilizar la misma `Idempotency-Key` con otra intención devuelve `idempotency_conflict`;
 - fault injection real con barrera observable `block/release` del event sink y kill/restart propiedad del host, no del runner;
 - Python quality/architecture exact-head verde después de introducir los nuevos guardrails.
@@ -502,7 +501,7 @@ Testcontainers no sustituye esta plataforma porque aquí la unidad bajo prueba e
 ### Pendiente
 
 1. continuar afinando distribución need-to-know de credenciales runtime donde aporte valor; `x-common-env` ya fue eliminado y API/control-plane/worker tienen entornos separados, pero la revisión de privilegios de cada DSN sigue siendo una tarea continua;
-2. generalizar el handoff de estado/secretos más allá del journey worker-restart (ya implementado para F-01: `bootstrap.json`, `f01-foundation.json`, `worker-booking.json` y directorio de secretos separado);
+2. generalizar el handoff de estado/secretos más allá del journey worker-restart (ya implementado para F-01: `instance.json`, `f01-foundation.json`, `worker-booking.json` y directorio de secretos separado);
 3. JUnit y `isolation-proof.json` dedicados si aportan mejor consumo de evidencia;
 4. extender el protocolo de fault injection ya demostrado (barrera `block/release` del sink + kill/restart del orquestador) a barreras in-flight más fuertes: hoy `api-restart` demuestra replay idempotente y supervivencia de sesión tras el reinicio, pero no un crash determinista entre COMMIT y respuesta HTTP;
 5. provisionar worker Principal/publisher reales para suites worker: el Principal ya nace por el contrato de integration sobre la autoridad workload de despliegue; el publisher sigue siendo el adapter HTTP de referencia;

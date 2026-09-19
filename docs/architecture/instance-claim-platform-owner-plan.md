@@ -4,7 +4,7 @@ Date: 2026-09-18
 Branch of reference: `cohesion/system-optimization`  
 Status: **accepted architecture and implementation handoff; not production certification.**
 
-Implementation status (2026-09-18, migration head `0064_recovery_codes`):
+Implementation status (2026-09-19, migration head `0065_instance_claim`):
 
 ```text
 P0  contract reconciliation                    delivered (reconnaissance)
@@ -15,14 +15,18 @@ P2  WebAuthn + assurance primitives            delivered internally (assurance,
                                                 method-neutral sessions,
                                                 sign-count high-water policy,
                                                 step_up purpose, real-crypto
-                                                tests; HTTP surface pending P4)
+                                                tests)
 P3  recovery codes + password modernization    delivered (0063/0064: digest-only
                                                 recovery code sets, single-use
                                                 consumption, setup->identity
                                                 promotion, append-only facts,
                                                 Argon2id verifier with legacy
                                                 scrypt + opportunistic rehash)
-P4  atomic HTTP Instance claim                 pending
+P4  atomic HTTP Instance claim                 delivered (0065: HTTP setup surface,
+                                                atomic finalize, platform-owner-v1;
+                                                Docker clean-install E2E now claims
+                                                the instance over HTTP and no longer
+                                                calls platform_bootstrap_cli)
 P5  additional Platform Owner/admin lifecycle  pending
 P6  Instance recovery                          pending
 P7  configuration/secrets admin APIs           deferred (follow-on)
@@ -52,8 +56,9 @@ P2 delivers an internal, complete passkey ceremony ready for P4 to consume:
 
 Passkey sessions now resolve through the native session authenticator as
 `PHISHING_RESISTANT` with user verification; password sessions remain
-`SINGLE_FACTOR`. The HTTP/setup surface (P4) and recovery codes (P3) remain
-pending.
+`SINGLE_FACTOR`. The HTTP/setup surface (P4) and recovery codes (P3) are
+delivered; the Docker clean-install E2E claims the instance over HTTP and no
+longer calls `platform_bootstrap_cli`.
 
 ### P2 decisions
 
@@ -1399,7 +1404,8 @@ Implementation sequence:
 1. append Instance/setup/authenticator/policy migrations after current head,
    including legacy-CLI adoption and built-in authority adoption/creation;
 2. introduce HTTP setup surface behind the new data model;
-3. make Docker clean-install E2E use HTTP setup;
+3. make Docker clean-install E2E use HTTP setup; **delivered** (the runner claims
+   the instance over HTTP and reads the built-in authority ids from the receipt);
 4. remove runtime dependency on `platform_bootstrap_cli.py`;
 5. remove CLI from the reference installation path and docs;
 6. audit references to `platform_bootstrap_intents` and old bootstrap role/function;

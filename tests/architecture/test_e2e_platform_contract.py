@@ -15,6 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests/system_e2e/suites.toml"
 RUNNER_DOCKERFILE = ROOT / "deploy/reference/e2e-runner.Dockerfile"
+RUNNER_REQUIREMENTS = ROOT / "deploy/reference/e2e-runner-requirements.txt"
 RUNNER = ROOT / "tests/system_e2e/runner.py"
 COMPOSE = ROOT / "deploy/reference/compose.e2e.yaml"
 DOCKER_RETRY = ROOT / "scripts/ci/retry_transient_docker.sh"
@@ -167,9 +168,13 @@ def test_enabled_e2e_suite_dependencies_and_faults_are_supported() -> None:
 
 def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     dockerfile = RUNNER_DOCKERFILE.read_text(encoding="utf-8").lower()
+    # ADAPT (CONTROLLED): the runner now claims the instance over HTTP and must
+    # therefore complete a real WebAuthn ceremony, so the image may install the
+    # fido2/cryptography pair from the pinned requirements file. Database
+    # drivers, Request Engine internals and Docker admin authority stay
+    # forbidden; only the pinned client libraries may be installed.
     forbidden = (
         "src/request_engine",
-        "pip install",
         "uv sync",
         "psycopg",
         "sqlalchemy",
@@ -178,6 +183,26 @@ def test_black_box_runner_image_cannot_install_application_shortcuts() -> None:
     found = [token for token in forbidden if token in dockerfile]
     assert not found, (
         f"black-box runner Dockerfile contains forbidden application/database shortcuts: {found}"
+    )
+    install_lines = [line for line in dockerfile.splitlines() if "pip install" in line]
+    assert install_lines, "the runner image must install the pinned WebAuthn client libraries"
+    for line in install_lines:
+        assert "requirements.txt" in line and ("--requirement" in line or "-r " in line), (
+            f"runner install must use only the pinned requirements file: {line!r}"
+        )
+
+
+def test_black_box_runner_requirements_are_minimal_and_pinned() -> None:
+    requirements = RUNNER_REQUIREMENTS.read_text(encoding="utf-8")
+    packages = [
+        line.strip()
+        for line in requirements.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert packages, "the runner requirements file must not be empty"
+    names = {re.split(r"[<>=!~ ]", package, maxsplit=1)[0].lower() for package in packages}
+    assert names == {"fido2", "cryptography"}, (
+        f"runner image may install only the WebAuthn client libraries: {sorted(names)}"
     )
 
 

@@ -1,0 +1,6 @@
+# Black-box WebAuthn client libraries for the generic E2E runner image.
+# These are the only third-party packages the runner needs: the copied software
+# authenticator produces real CBOR/COSE/signature material. Database drivers,
+# the Request Engine application package and Docker admin tooling stay out.
+fido2>=2.2.1,<3
+cryptography>=50.0.1,<51

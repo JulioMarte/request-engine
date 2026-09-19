@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import urlencode
 
+from fido2.utils import websafe_decode
+from software_webauthn_authenticator import SoftwareAuthenticator
+
 FORBIDDEN_ENV_FRAGMENTS = (
     "DATABASE_URL",
     "MIGRATION",
@@ -69,6 +72,7 @@ def _http_request(
     *,
     payload: dict[str, object] | None = None,
     bearer: str | None = None,
+    setup_token: str | None = None,
     idempotency_key: str | None = None,
     organization_id: str | None = None,
     expected_statuses: tuple[int, ...] = (200,),
@@ -80,6 +84,8 @@ def _http_request(
         body = json.dumps(payload).encode("utf-8")
     if bearer is not None:
         headers["Authorization"] = f"Bearer {bearer}"
+    if setup_token is not None:
+        headers["Authorization"] = f"Setup {setup_token}"
     if idempotency_key is not None:
         headers["Idempotency-Key"] = idempotency_key
     if organization_id is not None:
@@ -107,6 +113,7 @@ def _http_json(
     *,
     payload: dict[str, object] | None = None,
     bearer: str | None = None,
+    setup_token: str | None = None,
     idempotency_key: str | None = None,
     organization_id: str | None = None,
     expected_statuses: tuple[int, ...] = (200,),
@@ -116,6 +123,7 @@ def _http_json(
         url,
         payload=payload,
         bearer=bearer,
+        setup_token=setup_token,
         idempotency_key=idempotency_key,
         organization_id=organization_id,
         expected_statuses=expected_statuses,
@@ -172,14 +180,119 @@ def _derived_password(seed: str, label: str) -> str:
     return f"E2e!{digest[:32]}Aa1"
 
 
-def _handoff() -> tuple[Path, dict[str, object], dict[str, object]]:
+def _handoff() -> tuple[Path, dict[str, object]]:
     state_dir = Path(os.environ.get("E2E_STATE_DIR", "/state"))
     secret_dir = Path(os.environ.get("E2E_SECRET_DIR", "/secrets"))
-    return (
-        state_dir,
-        _json_object(state_dir / "bootstrap.json"),
-        _json_object(secret_dir / "platform-controller.json"),
+    return state_dir, _json_object(secret_dir / "platform-controller.json")
+
+
+_INSTANCE_RECEIPT_KEYS = (
+    "instance_id",
+    "owner_principal_id",
+    "native_identity_id",
+    "native_authority_id",
+    "workload_authority_id",
+)
+
+_active_suite = "system-runner"
+
+
+def _read_instance_receipt(state_dir: Path) -> dict[str, str] | None:
+    path = state_dir / "instance.json"
+    if not path.exists():
+        return None
+    data = _json_object(path)
+    return {
+        key: _required_string(data, key, "instance claim receipt") for key in _INSTANCE_RECEIPT_KEYS
+    }
+
+
+def _claim_instance(
+    control_url: str, login_handle: str, password: str, state_dir: Path
+) -> dict[str, str]:
+    """Claim a fresh instance over HTTP and return the built-in authority ids.
+
+    The receipt is cached in the ephemeral state workspace so multi-phase suites
+    do not attempt a second claim. If the instance was already claimed elsewhere
+    and no local receipt exists, the authority ids cannot be rediscovered and the
+    runner fails closed instead of guessing.
+    """
+    receipt = _read_instance_receipt(state_dir)
+    if receipt is not None:
+        return receipt
+    discovery = _http_json("GET", f"{control_url}/v1/setup")
+    if discovery.get("setup_required") is not True:
+        raise RuntimeError(
+            "instance is already claimed but no instance.json receipt exists; "
+            "the built-in authority ids cannot be rediscovered"
+        )
+    session = _http_json("POST", f"{control_url}/v1/setup/sessions", expected_statuses=(201,))
+    setup_token = _required_string(session, "token", "setup session response")
+    _http_request(
+        "POST",
+        f"{control_url}/v1/setup/native-identity",
+        setup_token=setup_token,
+        payload={"login_handle": login_handle, "password": password},
+        expected_statuses=(204,),
     )
+    options = _http_json(
+        "POST",
+        f"{control_url}/v1/setup/webauthn/registration-options",
+        setup_token=setup_token,
+    )
+    public_key_value = options.get("public_key")
+    if not isinstance(public_key_value, dict):
+        raise RuntimeError("setup WebAuthn options are missing public_key")
+    public_key = cast(dict[str, object], public_key_value)
+    rp_value = public_key.get("rp")
+    if not isinstance(rp_value, dict):
+        raise RuntimeError("setup WebAuthn options are missing rp")
+    rp_id = _required_string(cast(dict[str, object], rp_value), "id", "setup WebAuthn rp")
+    challenge = _required_string(public_key, "challenge", "setup WebAuthn challenge")
+    authenticator = SoftwareAuthenticator(rp_id=rp_id, origin=f"https://{rp_id}")
+    credential = authenticator.registration_credential(
+        challenge=websafe_decode(challenge), user_verified=True
+    )
+    _http_request(
+        "POST",
+        f"{control_url}/v1/setup/webauthn/registrations",
+        setup_token=setup_token,
+        payload={"credential": credential},
+        expected_statuses=(204,),
+    )
+    _http_json(
+        "POST",
+        f"{control_url}/v1/setup/recovery-codes",
+        setup_token=setup_token,
+        expected_statuses=(201,),
+    )
+    finalized = _http_json(
+        "POST",
+        f"{control_url}/v1/setup:finalize",
+        setup_token=setup_token,
+        idempotency_key=f"e2e-instance-claim-{_active_suite}",
+        payload={"claim_provenance": f"e2e:{_active_suite}"},
+        expected_statuses=(201,),
+    )
+    receipt = {
+        "instance_id": _required_string(finalized, "instance_id", "instance claim receipt"),
+        "owner_principal_id": _required_string(
+            finalized, "owner_principal_id", "instance claim receipt"
+        ),
+        "native_identity_id": _required_string(
+            finalized, "native_identity_id", "instance claim receipt"
+        ),
+        "native_authority_id": _required_string(
+            finalized, "built_in_native_authority_id", "instance claim receipt"
+        ),
+        "workload_authority_id": _required_string(
+            finalized, "built_in_workload_authority_id", "instance claim receipt"
+        ),
+    }
+    path = state_dir / "instance.json"
+    path.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(path, 0o600)
+    return receipt
 
 
 def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
@@ -218,9 +331,7 @@ def _assert_runner_isolation(checkpoints: list[dict[str, str]]) -> None:
 
 
 def _assert_handoff_contract(checkpoints: list[dict[str, str]], phase: str) -> None:
-    state_dir, bootstrap, credentials = _handoff()
-    _required_string(bootstrap, "native_authority_id", "bootstrap state")
-    _required_string(bootstrap, "workload_authority_id", "bootstrap state")
+    state_dir, credentials = _handoff()
     _required_string(credentials, "login_handle", "platform-controller secret")
     password = _required_string(credentials, "password", "platform-controller secret")
     if len(password) < 12:
@@ -239,7 +350,7 @@ def _assert_handoff_contract(checkpoints: list[dict[str, str]], phase: str) -> N
         _checkpoint(
             f"{phase}:handoff",
             "passed",
-            "bootstrap state and separated controller secret are available",
+            "separated platform-controller secret is available",
         )
     )
 
@@ -265,10 +376,13 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
     control_url = "http://control-plane:8001"
     if phase == "before-fault":
         _run_f01_foundation(checkpoints, "main", include_continuity=False)
-        state_dir, bootstrap, _ = _handoff()
+        state_dir, _ = _handoff()
+        receipt = _read_instance_receipt(state_dir)
+        if receipt is None:
+            raise RuntimeError("instance claim receipt is missing after the F01 foundation")
         foundation, tenant_token = _tenant_session_from_foundation()
         organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
-        native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
+        native_authority_id = receipt["native_authority_id"]
         restart_login = "f01-restart-staff@example.invalid"
         restart_password = _derived_password(
             _required_string(foundation, "tenant_login", "F01 foundation state"),
@@ -317,7 +431,7 @@ def _run_api_restart(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase != "after-fault":
         raise RuntimeError("api-restart requires before-fault or after-fault")
     _health_targets(checkpoints, phase)
-    state_dir, _, _ = _handoff()
+    state_dir, _ = _handoff()
     restart = _json_object(state_dir / "api-restart.json")
     foundation, tenant_token = _tenant_session_from_foundation()
     organization_id = _required_string(restart, "organization_id", "api restart state")
@@ -445,13 +559,22 @@ def _run_f01_foundation(
 ) -> None:
     if phase not in {"main", "prepare-worker"}:
         raise RuntimeError("f01-foundation only supports main or prepare-worker")
-    state_dir, bootstrap, controller = _handoff()
-    native_authority_id = _required_string(bootstrap, "native_authority_id", "bootstrap state")
-    workload_authority_id = _required_string(bootstrap, "workload_authority_id", "bootstrap state")
+    state_dir, controller = _handoff()
     platform_login = _required_string(controller, "login_handle", "platform-controller secret")
     platform_password = _required_string(controller, "password", "platform-controller secret")
     control_url = "http://control-plane:8001"
     api_url = "http://api:8000"
+
+    claim = _claim_instance(control_url, platform_login, platform_password, state_dir)
+    native_authority_id = claim["native_authority_id"]
+    workload_authority_id = claim["workload_authority_id"]
+    checkpoints.append(
+        _checkpoint(
+            "f01-00-instance-claim",
+            "passed",
+            "instance claimed over HTTP; built-in authority ids resolved from the claim receipt",
+        )
+    )
 
     platform_token = _native_session(control_url, platform_login, platform_password)
     checkpoints.append(_checkpoint("f01-01-platform-login", "passed"))
@@ -1097,7 +1220,7 @@ def _exercise_last_controller_refusal(
 
 
 def _tenant_session_from_foundation() -> tuple[dict[str, object], str]:
-    state_dir, _, controller = _handoff()
+    state_dir, controller = _handoff()
     foundation = _json_object(state_dir / "f01-foundation.json")
     platform_password = _required_string(controller, "password", "platform-controller secret")
     tenant_login = _required_string(foundation, "tenant_login", "F01 foundation state")
@@ -1113,7 +1236,7 @@ def _availability_windows() -> list[dict[str, object]]:
 
 
 def _prepare_durable_booking(checkpoints: list[dict[str, str]]) -> None:
-    state_dir, _, _ = _handoff()
+    state_dir, _ = _handoff()
     foundation, tenant_token = _tenant_session_from_foundation()
     organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
     authority_party_id = _required_string(
@@ -1361,7 +1484,7 @@ def _run_worker_runtime(checkpoints: list[dict[str, str]], phase: str) -> None:
     if phase not in {"before-fault", "after-fault"}:
         raise RuntimeError("worker-runtime requires prepare-worker/before-fault/after-fault")
     _health_targets(checkpoints, phase)
-    state_dir, _, _ = _handoff()
+    state_dir, _ = _handoff()
     foundation = _json_object(state_dir / "f01-foundation.json")
     _required_string(foundation, "worker_principal_id", "F01 foundation state")
     organization_id = _required_string(foundation, "organization_id", "F01 foundation state")
@@ -1423,6 +1546,8 @@ def main() -> int:
     run.add_argument("--phase", default="main")
     run.add_argument("--artifact-dir", default="/artifacts")
     args = parser.parse_args()
+    global _active_suite
+    _active_suite = args.suite
     checkpoints: list[dict[str, str]] = []
     artifact_dir = Path(args.artifact_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)

@@ -77,7 +77,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment: *platform-env
+    environment:
+      <<: *platform-env
+      # Deterministic WebAuthn relying party for the HTTP Instance Claim flow:
+      # the black-box runner derives its origin as https://<rp_id>.
+      REQUEST_ENGINE_WEBAUTHN_RP_ID: localhost
+      REQUEST_ENGINE_WEBAUTHN_ALLOWED_ORIGINS: https://localhost
     command: [uvicorn, "request_engine.bootstrap.platform_server:create_app", --factory, --host, "0.0.0.0", --port, "8001"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready',timeout=2)"]

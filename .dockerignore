@@ -16,3 +16,5 @@
 !tests/
 !tests/system_e2e/
 !tests/system_e2e/**
+!tests/fixtures/
+!tests/fixtures/**
