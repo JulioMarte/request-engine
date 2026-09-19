@@ -13,9 +13,7 @@ class PlatformOwnerLifecycleAction(StrEnum):
 
 
 _OWNER_REASONS: dict[PlatformOwnerLifecycleAction, frozenset[str]] = {
-    PlatformOwnerLifecycleAction.SUSPEND: frozenset(
-        {"owner_suspension", "security_investigation"}
-    ),
+    PlatformOwnerLifecycleAction.SUSPEND: frozenset({"owner_suspension", "security_investigation"}),
     PlatformOwnerLifecycleAction.REACTIVATE: frozenset(
         {"owner_reactivation", "investigation_closed"}
     ),

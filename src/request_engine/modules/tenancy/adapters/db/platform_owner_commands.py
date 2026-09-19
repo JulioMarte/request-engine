@@ -46,9 +46,8 @@ class PostgresPlatformOwnerCommands:
         actor: PlatformActorContext,
         command: ProvisionPlatformOwnerCommand,
     ) -> PlatformOwnerProvisioningResult:
-        if (
-            actor.principal_kind is not PrincipalKind.HUMAN
-            or not actor.allows(_PROVISION_CAPABILITY)
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
+            _PROVISION_CAPABILITY
         ):
             raise PlatformOwnerForbidden(_PROVISION_CAPABILITY)
         normalized_provenance = command.provenance_reference.strip()
@@ -104,9 +103,8 @@ class PostgresPlatformOwnerCommands:
         actor: PlatformActorContext,
         command: TransitionPlatformOwnerCommand,
     ) -> PlatformOwnerLifecycleResult:
-        if (
-            actor.principal_kind is not PrincipalKind.HUMAN
-            or not actor.allows(_LIFECYCLE_CAPABILITY)
+        if actor.principal_kind is not PrincipalKind.HUMAN or not actor.allows(
+            _LIFECYCLE_CAPABILITY
         ):
             raise PlatformOwnerForbidden(_LIFECYCLE_CAPABILITY)
         intent = {

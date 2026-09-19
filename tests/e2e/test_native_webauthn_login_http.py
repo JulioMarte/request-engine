@@ -208,9 +208,6 @@ async def test_platform_owner_authenticates_with_passkey_and_steps_up(
         assert "webauthn" in raised[2]
 
 
-
-
-
 @pytest.mark.asyncio
 async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_codes(
     private_runtime_configuration: UUID,

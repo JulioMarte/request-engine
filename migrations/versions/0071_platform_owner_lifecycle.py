@@ -23,12 +23,10 @@ _CONTROL_DEFINER = "request_platform_control_definer"
 _RUNTIME = "request_platform_control"
 
 _PROVISION = (
-    "request_platform.provision_native_platform_owner("
-    "uuid, uuid, uuid, uuid, text, text, text)"
+    "request_platform.provision_native_platform_owner(uuid, uuid, uuid, uuid, text, text, text)"
 )
 _TRANSITION = (
-    "request_platform.transition_native_platform_owner("
-    "uuid, text, bigint, text, text, text, text)"
+    "request_platform.transition_native_platform_owner(uuid, text, bigint, text, text, text, text)"
 )
 
 
