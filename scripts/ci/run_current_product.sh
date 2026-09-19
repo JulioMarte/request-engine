@@ -144,6 +144,7 @@ uv run pytest \
   tests/db/test_native_multi_session.py \
   tests/db/test_platform_instance_setup.py \
   tests/db/test_instance_claim.py \
+  tests/db/test_recovery_code_persistence.py \
   tests/db/test_webauthn_persistence.py \
   tests/db/test_webauthn_concurrency.py \
   -q -m postgres --tb=short --durations=20 \
@@ -277,6 +278,15 @@ uv run pytest \
   tests/integration/v3_booking_commitments \
   -q -m postgres --tb=short --durations=20 \
   --junitxml="$ARTIFACT_DIR/booking-capacity-regression.xml"
+
+# Platform secret-store portability is a current technical contract. OpenBao is
+# the self-hosted reference backend, but runtime code depends on the provider-
+# neutral PlatformSecretStore boundary and must preserve CAS/no-secret-replay
+# behavior independently of a live external service.
+uv run pytest \
+  tests/unit/platform/secrets/test_openbao_secret_store.py \
+  -q --tb=short --durations=20 \
+  --junitxml="$ARTIFACT_DIR/platform-secret-store.xml"
 
 # A proof-map entry counts only when its test actually ran in this gate. This
 # prevents dormant legacy files from silently satisfying current guarantees.
