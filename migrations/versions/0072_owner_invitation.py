@@ -451,10 +451,7 @@ def upgrade() -> None:
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {_CONTROL}")
 
-    enroll = (
-        "request_platform.enroll_platform_owner_invitation("
-        "bytea,uuid,uuid,text,text)"
-    )
+    enroll = "request_platform.enroll_platform_owner_invitation(bytea,uuid,uuid,text,text)"
     op.execute(f"ALTER FUNCTION {enroll} OWNER TO {_DEFINER}")
     op.execute(f"REVOKE ALL ON FUNCTION {enroll} FROM PUBLIC")
     op.execute(f"GRANT EXECUTE ON FUNCTION {enroll} TO {_CONTROL}")

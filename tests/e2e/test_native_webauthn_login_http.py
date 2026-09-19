@@ -221,7 +221,6 @@ async def test_current_identity_can_enroll_passkey_then_issue_offline_recovery_c
             transport=ASGITransport(app=app), base_url="https://private-control.test"
         ) as client,
     ):
-
         owner_authenticator = await _claim_owner(client)
         _, owner_token = await _webauthn_login(client, owner_authenticator)
         invited = await client.post(
