@@ -67,6 +67,8 @@ def upgrade() -> None:
                 REFERENCES request_engine.principals(id),
             native_identity_id uuid
                 REFERENCES request_engine.native_identities(id),
+            owner_principal_id uuid REFERENCES request_engine.principals(id),
+            owner_binding_id uuid REFERENCES request_engine.identity_bindings(id),
             policy_key text NOT NULL DEFAULT 'platform-owner-v2',
             provenance_reference text NOT NULL,
             idempotency_key_digest text NOT NULL,
@@ -94,20 +96,28 @@ def upgrade() -> None:
             CONSTRAINT platform_owner_invitation_lifecycle_check CHECK (
                 (status = 'pending'
                     AND native_identity_id IS NULL
+                    AND owner_principal_id IS NULL
+                    AND owner_binding_id IS NULL
                     AND identity_bound_at IS NULL
                     AND consumed_at IS NULL
                     AND revoked_at IS NULL)
                 OR (status = 'enrolling'
                     AND native_identity_id IS NOT NULL
+                    AND owner_principal_id IS NULL
+                    AND owner_binding_id IS NULL
                     AND identity_bound_at IS NOT NULL
                     AND consumed_at IS NULL
                     AND revoked_at IS NULL)
                 OR (status = 'consumed'
                     AND native_identity_id IS NOT NULL
+                    AND owner_principal_id IS NOT NULL
+                    AND owner_binding_id IS NOT NULL
                     AND identity_bound_at IS NOT NULL
                     AND consumed_at IS NOT NULL
                     AND revoked_at IS NULL)
                 OR (status = 'revoked'
+                    AND owner_principal_id IS NULL
+                    AND owner_binding_id IS NULL
                     AND consumed_at IS NULL
                     AND revoked_at IS NOT NULL
                     AND revoke_reason_code IS NOT NULL)
@@ -231,7 +241,8 @@ def upgrade() -> None:
             ON request_engine.platform_owner_policies TO {_CONTROL};
         GRANT SELECT (
             id, token_digest, token_fingerprint, status, invited_by_principal_id,
-            native_identity_id, policy_key, provenance_reference,
+            native_identity_id, owner_principal_id, owner_binding_id, policy_key,
+            provenance_reference,
             idempotency_key_digest, intent_digest, expires_at, revision,
             created_at, identity_bound_at, consumed_at, revoked_at, revoke_reason_code
         ), INSERT (
@@ -239,8 +250,8 @@ def upgrade() -> None:
             policy_key, provenance_reference, idempotency_key_digest, intent_digest,
             expires_at
         ), UPDATE (
-            status, native_identity_id, revision, identity_bound_at, consumed_at,
-            revoked_at, revoke_reason_code
+            status, native_identity_id, owner_principal_id, owner_binding_id,
+            revision, identity_bound_at, consumed_at, revoked_at, revoke_reason_code
         ) ON request_engine.platform_owner_invitations TO {_CONTROL};
         GRANT SELECT (
             id, invitation_id, action, actor_principal_id, native_identity_id,
@@ -579,8 +590,18 @@ def upgrade() -> None:
              WHERE invitation.id = p_invitation_id
                AND invitation.token_digest = p_token_digest
              FOR UPDATE;
-            IF NOT FOUND
-               OR v_invitation.status <> 'enrolling'
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Platform Owner invitation is not finalizable'
+                    USING ERRCODE = '55000';
+            END IF;
+            IF v_invitation.status = 'consumed' THEN
+                RETURN QUERY SELECT v_invitation.owner_principal_id,
+                                    v_invitation.owner_binding_id,
+                                    v_invitation.native_identity_id,
+                                    v_invitation.policy_key;
+                RETURN;
+            END IF;
+            IF v_invitation.status <> 'enrolling'
                OR v_invitation.expires_at <= clock_timestamp()
                OR v_invitation.native_identity_id IS NULL
             THEN
@@ -674,6 +695,8 @@ def upgrade() -> None:
 
             UPDATE request_engine.platform_owner_invitations
                SET status = 'consumed',
+                   owner_principal_id = p_principal_id,
+                   owner_binding_id = p_binding_id,
                    revision = revision + 1,
                    consumed_at = clock_timestamp()
              WHERE id = p_invitation_id;
