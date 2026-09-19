@@ -1,0 +1,170 @@
+import hashlib
+import json
+from uuid import UUID, uuid5
+
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+
+from request_engine.modules.tenancy.application.commands.platform_owner_lifecycle import (
+    PlatformOwnerConflict,
+    PlatformOwnerError,
+    PlatformOwnerForbidden,
+    PlatformOwnerInvalid,
+    PlatformOwnerLifecycleAction,
+    PlatformOwnerLifecycleResult,
+    PlatformOwnerProvisioningResult,
+    PlatformOwnerRevisionConflict,
+    ProvisionPlatformOwnerCommand,
+    TransitionPlatformOwnerCommand,
+)
+from request_engine.platform.db.session import SessionFactory, platform_actor_transaction
+from request_engine.platform.security.context import PrincipalKind
+from request_engine.platform.security.platform_context import PlatformActorContext
+
+_OWNER_NAMESPACE = UUID("9e24e794-70ff-4b88-b6d5-15c5b315db48")
+_PROVISION_CAPABILITY = "platform.owner.provision"
+_LIFECYCLE_CAPABILITY = "platform.owner.manage_lifecycle"
+_DATABASE_ERRORS: dict[str, type[PlatformOwnerError]] = {
+    "23505": PlatformOwnerConflict,
+    "23514": PlatformOwnerInvalid,
+    "22023": PlatformOwnerInvalid,
+    "40001": PlatformOwnerRevisionConflict,
+    "40P01": PlatformOwnerRevisionConflict,
+    "42501": PlatformOwnerForbidden,
+    "28000": PlatformOwnerForbidden,
+    "55000": PlatformOwnerConflict,
+}
+
+
+class PostgresPlatformOwnerCommands:
+    def __init__(self, session_factory: SessionFactory, *, native_authority_id: UUID) -> None:
+        self._session_factory = session_factory
+        self._native_authority_id = native_authority_id
+
+    async def provision_owner(
+        self,
+        actor: PlatformActorContext,
+        command: ProvisionPlatformOwnerCommand,
+    ) -> PlatformOwnerProvisioningResult:
+        if (
+            actor.principal_kind is not PrincipalKind.HUMAN
+            or not actor.allows(_PROVISION_CAPABILITY)
+        ):
+            raise PlatformOwnerForbidden(_PROVISION_CAPABILITY)
+        normalized_provenance = command.provenance_reference.strip()
+        intent = {
+            "native_identity_id": str(command.native_identity_id),
+            "provenance_reference": normalized_provenance,
+        }
+        intent_digest = _digest_json(intent)
+        key_digest = hashlib.sha256(command.idempotency_key.strip().encode("utf-8")).hexdigest()
+        operation_id = uuid5(
+            _OWNER_NAMESPACE,
+            f"{actor.principal_id}:{key_digest}",
+        )
+        principal_id = uuid5(operation_id, "principal")
+        binding_id = uuid5(operation_id, "binding")
+        try:
+            async with platform_actor_transaction(self._session_factory, actor) as session:
+                created = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT request_platform.provision_native_platform_owner(
+                                CAST(:principal_id AS uuid),
+                                CAST(:binding_id AS uuid),
+                                CAST(:authority_id AS uuid),
+                                CAST(:identity_id AS uuid),
+                                CAST(:provenance AS text),
+                                CAST(:key_digest AS text),
+                                CAST(:intent_digest AS text)
+                            )
+                            """
+                        ),
+                        {
+                            "principal_id": principal_id,
+                            "binding_id": binding_id,
+                            "authority_id": self._native_authority_id,
+                            "identity_id": command.native_identity_id,
+                            "provenance": normalized_provenance,
+                            "key_digest": key_digest,
+                            "intent_digest": intent_digest,
+                        },
+                    )
+                ).scalar_one()
+        except DBAPIError as exc:
+            _raise_mapped(exc)
+        return PlatformOwnerProvisioningResult(
+            principal_id=UUID(str(created)),
+            binding_id=binding_id,
+        )
+
+    async def transition_owner(
+        self,
+        actor: PlatformActorContext,
+        command: TransitionPlatformOwnerCommand,
+    ) -> PlatformOwnerLifecycleResult:
+        if (
+            actor.principal_kind is not PrincipalKind.HUMAN
+            or not actor.allows(_LIFECYCLE_CAPABILITY)
+        ):
+            raise PlatformOwnerForbidden(_LIFECYCLE_CAPABILITY)
+        intent = {
+            "principal_id": str(command.principal_id),
+            "action": command.action.value,
+            "reason_code": command.normalized_reason_code,
+            "external_case_reference": command.normalized_case_reference,
+        }
+        intent_digest = _digest_json(intent)
+        key_digest = hashlib.sha256(command.idempotency_key.strip().encode("utf-8")).hexdigest()
+        try:
+            async with platform_actor_transaction(self._session_factory, actor) as session:
+                row = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT * FROM request_platform.transition_native_platform_owner(
+                                CAST(:principal_id AS uuid),
+                                CAST(:action AS text),
+                                CAST(:expected_revision AS bigint),
+                                CAST(:reason_code AS text),
+                                CAST(:case_reference AS text),
+                                CAST(:key_digest AS text),
+                                CAST(:intent_digest AS text)
+                            )
+                            """
+                        ),
+                        {
+                            "principal_id": command.principal_id,
+                            "action": command.action.value,
+                            "expected_revision": command.expected_revision,
+                            "reason_code": command.normalized_reason_code,
+                            "case_reference": command.normalized_case_reference,
+                            "key_digest": key_digest,
+                            "intent_digest": intent_digest,
+                        },
+                    )
+                ).one()
+        except DBAPIError as exc:
+            _raise_mapped(exc)
+        return PlatformOwnerLifecycleResult(
+            fact_id=UUID(str(row[0])),
+            principal_id=UUID(str(row[1])),
+            action=PlatformOwnerLifecycleAction(str(row[2])),
+            authority_revision=int(row[3]),
+            binding_id=None if row[4] is None else UUID(str(row[4])),
+            binding_status=None if row[5] is None else str(row[5]),
+        )
+
+
+def _digest_json(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _raise_mapped(exc: DBAPIError) -> None:
+    error_type = _DATABASE_ERRORS.get(str(getattr(exc.orig, "sqlstate", "")))
+    if error_type is None:
+        raise exc
+    raise error_type() from None
